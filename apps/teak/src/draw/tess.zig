@@ -569,20 +569,17 @@ pub const Tessellator = struct {
             const line = self.polys.line(i);
             self.tp.clearRetainingCapacity();
             try self.tp.ensureTotalCapacity(self.gpa, line.len);
+            // radial decimation: drop vertices closer than 0.7 px to the previous kept one (keeps last)
             var last: P = undefined;
             for (line, 0..) |q, k| {
                 const p = self.toP(q.x, q.y);
-                if (k == 0) {
-                    self.tp.appendAssumeCapacity(p);
-                    last = p;
-                    continue;
+                if (k > 0 and k + 1 < line.len) {
+                    const dx = p.x - last.x;
+                    const dy = p.y - last.y;
+                    if (dx * dx + dy * dy < 0.49) continue;
                 }
-                const dx = p.x - last.x;
-                const dy = p.y - last.y;
-                if (dx * dx + dy * dy >= 0.36 or k == line.len - 1) {
-                    self.tp.appendAssumeCapacity(p);
-                    last = p;
-                }
+                self.tp.appendAssumeCapacity(p);
+                last = p;
             }
             try self.strokeP(self.tp.items, false, W_in, .auto, c);
         }
@@ -871,21 +868,24 @@ pub const Tessellator = struct {
         try self.emitRun(cp[start..m], cd[start .. m - 1], false, if (start == 0) ccap0 else joint_cap, ccap1, prof, col);
     }
 
-    inline fn row(self: *const Tessellator, p: P, m: P, ra: f32, prof: Profile, col: Color) [4]Vert {
-        _ = self;
-        var r: [4]Vert = undefined;
-        var k: usize = 0;
-        while (k < prof.n) : (k += 1) {
+    inline fn row(comptime N: usize, p: P, m: P, ra: f32, prof: *const Profile, col: Color) [N]Vert {
+        var r: [N]Vert = undefined;
+        inline for (0..N) |k| {
             r[k] = mk(p.x + m.x * prof.off[k], p.y + m.y * prof.off[k], col, col.a * prof.alpha[k] * ra);
         }
         return r;
     }
 
-    fn rowQuads(self: *Tessellator, a: *const [4]Vert, b: *const [4]Vert, n: u8) Allocator.Error!void {
-        try self.buf.verts.ensureUnusedCapacity(self.gpa, 18);
-        var k: usize = 0;
-        while (k + 1 < n) : (k += 1) {
-            self.buf.verts.appendSliceAssumeCapacity(&.{ a[k], a[k + 1], b[k + 1], a[k], b[k + 1], b[k] });
+    inline fn rowQuads(self: *Tessellator, comptime N: usize, a: *const [N]Vert, b: *const [N]Vert) void {
+        // capacity is reserved by emitRun
+        const dst = self.buf.verts.addManyAsSliceAssumeCapacity(6 * (N - 1));
+        inline for (0..N - 1) |k| {
+            dst[k * 6 + 0] = a[k];
+            dst[k * 6 + 1] = a[k + 1];
+            dst[k * 6 + 2] = b[k + 1];
+            dst[k * 6 + 3] = a[k];
+            dst[k * 6 + 4] = b[k + 1];
+            dst[k * 6 + 5] = b[k];
         }
     }
 
@@ -917,12 +917,21 @@ pub const Tessellator = struct {
     /// Emit one mitered ribbon run. `dirs[i]` is the unit direction of segment i
     /// (pts[i] -> pts[(i+1)%n]); for open runs `dirs.len == pts.len - 1`.
     fn emitRun(self: *Tessellator, pts: []const P, dirs: []const P, closed: bool, cap0: Cap, cap1: Cap, prof: Profile, col: Color) Allocator.Error!void {
+        return switch (prof.n) {
+            2 => self.emitRunN(2, pts, dirs, closed, cap0, cap1, prof, col),
+            3 => self.emitRunN(3, pts, dirs, closed, cap0, cap1, prof, col),
+            else => self.emitRunN(4, pts, dirs, closed, cap0, cap1, prof, col),
+        };
+    }
+
+    fn emitRunN(self: *Tessellator, comptime N: usize, pts: []const P, dirs: []const P, closed: bool, cap0: Cap, cap1: Cap, prof: Profile, col: Color) Allocator.Error!void {
         const n = pts.len;
-        const aa = self.opt.antialias;
-        var prev: [4]Vert = undefined;
-        var cur: [4]Vert = undefined;
-        const pn = prof.n;
-        try self.buf.verts.ensureUnusedCapacity(self.gpa, (n + 4) * 18);
+        // End ramps (feathered line ends) only for lines >= 2 px; thinner lines get hard ends,
+        // which is invisible at 1 px and saves 1/3 of the geometry of text and hatch strokes.
+        const aa = self.opt.antialias and prof.w >= 1.0;
+        var prev: [N]Vert = undefined;
+        var cur: [N]Vert = undefined;
+        try self.buf.verts.ensureUnusedCapacity(self.gpa, (n + 4) * 18 + 400); // rows + round-cap fans
 
         if (closed) {
             // vertex i sits between dirs[i-1] and dirs[i]
@@ -931,8 +940,8 @@ pub const Tessellator = struct {
                 const k = i % n;
                 const dp = dirs[(k + n - 1) % n];
                 const dn = dirs[k];
-                cur = self.row(pts[k], miterVec(dp, dn), 1, prof, col);
-                if (i > 0) try self.rowQuads(&prev, &cur, pn);
+                cur = row(N, pts[k], miterVec(dp, dn), 1, &prof, col);
+                if (i > 0) self.rowQuads(N, &prev, &cur);
                 prev = cur;
             }
             return;
@@ -945,23 +954,23 @@ pub const Tessellator = struct {
             const p = pts[0];
             switch (cap0) {
                 .butt, .auto => if (aa) {
-                    prev = self.row(pSub(p, pMul(d, 0.5)), nm, 0, prof, col);
-                    cur = self.row(pAdd(p, pMul(d, 0.5)), nm, 1, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    prev = row(N, pSub(p, pMul(d, 0.5)), nm, 0, &prof, col);
+                    cur = row(N, pAdd(p, pMul(d, 0.5)), nm, 1, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                     prev = cur;
                 } else {
-                    prev = self.row(p, nm, 1, prof, col);
+                    prev = row(N, p, nm, 1, &prof, col);
                 },
                 .square => if (aa) {
-                    prev = self.row(pSub(p, pMul(d, prof.w + 0.5)), nm, 0, prof, col);
-                    cur = self.row(pSub(p, pMul(d, prof.w - 0.5)), nm, 1, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    prev = row(N, pSub(p, pMul(d, prof.w + 0.5)), nm, 0, &prof, col);
+                    cur = row(N, pSub(p, pMul(d, prof.w - 0.5)), nm, 1, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                     prev = cur;
                 } else {
-                    prev = self.row(pSub(p, pMul(d, prof.w)), nm, 1, prof, col);
+                    prev = row(N, pSub(p, pMul(d, prof.w)), nm, 1, &prof, col);
                 },
                 .round => {
-                    prev = self.row(p, nm, 1, prof, col);
+                    prev = row(N, p, nm, 1, &prof, col);
                     try self.capFan(p, nm, pMul(d, -1), prof, col);
                 },
             }
@@ -969,8 +978,8 @@ pub const Tessellator = struct {
         // interior vertices
         var i: usize = 1;
         while (i + 1 < n) : (i += 1) {
-            cur = self.row(pts[i], miterVec(dirs[i - 1], dirs[i]), 1, prof, col);
-            try self.rowQuads(&prev, &cur, pn);
+            cur = row(N, pts[i], miterVec(dirs[i - 1], dirs[i]), 1, &prof, col);
+            self.rowQuads(N, &prev, &cur);
             prev = cur;
         }
         // end cap
@@ -980,28 +989,28 @@ pub const Tessellator = struct {
             const p = pts[n - 1];
             switch (cap1) {
                 .butt, .auto => if (aa) {
-                    cur = self.row(pSub(p, pMul(d, 0.5)), nm, 1, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    cur = row(N, pSub(p, pMul(d, 0.5)), nm, 1, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                     prev = cur;
-                    cur = self.row(pAdd(p, pMul(d, 0.5)), nm, 0, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    cur = row(N, pAdd(p, pMul(d, 0.5)), nm, 0, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                 } else {
-                    cur = self.row(p, nm, 1, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    cur = row(N, p, nm, 1, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                 },
                 .square => if (aa) {
-                    cur = self.row(pAdd(p, pMul(d, prof.w - 0.5)), nm, 1, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    cur = row(N, pAdd(p, pMul(d, prof.w - 0.5)), nm, 1, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                     prev = cur;
-                    cur = self.row(pAdd(p, pMul(d, prof.w + 0.5)), nm, 0, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    cur = row(N, pAdd(p, pMul(d, prof.w + 0.5)), nm, 0, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                 } else {
-                    cur = self.row(pAdd(p, pMul(d, prof.w)), nm, 1, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    cur = row(N, pAdd(p, pMul(d, prof.w)), nm, 1, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                 },
                 .round => {
-                    cur = self.row(p, nm, 1, prof, col);
-                    try self.rowQuads(&prev, &cur, pn);
+                    cur = row(N, p, nm, 1, &prof, col);
+                    self.rowQuads(N, &prev, &cur);
                     try self.capFan(p, nm, d, prof, col);
                 },
             }
@@ -1193,4 +1202,445 @@ fn gridFade(spx: f32) f32 {
     if (spx >= hi) return 1;
     const t = (spx - lo) / (hi - lo);
     return t * t * (3 - 2 * t);
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+const testing = std.testing;
+const raster = @import("raster.zig");
+const builtin = @import("builtin");
+
+fn testView(w: f32, h: f32, ppi: f32) View {
+    return .{ .px_per_model_in = ppi, .origin_x = 0, .origin_y = h, .width = w, .height = h };
+}
+
+fn parseOne(json: []const u8) !ir.Drawing {
+    return ir.parse(testing.allocator, json);
+}
+
+/// Sum of ink coverage (0..1 per pixel) of a black-on-white render of `d`.
+fn inkCoverage(img: *const raster.Image) f64 {
+    var s: f64 = 0;
+    var i: usize = 0;
+    while (i < img.pixels.len) : (i += 3) s += (255.0 - @as(f64, @floatFromInt(img.pixels[i]))) / 255.0;
+    return s;
+}
+
+fn renderDrawing(a: Allocator, d: *const ir.Drawing, view: View, opt: Options) !raster.Image {
+    var font = try Font.initEmbedded(a);
+    defer font.deinit();
+    var t = Tessellator.init(a);
+    defer t.deinit();
+    var o = opt;
+    o.background = false;
+    o.grid = false;
+    try t.build(d, &font, view, Palette.white_ink(), o);
+    var img = try raster.Image.init(a, @intFromFloat(view.width), @intFromFloat(view.height), .{ 255, 255, 255 });
+    img.drawTris(t.verts());
+    return img;
+}
+
+test "View: fit centers, zoomAt keeps the anchor, bounds round trip" {
+    const v = View.fit(.{ 0, 0, 10, 5 }, 200, 100, 10);
+    try testing.expectApproxEqAbs(@as(f32, 16), v.px_per_model_in, 1e-4);
+    try testing.expectApproxEqAbs(@as(f32, 100), v.sx(5), 1e-3);
+    try testing.expectApproxEqAbs(@as(f32, 50), v.sy(2.5), 1e-3);
+    const z = v.zoomAt(60, 40, 2.0);
+    try testing.expectApproxEqAbs(v.modelX(60), z.modelX(60), 1e-4);
+    try testing.expectApproxEqAbs(v.modelY(40), z.modelY(40), 1e-4);
+    const mb = v.modelBounds();
+    try testing.expectApproxEqAbs(@as(f64, v.modelX(0)), mb.x0, 1e-9);
+    try testing.expect(mb.y1 > mb.y0);
+    const p = v.panned(10, -5);
+    try testing.expectApproxEqAbs(v.sx(1) + 10, p.sx(1), 1e-4);
+}
+
+test "profiles: widths and fringes" {
+    const p1 = makeProfile(1.0, true);
+    try testing.expectEqual(@as(u8, 3), p1.n);
+    try testing.expectApproxEqAbs(@as(f32, 1.0), p1.off[2], 1e-6);
+    const p3 = makeProfile(3.0, true);
+    try testing.expectEqual(@as(u8, 4), p3.n);
+    try testing.expectApproxEqAbs(@as(f32, 1.0), p3.inner, 1e-6);
+    try testing.expectApproxEqAbs(@as(f32, 2.0), p3.outer, 1e-6);
+    const pn = makeProfile(3.0, false);
+    try testing.expectEqual(@as(u8, 2), pn.n);
+    const ps = makeProfile(0.5, true); // sub-pixel: tent preserving area
+    try testing.expectApproxEqAbs(@as(f32, 0.5), ps.alpha[1] * ps.outer, 1e-5);
+}
+
+test "grid fade" {
+    try testing.expectEqual(@as(f32, 0), gridFade(3));
+    try testing.expectEqual(@as(f32, 1), gridFade(20));
+    try testing.expect(gridFade(8) > 0 and gridFade(8) < 1);
+}
+
+test "build: background + grid + one path; all vertices finite; alpha in range" {
+    var d = try parseOne(ir.tiny_json);
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    const view = View.fit(d.bounds, 800, 640, 20);
+    try t.build(&d, &font, view, Palette.live(), .{});
+    const vs = t.verts();
+    try testing.expect(vs.len > 600);
+    try testing.expectEqual(@as(usize, 0), vs.len % 3);
+    // first 6 verts = vellum rect covering the viewport
+    try testing.expectEqual(@as(f32, 0), vs[0].x);
+    try testing.expectEqual(@as(f32, 800), vs[1].x);
+    try testing.expectEqual(@as(f32, 640), vs[2].y);
+    for (vs) |v| {
+        try testing.expect(std.math.isFinite(v.x) and std.math.isFinite(v.y));
+        try testing.expect(v.a >= 0 and v.a <= 1.0001);
+        try testing.expect(v.x > -50 and v.x < 850 and v.y > -50 and v.y < 700);
+    }
+    // rebuild reuses capacity and is deterministic
+    const n1 = vs.len;
+    const first = vs[n1 - 1];
+    try t.build(&d, &font, view, Palette.live(), .{});
+    try testing.expectEqual(n1, t.verts().len);
+    try testing.expectEqual(first, t.verts()[n1 - 1]);
+}
+
+test "1 px hairline: tent profile spans +-1 px, peak alpha 1" {
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":12,"pens":{"h":{"width_mm":0.01}},"items":[
+        \\ {"t":"path","pen":"h","pts":[[2,3],[8,3]]}]}
+    );
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    try t.build(&d, &font, testView(100, 100, 10), Palette.white_ink(), .{ .background = false, .grid = false });
+    var ymin: f32 = 1e9;
+    var ymax: f32 = -1e9;
+    var amax: f32 = 0;
+    for (t.verts()) |v| {
+        ymin = @min(ymin, v.y);
+        ymax = @max(ymax, v.y);
+        amax = @max(amax, v.a);
+    }
+    // model y=3 -> screen y = 100 - 30 = 70 ; hairline clamped to 1px => +-1 fringe
+    try testing.expectApproxEqAbs(@as(f32, 69), ymin, 1e-3);
+    try testing.expectApproxEqAbs(@as(f32, 71), ymax, 1e-3);
+    try testing.expectApproxEqAbs(@as(f32, 1), amax, 1e-6);
+}
+
+test "pen px = width_mm/25.4 * ppi * scale, clamped to min_line_px" {
+    // cut pen 0.5 mm at scale 12, 10 px per model inch: 0.5/25.4*120 = 2.362 px
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":12,"pens":{"cut":{"width_mm":0.5},"thin":{"width_mm":0.05}},"items":[
+        \\ {"t":"path","pen":"cut","pts":[[2,3],[8,3]]},{"t":"path","pen":"thin","pts":[[2,6],[8,6]]}]}
+    );
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    t.drawing = &d;
+    t.opt = .{};
+    t.ppp = 120;
+    try testing.expectApproxEqAbs(@as(f32, 2.3622), t.penPx(d.items[0]), 1e-3);
+    try testing.expectApproxEqAbs(@as(f32, 1.0), t.penPx(d.items[1]), 1e-6);
+    t.opt.min_line_px = 2.0;
+    try testing.expectApproxEqAbs(@as(f32, 2.0), t.penPx(d.items[1]), 1e-6);
+}
+
+test "coverage: a 3 px wide, 40 px long line covers ~3*40 px of ink plus caps" {
+    // pen 3px: width_mm such that width_mm/25.4*ppp = 3, ppp = ppi*scale = 10*1 => width_mm = 7.62
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":1,"pens":{"p":{"width_mm":7.62}},"items":[
+        \\ {"t":"path","pen":"p","pts":[[2,5.05],[6,5.05]]}]}
+    );
+    defer d.deinit();
+    var img = try renderDrawing(testing.allocator, &d, testView(80, 100, 10), .{});
+    defer img.deinit(testing.allocator);
+    const cov = inkCoverage(&img);
+    try testing.expect(cov > 3.0 * 40 and cov < 3.0 * 40 + 12);
+    // antialias off: hard edges, still ~ the same coverage
+    var img2 = try renderDrawing(testing.allocator, &d, testView(80, 100, 10), .{ .antialias = false });
+    defer img2.deinit(testing.allocator);
+    const cov2 = inkCoverage(&img2);
+    try testing.expect(cov2 > 3.0 * 40 - 8 and cov2 < 3.0 * 40 + 14);
+}
+
+test "coverage: sub-pixel placement does not change total coverage (AA conserves ink)" {
+    var cov_prev: f64 = 0;
+    var k: usize = 0;
+    while (k < 5) : (k += 1) {
+        var buf: [256]u8 = undefined;
+        const j = std.fmt.bufPrint(&buf,
+            \\{{"kerf_drawing":"0.1","scale":1,"pens":{{"p":{{"width_mm":2.54}}}},"items":[{{"t":"path","pen":"p","pts":[[2,{d:.2}],[8,{d:.2}]]}}]}}
+        , .{ 5.0 + @as(f64, @floatFromInt(k)) * 0.021, 5.0 + @as(f64, @floatFromInt(k)) * 0.021 }) catch unreachable;
+        var d = try parseOne(j);
+        defer d.deinit();
+        var img = try renderDrawing(testing.allocator, &d, testView(100, 100, 10), .{});
+        defer img.deinit(testing.allocator);
+        const cov = inkCoverage(&img);
+        if (k > 0) try testing.expectApproxEqAbs(cov_prev, cov, 1.5);
+        cov_prev = cov;
+    }
+}
+
+test "dashes: dashed path has more triangles than solid and gaps are empty" {
+    // hidden pen 2mm dash 1mm gap at ppp 254*? choose ppp = 10*12 = 120: dash 9.45px gap 4.7px
+    const j =
+        \\{"kerf_drawing":"0.1","scale":12,"pens":{"s":{"width_mm":0.18},"h":{"width_mm":0.18,"dash_mm":[2,1]}},"items":[
+        \\ {"t":"path","pen":"%s","pts":[[1,5],[9,5]]}]}
+    ;
+    const js = try std.mem.replaceOwned(u8, testing.allocator, j, "%s", "s");
+    defer testing.allocator.free(js);
+    const jh = try std.mem.replaceOwned(u8, testing.allocator, j, "%s", "h");
+    defer testing.allocator.free(jh);
+    var ds = try parseOne(js);
+    defer ds.deinit();
+    var dh = try parseOne(jh);
+    defer dh.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    const view = testView(100, 100, 10);
+    try t.build(&ds, &font, view, Palette.white_ink(), .{ .background = false, .grid = false });
+    const solid_tris = t.buf.triangleCount();
+    try t.build(&dh, &font, view, Palette.white_ink(), .{ .background = false, .grid = false });
+    try testing.expect(t.buf.triangleCount() > solid_tris * 3);
+    var img = try renderDrawing(testing.allocator, &dh, view, .{});
+    defer img.deinit(testing.allocator);
+    // row at y=50 : find number of ink runs along x in [10, 90]
+    var runs: usize = 0;
+    var inrun = false;
+    var x: u32 = 10;
+    while (x < 90) : (x += 1) {
+        const dark = @min(img.pixel(x, 49)[0], img.pixel(x, 50)[0]) < 200;
+        if (dark and !inrun) runs += 1;
+        inrun = dark;
+    }
+    // 80 px / (9.45+4.72) = 5.6 periods
+    try testing.expect(runs >= 5 and runs <= 7);
+}
+
+test "dash pattern with period < 3 px degrades to solid" {
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":1,"pens":{"h":{"width_mm":0.18,"dash_mm":[2,1]}},"items":[
+        \\ {"t":"path","pen":"h","pts":[[1,5],[9,5]]}]}
+    );
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    // ppp = 10: period 3mm = 1.18px
+    try t.build(&d, &font, testView(100, 100, 10), Palette.white_ink(), .{ .background = false, .grid = false });
+    try testing.expect(t.buf.triangleCount() <= 12);
+}
+
+test "culling: offscreen items emit nothing; onscreen items emit something" {
+    const j =
+        \\{"kerf_drawing":"0.1","scale":1,"pens":{"p":{"width_mm":0.5}},"items":[
+        \\ {"t":"path","pen":"p","pts":[[500,500],[600,600]]},
+        \\ {"t":"fill","loops":[[[700,700],[710,700],[710,710]]]},
+        \\ {"t":"hatch","pen":"p","loops":[[[700,700],[710,700],[710,710]]],"lines":[[700,700,710,710]]},
+        \\ {"t":"text","s":"HELLO","x":900,"y":900,"h":1}]}
+    ;
+    var d = try parseOne(j);
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    try t.build(&d, &font, testView(100, 100, 10), Palette.white_ink(), .{ .background = false, .grid = false });
+    try testing.expectEqual(@as(usize, 0), t.verts().len);
+}
+
+test "hover emits blue verts; selected emits 15% tint under the linework" {
+    var d = try parseOne(ir.tiny_json);
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    const pal = Palette.live();
+    const view = View.fit(d.bounds, 800, 640, 20);
+    try t.build(&d, &font, view, pal, .{ .grid = false });
+    const base = t.verts().len;
+    try t.build(&d, &font, view, pal, .{ .grid = false, .hovered = "sill" });
+    try testing.expect(t.verts().len > base);
+    var blue: usize = 0;
+    for (t.verts()[base..]) |v| {
+        if (v.r == pal.blue.r and v.g == pal.blue.g and v.b == pal.blue.b) blue += 1;
+    }
+    try testing.expect(blue == t.verts().len - base);
+    // selected: tint verts precede ink (drawn before the first item), alpha 0.15
+    try t.build(&d, &font, view, pal, .{ .grid = false, .selected = "sill" });
+    var found_tint = false;
+    for (t.verts()[6..@min(t.verts().len, 6 + 400)]) |v| {
+        if (v.r == pal.blue.r and @abs(v.a - 0.15) < 1e-6) found_tint = true;
+    }
+    try testing.expect(found_tint);
+    // unknown src: nothing extra
+    try t.build(&d, &font, view, pal, .{ .grid = false, .hovered = "nope", .selected = "nope" });
+    try testing.expectEqual(base, t.verts().len);
+}
+
+test "solid fill (square with arcs) coverage ~ its area, AA fringe included" {
+    // circle r=1in at ppi 20 => area pi*400 = 1256 px
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":1,"items":[{"t":"fill","loops":[[[2,2.5,1],[4,2.5,1]]]}]}
+    );
+    defer d.deinit();
+    var img = try renderDrawing(testing.allocator, &d, testView(120, 120, 20), .{});
+    defer img.deinit(testing.allocator);
+    const cov = inkCoverage(&img);
+    try testing.expectApproxEqRel(std.math.pi * 400.0, cov, 0.02);
+    // antialias off
+    var img2 = try renderDrawing(testing.allocator, &d, testView(120, 120, 20), .{ .antialias = false });
+    defer img2.deinit(testing.allocator);
+    try testing.expectApproxEqRel(std.math.pi * 400.0, inkCoverage(&img2), 0.03);
+}
+
+test "solid fill with hole (even-odd loops) and concave outline" {
+    // L-shape: area 7 in^2 at 10 px/in => 700 px ; with a 1x1 hole => 600
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":1,"items":[
+        \\ {"t":"fill","loops":[[[1,1],[5,1],[5,2],[2,2],[2,5],[1,5]]]},
+        \\ {"t":"fill","loops":[[[6,1],[10,1],[10,5],[6,5]],[[7,2],[9,2],[9,4],[7,4]]]}]}
+    );
+    defer d.deinit();
+    var img = try renderDrawing(testing.allocator, &d, testView(120, 80, 10), .{});
+    defer img.deinit(testing.allocator);
+    // L = 4*1 + 1*3 = 7 in^2 => 700 px; second = 16 - 4 = 12 in^2 => 1200 px
+    try testing.expectApproxEqRel(@as(f64, 1900), inkCoverage(&img), 0.02);
+    // hole centre is empty, ring is ink
+    try testing.expectEqual(@as(u8, 255), img.pixel(80, 80 - 30)[0]);
+    try testing.expect(img.pixel(65, 80 - 30)[0] < 5);
+}
+
+test "arc path: semicircle bulge sign (positive = bulges right of travel) lands where expected" {
+    // (2,5)->(6,5) bulge 1: bulges to the RIGHT of travel (east) = BELOW the chord => y < 5
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":1,"pens":{"p":{"width_mm":5.0}},"items":[
+        \\ {"t":"path","pen":"p","pts":[[2,5,1],[6,5]]}]}
+    );
+    defer d.deinit();
+    var img = try renderDrawing(testing.allocator, &d, testView(80, 100, 10), .{});
+    defer img.deinit(testing.allocator);
+    // lowest point of the arc: model (4, 3) -> screen (40, 100-30=70)
+    try testing.expect(img.pixel(40, 70)[0] < 100);
+    // nothing at the mirrored position above
+    try testing.expectEqual(@as(u8, 255), img.pixel(40, 30)[0]);
+}
+
+test "text renders and greeks at tiny sizes" {
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":1,"pens":{"anno":{"width_mm":0.18}},"items":[
+        \\ {"t":"text","pen":"anno","s":"NOTE 1","x":2,"y":2,"h":1,"align":"left"}]}
+    );
+    defer d.deinit();
+    var big = try renderDrawing(testing.allocator, &d, testView(120, 100, 20), .{});
+    defer big.deinit(testing.allocator);
+    try testing.expect(inkCoverage(&big) > 60);
+    // tiny: cap height 1 * 1px/in ... greeked line, still some ink, little geometry
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    try t.build(&d, &font, testView(120, 100, 2), Palette.white_ink(), .{ .background = false, .grid = false });
+    try testing.expect(t.verts().len > 0 and t.verts().len < 200);
+}
+
+test "sharp corner and zigzag strokes produce finite geometry and sensible coverage" {
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":1,"pens":{"p":{"width_mm":2.0}},"items":[
+        \\ {"t":"path","pen":"p","pts":[[1,1],[9,1.2],[1,1.4],[9,1.6],[1,1.8]]},
+        \\ {"t":"path","pen":"p","closed":true,"pts":[[2,5],[8,5],[2,5.05]]},
+        \\ {"t":"path","pen":"p","closed":true,"pts":[[2,7],[3,7],[3,8],[2,8]]},
+        \\ {"t":"path","pen":"p","pts":[[5,5],[5,5],[5,5]]}]}
+    );
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    try t.build(&d, &font, testView(120, 100, 10), Palette.white_ink(), .{ .background = false, .grid = false });
+    for (t.verts()) |v| try testing.expect(std.math.isFinite(v.x) and std.math.isFinite(v.y) and std.math.isFinite(v.a));
+    try testing.expect(t.verts().len > 100);
+}
+
+const BenchKind = enum { paths, dashed, hatch, fills, text };
+
+fn benchJson(a: Allocator, kind: BenchKind, n: usize, rnd: std.Random) !std.ArrayList(u8) {
+    var json: std.ArrayList(u8) = .empty;
+    errdefer json.deinit(a);
+    try json.appendSlice(a, "{\"kerf_drawing\":\"0.1\",\"scale\":12,\"bounds\":[0,0,60,45],\"pens\":{\"cut\":{\"width_mm\":0.5},\"hatch\":{\"width_mm\":0.09},\"anno\":{\"width_mm\":0.18},\"hidden\":{\"width_mm\":0.18,\"dash_mm\":[2,1]}},\"items\":[");
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        if (i > 0) try json.append(a, ',');
+        const x = rnd.float(f64) * 55;
+        const y = rnd.float(f64) * 40;
+        switch (kind) {
+            .paths => try json.print(a, "{{\"t\":\"path\",\"pen\":\"cut\",\"src\":\"c{d}\",\"closed\":true,\"pts\":[[{d:.3},{d:.3},0],[{d:.3},{d:.3},0.4],[{d:.3},{d:.3},0],[{d:.3},{d:.3},0]]}}", .{ i, x, y, x + 3, y, x + 3, y + 2, x, y + 2 }),
+            .dashed => try json.print(a, "{{\"t\":\"path\",\"pen\":\"hidden\",\"pts\":[[{d:.3},{d:.3}],[{d:.3},{d:.3}],[{d:.3},{d:.3}]]}}", .{ x, y, x + 12, y + 3, x + 20, y }),
+            .hatch => {
+                try json.print(a, "{{\"t\":\"hatch\",\"pen\":\"hatch\",\"src\":\"h{d}\",\"loops\":[[[{d:.2},{d:.2}],[{d:.2},{d:.2}],[{d:.2},{d:.2}]]],\"lines\":[", .{ i, x, y, x + 8, y, x + 8, y + 6 });
+                var k: usize = 0;
+                while (k < 50) : (k += 1) {
+                    if (k > 0) try json.append(a, ',');
+                    const o = @as(f64, @floatFromInt(k)) * 0.15;
+                    try json.print(a, "[{d:.3},{d:.3},{d:.3},{d:.3}]", .{ x + o, y, x + o + 2, y + 2 });
+                }
+                try json.appendSlice(a, "]}");
+            },
+            .fills => try json.print(a, "{{\"t\":\"fill\",\"src\":\"r{d}\",\"loops\":[[[{d:.3},{d:.3},1],[{d:.3},{d:.3},1]]]}}", .{ i, x, y, x + 0.6, y }),
+            .text => try json.print(a, "{{\"t\":\"text\",\"pen\":\"anno\",\"src\":\"n{d}\",\"s\":\"2X8 PT SILL PLATE W/ 5/8\\\" DIA.\",\"x\":{d:.2},\"y\":{d:.2},\"h\":1.125}}", .{ i, x, y }),
+        }
+    }
+    try json.appendSlice(a, "]}");
+    return json;
+}
+
+fn nowNs() i128 {
+    var ts: std.os.linux.timespec = undefined;
+    _ = std.os.linux.clock_gettime(.MONOTONIC, &ts);
+    return @as(i128, ts.sec) * 1_000_000_000 + ts.nsec;
+}
+
+fn benchOne(a: Allocator, font: *const Font, kind: BenchKind, n: usize, units: usize) !f64 {
+    var prng = std.Random.DefaultPrng.init(7);
+    var json = try benchJson(a, kind, n, prng.random());
+    defer json.deinit(a);
+    var d = try ir.parse(a, json.items);
+    defer d.deinit();
+    var t = Tessellator.init(a);
+    defer t.deinit();
+    const view = View.fit(d.bounds, 1400, 1050, 20);
+    try t.build(&d, font, view, Palette.live(), .{ .hovered = "c5", .selected = "c7" });
+    const reps: usize = 20;
+    const t0 = nowNs();
+    var r: usize = 0;
+    while (r < reps) : (r += 1) try t.build(&d, font, view, Palette.live(), .{ .hovered = "c5", .selected = "c7" });
+    const ms = @as(f64, @floatFromInt(nowNs() - t0)) / 1e6 / @as(f64, reps);
+    std.debug.print("[bench] {s}: {d} items ({d} units), {d} tris, {d:.2} ms/frame\n", .{ @tagName(kind), n, units, t.buf.triangleCount(), ms });
+    return ms;
+}
+
+test "bench: per-category and combined tessellation cost (prints ms)" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const a = testing.allocator;
+    var font = try Font.initEmbedded(a);
+    defer font.deinit();
+    std.debug.print("\n[bench] mode={s}\n", .{@tagName(builtin.mode)});
+    var total: f64 = 0;
+    total += try benchOne(a, &font, .paths, 1500, 1500);
+    total += try benchOne(a, &font, .dashed, 150, 150);
+    total += try benchOne(a, &font, .hatch, 60, 3000);
+    total += try benchOne(a, &font, .fills, 150, 150);
+    total += try benchOne(a, &font, .text, 150, 150);
+    std.debug.print("[bench] sum of categories (~5k items): {d:.2} ms\n", .{total});
+    if (builtin.mode != .Debug) try testing.expect(total < 30.0);
 }
