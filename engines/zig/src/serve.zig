@@ -344,7 +344,7 @@ fn serveConn(s: *Server, stream: net.Stream) void {
             switch (e) {
                 error.HeadTooLarge => http.sendError(a, w, 431, false, "", "E_HEAD", "request headers too large") catch {},
                 error.Malformed => http.sendError(a, w, 400, false, "", "E_HTTP", "malformed HTTP request") catch {},
-                error.Unsupported => http.sendError(a, w, 501, false, "", "E_HTTP", "chunked request bodies are not supported; send Content-Length") catch {},
+                error.Unsupported => http.sendError(a, w, 501, false, "", "E_HTTP", "unsupported Transfer-Encoding (only chunked or Content-Length bodies)") catch {},
                 else => {},
             }
             return;
@@ -1023,6 +1023,15 @@ fn lanIp(io: Io) ?[4]u8 {
     };
 }
 
+/// True when something already accepts connections on host:port (wildcard hosts are probed via loopback).
+fn portInUse(io: Io, host: []const u8, port: u16) bool {
+    const probe_host = if (std.mem.eql(u8, host, "0.0.0.0")) "127.0.0.1" else if (std.mem.eql(u8, host, "::")) "::1" else host;
+    const addr = net.IpAddress.parse(probe_host, port) catch return false;
+    const stream = addr.connect(io, .{ .mode = .stream }) catch return false;
+    stream.close(io);
+    return true;
+}
+
 fn isLoopbackHost(host: []const u8) bool {
     return std.ascii.eqlIgnoreCase(host, "localhost") or std.mem.eql(u8, host, "::1") or std.mem.startsWith(u8, host, "127.");
 }
@@ -1095,6 +1104,12 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
         try err.print("kerf serve: --host must be an IP address (127.0.0.1, 0.0.0.0, ::1 …), got '{s}'\n", .{cfg.host});
         return 2;
     };
+    // std sets SO_REUSEPORT together with SO_REUSEADDR, which would let a second `kerf serve` share the port
+    // silently. Probe first so a busy port is an error (we keep SO_REUSEADDR: restarts do not wait out TIME_WAIT).
+    if (cfg.port != 0 and portInUse(io, bind_host, cfg.port)) {
+        try err.print("kerf serve: port {d} is already in use; try --port {d}\n", .{ cfg.port, cfg.port +% 1 });
+        return 1;
+    }
     var listener = addr.listen(io, .{ .reuse_address = true }) catch |e| {
         switch (e) {
             error.AddressInUse => try err.print("kerf serve: port {d} is already in use; try --port {d}\n", .{ cfg.port, cfg.port +% 1 }),

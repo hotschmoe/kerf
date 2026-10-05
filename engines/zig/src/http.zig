@@ -19,6 +19,8 @@ pub const Request = struct {
     /// Header block: request line + headers, without the blank line.
     head: []const u8,
     content_length: usize,
+    /// `Transfer-Encoding: chunked` request body (decoded by `readBody`).
+    chunked: bool = false,
     keep_alive: bool,
     expect_continue: bool,
     body: []const u8 = "",
@@ -86,7 +88,9 @@ pub fn parseHead(head: []const u8) HeadError!Request {
         .expect_continue = false,
     };
     if (req.header("transfer-encoding")) |te| {
-        if (!std.ascii.eqlIgnoreCase(te, "identity")) return error.Unsupported;
+        if (std.ascii.eqlIgnoreCase(te, "chunked")) {
+            req.chunked = true;
+        } else if (!std.ascii.eqlIgnoreCase(te, "identity")) return error.Unsupported;
     }
     if (req.header("content-length")) |cl| {
         req.content_length = std.fmt.parseInt(usize, cl, 10) catch return error.Malformed;
@@ -103,6 +107,13 @@ pub const BodyError = error{ TooLarge, ReadFailed, ShortBody, OutOfMemory, Write
 
 /// Read `req.content_length` body bytes (sending `100 Continue` first when asked).
 pub fn readBody(a: Allocator, r: *Io.Reader, w: *Io.Writer, req: *Request) BodyError!void {
+    if (req.chunked) {
+        if (req.expect_continue) {
+            try w.writeAll("HTTP/1.1 100 Continue\r\n\r\n");
+            try w.flush();
+        }
+        return readChunked(a, r, req);
+    }
     if (req.content_length == 0) return;
     if (req.content_length > max_body) return error.TooLarge;
     if (req.expect_continue) {
@@ -114,6 +125,36 @@ pub fn readBody(a: Allocator, r: *Io.Reader, w: *Io.Writer, req: *Request) BodyE
         error.EndOfStream => return error.ShortBody,
         error.ReadFailed => return error.ReadFailed,
     };
+}
+
+fn readChunked(a: Allocator, r: *Io.Reader, req: *Request) BodyError!void {
+    var body: std.ArrayList(u8) = .empty;
+    while (true) {
+        const line = r.takeDelimiterInclusive('\n') catch |e| switch (e) {
+            error.EndOfStream => return error.ShortBody,
+            error.ReadFailed => return error.ReadFailed,
+            error.StreamTooLong => return error.ShortBody,
+        };
+        var t = std.mem.trim(u8, line, " \t\r\n");
+        if (std.mem.indexOfScalar(u8, t, ';')) |semi| t = t[0..semi];
+        const size = std.fmt.parseInt(usize, t, 16) catch return error.ShortBody;
+        if (size == 0) break;
+        if (body.items.len + size > max_body) return error.TooLarge;
+        const chunk = r.readAlloc(a, size) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.EndOfStream => return error.ShortBody,
+            error.ReadFailed => return error.ReadFailed,
+        };
+        try body.appendSlice(a, chunk);
+        r.discardAll(2) catch return error.ShortBody; // the CRLF after the chunk
+    }
+    // trailers until the blank line
+    while (true) {
+        const line = r.takeDelimiterInclusive('\n') catch return error.ShortBody;
+        if (std.mem.trim(u8, line, " \t\r\n").len == 0) break;
+    }
+    req.body = body.items;
+    req.content_length = body.items.len;
 }
 
 pub fn reason(status: u16) []const u8 {
@@ -291,7 +332,7 @@ test "parseHead rejects junk" {
     try std.testing.expectError(error.Malformed, parseHead("GET /x"));
     try std.testing.expectError(error.Malformed, parseHead("GET x HTTP/1.1"));
     try std.testing.expectError(error.Malformed, parseHead("GET /x HTTP/2"));
-    try std.testing.expectError(error.Unsupported, parseHead("POST /x HTTP/1.1\r\nTransfer-Encoding: chunked"));
+    try std.testing.expectError(error.Unsupported, parseHead("POST /x HTTP/1.1\r\nTransfer-Encoding: gzip"));
     try std.testing.expectError(error.Malformed, parseHead("POST /x HTTP/1.1\r\nContent-Length: abc"));
     const r = try parseHead("GET /x HTTP/1.0\r\nHost: a");
     try std.testing.expect(!r.keep_alive);
@@ -313,4 +354,16 @@ test "secretEql" {
     try std.testing.expect(secretEql("abc", "abc"));
     try std.testing.expect(!secretEql("abc", "abd"));
     try std.testing.expect(!secretEql("abc", "ab"));
+}
+
+test "readChunked" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var r = Io.Reader.fixed("5\r\nhello\r\n6;ext=1\r\n world\r\n0\r\nX-T: 1\r\n\r\nNEXT");
+    var req = try parseHead("POST /x HTTP/1.1\r\nTransfer-Encoding: chunked");
+    try std.testing.expect(req.chunked);
+    try readChunked(a, &r, &req);
+    try std.testing.expectEqualStrings("hello world", req.body);
+    try std.testing.expectEqualStrings("NEXT", r.buffered());
 }
