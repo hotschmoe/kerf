@@ -726,3 +726,10 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **`drawing` / `export` `view` argument:** the view id string (`"A"`). `export` takes an
   optional `sheet: true` (PDF always produces a sheet).
 - **`catalog` markdown:** returned as raw UTF-8 text (not JSON-encoded) from the CLI and wasm.
+- **View `omit`:** `"omit": ["roofing", "roof_sheathing"]`, a list of component ids excluded
+  from that view only (all instances). Typical use: peel back sheathing or finishes in an iso so the
+  framing reads. Unknown ids ⇒ `E_REF_UNKNOWN`. Annotations targeting an omitted component ⇒ `W_NOTE_TARGET`.
+- **Fills in iso:** `fill` components (earth, gravel, sand, compacted_fill) never render as 3D
+  blocks in iso views. With `cutaway: true` only their cut face at `cut_z` is drawn (hatched,
+  without a heavy outline except the grade line chain per `outline`). Without cutaway they're omitted.
+  The 3D mesh (§11) also omits fills unless a viewer asks for them (`mesh` input `{ include_fills: true }`).

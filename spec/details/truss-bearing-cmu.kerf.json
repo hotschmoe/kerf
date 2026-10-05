@@ -459,6 +459,10 @@
           "text": "8\" CMU W/ GROUTED BOND BEAM",
           "target": "cmu"
         }
+      ],
+      "omit": [
+        "roofing",
+        "roof_sheathing"
       ]
     }
   ]
