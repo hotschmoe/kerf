@@ -15,4 +15,5 @@ chmod +x "$dir/kerf.tmp" && mv "$dir/kerf.tmp" "$dir/kerf"
 "$dir/kerf" version; echo
 echo "kerf installed: $dir/kerf"
 case ":$PATH:" in *":$dir:"*) ;; *) echo "note: add $dir to your PATH (e.g. echo 'export PATH=\"$dir:\$PATH\"' >> ~/.bashrc)";; esac
-echo "next:  mkdir details && cd details && kerf init   then open Claude Code / Grok there and ask for a detail."
+echo "next:  mkdir details && cd details && kerf init && kerf serve --open"
+echo "       then ask Claude Code / Grok (in that folder, or from the web console) for a detail."

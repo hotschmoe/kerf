@@ -20,4 +20,5 @@ $env:Path = "$env:Path;$dir"
 & $dest version
 Write-Host ""
 Write-Host "kerf installed: $dest"
-Write-Host "next:  mkdir details; cd details; kerf init   then open Claude Code / Grok there and ask for a detail."
+Write-Host "next:  mkdir details; cd details; kerf init; kerf serve --open"
+Write-Host "       then ask Claude Code / Grok (in that folder, or from the web console) for a detail."

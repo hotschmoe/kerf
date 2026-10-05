@@ -26,9 +26,17 @@ mkdir details && cd details
 kerf init        # writes AGENTS.md + CLAUDE.md: "run `kerf guide` first"
 claude           # or grok; then ask: "detail of a prefab truss bearing on an 8in CMU wall"
 ```
-The agent runs `kerf guide`, builds the detail with `kerf apply … -w`, checks its work by exporting
-and reading PNGs, and leaves `*.kerf.json` files in the folder. Open them in the web UI to review,
-edit notes, verify citations, and export.
+The agent runs `kerf guide`, builds the detail with `kerf apply … -w --why "…"`, checks its work by
+exporting and reading PNGs, and leaves `*.kerf.json` files in the folder.
+
+```sh
+kerf serve --open                       # web workstation for this folder (live as the agent edits)
+kerf serve --host 0.0.0.0               # on your LAN (prints a URL with an access token)
+```
+In the browser you see every detail in the folder update live. The agent's edits show up as LOCAL AGENT
+cards. You can edit notes, verify citations, and export DXF / PDF / SVG / PNG, or drive Claude Code,
+Grok or Codex from the web console (they run on your machine with your own login). Cloud providers
+(Anthropic, OpenAI, Gemini, xAI, OpenRouter, custom/local OpenAI-compatible) work with your API key.
 
 ## Repository
 
