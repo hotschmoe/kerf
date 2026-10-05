@@ -39,11 +39,14 @@
 <path d="M513.857 184L513.857 245" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="sill_plate">
-<path d="M464.357 184L522.357 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
-<path d="M522.357 184L464.357 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M464.357 184L478.857 181" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M481.857 180.379L522.357 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M522.357 184L481.857 175.621" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M470.857 173.345L464.357 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="bird_block">
-<path d="M464.357 172L476.357 128" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M464.357 172L470.857 148.167" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M471.448 146L476.357 128" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="subfascia">
 <path d="M308.357 206.485L320.357 162.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
@@ -70,10 +73,11 @@
 <path d="M523.857 408L523.857 376L523.857 373L523.857 312L523.857 309L523.857 248L523.857 245L523.857 184L513.857 184L472.857 184L462.857 184L462.857 245L462.857 248L462.857 309L462.857 312L462.857 373L462.857 376L462.857 408" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="sill_plate">
-<path d="M522.357 184L522.357 172L464.357 172L464.357 184" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M522.357 184L522.357 172L481.857 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M470.857 172L464.357 172L464.357 184" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="bird_block">
-<path d="M476.357 172L476.357 128L464.357 128L464.357 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M476.357 146L476.357 128L464.357 128L464.357 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="subfascia">
 <path d="M308.357 206.485L320.357 206.485L320.357 162.485L308.357 162.485L308.357 206.485Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
@@ -101,12 +105,6 @@
 </g>
 </g>
 <g id="S-DETL-STL" inkscape:groupmode="layer" inkscape:label="S-DETL-STL">
-<g data-src="bb_bars">
-<path d="M485.857 230.5A2.5 2.5 0 0 1 480.857 230.5A2.5 2.5 0 0 1 485.857 230.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M505.857 230.5A2.5 2.5 0 0 1 500.857 230.5A2.5 2.5 0 0 1 505.857 230.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M485.857 230.5A2.5 2.5 0 0 1 480.857 230.5A2.5 2.5 0 0 1 485.857 230.5Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-<path d="M505.857 230.5A2.5 2.5 0 0 1 500.857 230.5A2.5 2.5 0 0 1 505.857 230.5Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-</g>
 <g data-src="anchor_bolt">
 <path d="M495.857 162L495.857 227.5A7.5 7.5 0 0 1 510.857 227.5L510.857 224L515.857 224L515.857 227.5A12.5 12.5 0 0 0 490.857 227.5L490.857 162L495.857 162Z" fill="#000" fill-rule="evenodd" stroke="none"/>
 <path d="M487.732 168.625L498.982 168.625L498.982 167.625L487.732 167.625L487.732 168.625Z" fill="#000" fill-rule="evenodd" stroke="none"/>
@@ -115,12 +113,22 @@
 <path d="M489.607 167.625L487.732 167.625L487.732 168.625L498.982 168.625L498.982 167.625L497.107 167.625L497.107 163.25L489.607 163.25L489.607 167.625Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
 </g>
 <g data-src="hurricane_tie">
-<path d="M476.357 146L481.857 146L481.857 172" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M477.893 175.5A1.536 1.536 0 0 1 474.821 175.5A1.536 1.536 0 0 1 477.893 175.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
+<path d="M477.893 167.5A1.536 1.536 0 0 1 474.821 167.5A1.536 1.536 0 0 1 477.893 167.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
+<path d="M477.893 159.5A1.536 1.536 0 0 1 474.821 159.5A1.536 1.536 0 0 1 477.893 159.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
+<path d="M477.893 151.5A1.536 1.536 0 0 1 474.821 151.5A1.536 1.536 0 0 1 477.893 151.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
+<path d="M470.857 181L470.857 146L481.857 146L481.857 181L470.857 181Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+</g>
+</g>
+<g id="S-DETL-REBR" inkscape:groupmode="layer" inkscape:label="S-DETL-REBR">
+<g data-src="bb_bars">
+<path d="M485.857 230.5A2.5 2.5 0 0 1 480.857 230.5A2.5 2.5 0 0 1 485.857 230.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
+<path d="M505.857 230.5A2.5 2.5 0 0 1 500.857 230.5A2.5 2.5 0 0 1 505.857 230.5Z" fill="#000" fill-rule="evenodd" stroke="none"/>
+<path d="M485.857 230.5A2.5 2.5 0 0 1 480.857 230.5A2.5 2.5 0 0 1 485.857 230.5Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M505.857 230.5A2.5 2.5 0 0 1 500.857 230.5A2.5 2.5 0 0 1 505.857 230.5Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="vert_bar">
-<path d="M490.857 408L490.857 227.5" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-<path d="M490.857 200L495.857 200" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-<path d="M495.857 227.5L495.857 408" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M493.357 408L493.357 200" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 </g>
 <g id="S-DETL-HIDN" inkscape:groupmode="layer" inkscape:label="S-DETL-HIDN">

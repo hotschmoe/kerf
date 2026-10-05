@@ -553,3 +553,36 @@ tests in `src/ergo_tests.zig`, `tests/cli_ergonomics.mjs` (node, runs the real b
 - Golden files differ at the time of this commit because the layout/render agents changed drawings; regenerate with `tests/make_golden.sh`
   after all three agents are done. `zig build test` had one failing layout test (`W_LEADER_HIT: a label on a leader gets an offset proposal`)
   from the layout agent's in-progress work; everything in this lane passes.
+
+## v0.1.4 render (render agent: SPEC 20 "Drawing conventions")
+
+- **Path rebar** (`rebar` `mode:"path"`) draws in section views as ONE open centerline polyline (true arcs at the bends) in the
+  `rebar` pen, no fill, no outline (`section.isPathBar`). The old ribbon only clears the host hatch (a halo of bar width).
+  `along_z` dots, iso and mesh are unchanged (3D tube). Geometry-based checks (`W_COVER`, ...) still use the ribbon/centerline.
+- **New style layer `rebar` = `S-DETL-REBR`** (0.5 mm), key `rebar` in `layers`; `style.layerKeyForPen("rebar")` now returns it
+  (a user style without it falls back to the `steel` layer). `drawview.layer_draw_order` got `"rebar"` (one-token edit in the
+  layout agent's file; needed or the layer is not declared and SVG/raster drop its items). **Pen `rebar` is now 0.5 mm** (was
+  0.35): path bars read as heavy lines like the cut pen, distinct from the 0.35 vapor/membrane lines. DXF: LWPOLYLINE with bulges
+  on `S-DETL-REBR`; rebar dots too.
+- **Face-on hardware** (`connector lay:"face"`, H2.5A/HETA/META style): `Prism.face_tie`. Drawn as a symbol on top of everything:
+  outline in the `steel` pen, never filled/occluded/hatch-hole, nail-hole dots (fills) at 1" pitch along the centerline
+  (pitch widened to whole inches so dots stay >= 0.07" apart on paper; dot radius 0.016" on paper, min 0.05"); lines of
+  ordinary members under the tie are knocked out (`knockOutFaceTies`, `visibleOpen`). Embedded strokes are not knocked out.
+- **Edge-lay sheet metal** (straps, flashing; `isMetal`, centerline ribbon): drawn thickness is raised to at least
+  `min_metal_paper_in` = 0.022" on paper (0.55 mm), on the side(s) it already occupies (`thickenThinHardware`), so CS16 /
+  CMST14 straps read as a band beside the 0.5 mm member outline instead of a hairline merged with it. True gauge stays in 3D.
+- Looked at (PNG 1600 px + zoom crops): truss-bearing-cmu A (H2.5A, 4 dots, 3" and 1/2" scale variants with HETA20),
+  flush-beam-strap A, flush-psl-2x6 A, monopour A/B, palmer A-D, DXF/PDF renders of palmer A and truss A.
+- Crop clipping (orchestrator note on e07): verified, not a bug. All member linework (cut/beyond/hidden/steel/rebar/membrane/vapor)
+  is inside the crop (test `all member linework ... stays inside the crop`). In the e07 doc at 6:12 the sheathing/roofing exit
+  through the crop TOP edge (break mark at the top) while the truss chord exits through the RIGHT edge, so the crop corner
+  makes the sheathing look short. Fix is a bigger crop / `W_SHORT_SLOPE`, not clipping.
+- Goldens regenerated from HEAD + render changes only (layout agent was still editing annot/route): re-run
+  `tests/make_golden.sh --png` once the layout work is committed.
+- Tests: 3 new unit tests + crop test in `section.zig`. `zig build test` 122/122 on HEAD + render; wasm 24/24 vs goldens;
+  serve_smoke 129/129; cli_ergonomics 104/104; check_golden OK incl. dxf_check 0 errors.
+
+### REQUESTS (render)
+- apps/web: `apps/web/public/style.json` mirrors the style; copy `spec/styles/kerf-standard.kerfstyle.json` (pen `rebar` 0.5, layer `rebar`).
+- orchestrator: SPEC 7 style example (`layers`) and 20: add `rebar: S-DETL-REBR`; pen `rebar` 0.5 mm; mention the 0.022" minimum
+  paper thickness for sheet-metal hardware and the knock-out of member lines under face-on ties.

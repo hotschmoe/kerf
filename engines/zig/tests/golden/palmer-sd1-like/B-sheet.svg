@@ -40,20 +40,20 @@
 <path d="M350.143 277.02A3 3 0 0 0 353.143 274.02" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 </g>
-<g id="S-DETL-STL" inkscape:groupmode="layer" inkscape:label="S-DETL-STL">
+<g id="S-DETL-REBR" inkscape:groupmode="layer" inkscape:label="S-DETL-REBR">
 <g data-src="slab_ftg_bars">
 <path d="M371.893 362.145A1.875 1.875 0 0 1 368.143 362.145A1.875 1.875 0 0 1 371.893 362.145Z" fill="#000" fill-rule="evenodd" stroke="none"/>
 <path d="M404.143 362.145A1.875 1.875 0 0 1 400.393 362.145A1.875 1.875 0 0 1 404.143 362.145Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M371.893 362.145A1.875 1.875 0 0 1 368.143 362.145A1.875 1.875 0 0 1 371.893 362.145Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-<path d="M404.143 362.145A1.875 1.875 0 0 1 400.393 362.145A1.875 1.875 0 0 1 404.143 362.145Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M371.893 362.145A1.875 1.875 0 0 1 368.143 362.145A1.875 1.875 0 0 1 371.893 362.145Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M404.143 362.145A1.875 1.875 0 0 1 400.393 362.145A1.875 1.875 0 0 1 404.143 362.145Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="slab_mesh">
 <path d="M401.143 286.02A1.5 1.5 0 0 1 398.143 286.02A1.5 1.5 0 0 1 401.143 286.02Z" fill="#000" fill-rule="evenodd" stroke="none"/>
 <path d="M495.643 286.02A1.5 1.5 0 0 1 492.643 286.02A1.5 1.5 0 0 1 495.643 286.02Z" fill="#000" fill-rule="evenodd" stroke="none"/>
 <path d="M590.143 286.02A1.5 1.5 0 0 1 587.143 286.02A1.5 1.5 0 0 1 590.143 286.02Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M401.143 286.02A1.5 1.5 0 0 1 398.143 286.02A1.5 1.5 0 0 1 401.143 286.02Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-<path d="M495.643 286.02A1.5 1.5 0 0 1 492.643 286.02A1.5 1.5 0 0 1 495.643 286.02Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-<path d="M590.143 286.02A1.5 1.5 0 0 1 587.143 286.02A1.5 1.5 0 0 1 590.143 286.02Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M401.143 286.02A1.5 1.5 0 0 1 398.143 286.02A1.5 1.5 0 0 1 401.143 286.02Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M495.643 286.02A1.5 1.5 0 0 1 492.643 286.02A1.5 1.5 0 0 1 495.643 286.02Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M590.143 286.02A1.5 1.5 0 0 1 587.143 286.02A1.5 1.5 0 0 1 590.143 286.02Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 </g>
 <g id="S-ANNO-NOTE" inkscape:groupmode="layer" inkscape:label="S-ANNO-NOTE">

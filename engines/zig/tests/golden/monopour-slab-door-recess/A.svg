@@ -39,28 +39,27 @@
 <path d="M505.121 110.021L500.879 105.779" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
 </g>
 </g>
-<g id="S-DETL-STL" inkscape:groupmode="layer" inkscape:label="S-DETL-STL">
+<g id="S-DETL-REBR" inkscape:groupmode="layer" inkscape:label="S-DETL-REBR">
 <g data-src="ftg_bars">
 <path d="M436 225.4A2.5 2.5 0 0 1 431 225.4A2.5 2.5 0 0 1 436 225.4Z" fill="#000" fill-rule="evenodd" stroke="none"/>
 <path d="M479 225.4A2.5 2.5 0 0 1 474 225.4A2.5 2.5 0 0 1 479 225.4Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M436 225.4A2.5 2.5 0 0 1 431 225.4A2.5 2.5 0 0 1 436 225.4Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-<path d="M479 225.4A2.5 2.5 0 0 1 474 225.4A2.5 2.5 0 0 1 479 225.4Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M436 225.4A2.5 2.5 0 0 1 431 225.4A2.5 2.5 0 0 1 436 225.4Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M479 225.4A2.5 2.5 0 0 1 474 225.4A2.5 2.5 0 0 1 479 225.4Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="top_bar">
 <path d="M457 143.9A2 2 0 0 1 453 143.9A2 2 0 0 1 457 143.9Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M457 143.9A2 2 0 0 1 453 143.9A2 2 0 0 1 457 143.9Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-</g>
-<g data-src="slab_bars_x">
-<path d="M519 125.9L695 125.9L695 121.9L519 121.9L519 125.9Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M695 125.9L519 125.9L519 121.9L695 121.9" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M457 143.9A2 2 0 0 1 453 143.9A2 2 0 0 1 457 143.9Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="slab_bars_z#0">
 <path d="M569 127.9A2 2 0 0 1 565 127.9A2 2 0 0 1 569 127.9Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M569 127.9A2 2 0 0 1 565 127.9A2 2 0 0 1 569 127.9Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M569 127.9A2 2 0 0 1 565 127.9A2 2 0 0 1 569 127.9Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="slab_bars_z#1">
 <path d="M695 125.9L694.235 126.052L693.586 126.486L693.152 127.135L693 127.9L693.152 128.665L693.586 129.314L694.235 129.748L695 129.9L695 125.9Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M695 125.9A2 2 0 0 1 693 127.9A2 2 0 0 1 695 129.9" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
+<path d="M695 125.9A2 2 0 0 1 693 127.9A2 2 0 0 1 695 129.9" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+</g>
+<g data-src="slab_bars_x">
+<path d="M519 123.9L695 123.9" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 </g>
 <g id="S-DETL-BRKL" inkscape:groupmode="layer" inkscape:label="S-DETL-BRKL">

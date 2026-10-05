@@ -337,7 +337,7 @@ AcDbSymbolTableRecord
 100
 AcDbLayerTableRecord
 2
-S-DETL-STL
+S-DETL-REBR
 70
 0
 62
@@ -345,7 +345,7 @@ S-DETL-STL
 6
 CONTINUOUS
 370
-35
+50
 0
 LAYER
 5
@@ -971,7 +971,7 @@ HATCH
 100
 AcDbEntity
 8
-S-DETL-STL
+S-DETL-REBR
 370
 50
 100
@@ -1065,9 +1065,9 @@ LWPOLYLINE
 100
 AcDbEntity
 8
-S-DETL-STL
+S-DETL-REBR
 370
-35
+50
 100
 AcDbPolyline
 90
