@@ -756,3 +756,12 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Catalog lists hardware models:** the `connector` entry lists every model in the engine's
   hardware table with kind, width, gauge, and length (one line each), so the LLM knows which
   models auto-fill.
+- **Anchor bolt geometry (exact, for cross-engine parity):** with d = diameter, the shaft is centered on the
+  placement point's x and runs from +projection down to −embed (relative to `top_of_concrete`).
+  `hook:"J"`: at the bottom, a 180° bend with inside radius 1.5·d toward +x, returning upward
+  by `hook_len` (default 2") measured from the bend's lowest point. `hook:"L"`: a 90° bend toward +x
+  with inside radius 1.5·d and a horizontal leg ending `hook_len` (default 3") from the shaft centerline.
+  `headed`: a square head 2·d wide and 0.5·d thick at the bottom. Nut: 1.5·d wide × 0.875·d tall with its
+  top at +projection − 0.25·d (thread stick-out). Washer: 2.25·d wide × 0.125 thick, directly under the nut.
+  `nut_washer:false` omits both.
+- **Feet-inch with zero inches and a fraction:** `3'-0 1/4"` (never `3'-1/4"`); `-0'-0 1/4"` prints as `-1/4"`.
