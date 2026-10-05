@@ -525,3 +525,31 @@ tests in `src/ergo_tests.zig`, `tests/cli_ergonomics.mjs` (node, runs the real b
 - `heel_outer` is not defined precisely in SPEC 19; chosen as the middle of the outer vertical face of the heel above the bottom chord.
 - DXF hatch angle (views NOTES SPEC ISSUES) not fixed: it needs the family offsets rotated as well, which changes DXF goldens; left to the views owner.
 
+
+## v0.1.4 cli/docs (cli-docs agent: SPEC 20 "Coupled geometry & validation", "Agent docs")
+- **`kerf guide` = 10.7 KB** (was 44 KB; limit 12 KB, tested in `tests/cli_ergonomics.mjs`), pure ASCII. Source: `spec/llm/cli-guide.md`
+  above the `<!-- FULL -->` marker + `schema.compactSection` (one generated line per object: `name*` required, `:type`, `=default`;
+  the example document; topic list; one line per component type). Content: shell rules (ONE command per call, no `&&` `;` `|`
+  heredocs), workflow with the ambiguity policy, one-command-per-line recipes (ops file written with the agent's file tool, then
+  `kerf new f --ops ops.json --why ...` / `kerf apply f ops.json -w --why ...`), diagnostics, placement/Refs, the roof-pitch recipe
+  (`slope:"@truss"` + `until:"truss@top_chord_end"`), note grammar, view rules. `kerf guide --full` = short guide + the text below the
+  marker + the full per-object schema + `spec/llm/system.md` + the catalog (47 KB).
+- `kerf schema a b c`: topics print in order separated by `----`; a bad topic reports on stderr (with the suggestion), exit 1, the
+  good ones still print. `Opts.pos` grew to 16 positionals.
+- `kerf new <file> --ops <file|inline json> [--why] [--title] [--template section]`: creates the document in memory, applies the ops,
+  and only then writes the file (a failing op: `ERROR ...` + `nothing written`, no file, exit 1). Two log lines: `create` and the
+  apply with `--why`. `kerf apply --ops` also accepts a file path now (inline JSON must start with `[` or `{`).
+- `W_SHORT_SLOPE` (`validate.zig: shortSlope`): a sloped panel/membrane (instance 0) whose axis matches a touching lumber/truss
+  (`top_chord` part)/panel (membranes only) within 0.5 deg, and whose upper end is more than 1/2" short of that member's upper end
+  or of the first explicit section-view crop edge (along the slope), whichever is nearer. Message names both ids and the shortfall;
+  the fix is `"until": "<member>@top_chord_end"` (trusses; `top_right`/`top_left` for lumber/panel hosts) with `slope:"@<member>"`.
+  Acknowledgeable. The reference truss detail stays at 0 warnings; tests: `ergo_tests.zig` (e07 repro with pitch 6:12 + literal
+  length 40, long length, `until` fix, acknowledge, membrane short of its deck) and `cli_ergonomics.mjs` section 6.
+- `acknowledge` of an `I_*` code is accepted and ignored (nothing to suppress); `E_*` is still E_PARAM.
+- Catalog `lumber` summary carries the standard beam-in-wall view (elevation along the wall; end-on only on request).
+- Observation: in the alpha4 e07 final document the 66" sheathing at 6:12 actually overshoots the crop (the sheathing is clipped by the
+  crop, the truss lines beyond the section cut are not), so the visual "sheathing ends short" there is a render clipping difference
+  between cut and beyond members, not a short panel; `W_SHORT_SLOPE` fires for the literal-length-too-short case (SPEC 20 rule).
+- Golden files differ at the time of this commit because the layout/render agents changed drawings; regenerate with `tests/make_golden.sh`
+  after all three agents are done. `zig build test` had one failing layout test (`W_LEADER_HIT: a label on a leader gets an offset proposal`)
+  from the layout agent's in-progress work; everything in this lane passes.
