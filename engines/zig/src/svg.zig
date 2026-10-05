@@ -163,6 +163,7 @@ fn emitItem(out: *std.ArrayList(u8), a: Allocator, st: *const style_mod.Style, i
             try strokeAttrs(out, a, st, h.pen);
             try out.appendSlice(a, "/>\n");
         },
+        .region => {},
         .text => |t| {
             const sts = try textgeom.strokes(a, font, t);
             if (sts.len == 0) return;

@@ -37,7 +37,7 @@ pub fn itemBounds(items: []const drawing.Item) geom.Box {
         .path => |p| b.addBox(geom.pointsBox(p.pts)),
         .fill => |f| for (f.loops) |l| b.addBox(geom.pointsBox(l)),
         .hatch => |h| for (h.loops) |l| b.addBox(geom.pointsBox(l)),
-        .text => {},
+        .text, .region => {},
     };
     return b;
 }
@@ -101,11 +101,13 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         try sec.build();
         const base = try sec.finish();
         var base_items = try a.dupe(drawing.Item, base);
+        const regions = try sec.regionItems();
         var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = spec.crop, .diags = diags, .landing = .{ .section = &sec } };
         const ann = try annot.annotate(&env, base_items);
         unverified = env.unverified;
         var all: std.ArrayList(drawing.Item) = .empty;
         try all.appendSlice(a, base_items);
+        try all.appendSlice(a, regions);
         try all.appendSlice(a, ann);
         // title below the lowest annotation
         var tcrop = spec.crop;
@@ -136,6 +138,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
             unverified = env.unverified;
             var all: std.ArrayList(drawing.Item) = .empty;
             try all.appendSlice(a, base_items);
+            try all.appendSlice(a, try iso.regionItems());
             try all.appendSlice(a, ann);
             var tcrop = res.crop;
             const ab = annot.itemsBox(font, all.items);

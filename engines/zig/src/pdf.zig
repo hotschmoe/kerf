@@ -132,6 +132,7 @@ pub fn render(a: Allocator, d: *const drawing.Drawing, font: *const font_mod.Fon
                     }
                     try cs.out.appendSlice(a, "S\n");
                 },
+                .region => {},
                 .text => |t| {
                     const sts = try textgeom.strokes(a, font, t);
                     if (sts.len == 0) continue;

@@ -50,7 +50,18 @@ pub const TextItem = struct {
     valign: VAlign = .baseline,
 };
 
+/// Non-drawn picking region (SPEC 16): exact closed loops of a visible cut region / beyond face.
+pub const RegionItem = struct {
+    src: []const u8,
+    part: ?[]const u8,
+    instance: u32,
+    cut: bool,
+    loops: []const []const Pt,
+    layer: []const u8 = "",
+};
+
 pub const Item = union(enum) {
+    region: RegionItem,
     path: PathItem,
     fill: FillItem,
     hatch: HatchItem,
@@ -235,6 +246,15 @@ pub fn toJson(a: Allocator, d: *const Drawing) Allocator.Error![]u8 {
                     try out.append(a, ']');
                 }
                 try out.appendSlice(a, "]}");
+            },
+            .region => |r| {
+                try out.appendSlice(a, "{\"t\":\"region\",\"src\":");
+                try str(&out, a, r.src);
+                try out.appendSlice(a, ",\"part\":");
+                if (r.part) |pp| try str(&out, a, pp) else try out.appendSlice(a, "null");
+                try out.print(a, ",\"instance\":{d},\"cut\":{s},\"loops\":", .{ r.instance, if (r.cut) "true" else "false" });
+                try writeLoops(&out, a, r.loops);
+                try out.append(a, '}');
             },
             .text => |t| {
                 try out.appendSlice(a, "{\"t\":\"text\",\"layer\":");

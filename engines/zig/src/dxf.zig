@@ -182,6 +182,7 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
                 try w.i(98, 0);
                 for (h.loops) |l| ext.addBox(geom.pointsBox(l));
             },
+            .region => {},
             .text => |t| {
                 if (t.s.len == 0) continue;
                 try entityHeader(&w, "TEXT", t.layer, lineweightFor(st.penWidthMm(t.pen)), null);

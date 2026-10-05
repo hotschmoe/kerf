@@ -72,6 +72,8 @@ pub const Vis = struct {
     part: []const u8,
     instance: u32,
     shapes: []const @import("annot.zig").Shape,
+    src: []const u8 = "",
+    cut: bool = false,
 };
 
 pub const Iso = struct {
@@ -101,6 +103,26 @@ pub const Iso = struct {
             shapes.appendSlice(self.a, v.shapes) catch return null;
         }
         return @import("annot.zig").labelPoint(self.a, shapes.items) catch null;
+    }
+
+    /// Non-drawn picking regions: the visible face chosen per prism (cut cap first).
+    pub fn regionItems(self: *Iso) Allocator.Error![]const drawing.Item {
+        var out: std.ArrayList(drawing.Item) = .empty;
+        for (self.vis.items) |v| {
+            for (v.shapes) |sh| {
+                const loops = try self.a.alloc([]const Pt, 1 + sh.holes.len);
+                const outer = try self.a.alloc(Pt, sh.outer.len);
+                for (sh.outer, 0..) |q, i| outer[i] = Pt.at(q, 0);
+                loops[0] = outer;
+                for (sh.holes, 0..) |h, k| {
+                    const hp = try self.a.alloc(Pt, h.len);
+                    for (h, 0..) |q, i| hp[i] = Pt.at(q, 0);
+                    loops[1 + k] = hp;
+                }
+                try out.append(self.a, .{ .region = .{ .src = v.src, .part = if (v.part.len > 0) v.part else null, .instance = v.instance, .cut = v.cut, .loops = loops } });
+            }
+        }
+        return out.items;
     }
 
     pub fn project(self: *Iso, p: V2) ?V2 {
@@ -638,7 +660,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
             try fs.append(a, .{ .outer = lp, .holes = &.{} });
             var fi: u32 = 0;
             fi = ip.instance;
-            try iso.vis.append(a, .{ .comp = ip.comp, .part = ip.part, .instance = fi, .shapes = fs.items });
+            try iso.vis.append(a, .{ .comp = ip.comp, .part = ip.part, .instance = fi, .shapes = fs.items, .src = ip.src, .cut = ip.cap_cut });
             continue;
         }
         var faces: std.ArrayList(usize) = .empty;
@@ -699,7 +721,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         _ = comp;
         var inst: u32 = 0;
         inst = ip.instance;
-        try iso.vis.append(a, .{ .comp = ip.comp, .part = ip.part, .instance = inst, .shapes = shapes.items });
+        try iso.vis.append(a, .{ .comp = ip.comp, .part = ip.part, .instance = inst, .shapes = shapes.items, .src = ip.src, .cut = ip.cap_cut });
     }
 
     var cropb = Box{};

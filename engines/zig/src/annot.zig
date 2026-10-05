@@ -138,6 +138,7 @@ pub fn itemsBox(font: *const font_mod.Font, items: []const Item) Box {
         .fill => |f| for (f.loops) |l| b.addBox(geom.pointsBox(l)),
         .hatch => |h| for (h.loops) |l| b.addBox(geom.pointsBox(l)),
         .text => |t| for (textPoly(font, t, 0)) |p| b.addPoint(p.x, p.y),
+        .region => {},
     };
     return b;
 }

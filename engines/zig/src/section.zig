@@ -482,6 +482,36 @@ pub const Section = struct {
         return out;
     }
 
+    /// Non-drawn picking regions: one item per visible cut region / beyond face (outer loop + holes).
+    pub fn regionItems(self: *Section) Allocator.Error![]const drawing.Item {
+        var out: std.ArrayList(drawing.Item) = .empty;
+        for (self.prisms, 0..) |p, i| {
+            if (self.cls[i] == .drop or p.kind == .ghost) continue;
+            const is_cut = self.cls[i] == .cut;
+            const comp = &self.scene.comps[p.comp];
+            const inst: u32 = if (comp.arr_count > 1) p.instance / @as(u32, @intCast(comp.xfs.len / comp.arr_count)) else p.instance;
+            const part: ?[]const u8 = if (p.part.len > 0) p.part else null;
+            // untouched cut region inside the crop keeps its exact bulges
+            const bx = geom.Box{};
+            _ = bx;
+            if (is_cut and p.kind == .body) {
+                const f = try self.flatOf(i);
+                const fb = clip.loopsBox(f);
+                const c = self.spec.crop;
+                if (fb.x0 >= c.x0 - 1e-9 and fb.x1 <= c.x1 + 1e-9 and fb.y0 >= c.y0 - 1e-9 and fb.y1 <= c.y1 + 1e-9) {
+                    try out.append(self.a, .{ .region = .{ .src = self.srcName(p), .part = part, .instance = inst, .cut = true, .loops = p.loops } });
+                    continue;
+                }
+            }
+            const reg = try self.visibleRegion(i);
+            const groups = try groupRegion(self.a, reg, null);
+            for (groups) |g| {
+                try out.append(self.a, .{ .region = .{ .src = self.srcName(p), .part = part, .instance = inst, .cut = is_cut, .loops = g.loops } });
+            }
+        }
+        return out.items;
+    }
+
     // ---- finalize ----------------------------------------------------------------------------------------
 
     /// Items in paint order, with coincident collinear edges deduplicated.

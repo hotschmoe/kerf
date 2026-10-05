@@ -183,3 +183,31 @@ test "apply is atomic and enforces the citation rule" {
     defer gpa.free(r3.bytes);
     try std.testing.expect(std.mem.indexOf(u8, r3.bytes, "\"status\": \"verified\"") != null);
 }
+
+test "every visible component has at least one region item in section view A" {
+    for (testdocs.all) |src| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        var err: json.ParseError = undefined;
+        const doc = (try json.parse(a, src, &err)).?;
+        const st = try style_mod.load(a, null);
+        var diags = model.Diags.init(a);
+        const dr = (try drawview.build(a, doc, &st, "A", &diags)).?;
+        const scene = try compile_mod.compile(a, doc, &st, &diags);
+        for (scene.comps) |c| {
+            if (c.state != .ok or !c.visible) continue;
+            var n: usize = 0;
+            for (dr.items) |it| if (it == .region) {
+                const s = it.region.src;
+                const base = if (std.mem.indexOfScalar(u8, s, '#')) |h| s[0..h] else s;
+                if (std.mem.eql(u8, base, c.id)) {
+                    n += 1;
+                    try std.testing.expect(it.region.loops.len >= 1 and it.region.loops[0].len >= 2);
+                }
+            };
+            if (n == 0) std.debug.print("no region for {s}\n", .{c.id});
+            try std.testing.expect(n >= 1);
+        }
+    }
+}
