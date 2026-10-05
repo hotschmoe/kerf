@@ -74,6 +74,8 @@ pub struct KerfApp {
     pub pending_open_dialog: bool,
     pub scroll_to_sel: bool,
     pub bench: bool,
+    pub saved: crate::settings::Settings,
+    pub persist: bool,
     pub cut3d: bool,
     pub cut_cache: Option<((u64, i32), std::sync::Arc<crate::gpu3d::CutInfo>)>,
 }
@@ -117,25 +119,39 @@ impl KerfApp {
             pending_open_dialog: false,
             scroll_to_sel: false,
             bench: false,
+            saved: Default::default(),
+            persist: true,
             cut3d: true,
             cut_cache: None,
         }
     }
 
-    pub fn restore(&mut self, storage: Option<&dyn eframe::Storage>) {
-        if let Some(s) = storage {
-            if let Some(k) = s.get_string("api_key") {
-                self.chat.api_key = k;
-            }
-            if let Some(m) = s.get_string("model") {
-                if let Some(i) = crate::chat::MODELS.iter().position(|x| *x == m) {
-                    self.model_idx = i;
-                    self.chat.model = m;
-                }
-            }
-            if s.get_string("demo").as_deref() == Some("1") {
-                self.enable_demo(true);
-            }
+    pub fn restore(&mut self) {
+        let s = crate::settings::load();
+        self.chat.api_key = s.api_key;
+        if let Some(i) = crate::chat::MODELS.iter().position(|x| *x == s.model) {
+            self.model_idx = i;
+            self.chat.model = s.model;
+        }
+        if s.demo {
+            self.enable_demo(true);
+        }
+        self.saved = self.current_settings();
+    }
+
+    fn current_settings(&self) -> crate::settings::Settings {
+        crate::settings::Settings { api_key: self.chat.api_key.clone(), model: self.chat.model.clone(), demo: self.chat.demo }
+    }
+
+    /// Persist when changed (called every frame; cheap compare).
+    fn persist_if_changed(&mut self) {
+        if !self.persist {
+            return;
+        }
+        let cur = self.current_settings();
+        if cur != self.saved {
+            crate::settings::save(&cur);
+            self.saved = cur;
         }
     }
 
@@ -230,9 +246,12 @@ impl KerfApp {
             self.flash("NOTHING TO SAVE", true);
             return;
         };
-        let canon = engine::call("fmt", json!({"doc": doc})).ok().and_then(|v| v.get("doc").cloned()).unwrap_or_else(|| doc.clone());
-        let mut text = serde_json::to_string_pretty(&canon).unwrap_or_default();
-        text.push('\n');
+        // canonical text from the engine's `fmt` (key order, number format, trailing newline)
+        let text = engine::call("fmt", json!({"doc": doc})).ok().and_then(|v| v["text"].as_str().map(str::to_owned)).unwrap_or_else(|| {
+            let mut t = serde_json::to_string_pretty(doc).unwrap_or_default();
+            t.push('\n');
+            t
+        });
         let name = self.session.file_name.clone().unwrap_or_else(|| format!("{}.kerf.json", doc["id"].as_str().unwrap_or("detail")));
         self.platform.save(&name, text.into_bytes(), "application/json");
     }
@@ -500,7 +519,10 @@ impl KerfApp {
         }
         // right side: engine + frame time
         let right = format!("{}  {:.1}MS", engine::engine_name().to_uppercase(), self.frame_avg);
-        p.text(Pos2::new(rect.right() - 12.0, cy), egui::Align2::RIGHT_CENTER, right, regular(11.0), TERM_FG.gamma_multiply(0.55));
+        let rw = p.layout_no_wrap(right.clone(), regular(11.0), TERM_FG).size().x;
+        if x + 24.0 + rw < rect.right() - 12.0 {
+            p.text(Pos2::new(rect.right() - 12.0, cy), egui::Align2::RIGHT_CENTER, right, regular(11.0), TERM_FG.gamma_multiply(0.55));
+        }
     }
 
     fn viewport_panel(&mut self, ui: &mut Ui) {
@@ -696,12 +718,6 @@ impl eframe::App for KerfApp {
         self.draw(ui);
     }
 
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        storage.set_string("api_key", self.chat.api_key.clone());
-        storage.set_string("model", self.chat.model.clone());
-        storage.set_string("demo", if self.chat.demo { "1".into() } else { "0".into() });
-    }
-
     #[cfg(target_arch = "wasm32")]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
@@ -811,6 +827,7 @@ impl KerfApp {
         // frame stats
         self.frame_ms = t0.elapsed().as_secs_f32() * 1000.0;
         self.frame_avg = if self.frame_avg == 0.0 { self.frame_ms } else { self.frame_avg * 0.9 + self.frame_ms * 0.1 };
+        self.persist_if_changed();
         crate::perf_probe(self.frame_ms, self.frame_avg);
         if self.bench {
             ctx.request_repaint();

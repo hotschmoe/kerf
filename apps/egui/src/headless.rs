@@ -43,6 +43,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let ctx = egui::Context::default();
     let mut app = KerfApp::new(&ctx);
     app.has_gpu = true;
+    app.persist = false;
     if args.iter().any(|a| a == "--demo") || arg(args, "--demo-turns").is_some() {
         app.enable_demo(true);
     }

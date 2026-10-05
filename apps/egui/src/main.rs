@@ -14,6 +14,7 @@ mod platform;
 mod raster;
 mod section3d;
 mod session;
+mod settings;
 mod svgprep;
 mod theme;
 mod view2d;
@@ -101,7 +102,7 @@ fn main() -> eframe::Result {
         native,
         Box::new(move |cc| {
             let mut app = KerfApp::new(&cc.egui_ctx);
-            app.restore(cc.storage);
+            app.restore();
             if let Some(rs) = &cc.wgpu_render_state {
                 app::install_gpu(rs);
                 app.has_gpu = true;
@@ -137,7 +138,7 @@ fn main() {
                 opts,
                 Box::new(|cc| {
                     let mut app = KerfApp::new(&cc.egui_ctx);
-                    app.restore(cc.storage);
+                    app.restore();
                     if let Some(rs) = &cc.wgpu_render_state {
                         app::install_gpu(rs);
                         app.has_gpu = true;
