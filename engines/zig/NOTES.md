@@ -24,6 +24,8 @@ tests/make_golden.sh [--png]   # regenerate tests/golden (svg/dxf/pdf/drawing/me
 tests/check_golden.sh          # byte-identical regeneration + dxf_check (0 audit errors) + pdf_check (vector) gate
 ../../tools/zig-engine/compare_drawings.py zig.json rust.json [-v]   # cross-engine Drawing IR diff, tol 1e-3"
 ../../tools/size_report.sh dist/kerf.wasm
+node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm   # wasm exports == native goldens (24/24 byte-identical)
+python3 ../../tools/zig-engine/fuzz.py 300 1                 # mutation fuzz of the safety-checked CLI
 ```
 `dist/` is git-ignored; build it. The default style and stroke font are embedded straight from
 `spec/styles/kerf-standard.kerfstyle.json` and `spec/fonts/kerf-simplex.json` by `build.zig`
@@ -90,7 +92,7 @@ no clocks; every output is a pure function of (doc, style).
 
 ## Measured numbers
 
-wasm (`tools/size_report.sh`): ReleaseSmall **656,879 B raw / 242,804 gzip / 194,682 brotli**;
+wasm (`tools/size_report.sh`): ReleaseSmall **662,838 B raw / 245,562 gzip / 196,330 brotli**;
 ReleaseFast 1,427,110 raw / 422,094 gzip / 304,478 brotli. (Code is ~450 KB of the raw size; `rodata` 83 KB; the
 style + font are 23 KB of it. `twiggy top` shows no single hog: builders 59 KB, iso 36 KB, annot 36 KB,
 dispatch 35 KB, clip 29 KB.) Zero imports; exports exactly the SPEC 13.1 six.
