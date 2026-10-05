@@ -5,6 +5,20 @@ import { blobToImageBlock } from '../chat/images';
 import type { ImageBlock } from '../chat/transport';
 import { h, btn, hhmm, clear } from './dom';
 
+/** Minimal inline formatting for Claude's replies: **bold** and `code`. Everything else stays plain text. */
+export function fmtInline(text: string): (Node | string)[] {
+  const out: (Node | string)[] = [];
+  const re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
+  let last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(m[1] ? h('b', m[1]) : h('code', m[2]));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 interface Pending { block: ImageBlock; thumbUrl: string }
 
 export interface ConsoleHooks {
@@ -74,8 +88,10 @@ export function mountConsole(app: App, el: HTMLElement, harness: Harness, hooks:
         break;
       case 'text':
         if (!card) newCard();
-        if (!seg) { seg = h('div.seg'); cardBody!.append(seg); tools = null; }
-        seg.append(e.delta);
+        if (!seg) { seg = h('div.seg'); seg.dataset.raw = ''; cardBody!.append(seg); tools = null; }
+        seg.dataset.raw += e.delta;
+        clear(seg);
+        seg.append(...fmtInline(seg.dataset.raw ?? ''));
         break;
       case 'tool': {
         if (!card) newCard();

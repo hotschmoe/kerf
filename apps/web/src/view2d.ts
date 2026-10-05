@@ -87,6 +87,7 @@ export class Viewport2D {
     const dpr = window.devicePixelRatio || 1;
     if (w === this.w && h === this.h && dpr === this.dpr) return;
     const hadSize = this.w > 0;
+    if (hadSize && w > 0 && this.model) this.view = { ...this.view, tx: this.view.tx + (w - this.w) / 2, ty: this.view.ty + (h - this.h) / 2 }; // keep the view centered
     this.w = w; this.h = h; this.dpr = dpr;
     this.canvas.width = Math.max(1, Math.round(w * dpr));
     this.canvas.height = Math.max(1, Math.round(h * dpr));
@@ -248,7 +249,7 @@ export class Viewport2D {
       if (drag) {
         ctx.save();
         ctx.translate(drag.dx, drag.dy);
-        paintBatches(ctx, m, zoom, { ink: COL.blue, dpr }, 0, 0, (b) => !!b.text && baseId(b.src) === drag.id);
+        paintBatches(ctx, m, zoom, { ink: COL.blue, dpr }, (b) => !!b.text && baseId(b.src) === drag.id);
         ctx.restore();
       }
     }

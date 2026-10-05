@@ -271,7 +271,7 @@ export function penModelWidth(model: DrawingModel, pen: string): number {
 }
 
 /** Paint all batches. Context transform must already map model space to device pixels (y flipped). */
-export function paintBatches(ctx: CanvasRenderingContext2D, model: DrawingModel, zoomPx: number, opts: PaintOpts, dx = 0, dy = 0, only?: (b: Batch) => boolean) {
+export function paintBatches(ctx: CanvasRenderingContext2D, model: DrawingModel, zoomPx: number, opts: PaintOpts, only?: (b: Batch) => boolean) {
   const minW = (opts.minPx ?? 1) / (zoomPx * opts.dpr);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -294,7 +294,6 @@ export function paintBatches(ctx: CanvasRenderingContext2D, model: DrawingModel,
     ctx.stroke(b.path);
   }
   ctx.setLineDash([]);
-  void dx; void dy;
 }
 
 /** Fit transform for a model-space box into a w x h CSS px area with padding px. */

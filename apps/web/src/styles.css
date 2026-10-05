@@ -68,6 +68,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .msg .atts img { max-width: 120px; max-height: 80px; border: 1px solid var(--ink); background: #fff; display: block; }
 .msg .edits { padding: 0 10px 8px; font-size: 11px; color: var(--ink-2); }
 .seg { white-space: pre-wrap; overflow-wrap: anywhere; }
+.seg code { font-weight: 500; background: rgba(26,26,26,0.08); padding: 0 3px; }
+.seg b { font-weight: 700; }
 .seg + .seg, .tools + .seg, .seg + .tools { margin-top: 6px; }
 .tools { display: flex; flex-direction: column; gap: 2px; }
 .tl { font-size: 12px; }
