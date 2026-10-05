@@ -65,7 +65,23 @@ pub fn loadDoc(m: *Model, json: []const u8, source: []const u8) bool {
     // Claude does not see the swap unless told.
     addEditNote(m, "opened a different document (see kerf_inspect doc)");
     m.setStatus("LOADED {s}", .{source});
+    applyBoot(m);
     return true;
+}
+
+/// Startup parameters (?tab=3d&select=id) that were waiting for a document.
+pub fn applyBoot(m: *Model) void {
+    if (m.boot_tab_len > 0) {
+        const v = m.boot_tab[0..m.boot_tab_len];
+        const nv = m.nViews();
+        const t: ?u8 = if (std.ascii.eqlIgnoreCase(v, "3d")) @intCast(nv) else if (std.ascii.eqlIgnoreCase(v, "sheet")) @intCast(nv + 1) else std.fmt.parseInt(u8, v, 10) catch null;
+        m.boot_tab_len = 0;
+        if (t) |tt| selectTab(m, tt);
+    }
+    if (m.boot_select.get()) |id| {
+        select(m, id);
+        m.boot_select = .{};
+    }
 }
 
 pub fn addEditNote(m: *Model, why: []const u8) void {
@@ -244,6 +260,11 @@ pub fn syncResources(m: *Model) void {
     }
     for (m.thumbs[0..m.n_thumbs], 0..) |t, i| {
         m.res[n] = .{ .image = .{ .key = model.THUMB_KEY0 + @as(u32, @intCast(i)), .rev = 1, .width = t.w, .height = t.h, .rgba = t.rgba } };
+        n += 1;
+    }
+    for (m.attachments[0..m.n_attach], 0..) |a, i| {
+        if (a.thumb.len == 0) continue;
+        m.res[n] = .{ .image = .{ .key = model.ATTACH_KEY0 + @as(u32, @intCast(i)), .rev = 1, .width = a.thumb_w, .height = a.thumb_h, .rgba = a.thumb } };
         n += 1;
     }
     m.res_len = n;

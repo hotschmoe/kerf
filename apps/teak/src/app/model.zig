@@ -33,6 +33,9 @@ pub const CONSOLE_W: f32 = 360;
 pub const INSPECTOR_W: f32 = 320;
 
 pub const Attachment = struct {
+    thumb: []u8 = &.{},
+    thumb_w: u32 = 0,
+    thumb_h: u32 = 0,
     name: [48]u8 = undefined,
     name_len: u8 = 0,
     mime_jpeg: bool = false,
@@ -46,6 +49,7 @@ pub const Attachment = struct {
 pub const MAX_ATTACH = 4;
 pub const MAX_THUMBS = 16;
 pub const THUMB_KEY0: u32 = 100;
+pub const ATTACH_KEY0: u32 = 200;
 pub const THUMB_W: u32 = 300;
 
 pub const Thumb = struct { rgba: []u8, w: u32, h: u32 };
@@ -78,7 +82,7 @@ pub const Model = struct {
     mesh: ?*draw.Mesh = null,
     mesh_rev: u32 = 0,
     scene: ?*scene3d.Built = null,
-    res: [1 + MAX_THUMBS]teak.Resource = undefined,
+    res: [1 + MAX_THUMBS + MAX_ATTACH]teak.Resource = undefined,
     res_len: usize = 0,
     /// Thumbnails of kerf_render results, in chat order (resource keys THUMB_KEY0 + i).
     thumbs: [MAX_THUMBS]Thumb = undefined,
@@ -141,7 +145,12 @@ pub const Model = struct {
     wall_base_ms: i64 = 0,
     wall_base_tick: u32 = 0,
     utc_offset_min: i32 = 0,
-    boot_sample: ?[8]u8 = null,
+    /// Startup parameters that need the document to exist first (applied when it loads).
+    boot_tab: [8]u8 = undefined,
+    boot_tab_len: u8 = 0,
+    boot_select: ident.MaybeId = .{},
+    boot_insp: InspTab = .parts,
+    boot_prompt: ?[]u8 = null,
 
     pub fn init() Model {
         return @import("boot.zig").init();

@@ -157,9 +157,11 @@ pub fn update(m: *Model, msg: Msg) void {
         .attach_remove => |i| {
             if (i >= m.n_attach) return;
             gpa.free(m.attachments[i].bytes);
+            if (m.attachments[i].thumb.len > 0) gpa.free(m.attachments[i].thumb);
             var j: usize = i;
             while (j + 1 < m.n_attach) : (j += 1) m.attachments[j] = m.attachments[j + 1];
             m.n_attach -= 1;
+            flow.syncResources(m);
         },
         .console_scroll_by => |dy| {
             m.console_scroll = clamp(m.console_scroll + dy, m.console_content - m.console_viewport);
@@ -347,6 +349,37 @@ fn effectResult(m: *Model, r: teak.EffectResult) void {
                 else => {},
             }
         },
+        .query_value => |q| {
+            const kind = m.fx.done(q.id) orelse return;
+            const v = q.value orelse return;
+            if (v.len == 0) return;
+            switch (kind) {
+                .query_sample => bootSample(m, v),
+                .query_demo => if (v[0] != '0') {
+                    if (!m.demo) update(m, .toggle_demo);
+                },
+                .query_tab => {
+                    const n = @min(v.len, m.boot_tab.len);
+                    @memcpy(m.boot_tab[0..n], v[0..n]);
+                    m.boot_tab_len = @intCast(n);
+                    if (m.ready) flow.applyBoot(m);
+                },
+                .query_select => {
+                    m.boot_select = ident.MaybeId.of(v);
+                    if (m.ready) flow.applyBoot(m);
+                },
+                .query_insp => {
+                    inline for (@typeInfo(model.InspTab).@"enum".fields) |f| {
+                        if (std.ascii.eqlIgnoreCase(v, f.name)) m.insp = @field(model.InspTab, f.name);
+                    }
+                },
+                .query_prompt => {
+                    m.chat_ed.set(v);
+                    if (m.demo or chatglue.hasKey(m)) chatglue.submit(m);
+                },
+                else => {},
+            }
+        },
         .clock => |c| {
             _ = m.fx.done(c.id);
             m.wall_base_ms = c.unix_ms;
@@ -361,7 +394,7 @@ fn effectResult(m: *Model, r: teak.EffectResult) void {
                     const label = std.fmt.bufPrint(&label_buf, "FILE {s}", .{f.name}) catch "FILE";
                     _ = flow.loadDoc(m, f.bytes, label);
                 },
-                .attach_image => attachImage(m, f.name, f.mime, f.bytes, 0, 0),
+                .attach_image => attachImage(m, f.name, f.mime, f.bytes, 0, 0, "", 0, 0),
                 else => {},
             }
         },
@@ -371,7 +404,7 @@ fn effectResult(m: *Model, r: teak.EffectResult) void {
             if (!d.ok) m.setStatus("DOWNLOAD FAILED", .{});
         },
         .dropped => |d| switch (d.kind) {
-            .image => attachImage(m, d.name, d.mime, d.bytes, 0, 0), // TODO(E): d.width/d.height
+            .image => attachImage(m, d.name, d.mime, d.bytes, d.width, d.height, d.thumb_rgba, d.thumb_w, d.thumb_h),
             .file => {
                 if (std.mem.endsWith(u8, d.name, ".json")) {
                     var label_buf: [48]u8 = undefined;
@@ -387,7 +420,7 @@ fn effectResult(m: *Model, r: teak.EffectResult) void {
     }
 }
 
-fn attachImage(m: *Model, name: []const u8, mime: []const u8, bytes: []const u8, w: u32, h: u32) void {
+fn attachImage(m: *Model, name: []const u8, mime: []const u8, bytes: []const u8, w: u32, h: u32, thumb: []const u8, tw: u32, th_: u32) void {
     if (m.n_attach >= model.MAX_ATTACH) {
         m.setStatus("AT MOST {d} IMAGES PER MESSAGE", .{model.MAX_ATTACH});
         return;
@@ -401,8 +434,16 @@ fn attachImage(m: *Model, name: []const u8, mime: []const u8, bytes: []const u8,
     const n = @min(name.len, a.name.len);
     @memcpy(a.name[0..n], name[0..n]);
     a.name_len = @intCast(n);
+    if (thumb.len > 0 and thumb.len == @as(usize, tw) * th_ * 4) {
+        a.thumb = gpa.dupe(u8, thumb) catch &.{};
+        if (a.thumb.len > 0) {
+            a.thumb_w = tw;
+            a.thumb_h = th_;
+        }
+    }
     m.attachments[m.n_attach] = a;
     m.n_attach += 1;
+    flow.syncResources(m);
     m.setStatus("IMAGE ATTACHED ({d} KB)", .{bytes.len / 1024});
 }
 

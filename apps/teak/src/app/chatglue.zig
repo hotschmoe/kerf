@@ -99,8 +99,12 @@ pub fn submit(m: *Model) void {
 }
 
 pub fn clearAttachments(m: *Model) void {
-    for (m.attachments[0..m.n_attach]) |a| gpa.free(a.bytes);
+    for (m.attachments[0..m.n_attach]) |a| {
+        gpa.free(a.bytes);
+        if (a.thumb.len > 0) gpa.free(a.thumb);
+    }
     m.n_attach = 0;
+    flow.syncResources(m);
 }
 
 pub fn cancel(m: *Model) void {

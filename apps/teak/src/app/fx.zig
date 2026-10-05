@@ -18,6 +18,10 @@ pub const Kind = enum {
     clock,
     query_sample,
     query_demo,
+    query_tab,
+    query_select,
+    query_insp,
+    query_prompt,
     open_doc,
     attach_image,
     download,
@@ -90,6 +94,13 @@ pub const Queue = struct {
             .key = ar.dupe(u8, key) catch return self.drop(i),
             .value = ar.dupe(u8, value) catch return self.drop(i),
         } };
+        return id;
+    }
+
+    pub fn queryParam(self: *Queue, kind: Kind, name: []const u8) ?u32 {
+        const i = self.take(kind) orelse return null;
+        const id = self.newId();
+        self.items[i] = .{ .query_param = .{ .id = id, .name = self.a().dupe(u8, name) catch return self.drop(i) } };
         return id;
     }
 

@@ -288,6 +288,15 @@ fn inputRow(m: *const Model, cb: *Cb) void {
     if (m.n_attach > 0) {
         cb.pushGroup(.{ .direction = .horizontal, .pad_x = 12, .pad_y = 4, .gap = 6, .align_cross = .center });
         for (m.attachments[0..m.n_attach], 0..) |a, i| {
+            if (a.thumb.len > 0) {
+                const long: f32 = 40;
+                const fw: f32 = @floatFromInt(a.thumb_w);
+                const fh: f32 = @floatFromInt(a.thumb_h);
+                const sc = long / @max(fw, fh);
+                cb.pushGroup(.{ .padding = 1, .gap = 0, .border = th.ink });
+                cb.image(model.ATTACH_KEY0 + @as(u32, @intCast(i)), .{ .width = fw * sc, .height = fh * sc });
+                cb.popGroup();
+            }
             cb.buttonStyled(.{ .attach_remove = @intCast(i) }, fmt(cb, "{s} X", .{if (a.name_len > 0) a.name[0..@min(a.name_len, 14)] else "IMAGE"}), th.button_flat);
         }
         cb.popGroup();

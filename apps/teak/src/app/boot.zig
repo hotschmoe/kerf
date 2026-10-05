@@ -35,5 +35,12 @@ pub fn init() model.Model {
     _ = m.fx.storageGet(.key_load, "kerf.key");
     _ = m.fx.storageGet(.settings_load, "kerf.settings");
     _ = m.fx.clock();
+    // Startup parameters (?sample=truss&demo=1&tab=3d&select=sill_plate&insp=notes&prompt=...).
+    _ = m.fx.queryParam(.query_sample, "sample");
+    _ = m.fx.queryParam(.query_demo, "demo");
+    _ = m.fx.queryParam(.query_tab, "tab");
+    _ = m.fx.queryParam(.query_select, "select");
+    _ = m.fx.queryParam(.query_insp, "insp");
+    _ = m.fx.queryParam(.query_prompt, "prompt");
     return m;
 }
