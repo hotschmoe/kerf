@@ -103,7 +103,7 @@ pub const common: []const Param = &.{
     .{ .name = "embedded", .def = "type default", .desc = "drawn over cut solids and never occluded (rebar, anchor bolts)" },
     .{ .name = "visible", .def = "true", .desc = "false hides the component from views and mesh" },
     .{ .name = "shown", .def = "solid", .desc = "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)" },
-    .{ .name = "acknowledge", .def = "null", .desc = "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged (`kerf schema acknowledge`)" },
+    .{ .name = "acknowledge", .def = "null", .desc = "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged; I_* codes are accepted and ignored (`kerf schema acknowledge`)" },
 };
 
 pub const box_anchors = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
@@ -111,7 +111,7 @@ pub const box_anchors = "top_left top_center top_right middle_left center middle
 pub const entries: []const Entry = &.{
     .{
         .name = "lumber",
-        .summary = "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post).",
+        .summary = "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
         .params = &.{
             .{ .name = "size", .def = "required", .desc = "sawn nominal \"2x4\"..\"2x12\", \"4x4\"..\"4x12\", \"6x6\"..\"6x12\" (also 1x4..1x12); or actual \"1.75x11.875\" (thickness x depth) for lvl/psl/lsl/glulam" },
             .{ .name = "product", .def = "sawn", .desc = "sawn | lvl | psl | lsl | glulam" },

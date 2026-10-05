@@ -404,6 +404,35 @@ pub fn guideSection(a: Allocator) Allocator.Error![]const u8 {
     return out.items;
 }
 
+fn compactLine(out: *std.ArrayList(u8), a: Allocator, o: *const Object) Allocator.Error!void {
+    try out.print(a, "- {s}:", .{o.name});
+    for (o.fields) |f| {
+        try out.print(a, " {s}", .{f.name});
+        if (f.required) try out.append(a, '*');
+        if (f.ty.len <= 24 and !std.mem.eql(u8, f.ty, "string")) try out.print(a, ":{s}", .{f.ty});
+        if (!f.required and f.def.len > 0 and f.def.len <= 12) try out.print(a, "={s}", .{f.def});
+        try out.append(a, ',');
+    }
+    out.items.len -= 1; // trailing comma
+    try out.append(a, '\n');
+}
+
+/// The schema section of the short `kerf guide`: one line per object (field names, `*` = required, `:type`, `=default`),
+/// then the complete minimal example document and the topic list. `kerf schema <topic>` has the descriptions.
+pub fn compactSection(a: Allocator) Allocator.Error![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "## Document schema (field names are exact; `*` required, `:type`, `=default`; descriptions: `kerf schema <topic>`)\n");
+    for ([_]*const Object{ &doc, &view, &note, &dim, &label, &cite }) |o| try compactLine(&out, a, o);
+    try out.appendSlice(a, "- annotations go in a view's `annotations`; note `target` is a component id (or `comp.part`), `at`/dim `from`/`to` are Refs or [x,y]\n\n");
+    try out.appendSlice(a, "## Complete example (two components, a section view, two notes with one citation, a dim, a label; `kerf new x.kerf.json --template section` writes it)\n```json\n");
+    try out.appendSlice(a, example_doc);
+    try out.appendSlice(a, "\n```\n\n## Topics: `kerf schema <topic> [<topic> ...]`\n");
+    try out.appendSlice(a, topics_hint);
+    try out.appendSlice(a, "\nComponent types (`kerf schema <type>` = params, anchors, example):\n");
+    for (catalog.entries) |e| try out.print(a, "- {s}: {s}\n", .{ e.name, firstSentence(e.summary) });
+    return out.items;
+}
+
 test "schema topics render and the example document is valid" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

@@ -111,9 +111,45 @@ section('2. kerf schema, kerf new --template, kerf call help, kerf guide');
   check('call unknown fn mentions help', r.code === 1 && /kerf call help/.test(r.out + r.err), r);
 
   r = kerf(['guide']);
-  check('guide embeds schema view/note/dim/label/cite/ops and the example document',
-    r.code === 0 && ['view: ', 'note: ', 'dim: ', 'label: ', 'cite: ', 'ops: ', 'Complete minimal document', '"notes_side": "both"', 'nothing written', '--template section'].every((k) => r.out.includes(k)), r.out.slice(0, 300));
+  check('guide (short) is at most 12 KB', r.code === 0 && Buffer.byteLength(r.out) <= 12288, Buffer.byteLength(r.out));
+  check('guide has the doc/view/note/dim/label/cite schema lines, the example document, the topic list',
+    ['- view: id*', '- note: id*', '- dim: id*', '- label: id*', '- cite: code*', 'Complete example', '"notes_side":"both"', '--template section', 'kerf schema <topic> [<topic> ...]', 'Component types'].every((k) => r.out.includes(k)), r.out.slice(0, 300));
+  check('guide: one-command-per-line recipes, no chaining, ops file + --why, roof pitch recipe, ambiguity policy',
+    /do NOT chain with `&&`/i.test(r.out) && /heredoc/.test(r.out) && r.out.includes('kerf new truss-cmu.kerf.json --ops ops.json') && r.out.includes('kerf apply truss-cmu.kerf.json ops.json -w --why')
+      && r.out.includes('"slope":"@truss"') && r.out.includes('"until":"truss@top_chord_end"') && /ONE short question/.test(r.out) && r.out.includes('W_SHORT_SLOPE'), r.out.slice(0, 200));
+  check('guide command examples never chain commands or use heredocs/pipes', r.out.split('\n').filter((l) => /^kerf /.test(l)).every((l) => !/(&&|;|\||<<)/.test(l)) && r.out.split('\n').filter((l) => /^kerf /.test(l)).length >= 8);
   check('guide is pure ASCII', !/[^\x00-\x7f]/.test(r.out));
+  const full = kerf(['guide', '--full']);
+  check('guide --full: long form with the full schema, drafting rules and the catalog', full.code === 0 && full.out.length > 30000 && full.out.includes('Complete minimal document') && full.out.includes('# Drafting instructions') && full.out.includes('# Component catalog') && full.out.includes('Long-form notes') && !/[^\x00-\x7f]/.test(full.out), full.out.length);
+  check('guide --full starts with the short guide', full.out.startsWith(r.out.split('\n').slice(0, 20).join('\n')));
+
+  r = kerf(['schema', 'note', 'dim', 'cite']);
+  check('schema takes several topics', r.code === 0 && /^note: /m.test(r.out) && /^dim: /m.test(r.out) && /^cite: /m.test(r.out), r.err);
+  r = kerf(['schema', 'note', 'veiw', 'lumber']);
+  check('schema with one bad topic: others print, bad one reported on stderr, exit 1', r.code === 1 && /^note: /m.test(r.out) && /^lumber: /m.test(r.out) && /Did you mean "view"/.test(r.err), r);
+  r = kerf(['schema', 'lumber']);
+  check('catalog lumber states the standard beam-in-wall view (elevation along the wall)', /ELEVATION along the wall/.test(r.out) && /end-on section/.test(r.out), r.out.slice(0, 300));
+}
+
+// ---------------------------------------------------------------------------------------------------
+section('2b. kerf new --ops (create + apply in one command), apply --ops FILE');
+{
+  const ops = [{ op: 'set', path: 'doc', value: { kerf: '0.1', id: 'zz', components: [{ id: 'sill', type: 'lumber', size: '2x6', orient: 'flat', treated: true }], views: [{ id: 'A', annotations: [] }] } }];
+  write('newops.json', ops);
+  let r = kerf(['new', 'n1.kerf.json', '--ops', 'newops.json', '--why', 'Build it', '--title', 'T']);
+  check('new --ops file: exit 0, summary, created', r.code === 0 && /^DOC zz /m.test(r.out) && /^created n1.kerf.json$/m.test(r.out), r);
+  check('the ops were applied to the new file', readJson('n1.kerf.json').components.length === 1 && readJson('n1.kerf.json').id === 'zz');
+  const lines = fs.readFileSync(path.join(tmp, 'n1.kerf.json.log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  check('both steps are logged: create, then the apply with the --why', lines.length === 2 && lines[0].ops[0].op === 'create' && lines[1].why === 'Build it' && lines[1].ops[0].op === 'set' && lines[1].changed.includes('sill'), lines);
+  r = kerf(['new', 'n2.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/x', value: {} }])]);
+  check('new --ops with a failing op: error + nothing written, no file, exit 1', r.code === 1 && /^ERROR E_REF_UNKNOWN/m.test(r.err) && /nothing written/.test(r.err) && !fs.existsSync(path.join(tmp, 'n2.kerf.json')), r);
+  r = kerf(['new', 'n3.kerf.json', '--ops', 'missing.json']);
+  check('new --ops with a missing file: usage error naming it', r.code === 2 && /cannot read ops 'missing.json'/.test(r.err) && !fs.existsSync(path.join(tmp, 'n3.kerf.json')), r);
+  r = kerf(['new', 'n4.kerf.json', '--template', 'section', '--ops', JSON.stringify([{ op: 'update', path: 'components/stud', value: { length: 30 } }]), '--why', 'taller stud']);
+  check('new --template --ops: ops applied on top of the template', r.code === 0 && readJson('n4.kerf.json').components.find((c) => c.id === 'stud').length === 30, r);
+  write('upd.json', [{ op: 'update', path: 'components/sill', value: { size: '2x8' } }]);
+  r = kerf(['apply', 'n1.kerf.json', '--ops', 'upd.json', '-w', '--why', 'ops file via --ops']);
+  check('apply --ops accepts a file path as well as inline JSON', r.code === 0 && readJson('n1.kerf.json').components[0].size === '2x8', r);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -142,7 +178,7 @@ section('3. W_UNKNOWN_KEY, dim dir default + W_DIM_ZERO, W_NOTE_STYLE');
   check('kind -> type', /unknown key "kind".*Did you mean "type"/.test(r.out));
   check('pos -> place', /unknown key "pos".*Did you mean "place"/.test(r.out));
   check('view side -> notes_side', /unknown key "side" in views\/A \(view\).*Did you mean "notes_side"/.test(r.out));
-  check('no suggestion lists the valid keys', /unknown key "bogus".*Valid keys: id, type, text, target, at, place, cite/.test(r.out));
+  check('no suggestion lists the valid keys', /unknown key "bogus".*Valid keys: id, type, text, target, at, place, (column, )?cite/.test(r.out));
   check('unknown keys are preserved in the file', (() => { const d = readJson('k.kerf.json'); const n = d.views[0].annotations.find((a) => a.id === 'n3'); return n.citations && n.side && n.point && n.bogus === 1 && d.views[0].side === 'left'; })());
   check('W_DIM_ZERO for a dim measuring 0"', /WARN W_DIM_ZERO d_zero:.*measures 0"/.test(r.out) && !/W_DIM_ZERO d_v/.test(r.out), r.out);
   check('W_NOTE_STYLE for GYPSUM BOARD', /W_NOTE_STYLE n3:.*GYP\. BD\./.test(r.out), r.out);
@@ -212,6 +248,36 @@ section('5. defaults: anchor_bolt anchor and z, in-plane member z = first sectio
   const noView = { ...doc, views: [] };
   const b2 = JSON.parse(kerf(['call', 'inspect'], { input: JSON.stringify({ doc: noView, query: { q: 'component', id: 'stud' } }) }).out);
   check('no section view: centered on the middle of run (0)', Math.abs((b2.z[0] + b2.z[1]) / 2) < 1e-9, b2.z);
+}
+
+// ---------------------------------------------------------------------------------------------------
+section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_* is a no-op');
+{
+  const ref = JSON.parse(fs.readFileSync(path.join(DETAILS, 'truss-bearing-cmu.kerf.json'), 'utf8'));
+  let r = kerf(['check', path.join(DETAILS, 'truss-bearing-cmu.kerf.json')]);
+  check('negative: the reference truss detail has 0 warnings', /0 errors  0 warnings/.test(r.out), r.out.split('\n')[0]);
+  // e07 repro: pitch changed to 6:12, sheathing follows with slope "@truss" but keeps a literal length that stops short
+  const e07 = JSON.parse(JSON.stringify(ref));
+  e07.components.find((c) => c.id === 'truss').pitch = '6:12';
+  Object.assign(e07.components.find((c) => c.id === 'roof_sheathing'), { slope: '@truss', length: 40 });
+  write('e07.kerf.json', e07);
+  r = kerf(['check', 'e07.kerf.json']);
+  check('e07 repro: W_SHORT_SLOPE on the sheathing, concrete fix with until + anchor', /WARN W_SHORT_SLOPE roof_sheathing: .*short of/.test(r.out) && /"until": "truss@top_chord_end"/.test(r.out) && r.code === 0, r.out);
+  // the recipe from the guide fixes it in one ops file
+  write('pitch.json', [{ op: 'update', path: 'components/roof_sheathing', value: { slope: '@truss', until: 'truss@top_chord_end', length: null } }]);
+  r = kerf(['apply', 'e07.kerf.json', 'pitch.json', '-w', '--why', 'sheathing follows the truss']);
+  check('the guide recipe (update with until, length null) clears it', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /until truss@top_chord_end/.test(r.out), r.out);
+  // steeper pitch on the reference with the recipe: still 0 warnings, sheathing follows
+  write('pitch8.json', [{ op: 'update', path: 'components/truss', value: { pitch: '8:12' } }]);
+  r = kerf(['apply', 'e07.kerf.json', 'pitch8.json', '-w', '--why', 'steeper']);
+  check('pitch 8:12 with slope @truss + until: 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  // acknowledge of an info code: accepted, no error
+  const ackI = [{ op: 'update', path: 'components/truss', value: { acknowledge: [{ code: 'I_SOLID_USED', reason: 'not applicable' }] } }];
+  r = kerf(['apply', 'e07.kerf.json', '--ops', JSON.stringify(ackI), '--dry-run']);
+  check('acknowledge I_SOLID_USED is a no-op, not an error', r.code === 0 && !/ERROR/.test(r.err) && /0 errors/.test(r.out), r);
+  // an E_ code is still refused
+  r = kerf(['apply', 'e07.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/truss', value: { acknowledge: [{ code: 'E_PARAM', reason: 'x' }] } }]), '--dry-run']);
+  check('acknowledge of an E_ code is still an error', r.code === 1 && /cannot be acknowledged/.test(r.err), r.err);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

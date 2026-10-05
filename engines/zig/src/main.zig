@@ -7,10 +7,11 @@ const usage =
     \\kerf: conversational construction details (https://github.com/hotschmoe/kerf)
     \\
     \\usage:
-    \\  kerf guide                       instructions for LLM agents + component catalog (start here)
+    \\  kerf guide [--full]              instructions for LLM agents (short, ~12 KB; --full adds the full schema, drafting rules and catalog)
     \\  kerf init [dir]                  make a details folder agent-ready (AGENTS.md + CLAUDE.md)
-    \\  kerf schema [topic]              field reference: doc view note dim label cite ops <component type> (no topic: list)
-    \\  kerf new <file> [--id ID] [--title "TITLE"] [--template section]
+    \\  kerf schema [topic ...]          field reference: doc view note dim label cite ops <component type> (several topics at once; none: list)
+    \\  kerf new <file> [--id ID] [--title "TITLE"] [--template section] [--ops ops.json] [--why "REASON"]
+    \\      --ops creates the file and applies the ops in one command (nothing is written if an op fails; both steps are logged)
     \\  kerf apply <doc> <ops.json|-> [-w] [--why "REASON"] [-o out]   apply ops (file or stdin); -w writes back to <doc>
     \\  kerf apply <doc> --ops '<json>' [-w] [--why "REASON"] [--dry-run]
     \\      a failed apply prints "ERROR <code> <path>: <message>  Fix: <fix>" per error on stderr, then "nothing written" (exit 1)
@@ -30,6 +31,21 @@ const usage =
 ;
 const cli_guide = @embedFile("kerf_cli_guide");
 const system_md = @embedFile("kerf_system_md");
+
+const full_marker = "<!-- FULL -->";
+
+/// `cli-guide.md` has two parts: the short guide, then (after the marker line) notes that only `kerf guide --full` prints.
+fn guideSplit(text: []const u8) struct { short: []const u8, full: []const u8 } {
+    const i = std.mem.indexOf(u8, text, full_marker) orelse return .{ .short = text, .full = "" };
+    return .{ .short = std.mem.trimEnd(u8, text[0..i], "\n"), .full = std.mem.trimStart(u8, text[i + full_marker.len ..], "\n") };
+}
+
+/// `--ops` takes the ops themselves (starts with `[` or `{`) or the path of a file that holds them.
+fn opsFromArg(gpa: std.mem.Allocator, io: std.Io, arg: []const u8) ![]u8 {
+    const t = std.mem.trimStart(u8, arg, " \t\r\n");
+    if (t.len > 0 and (t[0] == '[' or t[0] == '{')) return gpa.dupe(u8, arg);
+    return readFile(gpa, io, arg);
+}
 
 /// Fold text to pure ASCII for Windows consoles (PowerShell mangles UTF-8): dashes, quotes, x-sign, degree sign,
 /// vulgar fractions and NBSP get readable ASCII; anything else becomes `?`.
@@ -132,6 +148,7 @@ const Opts = struct {
     out: ?[]const u8 = null,
     sheet: bool = false,
     markdown: bool = false,
+    full: bool = false,
     write: bool = false,
     ops: ?[]const u8 = null,
     id: ?[]const u8 = null,
@@ -140,7 +157,7 @@ const Opts = struct {
     why: ?[]const u8 = null,
     dry_run: bool = false,
     template: ?[]const u8 = null,
-    pos: [4][]const u8 = undefined,
+    pos: [16][]const u8 = undefined,
     npos: usize = 0,
 };
 
@@ -159,7 +176,7 @@ fn parseOpts(args: []const []const u8, err: *std.Io.Writer) !Opts {
                 return all[idx.*];
             }
         }.get;
-        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--why")) o.why = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--dry-run")) o.dry_run = true else if (std.mem.eql(u8, a, "--template")) o.template = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
+        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "--full")) o.full = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--why")) o.why = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--dry-run")) o.dry_run = true else if (std.mem.eql(u8, a, "--template")) o.template = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
             try err.print("kerf: unknown option {s}\n", .{a});
             return error.Usage;
         } else {
@@ -191,6 +208,24 @@ fn buildInput(gpa: std.mem.Allocator, io: std.Io, doc_path: []const u8, style_pa
     }
     try out.append(gpa, '}');
     return out.toOwnedSlice(gpa);
+}
+
+/// Like `buildInput` for a document that is already in memory.
+fn buildInputText(a: std.mem.Allocator, doc: []const u8, style_path: ?[]const u8, io: std.Io, extra: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "{\"doc\":");
+    try out.appendSlice(a, std.mem.trim(u8, doc, " \t\r\n"));
+    if (style_path) |sp| {
+        const st = try readFile(a, io, sp);
+        try out.appendSlice(a, ",\"style\":");
+        try out.appendSlice(a, std.mem.trim(u8, st, " \t\r\n"));
+    }
+    if (extra.len > 0) {
+        try out.append(a, ',');
+        try out.appendSlice(a, extra);
+    }
+    try out.append(a, '}');
+    return out.items;
 }
 
 fn appendJsonString(a: std.mem.Allocator, out: *std.ArrayList(u8), str: []const u8) !void {
@@ -293,45 +328,64 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         var sarena = std.heap.ArenaAllocator.init(gpa);
         defer sarena.deinit();
         const sa = sarena.allocator();
-        var inp: std.ArrayList(u8) = .empty;
-        try inp.appendSlice(sa, "{");
-        if (o.npos >= 1) {
-            try inp.appendSlice(sa, "\"topic\":");
-            try appendJsonString(sa, &inp, o.pos[0]);
+        var outtext: std.ArrayList(u8) = .empty;
+        var failed = false;
+        const ntopics = @max(o.npos, 1); // no topic: the topic list
+        for (0..ntopics) |ti| {
+            var inp: std.ArrayList(u8) = .empty;
+            try inp.appendSlice(sa, "{");
+            if (o.npos >= 1) {
+                try inp.appendSlice(sa, "\"topic\":");
+                try appendJsonString(sa, &inp, o.pos[ti]);
+            }
+            try inp.appendSlice(sa, "}");
+            const r = try kerf.call(gpa, "schema", inp.items);
+            defer gpa.free(r.bytes);
+            if (!r.ok) {
+                try printApiError(sa, err, r.bytes);
+                failed = true;
+                continue;
+            }
+            var sperr: kerf.json.ParseError = undefined;
+            const res = (try kerf.json.parse(sa, r.bytes, &sperr)) orelse return error.BadEngineOutput;
+            const text = (if (res.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
+            if (outtext.items.len > 0) try outtext.appendSlice(sa, "\n----\n\n");
+            try outtext.appendSlice(sa, text);
         }
-        try inp.appendSlice(sa, "}");
-        const r = try kerf.call(gpa, "schema", inp.items);
-        defer gpa.free(r.bytes);
-        if (!r.ok) {
-            try printApiError(sa, err, r.bytes);
-            return 1;
-        }
-        var sperr: kerf.json.ParseError = undefined;
-        const res = (try kerf.json.parse(sa, r.bytes, &sperr)) orelse return error.BadEngineOutput;
-        const text = (if (res.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
-        const folded = try asciiFold(gpa, text);
+        const folded = try asciiFold(gpa, outtext.items);
         defer gpa.free(folded);
         try writeOut(io, o.out, folded);
-        return 0;
+        return if (failed) 1 else 0;
     }
     if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h")) {
         try writeOut(io, null, usage);
         return 0;
     }
     if (std.mem.eql(u8, cmd, "guide")) {
-        const r = try kerf.call(gpa, "catalog", "{\"format\":\"markdown\"}");
-        defer gpa.free(r.bytes);
         var text: std.ArrayList(u8) = .empty;
         defer text.deinit(gpa);
         var garena = std.heap.ArenaAllocator.init(gpa);
         defer garena.deinit();
-        try text.appendSlice(gpa, cli_guide);
-        try text.appendSlice(gpa, "\n");
-        try text.appendSlice(gpa, try kerf.api.schema.guideSection(garena.allocator()));
-        try text.appendSlice(gpa, "\n# Drafting instructions\n\n");
-        try text.appendSlice(gpa, system_md);
-        try text.appendSlice(gpa, "\n# Component catalog\n\n");
-        try text.appendSlice(gpa, r.bytes);
+        const ga = garena.allocator();
+        const split = guideSplit(cli_guide);
+        try text.appendSlice(gpa, split.short);
+        if (o.full) {
+            // long form: the extra notes, the full per-object schema, the drafting instructions, the component catalog
+            const r = try kerf.call(gpa, "catalog", "{\"format\":\"markdown\"}");
+            defer gpa.free(r.bytes);
+            try text.appendSlice(gpa, "\n");
+            try text.appendSlice(gpa, split.full);
+            try text.appendSlice(gpa, "\n");
+            try text.appendSlice(gpa, try kerf.api.schema.guideSection(ga));
+            try text.appendSlice(gpa, "\n# Drafting instructions\n\n");
+            try text.appendSlice(gpa, system_md);
+            try text.appendSlice(gpa, "\n# Component catalog\n\n");
+            try text.appendSlice(gpa, r.bytes);
+        } else {
+            try text.appendSlice(gpa, "\n");
+            try text.appendSlice(gpa, try kerf.api.schema.compactSection(ga));
+            try text.appendSlice(gpa, "\nMore: `kerf guide --full` (drafting rules, long-form notes, full schema and component catalog).\n");
+        }
         const folded = try asciiFold(gpa, text.items);
         defer gpa.free(folded);
         try writeOut(io, o.out, folded);
@@ -394,11 +448,55 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             for (o.id orelse stem) |c| try id.append(a, if (std.ascii.isAlphanumeric(c)) std.ascii.toLower(c) else '-');
             break :blk try kerf.api.schema.templateText(a, id.items, o.title orelse "");
         } else try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
-        try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, text);
-        const logged = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
+        var final_text: []const u8 = text;
+        var ops_text: ?[]const u8 = null;
+        var apply_changed: std.ArrayList([]const u8) = .empty;
+        var apply_summary: []const u8 = "";
+        if (o.ops) |oa| {
+            // create + apply in one command: the file only appears when the ops apply cleanly
+            const raw = opsFromArg(a, io, oa) catch {
+                try err.print("kerf new: cannot read ops '{s}' (--ops takes a file path, or inline JSON starting with [)\n", .{oa});
+                return 2;
+            };
+            ops_text = std.mem.trim(u8, raw, " \t\r\n");
+            var vperr: kerf.json.ParseError = undefined;
+            if ((try kerf.json.parse(a, ops_text.?, &vperr)) == null) {
+                try err.print("ERROR E_JSON ops: the ops are not valid JSON: {s} (line {d}, column {d})  Fix: pass a JSON array of ops\nnothing written\n", .{ vperr.msg, vperr.line, vperr.col });
+                return 1;
+            }
+            const input = try buildInputText(a, text, o.style, io, try std.fmt.allocPrint(a, "\"ops\":{s}", .{ops_text.?}));
+            const r = try kerf.call(gpa, "apply", input);
+            defer gpa.free(r.bytes);
+            if (!r.ok) {
+                try printApiError(a, err, r.bytes);
+                try err.writeAll("nothing written\n");
+                return 1;
+            }
+            const res = (try kerf.json.parse(a, r.bytes, &vperr)) orelse return error.BadEngineOutput;
+            const summary = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
+            const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
+            if (!ok) {
+                const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
+                for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) try printDiagError(err, d);
+                try err.writeAll("nothing written\n");
+                return 1;
+            }
+            final_text = try kerf.canon.write(a, res.get("doc") orelse return error.BadEngineOutput);
+            if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try apply_changed.append(a, try a.dupe(u8, cs));
+            apply_summary = try a.dupe(u8, summary);
+            try writeOut(io, null, summary);
+        }
+        try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, final_text);
+        var logged = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
+        if (ops_text) |ot| {
+            const l2 = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse "" }, ot, apply_changed.items, apply_summary);
+            logged = logged and l2;
+        }
         try writeOut(io, null, "created ");
         try writeOut(io, null, path);
-        try writeOut(io, null, if (o.template != null) "\nnext: edit it with kerf apply <file> ops.json -w   (see `kerf schema`, `kerf guide`)\n" else "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
+        if (ops_text != null) {
+            try writeOut(io, null, "\nnext: LOOK at it: kerf export <file> --view A --format png -o <file>-A.png\n");
+        } else try writeOut(io, null, if (o.template != null) "\nnext: edit it with kerf apply <file> ops.json -w   (see `kerf schema`, `kerf guide`)\n" else "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
         return if (logged) 0 else 3;
     }
     if (std.mem.eql(u8, cmd, "call")) {
@@ -449,7 +547,13 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
     } else if (std.mem.eql(u8, cmd, "apply")) {
         var ops_owned: ?[]u8 = null;
         defer if (ops_owned) |b| gpa.free(b);
-        const ops: []const u8 = if (o.ops) |inline_ops| inline_ops else if (o.npos >= 2 and !std.mem.eql(u8, o.pos[1], "-")) blk: {
+        const ops: []const u8 = if (o.ops) |ops_arg| blk: {
+            ops_owned = opsFromArg(gpa, io, ops_arg) catch {
+                try err.print("kerf apply: cannot read ops '{s}' (--ops takes inline JSON starting with [, or a file path)\n", .{ops_arg});
+                return 2;
+            };
+            break :blk ops_owned.?;
+        } else if (o.npos >= 2 and !std.mem.eql(u8, o.pos[1], "-")) blk: {
             ops_owned = try readFile(gpa, io, o.pos[1]);
             break :blk ops_owned.?;
         } else if (o.npos >= 2) blk: {
