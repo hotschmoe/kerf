@@ -426,6 +426,8 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
     defer extra.deinit(gpa);
     var fname: []const u8 = cmd;
     var ops_text_for_log: []const u8 = "[]";
+    var ops_keep: ?[]u8 = null; // the ops text outlives the branch that read it (the op log is written later)
+    defer if (ops_keep) |b| gpa.free(b);
     if (std.mem.eql(u8, cmd, "drawing")) {
         const v = o.view orelse {
             try err.writeAll("kerf drawing: --view <id> is required\n");
@@ -473,7 +475,8 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
                 return 1;
             }
         }
-        ops_text_for_log = ops;
+        ops_keep = try gpa.dupe(u8, ops);
+        ops_text_for_log = ops_keep.?;
         try extra.print(gpa, "\"ops\":{s}", .{std.mem.trim(u8, ops, " \t\r\n")});
     } else if (!(std.mem.eql(u8, cmd, "fmt") or std.mem.eql(u8, cmd, "check") or std.mem.eql(u8, cmd, "mesh"))) {
         try err.print("kerf: unknown command '{s}'\n", .{cmd});

@@ -119,6 +119,17 @@ pub fn buildEntry(a: Allocator, io: Io, meta: LogMeta, ops_text: []const u8, cha
     try out.appendSlice(a, "],\"summary_head\":");
     const head = if (std.mem.indexOfScalar(u8, summary, '\n')) |nl| summary[0..nl] else summary;
     try kerf.json.writeString(&out, a, std.mem.trimEnd(u8, head, "\r"));
+    // SPEC 19: acknowledged warnings (the summary's `INFO I_ACK` lines) are logged with their reasons
+    var ack_n: usize = 0;
+    var lines = std.mem.splitScalar(u8, summary, '\n');
+    while (lines.next()) |ln| {
+        const l = std.mem.trimEnd(u8, ln, "\r");
+        if (!std.mem.startsWith(u8, l, "INFO I_ACK")) continue;
+        try out.appendSlice(a, if (ack_n == 0) ",\"ack\":[" else ",");
+        try kerf.json.writeString(&out, a, l);
+        ack_n += 1;
+    }
+    if (ack_n > 0) try out.append(a, ']');
     try out.append(a, '}');
     return out.items;
 }

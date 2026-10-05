@@ -18,6 +18,7 @@ const pdf_mod = @import("pdf.zig");
 const raster = @import("raster.zig");
 const load_mod = @import("load.zig");
 const ops_mod = @import("ops.zig");
+const lint = @import("lint.zig");
 pub const schema = @import("schema.zig");
 const Allocator = std.mem.Allocator;
 
@@ -190,7 +191,7 @@ fn drawingFn(a: Allocator, inp: json.Value) ApiError!Out {
     };
     const view_id = (if (inp.get("view")) |v| v.str() else null) orelse return fail(a, "E_INPUT", "missing \"view\": the id of a view in the document", .{});
     var diags = model.Diags.init(a);
-    const dr = (try drawview.build(a, d, &st, view_id, &diags)) orelse {
+    const dr = (try drawview.build(a, try lint.withDimDirsFromDoc(a, d, &st), &st, view_id, &diags)) orelse {
         return fail(a, "E_VIEW", "{s}", .{if (diags.list.items.len > 0) diags.list.items[0].message else "view could not be built"});
     };
     return .{ .ok = true, .bytes = try drawing.toJson(a, &dr) };
@@ -208,7 +209,7 @@ fn exportFn(a: Allocator, inp: json.Value) ApiError!Out {
     const view_id = (if (inp.get("view")) |v| v.str() else null) orelse return fail(a, "E_INPUT", "missing \"view\": the id of a view in the document", .{});
     const format = (if (inp.get("format")) |v| v.str() else null) orelse "svg";
     var diags = model.Diags.init(a);
-    const dr = (try drawview.build(a, d, &st, view_id, &diags)) orelse {
+    const dr = (try drawview.build(a, try lint.withDimDirsFromDoc(a, d, &st), &st, view_id, &diags)) orelse {
         return fail(a, "E_VIEW", "{s}", .{if (diags.list.items.len > 0) diags.list.items[0].message else "view could not be built"});
     };
     const font = font_mod.Font.parse(a, font_mod.embedded) catch return fail(a, "E_INTERNAL", "embedded font failed to parse", .{});

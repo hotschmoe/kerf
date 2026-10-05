@@ -14,6 +14,7 @@ const section = @import("section.zig");
 const catalog = @import("catalog.zig");
 const units = @import("units.zig");
 const builders = @import("builders.zig");
+const lint = @import("lint.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 
@@ -32,9 +33,12 @@ pub fn load(a: Allocator, doc: json.Value, st: *const style_mod.Style, with_view
     diags.* = model.Diags.init(a);
     const scene = try compile_mod.compile(a, doc, st, diags);
     if (doc == .object) try validate.run(a, scene, doc, diags);
+    if (doc == .object) try lint.run(a, scene, doc, diags);
     var nviews: usize = 0;
+    // dims without `dir` get the dominant-axis default for drawing (the stored document is never changed)
+    const vdoc = if (with_views and doc == .object) try lint.withDimDirs(a, scene, doc) else doc;
     if (doc == .object) {
-        if (doc.get("views")) |vs| if (vs.arr()) |va| {
+        if (vdoc.get("views")) |vs| if (vs.arr()) |va| {
             nviews = va.len;
             var seen: std.ArrayList([]const u8) = .empty;
             for (va, 0..) |v, i| {
@@ -54,13 +58,14 @@ pub fn load(a: Allocator, doc: json.Value, st: *const style_mod.Style, with_view
                     if (with_views) {
                         const spec = try a.create(view_mod.ViewSpec);
                         spec.* = sp;
-                        _ = try drawview.buildFromScene(a, doc, st, scene, spec, &vd);
+                        _ = try drawview.buildFromScene(a, vdoc, st, scene, spec, &vd);
                     }
                 }
                 try diags.list.appendSlice(a, vd.list.items);
             }
         };
     }
+    if (doc == .object) try lint.applyAcknowledge(a, doc, diags);
     return .{ .a = a, .doc = doc, .style = st, .scene = scene, .diags = diags, .nviews = nviews };
 }
 
@@ -146,7 +151,7 @@ pub fn summary(l: *const Loaded) Allocator.Error![]const u8 {
         try out.append(a, '\n');
     }
     for (l.diags.list.items) |d| {
-        if (d.level == .info and !(std.mem.eql(u8, d.code, "I_SOLID_USED") or std.mem.eql(u8, d.code, "I_UNVERIFIED_CITE") or std.mem.eql(u8, d.code, "I_CITE_DOWNGRADED"))) continue;
+        if (d.level == .info and !(std.mem.eql(u8, d.code, "I_SOLID_USED") or std.mem.eql(u8, d.code, "I_UNVERIFIED_CITE") or std.mem.eql(u8, d.code, "I_CITE_DOWNGRADED") or std.mem.eql(u8, d.code, "I_ACK"))) continue;
         try out.appendSlice(a, try diagLine(a, d));
         try out.append(a, '\n');
     }

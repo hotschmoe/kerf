@@ -124,8 +124,9 @@ pub const entries: []const Entry = &.{
             .{ .name = "treated", .def = "false", .desc = "preservative treated (material wood_treated; W_UNTREATED_CONTACT checks)" },
             .{ .name = "blocking", .def = "false", .desc = "discontinuous member: section mark is one diagonal instead of an X" },
             .{ .name = "grade", .def = "null", .desc = "free text e.g. \"#2 DF-L\" for notes" },
+            .{ .name = "barrier", .def = "null", .desc = "sill_seal | membrane: draws a 1/8\" sealer strip under the member (part `barrier`, material sill_seal) and the member sits on top of it, so bottom_* anchors are the strip underside and the member top is 1/8\" higher than without. Clears W_UNTREATED_CONTACT for untreated wood on concrete/CMU (put it on the wood member that bears on the masonry; add a note, e.g. `SILL SEALER`)" },
         },
-        .parts = "none",
+        .parts = "barrier (when set)",
         .anchors = "the 9 box anchors",
         .draws = "Section: run z cut => outline + wood X mark per ply (blocking: one diagonal); run x/y cut lengthwise => outline only; beyond => outline. Actual sizes: 2x 1.5 thick; 4x 3.5; 6x 5.5; depths x4 3.5, x6 5.5, x8 7.25, x10 9.25, x12 11.25 (6x8 7.5, 6x10 9.5, 6x12 11.5). Natural z thickness for run x/y.",
         .example = "{\"id\":\"stud\",\"type\":\"lumber\",\"size\":\"2x4\",\"run\":\"y\",\"face\":\"narrow\",\"length\":92.625,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,1.5]}}",
@@ -367,6 +368,17 @@ pub fn allowedKey(ty: *const Entry, key: []const u8) bool {
         while (it.next()) |n| if (std.mem.eql(u8, n, key)) return true;
     }
     return false;
+}
+
+/// Every accepted top-level key of a component of type `ty` (type params, then common fields).
+pub fn allowedKeyNames(a: Allocator, ty: *const Entry) Allocator.Error![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    for (ty.params) |p| {
+        var it = std.mem.splitSequence(u8, p.name, ", ");
+        while (it.next()) |n| try out.append(a, n);
+    }
+    for (common) |c| try out.append(a, c.name);
+    return out.items;
 }
 
 pub fn allowedKeysText(a: Allocator, ty: *const Entry) Allocator.Error![]const u8 {

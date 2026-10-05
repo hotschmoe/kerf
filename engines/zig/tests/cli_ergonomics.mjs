@@ -116,5 +116,78 @@ section('2. kerf schema, kerf new --template, kerf call help, kerf guide');
   check('guide is pure ASCII', !/[^\x00-\x7f]/.test(r.out));
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('3. W_UNKNOWN_KEY, dim dir default + W_DIM_ZERO, W_NOTE_STYLE');
+{
+  for (const f of ['flush-beam-strap', 'monopour-slab-door-recess', 'truss-bearing-cmu']) {
+    const r = kerf(['check', path.join(DETAILS, f + '.kerf.json')]);
+    check(`reference ${f}: 0 errors, 0 warnings`, /0 errors  0 warnings/.test(r.out), r.out.split('\n')[0]);
+  }
+  for (const f of fs.readdirSync(DOCS).filter((n) => n.endsWith('.kerf.json'))) {
+    const r = kerf(['check', path.join(DOCS, f)]);
+    check(`tests/docs/${f}: 0 errors, 0 warnings`, /0 errors  0 warnings/.test(r.out), r.out.split('\n')[0]);
+  }
+  kerf(['new', 'k.kerf.json', '--template', 'section']);
+  const ops = [
+    { op: 'add', path: 'views/A/annotations', value: { id: 'n3', type: 'note', text: 'GYPSUM BOARD', target: 'stud', citations: [{ code: 'IRC', section: 'R602.3' }], side: 'left', point: [1, 2], kind: 'note', pos: [0, 0], bogus: 1 } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'd_v', type: 'dim', from: 'sill@bottom_left', to: 'sill@top_left', offset: -3 } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'd_zero', type: 'dim', from: 'sill@bottom_left', to: 'sill@bottom_right', dir: 'v', offset: -3 } },
+    { op: 'update', path: 'views/A', value: { side: 'left' } },
+  ];
+  let r = kerf(['apply', 'k.kerf.json', '--ops', JSON.stringify(ops), '-w', '--why', 'junk']);
+  check('apply succeeds (warnings only)', r.code === 0, r);
+  check('citations -> cite', /W_UNKNOWN_KEY n3: unknown key "citations".*Did you mean "cite"/.test(r.out), r.out);
+  check('note side -> view notes_side hint', /unknown key "side" in views\/A\/annotations\/n3.*notes_side/.test(r.out));
+  check('point -> at', /unknown key "point".*Did you mean "at"/.test(r.out));
+  check('kind -> type', /unknown key "kind".*Did you mean "type"/.test(r.out));
+  check('pos -> place', /unknown key "pos".*Did you mean "place"/.test(r.out));
+  check('view side -> notes_side', /unknown key "side" in views\/A \(view\).*Did you mean "notes_side"/.test(r.out));
+  check('no suggestion lists the valid keys', /unknown key "bogus".*Valid keys: id, type, text, target, at, place, cite/.test(r.out));
+  check('unknown keys are preserved in the file', (() => { const d = readJson('k.kerf.json'); const n = d.views[0].annotations.find((a) => a.id === 'n3'); return n.citations && n.side && n.point && n.bogus === 1 && d.views[0].side === 'left'; })());
+  check('W_DIM_ZERO for a dim measuring 0"', /WARN W_DIM_ZERO d_zero:.*measures 0"/.test(r.out) && !/W_DIM_ZERO d_v/.test(r.out), r.out);
+  check('W_NOTE_STYLE for GYPSUM BOARD', /W_NOTE_STYLE n3:.*GYP\. BD\./.test(r.out), r.out);
+  const stored = readJson('k.kerf.json');
+  check('dim dir default is not written into the document', stored.views[0].annotations.find((a) => a.id === 'd_v').dir === undefined);
+  // the default dir makes d_v vertical: its text reads 1 1/2"
+  r = kerf(['drawing', 'k.kerf.json', '--view', 'A']);
+  const dr = JSON.parse(r.out);
+  const texts = [];
+  (function walk(x) { if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === 'object') { if (x.src === 'd_v' && typeof x.s === 'string') texts.push(x.s); Object.values(x).forEach(walk); } })(dr);
+  check('dim without dir measures vertically (1 1/2")', texts.some((t) => t.includes('1 1/2')), texts);
+}
+
+// ---------------------------------------------------------------------------------------------------
+section('4. acknowledge (I_ACK, logged) and lumber.barrier');
+{
+  const doc = {
+    kerf: '0.1', id: 'b', run: [-24, 24],
+    components: [
+      { id: 'cmu', type: 'cmu_wall', width: 8, courses: 3, bond_beam_courses: 1, at: { to: [0, 0] } },
+      { id: 'sill', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'cmu@top_left', offset: [1, 0] } },
+    ],
+    views: [{ id: 'A', scale: '3"=1\'-0"', crop: { x: [-6, 16], y: [10, 30] }, cut_z: 0, annotations: [] }],
+  };
+  write('b.kerf.json', doc);
+  let r = kerf(['check', 'b.kerf.json']);
+  check('untreated sill on CMU warns', /WARN W_UNTREATED_CONTACT sill/.test(r.out), r.out);
+  const ack = [{ op: 'update', path: 'components/sill', value: { acknowledge: [{ code: 'W_UNTREATED_CONTACT', reason: 'truss seat moisture barrier by mfr.' }] } }];
+  write('ack.json', ack);
+  r = kerf(['apply', 'b.kerf.json', 'ack.json', '-w', '--why', 'ack the sill']);
+  check('acknowledged: warning gone, I_ACK line with the reason', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /^INFO I_ACK sill: W_UNTREATED_CONTACT on 'sill' acknowledged: truss seat moisture barrier by mfr\./m.test(r.out), r.out);
+  const log = fs.readFileSync(path.join(tmp, 'b.kerf.json.log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  check('apply -w logs the acknowledgement (reason) and the ops read from a file', log[0].ack && /moisture barrier by mfr/.test(log[0].ack[0]) && log[0].ops.length === 1 && log[0].ops[0].path === 'components/sill', log[0]);
+  r = kerf(['apply', 'b.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/sill', value: { acknowledge: [{ code: 'E_PARAM', reason: 'x' }, { code: 'W_OVERLAP' }] } }])]);
+  check('errors cannot be acknowledged; reason required', r.code === 1 && /acknowledge\/0: 'E_PARAM' cannot be acknowledged/.test(r.err) && /acknowledge\/1:.*non-empty "reason"/.test(r.err), r.err);
+  r = kerf(['apply', 'b.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/sill', value: { acknowledge: null, barrier: 'sill_seal' } }]), '-w', '--why', 'sealer']);
+  check('barrier sill_seal clears W_UNTREATED_CONTACT and adds the strip part', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /\+ sill_seal/.test(r.out) && !/I_ACK/.test(r.out), r.out);
+  r = kerf(['call', 'inspect'], { input: JSON.stringify({ doc: readJson('b.kerf.json'), query: { q: 'component', id: 'sill' } }) });
+  const comp = JSON.parse(r.out);
+  check('sill has a barrier part and is raised 1/8"', comp.parts.some((p) => p.name === 'barrier') && Math.abs(comp.bbox[3] - comp.bbox[1] - 1.625) < 1e-6, comp.bbox);
+  r = kerf(['apply', 'b.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/sill', value: { barrier: 'tape' } }])]);
+  check('bad barrier value: E_PARAM names the choices', r.code === 1 && /barrier.*"sill_seal", "membrane"/.test(r.err), r.err);
+  const style = JSON.parse(fs.readFileSync(path.join(here, '..', '..', '..', 'spec', 'styles', 'kerf-standard.kerfstyle.json'), 'utf8'));
+  check('style has material sill_seal', !!style.materials.sill_seal);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

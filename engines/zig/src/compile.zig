@@ -116,7 +116,9 @@ pub fn compile(a: Allocator, doc: json.Value, st: *const style_mod.Style, diags:
         for (item.object) |m| {
             if (!catalog.allowedKey(ty, m.key)) {
                 const allowed = try catalog.allowedKeysText(a, ty);
-                diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "components/{s}/{s}", .{ id, m.key }), "unknown param '{s}' for type {s}. Allowed: {s}", .{ m.key, ty.name, allowed });
+                const near = model.nearest(a, m.key, try catalog.allowedKeyNames(a, ty));
+                const hint = if (near != null and model.editDistance(a, m.key, near.?) <= 2) try std.fmt.allocPrint(a, " Did you mean '{s}'?", .{near.?}) else "";
+                diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "components/{s}/{s}", .{ id, m.key }), "unknown param '{s}' for type {s}.{s} Allowed: {s} (`kerf schema {s}`)", .{ m.key, ty.name, hint, allowed, ty.name });
             }
         }
         var label: ?[]const u8 = null;

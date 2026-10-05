@@ -283,6 +283,7 @@ fn buildLumber(ctx: *Ctx) BuildError!?Built {
     const blocking = p.boolean("blocking", false);
     _ = p.str("grade", "");
     const mat_over: ?[]const u8 = if (p.has("material")) p.str("material", null) else null;
+    const barrier: ?[]const u8 = if (p.has("barrier")) p.choice("barrier", null, &.{ "sill_seal", "membrane" }) else null;
     if (!p.ok or size == null or run == null) return null;
     const is_sawn = std.mem.eql(u8, product.?, "sawn");
     var sz: SawnSize = undefined;
@@ -382,6 +383,27 @@ fn buildLumber(ctx: *Ctx) BuildError!?Built {
         try info.print(a, "{s}{s} {s} run z", .{ size.?, if (treated) " PT" else "", orient.? });
     } else {
         try info.print(a, "{s} {s}{s} {s} run {s} L={s}{s}", .{ size.?, run.?, if (treated) " PT" else "", face.?, run.?, ftin(a, length), until_note });
+    }
+    if (barrier) |bk| {
+        // SPEC 19: a 1/8" sealer strip under the member; the member sits on top of it, so the box (and its bottom anchors)
+        // starts at the strip's underside.
+        const seal_t: f64 = 0.125;
+        const raised = try prism.transform(a, geom.Xf.translate(0, seal_t));
+        const strip = Prism{
+            .part = "barrier",
+            .material = materialOr(ctx, "sill_seal", "generic"),
+            .loops = try model.oneLoop(a, try model.rectLoop(a, 0, 0, w, seal_t)),
+        };
+        const prisms = try a.alloc(Prism, 2);
+        prisms[0] = strip;
+        prisms[1] = raised;
+        try info.print(a, " + {s}", .{bk});
+        return .{
+            .prisms = prisms,
+            .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h + seal_t },
+            .nat_z = nat,
+            .info = info.items,
+        };
     }
     return .{
         .prisms = try onePrism(a, prism),
