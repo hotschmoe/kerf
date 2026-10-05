@@ -154,7 +154,11 @@ pub fn fmt_ftin(x: f64) -> String {
     let neg = x < 0.0 && s16 > 0;
     let feet = s16 / 192;
     let rem = s16 % 192;
-    let body = if feet > 0 { format!("{}'-{}\"", feet, fmt_inches16(rem)) } else { format!("{}\"", fmt_inches16(rem)) };
+    let body = if feet > 0 {
+        let inch = fmt_inches16(rem);
+        let inch = if rem > 0 && rem < 16 { format!("0 {}", inch) } else { inch };
+        format!("{}'-{}\"", feet, inch)
+    } else { format!("{}\"", fmt_inches16(rem)) };
     if neg { format!("-{}", body) } else { body }
 }
 
@@ -278,6 +282,9 @@ mod tests {
         assert_eq!(fmt_ftin(12.0), "1'-0\"");
         assert_eq!(fmt_ftin(49.5), "4'-1 1/2\"");
         assert_eq!(fmt_ftin(-14.0), "-1'-2\"");
+        assert_eq!(fmt_ftin(36.25), "3'-0 1/4\"");
+        assert_eq!(fmt_ftin(24.1875), "2'-0 3/16\"");
+        assert_eq!(fmt_ftin(-0.25), "-1/4\"");
         assert_eq!(fmt_ftin(0.5), "1/2\"");
         assert_eq!(fmt_ftin(0.5 + 1.0 / 32.0), "9/16\""); // rounds to nearest 1/16
         assert_eq!(fmt_ftin(1.75), "1 3/4\"");

@@ -92,11 +92,15 @@ fn fillet(pts: &[Pt], r: f64) -> Vec<El> {
         let c = if left { a + d1.perp() * reff } else { a - d1.perp() * reff };
         let a0 = (a.y - c.y).atan2(a.x - c.x);
         let sw = if left { th } else { -th };
-        els.push(El::L(cur, a));
+        if cur.dist(a) > 1e-9 {
+            els.push(El::L(cur, a));
+        }
         els.push(El::A { c, r: reff, a0, sw });
         cur = b;
     }
-    els.push(El::L(cur, pts[n - 1]));
+    if cur.dist(pts[n - 1]) > 1e-9 {
+        els.push(El::L(cur, pts[n - 1]));
+    }
     els
 }
 
@@ -188,6 +192,17 @@ mod tests {
         // approx length 10 + 10 - bend savings
         assert!(a > 8.0 && a < 11.0, "{}", a);
     }
+    #[test]
+    fn j_hook_area() {
+        // d = 0.5: shaft 10 long then a 180 degree bend (inside radius 0.75) and a 2 inch return leg
+        let d = 0.5;
+        let l = stroke_bar(&[pt(0.0, 10.0), pt(0.0, 0.25), pt(2.0, 0.25), pt(2.0, 2.0)], d, 1.0);
+        let a = loop_area(&l).abs();
+        // centerline length: 9.75 + pi*1.0 + (2.0-0.25-1.0) -> area = length * d
+        let len = 8.75 + std::f64::consts::PI * 1.0 + 0.75;
+        assert!((a - len * d).abs() < 0.05, "{} vs {}", a, len * d);
+    }
+
     #[test]
     fn strip() {
         let l = thick_poly(&[pt(0.0, 0.0), pt(10.0, 0.0)], 1.0);

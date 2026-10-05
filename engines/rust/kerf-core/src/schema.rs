@@ -171,7 +171,7 @@ pub const TYPES: &[TypeSpec] = &[
             p("diameter", K::Len, "0.5", "0.5 or 0.625 typical"),
             rq("embed", K::Len, "length below the placement point"),
             rq("projection", K::Len, "length above the placement point"),
-            p("hook", K::Enum(&["J", "L", "headed", "none"]), "J", "hook shape; hook leg length 3\""),
+            p("hook", K::Enum(&["J", "L", "headed", "none"]), "J", "hook shape (J = 180 degree bend, inside radius 1.5 d toward +x, 2\" return leg; L = 90 degree bend, 3\" leg; headed = 2 d square head)"),
             p("nut_washer", K::Bool, "true", "draw nut and washer at the top"),
         ],
         parts: "none",

@@ -36,7 +36,7 @@ pub fn path_d(h: f64, pts: &[V], closed: bool) -> String {
         if a.b.abs() > 1e-12 && a.p().dist(b.p()) > 1e-12 {
             if let Seg::Arc { r, sw, .. } = bulge_to_seg(a.p(), b.p(), a.b) {
                 let large = if sw.abs() > std::f64::consts::PI { 1 } else { 0 };
-                let sweep = if sw > 0.0 { 1 } else { 0 };
+                let sweep = if sw > 0.0 { 0 } else { 1 }; // model y is up: CCW stays CCW on screen, SVG sweep 1 = clockwise
                 d.push_str(&format!("A{} {} 0 {} {} {}", fnum(r * PX), fnum(r * PX), large, sweep, pt_str(h, b.x, b.y)));
                 continue;
             }

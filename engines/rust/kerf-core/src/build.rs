@@ -603,20 +603,29 @@ fn anchor_bolt(i: &BuildIn) -> R {
         return Err(i.err("projection", format!("components/{}/projection: required, > 0 (inches above the placement point)", i.id)));
     }
     let hook = i.s("hook", "J");
-    let hook_len = 3.0;
-    let rc_hook = 1.0_f64.max(d * 1.5);
-    let mut path: Vec<Pt> = vec![pt(0.0, proj), pt(0.0, -embed)];
+    // exact geometry (SPEC 16): shaft on x = 0 from +projection to -embed; inside bend radius 1.5 d toward +x
+    let rc = 2.0 * d; // centerline bend radius = inside radius + d/2
+    let yb = -embed + d * 0.5; // centerline height of the bottom of the bend / leg
+    let mut path: Vec<Pt> = vec![pt(0.0, proj)];
     let mut head: Option<Region> = None;
     match hook.as_str() {
-        "L" => path.push(pt(rc_hook + hook_len, -embed)),
         "J" => {
-            path.push(pt(2.0 * rc_hook, -embed));
-            path.push(pt(2.0 * rc_hook, -embed + hook_len));
+            let hook_len: f64 = 2.0;
+            path.push(pt(0.0, yb));
+            path.push(pt(4.0 * d, yb));
+            path.push(pt(4.0 * d, (-embed + hook_len).max(yb + rc)));
         }
-        "headed" => head = Some(rect(-d, -embed - 0.3 * d, d, -embed + 0.3 * d)),
-        _ => {}
+        "L" => {
+            let hook_len = 3.0;
+            path.push(pt(0.0, yb));
+            path.push(pt(hook_len, yb));
+        }
+        "headed" => {
+            path.push(pt(0.0, -embed + 0.5 * d));
+            head = Some(rect(-d, -embed, d, -embed + 0.5 * d));
+        }
+        _ => path.push(pt(0.0, -embed)),
     }
-    let rc = 1.0_f64.max(d * 1.5);
     let outline = stroke_bar(&path, d, rc);
     let mut b = Built::new("steel");
     b.embedded = true;
@@ -637,13 +646,14 @@ fn anchor_bolt(i: &BuildIn) -> R {
         let nut_h = 0.875 * d;
         let nut_w = 1.5 * d;
         let wash_t = 0.125;
-        let wash_w = 3.0 * d;
-        let mut w = LPrism::new(Some("washer"), "steel", rect(-wash_w * 0.5, proj - nut_h - wash_t, wash_w * 0.5, proj - nut_h));
+        let wash_w = 2.25 * d;
+        let nut_top = proj - 0.25 * d;
+        let mut w = LPrism::new(Some("washer"), "steel", rect(-wash_w * 0.5, nut_top - nut_h - wash_t, wash_w * 0.5, nut_top - nut_h));
         w.pen = Some("steel".into());
         w.fill_solid = true;
         w.embedded = Some(true);
         b.prisms.push(w);
-        let mut n = LPrism::new(Some("nut"), "steel", rect(-nut_w * 0.5, proj - nut_h, nut_w * 0.5, proj));
+        let mut n = LPrism::new(Some("nut"), "steel", rect(-nut_w * 0.5, nut_top - nut_h, nut_w * 0.5, nut_top));
         n.pen = Some("steel".into());
         n.fill_solid = true;
         n.embedded = Some(true);
