@@ -6,7 +6,10 @@
 //   {type:"result", subtype, is_error, result, session_id, ...}          (final; its text was already streamed as an assistant block)
 //   {type:"text", text}                                                  (plain-text agents)
 //   {type:"exit", code, session_id?}                                     (added by the server)
-// Codex `exec --json` items are understood too (item.completed: agent_message / command_execution).
+// Also understood (recorded from the real CLIs, see test/fixtures/agent-*.jsonl):
+//   Grok Build `-p --output-format streaming-json`:  {type:"text", data:"<delta>"} · {type:"tool_call", toolCallId, toolName, rawInput}
+//        · {type:"tool_call_update", toolCallId, status:"completed", rawOutput:{output_for_prompt, exit_code}} · {type:"end", sessionId}
+//   Codex `exec --json`:  {type:"item.completed", item:{type:"agent_message", text} | {type:"command_execution", command, aggregated_output, exit_code}}
 import type { App } from '../app';
 import type { Workspace } from '../workspace/workspace';
 import { store, agentId, type AgentInfo } from './providers';
@@ -18,8 +21,10 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
 /** One-line card title for a tool call: Bash `kerf apply …` reads like a Kerf command, file tools like their verb. */
 export function toolTitle(name: string, input: Json): string {
   const clip = (s: string, n = 72) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
-  if (name === 'Bash' || name === 'shell' || name === 'command_execution') {
-    const cmd = str(input.command).trim();
+  name = TOOL_ALIAS[name] ?? name;
+  if (name === 'Bash') {
+    // codex wraps commands: /bin/bash -lc '<cmd>'
+    const cmd = str(input.command).trim().replace(/^(?:\/\S*\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/, '$2');
     const first = cmd.split('\n')[0].replace(/\s*<<-?\s*['"]?\w+['"]?\s*$/, ' <<').replace(/\s+/g, ' ');
     return clip(/^kerf\b/.test(first) ? first : `BASH ${first}`);
   }
@@ -27,6 +32,9 @@ export function toolTitle(name: string, input: Json): string {
   const rel = path.replace(/^.*\/(?=[^/]+\/[^/]+$)/, '');
   return clip(`${name.toUpperCase()} ${rel}`.trim());
 }
+
+/** the other agents' tool names, mapped to the Claude Code names the cards are written in */
+const TOOL_ALIAS: Record<string, string> = { run_terminal_command: 'Bash', shell: 'Bash', command_execution: 'Bash', read_file: 'Read', write: 'Write', search_replace: 'Edit', list_dir: 'LS' };
 
 function resultText(c: unknown): string {
   if (typeof c === 'string') return c;
@@ -88,7 +96,7 @@ export class AgentRunner {
       this.app.setClaude({ state: 'ERR', detail: (e as Error).message });
     } finally {
       if (this.runId) this.ws.onAgentRun(this.runId, null);
-      this.runId = null; this.busy = false; this.ws.uiRunActive = false;
+      this.runId = null; this.busy = false; this.ws.endUiRun();
       this.open.clear();
       if (this.app.claude.state === 'BUSY') this.app.setClaude({ state: 'OK' });
       this.emit({ type: 'done' });
@@ -98,7 +106,7 @@ export class AgentRunner {
   private handle(ev: unknown, agent: string, file: string | null) {
     if (!ev || typeof ev !== 'object') return;
     const e = ev as Json;
-    const sid = str(e.session_id);
+    const sid = str(e.session_id) || str(e.sessionId) || str(e.thread_id);
     if (sid) store.setSession(agent, file, sid);
     switch (e.type) {
       case 'system': break; // init: session id captured above
@@ -118,7 +126,24 @@ export class AgentRunner {
       case 'result':
         if (e.is_error === true) this.emit({ type: 'notice', level: 'err', text: `AGENT ERROR: ${str(e.result) || str(e.subtype) || 'run failed'}`.slice(0, 400) });
         break;
-      case 'text': if (str(e.text)) this.text(str(e.text) + (str(e.text).endsWith('\n') ? '' : '\n')); break;
+      case 'text':
+        if (typeof e.data === 'string') this.text(e.data); // streamed delta (Grok)
+        else if (str(e.text)) this.text(str(e.text) + (str(e.text).endsWith('\n') ? '' : '\n')); // a plain stdout line
+        break;
+      case 'tool_call': { // Grok
+        const raw = (e.rawInput ?? {}) as Json;
+        this.toolStart(str(e.toolCallId), str(e.toolName) || str(e.title), raw);
+        break;
+      }
+      case 'tool_call_update': {
+        const st = str(e.status);
+        if (st !== 'completed' && st !== 'failed') break;
+        const raw = (e.rawOutput ?? {}) as Json;
+        const content = Array.isArray(e.content) ? (e.content as Json[]).map((c) => str(((c.content ?? {}) as Json).text)).join('') : '';
+        const out = str(raw.output_for_prompt) || content;
+        this.toolEnd(str(e.toolCallId), out, st === 'completed' && (raw.exit_code === undefined || raw.exit_code === 0 || raw.exit_code === null));
+        break;
+      }
       case 'item.completed': { // codex exec --json
         const it = (e.item ?? {}) as Json;
         if (it.type === 'agent_message' && str(it.text)) this.text(str(it.text) + '\n');
@@ -129,6 +154,7 @@ export class AgentRunner {
         }
         break;
       }
+      case 'end': break; // Grok: session id captured above
       case 'exit': {
         this.sawExit = true;
         const code = typeof e.code === 'number' ? e.code : 0;
@@ -146,7 +172,7 @@ export class AgentRunner {
   private toolStart(id: string, name: string, input: Json) {
     const title = toolTitle(name, input);
     this.open.set(id, { title, input });
-    this.emit({ type: 'tool', id, phase: 'start', title, input: name === 'Bash' ? { command: str(input.command) } : input });
+    this.emit({ type: 'tool', id, phase: 'start', title, input: TOOL_ALIAS[name] === 'Bash' || name === 'Bash' ? { command: str(input.command) } : input });
   }
 
   private toolEnd(id: string, text: string, ok: boolean) {

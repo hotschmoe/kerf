@@ -46,7 +46,7 @@ export function seedDir(dir, files = ['truss-bearing-cmu', 'flush-beam-strap']) 
   return dir;
 }
 
-export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-ws-'))), port = 0, token = '', ui = path.join(here, '../dist-serve'), pollMs = 120 } = {}) {
+export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-ws-'))), port = 0, token = '', ui = path.join(here, '../dist-serve'), pollMs = 120, allowHttpProviders = ['custom'] } = {}) {
   const engine = await loadEngine();
   const state = { llm: [], agentRuns: [], stops: [], applies: [], sseClients: 0 };
   const clients = new Set();
@@ -247,7 +247,7 @@ export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpd
       let url;
       try { url = new URL(b.path.replace(/^\/?/, '/'), (b.base_url ?? '').replace(/\/+$/, '') + '/'); url = new URL((b.base_url ?? '').replace(/\/+$/, '') + b.path); } catch { return err(res, 400, 'bad_url', 'bad base_url/path'); }
       const local = /^(localhost|127\.|10\.|192\.168\.)/.test(url.hostname);
-      if (url.protocol !== 'https:' && !(b.provider === 'custom' && local && url.protocol === 'http:')) return err(res, 400, 'bad_url', 'only https:// URLs (http://localhost/LAN for custom)');
+      if (url.protocol !== 'https:' && !(allowHttpProviders.includes(b.provider) && local && url.protocol === 'http:')) return err(res, 400, 'bad_url', 'only https:// URLs (http://localhost/LAN for custom)');
       state.llm.push({ provider: b.provider, url: url.href, headers: { ...b.headers, authorization: b.headers?.authorization ? '<redacted>' : undefined, 'x-api-key': b.headers?.['x-api-key'] ? '<redacted>' : undefined }, key: b.headers?.authorization ?? b.headers?.['x-api-key'], body: b.body });
       const up = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...b.headers }, body: JSON.stringify(b.body) });
       const h = { 'content-type': up.headers.get('content-type') ?? 'application/json' };

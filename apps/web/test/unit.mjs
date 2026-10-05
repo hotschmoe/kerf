@@ -397,35 +397,57 @@ await t('agent: tool titles read like Kerf commands; summary status parsed from 
   assert.equal(ag.resultStatus('whatever', false), '✗ ERROR');
 });
 
-await t('agent: claude stream-json events (recorded from `claude -p --output-format stream-json --verbose`) become console events; session id persisted', async () => {
+const agentRun = async (fixture, agentIdStr, agentName, extra = []) => {
+  const lines = fs.readFileSync(path.join(web, 'test/fixtures', fixture), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const handlers = new Map();
+  const ws = { file: 'a.kerf.json', uiRunActive: false, endUiRun() { this.uiRunActive = false; }, online: true, on: () => () => {}, onAgentRun: (id, fn) => { fn ? handlers.set(id, fn) : handlers.delete(id); },
+    client: { async agentRun(agent, message, session, file) { ws.last = { agent, message, session, file }; setTimeout(() => { for (const l of lines) handlers.get('r1')?.(l); handlers.get('r1')?.({ type: 'exit', code: 0, ...extra[0] }); }, 5); return 'r1'; } } };
+  const app = { pendingDesignerEdits: ['EDIT: x'], setClaude() {}, claude: { state: 'OK' } };
+  const runner = new ag.AgentRunner(app, ws, () => [{ id: agentIdStr, name: agentName, available: true }]);
+  const ev = []; runner.on((e) => ev.push(e));
+  await runner.send('agent:' + agentIdStr, 'say done', 0);
+  return { ev, ws, app, runner };
+};
+const withStorage = async (fn) => {
   const ls = new Map();
   globalThis.localStorage = { getItem: (k) => ls.get(k) ?? null, setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k), get length() { return ls.size; }, key: (i) => [...ls.keys()][i] };
   globalThis.window = globalThis;
-  try {
-    const lines = fs.readFileSync(path.join(web, 'test/fixtures/agent-claude.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    const handlers = new Map();
-    const ws = { file: 'a.kerf.json', uiRunActive: false, online: true, on: () => () => {}, onAgentRun: (id, fn) => { fn ? handlers.set(id, fn) : handlers.delete(id); },
-      client: { async agentRun(agent, message, session, file) { ws.last = { agent, message, session, file }; setTimeout(() => { for (const l of lines) handlers.get('r1')?.(l); handlers.get('r1')?.({ type: 'exit', code: 0 }); }, 5); return 'r1'; } } };
-    const app = { pendingDesignerEdits: ['EDIT: x'], setClaude() {}, claude: { state: 'OK' } };
-    const runner = new ag.AgentRunner(app, ws, () => [{ id: 'claude', name: 'Claude Code', available: true }]);
-    const ev = []; runner.on((e) => ev.push(e));
-    await runner.send('agent:claude', 'say done', 0);
-    assert.deepEqual(app.pendingDesignerEdits, []);
-    assert.equal(ws.last.session, undefined);
-    assert.equal(prov.store.session('claude', 'a.kerf.json'), '4b0b2e28-49db-4776-86c3-09c85e775c85');
-    assert.deepEqual(ev.map((e) => e.type + (e.phase ? ':' + e.phase : '')), ['user', 'assistant-start', 'tool:start', 'tool:end', 'text', 'done']);
-    assert.equal(ev[1].who, 'LOCAL AGENT · CLAUDE CODE');
-    const end = ev.find((e) => e.phase === 'end');
-    assert.equal(end.title, 'BASH echo hello-kerf');
-    assert.match(end.detail, /hello-kerf/);
-    assert.equal(end.ok, true);
-    assert.equal(ev.find((e) => e.type === 'text').delta.trim(), 'done');
-    // second run resumes the session
-    await runner.send('agent:claude', 'again', 0);
-    assert.equal(ws.last.session, '4b0b2e28-49db-4776-86c3-09c85e775c85');
-    assert.equal(runner.busy, false);
-  } finally { delete globalThis.localStorage; delete globalThis.window; }
-});
+  try { await fn(); } finally { delete globalThis.localStorage; delete globalThis.window; }
+};
+const kinds = (ev) => ev.map((e) => e.type + (e.phase ? ':' + e.phase : ''));
+await t('agent: claude stream-json (recorded from `claude -p --output-format stream-json --verbose`) -> console events; session id persisted and resumed', () => withStorage(async () => {
+  const { ev, ws, app, runner } = await agentRun('agent-claude.jsonl', 'claude', 'Claude Code');
+  assert.deepEqual(app.pendingDesignerEdits, []);
+  assert.equal(ws.last.session, undefined);
+  assert.equal(prov.store.session('claude', 'a.kerf.json'), '4b0b2e28-49db-4776-86c3-09c85e775c85');
+  assert.deepEqual(kinds(ev), ['user', 'assistant-start', 'tool:start', 'tool:end', 'text', 'done']);
+  assert.equal(ev[1].who, 'LOCAL AGENT · CLAUDE CODE');
+  const end = ev.find((e) => e.phase === 'end');
+  assert.equal(end.title, 'BASH echo hello-kerf'); assert.match(end.detail, /hello-kerf/); assert.equal(end.ok, true);
+  assert.equal(ev.find((e) => e.type === 'text').delta.trim(), 'done');
+  await runner.send('agent:claude', 'again', 0);
+  assert.equal(ws.last.session, '4b0b2e28-49db-4776-86c3-09c85e775c85');
+  assert.equal(runner.busy, false);
+}));
+await t('agent: Grok Build streaming-json (recorded): token deltas concatenate without newlines; tool_call/tool_call_update pair; sessionId', () => withStorage(async () => {
+  const { ev } = await agentRun('agent-grok.jsonl', 'grok', 'Grok Build');
+  const text = ev.filter((e) => e.type === 'text').map((e) => e.delta).join('');
+  assert.equal(text, "I'll run that now.done");
+  const tools = ev.filter((e) => e.type === 'tool');
+  assert.deepEqual(tools.map((e) => e.phase), ['start', 'end']); // in_progress updates ignored
+  assert.equal(tools[1].title, 'BASH echo hello-kerf'); assert.equal(tools[1].ok, true); assert.match(tools[1].detail, /hello-kerf/);
+  assert.equal(prov.store.session('grok', 'a.kerf.json'), '01a10d31-6699-76b2-af23-809f3fe34e18');
+}));
+await t('agent: Codex exec --json (recorded): command_execution unwraps /bin/bash -lc; agent_message is text; thread id kept', () => withStorage(async () => {
+  const { ev } = await agentRun('agent-codex.jsonl', 'codex', 'Codex CLI');
+  assert.deepEqual(kinds(ev), ['user', 'assistant-start', 'tool:start', 'tool:end', 'text', 'done']);
+  assert.equal(ev.find((e) => e.phase === 'end').title, 'BASH echo hello-kerf');
+  assert.equal(prov.store.session('codex', 'a.kerf.json'), '01a10d31-9a8e-7a71-8ded-f4184b2892f1');
+}));
+await t('agent: a non-zero exit shows an actionable notice; unknown events are kept for debugging, not rendered', () => withStorage(async () => {
+  const { ev } = await agentRun('agent-codex.jsonl', 'codex', 'Codex CLI', [{ code: 3 }]);
+  assert.ok(ev.some((e) => e.type === 'notice' && /EXITED WITH CODE 3/.test(e.text)));
+}));
 
 await vite.close();
 console.log(`${n - failed}/${n} passed`);

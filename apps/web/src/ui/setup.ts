@@ -85,7 +85,9 @@ export function openSetup(anchor: HTMLElement, session: ChatSession): () => void
       form,
       h('div.acts',
         btn('SAVE', save, 'primary'),
-        btn('CLEAR KEY', () => { if (!isAgentChoice(choice)) { get(choice).key = ''; store.setKey(choice, ''); body(); session.refresh(); } }),
+        isAgentChoice(choice)
+        ? btn('NEW SESSION', () => { store.clearSessions(session.file); body(); })
+        : btn('CLEAR KEY', () => { get(choice).key = ''; store.setKey(choice, ''); body(); session.refresh(); }),
         btn(session.demo ? 'DEMO ACTIVE' : 'USE DEMO', () => { close(); session.setDemo(true); }),
       ),
     ),

@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a10d31-9a8e-7a71-8ded-f4184b2892f1"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -lc 'echo hello-kerf'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -lc 'echo hello-kerf'","aggregated_output":"hello-kerf\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"done"}}
+{"type":"turn.completed","usage":{"input_tokens":30375,"output_tokens":50}}

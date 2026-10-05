@@ -1,0 +1,10 @@
+{"type":"text","data":"I'll"}
+{"type":"text","data":" run"}
+{"type":"text","data":" that"}
+{"type":"text","data":" now."}
+{"type":"tool_call","toolCallId":"call-7f0f245c-0","title":"run_terminal_command","kind":"execute","status":"pending","toolName":"run_terminal_command","rawInput":{"command":"echo hello-kerf","description":"Echo the requested hello-kerf string"},"content":[],"locations":[]}
+{"type":"tool_call_update","toolCallId":"call-7f0f245c-0","status":null,"content":[{"type":"content","content":{"type":"text","text":"Echo the requested hello-kerf string"}}],"rawOutput":null,"locations":[]}
+{"type":"tool_call_update","toolCallId":"call-7f0f245c-0","status":"in_progress","content":[{"type":"content","content":{"type":"text","text":"hello-kerf\n"}}],"rawOutput":{"type":"Bash","output":[104,101,108,108,111,45,107,101,114,102,10],"output_for_prompt":"hello-kerf\n","exit_code":0,"command":"echo hello-kerf","truncated":false,"signal":null,"timed_out":false},"locations":[]}
+{"type":"tool_call_update","toolCallId":"call-7f0f245c-0","status":"completed","content":[{"type":"content","content":{"type":"text","text":"hello-kerf\n"}}],"rawOutput":{"type":"Bash","output":[104,101,108,108,111,45,107,101,114,102,10],"output_for_prompt":"exit: 0\nhello-kerf\n","exit_code":0,"command":"echo hello-kerf","truncated":false,"signal":null,"timed_out":false},"locations":[]}
+{"type":"text","data":"done"}
+{"type":"end","stopReason":"end_turn","sessionId":"01a10d31-6699-76b2-af23-809f3fe34e18","usage":{"input_tokens":7521,"output_tokens":90},"num_turns":2}

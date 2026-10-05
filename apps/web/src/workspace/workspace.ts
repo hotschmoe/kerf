@@ -24,6 +24,9 @@ export class Workspace implements Remote {
   lastAgentEdit: number | null = null;
   /** a run started from this UI is active: its own tool cards already tell the story, so log cards are suppressed */
   uiRunActive = false;
+  /** the server polls the folder every 500 ms, so log lines of a finished UI run trail its exit event */
+  private suppressUntil = 0;
+  endUiRun() { this.uiRunActive = false; this.suppressUntil = Date.now() + 2000; }
   private known: string[] = [];
   private listeners = new Map<string, Set<(a?: unknown) => void>>();
   private agentHandlers = new Map<string, (ev: unknown) => void>();
@@ -183,7 +186,7 @@ export class Workspace implements Remote {
         if (who === 'designer' || who === 'llm' || !e.entry) break; // our own writes (and other browser tabs); agents get cards
         this.lastAgentEdit = Date.now();
         this.emit('agent-edit');
-        if (!this.uiRunActive) this.emit('card', { file: e.file, entry: e.entry } satisfies AgentCard);
+        if (!this.uiRunActive && Date.now() >= this.suppressUntil) this.emit('card', { file: e.file, entry: e.entry } satisfies AgentCard);
         break;
       }
       case 'agent': {
