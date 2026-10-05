@@ -1,6 +1,6 @@
 # engines/zig: Kerf engine in Zig 0.16
 
-Status: feature complete for the v0.1 contract (SPEC 1-17) except keynote note mode (SPEC 6.3 step 6).
+Status: feature complete for the v0.1 contract (SPEC 1-17), including keynote note mode.
 Everything is std-only Zig 0.16; one source tree builds the importable module `kerf`, the CLI and the
 wasm32-freestanding ABI module. All three reference details export SVG, DXF (zero audit errors), PDF
 (vector only) and mesh, with 0 errors / 0 warnings. Goldens are in `tests/golden/<detail>/`.
@@ -161,9 +161,19 @@ an under-specified area, or a stale Rust build:
 - (spec) decide `3'-0 1/4"` vs `3'-1/4"` for feet with zero whole inches and a fraction; the two engines differ.
 - (rust) pen for the thin-region outline and break-line symbol (see differences 2-3).
 
+## Keynote mode
+
+`notes.mode: "keynote"` (style): the column shows a hexagonal tag with the note number (note order) at the same
+placement/leader as leader mode; the full texts go to a `KEYNOTES` legend block right of the drawing, top aligned
+with the crop. Verified by rendering the truss detail with a keynote style.
+
+## Fuzzing
+
+`tools/zig-engine/fuzz.py [N] [seed]` mutates the reference docs (drop/replace/scale values) and runs check/drawing/export/mesh/fmt/inspect
+on the safety-checked debug CLI: 2,300+ mutations x 3 calls, 0 crashes.
+
 ## Known gaps
 
-- Keynote note mode (`notes.mode = "keynote"`, tag + legend) is not implemented; the style key is parsed.
 - `solid` / `polygon` profiles with holes are not supported (profiles are single loops; the mesh ignores holes).
 - Hatch under dimension/label text is knocked out in SVG/PDF only (DXF HATCH uses the pattern, not lines).
 - PDF content streams are uncompressed (about 150 KB per sheet).

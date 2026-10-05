@@ -404,7 +404,21 @@ fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obstacles: []const [4
     const xl = @min(crop.x0, ext.x0);
     const wrap_n: usize = @intFromFloat(st.wrap_chars);
     var placed = try a.alloc(Placed, notes.len);
+    const keynote = st.notes_mode_keynote;
+    const tag_r = 0.14 * S;
     for (notes, 0..) |n, i| {
+        if (keynote) {
+            const num = try std.fmt.allocPrint(a, "{d}", .{i + 1});
+            const left_side_k = switch (env.spec.notes_side) {
+                .left => true,
+                .both => @abs(n.landing.x - crop.x0) < @abs(crop.x1 - n.landing.x),
+                .right => false,
+            };
+            const ls = try a.alloc([]const u8, 1);
+            ls[0] = num;
+            placed[i] = .{ .lines = ls, .width = 2 * tag_r, .height = 2 * tag_r, .landing = n.landing, .top = n.landing.y + tag_r, .x = 0, .left_side = left_side_k, .fixed = n.place != null };
+            continue;
+        }
         const lines = try wrap(a, n.text, wrap_n);
         var width: f64 = 0;
         for (lines) |l| width = @max(width, env.font.width(try asciiFold(a, l), h));
@@ -487,7 +501,18 @@ fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obstacles: []const [4
     }
     for (placed, 0..) |p, i| {
         const n = notes[i];
-        for (p.lines, 0..) |line, j| {
+        if (keynote) {
+            // hexagonal tag with the keynote number
+            const cx = p.x + tag_r;
+            const cy = p.top - tag_r;
+            var hex: [6]V2 = undefined;
+            for (0..6) |k| {
+                const ang = std.math.pi / 6.0 + @as(f64, @floatFromInt(k)) * std.math.pi / 3.0;
+                hex[k] = V2.init(cx + tag_r * @cos(ang), cy + tag_r * @sin(ang));
+            }
+            try out[i].append(a, try pathItem(env, "anno", n.id, &hex, true));
+            try out[i].append(a, try textItem(env, "notes", "anno", n.id, p.lines[0], cx, cy, h, 0, .center, .middle));
+        } else for (p.lines, 0..) |line, j| {
             try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, p.x, p.top - h - @as(f64, @floatFromInt(j)) * g.pitch, h, 0, .left, .baseline));
         }
         const l = leaderOf(p, g);
@@ -502,6 +527,32 @@ fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obstacles: []const [4
         const loops = try a.alloc([]const Pt, 1);
         loops[0] = tri;
         try out[i].append(a, .{ .fill = .{ .layer = layerName(env, "notes"), .src = n.id, .loops = loops } });
+    }
+}
+
+/// Keynote legend: numbered full texts in a block under the view (left aligned with the crop).
+fn legendItems(env: *Env, notes: []const NoteIn, result: *std.ArrayList(Item)) Allocator.Error!void {
+    const a = env.a;
+    const st = env.style;
+    const S = env.S;
+    const h = st.text_height_in * S;
+    const pitch = h * st.line_spacing;
+    var box = itemsBox(env.font, result.items);
+    box.addBox(env.crop);
+    const top = env.crop.y1;
+    const wrap_n: usize = @intFromFloat(st.wrap_chars * 1.25);
+    const x0 = box.x1 + 0.35 * S;
+    var y = top;
+    try result.append(a, try textItem(env, "notes", "anno", "legend", "KEYNOTES", x0, y - h, h, 0, .left, .baseline));
+    y -= pitch * 1.4;
+    for (notes, 0..) |n, i| {
+        const lines = try wrap(a, n.text, wrap_n);
+        const num = try std.fmt.allocPrint(a, "{d}", .{i + 1});
+        try result.append(a, try textItem(env, "notes", "anno", "legend", num, x0, y - h, h, 0, .left, .baseline));
+        for (lines, 0..) |line, j| {
+            try result.append(a, try textItem(env, "notes", "anno", "legend", line, x0 + 0.35 * S, y - h - @as(f64, @floatFromInt(j)) * pitch, h, 0, .left, .baseline));
+        }
+        y -= pitch * @as(f64, @floatFromInt(lines.len)) + 0.25 * pitch;
     }
 }
 
@@ -762,6 +813,7 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
         try result.appendSlice(a, its.items);
         if (note_slot.items[k]) |sl| try result.appendSlice(a, outs[sl].items);
     }
+    if (env.style.notes_mode_keynote and notes.items.len > 0) try legendItems(env, notes.items, &result);
     return result.items;
 }
 
