@@ -5,7 +5,7 @@ Links `engines/rust/kerf-core` **in-process** (no JSON boundary beyond the engin
 
 ## Status
 Feature complete for the DESIGN.md §7 checklist; see "Known gaps". Everything below is exercised by
-`cargo test` (17 tests), the headless screenshot runner, and the web build driven through `tools/shot.mjs`.
+`cargo test` (18 tests), the headless screenshot runner, and the web build driven through `tools/shot.mjs`.
 
 | area | state |
 |---|---|
@@ -26,7 +26,7 @@ Feature complete for the DESIGN.md §7 checklist; see "Known gaps". Everything b
 cd apps/egui
 cargo run -p kerf-egui --release                       # native window (Vulkan/Metal/DX12/GL via wgpu)
 cargo run --profile fast -- --screenshot out.png --doc truss --tab A   # headless frame -> PNG (CI smoke test)
-cargo test --profile fast                              # 17 tests: chat loop/transport, drive-the-real-engine demo, designer ops/undo, svgprep, section caps
+cargo test --profile fast                              # 18 tests: chat loop/transport, drive-the-real-engine demo, designer ops/undo, svgprep, section caps
 trunk build --release                                  # -> dist/ (WebGPU only); serve: node ../../tools/serve.mjs dist 8090
 node ../../tools/shot.mjs "http://localhost:8090/?doc=truss-bearing-cmu&tab=3d" shots/x.png --webgpu --wait-for "window.__ready===true"
 ```
@@ -42,7 +42,27 @@ Toolchain note: the box has no display; native verification is the headless runn
 headless chromium + SwiftShader WebGPU via `tools/shot.mjs --webgpu`.
 
 ## Measurements (aarch64, 12 cores; truss-bearing-cmu loaded)
-See the table at the bottom (kept current by the last build).
+
+| metric | value |
+|---|---|
+| wasm (`trunk build --release`, wasm-opt -Oz) | 4,689,977 B raw / 1,635,857 gzip-9 / 1,197,081 brotli-11 (+ glue js 103 KB / 17 KB / 14 KB) |
+| wasm with optional `--features webgl` (WebGL2 fallback, verified rendering in a browser without WebGPU) | 6,192,184 B raw / 2,238,882 gz / 1,649,498 br (+1.5 MB raw, +0.45 MB br) => OFF by default |
+| native release binary (lto fat, opt-level z, stripped) | 9.38 MB (14.6 MB before `strip=symbols`) |
+| wasm size breakdown (names build, 8.5 MB unstripped) | egui text stack (skrifa + harfrust + vello_cpu + fearless_simd + read_fonts) ~2.1 MB, kerf-core 0.32 MB, tiny-skia 0.27 MB, image png/jpeg 0.24 MB, wgpu+naga+std rest |
+| web startup to first frame (headless chromium, SwiftShader WebGPU, local server) | 2.0-2.45 s (`window.__ready_ms`) |
+| web UI pass per frame, detail loaded (`?bench=1`, `window.__perf`) | section 2.9-6 ms avg (steady ~1-3 ms), sheet ~3-6 ms, 3D ~10 ms; software GPU limits throughput to 30-60 fps |
+| native UI pass (release, Mali Vulkan, 1440x860) | first frame ~28-32 ms (engine compile + font atlas); steady 0.6-0.9 ms section/sheet, 0.4 ms 3D; tessellation 2.0 ms (34k verts) for the section view |
+| kerf-core in-process | load + check + drawing of truss-bearing-cmu: included in the first-frame figure above |
+
+Reproduce: `tools/size_report.sh apps/egui/dist/*.wasm`, `node tools/shot.mjs "...?doc=truss&bench=1" x.png --webgpu --wait-for "window.__ready===true" --wait-ms 5000 --eval "JSON.stringify([window.__perf,window.__ready_ms])"`, `./target/release/kerf-egui --screenshot x.png --doc truss --frames 30` (prints per-frame ms and tessellation).
+
+## Screenshots (apps/egui/shots/)
+`native-*.png` (headless wgpu, real Vulkan): truss-section, truss-3d-cut, truss-sheet, monopour-3d, chat-demo, notes, diff, narrow (720 px), empty, settings, hidpi (ppp 2).
+`web-*.png` (chromium + SwiftShader WebGPU): truss-section, truss-3d-cut, truss-sheet, monopour-section/3d, flush-iso, truss-notes, nowebgpu (notice), webgl-3d (WebGL2 build). `e2e-*.png`: frames from `tools/egui/e2e.mjs` (real mouse/keyboard: OPEN menu, viewport click, table click, param edit, tabs, typed chat -> demo tool loop, note drag, pasted image). `render-A.png`: the exact PNG `kerf_render` sends to Claude.
+
+## Tests
+`cargo test --profile fast` (18), `tools/egui/smoke.sh` (3 samples x 4 tabs headless + dxf_check/pdf_check on engine exports), `node tools/egui/e2e.mjs` (web, real input, 13 checks).
+Exports: engine DXF/PDF for truss view A pass `tools/dxf_check.py` and `tools/pdf_check.py`.
 
 ## Architecture
 ```
@@ -100,5 +120,5 @@ fixtures/      hand-written Drawing IR + Mesh fixtures + generator (used before 
 - No clipboard image paste on native (file dialog + drag-drop work); web paste is implemented in `index.html` and unit-driven only
   by queue (`window.__kerf_paste`), not by a real clipboard event in the headless browser.
 - File dialogs cannot be exercised on this headless box (native saves fall back to the working directory when no portal exists).
-- Dimension and label annotations are selectable but not editable in the inspector (read-only fields).
+- Dimension annotations are selectable but not editable; label text is. Only scalar component params are editable (objects/arrays such as `at` are read-only).
 - Iso view B has no hover/select tint for faces (only linework picking), same data limitation as above.

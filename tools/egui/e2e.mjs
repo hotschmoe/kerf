@@ -63,6 +63,13 @@ await click(1200, 224);              // 4th row of the parts table
 s = await until('table click selects', (x) => x.selected === 'sill_plate');
 check('inspector row click selects sill_plate', s.selected === 'sill_plate');
 await shot('e2e-2-selected.png');
+// edit a scalar param in the inspector (SIZE cell): select-all on focus, type, Enter => designer op through the engine
+await click(1330, 505);
+await page.keyboard.type('2x10', { delay: 30 });
+await page.keyboard.press('Enter');
+s = await until('param edit', (x) => x.log.some((l) => l.includes('sill_plate.size')), 5000);
+check('inspector param edit recorded as a DESIGNER op', s.log.some((l) => l === 'DESIGNER:Set sill_plate.size = 2x10'));
+await shot('e2e-2b-param-edited.png');
 
 // tabs
 await click(479, 56);                           // [3D]
