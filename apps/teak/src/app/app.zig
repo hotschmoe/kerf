@@ -104,3 +104,7 @@ pub fn effectMsg(_: *const Model, r: teak.EffectResult) ?Msg {
 pub fn resources(m: *const Model) []const teak.Resource {
     return m.res[0..m.res_len];
 }
+
+pub fn windowMsg(_: *const Model, w: f32, h: f32) ?Msg {
+    return .{ .window = .{ w, h } };
+}

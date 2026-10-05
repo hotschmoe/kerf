@@ -96,17 +96,37 @@ pub fn view(m: *const Model, cb: *Cb) void {
     cb.pushGroup(.{ .padding = 0, .gap = 0, .bg = th.paper, .align_cross = .stretch });
     header(m, cb);
     rule(cb, 2);
-    cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 0, .flex = 1, .align_cross = .stretch });
-    console(m, cb);
-    vrule(cb);
-    center(m, cb);
-    vrule(cb);
-    inspector(m, cb);
-    cb.popGroup();
+    if (m.narrow()) {
+        panelTabs(m, cb);
+        rule(cb, 1);
+        cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 0, .flex = 1, .align_cross = .stretch });
+        switch (m.panel) {
+            .console => console(m, cb),
+            .view => center(m, cb),
+            .inspector => inspector(m, cb),
+        }
+        cb.popGroup();
+    } else {
+        cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 0, .flex = 1, .align_cross = .stretch });
+        console(m, cb);
+        vrule(cb);
+        center(m, cb);
+        vrule(cb);
+        inspector(m, cb);
+        cb.popGroup();
+    }
     statusLine(m, cb);
     cb.popGroup();
 
     menus(m, cb);
+}
+
+fn panelTabs(m: *const Model, cb: *Cb) void {
+    cb.pushGroup(.{ .direction = .horizontal, .pad_x = 8, .pad_y = 4, .gap = 6, .align_cross = .end });
+    tab(cb, .{ .show_panel = .console }, "CONSOLE", m.panel == .console);
+    tab(cb, .{ .show_panel = .view }, "VIEWPORT", m.panel == .view);
+    tab(cb, .{ .show_panel = .inspector }, "INSPECTOR", m.panel == .inspector);
+    cb.popGroup();
 }
 
 // ── header ─────────────────────────────────────────────────────────
@@ -120,9 +140,9 @@ fn header(m: *const Model, cb: *Cb) void {
         cb.popGroup();
     }
     cb.popGroup();
-    cb.textStyled("DETAIL WORKSTATION", th.label, th.ink2);
+    if (!m.narrow()) cb.textStyled("DETAIL WORKSTATION", th.label, th.ink2);
     cb.spacer(1);
-    if (m.ready) {
+    if (m.ready and !m.narrow()) {
         const info = m.doc.info.?;
         cb.textStyled(fmt(cb, "DOC: {s}   REV {d}   STYLE: KERF-STANDARD", .{ upper(cb, info.id), m.doc.rev }), th.label, th.ink);
     } else {
@@ -138,7 +158,7 @@ fn header(m: *const Model, cb: *Cb) void {
 // ── console ────────────────────────────────────────────────────────
 
 fn console(m: *const Model, cb: *Cb) void {
-    cb.pushGroup(.{ .width = model.CONSOLE_W, .padding = 0, .gap = 0, .align_cross = .stretch });
+    cb.pushGroup(.{ .width = if (m.narrow()) 0 else model.CONSOLE_W, .padding = 0, .gap = 0, .flex = if (m.narrow()) 1 else 0, .align_cross = .stretch });
 
     cb.pushGroup(.{ .direction = .horizontal, .pad_x = 12, .pad_y = 8, .gap = 6, .align_cross = .center });
     label(cb, "OPERATOR CONSOLE");
@@ -174,7 +194,11 @@ fn keyCard(m: *const Model, cb: *Cb) void {
     rule(cb, 1);
 }
 
-const MSG_COLS = 38;
+fn msgCols(m: *const Model) usize {
+    if (!m.narrow()) return 38;
+    const c: f32 = (m.win_w - 64) / COL;
+    return @intFromFloat(std.math.clamp(c, 20, 100));
+}
 
 fn messages(m: *const Model, cb: *Cb) void {
     cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 0, .flex = 1, .align_cross = .stretch });
@@ -223,9 +247,9 @@ fn clock(m: *const Model, cb: *Cb, ts_ms: i64) []const u8 {
 fn designerCard(m: *const Model, cb: *Cb, ts_ms: i64, text: []const u8, n_images: u32, edits: ?[]const u8) void {
     cb.pushGroup(.{ .padding = 8, .gap = 3, .bg = th.paper, .border = th.ink, .align_cross = .stretch });
     cb.textStyled(fmt(cb, "DESIGNER  {s}", .{clock(m, cb, ts_ms)}), th.label, th.ink2);
-    for (wrap(arena(cb), text, MSG_COLS, 60)) |l| cb.textStyled(l, th.body, th.ink);
+    for (wrap(arena(cb), text, msgCols(m), 60)) |l| cb.textStyled(l, th.body, th.ink);
     if (n_images > 0) cb.textStyled(fmt(cb, "[{d} IMAGE{s} ATTACHED]", .{ n_images, if (n_images == 1) "" else "S" }), th.small, th.blue);
-    if (edits) |ed| for (wrap(arena(cb), ed, MSG_COLS + 4, 4)) |l| cb.textStyled(l, th.small, th.ink2);
+    if (edits) |ed| for (wrap(arena(cb), ed, msgCols(m) + 4, 4)) |l| cb.textStyled(l, th.small, th.ink2);
     cb.popGroup();
 }
 
@@ -234,13 +258,13 @@ fn claudeCard(m: *const Model, cb: *Cb, entries: []const llm.chatlog.Entry, base
     cb.textStyled(fmt(cb, "KERF/CLAUDE  {s}", .{clock(m, cb, entries[0].ts_ms)}), th.label, th.ink2);
     for (entries, 0..) |e, k| {
         switch (e.body) {
-            .assistant_text => |t| for (wrap(arena(cb), t, MSG_COLS, 200)) |l| cb.textStyled(l, th.body, th.ink),
+            .assistant_text => |t| for (wrap(arena(cb), t, msgCols(m), 200)) |l| cb.textStyled(l, th.body, th.ink),
             .tool => |t| toolLine(m, cb, t, base + k),
-            .notice => |t| for (wrap(arena(cb), t, MSG_COLS, 3)) |l| cb.textStyled(l, th.small, th.ink2),
-            .err => |er| for (wrap(arena(cb), er.message, MSG_COLS, 6)) |l| cb.textStyled(l, th.body, th.red),
+            .notice => |t| for (wrap(arena(cb), t, msgCols(m), 3)) |l| cb.textStyled(l, th.small, th.ink2),
+            .err => |er| for (wrap(arena(cb), er.message, msgCols(m), 6)) |l| cb.textStyled(l, th.body, th.red),
             .refusal => |t| {
                 cb.textStyled("REQUEST REFUSED", th.bold, th.red);
-                for (wrap(arena(cb), t, MSG_COLS, 8)) |l| cb.textStyled(l, th.body, th.red);
+                for (wrap(arena(cb), t, msgCols(m), 8)) |l| cb.textStyled(l, th.body, th.red);
             },
             .designer => {},
         }
@@ -277,10 +301,10 @@ fn toolLine(m: *const Model, cb: *Cb, t: llm.chatlog.Tool, idx: usize) void {
     if (!t.expanded) return;
     cb.pushGroup(.{ .padding = 4, .gap = 1, .bg = th.paper, .align_cross = .stretch });
     const pretty = llm.jsonw.pretty(arena(cb), t.input_json) catch t.input_json;
-    for (wrap(arena(cb), pretty, MSG_COLS + 2, 28)) |l| cb.textStyled(l, th.small, th.ink);
+    for (wrap(arena(cb), pretty, msgCols(m) + 2, 28)) |l| cb.textStyled(l, th.small, th.ink);
     if (t.result_text.len > 0) {
         cb.dividerStyled(.{ .thickness = 1, .color = th.ink2 });
-        for (wrap(arena(cb), t.result_text, MSG_COLS + 2, 16)) |l| cb.textStyled(l, th.small, th.ink2);
+        for (wrap(arena(cb), t.result_text, msgCols(m) + 2, 16)) |l| cb.textStyled(l, th.small, th.ink2);
     }
     cb.popGroup();
 }
@@ -402,7 +426,7 @@ fn scene3d(m: *const Model, cb: *Cb) void {
 // ── inspector ──────────────────────────────────────────────────────
 
 fn inspector(m: *const Model, cb: *Cb) void {
-    cb.pushGroup(.{ .width = model.INSPECTOR_W, .padding = 0, .gap = 0, .align_cross = .stretch });
+    cb.pushGroup(.{ .width = if (m.narrow()) 0 else model.INSPECTOR_W, .padding = 0, .gap = 0, .flex = if (m.narrow()) 1 else 0, .align_cross = .stretch });
     cb.pushGroup(.{ .direction = .horizontal, .pad_x = 12, .pad_y = 4, .gap = 4, .align_cross = .end });
     label(cb, "INSPECTOR");
     cb.spacer(1);

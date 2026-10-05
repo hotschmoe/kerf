@@ -175,6 +175,11 @@ pub fn update(m: *Model, msg: Msg) void {
         },
 
         // ── time + effects ──
+        .window => |wh| {
+            m.win_w = wh[0];
+            m.win_h = wh[1];
+        },
+        .show_panel => |p| m.panel = p,
         .submit => submit(m),
         .tick => tick(m),
         .fx => |r| effectResult(m, r),

@@ -22,6 +22,7 @@ pub const SCENE_ID: u32 = 2;
 pub const CONSOLE_SCROLL: u32 = 10;
 pub const INSPECTOR_SCROLL: u32 = 11;
 
+pub const Panel = enum { console, view, inspector };
 pub const Menu = enum { none, samples, export_, model };
 pub const InspTab = enum { parts, notes, diff, diag };
 pub const Focus = enum { none, chat, key, note_text, cite_code, cite_section, cite_title };
@@ -65,6 +66,8 @@ pub const Model = struct {
     // ── window ──
     win_w: f32 = 1440,
     win_h: f32 = 900,
+    /// Narrow windows (< 900 px) show one panel at a time (DESIGN §2).
+    panel: Panel = .view,
 
     // ── document ──
     doc: *session_mod.Session = undefined,
@@ -158,6 +161,10 @@ pub const Model = struct {
         return @import("boot.zig").init();
     }
 
+    pub fn narrow(self: *const Model) bool {
+        return self.win_w < 900;
+    }
+
     pub fn nowMs(self: *const Model) i64 {
         return self.wall_base_ms + @as(i64, self.ticks - self.wall_base_tick) * TICK_MS;
     }
@@ -240,6 +247,8 @@ pub const Msg = union(enum) {
     console_scroll_by: f32,
     console_extent: [2]f32,
     // time + effects
+    window: [2]f32,
+    show_panel: Panel,
     submit,
     tick,
     fx: teak.EffectResult,

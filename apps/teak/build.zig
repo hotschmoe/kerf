@@ -13,6 +13,9 @@ fn addSpecImports(b: *std.Build, mod: *std.Build.Module) void {
         .{ .name = "sample_truss_json", .path = "../../spec/details/truss-bearing-cmu.kerf.json" },
         .{ .name = "sample_slab_json", .path = "../../spec/details/monopour-slab-door-recess.kerf.json" },
         .{ .name = "sample_strap_json", .path = "../../spec/details/flush-beam-strap.kerf.json" },
+        .{ .name = "font_plex_regular", .path = "../../spec/fonts/IBMPlexMono-Regular.ttf" },
+        .{ .name = "font_plex_medium", .path = "../../spec/fonts/IBMPlexMono-Medium.ttf" },
+        .{ .name = "font_plex_bold", .path = "../../spec/fonts/IBMPlexMono-Bold.ttf" },
         .{ .name = "fixture_truss_drawing", .path = "fixtures/truss-bearing-cmu.drawing.json" },
         .{ .name = "fixture_slab_drawing", .path = "fixtures/monopour-slab-door-recess.drawing.json" },
         .{ .name = "fixture_strap_drawing", .path = "fixtures/flush-beam-strap.drawing.json" },
@@ -79,7 +82,11 @@ pub fn build(b: *std.Build) void {
         }),
     });
     addSpecImports(b, web_exe.root_module);
-    teak_build.linkWebWgpu(b, web_exe, .{});
+    teak_build.linkWebWgpu(b, web_exe, .{ .fonts = &.{
+        .{ .family = "IBM Plex Mono", .weight = 400, .path = b.path("../../spec/fonts/IBMPlexMono-Regular.ttf") },
+        .{ .family = "IBM Plex Mono", .weight = 500, .path = b.path("../../spec/fonts/IBMPlexMono-Medium.ttf") },
+        .{ .family = "IBM Plex Mono", .weight = 700, .path = b.path("../../spec/fonts/IBMPlexMono-Bold.ttf") },
+    } });
     // The entry file reads performance.now() (timing probe) through zunk.
     const web_zunk = web_teak.builder.dependency("zunk", .{ .target = wasm_target, .optimize = web_optimize });
     web_exe.root_module.addImport("zunk", web_zunk.module("zunk"));
@@ -104,6 +111,24 @@ pub fn build(b: *std.Build) void {
         run_ui.step.dependOn(&install_ui.step);
         if (b.args) |args| run_ui.addArgs(args);
         b.step("run-ui", "Run the native desktop app").dependOn(&run_ui.step);
+
+        // Headless screenshots (offscreen wgpu-native; needs a Vulkan device, not a display).
+        if (target.result.os.tag == .linux) {
+            const shot_exe = b.addExecutable(.{
+                .name = "kerf-teak-shot",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("src/shot_main.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{.{ .name = "kerf", .module = kerf_dep.module("kerf") }},
+                }),
+            });
+            addSpecImports(b, shot_exe.root_module);
+            teak_build.linkHeadless(b, shot_exe, .{});
+            const run_shot = b.addRunArtifact(shot_exe);
+            if (b.args) |args| run_shot.addArgs(args);
+            b.step("shot", "Headless PNG of the app: zig build shot -- out.png --sample truss --tab 3d").dependOn(&run_shot.step);
+        }
     }
 
     // ── Native benchmark of the engine-facing pipeline (ReleaseFast). ──
