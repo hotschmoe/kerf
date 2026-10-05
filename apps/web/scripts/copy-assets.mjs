@@ -25,7 +25,7 @@ fs.writeFileSync(path.join(pub, 'engine.txt'), engine);
 
 if (engine === 'fixture') {
   fs.mkdirSync(path.join(pub, 'fixtures'), { recursive: true });
-  for (const f of ['drawing-A.json', 'mesh.json', 'sheet-A.svg']) fs.copyFileSync(path.join(web, 'test/fixtures', f), path.join(pub, 'fixtures', f));
+  for (const f of ['drawing-A.json', 'mesh.json', 'sheet-A.svg', 'echo.wasm']) fs.copyFileSync(path.join(web, 'test/fixtures', f), path.join(pub, 'fixtures', f));
   fs.rmSync(path.join(pub, 'kerf.wasm'), { force: true });
 } else {
   const src = path.join(repo, 'engines', engine, 'dist', 'kerf.wasm');

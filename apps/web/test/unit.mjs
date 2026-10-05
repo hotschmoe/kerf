@@ -125,6 +125,20 @@ await t('harness: fallback blocks kept verbatim in history + console line', asyn
   assert.ok(ev.some((e) => e.type === 'fallback' && /A → B/.test(e.text)));
 });
 
+const { RawEngine, EngineCallError } = await load('/src/engine-raw.ts');
+await t('raw ABI loader: echo (utf-8), memory growth, error rc=1, bytes', async () => {
+  const eng = await RawEngine.load(fs.readFileSync(path.join(web, 'test/fixtures/echo.wasm')));
+  const v = eng.callJson('version', {});
+  assert.equal(v.engine, 'kerf-echo');
+  const obj = { s: 'h\u00e9llo \u2192 \u00bd"', n: [1, 2.5], big: 'y'.repeat(100000) };
+  assert.deepEqual(eng.callJson('echo', obj), obj);
+  const big = eng.callBytes('big', 5000000); // forces memory.grow; views must be re-read
+  assert.equal(big.length, 5000000);
+  assert.deepEqual(eng.callJson('echo', obj), obj); // still fine after growth
+  await assert.rejects(async () => eng.callJson('nope', {}), (e) => e instanceof EngineCallError && /boom/.test(e.message) && e.payload.error === 'boom');
+  assert.ok(eng.stats.length >= 4 && eng.stats.every((s) => s.ms >= 0));
+});
+
 await vite.close();
 console.log(`${n - failed}/${n} passed`);
 process.exit(failed ? 1 : 0);

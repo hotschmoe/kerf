@@ -144,6 +144,18 @@ await t('2D: click selects by src; dragging a note issues an update op with plac
   await page.close();
 });
 
+await t('engine loader in a Web Worker: calls, bytes, errors (echo.wasm)', async () => {
+  if (engine !== 'fixture') return; // echo.wasm only ships in the fixture build
+  const page = await open('demo=1&auto=0');
+  const r = await page.evaluate(async () => {
+    const e = await window.__kerf.loadEngine({ url: './fixtures/echo.wasm', worker: true });
+    const echo = await e.apply({ a: 1 }, null, [], 'llm'); // 'apply' is unknown to echo -> rc 1
+    return echo;
+  }).catch((err) => ({ err: String(err) }));
+  assert.ok(r.err && /boom/.test(r.err), JSON.stringify(r));
+  await page.close();
+});
+
 // ---------------------------------------------------------------- real SDK path against a local fake Messages API
 await t('real SDK transport: headers, body shape, streaming, tool loop, 401 / refusal / 529 retry', async () => {
   const fake = await startFake(0, sample);

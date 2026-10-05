@@ -92,7 +92,7 @@ async function boot() {
 
   // ---- debug / test hooks ----
   const w = window as unknown as Record<string, unknown>;
-  w.__kerf = { app, harness, vp, con, exportActive: (f: 'dxf' | 'pdf' | 'svg', save = true) => exportActive(app, f, save), engine, popup, version: 1, params: Object.fromEntries(params) };
+  w.__kerf = { app, harness, vp, con, exportActive: (f: 'dxf' | 'pdf' | 'svg', save = true) => exportActive(app, f, save), engine, popup, loadEngine, version: 1, params: Object.fromEntries(params) };
 
   // ---- startup actions from URL ----
   const sample = params.get('sample');
