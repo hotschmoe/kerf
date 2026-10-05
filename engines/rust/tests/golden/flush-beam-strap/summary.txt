@@ -1,0 +1,10 @@
+DOC flush-beam-strap  7 components  2 views  0 errors  1 warning
+ beam          lumber (2) 1.75x9.25 x wide run x L=3'-6"   x -3"..3'-3"      y 7'-3 7/8"..8'-1 1/8"
+ jack_studs    lumber 2x4 y narrow run y L=7'-2 3/8" [x2 x @ 1 1/2"] x -3"..0"         y 1 1/2"..7'-3 7/8"
+ king_studs    lumber 2x4 y narrow run y L=7'-8 5/8" [x2 x @ -1 1/2"] x -6"..-3"        y 1 1/2"..7'-10 1/8"
+ studs         lumber 2x4 y narrow run y L=7'-8 5/8" [x2 x @ -1'-4"] x -3'-1 3/4"..-1'-8 1/4" y 1 1/2"..7'-10 1/8"
+ lower_plate   lumber 2x4 x narrow run x L=3'-9"           x -4'-0"..-3"     y 7'-10 1/8"..7'-11 5/8"
+ upper_plate   lumber 2x4 x narrow run x L=3'-9"           x -4'-0"..-3"     y 7'-11 5/8"..8'-1 1/8"
+ strap         connector CS16 coil strap 16 ga x 1 1/4" lay edge x -1'-2"..8"      y 8'-1 1/8"..8'-1 3/16"
+INFO I_UNVERIFIED_CITE: 3 citation(s) await designer verification (notes: A/n_strap, A/n_splice, A/n_king). Citations print with a trailing * until verified.
+WARN W_VIEW_FIT: view A with notes and title needs 14.0402 x 4.8438 paper inches but the sheet area is 10.25 x 7 at scale 1 1/2" = 1'-0". Fix: use a smaller scale (e.g. 3/4"=1'-0") or shrink the crop / notes

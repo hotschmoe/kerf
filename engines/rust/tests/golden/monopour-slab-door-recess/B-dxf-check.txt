@@ -1,0 +1,17 @@
+OK  tests/golden/monopour-slab-door-recess//B.dxf
+version: AC1015 (R2000)  INSUNITS: 1 (inches)  measurement: imperial
+entities: 44  by type: {'HATCH': 5, 'LWPOLYLINE': 32, 'TEXT': 7}
+layers used:
+  S-ANNO-NOTE              {'TEXT': 3, 'LWPOLYLINE': 3, 'HATCH': 2}
+  S-ANNO-TTLB              {'LWPOLYLINE': 2, 'TEXT': 4}
+  S-DETL-BYND              {'LWPOLYLINE': 4}
+  S-DETL-CUT               {'LWPOLYLINE': 13}
+  S-DETL-PATT              {'HATCH': 3}
+  S-DETL-STL               {'LWPOLYLINE': 10}
+layers defined: ['0', 'S-DETL-CUT', 'S-DETL-BYND', 'S-DETL-PATT', 'S-DETL-STL', 'S-ANNO-NOTE', 'S-ANNO-TTLB', 'Defpoints']
+linetypes used: {'BYLAYER': 43, 'DASH_VAPOR': 1}  (defined: 5, see --json)
+text styles used: {'KERF': 7} fonts: {'KERF': 'romans.shx'}  (defined: 2)
+dimstyles defined: 1  blocks: []  paperspace: ['Layout1']
+hatch patterns: {'KERF-CONC': 1, 'KERF-GRAVEL': 1, 'EARTH': 1, 'SOLID': 2}
+extents: {'min': [-25.9808, -46.8126, 0.0], 'max': [60.0465, 33.0, 0.0], 'size': [86.0273, 79.8126, 0.0]}
+png: tests/golden/monopour-slab-door-recess//B-dxf.png

@@ -105,28 +105,40 @@ impl Font {
     }
 }
 
-/// Fold common non-ASCII typography to the printable ASCII the stroke font supports.
-pub fn ascii_fold(s: &str) -> String {
+/// Glyph folding (SPEC 16): fold characters the stroke font lacks; returns the folded text and the
+/// characters that had no fold and became `?`.
+pub fn fold_report(s: &str) -> (String, Vec<char>) {
     let mut out = String::with_capacity(s.len());
+    let mut bad = vec![];
     for c in s.chars() {
         match c {
-            '\u{2014}' | '\u{2013}' | '\u{2212}' | '\u{2010}' | '\u{2011}' => out.push('-'),
-            '\u{2018}' | '\u{2019}' | '\u{2032}' => out.push('\''),
-            '\u{201C}' | '\u{201D}' | '\u{2033}' => out.push('"'),
+            '\u{2014}' | '\u{2013}' | '\u{2012}' | '\u{2212}' | '\u{2010}' | '\u{2011}' => out.push('-'),
+            '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{2033}' => out.push('"'),
+            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{2032}' => out.push('\''),
             '\u{00D7}' => out.push('X'),
-            '\u{00BD}' => out.push_str("1/2"),
-            '\u{00BC}' => out.push_str("1/4"),
-            '\u{00BE}' => out.push_str("3/4"),
             '\u{00B0}' => out.push_str(" DEG"),
+            '\u{00BD}' => out.push_str(" 1/2"),
+            '\u{00BC}' => out.push_str(" 1/4"),
+            '\u{00BE}' => out.push_str(" 3/4"),
+            '\u{215B}' => out.push_str(" 1/8"),
+            '\u{215C}' => out.push_str(" 3/8"),
+            '\u{215D}' => out.push_str(" 5/8"),
+            '\u{215E}' => out.push_str(" 7/8"),
             '\u{00A0}' => out.push(' '),
-            '\u{2022}' | '\u{00B7}' => out.push('.'),
-            '\u{2026}' => out.push_str("..."),
-            '\u{00B1}' => out.push_str("+/-"),
             c if (' '..='~').contains(&c) => out.push(c),
-            _ => out.push('?'),
+            c => {
+                out.push('?');
+                if !bad.contains(&c) {
+                    bad.push(c);
+                }
+            }
         }
     }
-    out
+    (out, bad)
+}
+
+pub fn ascii_fold(s: &str) -> String {
+    fold_report(s).0
 }
 
 /// Word-wrap `text` to at most `chars` characters per line (never splitting inside a word unless too long).

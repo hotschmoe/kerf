@@ -219,17 +219,23 @@ struct IsoPrism {
     pen: Option<String>,
     material: String,
     embedded: bool,
+    cap_only: bool,
+    outline: Outline,
 }
 
 fn gather(model: &Model, vp: &ViewParams, crop: &Rect) -> Vec<IsoPrism> {
     let mut out = vec![];
     for c in &model.comps {
-        if !c.visible || c.failed {
+        if !c.visible || c.failed || vp.omit.contains(&c.id) {
             continue;
         }
+        let is_fill = c.ctype == "fill";
         for inst in &c.insts {
             for p in &inst.prisms {
                 if p.only == Only::Section {
+                    continue;
+                }
+                if is_fill && !(vp.cutaway && p.z0 < vp.cut_z && p.z1 > vp.cut_z) {
                     continue;
                 }
                 let (mut z0, mut z1, mut cap) = (p.z0, p.z1, false);
@@ -258,6 +264,8 @@ fn gather(model: &Model, vp: &ViewParams, crop: &Rect) -> Vec<IsoPrism> {
                         pen: p.pen.clone(),
                         material: p.material.clone(),
                         embedded: p.embedded,
+                        cap_only: is_fill,
+                        outline: p.outline,
                     });
                 }
             }
@@ -293,6 +301,25 @@ fn add_prism(scene: &mut Scene, pi: usize, ip: &IsoPrism, cut_pen_for_cap: bool)
     let bot_v: Vec<[f64; 3]> = loops[0].pts.iter().map(|p| [p.x, p.y, ip.z0]).collect();
     let bot_h: Vec<Vec<[f64; 3]>> = loops[1..].iter().map(|l| l.pts.iter().map(|p| [p.x, p.y, ip.z0]).collect()).collect();
     let ftop = mk_face(scene, [0.0, 0.0, 1.0], top_v, top_h);
+    if ip.cap_only {
+        // fills: only the cut face at cut_z; outline chain per `outline` (grade line)
+        for (li, fl) in loops.iter().enumerate() {
+            let n = fl.pts.len();
+            for i in 0..n {
+                let (a, b) = (fl.pts[i], fl.pts[(i + 1) % n]);
+                let d = (b - a).norm();
+                let keep = match ip.outline {
+                    Outline::Full => true,
+                    Outline::None => false,
+                    Outline::Top => -d.x > 0.01 && li == 0 || d.x < -0.01 && li == 0,
+                };
+                if keep {
+                    scene.edges.push(Edge { a: [a.x, a.y, ip.z1], b: [b.x, b.y, ip.z1], pen: "cut".into(), prism: pi, f1: ftop, f2: ftop, chain: pi * 16 + li });
+                }
+            }
+        }
+        return;
+    }
     let fbot = mk_face(scene, [0.0, 0.0, -1.0], bot_v, bot_h);
     let base_pen = ip.pen.clone();
     for (li, fl) in loops.iter().enumerate() {

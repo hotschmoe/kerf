@@ -37,7 +37,7 @@ pub fn markdown() -> String {
         out.push_str(&format!("## {}\n{}.\n\n", t.name, t.summary));
         out.push_str("| param | type | default | notes |\n|---|---|---|---|\n");
         for p in t.params {
-            out.push_str(&format!("| {}{} | {} | {} | {} |\n", p.name, if p.req { " *" } else { "" }, kind_name(&p.kind), if p.req { "required".to_string() } else { p.def.to_string() }, p.doc));
+            out.push_str(&format!("| {}{} | {} | {} | {} |\n", p.name, if p.req { " *" } else { "" }, kind_name(&p.kind).replace('|', "\\|"), if p.req { "required".to_string() } else { p.def.to_string() }, p.doc));
         }
         out.push_str(&format!("\nParts: {}\n\nAnchors: {}\n\nDraws: {}\n\n", t.parts, t.anchors, t.draws));
     }

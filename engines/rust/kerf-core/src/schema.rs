@@ -86,7 +86,7 @@ pub const TYPES: &[TypeSpec] = &[
             p("orient", K::Enum(&["upright", "flat"]), "upright", "run z only: upright = depth vertical, flat = depth horizontal"),
             p("face", K::Enum(&["wide", "narrow"]), "wide", "run x/y only: face seen looking -Z: wide = depth in plane, narrow = thickness in plane"),
             p("length", K::Len, "null", "required when run is x or y"),
-            p("plies", K::Int, "1", "built-up member; plies stack along X for run z, along Z otherwise"),
+            p("plies", K::Int, "1", "built-up member; plies stack along the thickness direction (X when upright, Y when flat; Z when run is x or y)"),
             p("treated", K::Bool, "false", "preservative treated (material wood_treated; W_UNTREATED_CONTACT otherwise)"),
             p("blocking", K::Bool, "false", "discontinuous member: cross-section mark is one diagonal instead of an X"),
             p("grade", K::Str, "null", "free text e.g. \"#2 DF-L\" for notes"),
@@ -685,7 +685,7 @@ pub fn canon_component(v: &Value, path: &str, errs: Errs) -> Value {
     Value::Object(order_keys(&out, &order))
 }
 
-pub const VIEW_KEYS: &[&str] = &["id", "kind", "number", "title", "scale", "cut_z", "crop", "from", "cutaway", "notes_side", "annotations"];
+pub const VIEW_KEYS: &[&str] = &["id", "kind", "number", "title", "scale", "cut_z", "crop", "from", "cutaway", "notes_side", "omit", "annotations"];
 
 fn canon_cite(v: &Value, path: &str, errs: Errs) -> Value {
     canon_fields(
@@ -847,6 +847,13 @@ pub fn canon_view(v: &Value, path: &str, errs: Errs) -> Value {
             }
             "from" => canon_kind(x, &K::Enum(&["front_right", "front_left", "back_right", "back_left"]), &kp, errs),
             "cutaway" => canon_kind(x, &K::Bool, &kp, errs),
+            "omit" => match x.as_array() {
+                Some(a) if a.iter().all(|e| e.is_string()) => x.clone(),
+                _ => {
+                    perr(errs, &kp, format!("{}: omit must be an array of component id strings, e.g. [\"roofing\"]", kp), None);
+                    x.clone()
+                }
+            },
             "notes_side" => canon_kind(x, &K::Enum(&["right", "left", "both"]), &kp, errs),
             "annotations" => match x.as_array() {
                 Some(a) => Value::Array(a.iter().enumerate().map(|(i, an)| canon_annotation(an, &format!("{}/{}", kp, i), errs)).collect()),

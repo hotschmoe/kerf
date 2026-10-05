@@ -102,12 +102,10 @@ fn run(args: Vec<String>) -> Result<u8, String> {
         }
         "catalog" => {
             let fmt = if a.markdown { "markdown" } else { "json" };
-            let out = output_text(api::call("catalog", &json!({"format": fmt}).to_string())?)?;
-            if a.markdown {
-                let v: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
-                print!("{}", v.as_str().unwrap_or(""));
-            } else {
-                println!("{}", out);
+            let out = api::call("catalog", &json!({"format": fmt}).to_string())?.bytes();
+            std::io::stdout().write_all(&out).map_err(|e| e.to_string())?;
+            if !a.markdown {
+                println!();
             }
             Ok(0)
         }

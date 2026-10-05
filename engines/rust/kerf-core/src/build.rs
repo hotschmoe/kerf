@@ -326,6 +326,8 @@ fn cmu_wall(i: &BuildIn) -> R {
     }
     let top_joint = i.b("top_joint", false);
     let h = n as f64 * 8.0 - 0.375 + if top_joint { 0.375 } else { 0.0 };
+    let units_per_course = ((i.run.1 - i.run.0) / 16.0).ceil().max(1.0) as usize + 1;
+    let unit_ok = units_per_course * n as usize * 4 <= 4000;
     let mut b = Built::new("cmu");
     let mut first_grouted: Option<f64> = None;
     for k in 1..=n {
@@ -334,8 +336,33 @@ fn cmu_wall(i: &BuildIn) -> R {
         let part = format!("course_{}", k);
         let is_bb = k > n - bb;
         let grouted = grout == "solid" || grout == "reinforced" || is_bb;
-        b.prisms.push(LPrism::new(Some(&part), "cmu", rect(0.0, y0, fs, y1)));
-        b.prisms.push(LPrism::new(Some(&part), "cmu", rect(w - fs, y0, w, y1)));
+        for (sx0, sx1) in [(0.0, fs), (w - fs, w)] {
+            let mut sh = LPrism::new(Some(&part), "cmu", rect(sx0, y0, sx1, y1));
+            sh.only = Only::Section;
+            b.prisms.push(sh);
+            // 3D/iso: running-bond units 15 5/8" long with 3/8" head joints (alternate courses offset 8")
+            if unit_ok {
+                let phase = if k % 2 == 0 { 8.0 } else { 0.0 };
+                let mut zs = i.run.0 - phase;
+                while zs < i.run.1 {
+                    let (u0, u1) = (zs.max(i.run.0), (zs + 15.625).min(i.run.1));
+                    if u1 - u0 > 1e-6 {
+                        let mut u = LPrism::new(Some(&part), "cmu", rect(sx0, y0, sx1, y1));
+                        u.only = Only::Solid3d;
+                        u.z_off = Some((u0, u1));
+                        b.prisms.push(u);
+                    }
+                    let (j0, j1) = ((zs + 15.625).max(i.run.0), (zs + 16.0).min(i.run.1));
+                    if j1 - j0 > 1e-6 {
+                        let mut j = LPrism::new(Some(&part), "mortar", rect(sx0, y0, sx1, y1));
+                        j.only = Only::Solid3d;
+                        j.z_off = Some((j0, j1));
+                        b.prisms.push(j);
+                    }
+                    zs += 16.0;
+                }
+            }
+        }
         if grouted {
             b.prisms.push(LPrism::new(Some(&part), "grout", rect(fs, y0, w - fs, y1)));
             if first_grouted.is_none() {

@@ -247,10 +247,10 @@ pub fn mesh_sweep(center: &[Pt], r: f64, z: f64) -> PrismMesh {
     m
 }
 
-pub fn mesh_json(model: &Model, style: &Style) -> Value {
+pub fn mesh_json(model: &Model, style: &Style, include_fills: bool) -> Value {
     let mut parts = vec![];
     for c in &model.comps {
-        if c.failed || !c.visible {
+        if c.failed || !c.visible || (c.ctype == "fill" && !include_fills) {
             continue;
         }
         for inst in &c.insts {

@@ -1,0 +1,19 @@
+OK  tests/golden/flush-beam-strap//A.dxf
+version: AC1015 (R2000)  INSUNITS: 1 (inches)  measurement: imperial
+entities: 83  by type: {'HATCH': 9, 'LWPOLYLINE': 46, 'TEXT': 28}
+layers used:
+  S-ANNO-DIMS              {'LWPOLYLINE': 9, 'TEXT': 3}
+  S-ANNO-NOTE              {'TEXT': 20, 'LWPOLYLINE': 8, 'HATCH': 7}
+  S-ANNO-TTLB              {'LWPOLYLINE': 3, 'TEXT': 5}
+  S-DETL-BRKL              {'LWPOLYLINE': 5}
+  S-DETL-BYND              {'LWPOLYLINE': 2}
+  S-DETL-CUT               {'LWPOLYLINE': 19}
+  S-DETL-PATT              {'HATCH': 1}
+  S-DETL-STL               {'HATCH': 1}
+layers defined: ['0', 'S-DETL-CUT', 'S-DETL-BYND', 'S-DETL-PATT', 'S-DETL-STL', 'S-ANNO-NOTE', 'S-ANNO-DIMS', 'S-ANNO-TTLB', 'S-DETL-BRKL', 'Defpoints']
+linetypes used: {'BYLAYER': 83}  (defined: 5, see --json)
+text styles used: {'KERF': 28} fonts: {'KERF': 'romans.shx'}  (defined: 2)
+dimstyles defined: 1  blocks: []  paperspace: ['Layout1']
+hatch patterns: {'KERF-LAM': 1, 'SOLID': 8}
+extents: {'min': [-61.1786, 65.0681, 0.0], 'max': [48.8233, 102.25, 0.0], 'size': [110.0019, 37.1819, 0.0]}
+png: tests/golden/flush-beam-strap//A-dxf.png

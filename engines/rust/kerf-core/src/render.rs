@@ -62,6 +62,20 @@ pub fn render_view(doc: &Value, model: &Model, view_id: &str, style: &Style) -> 
     }
     title_items(style, &info, &tcrop, s, &vp.id, &mut items);
 
+    {
+        let mut texts: Vec<(String, String)> = vec![("view title".to_string(), vp.title.clone()), ("document title".to_string(), model.title.clone())];
+        for an in &vp.annotations {
+            let id = an.get("id").and_then(|x| x.as_str()).unwrap_or("");
+            if let Some(t) = an.get("text").and_then(|x| x.as_str()) {
+                texts.push((format!("annotation {}", id), t.to_string()));
+            }
+        }
+        for (what, t) in texts {
+            for c in crate::font::fold_report(&t).1 {
+                diags.push(Diag::info("I_GLYPH", format!("{} contains '{}' (U+{:04X}), which the stroke font lacks; it is drawn as '?'. Use plain ASCII.", what, c, c as u32)).path(format!("views/{}", vp.id)));
+            }
+        }
+    }
     let mut d = Drawing {
         doc: model.id.clone(),
         view: vp.id.clone(),

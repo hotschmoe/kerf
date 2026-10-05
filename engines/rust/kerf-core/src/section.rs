@@ -362,7 +362,7 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
     let mut cuts: Vec<&Prism> = vec![];
     let mut beyonds: Vec<&Prism> = vec![];
     for c in &model.comps {
-        if !c.visible || c.failed {
+        if !c.visible || c.failed || vp.omit.contains(&c.id) {
             continue;
         }
         for inst in &c.insts {

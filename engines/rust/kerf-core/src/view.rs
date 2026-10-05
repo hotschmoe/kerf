@@ -20,6 +20,7 @@ pub struct ViewParams {
     pub from: String,
     pub cutaway: bool,
     pub notes_side: String,
+    pub omit: Vec<String>,
     pub annotations: Vec<Value>,
 }
 
@@ -60,6 +61,7 @@ pub fn view_params(v: &Value, model: &Model) -> Result<ViewParams, Diag> {
         from: v.get("from").and_then(|i| i.as_str()).unwrap_or("front_right").to_string(),
         cutaway: v.get("cutaway").and_then(|i| i.as_bool()).unwrap_or(false),
         notes_side,
+        omit: v.get("omit").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()).unwrap_or_default(),
         annotations: v.get("annotations").and_then(|a| a.as_array()).cloned().unwrap_or_default(),
     })
 }

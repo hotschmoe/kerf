@@ -93,10 +93,10 @@ pub fn call(fn_name: &str, input: &str) -> Result<Output, String> {
         "version" => Ok(Output::Json(json::compact(&version_json()))),
         "catalog" => {
             let fmt = inp.get("format").and_then(|f| f.as_str()).unwrap_or("json");
-            Ok(Output::Json(match fmt {
-                "markdown" | "md" => json::compact(&Value::String(crate::catalog::markdown())),
-                _ => json::compact(&crate::catalog::json()),
-            }))
+            Ok(match fmt {
+                "markdown" | "md" => Output::Bytes(crate::catalog::markdown().into_bytes()),
+                _ => Output::Json(json::compact(&crate::catalog::json())),
+            })
         }
         "fmt" => {
             let doc = doc_of(&inp)?;
@@ -159,7 +159,7 @@ pub fn call(fn_name: &str, input: &str) -> Result<Output, String> {
         }
         "mesh" => {
             let l = load(&doc_of(&inp)?, style_of(&inp)?);
-            Ok(Output::Json(json::compact(&crate::mesh::mesh_json(&l.model, &l.style))))
+            Ok(Output::Json(json::compact(&crate::mesh::mesh_json(&l.model, &l.style, inp.get("include_fills").and_then(|b| b.as_bool()).unwrap_or(false)))))
         }
         "export" => {
             let l = load(&doc_of(&inp)?, style_of(&inp)?);

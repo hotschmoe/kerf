@@ -54,13 +54,13 @@ fn text(style: &Style, pen: &str, src: &str, s: &str, x: f64, y: f64, h: f64, al
         layer: layer_name(style, "title"),
         pen: pen.into(),
         src: src.into(),
-        geo: Geo::Strokes(font().strokes(s, h, x, y, 0.0, align, valign)),
+        geo: Geo::Strokes(font().strokes(&crate::font::ascii_fold(s), h, x, y, 0.0, align, valign)),
     }
 }
 
 /// Fit text into a width by shrinking its height (down to 60%).
 fn fit_h(s: &str, h: f64, maxw: f64) -> f64 {
-    let w = font().width(s, h);
+    let w = font().width(&crate::font::ascii_fold(s), h);
     if w <= maxw { h } else { (h * maxw / w).max(h * 0.6) }
 }
 

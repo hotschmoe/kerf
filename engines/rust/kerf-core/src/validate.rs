@@ -205,6 +205,18 @@ pub fn validate(doc: &Value, model: &Model, style: &Style, diags: &mut Vec<Diag>
     if let Some(views) = doc.get("views").and_then(|v| v.as_array()) {
         for v in views {
             let vid = v.get("id").and_then(|i| i.as_str()).unwrap_or("");
+            if let Some(om) = v.get("omit").and_then(|o| o.as_array()) {
+                for o in om.iter().filter_map(|x| x.as_str()) {
+                    if model.comp(o).is_none() {
+                        let ids: Vec<&str> = model.comps.iter().map(|c| c.id.as_str()).collect();
+                        let fix = match nearest(o, ids.iter().copied()) {
+                            Some(n) => format!("did you mean \"{}\"?", n),
+                            None => format!("components: {}", ids.join(", ")),
+                        };
+                        diags.push(Diag::error("E_REF_UNKNOWN", format!("view {}: omit lists unknown component \"{}\".", vid, o)).path(format!("views/{}/omit", vid)).fix(fix));
+                    }
+                }
+            }
             let Some(anns) = v.get("annotations").and_then(|a| a.as_array()) else { continue };
             let mut seen: Vec<&str> = vec![];
             for an in anns {

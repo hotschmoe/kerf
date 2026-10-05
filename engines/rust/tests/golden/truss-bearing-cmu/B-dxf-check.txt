@@ -1,0 +1,17 @@
+OK  tests/golden/truss-bearing-cmu//B.dxf
+version: AC1015 (R2000)  INSUNITS: 1 (inches)  measurement: imperial
+entities: 160  by type: {'HATCH': 12, 'LWPOLYLINE': 140, 'TEXT': 8}
+layers used:
+  S-ANNO-NOTE              {'TEXT': 4, 'LWPOLYLINE': 4, 'HATCH': 3}
+  S-ANNO-TTLB              {'LWPOLYLINE': 2, 'TEXT': 4}
+  S-DETL-BYND              {'LWPOLYLINE': 27}
+  S-DETL-CUT               {'LWPOLYLINE': 86}
+  S-DETL-PATT              {'HATCH': 9}
+  S-DETL-STL               {'LWPOLYLINE': 21}
+layers defined: ['0', 'S-DETL-CUT', 'S-DETL-BYND', 'S-DETL-PATT', 'S-DETL-STL', 'S-ANNO-NOTE', 'S-ANNO-TTLB', 'Defpoints']
+linetypes used: {'BYLAYER': 160}  (defined: 5, see --json)
+text styles used: {'KERF': 8} fonts: {'KERF': 'romans.shx'}  (defined: 2)
+dimstyles defined: 1  blocks: []  paperspace: ['Layout1']
+hatch patterns: {'ANSI31': 4, 'KERF-CONC': 4, 'KERF-SAND': 1, 'SOLID': 3}
+extents: {'min': [-72.9249, -40.8126, 0.0], 'max': [58.7076, 40.0018, 0.0], 'size': [131.6325, 80.8144, 0.0]}
+png: tests/golden/truss-bearing-cmu//B-dxf.png
