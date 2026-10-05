@@ -737,3 +737,22 @@ whose metrics are close; minor differences in CAD are acceptable.
   `— – ‒ −` → `-`, `“ ” „` → `"`, `‘ ’ ‚` → `'`, `×` → `X`, `°` → ` DEG` (the font has no degree
   sign), `½ ¼ ¾ ⅛ ⅜ ⅝ ⅞` → ` 1/2` etc., NBSP → space. Anything else outside ASCII 32–126 → `?`
   with an `I_GLYPH` diagnostic naming the character. DXF TEXT receives the folded string too.
+
+## 17. LLM ergonomics (v0.1.1, from dogfooding)
+
+- **`until` instead of `length`** (lumber run x/y, panel, and any other member that takes `length`):
+  `"until": "<Ref>"` makes the member grow from its placement anchor along its run axis until
+  its far end reaches the Ref's coordinate on that axis (x for run x, y for run y). The engine
+  computes `length` (and reports it in the summary, e.g. `L=7'-0 3/4" (until lower_plate@bottom_left)`).
+  Growth direction: away from the anchor (anchor `top_*` grows down, `bottom_*` grows up, `*_left` grows
+  right, `*_right` grows left; center anchors are an error). Giving both `length` and `until` ⇒ `E_PARAM`.
+  `until` adds a placement dependency (DAG). Example: a jack stud is
+  `{"at": {"anchor": "top_left", "to": "beam@bottom_left"}, "until": "bottom_plate@top_left"}`.
+- **`W_NEAR_MISS`** (warning): two non-fill, non-annotation components whose extents overlap on
+  one axis but leave a gap of 1/32"–3" between facing edges on the other axis (e.g. a stud ending
+  3" below the plate it obviously meant to reach). Message names both ids, the gap in ft-in, and
+  the fix (`set length to …` or `use "until": "<other>@<anchor>"`). Skip pairs that are already
+  separated by a third component in the gap.
+- **Catalog lists hardware models:** the `connector` entry lists every model in the engine's
+  hardware table with kind, width, gauge, and length (one line each), so the LLM knows which
+  models auto-fill.
