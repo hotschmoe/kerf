@@ -59,7 +59,7 @@ Bundle (dist JS/CSS/wasm/fonts, `tools/size_report.sh`; raw / gzip-9 / brotli-11
 | stack | initial JS (app shell) | CSS | fonts (3 woff2) | wasm | lazy 3D chunk (three.js) | lazy SDK chunk |
 |---|---|---|---|---|---|---|
 | rust-ts | 80.5 kB / 30.8 / 27.2 | 17.6 / 4.4 / 3.9 | 25.6 / 25.8 / 25.7 | 878.8 kB / 325.3 / 258.5 | 566.5 / 139.8 / 114.8 | 206.8 / 49.8 / 40.4 |
-| zig-ts | same JS/CSS/fonts | | | see ZIGNUM | same | same |
+| zig-ts | same JS/CSS/fonts | | | 581.2 kB / see zig report | same | same |
 Everything the first render needs: shell JS + CSS + fonts + wasm. three.js and the Anthropic SDK are only fetched when the 3D tab / a real
 API call is used.
 
@@ -93,7 +93,12 @@ export DXF/PDF/SVG, save/open `.kerf.json`; samples menu.
 - `kerf_render` PNG uses my canvas renderer, which should match the engine SVG within pen/dash rounding but is not byte-identical to the SVG export.
 
 ## REQUESTS
-(none yet)
+- engines/zig: `drawing` for `kind:"iso"` views returns zero items (view B of all three details); rust renders iso. The UI shows an explicit
+  "engine returned no drawing items" panel for it.
+- engines (both): section views place the dimension text/line close to or over the title for `truss-bearing-cmu` view A in some builds (e.g. `7 5/8"` sits
+  right above the bubble/title); please keep the title below the lowest dimension text.
+- engines (rust): title text uses an em dash in some details ("FLUSH BEAM AT TOP PLATE — ELEVATION"): older builds drew `?`. The web app folds
+  such characters client-side, but exporters should fold them as well.
 
 ## Known gaps
 (see end of file; kept current)

@@ -114,6 +114,7 @@ export function mountViewport(app: App, el: HTMLElement) {
         if (t !== token) return;
         const sameView = vp2.model?.drawing.view === model.drawing.view && vp2.model?.drawing.doc === model.drawing.doc;
         vp2.setModel(model, { keepView: sameView });
+        if (model.drawing.items.length === 0) showMsg(`THE ENGINE RETURNED NO DRAWING ITEMS FOR VIEW ${app.activeView} (${(app.view?.kind ?? '').toUpperCase()}).${model.drawing.diagnostics?.length ? ' ' + model.drawing.diagnostics[0].message : ''}`.slice(0, 260), true);
         vp2.setSelection(app.selection?.id ?? null);
         const first = !app.perf.firstRender;
         if (first) requestAnimationFrame(() => { app.perf.firstRender = performance.now(); app.perf.drawingPaintMs = vp2.lastPaintMs; (window as unknown as { __rendered?: boolean }).__rendered = true; });
