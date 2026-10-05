@@ -1,0 +1,13 @@
+[package]
+name = "kerf-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kerf"
+path = "src/main.rs"
+
+[dependencies]
+kerf-core = { path = "../kerf-core" }
+serde_json = { workspace = true }

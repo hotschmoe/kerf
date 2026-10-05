@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["kerf-core", "kerf-cli", "kerf-wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+i_overlay = "9"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+panic = "unwind"
