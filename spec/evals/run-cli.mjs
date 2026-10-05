@@ -47,7 +47,7 @@ const agents = {
       argv: [
         "-p", msg, "--output-format", "stream-json", "--verbose",
         "--permission-mode", "acceptEdits",
-        "--allowedTools", "Bash(kerf:*)", "Bash(kerf *)", "Read", "Write", "Edit",
+        "--allowedTools", "Bash(kerf:*)", "Bash(kerf *)", "Bash(cat *)", "Bash(ls *)", "Bash(head *)", "Bash(tail *)", "Bash(grep *)", "Bash(jq *)", "Read", "Write", "Edit", "Glob", "Grep",
         ...(model ? ["--model", model] : []),
       ],
     }),
