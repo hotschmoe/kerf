@@ -80,7 +80,9 @@ pub fn build(b: *std.Build) void {
     });
     addSpecImports(b, web_exe.root_module);
     teak_build.linkWebWgpu(b, web_exe, .{});
-    _ = web_teak;
+    // The entry file reads performance.now() (timing probe) through zunk.
+    const web_zunk = web_teak.builder.dependency("zunk", .{ .target = wasm_target, .optimize = web_optimize });
+    web_exe.root_module.addImport("zunk", web_zunk.module("zunk"));
 
     // ── Native desktop (X11/Win32 + wgpu-native) ──
     if (teak_build.hasNativeBackend(target.result.os.tag)) {
@@ -102,5 +104,23 @@ pub fn build(b: *std.Build) void {
         run_ui.step.dependOn(&install_ui.step);
         if (b.args) |args| run_ui.addArgs(args);
         b.step("run-ui", "Run the native desktop app").dependOn(&run_ui.step);
+    }
+
+    // ── Native benchmark of the engine-facing pipeline (ReleaseFast). ──
+    {
+        const bench_mod = b.createModule(.{
+            .root_source_file = b.path("src/bench.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .link_libc = true,
+            .imports = &.{
+                .{ .name = "teak", .module = teak_dep.module("teak") },
+                .{ .name = "kerf", .module = kerf_dep.module("kerf") },
+            },
+        });
+        addSpecImports(b, bench_mod);
+        const bench_exe = b.addExecutable(.{ .name = "kerf-teak-bench", .root_module = bench_mod });
+        const run_bench = b.addRunArtifact(bench_exe);
+        b.step("bench", "Time load / drawing / tessellation / PNG render / mesh / PDF export per sample").dependOn(&run_bench.step);
     }
 }

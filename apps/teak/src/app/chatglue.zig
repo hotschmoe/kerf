@@ -241,7 +241,7 @@ fn toolRender(ctx: *anyopaque, a: std.mem.Allocator, view: []const u8, mode: []c
             defer gpa.free(json);
             var d = draw.ir.parse(gpa, json) catch return .{ .ok = false, .caption = "the engine's drawing could not be parsed" };
             defer d.deinit();
-            const png = draw.renderPng(gpa, &d, .{ .width_px = 1400 }) catch return .{ .ok = false, .caption = "rasterizing failed" };
+            const png = draw.render.renderPngWithFont(gpa, &d, &m.vp.font, .{ .width_px = 1400 }) catch return .{ .ok = false, .caption = "rasterizing failed" };
             defer gpa.free(png);
             // Console thumbnail of exactly what Claude is shown.
             if (draw.render.renderImage(gpa, &d, &draw_font(m), .{ .width_px = model.THUMB_W, .max_height_px = 400, .margin_px = 8 })) |timg| {
