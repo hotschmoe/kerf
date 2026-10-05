@@ -3,26 +3,28 @@
 const std = @import("std");
 const json = @import("json.zig");
 const catalog = @import("catalog.zig");
+const schema = @import("schema.zig");
 const Allocator = std.mem.Allocator;
 
-const root_keys = [_][]const u8{ "kerf", "id", "title", "meta", "run", "components", "views" };
+const root_keys = schema.keys(&schema.doc);
 const meta_keys = [_][]const u8{ "author", "discipline", "classification", "jurisdiction", "tags", "forked_from", "sheet", "date" };
 const class_keys = [_][]const u8{ "uniformat", "masterformat" };
 const juris_keys = [_][]const u8{ "code", "edition" };
-const common_keys = [_][]const u8{ "id", "type", "label", "material", "at", "rotate", "slope", "mirror", "z", "array", "embedded", "visible", "shown" };
-const at_keys = [_][]const u8{ "anchor", "to", "offset" };
+const common_keys = [_][]const u8{ "id", "type", "label", "material", "at", "rotate", "slope", "mirror", "z", "array", "embedded", "visible", "shown", "acknowledge" };
+const at_keys = schema.keys(&schema.at);
+const ack_keys = schema.keys(&schema.ack);
 const ref_keys = [_][]const u8{ "ref", "offset" };
-const array_keys = [_][]const u8{ "axis", "count", "spacing" };
+const array_keys = schema.keys(&schema.array);
 const recess_keys = [_][]const u8{ "width", "depth", "from_edge" };
 const cover_keys = [_][]const u8{ "bottom", "sides", "top", "parts" };
 const place_keys = [_][]const u8{ "in", "face", "cover", "count", "side_cover", "axis", "station" };
 const profile_keys = [_][]const u8{ "rect", "circle", "points" };
-const view_keys = [_][]const u8{ "id", "kind", "number", "title", "scale", "cut_z", "crop", "from", "cutaway", "notes_side", "annotations" };
+const view_keys = schema.keys(&schema.view);
 const crop_keys = [_][]const u8{ "x", "y" };
-const cite_keys = [_][]const u8{ "code", "edition", "section", "title", "status" };
-const note_keys = [_][]const u8{ "id", "type", "text", "target", "at", "place", "cite" };
-const dim_keys = [_][]const u8{ "id", "type", "from", "to", "dir", "offset", "text" };
-const label_keys = [_][]const u8{ "id", "type", "text", "at", "offset" };
+const cite_keys = schema.keys(&schema.cite);
+const note_keys = schema.keys(&schema.note);
+const dim_keys = schema.keys(&schema.dim);
+const label_keys = schema.keys(&schema.label);
 
 var type_scratch: [64][]const u8 = undefined;
 
@@ -76,6 +78,7 @@ pub fn order(ctx: *const json.KeyCtx) []const []const u8 {
         if (eql(last, "place")) return &place_keys;
         if (eql(last, "profile")) return &profile_keys;
     }
+    if (p.len == 4 and eql(p[0], "components") and eql(p[2], "acknowledge") and eql(last, "[]")) return &ack_keys;
     // {ref, offset} objects anywhere below components
     if (eql(p[0], "components") and p.len >= 3) {
         for (ctx.obj) |m| if (eql(m.key, "ref")) return &ref_keys;
@@ -108,4 +111,14 @@ pub fn write(a: Allocator, doc: json.Value) Allocator.Error![]u8 {
     try pw.write(doc, 0);
     try out.append(a, '\n');
     return out.items;
+}
+
+test "canonical common key order covers every catalog common field (no drift)" {
+    for (catalog.common) |c| {
+        var found = false;
+        for (common_keys) |k| if (std.mem.eql(u8, k, c.name)) {
+            found = true;
+        };
+        try std.testing.expect(found);
+    }
 }

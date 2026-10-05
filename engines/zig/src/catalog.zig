@@ -18,6 +18,8 @@ pub const Entry = struct {
     parts: []const u8,
     anchors: []const u8,
     draws: []const u8,
+    /// One complete component object (valid on its own); `kerf schema <type>` prints it.
+    example: []const u8 = "",
 };
 
 pub const Hardware = struct { model: []const u8, width: f64, gauge: u32, length: f64, kind: []const u8 };
@@ -101,6 +103,7 @@ pub const common: []const Param = &.{
     .{ .name = "embedded", .def = "type default", .desc = "drawn over cut solids and never occluded (rebar, anchor bolts)" },
     .{ .name = "visible", .def = "true", .desc = "false hides the component from views and mesh" },
     .{ .name = "shown", .def = "solid", .desc = "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)" },
+    .{ .name = "acknowledge", .def = "null", .desc = "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged (`kerf schema acknowledge`)" },
 };
 
 pub const box_anchors = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
@@ -125,6 +128,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "the 9 box anchors",
         .draws = "Section: run z cut => outline + wood X mark per ply (blocking: one diagonal); run x/y cut lengthwise => outline only; beyond => outline. Actual sizes: 2x 1.5 thick; 4x 3.5; 6x 5.5; depths x4 3.5, x6 5.5, x8 7.25, x10 9.25, x12 11.25 (6x8 7.5, 6x10 9.5, 6x12 11.5). Natural z thickness for run x/y.",
+        .example = "{\"id\":\"stud\",\"type\":\"lumber\",\"size\":\"2x4\",\"run\":\"y\",\"face\":\"narrow\",\"length\":92.625,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,1.5]}}",
     },
     .{
         .name = "panel",
@@ -139,6 +143,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "the 9 box anchors",
         .draws = "Cut rectangle with the material's hatch / cut mark (wood_board: one diagonal). Spans the document run along Z. Use `slope` for roof sheathing (rotates about the placement anchor).",
+        .example = "{\"id\":\"roof_sheathing\",\"type\":\"panel\",\"material\":\"osb\",\"thickness\":0.4375,\"length\":66,\"run\":\"x\",\"slope\":\"4:12\",\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
     },
     .{
         .name = "cmu_wall",
@@ -155,6 +160,7 @@ pub const entries: []const Entry = &.{
         .parts = "course_1..course_n (1 = bottom), bond_beam, grout",
         .anchors = "9 box anchors + bond_beam_center, top_center, cell_center_top",
         .draws = "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. 3D: 15.625\" units with 0.375\" head joints, running bond.",
+        .example = "{\"id\":\"cmu\",\"type\":\"cmu_wall\",\"width\":8,\"courses\":3,\"bond_beam_courses\":1,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
     },
     .{
         .name = "concrete",
@@ -178,6 +184,7 @@ pub const entries: []const Entry = &.{
         .parts = "footing (turndown zone), slab (slab zone), base (when base is set) for slab_edge; footing for shape footing",
         .anchors = "9 box anchors; slab_edge adds top_exterior (datum (0,0) at the exterior face), slab_top, footing_bottom_exterior, footing_bottom_interior, slab_bottom_interior, haunch_top, recess_bottom_exterior, recess_bottom_interior, recess_top_interior, base_bottom_interior and base_bottom_footing (with base)",
         .draws = "slab_edge local origin: exterior face at x=0, top of slab at y=0, footing bottom at y=-footing_depth. Cut region with the material hatch; parts are zones (rebar place.in, cover), not separate outlines.",
+        .example = "{\"id\":\"slab\",\"type\":\"concrete\",\"shape\":\"slab_edge\",\"slab_thickness\":4,\"footing_width\":12,\"footing_depth\":18,\"at\":{\"anchor\":\"top_exterior\",\"to\":[0,0]}}",
     },
     .{
         .name = "rebar",
@@ -193,6 +200,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "9 box anchors of the bar (center = bar center for along_z)",
         .draws = "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu.",
+        .example = "{\"id\":\"top_bar\",\"type\":\"rebar\",\"size\":\"#4\",\"at\":{\"anchor\":\"center\",\"to\":[6,-2.5]}}",
     },
     .{
         .name = "anchor_bolt",
@@ -208,6 +216,7 @@ pub const entries: []const Entry = &.{
         .parts = "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut)",
         .anchors = "9 box anchors + top_of_concrete (where the bolt meets the host top surface, local (0,0))",
         .draws = "Embedded steel, natural z thickness = diameter (set `z` to the bolt's z). Placement anchor named top_of_concrete.",
+        .example = "{\"id\":\"anchor_bolt\",\"type\":\"anchor_bolt\",\"diameter\":0.5,\"embed\":7,\"projection\":2.75,\"hook\":\"J\",\"at\":{\"to\":[3,0]}}",
     },
     .{
         .name = "connector",
@@ -224,6 +233,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
         .draws = "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path.",
+        .example = "{\"id\":\"tie\",\"type\":\"connector\",\"model\":\"H2.5A\",\"lay\":\"face\",\"points\":[[0,0],[0,6]]}",
     },
     .{
         .name = "truss",
@@ -244,6 +254,7 @@ pub const entries: []const Entry = &.{
         .parts = "top_chord, bottom_chord, heel_web (raised only), plate, tail",
         .anchors = "9 box anchors + bearing_outer (local origin: outer edge of bearing at bottom of bottom chord), bearing_inner, tail_bottom, tail_top, top_chord_at_bearing, top_chord_end, bottom_chord_top_inner",
         .draws = "Standard heel: bottom chord from the bearing outer edge inward; top chord lower edge passes through (bearing_outer.x, top of bottom chord) at the pitch and extends to the plumb tail at x=-overhang. Members are in-plane, z thickness 1.5: set `z` and `array` for spacing.",
+        .example = "{\"id\":\"truss\",\"type\":\"truss\",\"pitch\":\"4:12\",\"top_chord\":\"2x4\",\"bottom_chord\":\"2x4\",\"bearing_width\":7.25,\"overhang\":18,\"at\":{\"anchor\":\"bearing_outer\",\"to\":[0,0]}}",
     },
     .{
         .name = "membrane",
@@ -257,6 +268,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
         .draws = "Drawn as a line per the material pen (vapor retarder: dashed heavy; shingles: heavy line with tick marks). Never occludes or hatches.",
+        .example = "{\"id\":\"vapor\",\"type\":\"membrane\",\"material\":\"vapor_retarder\",\"points\":[[0,0],[48,0]]}",
     },
     .{
         .name = "fill",
@@ -270,6 +282,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "9 box anchors of the polygon",
         .draws = "Hatched cut region; the hatch stops at the crop and fills never get break lines.",
+        .example = "{\"id\":\"gravel\",\"type\":\"fill\",\"material\":\"gravel\",\"points\":[[0,0],[48,0],[48,-4],[0,-4]]}",
     },
     .{
         .name = "insulation",
@@ -282,6 +295,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "9 box anchors",
         .draws = "Rigid: hatched region. Batt: sinusoidal loop line fitted to the rectangle.",
+        .example = "{\"id\":\"foam\",\"type\":\"insulation\",\"form\":\"rigid\",\"width\":2,\"height\":24}",
     },
     .{
         .name = "flashing",
@@ -299,6 +313,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "9 box anchors + corner (first bend, local (0,0) for presets), start, end",
         .draws = "Presets: corner at (0,0), wall surface x=0, exterior -x. Spans the document run along Z. Thin metal: solid fill + steel outline (SPEC 16). Embedded: drawn over hatch, exempt from W_OVERLAP. Place with at.anchor \"corner\".",
+        .example = "{\"id\":\"pan\",\"type\":\"flashing\",\"profile\":\"z\",\"at\":{\"anchor\":\"corner\",\"to\":[0,0]}}",
     },
     .{
         .name = "joint",
@@ -316,6 +331,7 @@ pub const entries: []const Entry = &.{
         .parts = "expansion: filler (+ sealant with cap); control: notch; tooled_edge: radius; sealant: bead, rod",
         .anchors = "9 box anchors + joint_top (local (0,0): top surface at the joint centerline); tooled_edge adds corner",
         .draws = "Local origin: top surface, joint centerline (tooled_edge: the sharp corner). Expansion: filler strip width x depth with the joint_filler hatch (place it in the gap between two concrete pieces). Control and tooled_edge are void shapes (embedded: they cut a hole in the host hatch; not in 3D/iso). Sealant: bead (filled) over a backer rod circle. Spans the document run along Z.",
+        .example = "{\"id\":\"ej\",\"type\":\"joint\",\"kind\":\"expansion\",\"width\":0.5,\"depth\":4,\"at\":{\"anchor\":\"joint_top\",\"to\":[0,0]}}",
     },
     .{
         .name = "solid",
@@ -327,6 +343,7 @@ pub const entries: []const Entry = &.{
         .parts = "none",
         .anchors = "9 box anchors",
         .draws = "Use only when no typed component fits.",
+        .example = "{\"id\":\"angle\",\"type\":\"solid\",\"material\":\"steel\",\"profile\":{\"rect\":[3,0.25]}}",
     },
 };
 
@@ -363,7 +380,11 @@ pub fn allowedKeysText(a: Allocator, ty: *const Entry) Allocator.Error![]const u
             try out.appendSlice(a, n);
         }
     }
-    try out.appendSlice(a, ", + common: id, type, label, at, rotate, slope, mirror, z, array, embedded, visible, shown");
+    try out.appendSlice(a, ", + common: ");
+    for (common, 0..) |c, i| {
+        if (i > 0) try out.appendSlice(a, ", ");
+        try out.appendSlice(a, c.name);
+    }
     return out.items;
 }
 

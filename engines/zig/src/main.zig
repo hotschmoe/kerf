@@ -289,6 +289,31 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         try writeOut(io, o.out, r.bytes);
         return if (r.ok) 0 else 1;
     }
+    if (std.mem.eql(u8, cmd, "schema")) {
+        var sarena = std.heap.ArenaAllocator.init(gpa);
+        defer sarena.deinit();
+        const sa = sarena.allocator();
+        var inp: std.ArrayList(u8) = .empty;
+        try inp.appendSlice(sa, "{");
+        if (o.npos >= 1) {
+            try inp.appendSlice(sa, "\"topic\":");
+            try appendJsonString(sa, &inp, o.pos[0]);
+        }
+        try inp.appendSlice(sa, "}");
+        const r = try kerf.call(gpa, "schema", inp.items);
+        defer gpa.free(r.bytes);
+        if (!r.ok) {
+            try printApiError(sa, err, r.bytes);
+            return 1;
+        }
+        var sperr: kerf.json.ParseError = undefined;
+        const res = (try kerf.json.parse(sa, r.bytes, &sperr)) orelse return error.BadEngineOutput;
+        const text = (if (res.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
+        const folded = try asciiFold(gpa, text);
+        defer gpa.free(folded);
+        try writeOut(io, o.out, folded);
+        return 0;
+    }
     if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h")) {
         try writeOut(io, null, usage);
         return 0;
@@ -298,7 +323,11 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         defer gpa.free(r.bytes);
         var text: std.ArrayList(u8) = .empty;
         defer text.deinit(gpa);
+        var garena = std.heap.ArenaAllocator.init(gpa);
+        defer garena.deinit();
         try text.appendSlice(gpa, cli_guide);
+        try text.appendSlice(gpa, "\n");
+        try text.appendSlice(gpa, try kerf.api.schema.guideSection(garena.allocator()));
         try text.appendSlice(gpa, "\n# Drafting instructions\n\n");
         try text.appendSlice(gpa, system_md);
         try text.appendSlice(gpa, "\n# Component catalog\n\n");
@@ -356,12 +385,20 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         defer arena.deinit();
         const a = arena.allocator();
         const stem = workspace.docStem(path);
-        const text = try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
+        const text = if (o.template) |tpl| blk: {
+            if (!std.mem.eql(u8, tpl, "section")) {
+                try err.print("kerf new: unknown template \"{s}\"; available: section (a section view with two members, two notes, a dim, a label)\n", .{tpl});
+                return 2;
+            }
+            var id: std.ArrayList(u8) = .empty;
+            for (o.id orelse stem) |c| try id.append(a, if (std.ascii.isAlphanumeric(c)) std.ascii.toLower(c) else '-');
+            break :blk try kerf.api.schema.templateText(a, id.items, o.title orelse "");
+        } else try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
         try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, text);
         const logged = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
         try writeOut(io, null, "created ");
         try writeOut(io, null, path);
-        try writeOut(io, null, "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
+        try writeOut(io, null, if (o.template != null) "\nnext: edit it with kerf apply <file> ops.json -w   (see `kerf schema`, `kerf guide`)\n" else "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
         return if (logged) 0 else 3;
     }
     if (std.mem.eql(u8, cmd, "call")) {
@@ -371,7 +408,8 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         }
         var stdin_buf: [8192]u8 = undefined;
         var rd = std.Io.File.stdin().reader(io, &stdin_buf);
-        const input = try rd.interface.allocRemaining(gpa, .limited(256 << 20));
+        // `kerf call help` needs no input: do not block on an interactive stdin
+        const input = if (std.mem.eql(u8, o.pos[0], "help")) try gpa.dupe(u8, "{}") else try rd.interface.allocRemaining(gpa, .limited(256 << 20));
         defer gpa.free(input);
         const r = try kerf.call(gpa, o.pos[0], input);
         defer gpa.free(r.bytes);

@@ -18,6 +18,7 @@ const pdf_mod = @import("pdf.zig");
 const raster = @import("raster.zig");
 const load_mod = @import("load.zig");
 const ops_mod = @import("ops.zig");
+pub const schema = @import("schema.zig");
 const Allocator = std.mem.Allocator;
 
 pub const version = "0.1.0";
@@ -49,7 +50,56 @@ fn fail(a: Allocator, code: []const u8, comptime fmt: []const u8, args: anytype)
     return .{ .ok = false, .bytes = try errJson(a, code, fmt, args) };
 }
 
-pub const fn_names = [_][]const u8{ "version", "catalog", "fmt", "check", "apply", "inspect", "drawing", "mesh", "export" };
+pub const fn_names = [_][]const u8{ "version", "catalog", "schema", "fmt", "check", "apply", "inspect", "drawing", "mesh", "export", "help" };
+
+/// `kerf call help`: every function with its input and output shape (one JSON object per line).
+const help_rows = [_][3][]const u8{
+    .{ "version", "{}", "{engine, version, spec}" },
+    .{ "help", "{}", "this list" },
+    .{ "catalog", "{format?: \"json\"|\"markdown\"}", "the component catalog (json default)" },
+    .{ "schema", "{topic?: \"view\"|\"note\"|\"dim\"|\"label\"|\"cite\"|\"ops\"|\"doc\"|<component type>}", "{topic, text}: field reference text; no topic lists the topics" },
+    .{ "fmt", "{doc}", "{doc, text}: canonical key order and indentation" },
+    .{ "check", "{doc, style?}", "{diagnostics: [{level, code, id?, path?, message, fix?}], summary}" },
+    .{ "apply", "{doc, ops: [op...], style?, actor?: \"llm\"|\"designer\"}", "{ok, doc, diagnostics, summary, changed}: ok=false leaves doc unchanged (see diagnostics); `kerf schema ops` for op shapes" },
+    .{ "inspect", "{doc, style?, query: {q: \"summary\"|\"component\"|\"anchors\"|\"at\"|\"catalog\"|\"doc\", id?, view?, point?: [x,y], type?}}", "query-specific JSON (anchors with coordinates, parts, what is visible at a point)" },
+    .{ "drawing", "{doc, view, style?}", "Drawing IR JSON (SPEC 10) of one view" },
+    .{ "mesh", "{doc, style?, include_fills?: bool}", "mesh JSON for 3D viewers" },
+    .{ "export", "{doc, view, format: \"svg\"|\"png\"|\"pdf\"|\"dxf\", sheet?: bool, px?: number, style?}", "the file bytes (svg/dxf text, png/pdf binary)" },
+};
+
+fn helpFn(a: Allocator) ApiError!Out {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "{\"functions\":[\n");
+    for (help_rows, 0..) |row, i| {
+        try out.appendSlice(a, "{\"name\":");
+        try json.writeString(&out, a, row[0]);
+        try out.appendSlice(a, ",\"input\":");
+        try json.writeString(&out, a, row[1]);
+        try out.appendSlice(a, ",\"output\":");
+        try json.writeString(&out, a, row[2]);
+        try out.appendSlice(a, if (i + 1 < help_rows.len) "},\n" else "}\n");
+    }
+    try out.appendSlice(a, "],\"note\":\"input is one JSON object on stdin; doc is the document object; a failure is {error: {code, message}} with exit 1\"}\n");
+    return .{ .ok = true, .bytes = out.items };
+}
+
+fn schemaFn(a: Allocator, inp: json.Value) ApiError!Out {
+    const topic: ?[]const u8 = if (inp.get("topic")) |t| t.str() else null;
+    var out: std.ArrayList(u8) = .empty;
+    const text: []const u8 = if (topic) |tp| (try schema.render(a, tp)) orelse {
+        var names: std.ArrayList([]const u8) = .empty;
+        for (schema.objects) |o| try names.append(a, o.name);
+        for (catalog.entries) |e| try names.append(a, e.name);
+        const hint = if (model.nearest(a, tp, names.items)) |n| try std.fmt.allocPrint(a, " Did you mean \"{s}\"?", .{n}) else "";
+        return fail(a, "E_TOPIC", "unknown schema topic \"{s}\".{s} Topics: {s}", .{ tp, hint, schema.topics_hint });
+    } else try schema.index(a);
+    try out.appendSlice(a, "{\"topic\":");
+    try json.writeString(&out, a, topic orelse "");
+    try out.appendSlice(a, ",\"text\":");
+    try json.writeString(&out, a, text);
+    try out.appendSlice(a, "}\n");
+    return .{ .ok = true, .bytes = out.items };
+}
 
 /// Run API function `name` on `input` (UTF-8 JSON). Output is allocated from `gpa`.
 pub fn call(gpa: Allocator, name: []const u8, input: []const u8) ApiError!Result {
@@ -68,6 +118,8 @@ fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
     if (inp != .object) return fail(a, "E_INPUT", "input must be a JSON object", .{});
 
     if (std.mem.eql(u8, name, "version")) return versionFn(a);
+    if (std.mem.eql(u8, name, "help")) return helpFn(a);
+    if (std.mem.eql(u8, name, "schema")) return schemaFn(a, inp);
     if (std.mem.eql(u8, name, "catalog")) return catalogFn(a, inp);
     if (std.mem.eql(u8, name, "fmt")) return fmtFn(a, inp);
     if (std.mem.eql(u8, name, "mesh")) return meshFn(a, inp);
@@ -76,7 +128,7 @@ fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
     if (std.mem.eql(u8, name, "inspect")) return inspectFn(a, inp);
     if (std.mem.eql(u8, name, "drawing")) return drawingFn(a, inp);
     if (std.mem.eql(u8, name, "export")) return exportFn(a, inp);
-    return fail(a, "E_FN", "unknown function '{s}'. Functions: version, catalog, fmt, check, apply, inspect, drawing, mesh, export", .{name});
+    return fail(a, "E_FN", "unknown function '{s}'. Functions: version, help, catalog, schema, fmt, check, apply, inspect, drawing, mesh, export (`kerf call help` lists their input shapes)", .{name});
 }
 
 fn versionFn(a: Allocator) ApiError!Out {

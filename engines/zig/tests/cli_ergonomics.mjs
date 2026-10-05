@@ -68,5 +68,53 @@ section('1. failed apply prints the errors (stderr), says nothing written, exits
   check('good apply still writes', r.code === 0 && /^wrote a.kerf.json$/m.test(r.out) && readJson('a.kerf.json').components.length === 1, r);
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('2. kerf schema, kerf new --template, kerf call help, kerf guide');
+{
+  let r = kerf(['schema']);
+  check('schema (no topic) lists the topics', r.code === 0 && /view/.test(r.out) && /note/.test(r.out) && /lumber/.test(r.out) && /ops/.test(r.out), r.out.slice(0, 200));
+  for (const t of ['doc', 'view', 'note', 'dim', 'label', 'cite', 'ops', 'at', 'array', 'acknowledge', 'common', 'refs']) {
+    r = kerf(['schema', t]);
+    check(`schema ${t}`, r.code === 0 && r.out.length > 100 && !/[^\x00-\x7f]/.test(r.out), r.err || r.out.slice(0, 80));
+  }
+  for (const t of ['lumber', 'panel', 'cmu_wall', 'concrete', 'rebar', 'anchor_bolt', 'connector', 'truss', 'membrane', 'fill', 'insulation', 'flashing', 'joint', 'solid']) {
+    r = kerf(['schema', t]);
+    check(`schema ${t} (component) has params and an example`, r.code === 0 && /Example:/.test(r.out) && /- /.test(r.out), r.err);
+  }
+  r = kerf(['schema', 'view']);
+  check('schema view names the fields agents guessed wrong', ['crop', 'scale', 'notes_side', 'cut_z', 'annotations', 'number', 'title'].every((k) => r.out.includes('- ' + k + ':')), r.out);
+  r = kerf(['schema', 'note']);
+  check('schema note: text/target/at/place/cite', ['text', 'target', 'at', 'place', 'cite'].every((k) => r.out.includes('- ' + k + ':')));
+  r = kerf(['schema', 'veiw']);
+  check('unknown topic: nearest suggestion, exit 1', r.code === 1 && /Did you mean "view"/.test(r.err), r.err);
+
+  r = kerf(['new', 't.kerf.json', '--template', 'section', '--title', 'MY TITLE']);
+  check('new --template section', r.code === 0 && /created t.kerf.json/.test(r.out), r);
+  const t = readJson('t.kerf.json');
+  check('template: id from the file name, title applied, 2 components, 1 view with 4 annotations',
+    t.id === 't' && t.title === 'MY TITLE' && t.components.length === 2 && t.views.length === 1 && t.views[0].annotations.length === 4, t);
+  check('template view has crop, scale, notes_side; one note has a citation',
+    t.views[0].crop && t.views[0].scale && t.views[0].notes_side && t.views[0].annotations.filter((a) => a.cite).length === 1);
+  r = kerf(['check', 't.kerf.json']);
+  check('template checks with 0 errors and 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  r = kerf(['export', 't.kerf.json', '--view', 'A', '--format', 'png', '-o', 't.png']);
+  check('template exports', r.code === 0 && fs.statSync(path.join(tmp, 't.png')).size > 1000, r);
+  r = kerf(['new', 't.kerf.json', '--template', 'section']);
+  check('new refuses to overwrite', r.code === 1);
+  r = kerf(['new', 'u.kerf.json', '--template', 'nope']);
+  check('unknown template', r.code === 2 && /available: section/.test(r.err), r.err);
+
+  r = kerf(['call', 'help']);
+  let h = null; try { h = JSON.parse(r.out); } catch {}
+  check('call help: functions with input shapes', r.code === 0 && h && h.functions.some((f) => f.name === 'apply' && /ops/.test(f.input)) && h.functions.some((f) => f.name === 'export' && /format/.test(f.input)), r.out);
+  r = kerf(['call', 'nope'], { input: '{}' });
+  check('call unknown fn mentions help', r.code === 1 && /kerf call help/.test(r.out + r.err), r);
+
+  r = kerf(['guide']);
+  check('guide embeds schema view/note/dim/label/cite/ops and the example document',
+    r.code === 0 && ['view: ', 'note: ', 'dim: ', 'label: ', 'cite: ', 'ops: ', 'Complete minimal document', '"notes_side": "both"', 'nothing written', '--template section'].every((k) => r.out.includes(k)), r.out.slice(0, 300));
+  check('guide is pure ASCII', !/[^\x00-\x7f]/.test(r.out));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
