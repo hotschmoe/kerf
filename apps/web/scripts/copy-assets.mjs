@@ -28,7 +28,9 @@ if (engine === 'fixture') {
   for (const f of ['drawing-A.json', 'mesh.json', 'sheet-A.svg', 'echo.wasm']) fs.copyFileSync(path.join(web, 'test/fixtures', f), path.join(pub, 'fixtures', f));
   fs.rmSync(path.join(pub, 'kerf.wasm'), { force: true });
 } else {
-  const src = path.join(repo, 'engines', engine, 'dist', 'kerf.wasm');
+  fs.rmSync(path.join(pub, 'fixtures'), { recursive: true, force: true });
+  // KERF_WASM overrides the path (e.g. a wasm built into a scratch target dir while the engine is in flux)
+  const src = process.env[`KERF_WASM_${engine.toUpperCase()}`] || path.join(repo, 'engines', engine, 'dist', 'kerf.wasm');
   if (!fs.existsSync(src)) {
     console.error(`copy-assets: ${src} not found. Build the engine first (engines/${engine}/NOTES.md).`);
     process.exit(1);

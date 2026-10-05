@@ -118,8 +118,13 @@ async function boot() {
 }
 
 boot().catch((e) => {
-  document.getElementById('boot')?.remove();
-  console.error('KERF boot failed:', e);
-  document.body.prepend(h('pre', { style: 'color:#C8102E;padding:16px;white-space:pre-wrap' }, `KERF FAILED TO START\n${e?.message ?? e}`));
-  (window as unknown as Record<string, unknown>).__bootError = String(e?.message ?? e);
+  console.error('KERF boot failed:', e?.message ?? e);
+  const msg = String(e?.message ?? e);
+  const box = document.getElementById('boot');
+  const body = h('div', { style: 'max-width:640px;padding:24px;border:1px solid #1A1A1A;background:#FBFAF5;box-shadow:2px 2px 0 #1A1A1A' },
+    h('div', { style: 'font-weight:700;letter-spacing:.2em;font-size:18px;color:#1A1A1A' }, 'KERF'),
+    h('div', { style: 'margin:10px 0 6px;color:#C8102E;font-weight:700;letter-spacing:.08em' }, 'FAILED TO START'),
+    h('div', { style: 'white-space:pre-wrap;overflow-wrap:anywhere;color:#1A1A1A;font-weight:400;letter-spacing:0' }, msg));
+  if (box) { box.replaceChildren(body); } else document.body.prepend(body);
+  (window as unknown as Record<string, unknown>).__bootError = msg;
 });

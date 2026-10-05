@@ -52,6 +52,8 @@ export class RawEngine {
     }
     const inst = await WebAssembly.instantiate(module, imports);
     e.x = inst.exports as unknown as Exports;
+    const missing = ['memory', 'kerf_alloc', 'kerf_free', 'kerf_call', 'kerf_out_ptr', 'kerf_out_len'].filter((n) => !(n in inst.exports));
+    if (missing.length) throw new Error(`kerf.wasm does not implement the SPEC §13.1 ABI: missing exports ${missing.join(', ')} (has: ${Object.keys(inst.exports).join(', ') || 'none'}; ${e.wasmBytes} bytes)`);
     e.x._initialize?.();
     e.loadMs = performance.now() - t0;
     return e;
