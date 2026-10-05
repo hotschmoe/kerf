@@ -429,3 +429,49 @@ items), `src/drawview.zig` (`W_VIEW_FIT`), tests in `src/layout_tests.zig` (+ `r
   stress (20 random notes, single column) is not guaranteed hit-free; it reports `W_LEADER_HIT` with fixes.
 - **Known gaps:** leaders still cross unrelated component geometry and dimension extension lines (soft cost only);
   non-adjacent column notes are only handled by coordinate descent; `place`d notes are obstacles, never moved.
+
+## v0.1.3 views (zig-views agent: SPEC 19 auto crop / auto scale / notes_side / grain)
+
+Files: `src/view.zig` (`has_scale`; crop and scale optional; `notes_side` default `both`), `src/drawview.zig` (`autoCrop`,
+`resolveSection`, `sectionPass`, `resolveSpec`), `src/section.zig` + `src/hatch.zig` + `src/style.zig` (grain), tests in `src/views_tests.zig`
+(+ a unit test in `hatch.zig`).
+
+- **Auto crop (section views, `crop` omitted):** bbox of all components visible in the section (cut or beyond, `omit` respected) whose
+  material is not a fill (`earth`, `gravel`, `sand`, `compacted_fill`; rebar/steel/anchors count) plus 6" on every side. Fills are clipped to it
+  (break lines drawn as for any crop). If only fills exist, their bbox is used. `drawing.crop` carries the resolved window. Iso views are unchanged
+  (they already fitted an omitted crop and `NTS`).
+- **Auto scale (section views, `scale` omitted):** candidates in the fixed order 3", 1-1/2", 1", 3/4", 1/2", 3/8", 1/4". For each candidate the
+  whole view is built (geometry, notes routed at that scale, dims, title) and measured; the first whose bounds fit the sheet frame wins. A candidate
+  whose bare crop already exceeds the frame is skipped without a pass; the last candidate (1/4") is the fallback. No oscillation is possible: it is a
+  single ordered scan, each candidate is evaluated from scratch, and only the winner's diagnostics are kept. Cost: up to 7 passes (truss detail
+  with auto crop+scale: 0.2 s total).
+- **`W_VIEW_FIT`:** emitted whenever the final view overflows the frame; with auto scale that can only happen when even 1/4" does not fit, with an explicit
+  scale (crop auto or explicit) exactly as before. Docs that set both crop and scale take the same code path as before: goldens of the reference details
+  differ only by grain.
+- **`notes_side`** defaults to `both` (was `right`). Every reference doc sets it explicitly.
+- **Grain (`KERF-GRAIN`):** style material `wood` and `wood_treated` got `"grain": {"pattern":"KERF-GRAIN","scale":1,"amplitude":0.01,"wavelength":1.1}`
+  (paper inches). Applied in `section.drawCut` to a lumber component's cut region when it has no end-grain quads (run x or y), along the direction of the
+  member's longest edge. The pattern is a sparse straight dashed line family (spacing 0.085" paper, dashes 1.6/0.4/0.8/0.5, phase shift per line) and
+  `hatch.generateGrain` turns each dash into a wave: per-line phase, amplitude (55-100%) and wavelength (75-125%) from a hash of the quantised line position
+  (so a dash continues its own wave), plus a 0.35 second harmonic; amplitude tapers toward the long edges; lines keep 0.03" paper clear of every boundary
+  (probe points must be inside the region, holes respected). Output is a `hatch` item (pen `hatch`, 0.09 mm, layer S-DETL-PATT) with the wavy
+  polyline as short segments. Members too narrow for the inset (1.5" edges at 1/2" scale and smaller) simply get no grain lines. The straight pattern
+  is what DXF HATCH carries.
+- **Numbers:** goldens changed: flush-beam-strap A, flush-psl-2x6 A, palmer-sd1-like A and C (all and only views with lengthwise lumber); I looked at every
+  regenerated sheet PNG.
+
+### SPEC ISSUES
+- `wood_engineered` got no `grain` (SPEC 19 says wood, wood_treated and wood_engineered): it already carries the `KERF-LAM` lamination lines, and the two
+  together read as a blob on an LVL/PSL beam. The style schema allows adding it back with one key.
+- DXF: the HATCH writer emits `h.angle` as group 52 but leaves the family angles unrotated, so a grain (or earth) hatch with a non-zero angle shows at
+  the pattern's own angle in strict viewers (run-y members get horizontal grain lines in the fallback). Pre-existing for `EARTH` at 45 degrees; fix in
+  `dxf.zig` by adding `h.angle` to each family angle (53) and zeroing 52.
+
+### REQUESTS (zig-ux / orchestrator)
+- `load.zig` `inspect` (around the `view_mod.parse` call): after parsing, resolve the spec so inspect uses the same crop/scale as the drawing:
+  `spec.* = (try drawview.resolveSpec(a, l.doc, l.style, l.scene, &spec_v)).*;` (it is a no-op for fully explicit specs and iso views). Without it a
+  view with no crop inspects against an empty crop.
+- catalog/schema/`kerf schema view` text: `crop` is optional ("omitted: auto-fit to the non-fill components' bounding box + 6 in; fills are clipped to
+  it"), `scale` is optional ("omitted: the largest of 3\", 1-1/2\", 1\", 3/4\", 1/2\", 3/8\", 1/4\" at which view, notes and title fit the sheet; W_VIEW_FIT
+  only fires for an explicit crop or scale"), and `notes_side` defaults to `both`. The guide's minimal example may drop crop/scale.
+- `view.zig` is shared: I added `has_scale` and made crop optional there (no other edits).

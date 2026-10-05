@@ -156,11 +156,23 @@
     },
     "wood": {
       "hatch": [],
+      "grain": {
+        "pattern": "KERF-GRAIN",
+        "scale": 1.0,
+        "amplitude": 0.01,
+        "wavelength": 1.1
+      },
       "cut_mark": "x",
       "color3d": "#C9A46A"
     },
     "wood_treated": {
       "hatch": [],
+      "grain": {
+        "pattern": "KERF-GRAIN",
+        "scale": 1.0,
+        "amplitude": 0.01,
+        "wavelength": 1.1
+      },
       "cut_mark": "x",
       "color3d": "#9DA56C"
     },
@@ -361,6 +373,19 @@
         0,
         0,
         0.0625
+      ]
+    ],
+    "KERF-GRAIN": [
+      [
+        0,
+        0,
+        0,
+        0.41,
+        0.085,
+        1.6,
+        -0.4,
+        0.8,
+        -0.5
       ]
     ],
     "KERF-FILLER": [

@@ -21,7 +21,9 @@ pub const ViewSpec = struct {
     scale: f64,
     cut_z: f64,
     crop: geom.Box,
+    /// The author set `crop` / `scale` explicitly (SPEC 19). When false, drawview auto-fits them.
     has_crop: bool,
+    has_scale: bool = false,
     from: From,
     cutaway: bool,
     notes_side: NotesSide,
@@ -71,6 +73,10 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
         diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/kind", .{base}), "view kind must be \"section\" or \"iso\" (got \"{s}\")", .{kind_s});
         ok = false;
     }
+    var has_scale = false;
+    if (node.get("scale")) |sv| if (sv != .null) {
+        has_scale = true;
+    };
     const scale_text = (if (node.get("scale")) |x| x.str() else null) orelse if (kind == .iso) "NTS" else "1\"=1'-0\"";
     var scale: f64 = 12;
     if (units.parseScale(scale_text)) |s| {
@@ -96,10 +102,6 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
             ok = false;
         }
     };
-    if (!has_crop and kind == .section and ok) {
-        diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/crop", .{base}), "section views need a crop window {{\"x\": [x0, x1], \"y\": [y0, y1]}} in model inches", .{});
-        ok = false;
-    }
     var cut_z: f64 = 0;
     if (node.get("cut_z")) |cz| if (cz != .null) {
         if (units.parseLength(cz)) |z| cut_z = z else {
@@ -114,7 +116,7 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
             ok = false;
         }
     };
-    var notes_side: NotesSide = .right;
+    var notes_side: NotesSide = .both;
     if (node.get("notes_side")) |fv| if (fv.str()) |s| {
         if (std.meta.stringToEnum(NotesSide, s)) |f| notes_side = f else {
             diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/notes_side", .{base}), "notes_side must be right, left or both (got \"{s}\")", .{s});
@@ -141,6 +143,7 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
         .cut_z = cut_z,
         .crop = crop,
         .has_crop = has_crop,
+        .has_scale = has_scale,
         .from = from,
         .cutaway = cutaway,
         .notes_side = notes_side,

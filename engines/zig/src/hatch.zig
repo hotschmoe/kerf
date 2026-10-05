@@ -107,6 +107,89 @@ pub fn generate(
     return .{ .lines = lines.items, .truncated = truncated };
 }
 
+/// Grain look (paper inches): wave amplitude and wavelength, edge inset.
+pub const Grain = struct {
+    amp: f64 = 0.010,
+    wavelength: f64 = 1.1,
+    inset: f64 = 0.03,
+};
+
+fn mix(x: u64) u64 {
+    var z = x +% 0x9E3779B97F4A7C15;
+    z = (z ^ (z >> 30)) *% 0xBF58476D1CE4E5B9;
+    z = (z ^ (z >> 27)) *% 0x94D049BB133111EB;
+    return z ^ (z >> 31);
+}
+
+/// 0..1 from the quantised perpendicular position of a line, so every dash of one line shares its wave.
+fn unitHash(v_paper: f64, salt: u64) f64 {
+    const q: i64 = @intFromFloat(@round(v_paper * 1000.0));
+    const h = mix(@as(u64, @bitCast(q)) ^ (salt *% 0x2545F4914F6CDD1D));
+    return @as(f64, @floatFromInt(h >> 11)) / 9007199254740992.0;
+}
+
+/// Wood grain: the straight dashes of `pattern` (angle along the member, in the pattern's own angle plus `rot_deg`)
+/// turned into gentle wavy lines. Each line has its own phase, amplitude and wavelength (from its position, so the
+/// result is deterministic and a dash continues the same wave), tapers toward the long edges, and keeps `inset`
+/// paper inches away from every boundary of the region (probe points must lie inside it).
+pub fn generateGrain(a: Allocator, loops: []const []const V2, pattern: *const style_mod.Pattern, k: f64, rot_deg: f64, grain: Grain) Allocator.Error!Result {
+    const base = try generate(a, loops, pattern, k, rot_deg);
+    var out: std.ArrayList(Line) = .empty;
+    if (pattern.families.len == 0) return base;
+    const th = std.math.degreesToRadians(pattern.families[0].angle + rot_deg);
+    const dir = V2.init(@cos(th), @sin(th));
+    const nrm = V2.init(-dir.y, dir.x);
+    var vmin = std.math.inf(f64);
+    var vmax = -std.math.inf(f64);
+    for (loops) |l| for (l) |p| {
+        const v = p.dot(nrm);
+        vmin = @min(vmin, v);
+        vmax = @max(vmax, v);
+    };
+    const tau = 2.0 * std.math.pi;
+    const inset = grain.inset * k;
+    const step = 0.05 * k;
+    var truncated = base.truncated;
+    for (base.lines) |ln| {
+        const p0 = V2.init(ln[0], ln[1]);
+        const p1 = V2.init(ln[2], ln[3]);
+        const t0 = p0.dot(dir);
+        const t1 = p1.dot(dir);
+        const v = p0.dot(nrm);
+        if (v - vmin < inset or vmax - v < inset) continue; // too close to a long edge
+        const vp = v / k;
+        const phi = tau * unitHash(vp, 1);
+        const phi2 = tau * unitHash(vp, 2);
+        const amp = grain.amp * k * (0.55 + 0.45 * unitHash(vp, 3));
+        const wl = grain.wavelength * k * (0.75 + 0.5 * unitHash(vp, 4));
+        const room = @min(v - vmin, vmax - v) - inset;
+        const taper = std.math.clamp(room / (2.0 * amp), 0, 1);
+        const n: usize = @max(1, @as(usize, @intFromFloat(@ceil(@abs(t1 - t0) / step))));
+        var prev: ?V2 = null;
+        var i: usize = 0;
+        while (i <= n) : (i += 1) {
+            const f: f64 = @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(n));
+            const t = t0 + (t1 - t0) * f;
+            const d = taper * amp * (@sin(tau * t / wl + phi) + 0.35 * @sin(tau * t / (0.37 * wl) + phi2)) / 1.35;
+            const pt = dir.scale(t).add(nrm.scale(v + d));
+            const ok = geom.locateEvenOdd(pt, loops, 1e-9) == .inside and
+                geom.locateEvenOdd(pt.add(dir.scale(inset)), loops, 1e-9) == .inside and
+                geom.locateEvenOdd(pt.sub(dir.scale(inset)), loops, 1e-9) == .inside;
+            if (ok) {
+                if (prev) |q| {
+                    if (out.items.len >= max_lines) {
+                        truncated = true;
+                        break;
+                    }
+                    try out.append(a, .{ q.x, q.y, pt.x, pt.y });
+                }
+                prev = pt;
+            } else prev = null;
+        }
+    }
+    return .{ .lines = out.items, .truncated = truncated };
+}
+
 fn lineAt(dir: V2, nrm: V2, s: f64, ta: f64, tb: f64) Line {
     return .{
         dir.x * ta + nrm.x * s,
@@ -141,6 +224,27 @@ fn dashSegments(a: Allocator, lines: *std.ArrayList(Line), dashes: []const f64, 
             if (lines.items.len >= max_lines) return;
         }
     }
+}
+
+test "grain stays inside, is wavy and deterministic" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = [_]V2{ V2.init(0, 0), V2.init(96, 0), V2.init(96, 3.5), V2.init(0, 3.5) };
+    const fam = [_]style_mod.Family{.{ .angle = 0, .x0 = 0, .y0 = 0, .dx = 3, .dy = 0.6, .dashes = &.{ 20, -6 } }};
+    const pat = style_mod.Pattern{ .name = "G", .families = &fam };
+    const g1 = try generateGrain(a, &.{&r}, &pat, 1.0, 0, .{});
+    const g2 = try generateGrain(a, &.{&r}, &pat, 1.0, 0, .{});
+    try std.testing.expect(g1.lines.len > 20);
+    try std.testing.expectEqual(g1.lines.len, g2.lines.len);
+    var wavy = false;
+    for (g1.lines, 0..) |ln, i| {
+        try std.testing.expect(ln[1] > 0 and ln[1] < 3.5 and ln[3] > 0 and ln[3] < 3.5);
+        try std.testing.expect(ln[0] > 0 and ln[2] < 96);
+        try std.testing.expectEqual(ln, g2.lines[i]);
+        if (@abs(ln[1] - ln[3]) > 1e-6) wavy = true;
+    }
+    try std.testing.expect(wavy);
 }
 
 test "continuous 45 degree hatch fills a square" {

@@ -20,11 +20,21 @@ pub const HatchSpec = struct {
     angle: f64 = 0,
 };
 
+/// Wood grain on lumber cut lengthwise (SPEC 19): a straight-line pattern (also the DXF fallback) made wavy by the engine.
+pub const GrainSpec = struct {
+    pattern: []const u8,
+    scale: f64 = 1,
+    /// Wave amplitude and wavelength, paper inches.
+    amplitude: f64 = 0.010,
+    wavelength: f64 = 1.1,
+};
+
 pub const CutMark = enum { none, x, diagonal };
 
 pub const Material = struct {
     name: []const u8,
     hatch: []const HatchSpec = &.{},
+    grain: ?GrainSpec = null,
     cut_mark: CutMark = .none,
     fill: bool = false,
     batt: bool = false,
@@ -212,6 +222,14 @@ pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {
                     .angle = numOr(x.get("angle"), 0),
                 };
                 mat.hatch = hs;
+            };
+            if (m.value.get("grain")) |g| if (g == .object) {
+                mat.grain = .{
+                    .pattern = strOr(g.get("pattern"), "KERF-GRAIN"),
+                    .scale = numOr(g.get("scale"), 1),
+                    .amplitude = numOr(g.get("amplitude"), 0.010),
+                    .wavelength = numOr(g.get("wavelength"), 1.1),
+                };
             };
             if (m.value.get("cut_mark")) |cm| if (cm.str()) |t| {
                 if (std.mem.eql(u8, t, "x")) mat.cut_mark = .x else if (std.mem.eql(u8, t, "diagonal")) mat.cut_mark = .diagonal;

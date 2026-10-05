@@ -271,6 +271,29 @@ pub const Section = struct {
                 }
             }
         }
+        // wood grain: lumber cut lengthwise (run x or y, no end-grain quads) gets sparse wavy lines along its length
+        if (mat != null and mat.?.grain != null and region.len > 0 and self.isLengthwiseLumber(p)) {
+            const gs = mat.?.grain.?;
+            if (self.style.pattern(gs.pattern)) |pat| {
+                const ang = memberAngleDeg(p.loops[0]);
+                const groups = try groupRegion(self.a, region, if (region_exact) p.loops else null);
+                for (groups) |g| {
+                    const res = try hatch_mod.generateGrain(self.a, g.flat, pat, self.spec.scale * gs.scale, ang, .{ .amp = gs.amplitude, .wavelength = gs.wavelength });
+                    if (res.truncated) self.truncated_hatch = true;
+                    if (res.lines.len == 0) continue;
+                    try self.hatches.append(self.a, .{
+                        .layer = self.layerFor("hatch"),
+                        .pen = "hatch",
+                        .src = src,
+                        .pattern = gs.pattern,
+                        .scale = gs.scale,
+                        .angle = ang,
+                        .loops = g.loops,
+                        .lines = res.lines,
+                    });
+                }
+            }
+        }
         // ----- outline -----
         switch (p.outline) {
             .none => {},
@@ -298,6 +321,13 @@ pub const Section = struct {
                 try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, "beyond", src, false);
             }
         }
+    }
+
+    /// Sawn or engineered lumber lying in the section plane (run x/y): cut along its length, not end-on.
+    fn isLengthwiseLumber(self: *const Section, p: Prism) bool {
+        if (p.quads.len > 0 or p.loops.len == 0 or p.loops[0].len < 3) return false;
+        if (p.comp >= self.scene.comps.len) return false;
+        return std.mem.eql(u8, self.scene.comps[p.comp].ty.name, "lumber");
     }
 
     fn materialNameForPen(self: *const Section, mat: []const u8) []const u8 {
@@ -533,6 +563,26 @@ pub const Section = struct {
         return items.items;
     }
 };
+
+/// Direction (degrees, 0..180) of the longest edge of a member outline: the way its grain runs.
+fn memberAngleDeg(loop: []const Pt) f64 {
+    var best: f64 = -1;
+    var ang: f64 = 0;
+    for (loop, 0..) |p, i| {
+        const q = loop[(i + 1) % loop.len];
+        const d = q.v().sub(p.v());
+        const l = d.len();
+        if (l > best + 1e-9) {
+            best = l;
+            ang = std.math.radiansToDegrees(std.math.atan2(d.y, d.x));
+        }
+    }
+    ang = @mod(ang, 180.0);
+    // snap run x / run y exactly (tiny float noise would rotate the pattern origin)
+    if (ang < 1e-6 or ang > 180.0 - 1e-6) return 0;
+    if (@abs(ang - 90.0) < 1e-6) return 90;
+    return ang;
+}
 
 pub fn isFillMaterial(name: []const u8) bool {
     const eq = std.mem.eql;

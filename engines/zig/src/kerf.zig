@@ -30,6 +30,7 @@ pub const validate = @import("validate.zig");
 pub const annot = @import("annot.zig");
 pub const route = @import("route.zig");
 pub const layout_tests = @import("layout_tests.zig");
+pub const views_tests = @import("views_tests.zig");
 pub const iso = @import("iso.zig");
 pub const mesh = @import("mesh.zig");
 pub const sheet = @import("sheet.zig");

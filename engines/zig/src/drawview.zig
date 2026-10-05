@@ -189,6 +189,112 @@ fn viewFit(a: Allocator, st: *const style_mod.Style, spec: *const view_mod.ViewS
     diags.addFix(.warning, "W_VIEW_FIT", view_id, try std.fmt.allocPrint(a, "views/{s}", .{view_id}), "{s}", .{msg.items}, fixes.items);
 }
 
+/// One complete section pass at a fixed (resolved) crop and scale: geometry, annotations, title.
+const SecPass = struct {
+    items: []const drawing.Item,
+    bounds: geom.Box,
+    detail: geom.Box,
+    fit: FitInfo,
+    unverified: bool,
+};
+
+fn sectionPass(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms: []const model.Prism, font: *const font_mod.Font, doc: json.Value, diags: *model.Diags) Allocator.Error!SecPass {
+    const scale = spec.scale;
+    const sec = try a.create(section.Section);
+    sec.* = try section.Section.init(a, scene, spec, prisms);
+    try sec.build();
+    const base_items = try a.dupe(drawing.Item, try sec.finish());
+    const regions = try sec.regionItems();
+    var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = spec.crop, .diags = diags, .landing = .{ .section = sec } };
+    const ann = try annot.annotate(&env, base_items);
+    const unverified = env.unverified;
+    var all: std.ArrayList(drawing.Item) = .empty;
+    try all.appendSlice(a, base_items);
+    try all.appendSlice(a, regions);
+    try all.appendSlice(a, ann);
+    // title below the lowest annotation
+    var tcrop = spec.crop;
+    const ab = annot.itemsBox(font, all.items);
+    if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
+    const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
+    var detail = annot.itemsBox(font, all.items);
+    detail.addBox(spec.crop);
+    const title_from = all.items.len;
+    _ = try annot.titleItems(&env, info, tcrop, &all);
+    const fit = FitInfo{ .ann = env.ann_boxes.items, .title = annot.itemsBox(font, all.items[title_from..]) };
+    if (env.unknown_glyph) diags.add(.info, "I_GLYPH", spec.id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
+    var bounds = annot.itemsBox(font, all.items);
+    bounds.addBox(spec.crop);
+    return .{ .items = all.items, .bounds = bounds, .detail = detail, .fit = fit, .unverified = unverified };
+}
+
+/// Auto crop (SPEC 19): bounding box of the non-fill components visible in the section, plus 6".
+/// Fills (earth, gravel, sand, compacted fill) are left out and get clipped by the resulting crop.
+pub fn autoCrop(prisms: []const model.Prism, cut_z: f64) geom.Box {
+    var solid = geom.Box{};
+    var any = geom.Box{};
+    for (prisms) |p| {
+        const is_cut = p.z0 < cut_z - 1e-9 and p.z1 > cut_z + 1e-9;
+        if (!is_cut and p.z1 > cut_z + 1e-9) continue; // dropped: above the cut plane
+        var b = geom.Box{};
+        for (p.loops) |l| b.addBox(geom.pointsBox(l));
+        b.addBox(geom.pointsBox(p.line_pts));
+        b.addBox(geom.pointsBox(p.centerline));
+        if (b.isEmpty()) continue;
+        any.addBox(b);
+        if (!section.isFillMaterial(p.material)) solid.addBox(b);
+    }
+    var b = if (solid.isEmpty()) any else solid;
+    if (b.isEmpty()) b = .{ .x0 = -6, .y0 = -6, .x1 = 6, .y1 = 6 };
+    const m = 6.0;
+    return .{ .x0 = b.x0 - m, .y0 = b.y0 - m, .x1 = b.x1 + m, .y1 = b.y1 + m };
+}
+
+const SecResolved = struct { spec: *const view_mod.ViewSpec, pass: SecPass };
+
+/// Resolve an omitted crop and/or scale (SPEC 19) and run the section pass. The scale is the first of the
+/// standard scales (largest first) at which view + notes + dimensions + title fit the sheet frame; every
+/// candidate is evaluated in order, so the result is stable. Explicit crop and scale are used as given.
+fn resolveSection(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms: []const model.Prism, font: *const font_mod.Font, doc: json.Value, diags: *model.Diags) Allocator.Error!SecResolved {
+    const rs0 = try a.create(view_mod.ViewSpec);
+    rs0.* = spec.*;
+    if (!spec.has_crop) rs0.crop = autoCrop(prisms, spec.cut_z);
+    if (spec.has_scale) return .{ .spec = rs0, .pass = try sectionPass(a, st, scene, rs0, prisms, font, doc, diags) };
+    const aw = st.sheet_w_in - 2.0 * st.margin_in;
+    const ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
+    var last: ?SecResolved = null;
+    var last_diags: model.Diags = model.Diags.init(a);
+    for (standard_scales, 0..) |sc, k| {
+        const is_last = k + 1 == standard_scales.len;
+        // the crop alone must fit (necessary condition; skips hopeless candidates without a full pass)
+        if (!is_last and (rs0.crop.width() / sc > aw + 1e-6 or rs0.crop.height() / sc > ah + 1e-6)) continue;
+        const rs = try a.create(view_mod.ViewSpec);
+        rs.* = rs0.*;
+        rs.scale = sc;
+        rs.scale_text = try units.scaleLabel(a, "", sc);
+        var td = model.Diags.init(a);
+        const pass = try sectionPass(a, st, scene, rs, prisms, font, doc, &td);
+        last = .{ .spec = rs, .pass = pass };
+        last_diags = td;
+        const pw = (pass.bounds.x1 - pass.bounds.x0) / sc;
+        const ph = (pass.bounds.y1 - pass.bounds.y0) / sc;
+        if (pw <= aw + 1e-6 and ph <= ah + 1e-6) break;
+    }
+    try diags.list.appendSlice(a, last_diags.list.items);
+    return last.?;
+}
+
+/// The view spec with an omitted crop/scale resolved (what the drawing of this view actually uses).
+/// Section views only; other views and fully explicit specs come back unchanged.
+pub fn resolveSpec(a: Allocator, doc: json.Value, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec) Allocator.Error!*const view_mod.ViewSpec {
+    if (spec.kind != .section or (spec.has_crop and spec.has_scale)) return spec;
+    const prisms = try compile_mod.viewPrisms(a, scene, spec.omit);
+    const font = try a.create(font_mod.Font);
+    font.* = font_mod.Font.parse(a, font_mod.embedded) catch return spec;
+    var d = model.Diags.init(a);
+    return (try resolveSection(a, st, scene, spec, prisms, font, doc, &d)).spec;
+}
+
 /// Build the Drawing for `view_id`. Returns null (with diagnostics) if the view does not exist or is invalid.
 pub fn build(a: Allocator, doc: json.Value, st: *const style_mod.Style, view_id: []const u8, diags: *model.Diags) Allocator.Error!?drawing.Drawing {
     const vnode = view_mod.findView(doc, view_id) orelse {
@@ -226,36 +332,20 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
     var spec_crop_out = spec.crop;
     var detail = geom.Box{};
     var fit = FitInfo{};
+    var resolved_spec: *const view_mod.ViewSpec = spec;
     const font = try a.create(font_mod.Font);
     font.* = font_mod.Font.parse(a, font_mod.embedded) catch return null;
     if (spec.kind == .section) {
-        var sec = try section.Section.init(a, scene, spec, prisms);
-        try sec.build();
-        const base = try sec.finish();
-        var base_items = try a.dupe(drawing.Item, base);
-        const regions = try sec.regionItems();
-        var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = spec.crop, .diags = diags, .landing = .{ .section = &sec } };
-        const ann = try annot.annotate(&env, base_items);
-        unverified = env.unverified;
-        var all: std.ArrayList(drawing.Item) = .empty;
-        try all.appendSlice(a, base_items);
-        try all.appendSlice(a, regions);
-        try all.appendSlice(a, ann);
-        // title below the lowest annotation
-        var tcrop = spec.crop;
-        const ab = annot.itemsBox(font, all.items);
-        if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
-        const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
-        detail = annot.itemsBox(font, all.items);
-        detail.addBox(spec.crop);
-        const title_from = all.items.len;
-        _ = try annot.titleItems(&env, info, tcrop, &all);
-        fit = .{ .ann = env.ann_boxes.items, .title = annot.itemsBox(font, all.items[title_from..]) };
-        if (env.unknown_glyph) diags.add(.info, "I_GLYPH", view_id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
-        items = all.items;
-        bounds = annot.itemsBox(font, items);
-        bounds.addBox(spec.crop);
-        _ = &base_items;
+        const rs = try resolveSection(a, st, scene, spec, prisms, font, doc, diags);
+        scale = rs.spec.scale;
+        spec_crop_out = rs.spec.crop;
+        const pass = rs.pass;
+        unverified = pass.unverified;
+        items = pass.items;
+        bounds = pass.bounds;
+        detail = pass.detail;
+        fit = pass.fit;
+        resolved_spec = rs.spec;
     } else {
         var trial: usize = 0;
         var fitted: f64 = 0;
@@ -304,7 +394,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         const ph = (bounds.y1 - bounds.y0) / scale;
         const aw = st.sheet_w_in - 2.0 * st.margin_in;
         const ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
-        if (pw > aw + 1e-6 or ph > ah + 1e-6) try viewFit(a, st, spec, scale, spec_crop_out, bounds, fit, aw, ah, diags);
+        if (pw > aw + 1e-6 or ph > ah + 1e-6) try viewFit(a, st, resolved_spec, scale, spec_crop_out, bounds, fit, aw, ah, diags);
     }
     const layers = try collectLayers(a, items, st);
     return .{
