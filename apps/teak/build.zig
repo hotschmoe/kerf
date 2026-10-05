@@ -25,6 +25,7 @@ pub fn build(b: *std.Build) void {
     const test_roots = [_][]const u8{
         "src/draw/mod.zig", // Drawing IR, stroke font, tessellator, rasterizer, PNG
         "src/llm/mod.zig", // Claude Messages harness + tool loop
+        "src/app/logic.zig", // document/session logic (no UI framework)
     };
     for (test_roots) |root| {
         const mod = b.createModule(.{
