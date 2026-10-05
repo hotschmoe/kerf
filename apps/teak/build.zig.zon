@@ -1,0 +1,12 @@
+.{
+    .name = .kerf_teak,
+    .version = "0.1.0",
+    .fingerprint = 0xb3ea0c616033f642,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        // Local checkouts of the owner's frameworks (branch `kerf` in each).
+        // zunk is reached through teak's own build.zig.zon (`../zunk`).
+        .teak = .{ .path = "../../../teak" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "fixtures", "web" },
+}
