@@ -131,7 +131,7 @@ function grade(c, doc, finalText) {
   for (const t of e.types ?? []) check(`has type ${t}`, types.has(t));
   for (const t of e.must_not_types ?? []) check(`no type ${t}`, !types.has(t));
   if (e.min_notes) check(`>= ${e.min_notes} notes`, notes.length >= e.min_notes, `${notes.length}`);
-  for (const k of e.views ?? []) check(`has ${k} view`, doc.views.some((v) => v.kind === k));
+  for (const k of e.views ?? []) check(`has ${k} view`, doc.views.some((v) => (v.kind ?? "section") === k));
   for (const re of e.must_mention ?? []) check(`mentions /${re}/`, new RegExp(re).test(noteText));
   for (const id of e.removed ?? []) check(`removed ${id}`, !doc.components.some((x) => x.id === id));
   if (e.asks_question_or_states_assumptions) check("question/assumptions", /\?|assum/i.test(finalText));
