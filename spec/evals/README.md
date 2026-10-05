@@ -54,14 +54,17 @@ node spec/evals/run-cli.mjs --agent claude [--kerf ~/kerf-eval/bin/kerf-baseline
   `start` detail, or the `attach` image). The runner appends "Work in this folder with the kerf CLI.
   Name the file <id>.kerf.json (or edit <start>.kerf.json)."
 - Grading uses the same `expect` checks as above plus: `kerf check` has 0 errors, every warning costs
-  0.02, all citations are `suggested`. `changed_only` is checked on components (any component of the
+  0.02, all citations are `suggested`, and four quality gates (no unknown view/annotation keys, no `W_VIEW_FIT`,
+  no `W_LEADER_HIT`, no `W_NOTE_TARGET`). `score_v1` in `score.json` is the original formula, kept for comparing
+  with older runs. The gates replace the per-warning penalty for their own codes. `changed_only` is checked on components (any component of the
   start doc that changed or vanished must be in the list).
 - Output per case: `transcript.jsonl` (raw agent stream), `digest.md` (every tool call + output),
   `final.kerf.json`, `<id>-A.png` (view A rendered by the engine; **look at it**, then apply the
   0-2 rubric above by hand), `score.json`; plus `summary.json` for the run.
 - `score.json` also records `unknown_keys` (view/annotation keys the spec does not define, which the engine
   silently keeps), `kerf_calls` by verb, `tool_errors` and `sandbox_blocked` (errors caused by the headless
-  permission sandbox, not the engine), tokens, cost and the agent's final message.
+  permission sandbox, not the engine), `probe_calls_before_first_write` / `first_write_call` / `first_write_s`
+  (schema discovery before the first `apply -w`), tokens, cost and the agent's final message.
 - `--regrade <runDir>` re-grades saved final docs; `--recover <runDir> [--only id]` rebuilds a case from its saved
   transcript and workspace if post-processing crashed. Neither re-runs the agent.
 - Results are written up in `spec/evals/results/` (first one: `2026-10-06-claude-code-baseline.md`).

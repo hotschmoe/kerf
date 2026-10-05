@@ -178,10 +178,26 @@ function grade(c, doc, startDoc, finalText) {
   check("zero errors", !checkError && errors.length === 0, checkError ?? errors.map((d) => d.code).join(","));
   const cites = notes.flatMap((n) => n.cite ?? []);
   check("all citations suggested", cites.every((x) => x.status === "suggested"), `${cites.length} cites`);
+  // score_v1 = the original formula (expect checks + errors + citations, minus 0.02 per warning),
+  // kept so runs stay comparable with the 2026-10-06 baseline.
+  const passedV1 = checks.filter((x) => x.pass).length;
+  const scoreV1 = +(passedV1 / checks.length - 0.02 * warns.length).toFixed(3);
+  // Quality gates (only for docs with views): things the expect checks cannot see.
+  const count = (code) => diag.filter((d) => d.code === code).length;
+  const unknown = unknownKeys(doc);
+  const GATE_CODES = ["W_VIEW_FIT", "W_LEADER_HIT", "W_NOTE_TARGET", "W_UNKNOWN_KEY"];
+  if ((doc.views ?? []).length) {
+    check("gate: no unknown keys", unknown.length === 0 && count("W_UNKNOWN_KEY") === 0, unknown.join(", "));
+    check("gate: W_VIEW_FIT == 0", count("W_VIEW_FIT") === 0);
+    check("gate: no leader hits/crossings (W_LEADER_HIT)", count("W_LEADER_HIT") === 0, `${count("W_LEADER_HIT")}`);
+    check("gate: every note target visible (W_NOTE_TARGET)", count("W_NOTE_TARGET") === 0, `${count("W_NOTE_TARGET")}`);
+  }
   const passed = checks.filter((x) => x.pass).length;
+  const penalised = warns.filter((d) => !GATE_CODES.includes(d.code)).length;
   return {
     id: c.id,
-    score: +(passed / checks.length - 0.02 * warns.length).toFixed(3),
+    score: +(passed / checks.length - 0.02 * penalised).toFixed(3),
+    score_v1: scoreV1,
     passed,
     total: checks.length,
     warnings: warns.length,
@@ -189,10 +205,12 @@ function grade(c, doc, startDoc, finalText) {
     errors: errors.map((d) => `${d.code}: ${d.message}`),
     notes: notes.length,
     citations: cites.length,
-    unknown_keys: unknownKeys(doc),
+    unknown_keys: unknown,
     checks,
   };
 }
+
+const SANDBOX_RE = /requires approval|require approval|was blocked|can't be checked|obfuscation|Brace expansion|haven't granted|needs approval|outside the working|permission/i;
 
 // ---- running ------------------------------------------------------------------------------
 function findFinalDoc(dir, c) {
@@ -259,17 +277,32 @@ async function runCase(c, runDir, agent) {
   fs.writeFileSync(path.join(outDir, "digest.md"), `# ${c.id}\n\nPROMPT: ${msg}\n\n` + digest(parsed.tools, parsed.finalText));
 
   // Log lines are "<epoch>\t<args>"; args may span lines, so only lines starting with an epoch count.
-  const calls = fs.existsSync(logFile)
-    ? fs.readFileSync(logFile, "utf8").split(/\n(?=\d{10}\t)/).map((l) => l.replace(/^\d{10}\t/, "").trim()).filter(Boolean)
+  const entries = fs.existsSync(logFile)
+    ? fs.readFileSync(logFile, "utf8").split(/\n(?=\d{10}\t)/).filter(Boolean).map((l) => [+l.slice(0, 10), l.slice(11).trim()])
     : [];
+  const calls = entries.map((x) => x[1]);
+  // Discovery vs building: a "probe" is a raw-API call or an apply that writes nothing (scratch -o / --dry-run).
+  const isWrite = (k) => /^apply\b/.test(k) && /(^|\s)(-w|--write)(\s|$)/.test(k);
+  const isProbe = (k) => /^call\b/.test(k) || (/^apply\b/.test(k) && !isWrite(k));
+  const fw = entries.findIndex((x) => isWrite(x[1]));
+  const callStats = {
+    first_write_call: fw >= 0 ? fw + 1 : null,
+    probe_calls_before_first_write: (fw >= 0 ? calls.slice(0, fw) : calls).filter(isProbe).length,
+    probe_calls_total: calls.filter(isProbe).length,
+    schema_calls: calls.filter((k) => /^schema\b/.test(k)).length,
+    first_write_s: fw >= 0 ? entries[fw][0] - entries[0][0] : null,
+  };
   const byVerb = {};
   for (const k of calls) { const v = k.split(/\s+/)[0]; byVerb[v] = (byVerb[v] ?? 0) + 1; }
   const meta = {
     wall_s: run.wallMs != null ? +(run.wallMs / 1000).toFixed(1) : prior?.wall_s ?? (parsed.agentDurationMs ? +(parsed.agentDurationMs / 1000).toFixed(1) : null),
     wall_source: run.wallMs != null ? "runner" : prior?.wall_s ? prior.wall_source ?? "runner" : "agent-reported", agent_s: parsed.agentDurationMs ? +(parsed.agentDurationMs / 1000).toFixed(1) : null,
     kerf_calls: calls.length, kerf_by_verb: byVerb, tool_errors: parsed.tools.filter((t) => t.isError).length,
+    ...callStats,
     // tool errors caused by the headless permission sandbox rather than the engine (pipes, ';', /tmp, WebFetch ...)
-    sandbox_blocked: parsed.tools.filter((t) => t.isError && /requires approval|require approval|was blocked|can't be checked|obfuscation|Brace expansion|haven't granted|needs approval|outside the working/i.test(t.output)).length,
+    sandbox_blocked: parsed.tools.filter((t) => t.isError && SANDBOX_RE.test(t.output)).length,
+    engine_errors: parsed.tools.filter((t) => t.isError && !SANDBOX_RE.test(t.output)).length,
+    engine_error_samples: parsed.tools.filter((t) => t.isError && !SANDBOX_RE.test(t.output)).slice(0, 4).map((t) => `${String(t.command).slice(0, 80)} -> ${t.output.slice(0, 160)}`),
     turns: parsed.turns, cost_usd: parsed.cost, usage: parsed.usage, exit_code: run.code, timed_out: run.timedOut,
     agent_is_error: parsed.isError,
     model: parsed.model ?? null,
@@ -316,7 +349,7 @@ if (args.regrade) {
     if (!c || !fs.existsSync(f)) continue;
     const startDoc = c.start ? JSON.parse(fs.readFileSync(path.join(root, "spec/details", `${c.start}.kerf.json`), "utf8")) : null;
     const g = grade(c, JSON.parse(fs.readFileSync(f, "utf8")), startDoc, r.final_message ?? "");
-    Object.assign(r, { score: g.score, passed: g.passed, total: g.total, warnings: g.warnings, warning_codes: g.warning_codes, errors: g.errors, checks: g.checks });
+    Object.assign(r, { score: g.score, score_v1: g.score_v1, unknown_keys: g.unknown_keys, passed: g.passed, total: g.total, warnings: g.warnings, warning_codes: g.warning_codes, errors: g.errors, checks: g.checks });
     fs.writeFileSync(path.join(dir, r.id, "score.json"), JSON.stringify(r, null, 2));
     console.log(`${r.id} ${g.passed}/${g.total} warn ${g.warnings} score ${g.score}`);
   }

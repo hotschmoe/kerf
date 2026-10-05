@@ -1,0 +1,1403 @@
+{
+  "agent": "claude",
+  "model": null,
+  "engine": "/home/hotschmoe/kerf-eval/bin/kerf-alpha4",
+  "engine_version": "{\"engine\":\"kerf-zig\",\"version\":\"0.1.0\",\"spec\":\"0.1\"}",
+  "results": [
+    {
+      "id": "e01-truss-cmu",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 17,
+      "total": 17,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 13,
+      "citations": 5,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "has type cmu_wall",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type truss",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type lumber",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type anchor_bolt",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type connector",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type rebar",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 7 notes",
+          "pass": true,
+          "detail": "13"
+        },
+        {
+          "name": "has section view",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /BOND BEAM/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /H2.5A|HURRICANE/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /ANCHOR BOLT|J-BOLT/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "5 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e01-truss-cmu.kerf.json",
+      "check_summary": "DOC e01-truss-cmu  15 components  1 view  0 errors  0 warnings",
+      "png": "e01-truss-cmu/e01-truss-cmu-A.png",
+      "final_message": "I built `e01-truss-cmu.kerf.json` and checked the PNG export (`e01-truss-cmu-A.png`). The engine reports 0 errors and 0 warnings, and it lays out at 1\"=1'-0\" with no leaders crossing.\n\n**What's drawn:**\n- **Wall:** 8\" CMU wall, 3 courses shown, with a grouted bond beam at the top course holding (1) #5 continuous bar, plus a #5 vertical bar in the grouted cell.\n- **Plate and bolt:** 2X8 PT plate with sill sealer. A 5/8\" J-bolt with 7\" embedment is drawn between trusses (so it doesn't run into the bottom chord), hook turned toward the exterior so it clears the rebar.\n- **Truss:** prefab truss, 4:12, standard heel bearing the full plate width, 18\" overhang with a plumb tail. The overhang is dimensioned at 1'-6\".\n- **Tie:** Simpson H2.5A hurricane tie from the plate to the truss heel at each truss.\n- **Roof and eave:** 7/16\" OSB sheathing, underlayment, asphalt shingles, metal drip edge, 2X6 fascia, vented fiber cement soffit on a 2X4 PT nailer, and a 1/2\" gypsum board ceiling.\n- **Labels:** EXTERIOR, INTERIOR and 4:12.\n\n**Choices I made that you didn't specify:**\n- **Spacing and sizes:** trusses at 24\" O.C., anchor bolts at 48\" O.C., #5 vertical bars at 48\" O.C., and one #5 bar in the bond beam. Hurricane tie model H2.5A. The engineer of record should set all of these and the hardware capacities.\n- **Roofing:** shingles, the soffit build-up and a 2X6 fascia are typical choices; the soffit nailer screw spacing is a placeholder.\n- **Hurricane tie drawing:** it's shown edge-on at the exterior face. In reality it sits on the side face of the truss, so it reads as a thin line and the note carries the information.\n\n**Citations to verify (2021 IRC):** R905.2 (asphalt shingles), R905.2.8.5 (drip edge), R802.10 (wood trusses), R802.11 (roof tie-down) and R317.1 (PT wood). I didn't cite anything for the bolt into the bond beam; add the anchorage reference you use.\n\nSeparately: the Gmail, Google Calendar and Google Drive connectors need authorizing in your claude.ai connector set",
+      "wall_s": 302.8,
+      "wall_source": "runner",
+      "agent_s": 301.1,
+      "kerf_calls": 21,
+      "kerf_by_verb": {
+        "guide": 1,
+        "schema": 2,
+        "call": 3,
+        "check": 1,
+        "new": 1,
+        "apply": 7,
+        "--help": 1,
+        "export": 5
+      },
+      "tool_errors": 5,
+      "first_write_call": 7,
+      "probe_calls_before_first_write": 1,
+      "probe_calls_total": 4,
+      "schema_calls": 2,
+      "first_write_s": 88,
+      "sandbox_blocked": 4,
+      "engine_errors": 1,
+      "engine_error_samples": [
+        "ls; kerf check e01-truss-cmu.kerf.json -> Exit code 2\nAGENTS.md\nCLAUDE.md\nkerf: FileNotFound"
+      ],
+      "turns": 31,
+      "cost_usd": 1.4817938000000002,
+      "usage": {
+        "input_tokens": 48,
+        "cache_creation_input_tokens": 78647,
+        "cache_read_input_tokens": 1453229,
+        "output_tokens": 28089,
+        "output_tokens_details": {
+          "thinking_tokens": 17536
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 78647,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 1010,
+            "cache_read_input_tokens": 88424,
+            "cache_creation_input_tokens": 2126,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2126
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e02-truss-heta",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 13,
+      "total": 13,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 10,
+      "citations": 4,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "has type cmu_wall",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type truss",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type connector",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type rebar",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "no type anchor_bolt",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 6 notes",
+          "pass": true,
+          "detail": "10"
+        },
+        {
+          "name": "mentions /HETA/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "4 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e02-truss-heta.kerf.json",
+      "check_summary": "DOC e02-truss-heta  9 components  1 view  0 errors  0 warnings",
+      "png": "e02-truss-heta/e02-truss-heta-A.png",
+      "final_message": "I built `e02-truss-heta.kerf.json` and exported `e02-truss-heta-A.png`; I looked at the PNG and it reads cleanly. `kerf check` shows 0 errors and 0 warnings.\n\n**What's in it:** the truss's 2x4 bottom chord sits directly on the grouted 8\" CMU bond beam, with no plate. A Simpson HETA20 is cast into the bond beam and runs up the side of the truss heel. The section also shows:\n- one #5 bar running continuously in the bond beam;\n- a #5 vertical bar in a grouted cell, drawn dashed as \"where occurs\";\n- a 5:12 truss with a 2'-0\" overhang and a 2x6 fascia;\n- 19/32\" plywood roof sheathing and asphalt shingles;\n- a 1/2\" gypsum board ceiling;\n- exterior and interior labels, plus dimensions for the overhang and the 7 5/8\" wall width.\n\n**Assumptions to check:**\n- **No earlier detail in the folder.** You said \"same\" bearing, but there was no wood-plate version here to copy, so I built this one from scratch.\n- **Code basis.** I set the jurisdiction to the Florida Building Code, Residential, 8th Edition (2023). All four citations are marked suggested: R802.11 (roof tie-down), R802.10 (trusses), R803.2 (wood panel sheathing) and R905.2 (asphalt shingles). Please check that the section numbers match the FBC-R.\n- **Bare wood on masonry.** The engine flagged the untreated truss touching the CMU. I suppressed that flag, reasoning that this is an above-grade bond beam and not one of the places R317.1 requires treated wood. If your office puts a sill sealer or felt strip under truss seats, tell me and I'll add it with a note.\n- **HETA details.** I wrote \"4 inch minimum embedment\" in the HETA note from memory, so check it against the Simpson catalog. The strap is drawn going straight up the heel face; the HETA20's extra length above the heel isn't shown, so it should be installed per Simpson.\n- **Placeholder values.** Truss spacing (24\" o.c.), a single #5 in the bond beam, vertical bars \"per plan\" and sheathing nailing \"per schedule\" are stand-ins. Uplift capacity, the number of anchors and",
+      "wall_s": 249.3,
+      "wall_source": "runner",
+      "agent_s": 247,
+      "kerf_calls": 26,
+      "kerf_by_verb": {
+        "guide": 1,
+        "schema": 8,
+        "--version": 1,
+        "apply": 9,
+        "new": 1,
+        "export": 6
+      },
+      "tool_errors": 7,
+      "first_write_call": 14,
+      "probe_calls_before_first_write": 2,
+      "probe_calls_total": 5,
+      "schema_calls": 8,
+      "first_write_s": 156,
+      "sandbox_blocked": 4,
+      "engine_errors": 3,
+      "engine_error_samples": [
+        "kerf schema doc; kerf schema connector; kerf schema truss; kerf schema acknowled -> Exit code 2\ndoc: The whole document (one `<id>.kerf.json` file).\n\n- kerf: string, required. schema version, always \"0.1\"\n- id: string, required. slug of the det",
+        "ls && kerf apply e02-truss-heta.kerf.json e02-ops.json --dry-run -> Exit code 2\nAGENTS.md\nCLAUDE.md\ne02-ops.json\nkerf: FileNotFound",
+        "{\"replace_all\":false,\"file_path\":\"/home/hotschmoe/kerf-eval/runs/2026-10-05T22-4 -> <tool_use_error>String to replace not found in file.\nString: \"n_vert_bar\",\"value\":{\"target\":null,</tool_use_error>"
+      ],
+      "turns": 29,
+      "cost_usd": 1.395108,
+      "usage": {
+        "input_tokens": 46,
+        "cache_creation_input_tokens": 76480,
+        "cache_read_input_tokens": 1496220,
+        "output_tokens": 24192,
+        "output_tokens_details": {
+          "thinking_tokens": 13350
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 76480,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 976,
+            "cache_read_input_tokens": 86491,
+            "cache_creation_input_tokens": 1892,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1892
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e03-monopour-recess",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 13,
+      "total": 13,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 8,
+      "citations": 4,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "has type concrete",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type rebar",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type membrane",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type fill",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 6 notes",
+          "pass": true,
+          "detail": "8"
+        },
+        {
+          "name": "mentions /VAPOR/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /DEPRESSION|RECESS/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "4 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e03-monopour-recess.kerf.json",
+      "check_summary": "DOC e03-monopour-recess  5 components  1 view  0 errors  0 warnings",
+      "png": "e03-monopour-recess/e03-monopour-recess-A.png",
+      "final_message": "I built `e03-monopour-recess.kerf.json`. `kerf check` reports 0 errors and 0 warnings. I exported `e03-monopour-recess-A.png` and checked it: leaders land on the right elements and no notes collide.\n\n**What's in the detail (section 1, auto-scaled to 1\" = 1'-0\"):**\n- **Slab and turndown:** a 4\" slab poured monolithically with a 12\" W × 18\" deep turndown footing. The inside face of the turndown slopes at 45°. The slab is cut with a break line on the interior side.\n- **Recess:** 1 1/2\" deep × 6\" wide, flush with the exterior face, for the sliding door track.\n- **Base and vapor retarder:** 4\" gravel base under the slab and down the sloped inside face. A 6 mil poly vapor retarder sits between the concrete and the gravel and runs down that face.\n- **Rebar:** (2) #5 continuous at the bottom of the footing (3\" cover), and #3 @ 18\" O.C. each way at mid-depth of the slab.\n- **Soil:** undisturbed soil or compacted fill. Exterior grade is 6\" below top of slab, which puts the footing bottom 12\" below grade.\n- **Dimensions:** footing width, footing depth, grade to footing bottom, and the recess width and depth.\n- **Labels:** EXTERIOR, INTERIOR and GRADE.\n\n**Assumptions to confirm:**\n- **Recess width:** you didn't give one, so I used 6\" with no slope. The note says to verify it with the door maker. Many sliding door sills want the recess floor to fall about 1/4\" toward the exterior. I can add that if you want it.\n- **Rebar:** you didn't specify any, so the sizes and spacing above are typical placeholders. The engineer of record should set them.\n- **Exterior grade:** the 6\" drop below top of slab is an assumed value.\n\n**Citations to verify** (all 2021 IRC, marked suggested):\n- R506.1: slab\n- R403.1: footing\n- R506.2.3: vapor retarder\n- R506.2.2: base\n\nSeparately, the Gmail, Google Calendar and Google Drive connectors aren't authorized. They won't work until you connect them in your claude.ai connector settings. This detail didn't need them.",
+      "wall_s": 178.6,
+      "wall_source": "runner",
+      "agent_s": 176.8,
+      "kerf_calls": 17,
+      "kerf_by_verb": {
+        "guide": 1,
+        "schema": 2,
+        "new": 1,
+        "apply": 6,
+        "call": 2,
+        "export": 4,
+        "check": 1
+      },
+      "tool_errors": 3,
+      "first_write_call": 8,
+      "probe_calls_before_first_write": 3,
+      "probe_calls_total": 4,
+      "schema_calls": 2,
+      "first_write_s": 82,
+      "sandbox_blocked": 3,
+      "engine_errors": 0,
+      "engine_error_samples": [],
+      "turns": 21,
+      "cost_usd": 1.062004,
+      "usage": {
+        "input_tokens": 38,
+        "cache_creation_input_tokens": 62596,
+        "cache_read_input_tokens": 1012420,
+        "output_tokens": 17930,
+        "output_tokens_details": {
+          "thinking_tokens": 9215
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 62596,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 844,
+            "cache_read_input_tokens": 74054,
+            "cache_creation_input_tokens": 445,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 445
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e04-monopour-plain",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 13,
+      "total": 13,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 10,
+      "citations": 6,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "has type concrete",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type lumber",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type anchor_bolt",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type fill",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 6 notes",
+          "pass": true,
+          "detail": "10"
+        },
+        {
+          "name": "mentions /SILL/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /ANCHOR/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "6 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e04-monopour-plain.kerf.json",
+      "check_summary": "DOC e04-monopour-plain  9 components  1 view  0 errors  0 warnings",
+      "png": "e04-monopour-plain/e04-monopour-plain-A.png",
+      "final_message": "I built `e04-monopour-plain.kerf.json` and exported `e04-monopour-plain-A.png`. `kerf check` shows 0 errors and 0 warnings, and I looked over the final PNG.\n\n**What's in the detail**\n- **Slab and footing:** 4\" concrete slab poured monolithically with a 12\" wide × 18\" deep turned-down edge. The exterior is on the left, and the inner face slopes at 45°.\n- **Height above grade:** finish grade is 6\" below the top of the slab, so the footing bottom is 12\" below grade. Both are dimensioned, along with the 1'-0\" footing width.\n- **Footing steel:** (2) #4 bars continuous at the bottom of the footing, with 3\" cover.\n- **Under the slab:** 4\" gravel base with a 6 mil vapor retarder on top of it, running down along the sloped inner face.\n- **Wall:** 2x6 PT sill plate on sill sealer, flush with the slab edge. Above it are 2x6 studs at 16\" o.c., 7/16\" OSB sheathing outside and 1/2\" gypsum board inside.\n- **Anchor bolt:** 1/2\" J-bolt with 7\" embedment, 2 1/2\" projection, nut and washer, centered in the sill. The note reads 6'-0\" o.c. max., (2) minimum per plate, 12\" max. from the plate ends.\n- **Labels:** EXTERIOR, INTERIOR and FINISH GRADE. There is no door recess.\n\n**Choices I made that you didn't specify**\n- The stud is drawn just behind the cut plane, so the cut bolt and its nut don't overlap a stud.\n- I added the rebar, gravel base, vapor retarder and both wall finishes. They're conventional for this detail, but remove any you don't want.\n- The view is cropped so the slab ends in a break line.\n\n**Before you use it**\n- **Footing depth:** 12\" below grade is the IRC minimum, but it may fall short of your local frost depth. Please confirm the 18\" depth.\n- **Six citations to verify** (2021 IRC, all marked \"suggested\"): R317.1 (sill), R403.1.6 (anchor bolts), R403.1 (footing), R506.1 (slab), R506.2.2 (base), R506.2.3 (vapor retarder).\n- **Plate washers:** if this is in seismic design category D0–D2 or a high-wind zone, the anchor bolts need plate washers. I left them out.",
+      "wall_s": 132.1,
+      "wall_source": "runner",
+      "agent_s": 130.3,
+      "kerf_calls": 21,
+      "kerf_by_verb": {
+        "guide": 1,
+        "new": 1,
+        "schema": 2,
+        "apply": 7,
+        "call": 1,
+        "export": 6,
+        "check": 3
+      },
+      "tool_errors": 2,
+      "first_write_call": 6,
+      "probe_calls_before_first_write": 1,
+      "probe_calls_total": 2,
+      "schema_calls": 2,
+      "first_write_s": 46,
+      "sandbox_blocked": 2,
+      "engine_errors": 0,
+      "engine_error_samples": [],
+      "turns": 23,
+      "cost_usd": 0.9717477999999999,
+      "usage": {
+        "input_tokens": 42,
+        "cache_creation_input_tokens": 60846,
+        "cache_read_input_tokens": 1135859,
+        "output_tokens": 12882,
+        "output_tokens_details": {
+          "thinking_tokens": 4401
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 60846,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 865,
+            "cache_read_input_tokens": 70477,
+            "cache_creation_input_tokens": 2272,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2272
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e05-flush-beam",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 12,
+      "total": 12,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 6,
+      "citations": 1,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "has type lumber",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type connector",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 5 notes",
+          "pass": true,
+          "detail": "6"
+        },
+        {
+          "name": "has section view",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /STRAP|CS16|MSTA|LSTA|CMST/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /LVL/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "1 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e05-flush-beam.kerf.json",
+      "check_summary": "DOC e05-flush-beam  11 components  2 views  0 errors  0 warnings",
+      "png": "e05-flush-beam/e05-flush-beam-A.png",
+      "final_message": "I built `e05-flush-beam.kerf.json` with no errors and no warnings. I exported both views to PNG and checked them.\n\n**What's in it**\n- **View 1 (wall elevation, cut along the wall):**\n  - The (2) 1 3/4\" X 9 1/4\" LVL beam is seen end-on, with its top flush with the top of the double 2x4 top plate.\n  - Both plates are cut and butt the beam on each side.\n  - A 4x4 post sits under the beam, with a 2x4 king stud on each side and 2x4 studs at 16\" o.c.\n  - A Simpson ST6224 strap runs across the top of the plates and the beam.\n  - There is a 9 1/4\" dimension on the beam and 6 notes.\n- **View 2 (iso):** the beam running into the wall and sitting on the post, with the strap lapping both broken plates.\n\n**Assumptions**\n- **Strap:** I picked the ST6224 (16 ga, 2 1/16\" wide, about 23 5/16\" long) instead of an MSTA36. IRC R602.6.1 requires a tie at least 0.054\" thick and 1 1/2\" wide, with (8) 10d nails each side, when a top plate is cut more than 50%. The MSTA straps are only 1 1/4\" wide, so they don't meet that width.\n- **One strap only, on top of the plates.** If the plate carries chord or collector forces, the engineer of record should size the strap and its nailing, and may want a strap on both faces.\n- **Post:** I used a 4x4 so it matches the 3 1/2\" beam width and the 2x4 wall thickness. If you'd rather have a built-up stud post, tell me the ply count.\n- **Load path:** the post note calls for continuous solid bearing down to the foundation.\n\n**Please verify**\n- The citation on the strap note, IRC 2021 R602.6.1 (Drilling and notching of top plate), is marked as suggested and prints with a `*` until you verify it.\n- Strap capacity and nailing come from the manufacturer and the engineer of record. This detail is not engineered.\n\n**Question:** Do you want framing above the beam shown (joists or rafters bearing on the plate and beam), or should this detail stay limited to the plate break?\n\nFiles are in this folder:\n- e05-flush-beam.kerf.json\n- e05-flush-beam-A.png\n- e05-flush-beam",
+      "wall_s": 168.5,
+      "wall_source": "runner",
+      "agent_s": 166.7,
+      "kerf_calls": 15,
+      "kerf_by_verb": {
+        "guide": 1,
+        "schema": 3,
+        "new": 1,
+        "apply": 5,
+        "export": 5
+      },
+      "tool_errors": 1,
+      "first_write_call": 6,
+      "probe_calls_before_first_write": 0,
+      "probe_calls_total": 0,
+      "schema_calls": 3,
+      "first_write_s": 113,
+      "sandbox_blocked": 1,
+      "engine_errors": 0,
+      "engine_error_samples": [],
+      "turns": 17,
+      "cost_usd": 0.9863504,
+      "usage": {
+        "input_tokens": 28,
+        "cache_creation_input_tokens": 62483,
+        "cache_read_input_tokens": 750972,
+        "output_tokens": 16809,
+        "output_tokens_details": {
+          "thinking_tokens": 9285
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 62483,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 984,
+            "cache_read_input_tokens": 72668,
+            "cache_creation_input_tokens": 1718,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1718
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e06-flush-beam-2x6",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 11,
+      "total": 11,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 6,
+      "citations": 2,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "has type lumber",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type connector",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 5 notes",
+          "pass": true,
+          "detail": "6"
+        },
+        {
+          "name": "mentions /CMST14/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /PSL/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "2 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e06-flush-beam-2x6.kerf.json",
+      "check_summary": "DOC e06-flush-beam-2x6  7 components  1 view  0 errors  0 warnings",
+      "png": "e06-flush-beam-2x6/e06-flush-beam-2x6-A.png",
+      "final_message": "I built `e06-flush-beam-2x6.kerf.json` and exported `e06-flush-beam-2x6-A.png`. I looked at the PNG and it reads correctly. `kerf check` reports 0 errors and 0 warnings.\n\n**What's in it:** a wall elevation, scale 1/2\" = 1'-0\", with 6 notes and 3 dimensions.\n- **Beam:** 5 1/4\" PSL, top flush with the top of the 2x6 double top plate. The beam end bears on (2) 2x6 jack studs.\n- **Framing:** a 2x6 king stud and 2x6 studs at 16\" o.c. The double top plate butts into the beam.\n- **Strap:** a Simpson CMST14 coil strap running over the plate and beam, 5'-6\" long, centered on the joint, so it laps 2'-9\" each side. Both laps are dimensioned. The note reads \"NAILS PER MFR.\"; I didn't specify a nail count.\n\n**Assumptions to check:**\n- **Beam depth:** you didn't give one, so I used 11 7/8\". Tell me the actual depth and I'll change it.\n- **Strap length:** the 5'-6\" length and the laps are placeholders. The real length and nailing should come from Simpson's tables and the engineer of record.\n- **\"Again\":** there was no earlier detail in this folder to copy from, so I built this one fresh. If you meant an earlier flush-beam detail, send it and I'll match its notes and layout.\n- **Extent shown:** only the left bearing end of the beam is drawn, and the beam is cut off with a break line on the right.\n\n**Citations to verify:** IRC 2021 R602.3.2 (Top plate) and R602.7 (Headers). Both are marked suggested.",
+      "wall_s": 100.9,
+      "wall_source": "runner",
+      "agent_s": 99.1,
+      "kerf_calls": 5,
+      "kerf_by_verb": {
+        "guide": 1,
+        "new": 1,
+        "apply": 1,
+        "export": 1,
+        "check": 1
+      },
+      "tool_errors": 1,
+      "first_write_call": 3,
+      "probe_calls_before_first_write": 0,
+      "probe_calls_total": 0,
+      "schema_calls": 0,
+      "first_write_s": 73,
+      "sandbox_blocked": 1,
+      "engine_errors": 0,
+      "engine_error_samples": [],
+      "turns": 9,
+      "cost_usd": 0.5593103999999999,
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 41804,
+        "cache_read_input_tokens": 358132,
+        "output_tokens": 7659,
+        "output_tokens_details": {
+          "thinking_tokens": 4326
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 41804,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 608,
+            "cache_read_input_tokens": 52961,
+            "cache_creation_input_tokens": 746,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 746
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e07-edit-notes",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 9,
+      "total": 9,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 15,
+      "citations": 5,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "mentions /1/2\"/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /32\"/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "changed_only",
+          "pass": true,
+          "detail": "changed: anchor_bolt,truss,roof_sheathing"
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "5 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "truss-bearing-cmu.kerf.json",
+      "check_summary": "DOC truss-bearing-cmu  14 components  2 views  0 errors  0 warnings",
+      "png": "e07-edit-notes/e07-edit-notes-A.png",
+      "final_message": "I've updated `truss-bearing-cmu.kerf.json`. `kerf check` shows 0 errors and 0 warnings, and I looked at the renders of view A (section) and view B (iso).\n\n**What changed:**\n- **Anchor bolts:** the diameter is now 1/2\" (was 5/8\"). The sill plate note now reads `2X8 PT SILL PLATE W/ 1/2\" DIA. J-BOLTS @ 32\" O.C., 7\" MIN. EMBED.` Its IRC R403.1.6 citation is still marked suggested.\n- **Roof:** the truss pitch is now 6:12 (was 4:12). The roof sheathing used to have its own fixed 4:12 slope, so I set it to follow the truss slope instead. That keeps the pitch in one place, so it can't get out of sync again. The shingles, fascia, subfascia and soffit moved with it.\n\nEverything else is unchanged. The log entry is in `truss-bearing-cmu.kerf.json.log.jsonl`, and the section render is at `truss-bearing-cmu-A.png`.\n\n**Things to check:**\n- **Roof cut off at the top:** at the steeper pitch, the roof now reaches the top edge of the existing frame in view A. The roof is cut there with a break line, and the bearing area is fully shown. If you'd rather see more roof, I can raise the top of the frame.\n- **Bolt spacing:** the drawing shows a single bolt in section, so the 32\" spacing appears only in the note. I didn't add repeated bolts to the iso or 3D views, since that wasn't there before.\n- **Engineering:** the smaller bolts at closer spacing and the steeper roof (which changes uplift) need the engineer of record to confirm the anchorage. The H2.5A tie and the truss design should be checked against the truss manufacturer's 6:12 drawings.",
+      "wall_s": 52.6,
+      "wall_source": "runner",
+      "agent_s": 50.9,
+      "kerf_calls": 7,
+      "kerf_by_verb": {
+        "guide": 1,
+        "check": 2,
+        "apply": 2,
+        "export": 2
+      },
+      "tool_errors": 1,
+      "first_write_call": 4,
+      "probe_calls_before_first_write": 1,
+      "probe_calls_total": 1,
+      "schema_calls": 0,
+      "first_write_s": 25,
+      "sandbox_blocked": 1,
+      "engine_errors": 0,
+      "engine_error_samples": [],
+      "turns": 11,
+      "cost_usd": 0.5409356000000001,
+      "usage": {
+        "input_tokens": 16,
+        "cache_creation_input_tokens": 47629,
+        "cache_read_input_tokens": 311298,
+        "output_tokens": 4879,
+        "output_tokens_details": {
+          "thinking_tokens": 2504
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 47629,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 655,
+            "cache_read_input_tokens": 55161,
+            "cache_creation_input_tokens": 4371,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 4371
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e08-edit-remove",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 9,
+      "total": 9,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 11,
+      "citations": 6,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "mentions /FIBER/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "removed slab_bars_x",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "removed slab_bars_z",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "6 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "monopour-slab-door-recess.kerf.json",
+      "check_summary": "DOC monopour-slab-door-recess  7 components  2 views  0 errors  0 warnings",
+      "png": "e08-edit-remove/e08-edit-remove-A.png",
+      "final_message": "I took the bar reinforcement out of the slab and changed the slab note to fiber mesh. `kerf check` shows 0 errors and 0 warnings, and I exported and looked at the view A drawing: the leaders and notes are clean.\n\n**Changes in `monopour-slab-door-recess.kerf.json`:**\n- **Removed** the slab bars (`slab_bars_x` and `slab_bars_z`, the #4 @ 16\" O.C. EA. WAY).\n- **Changed the slab note** to `4\" CONC. SLAB W/ FIBER MESH REINF., DOSAGE PER MFR.` Its leader used to point at the bars I removed, so it now points at the slab itself. I kept its IRC R506.1 citation, which still needs your verification.\n\n**What I kept:** the (2) #5 bottom bars and the (1) #4 top bar. Both sit in the turned-down footing, not the slab, and fiber mesh usually doesn't replace footing steel. If you want those gone too, tell me and I'll remove them and their notes.\n\n**Left in place:** the slab still carries a 3/4\" bottom-cover setting that was there for the slab bars. It does nothing now, and I can delete it if you want a clean file.\n\nThe rendered drawing is at `monopour-slab-door-recess-A.png`.",
+      "wall_s": 22.1,
+      "wall_source": "runner",
+      "agent_s": 20.4,
+      "kerf_calls": 3,
+      "kerf_by_verb": {
+        "guide": 1,
+        "apply": 1,
+        "export": 1
+      },
+      "tool_errors": 0,
+      "first_write_call": 2,
+      "probe_calls_before_first_write": 0,
+      "probe_calls_total": 0,
+      "schema_calls": 0,
+      "first_write_s": 11,
+      "sandbox_blocked": 0,
+      "engine_errors": 0,
+      "engine_error_samples": [],
+      "turns": 6,
+      "cost_usd": 0.3896724,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 39974,
+        "cache_read_input_tokens": 157802,
+        "output_tokens": 1914,
+        "output_tokens_details": {
+          "thinking_tokens": 637
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 39974,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 493,
+            "cache_read_input_tokens": 50156,
+            "cache_creation_input_tokens": 1721,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 1721
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e09-screenshot",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 14,
+      "total": 14,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 9,
+      "citations": 6,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "has type concrete",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type rebar",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type membrane",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "has type fill",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 7 notes",
+          "pass": true,
+          "detail": "9"
+        },
+        {
+          "name": "mentions /VAPOR/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /DEPRESSION|RECESS/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "mentions /#5/",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "6 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e09-screenshot.kerf.json",
+      "check_summary": "DOC e09-screenshot  9 components  1 view  0 errors  0 warnings",
+      "png": "e09-screenshot/e09-screenshot-A.png",
+      "final_message": "I built `e09-screenshot.kerf.json` (detail 2, \"SLAB EDGE AT SLIDING DOOR\") from the screenshot, using only `kerf apply`. `kerf check` shows 0 errors and 0 warnings. I exported `e09-screenshot-A.png` and checked it against `e09.png`: the layout matches closely and no leaders cross.\n\n**What's in it**\n- **Slab and footing:** a 4\" slab joined to a turned-down footing 12\" wide × 18\" deep, with a 45° sloped inner face. It sits on a 4\" gravel base, with the vapor retarder along the underside of the slab and the sloped face.\n- **Door recess:** 8\" wide × 1 1/2\" deep at the exterior edge. The sill sits on pan flashing, which turns down over the outside face of the slab.\n- **Rebar:** (1) #4 at the top of the footing, (2) #5 at the bottom with 3\" clear, and #4 @ 16\" each way in the slab.\n- **Earth:** finish grade on the exterior is 6\" below the top of the slab, so the footing bottom is 12\" below grade. Earth also fills under the gravel on the interior.\n- **Annotations:** all 9 notes with the reference's wording and code citations, the 1'-0\", 1'-6\" and 1 1/2\" dimensions, and EXTERIOR/INTERIOR labels.\n\n**Assumptions**\n- The recess floor drops 1/4\" toward the exterior. The screenshot says \"slope to exterior\" but gives no amount.\n- The sill is a generic aluminum shape tilted to match the recess floor, because Kerf has no door-sill component. The engine flags this for review (`I_SOLID_USED`). The real profile comes from the door manufacturer.\n- I changed note text only where the office style required it: the recess note's middle period became a comma (\"…SLOPE TO EXTERIOR, VERIFY SILL DEPTH…\") and trailing periods were dropped. \"T.O.\" and \"&\" are kept as in the reference.\n- I fixed the text positions of the footing and finish-grade notes in the right column, as in the reference. If they're moved in the web UI they won't re-flow on their own.\n\n**Citations for you to verify** (all marked suggested, printed with *): IRC 2021 R703.4, R506.1, R506.2.2, R506.2.3, R403.1.4 and R401.3. They ",
+      "wall_s": 171.9,
+      "wall_source": "runner",
+      "agent_s": 170.1,
+      "kerf_calls": 20,
+      "kerf_by_verb": {
+        "guide": 1,
+        "schema": 4,
+        "new": 1,
+        "apply": 7,
+        "call": 2,
+        "export": 4,
+        "check": 1
+      },
+      "tool_errors": 3,
+      "first_write_call": 6,
+      "probe_calls_before_first_write": 0,
+      "probe_calls_total": 2,
+      "schema_calls": 4,
+      "first_write_s": 56,
+      "sandbox_blocked": 2,
+      "engine_errors": 1,
+      "engine_error_samples": [
+        "kerf apply e09-screenshot.kerf.json ops3.json -w --why \"Add notes, citations, di -> Exit code 1\nDOC e09-screenshot  9 components  1 view  0 errors  1 warning\n earth         fill earth                                  x -2'-6\"..3'-0\"   y -3'-0\"."
+      ],
+      "turns": 25,
+      "cost_usd": 1.0610443999999999,
+      "usage": {
+        "input_tokens": 46,
+        "cache_creation_input_tokens": 62674,
+        "cache_read_input_tokens": 1285342,
+        "output_tokens": 15120,
+        "output_tokens_details": {
+          "thinking_tokens": 6524
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 62674,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 919,
+            "cache_read_input_tokens": 74009,
+            "cache_creation_input_tokens": 568,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 568
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    },
+    {
+      "id": "e10-ambiguous",
+      "score": 1,
+      "score_v1": 1,
+      "passed": 7,
+      "total": 7,
+      "warnings": 0,
+      "warning_codes": [],
+      "errors": [],
+      "notes": 9,
+      "citations": 3,
+      "unknown_keys": [],
+      "checks": [
+        {
+          "name": "question/assumptions",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "zero errors",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "all citations suggested",
+          "pass": true,
+          "detail": "3 cites"
+        },
+        {
+          "name": "gate: no unknown keys",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: W_VIEW_FIT == 0",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "gate: no leader hits/crossings (W_LEADER_HIT)",
+          "pass": true,
+          "detail": "0"
+        },
+        {
+          "name": "gate: every note target visible (W_NOTE_TARGET)",
+          "pass": true,
+          "detail": "0"
+        }
+      ],
+      "final_file": "e10-ambiguous.kerf.json",
+      "check_summary": "DOC e10-ambiguous  9 components  1 view  0 errors  0 warnings",
+      "png": "e10-ambiguous/e10-ambiguous-A.png",
+      "final_message": "I built `e10-ambiguous.kerf.json`, a continuous footing under an 8\" concrete stem wall with a crawl space inside, at 1\" = 1'-0\". The last `kerf apply` reported 0 errors and 0 warnings, and the final PNG (`e10-ambiguous-A.png`) has no clashes or crossed leaders.\n\n**What's in it:**\n- 20\" W X 10\" deep concrete footing with (2) #4 bars running continuously along the bottom at 3\" cover.\n- 8\" concrete stem wall with one continuous #4 bar at the top, and #4 vertical dowels @ 48\" O.C. hooked into the footing.\n- 2X6 pressure-treated sill plate on sill sealer, held down by 1/2\" dia. J-bolts with 7\" minimum embedment @ 6'-0\" O.C. max.\n- A short 2X6 stud above the sill.\n- Exterior grade 8\" below the top of the stem wall, with the footing bottom 2'-8\" below grade on undisturbed soil.\n- Dimensions for footing width and depth, grade-to-top-of-stem height, and footing depth below grade.\n- Labels for exterior, crawl space and grade.\n\n**Assumptions:** \"Footing detail\" didn't specify a type, so I chose the common IRC case: an 8\" concrete stem wall, wood framing above, crawl space inside, exterior on the left. The footing size, bar sizes and spacing are typical starting values, not engineered. The engineer of record needs to confirm them along with the frost depth and soil bearing.\n\n**Code references to check** (all marked as suggested, not verified): IRC 2021 R403.1 for the footing, R403.1.6 for the anchor bolts, and R317.1 for the treated sill.\n\n**Open question:** if you meant a different footing, such as one under a slab-on-grade with a turned-down edge, a CMU stem wall, or an isolated pad under a post, tell me and I'll rebuild it.",
+      "wall_s": 152.5,
+      "wall_source": "runner",
+      "agent_s": 150.8,
+      "kerf_calls": 11,
+      "kerf_by_verb": {
+        "guide": 1,
+        "schema": 3,
+        "new": 1,
+        "apply": 3,
+        "export": 3
+      },
+      "tool_errors": 1,
+      "first_write_call": 6,
+      "probe_calls_before_first_write": 0,
+      "probe_calls_total": 0,
+      "schema_calls": 3,
+      "first_write_s": 111,
+      "sandbox_blocked": 1,
+      "engine_errors": 0,
+      "engine_error_samples": [],
+      "turns": 13,
+      "cost_usd": 0.7863124,
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 57088,
+        "cache_read_input_tokens": 391282,
+        "output_tokens": 12564,
+        "output_tokens_details": {
+          "thinking_tokens": 5958
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 57088,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 668,
+            "cache_read_input_tokens": 64950,
+            "cache_creation_input_tokens": 4041,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 4041
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "exit_code": 0,
+      "timed_out": false,
+      "agent_is_error": false,
+      "model": "claude-opus-5-5"
+    }
+  ]
+}
