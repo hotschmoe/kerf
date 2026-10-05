@@ -54,6 +54,22 @@ pub fn load(doc: &Value, style: Style) -> Loaded {
     Loaded { canon, model, style, diags }
 }
 
+/// `load` plus per-view diagnostics (W_NOTE_TARGET, W_VIEW_FIT, annotation refs).
+pub fn load_full(doc: &Value, style: Style) -> Loaded {
+    let mut l = load(doc, style);
+    let ids = crate::view::view_ids(&l.canon);
+    for id in ids {
+        if let Ok(d) = crate::render::render_view(&l.canon, &l.model, &id, &l.style) {
+            for x in d.diagnostics {
+                if !l.diags.iter().any(|y| y.code == x.code && y.message == x.message) {
+                    l.diags.push(x);
+                }
+            }
+        }
+    }
+    l
+}
+
 pub fn nviews(canon: &Value) -> usize {
     canon.get("views").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0)
 }
@@ -94,8 +110,46 @@ pub fn call(fn_name: &str, input: &str) -> Result<Output, String> {
             Ok(Output::Json(json::compact(&json::obj(vec![("doc", canon), ("text", Value::String(text))]))))
         }
         "check" => {
-            let l = load(&doc_of(&inp)?, style_of(&inp)?);
+            let l = load_full(&doc_of(&inp)?, style_of(&inp)?);
             Ok(Output::Json(json::compact(&json::obj(vec![("diagnostics", diags_json(&l.diags)), ("summary", Value::String(summary_of(&l)))]))))
+        }
+        "apply" => {
+            let doc = doc_of(&inp)?;
+            let style = style_of(&inp)?;
+            let ops = inp.get("ops").cloned().unwrap_or(Value::Null);
+            let actor = match inp.get("actor").and_then(|a| a.as_str()) {
+                Some("designer") => crate::ops::Actor::Designer,
+                _ => crate::ops::Actor::Llm,
+            };
+            let before = load(&doc, style.clone());
+            match crate::ops::apply_ops(&doc, &ops, actor) {
+                Err(ds) => {
+                    let sum = summary_of(&before);
+                    Ok(Output::Json(json::compact(&crate::ops::apply_result_json(false, &doc, &ds, &sum, &[]))))
+                }
+                Ok(ap) => {
+                    let l = load_full(&ap.doc, style);
+                    let mut diags = ap.diags.clone();
+                    diags.extend(l.diags.iter().cloned());
+                    if crate::ops::has_errors(&diags) {
+                        let sum = summary_of(&l);
+                        Ok(Output::Json(json::compact(&crate::ops::apply_result_json(false, &doc, &diags, &sum, &[]))))
+                    } else {
+                        let mut ll = l;
+                        ll.diags = diags;
+                        let sum = summary_of(&ll);
+                        Ok(Output::Json(json::compact(&crate::ops::apply_result_json(true, &ll.canon, &ll.diags, &sum, &ap.changed))))
+                    }
+                }
+            }
+        }
+        "inspect" => {
+            let l = load(&doc_of(&inp)?, style_of(&inp)?);
+            let q = inp.get("query").cloned().unwrap_or_else(|| json::obj(vec![("q", json::s("summary"))]));
+            match crate::inspect::inspect(&l, &q) {
+                Ok(v) => Ok(Output::Json(json::compact(&v))),
+                Err(d) => Err(d.message + &d.fix.map(|f| format!(" Fix: {}", f)).unwrap_or_default()),
+            }
         }
         "drawing" => {
             let l = load(&doc_of(&inp)?, style_of(&inp)?);

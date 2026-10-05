@@ -139,7 +139,6 @@ pub fn note_text(style: &Style, text: &str, cites: &[Value]) -> (String, bool) {
 }
 
 struct Placed {
-    idx: usize,
     lines: Vec<String>,
     width: f64,
     height: f64,
@@ -147,63 +146,181 @@ struct Placed {
     top: f64,
     x: f64,
     left_side: bool,
+    fixed: bool,
 }
 
-pub fn layout_notes(notes: &[NoteIn], style: &Style, crop: &Rect, s: f64, side: &str, out: &mut Vec<Vec<Item>>) -> f64 {
+/// Rotated text bounding polygon (for obstacle tests).
+pub fn text_poly(it: &Item, pad: f64) -> Option<Vec<Pt>> {
+    if let Item::Text { s, x, y, h, rot, align, valign, .. } = it {
+        let w = text_width(s, *h);
+        let ox = match align.as_str() {
+            "center" => -w * 0.5,
+            "right" => -w,
+            _ => 0.0,
+        };
+        let oy = match valign.as_str() {
+            "middle" => -h * 0.5,
+            "top" => -h,
+            _ => 0.0,
+        };
+        let ang = rot.to_radians();
+        let pts = [(ox - pad, oy - pad), (ox + w + pad, oy - pad), (ox + w + pad, oy + h + pad), (ox - pad, oy + h + pad)];
+        return Some(pts.iter().map(|&(px, py)| {
+            let q = pt(px, py).rot(ang);
+            pt(x + q.x, y + q.y)
+        }).collect());
+    }
+    None
+}
+
+fn seg_hits_poly(a: Pt, b: Pt, poly: &[Pt]) -> bool {
+    let sg = Seg::Line(a, b);
+    let n = poly.len();
+    for i in 0..n {
+        if !intersect(&sg, &Seg::Line(poly[i], poly[(i + 1) % n])).is_empty() {
+            return true;
+        }
+    }
+    poly_contains(poly, a) || poly_contains(poly, b)
+}
+
+fn polylines_cross(a: &[Pt], b: &[Pt]) -> bool {
+    for i in 0..a.len() - 1 {
+        for j in 0..b.len() - 1 {
+            if !intersect(&Seg::Line(a[i], a[i + 1]), &Seg::Line(b[j], b[j + 1])).is_empty() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+struct Geo {
+    h: f64,
+    pitch: f64,
+    gap: f64,
+    shoulder: f64,
+    pad: f64,
+}
+
+fn leader_of(p: &Placed, g: &Geo) -> [Pt; 3] {
+    let ymid = p.top - p.height * 0.5;
+    let (edge_x, dir) = if p.left_side { (p.x + p.width + g.pad, 1.0) } else { (p.x - g.pad, -1.0) };
+    [pt(edge_x, ymid), pt(edge_x + dir * g.shoulder, ymid), p.landing]
+}
+
+/// Stack a column top-down in `order`: each note starts centered on its landing y and is pushed down
+/// until it clears the previous note; then the whole column is shifted into the crop height.
+fn stack(order: &[usize], placed: &mut [Placed], crop: &Rect, g: &Geo) {
+    let mut prev_bottom = f64::INFINITY;
+    for &i in order {
+        let p = &mut placed[i];
+        p.top = p.landing.y + p.height * 0.5;
+        if p.top > prev_bottom - g.gap {
+            p.top = prev_bottom - g.gap;
+        }
+        prev_bottom = p.top - p.height;
+    }
+    if let Some(&last) = order.last() {
+        let bottom = placed[last].top - placed[last].height;
+        if bottom < crop.y0 {
+            let d = crop.y0 - bottom;
+            for &i in order {
+                placed[i].top += d;
+            }
+        }
+        let top = placed[order[0]].top;
+        if top > crop.y1 {
+            let d = top - crop.y1;
+            for &i in order {
+                placed[i].top -= d;
+            }
+        }
+    }
+}
+
+/// Lay out notes (SPEC 6.3). `ext` is the extent of the drawing including dimensions and labels
+/// (columns start beyond it); `obstacles` are text boxes leaders must not cross.
+pub fn layout_notes(notes: &[NoteIn], style: &Style, crop: &Rect, ext: &Rect, obstacles: &[Vec<Pt>], s: f64, side: &str, out: &mut Vec<Vec<Item>>) -> f64 {
     out.clear();
     out.resize(notes.len(), vec![]);
     let h = style.text_height * s;
-    let pitch = h * style.line_spacing;
+    let g = Geo { h, pitch: h * style.line_spacing, gap: style.note_gap * s, shoulder: style.shoulder * s, pad: 0.04 * s };
     let gutter = style.gutter * s;
-    let shoulder = style.shoulder * s;
-    let gap = style.note_gap * s;
-    let pad = 0.04 * s;
+    let xr = crop.x1.max(ext.x1);
+    let xl = crop.x0.min(ext.x0);
     let mut placed: Vec<Placed> = vec![];
-    for (i, n) in notes.iter().enumerate() {
+    for n in notes.iter() {
         let lines = wrap(&n.text, style.wrap_chars);
         let width = lines.iter().map(|l| text_width(l, h)).fold(0.0, f64::max);
-        let height = h + (lines.len() as f64 - 1.0) * pitch;
+        let height = h + (lines.len() as f64 - 1.0) * g.pitch;
         let left_side = match side {
             "left" => true,
             "both" => (n.landing.x - crop.x0).abs() < (crop.x1 - n.landing.x).abs(),
             _ => false,
         };
-        placed.push(Placed { idx: i, lines, width, height, landing: n.landing, top: n.landing.y + height * 0.5, x: 0.0, left_side });
+        placed.push(Placed { lines, width, height, landing: n.landing, top: n.landing.y + height * 0.5, x: 0.0, left_side, fixed: n.place.is_some() });
     }
     let mut max_extent: f64 = 0.0;
     for want_left in [false, true] {
-        let mut col: Vec<usize> = placed.iter().enumerate().filter(|(i, p)| p.left_side == want_left && notes[*i].place.is_none()).map(|(i, _)| i).collect();
-        col.sort_by(|&a, &b| placed[b].landing.y.partial_cmp(&placed[a].landing.y).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(&b)));
-        let mut prev_bottom = f64::INFINITY;
-        for &i in &col {
-            let p = &mut placed[i];
-            if p.top > prev_bottom - gap {
-                p.top = prev_bottom - gap;
-            }
-            prev_bottom = p.top - p.height;
+        let mut order: Vec<usize> = (0..placed.len()).filter(|&i| placed[i].left_side == want_left && !placed[i].fixed).collect();
+        order.sort_by(|&a, &b| placed[b].landing.y.partial_cmp(&placed[a].landing.y).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(&b)));
+        for &i in &order {
+            placed[i].x = if want_left { xl - gutter - placed[i].width } else { xr + gutter };
+            max_extent = max_extent.max(placed[i].width + gutter);
         }
-        if let Some(&last) = col.last() {
-            let bottom = placed[last].top - placed[last].height;
-            if bottom < crop.y0 {
-                let d = crop.y0 - bottom;
-                for &i in &col {
-                    placed[i].top += d;
+        if order.is_empty() {
+            continue;
+        }
+        stack(&order, &mut placed, crop, &g);
+        // swap adjacent notes whose leaders cross (bounded, deterministic)
+        for _ in 0..(order.len() * 4 + 8) {
+            let mut swapped = false;
+            for k in 0..order.len().saturating_sub(1) {
+                let (a, b) = (order[k], order[k + 1]);
+                let (la, lb) = (leader_of(&placed[a], &g), leader_of(&placed[b], &g));
+                if polylines_cross(&la, &lb) {
+                    order.swap(k, k + 1);
+                    stack(&order, &mut placed, crop, &g);
+                    swapped = true;
+                    break;
                 }
             }
-            if let Some(&first) = col.first() {
-                let top = placed[first].top;
-                if top > crop.y1 {
-                    let d = top - crop.y1;
-                    for &i in &col {
-                        placed[i].top -= d;
+            if !swapped {
+                break;
+            }
+        }
+        // nudge notes whose leaders run through dimension/label text
+        let hits = |p: &Placed| -> bool { let l = leader_of(p, &g); obstacles.iter().any(|o| seg_hits_poly(l[0], l[1], o) || seg_hits_poly(l[1], l[2], o)) };
+        for k in 0..order.len() {
+            let i = order[k];
+            if !hits(&placed[i]) {
+                continue;
+            }
+            let base = placed[i].top;
+            let mut found = false;
+            'search: for step in 1..=16 {
+                for sign in [1.0, -1.0] {
+                    let t = base + sign * step as f64 * g.pitch * 0.5;
+                    let hgt = placed[i].height;
+                    if k > 0 && t > placed[order[k - 1]].top - placed[order[k - 1]].height - g.gap {
+                        continue;
                     }
+                    if k + 1 < order.len() && placed[order[k + 1]].top > t - hgt - g.gap {
+                        continue;
+                    }
+                    let saved = placed[i].top;
+                    placed[i].top = t;
+                    let ok = !hits(&placed[i])
+                        && !order.iter().filter(|&&o| o != i).any(|&o| polylines_cross(&leader_of(&placed[i], &g), &leader_of(&placed[o], &g)));
+                    if ok {
+                        found = true;
+                        break 'search;
+                    }
+                    placed[i].top = saved;
                 }
             }
-        }
-        for &i in &col {
-            let p = &mut placed[i];
-            p.x = if want_left { crop.x0 - gutter - p.width } else { crop.x1 + gutter };
-            max_extent = max_extent.max(p.width + gutter);
+            let _ = found;
         }
     }
     for (i, p) in placed.iter_mut().enumerate() {
@@ -213,27 +330,22 @@ pub fn layout_notes(notes: &[NoteIn], style: &Style, crop: &Rect, s: f64, side: 
             p.left_side = pl.x + p.width * 0.5 < p.landing.x;
         }
     }
-    // emit in note order
-    for p in &placed {
-        let n = &notes[p.idx];
-        let out = &mut out[p.idx];
+    for (i, p) in placed.iter().enumerate() {
+        let n = &notes[i];
+        let o = &mut out[i];
         for (j, line) in p.lines.iter().enumerate() {
-            out.push(text_item(style, "notes", "anno", &n.id, line, p.x, p.top - h - j as f64 * pitch, h, 0.0, "left", "baseline"));
+            o.push(text_item(style, "notes", "anno", &n.id, line, p.x, p.top - h - j as f64 * g.pitch, h, 0.0, "left", "baseline"));
         }
-        let ymid = p.top - p.height * 0.5;
-        let (edge_x, dir) = if p.left_side { (p.x + p.width + pad, 1.0) } else { (p.x - pad, -1.0) };
-        let shoulder_end = pt(edge_x + dir * shoulder, ymid);
-        let start = pt(edge_x, ymid);
+        let l = leader_of(p, &g);
         let land = p.landing;
-        // arrowhead
-        let d = (land - shoulder_end).norm();
+        let d = (land - l[1]).norm();
         let alen = style.arrow_len * s;
         let aw = style.arrow_width * s;
         let base = land - d * alen;
         let perp = d.perp();
         let tri = [land, base + perp * aw, base - perp * aw];
-        out.push(path_item(style, "anno", &n.id, &[start, shoulder_end, base], false));
-        out.push(Item::Fill { layer: layer_name(style, "notes"), src: n.id.clone(), loops: vec![tri.iter().map(|q| v(q.x, q.y)).collect()] });
+        o.push(path_item(style, "anno", &n.id, &[l[0], l[1], base], false));
+        o.push(Item::Fill { layer: layer_name(style, "notes"), src: n.id.clone(), loops: vec![tri.iter().map(|q| v(q.x, q.y)).collect()] });
     }
     max_extent
 }

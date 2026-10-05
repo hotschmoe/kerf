@@ -633,6 +633,7 @@ fn resolve_comp(idx: usize, cv: &Value, cid: &str, style: &Style, run: (f64, f64
                 bar: lp.bar.map(|(c, r)| (ixf.apply(c), r)),
                 only: lp.only,
                 sweep: lp.sweep.as_ref().map(|(p, r)| (p.iter().map(|q| ixf.apply(*q)).collect(), *r)),
+                center: lp.center.as_ref().map(|(p, t)| (p.iter().map(|q| ixf.apply(*q)).collect(), *t)),
             });
         }
         // anchors

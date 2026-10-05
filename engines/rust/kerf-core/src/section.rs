@@ -3,6 +3,7 @@
 use crate::diag::Diag;
 use crate::drawing::{Item, layer_name, pen_layer_key};
 use crate::geom::*;
+use crate::stroke::offset_poly;
 use crate::hatch::{clip_line_rect, hatch_lines};
 use crate::model::*;
 use crate::poly::{self, Shape};
@@ -39,6 +40,7 @@ struct Stroke {
     comp: usize,
     internal_ok: bool,
     kind_rank: u8, // 0 beyond, 1 cut, 2 embedded
+    overlay: bool,
 }
 
 struct Occ {
@@ -157,6 +159,15 @@ fn clip_segments(segs: Vec<Seg>, crop: &Rect) -> Vec<Seg> {
     out
 }
 
+fn region_thickness(r: &Region) -> f64 {
+    let mut area = loop_area(&r.outer).abs();
+    for h in &r.holes {
+        area -= loop_area(h).abs();
+    }
+    let per: f64 = loop_segs(&r.outer).iter().map(|s| s.len()).sum();
+    if per < 1e-9 { 0.0 } else { 2.0 * area / per }
+}
+
 fn is_fill_material(m: &str) -> bool {
     matches!(m, "earth" | "gravel" | "sand" | "compacted_fill")
 }
@@ -243,7 +254,7 @@ fn dedupe(strokes: &mut Vec<Stroke>, style: &Style) {
     let rank = |pen: &str| style.pen(pen).width_mm;
     for l in 0..n {
         for w in 0..n {
-            if l == w {
+            if l == w || strokes[l].overlay || strokes[w].overlay {
                 continue;
             }
             let wins = strokes[w].pieces.clone();
@@ -395,7 +406,23 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
         let pen = pen_of(p, default_pen);
         let mut loops: Vec<&Loop> = vec![&p.region.outer];
         loops.extend(p.region.holes.iter());
-        if p.outline != Outline::None {
+        let thin_center = p.center.as_ref().filter(|(_, t)| t.abs() / s < 2.0 * style.pen_width_in(&pen));
+        if let Some((cl, t)) = thin_center {
+            // keep the dashed/heavy line clear of the host's cut outline
+            let clear = (style.pen_width_in("cut") + style.pen_width_in(&pen)) * 0.5 * s;
+            let off = t.signum() * (t.abs() * 0.5).max(clear);
+            let cl = offset_poly(cl, off);
+            let mut pieces = vec![];
+            for sg in poly_segs(&cl.iter().map(|q| v(q.x, q.y)).collect::<Vec<V>>()) {
+                let vis_segs = if occ.is_empty() { vec![sg] } else { visible_segments(&sg, occ) };
+                for vs in clip_segments(vis_segs, &crop) {
+                    pieces.push(Piece { seg: vs, pen: pen.clone() });
+                }
+            }
+            if !pieces.is_empty() {
+                strokes.push(Stroke { pieces, closed_loop: false, src: p.src.clone(), comp: p.comp, internal_ok: false, kind_rank, overlay: true });
+            }
+        } else if p.outline != Outline::None {
             for l in loops {
                 let mut pieces = vec![];
                 let mut all_kept = true;
@@ -420,6 +447,7 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
                         comp: p.comp,
                         internal_ok: kind_rank == 1 && !p.embedded,
                         kind_rank,
+                        overlay: false,
                     });
                 }
             }
@@ -434,7 +462,7 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
                 }
             }
             if !pieces.is_empty() {
-                strokes.push(Stroke { pieces, closed_loop: false, src: p.src.clone(), comp: p.comp, internal_ok: false, kind_rank });
+                strokes.push(Stroke { pieces, closed_loop: false, src: p.src.clone(), comp: p.comp, internal_ok: false, kind_rank, overlay: false });
             }
         }
     };
@@ -476,6 +504,10 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
     let embedded_cuts: Vec<&&Prism> = cuts.iter().filter(|p| p.embedded).collect();
     for p in &cuts {
         let mst = style.material(&p.material);
+        let pen_w = style.pen_width_in(p.pen.as_deref().unwrap_or("cut"));
+        let metal = p.fill_solid || matches!(p.material.as_str(), "steel" | "aluminum" | "rebar");
+        let thin = metal && p.center.is_none() && region_thickness(&p.region) / s < 2.0 * pen_w;
+        let thin_membrane = p.center.as_ref().map_or(false, |(_, t)| *t / s < 2.0 * style.pen_width_in(p.pen.as_deref().unwrap_or("membrane")));
         // visible region (for notes) and hatch loops
         let mut region = p.region.clone();
         // punch embedded cut prisms out of the hatch region
@@ -538,7 +570,7 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
         vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: true, embedded: p.embedded });
 
         // hatch
-        if !p.embedded {
+        if !p.embedded && !thin && !thin_membrane {
             for spec in &mst.hatch {
                 let Some(pat) = style.pattern(&spec.pattern) else { continue };
                 for r in &regions {
@@ -558,13 +590,13 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
             }
         }
         // solid fill
-        if p.fill_solid {
+        if (p.fill_solid || thin) && !thin_membrane {
             for r in poly::clip_region_rect(&Region::new(p.region.outer.clone()), &crop) {
-                fill_items.push(Item::Fill { layer: layer_name(style, pen_layer_key(p.pen.as_deref().unwrap_or("steel"))), src: p.src.clone(), loops: loops_of(&r) });
+                fill_items.push(Item::Fill { layer: layer_name(style, pen_layer_key(p.pen.as_deref().unwrap_or(if p.fill_solid { "steel" } else { "cut" }))), src: p.src.clone(), loops: loops_of(&r) });
             }
         }
         // wood marks
-        if p.along_z && !p.marks.is_empty() {
+        if p.along_z && !p.marks.is_empty() && !thin {
             if let Some(mark) = &mst.cut_mark {
                 for q in &p.marks {
                     let mut diags_: Vec<(Pt, Pt)> = vec![];
@@ -709,5 +741,5 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
 }
 
 fn clone_stroke(s: &Stroke) -> Stroke {
-    Stroke { pieces: s.pieces.clone(), closed_loop: s.closed_loop, src: s.src.clone(), comp: s.comp, internal_ok: s.internal_ok, kind_rank: s.kind_rank }
+    Stroke { pieces: s.pieces.clone(), closed_loop: s.closed_loop, src: s.src.clone(), comp: s.comp, internal_ok: s.internal_ok, kind_rank: s.kind_rank, overlay: s.overlay }
 }

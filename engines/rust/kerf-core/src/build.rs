@@ -761,6 +761,7 @@ fn membrane(i: &BuildIn) -> R {
     b.absolute = true;
     let mut p = LPrism::new(None, &mat, Region::new(thick_poly(&ps, if left { t } else { -t })));
     p.pen = i.style.material(&mat).pen.clone().or(Some("membrane".into()));
+    p.center = Some((ps.clone(), if left { t } else { -t }));
     b.prisms.push(p);
     b.desc = format!("membrane {} {} thick L={}", mat, fmt_ftin(t), fmt_ftin(ps.windows(2).map(|w| w[0].dist(w[1])).sum()));
     Ok(b)

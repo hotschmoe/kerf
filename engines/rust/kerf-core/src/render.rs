@@ -40,7 +40,7 @@ pub fn render_view(doc: &Value, model: &Model, view_id: &str, style: &Style) -> 
     };
     let mut unverified = false;
     let lk = Lookup { comps: &model.comps };
-    let pending = annotate(&vp, &base.vis, model, &lk, style, &crop, s, &mut diags, &mut unverified);
+    let pending = annotate(&vp, &base.vis, model, &lk, style, &crop, s, &mut diags, &mut unverified, &mut items);
     items.extend(pending);
 
     let info = SheetInfo {
@@ -110,6 +110,7 @@ fn annotate(
     s: f64,
     diags: &mut Vec<Diag>,
     unverified: &mut bool,
+    base_items: &mut Vec<Item>,
 ) -> Vec<Item> {
     let mut notes: Vec<NoteIn> = vec![];
     let mut note_slot: Vec<Option<usize>> = vec![]; // per annotation: index into notes
@@ -215,7 +216,22 @@ fn annotate(
         note_slot.push(slot);
     }
     let mut note_items: Vec<Vec<Item>> = vec![];
-    layout_notes(&notes, style, crop, s, &vp.notes_side, &mut note_items);
+    let mut ext = *crop;
+    let mut knock: Vec<Vec<Pt>> = vec![];
+    let mut obstacles: Vec<Vec<Pt>> = vec![];
+    for its in &per_annot {
+        ext.union(&crate::drawing::items_bounds(its));
+        for it in its {
+            if let Some(poly) = text_poly(it, 0.03 * s) {
+                obstacles.push(poly);
+            }
+            if let Some(poly) = text_poly(it, 0.02 * s) {
+                knock.push(poly);
+            }
+        }
+    }
+    layout_notes(&notes, style, crop, &ext, &obstacles, s, &vp.notes_side, &mut note_items);
+    knock_hatch(base_items, &knock);
     let mut out = vec![];
     for (k, its) in per_annot.into_iter().enumerate() {
         out.extend(its);
@@ -224,4 +240,83 @@ fn annotate(
         }
     }
     out
+}
+
+
+/// Remove hatch line parts that fall inside text boxes (dimension text and labels read cleanly over hatch).
+fn knock_hatch(items: &mut [Item], boxes: &[Vec<Pt>]) {
+    if boxes.is_empty() {
+        return;
+    }
+    for it in items.iter_mut() {
+        if let Item::Hatch { lines, .. } = it {
+            let mut out: Vec<[f64; 4]> = Vec::with_capacity(lines.len());
+            'line: for l in lines.iter() {
+                let (a, b) = (pt(l[0], l[1]), pt(l[2], l[3]));
+                let mut cuts: Vec<(f64, f64)> = vec![];
+                for bx in boxes {
+                    if let Some(iv) = convex_interval(a, b, bx) {
+                        cuts.push(iv);
+                    }
+                }
+                if cuts.is_empty() {
+                    out.push(*l);
+                    continue;
+                }
+                cuts.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap());
+                let mut t = 0.0;
+                let degenerate = a.near(b, 1e-12);
+                for (c0, c1) in cuts {
+                    if degenerate {
+                        continue 'line;
+                    }
+                    if c0 > t + 1e-9 {
+                        let (p, q) = (a.lerp(b, t), a.lerp(b, c0));
+                        out.push([p.x, p.y, q.x, q.y]);
+                    }
+                    t = t.max(c1);
+                }
+                if degenerate {
+                    continue;
+                }
+                if t < 1.0 - 1e-9 {
+                    let (p, q) = (a.lerp(b, t), b);
+                    out.push([p.x, p.y, q.x, q.y]);
+                }
+            }
+            *lines = out;
+        }
+    }
+}
+
+/// Parameter interval of segment a->b inside a convex polygon (any winding); dots test containment.
+fn convex_interval(a: Pt, b: Pt, poly: &[Pt]) -> Option<(f64, f64)> {
+    let area = poly_area(poly);
+    let sgn = if area >= 0.0 { 1.0 } else { -1.0 };
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    let d = b - a;
+    let n = poly.len();
+    for i in 0..n {
+        let (p, q) = (poly[i], poly[(i + 1) % n]);
+        let e = q - p;
+        // inside: cross(e, x - p) * sgn >= 0
+        let num = e.cross(a - p) * sgn;
+        let den = e.cross(d) * sgn;
+        if den.abs() < 1e-15 {
+            if num < 0.0 {
+                return None;
+            }
+        } else {
+            let t = -num / den;
+            if den > 0.0 {
+                t0 = t0.max(t);
+            } else {
+                t1 = t1.min(t);
+            }
+        }
+        if t0 > t1 {
+            return None;
+        }
+    }
+    Some((t0, t1))
 }

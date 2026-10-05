@@ -38,6 +38,8 @@ pub struct LPrism {
     pub only: Only,
     /// For rebar paths the 3D shape is a swept circle along this centerline.
     pub sweep: Option<(Vec<Pt>, f64)>,
+    /// Centerline of a thin layer (membranes) and its thickness.
+    pub center: Option<(Vec<Pt>, f64)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,6 +67,7 @@ impl LPrism {
             embedded: None,
             only: Only::Both,
             sweep: None,
+            center: None,
         }
     }
 }
@@ -131,6 +134,9 @@ impl Built {
             if let Some((pts, r)) = &p.sweep {
                 p.sweep = Some((pts.iter().map(|q| xf.apply(*q)).collect(), *r));
             }
+            if let Some((pts, t)) = &p.center {
+                p.center = Some((pts.iter().map(|q| xf.apply(*q)).collect(), *t));
+            }
         }
         for z in &mut self.zones {
             z.1 = xf.region(&z.1);
@@ -169,6 +175,7 @@ pub struct Prism {
     pub bar: Option<(Pt, f64)>,
     pub only: Only,
     pub sweep: Option<(Vec<Pt>, f64)>,
+    pub center: Option<(Vec<Pt>, f64)>,
 }
 
 #[derive(Clone, Debug)]
