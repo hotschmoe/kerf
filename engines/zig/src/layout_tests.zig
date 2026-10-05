@@ -138,7 +138,7 @@ test "W_LEADER_HIT: not raised when the router can place the notes freely" {
     try std.testing.expectEqual(@as(usize, 0), c.cross + c.near);
 }
 
-test "W_LEADER_HIT: a label on a leader gets an offset proposal" {
+test "SPEC 20 repair: a label sitting on a leader is moved off it (no W_LEADER_HIT)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -149,9 +149,12 @@ test "W_LEADER_HIT: a label on a leader gets an offset proposal" {
         \\{"id":"l1","type":"label","text":"MID","at":[20,10]}
     );
     const dr = try build(a, src, "A");
-    const d = findDiag(dr, "W_LEADER_HIT") orelse return error.TestUnexpectedResult;
-    try std.testing.expect(std.mem.indexOf(u8, d.message, "label 'l1'") != null);
-    try std.testing.expect(std.mem.indexOf(u8, d.fix.?, "\"offset\"") != null);
+    try std.testing.expect(findDiag(dr, "W_LEADER_HIT") == null);
+    var moved = false;
+    for (dr.items) |it| if (it == .text and std.mem.eql(u8, it.text.src, "l1")) {
+        moved = @abs(it.text.x - 20) > 1e-6 or @abs(it.text.y - 10) > 1e-6;
+    };
+    try std.testing.expect(moved);
 }
 
 test "note and citation text share the style case transform" {

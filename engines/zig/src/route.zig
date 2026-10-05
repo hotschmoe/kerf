@@ -39,6 +39,8 @@ pub const NoteIn = struct {
     movable: bool,
     /// Designer override of the text position (top-left of the block).
     place: ?V2,
+    /// Per-note column hint (`column` on the note): the note never leaves that column.
+    column: ?Side = null,
 };
 
 pub const ObstKind = enum { dim, label };
@@ -159,7 +161,9 @@ fn boxPoly(x: f64, top: f64, w: f64, hgt: f64) [4]V2 {
 
 // ---- layout context -------------------------------------------------------------------------------------------
 
-const Cost = struct { total: f64, hits: usize };
+/// `hard` counts the hits between notes (leader/leader, leader/text block); `hits` all of them, dimension text and
+/// labels included. Dimension text and labels can be moved by the caller afterwards, so the search ranks `hard` first.
+const Cost = struct { total: f64, hits: usize, hard: usize = 0 };
 
 const BB = struct {
     x0: f64,
@@ -221,7 +225,7 @@ const Ctx = struct {
     ord2: []usize,
     adj: []bool,
     /// Remaining column solves (bounds the work on dense views).
-    budget: usize = 60,
+    budget: usize = 100,
 
     fn landing(self: *const Ctx, i: usize) V2 {
         return self.notes[i].cands[self.ci[i]];
@@ -339,6 +343,7 @@ const Ctx = struct {
     fn cost(self: *const Ctx) Cost {
         var c: f64 = 0;
         var hits: usize = 0;
+        var hard: usize = 0;
         const n = self.notes.len;
         for (0..n) |i| {
             const li = self.leaders[i];
@@ -348,6 +353,7 @@ const Ctx = struct {
                 if (w > 0) {
                     c += w;
                     hits += 1;
+                    hard += 1;
                 }
             }
             for (0..n) |j| {
@@ -356,6 +362,7 @@ const Ctx = struct {
                 if (w > 0) {
                     c += w;
                     hits += 1;
+                    hard += 1;
                 }
             }
             for (self.obst, 0..) |o, k| {
@@ -368,7 +375,7 @@ const Ctx = struct {
             c += self.softPen(li, lb);
             c += self.shapePen(li, self.landing(i), self.notes[i].cands[0]);
         }
-        return .{ .total = c, .hits = hits };
+        return .{ .total = c, .hits = hits, .hard = hard };
     }
 
     fn eval(self: *Ctx) Cost {
@@ -392,7 +399,7 @@ const Ctx = struct {
         return k;
     }
 
-    const Snap = struct { left: []bool, ci: []usize, key: []f64, ov: []f64, hits: usize, total: f64 };
+    const Snap = struct { left: []bool, ci: []usize, key: []f64, ov: []f64, hits: usize, hard: usize, total: f64 };
 
     fn snapshot(self: *Ctx) Snap {
         const cst = self.eval();
@@ -402,6 +409,7 @@ const Ctx = struct {
             .key = self.a.dupe(f64, self.key) catch self.key,
             .ov = self.a.dupe(f64, self.ov) catch self.ov,
             .hits = cst.hits,
+            .hard = cst.hard,
             .total = cst.total,
         };
     }
@@ -547,12 +555,18 @@ const Ctx = struct {
 };
 
 fn better(a: Cost, b: Cost) bool {
+    return betterMode(a, b, true);
+}
+
+/// Lexicographic (hard hits if `hard_first`, all hits, cost).
+fn betterMode(a: Cost, b: Cost, hard_first: bool) bool {
+    if (hard_first and a.hard != b.hard) return a.hard < b.hard;
     return a.hits < b.hits or (a.hits == b.hits and a.total < b.total - 1e-9);
 }
 
 /// Hit-driven improvement: DP re-solve, then single discrete changes (column flip, neighbour swap,
 /// re-insertion) re-solved one at a time; the first change that lowers (hits, cost) is kept.
-fn improve(c: *Ctx) void {
+fn improve(c: *Ctx, scratch: bool, hard_first: bool) void {
     const n = c.notes.len;
     c.solveAll();
     var cur = c.eval();
@@ -564,18 +578,34 @@ fn improve(c: *Ctx) void {
             if (c.fixed(i) or c.hitsOf(i) == 0) continue;
             const start = c.snapshot();
             // (a) other column
-            if (c.p.side == .both) {
+            if (c.p.side == .both and c.notes[i].column == null) {
                 c.left[i] = !c.left[i];
                 c.key[i] = -c.landing(i).y;
                 c.solveAll();
                 const r = c.eval();
-                if (better(r, cur)) {
+                if (betterMode(r, cur, hard_first)) {
                     cur = r;
                     changed = true;
                     continue;
                 }
                 c.restore(start);
                 _ = c.eval();
+                // (a') the same column change solved from scratch (the other notes re-derive their order and landings)
+                if (!scratch) {
+                    // skipped in the first attempt; see route()
+                } else {
+                    c.left[i] = !c.left[i];
+                    resetKeepColumns(c);
+                    c.solveAll();
+                    const r2 = c.eval();
+                    if (betterMode(r2, cur, hard_first)) {
+                        cur = r2;
+                        changed = true;
+                        continue;
+                    }
+                    c.restore(start);
+                    _ = c.eval();
+                }
             }
             // (b) re-insert at every other position of its column
             var cnt: usize = 0;
@@ -610,7 +640,7 @@ fn improve(c: *Ctx) void {
                 }
                 c.solveAll();
                 const r = c.eval();
-                if (better(r, cur)) {
+                if (betterMode(r, cur, hard_first)) {
                     cur = r;
                     changed = true;
                     break;
@@ -621,6 +651,46 @@ fn improve(c: *Ctx) void {
         }
         if (!changed) break;
     }
+}
+
+/// SPEC 16: swap adjacent column notes whose leaders cross (bounded), then renumber the keys by rank so later
+/// changes are position changes.
+fn decross(c: *Ctx) void {
+    const n = c.notes.len;
+    var iter: usize = 0;
+    while (iter < n * 4 + 8) : (iter += 1) {
+        var swapped = false;
+        for ([2]bool{ false, true }) |col_left| {
+            const ord = c.sortOrder(col_left);
+            var k: usize = 0;
+            while (k + 1 < ord.len) : (k += 1) {
+                if (polyPolyDist(c.leaders[ord[k]], c.leaders[ord[k + 1]]) <= 1e-9) {
+                    std.mem.swap(f64, &c.key[ord[k]], &c.key[ord[k + 1]]);
+                    swapped = true;
+                    break;
+                }
+            }
+            if (swapped) break;
+        }
+        if (!swapped) break;
+        c.layout();
+    }
+    for ([2]bool{ false, true }) |col_left| {
+        const ord = c.sortOrder(col_left);
+        for (ord, 0..) |i, k| c.key[i] = @floatFromInt(k);
+    }
+}
+
+/// Forget the column solver's choices (landing candidates, vertical positions, order) but keep the column of
+/// every note: the starting point of a from-scratch solve after a column change.
+fn resetKeepColumns(c: *Ctx) void {
+    for (c.notes, 0..) |nt, i| {
+        c.ci[i] = 0;
+        c.ov[i] = std.math.nan(f64);
+        c.key[i] = -nt.cands[0].y;
+    }
+    c.layout();
+    decross(c);
 }
 
 // ---- entry point ---------------------------------------------------------------------------------------------------
@@ -656,7 +726,7 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
         c.ci[i] = 0;
         c.ov[i] = std.math.nan(f64);
         const l = nt.cands[0];
-        c.left[i] = switch (p.side) {
+        c.left[i] = if (nt.column) |cs| cs == .left else switch (p.side) {
             .left => true,
             .right => false,
             .both => @abs(l.x - p.crop.x0) < @abs(p.crop.x1 - l.x),
@@ -664,37 +734,24 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
         c.key[i] = -l.y;
     }
     c.layout();
-    // SPEC 16: swap adjacent column notes whose leaders cross (bounded)
-    var iter: usize = 0;
-    while (iter < n * 4 + 8) : (iter += 1) {
-        var swapped = false;
-        for ([2]bool{ false, true }) |col_left| {
-            const ord = c.sortOrder(col_left);
-            var k: usize = 0;
-            while (k + 1 < ord.len) : (k += 1) {
-                if (polyPolyDist(c.leaders[ord[k]], c.leaders[ord[k + 1]]) <= 1e-9) {
-                    std.mem.swap(f64, &c.key[ord[k]], &c.key[ord[k + 1]]);
-                    swapped = true;
-                    break;
-                }
-            }
-            if (swapped) break;
-        }
-        if (!swapped) break;
-        c.layout();
-    }
-    // renumber keys by rank so later changes are position changes
-    for ([2]bool{ false, true }) |col_left| {
-        const ord = c.sortOrder(col_left);
-        for (ord, 0..) |i, k| c.key[i] = @floatFromInt(k);
-    }
+    decross(&c);
     var searched = false;
     if (c.eval().hits > 0) {
         searched = true;
         const start = c.snapshot();
-        improve(&c);
-        const r = c.snapshot();
-        if (!(r.hits < start.hits or (r.hits == start.hits and r.total < start.total))) c.restore(start);
+        var best = start;
+        // a small portfolio of searches from the same start (the first one that clears every hit wins)
+        const attempts = [_][2]bool{ .{ false, false }, .{ true, false }, .{ false, true }, .{ true, true } };
+        for (attempts) |at| {
+            c.restore(start);
+            c.budget = 100;
+            _ = c.eval();
+            improve(&c, at[0], at[1]);
+            const r = c.snapshot();
+            if (betterMode(.{ .total = r.total, .hits = r.hits, .hard = r.hard }, .{ .total = best.total, .hits = best.hits, .hard = best.hard }, false)) best = r;
+            if (best.hits == 0) break;
+        }
+        c.restore(best);
         _ = c.eval();
     }
 

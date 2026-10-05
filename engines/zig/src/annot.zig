@@ -481,6 +481,8 @@ const NoteIn = struct {
     /// False when the note has an explicit `at` (never nudged).
     movable: bool,
     place: ?V2,
+    /// `column` hint of the note.
+    column: ?route.Side = null,
 };
 
 /// A dimension text or label box that leaders must keep away from, with what is needed to propose a fix.
@@ -489,6 +491,8 @@ const Obstacle = struct {
     id: []const u8,
     kind: route.ObstKind,
     text: []const u8,
+    /// Index into the dimension specs (kind dim) or label specs (kind label).
+    owner: usize = 0,
     /// dim: unit vector along which |offset| grows (before the sign of offset); label: unused
     axis: V2 = .{ .x = 0, .y = 0 },
     /// dim: current offset; label: current dx
@@ -503,6 +507,17 @@ const Meta = struct {
     axis: V2 = .{ .x = 0, .y = 0 },
     off: f64 = 0,
     off2: f64 = 0,
+    /// Index into the dim / label specs.
+    owner: usize = 0,
+};
+
+const LabelSpec = struct {
+    k: usize,
+    id: []const u8,
+    text: []const u8,
+    /// Drawing-space position (author offset applied); null when an iso label does not project.
+    base: ?V2,
+    off: V2,
 };
 
 fn fmtNum(a: Allocator, n: f64) Allocator.Error![]const u8 {
@@ -521,7 +536,7 @@ fn clearOfLeaders(leaders: []const [3]V2, poly: [4]V2, shift: V2, h: f64) bool {
     return true;
 }
 
-/// Offset proposals for a dimension or label that a leader runs into.
+/// Offset proposals for a dimension or label that a leader runs into (what the repair loop could not fix).
 fn obstacleFix(a: Allocator, o: Obstacle, leaders: []const [3]V2, h: f64) Allocator.Error!?[]const u8 {
     var k: usize = 1;
     switch (o.kind) {
@@ -603,16 +618,21 @@ fn reportHits(env: *Env, notes: []const NoteIn, obsts: []const Obstacle, r: rout
     }
 }
 
-fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obsts: []const Obstacle, soft: []const [2]V2, out: []std.ArrayList(Item)) Allocator.Error!void {
+/// Note text blocks (word wrap, sizes) and the routing parameters; independent of where dimensions end up.
+const NotePrep = struct {
+    g: route.Geo,
+    gutter: f64,
+    tag_r: f64,
+    lines_of: []const []const []const u8,
+    rin: []route.NoteIn,
+};
+
+fn prepNotes(env: *Env, notes: []const NoteIn) Allocator.Error!NotePrep {
     const a = env.a;
     const st = env.style;
     const S = env.S;
-    const crop = env.crop;
     const h = st.text_height_in * S;
     const g = route.Geo{ .h = h, .pitch = h * st.line_spacing, .gap = st.note_gap_in * S, .shoulder = st.shoulder_in * S, .pad = 0.04 * S };
-    const gutter = st.gutter_in * S;
-    const xr = @max(crop.x1, ext.x1);
-    const xl = @min(crop.x0, ext.x0);
     const wrap_n: usize = @intFromFloat(st.wrap_chars);
     const keynote = st.notes_mode_keynote;
     const tag_r = 0.14 * S;
@@ -633,8 +653,14 @@ fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obsts: []const Obstac
             for (lines) |l| w = @max(w, env.font.width(try asciiFold(a, l), h));
             hgt = h + (@as(f64, @floatFromInt(lines.len)) - 1.0) * g.pitch;
         }
-        rin[i] = .{ .w = w, .hgt = hgt, .cands = n.cands, .movable = n.movable, .place = n.place };
+        rin[i] = .{ .w = w, .hgt = hgt, .cands = n.cands, .movable = n.movable, .place = n.place, .column = n.column };
     }
+    return .{ .g = g, .gutter = st.gutter_in * S, .tag_r = tag_r, .lines_of = lines_of, .rin = rin };
+}
+
+fn routeNotes(env: *Env, prep: NotePrep, ext: Box, obsts: []const Obstacle, soft: []const [2]V2) Allocator.Error!route.Layout {
+    const a = env.a;
+    const crop = env.crop;
     const ro = try a.alloc(route.Obst, obsts.len);
     for (obsts, 0..) |o, i| ro[i] = .{ .kind = o.kind, .poly = o.poly };
     const side: route.Side = switch (env.spec.notes_side) {
@@ -642,10 +668,19 @@ fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obsts: []const Obstac
         .right => .right,
         .both => .both,
     };
-    const r = try route.route(a, .{ .geo = g, .crop = crop, .xl = xl, .xr = xr, .gutter = gutter, .side = side }, rin, ro, soft);
-    try reportHits(env, notes, obsts, r, g);
+    return route.route(a, .{ .geo = prep.g, .crop = crop, .xl = @min(crop.x0, ext.x0), .xr = @max(crop.x1, ext.x1), .gutter = prep.gutter, .side = side }, prep.rin, ro, soft);
+}
+
+fn emitNotes(env: *Env, notes: []const NoteIn, prep: NotePrep, r: route.Layout, out: []std.ArrayList(Item)) Allocator.Error!void {
+    const a = env.a;
+    const st = env.style;
+    const S = env.S;
+    const h = st.text_height_in * S;
+    const g = prep.g;
+    const keynote = st.notes_mode_keynote;
+    const tag_r = prep.tag_r;
     for (notes, 0..) |n, i| {
-        const lines = lines_of[i];
+        const lines = prep.lines_of[i];
         const px = r.x[i];
         const ptop = r.top[i];
         if (keynote) {
@@ -659,8 +694,18 @@ fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obsts: []const Obstac
             }
             try out[i].append(a, try pathItem(env, "anno", n.id, &hex, true));
             try out[i].append(a, try textItem(env, "notes", "anno", n.id, lines[0], cx, cy, h, 0, .center, .middle));
-        } else for (lines, 0..) |line, j| {
-            try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, px, ptop - h - @as(f64, @floatFromInt(j)) * g.pitch, h, 0, .left, .baseline));
+        } else {
+            // SPEC 20: a designer-placed note that sits left of its arrow is right-aligned to place.x + width
+            const right_aligned = n.place != null and r.left[i];
+            const bw = prep.rin[i].w;
+            for (lines, 0..) |line, j| {
+                const ty = ptop - h - @as(f64, @floatFromInt(j)) * g.pitch;
+                if (right_aligned) {
+                    try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, px + bw, ty, h, 0, .right, .baseline));
+                } else {
+                    try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, px, ty, h, 0, .left, .baseline));
+                }
+            }
         }
         const l = r.leaders[i];
         const land = r.landing[i];
@@ -705,7 +750,65 @@ fn legendItems(env: *Env, notes: []const NoteIn, result: *std.ArrayList(Item)) A
 
 // ---- dimensions ---------------------------------------------------------------------------------------------------------
 
-fn dimItems(env: *Env, id: []const u8, from: V2, to: V2, dir: []const u8, offset: f64, text: ?[]const u8, out: *std.ArrayList(Item)) Allocator.Error!void {
+const DimDir = enum { h, v, aligned };
+
+/// A parsed dimension. Its drawn offset is `off0` (authored) pushed outward by `push` (layout repair) and by
+/// the automatic stacking (SPEC 20).
+const DimSpec = struct {
+    k: usize,
+    id: []const u8,
+    from: V2,
+    to: V2,
+    dir: DimDir,
+    off0: f64,
+    text: ?[]const u8,
+
+    fn sgn(self: DimSpec) f64 {
+        return if (self.off0 >= 0) 1 else -1;
+    }
+
+    /// Length measured by the dimension (model units).
+    fn span(self: DimSpec) f64 {
+        return switch (self.dir) {
+            .v => @abs(self.to.y - self.from.y),
+            .aligned => self.from.dist(self.to),
+            .h => @abs(self.to.x - self.from.x),
+        };
+    }
+
+    /// Unit vector along which the line moves when |offset| grows (before the sign of the offset).
+    fn axis(self: DimSpec) V2 {
+        return switch (self.dir) {
+            .v => V2.init(1, 0),
+            .aligned => self.to.sub(self.from).norm().perp(),
+            .h => V2.init(0, 1),
+        };
+    }
+};
+
+/// The drawn pieces of one dimension, for conflict tests (SPEC 20 stacking and outside text).
+const DimShape = struct {
+    segs: [6][2]V2 = undefined,
+    n: usize = 0,
+    /// The dimension line proper (between the extension lines).
+    line: [2]V2 = undefined,
+    /// The text box (padded).
+    text: [4]V2 = undefined,
+    fits: bool = true,
+
+    fn add(self: *DimShape, a: V2, b: V2) void {
+        self.segs[self.n] = .{ a, b };
+        self.n += 1;
+    }
+};
+
+const dim_variants: usize = 6;
+
+/// Build one dimension. `offset` is the signed dimension-line offset (SPEC 16). When the text does not fit
+/// between the extension lines it goes outside (SPEC 20), never smaller and never dropped, joined to the
+/// dimension line by a short leader. `variant` picks where: 0/1 on the axis beyond the end of the line, 2-5
+/// raised out of the axis (outward / inward of the object) at the far / near end.
+fn dimBuild(env: *Env, d: DimSpec, offset: f64, variant: usize, out: *std.ArrayList(Item)) Allocator.Error!DimShape {
     const a = env.a;
     const st = env.style;
     const S = env.S;
@@ -714,79 +817,231 @@ fn dimItems(env: *Env, id: []const u8, from: V2, to: V2, dir: []const u8, offset
     const tick = st.tick_len_in * S;
     const th = st.text_height_in * S;
     const tgap = st.dim_text_gap_in * S;
+    const from = d.from;
+    const to = d.to;
     var pa: V2 = undefined;
     var pb: V2 = undefined;
     var la: V2 = undefined; // dimension line endpoints (ordered along u)
     var lb: V2 = undefined;
     var u: V2 = undefined;
     var nrm: V2 = undefined;
-    const eq = std.mem.eql;
-    if (eq(u8, dir, "v")) {
-        const x = if (offset >= 0) @max(from.x, to.x) + offset else @min(from.x, to.x) + offset;
-        pa = V2.init(x, from.y);
-        pb = V2.init(x, to.y);
-        if (from.y <= to.y) {
+    switch (d.dir) {
+        .v => {
+            const x = if (offset >= 0) @max(from.x, to.x) + offset else @min(from.x, to.x) + offset;
+            pa = V2.init(x, from.y);
+            pb = V2.init(x, to.y);
+            if (from.y <= to.y) {
+                la = pa;
+                lb = pb;
+            } else {
+                la = pb;
+                lb = pa;
+            }
+            u = V2.init(0, 1);
+            nrm = V2.init(-1, 0);
+        },
+        .aligned => {
+            const dd = to.sub(from).norm();
+            const n = dd.perp();
+            pa = from.add(n.scale(offset));
+            pb = to.add(n.scale(offset));
             la = pa;
             lb = pb;
-        } else {
-            la = pb;
-            lb = pa;
-        }
-        u = V2.init(0, 1);
-        nrm = V2.init(-1, 0);
-    } else if (eq(u8, dir, "aligned")) {
-        const d = to.sub(from).norm();
-        const n = d.perp();
-        pa = from.add(n.scale(offset));
-        pb = to.add(n.scale(offset));
-        la = pa;
-        lb = pb;
-        u = d;
-        nrm = n;
-    } else {
-        const y = if (offset >= 0) @max(from.y, to.y) + offset else @min(from.y, to.y) + offset;
-        pa = V2.init(from.x, y);
-        pb = V2.init(to.x, y);
-        if (from.x <= to.x) {
-            la = pa;
-            lb = pb;
-        } else {
-            la = pb;
-            lb = pa;
-        }
-        u = V2.init(1, 0);
-        nrm = V2.init(0, 1);
+            u = dd;
+            nrm = n;
+        },
+        .h => {
+            const y = if (offset >= 0) @max(from.y, to.y) + offset else @min(from.y, to.y) + offset;
+            pa = V2.init(from.x, y);
+            pb = V2.init(to.x, y);
+            if (from.x <= to.x) {
+                la = pa;
+                lb = pb;
+            } else {
+                la = pb;
+                lb = pa;
+            }
+            u = V2.init(1, 0);
+            nrm = V2.init(0, 1);
+        },
     }
+    var sh = DimShape{};
     const pairs = [2][2]V2{ .{ from, pa }, .{ to, pb } };
     for (pairs) |pq| {
-        const d = pq[1].sub(pq[0]);
-        if (d.len() < 1e-9) continue;
-        const dn = d.norm();
-        try out.append(a, try pathItem(env, "dim", id, &.{ pq[0].add(dn.scale(gap)), pq[1].add(dn.scale(over)) }, false));
+        const dv = pq[1].sub(pq[0]);
+        if (dv.len() < 1e-9) continue;
+        const dn = dv.norm();
+        const e0 = pq[0].add(dn.scale(gap));
+        const e1 = pq[1].add(dn.scale(over));
+        try out.append(a, try pathItem(env, "dim", d.id, &.{ e0, e1 }, false));
+        sh.add(e0, e1);
     }
-    const dist: f64 = if (eq(u8, dir, "v")) @abs(to.y - from.y) else if (eq(u8, dir, "aligned")) from.dist(to) else @abs(to.x - from.x);
-    const label: []const u8 = text orelse try units.fmtFtIn(a, dist);
+    const dist = d.span();
+    const label: []const u8 = d.text orelse try units.fmtFtIn(a, dist);
     const label_f = try asciiFold(a, label);
     const tw = env.font.width(label_f, th);
     const fits = tw + 2.0 * tgap <= lb.sub(la).len() - tick;
-    var lend = lb;
-    if (!fits) lend = lb.add(u.scale(tw + 4.0 * tgap));
-    try out.append(a, try pathItem(env, "dim", id, &.{ la, lend }, false));
+    sh.fits = fits;
+    sh.line = .{ la, lb };
+    try out.append(a, try pathItem(env, "dim", d.id, &.{ la, lb }, false));
+    sh.add(la, lb);
     const tdir = u.add(nrm).norm();
     for ([2]V2{ la, lb }) |p| {
-        try out.append(a, try pathItem(env, "profile", id, &.{ p.sub(tdir.scale(tick * 0.5)), p.add(tdir.scale(tick * 0.5)) }, false));
+        const t0 = p.sub(tdir.scale(tick * 0.5));
+        const t1 = p.add(tdir.scale(tick * 0.5));
+        try out.append(a, try pathItem(env, "profile", d.id, &.{ t0, t1 }, false));
+        sh.add(t0, t1);
     }
     var ang = std.math.radiansToDegrees(std.math.atan2(u.y, u.x));
     if (ang > 90.0 + 1e-9 or ang <= -90.0 + 1e-9) ang += 180.0;
-    if (eq(u8, dir, "v")) ang = 90.0;
+    if (d.dir == .v) ang = 90.0;
     const tn = V2.init(-@sin(std.math.degreesToRadians(ang)), @cos(std.math.degreesToRadians(ang)));
-    const center = if (fits) V2.mid(la, lb).add(tn.scale(tgap)) else lb.add(u.scale(2.0 * tgap + tw * 0.5 + tick)).add(tn.scale(tgap));
-    try out.append(a, try textItem(env, "dims", "dim", id, label, center.x, center.y, th, ang, .center, .baseline));
+    var center: V2 = undefined;
+    var valign: drawing.VAlign = .baseline;
+    if (fits) {
+        center = V2.mid(la, lb).add(tn.scale(tgap));
+    } else {
+        // outside: a short leader from the end of the dimension line to the text
+        valign = .middle;
+        const at_far = variant == 0 or variant == 2 or variant == 4;
+        const e = if (at_far) lb else la;
+        const s: f64 = if (at_far) 1 else -1;
+        const outward = nrm.scale(d.sgn());
+        const lift: f64 = switch (variant) {
+            2, 3 => th + tgap,
+            4, 5 => -(th + tgap),
+            else => 0,
+        };
+        const q = e.add(u.scale(s * 2.0 * tick)).add(outward.scale(lift));
+        try out.append(a, try pathItem(env, "dim", d.id, &.{ e, q }, false));
+        sh.add(e, q);
+        center = q.add(u.scale(s * (tgap + tw * 0.5)));
+    }
+    const ti = try textItem(env, "dims", "dim", d.id, label, center.x, center.y, th, ang, .center, valign);
+    try out.append(a, ti);
+    sh.text = textPoly(env.font, ti.text, 0.015 * S);
+    return sh;
 }
 
 fn labelItems(env: *Env, id: []const u8, text: []const u8, at: V2, out: *std.ArrayList(Item)) Allocator.Error!void {
     const t = try upperIf(env, text);
     try out.append(env.a, try textItem(env, "notes", "anno", id, t, at.x, at.y, env.style.label_height_in * env.S, 0, .center, .middle));
+}
+
+// ---- dimension conflicts (stacking) --------------------------------------------------------------------------------
+
+fn polyHitsSeg(poly: *const [4]V2, a: V2, b: V2) bool {
+    if (geom.pointInLoopEO(a, poly) or geom.pointInLoopEO(b, poly)) return true;
+    for (0..4) |i| if (route.segSegDist(a, b, poly[i], poly[(i + 1) % 4]) <= 1e-9) return true;
+    return false;
+}
+
+fn polysOverlap(p: *const [4]V2, q: *const [4]V2) bool {
+    for (0..4) |i| if (polyHitsSeg(q, p[i], p[(i + 1) % 4])) return true;
+    for (0..4) |i| if (geom.pointInLoopEO(q[i], p)) return true;
+    return false;
+}
+
+/// Parallel dimension lines that run on top of each other (within `tol`, with a shared stretch).
+fn linesCollide(a: [2]V2, b: [2]V2, tol: f64) bool {
+    const da = a[1].sub(a[0]);
+    const db = b[1].sub(b[0]);
+    const la = da.len();
+    const lb = db.len();
+    if (la < 1e-9 or lb < 1e-9) return false;
+    const ua = da.scale(1.0 / la);
+    if (@abs(ua.cross(db.scale(1.0 / lb))) > 0.02) return false;
+    const t0 = b[0].sub(a[0]).dot(ua);
+    const t1 = b[1].sub(a[0]).dot(ua);
+    const ov = @min(la, @max(t0, t1)) - @max(0.0, @min(t0, t1));
+    if (ov <= 1e-6) return false;
+    const dperp = @abs(ua.cross(b[0].sub(a[0])));
+    return dperp < tol;
+}
+
+fn dimConflicts(x: *const DimShape, y: *const DimShape, tol: f64) usize {
+    var c: usize = 0;
+    if (linesCollide(x.line, y.line, tol)) c += 1;
+    if (polysOverlap(&x.text, &y.text)) c += 1;
+    for (y.segs[0..y.n]) |sg| if (polyHitsSeg(&x.text, sg[0], sg[1])) {
+        c += 1;
+        break;
+    };
+    for (x.segs[0..x.n]) |sg| if (polyHitsSeg(&y.text, sg[0], sg[1])) {
+        c += 1;
+        break;
+    };
+    return c;
+}
+
+fn baseHits(segs: []const [2]V2, poly: *const [4]V2) usize {
+    var bb = Box{};
+    for (poly) |p| bb.addPoint(p.x, p.y);
+    var n: usize = 0;
+    for (segs) |sg| {
+        if (@max(sg[0].x, sg[1].x) < bb.x0 or @min(sg[0].x, sg[1].x) > bb.x1 or @max(sg[0].y, sg[1].y) < bb.y0 or @min(sg[0].y, sg[1].y) > bb.y1) continue;
+        if (polyHitsSeg(poly, sg[0], sg[1])) n += 1;
+    }
+    return n;
+}
+
+const DimPlaced = struct { offset: f64, shape: DimShape, items: std.ArrayList(Item) };
+
+/// SPEC 20 dimension stacking: dims are placed shortest first; a dimension whose line would overlap another
+/// one, or whose text would overprint another dimension's text or lines, moves out in steps of 0.25 paper
+/// inch (outside text first tries the other places before the dimension line moves). `pushes` is the extra
+/// outward distance chosen by the layout repair. Returns the effective offsets and fills `items`.
+fn stackDims(env: *Env, specs: []const DimSpec, pushes: []const f64, base_segs: []const [2]V2, items: []std.ArrayList(Item), eff: []f64) Allocator.Error!void {
+    const a = env.a;
+    const S = env.S;
+    const step = 0.25 * S;
+    const order = try a.alloc(usize, specs.len);
+    for (order, 0..) |*o, i| o.* = i;
+    std.mem.sort(usize, order, specs, struct {
+        fn lt(sp: []const DimSpec, x: usize, y: usize) bool {
+            const sx = sp[x].span();
+            const sy = sp[y].span();
+            if (@abs(sx - sy) > 1e-9) return sx < sy;
+            return x < y;
+        }
+    }.lt);
+    var placed: std.ArrayList(DimShape) = .empty;
+    for (order) |i| {
+        const d = specs[i];
+        const start = d.off0 + d.sgn() * pushes[i];
+        var best: ?DimPlaced = null;
+        var best_c: usize = std.math.maxInt(usize);
+        var k: usize = 0;
+        search: while (k <= 12) : (k += 1) {
+            const off = start + d.sgn() * @as(f64, @floatFromInt(k)) * step;
+            var kbest: ?DimPlaced = null;
+            var kbest_hits: usize = std.math.maxInt(usize);
+            var kbest_c: usize = std.math.maxInt(usize);
+            var v: usize = 0;
+            while (v < dim_variants) : (v += 1) {
+                var its: std.ArrayList(Item) = .empty;
+                const sh = try dimBuild(env, d, off, v, &its);
+                var c: usize = 0;
+                for (placed.items) |*o| c += dimConflicts(&sh, o, 0.5 * step);
+                const bh: usize = if (sh.fits) 0 else baseHits(base_segs, &sh.text);
+                if (c < kbest_c or (c == kbest_c and bh < kbest_hits)) {
+                    kbest_c = c;
+                    kbest_hits = bh;
+                    kbest = .{ .offset = off, .shape = sh, .items = its };
+                }
+                if (sh.fits) break;
+            }
+            if (kbest_c < best_c) {
+                best_c = kbest_c;
+                best = kbest;
+            }
+            if (kbest_c == 0) break :search;
+        }
+        const pick = best.?;
+        eff[i] = pick.offset;
+        items[i] = pick.items;
+        try placed.append(a, pick.shape);
+    }
 }
 
 // ---- citations --------------------------------------------------------------------------------------------------------------
@@ -830,10 +1085,136 @@ fn noteText(env: *Env, text: []const u8, cites: []const json.Value) Allocator.Er
     return upperIf(env, s.items);
 }
 
+// ---- layout repair (SPEC 20) --------------------------------------------------------------------------------------------
+
+const max_repair_passes: usize = 8;
+
+/// One rendering of the dimensions and labels (stacked, with the repair pushes applied) plus what the router needs.
+const Render = struct {
+    per: []std.ArrayList(Item),
+    eff: []f64,
+    obstacles: []Obstacle,
+    soft: []const [2]V2,
+    knock: []const [4]V2,
+    ext: Box,
+    meta: []Meta,
+};
+
+const DimLab = struct {
+    dspecs: []const DimSpec,
+    lspecs: []const LabelSpec,
+    base_segs: []const [2]V2,
+};
+
+fn renderDimLabels(env: *Env, dl: DimLab, per_in: []const std.ArrayList(Item), meta_in: []const Meta, dpush: []const f64, lpush: []const V2) Allocator.Error!Render {
+    const a = env.a;
+    const per = try a.dupe(std.ArrayList(Item), per_in);
+    const meta = try a.dupe(Meta, meta_in);
+    const eff = try a.alloc(f64, dl.dspecs.len);
+    const ditems = try a.alloc(std.ArrayList(Item), dl.dspecs.len);
+    try stackDims(env, dl.dspecs, dpush, dl.base_segs, ditems, eff);
+    for (dl.dspecs, 0..) |d, i| {
+        per[d.k] = ditems[i];
+        meta[d.k].off = eff[i];
+    }
+    for (dl.lspecs, 0..) |l, i| {
+        var its: std.ArrayList(Item) = .empty;
+        if (l.base) |p| try labelItems(env, l.id, l.text, p.add(lpush[i]), &its);
+        per[l.k] = its;
+        meta[l.k].off = l.off.x + lpush[i].x;
+        meta[l.k].off2 = l.off.y + lpush[i].y;
+    }
+    var ext = env.crop;
+    var obstacles: std.ArrayList(Obstacle) = .empty;
+    var soft: std.ArrayList([2]V2) = .empty;
+    var knock: std.ArrayList([4]V2) = .empty;
+    for (per, 0..) |its, k| {
+        ext.addBox(itemsBox(env.font, its.items));
+        const m = meta[k];
+        for (its.items) |it| {
+            if (it == .text) {
+                try knock.append(a, textPoly(env.font, it.text, 0.02 * env.S));
+                try obstacles.append(a, .{
+                    .poly = textPoly(env.font, it.text, 0),
+                    .id = it.text.src,
+                    .kind = if (m.kind == .label) .label else .dim,
+                    .text = it.text.s,
+                    .owner = m.owner,
+                    .axis = m.axis,
+                    .off = m.off,
+                    .off2 = m.off2,
+                });
+            } else if (it == .path and m.kind == .dim and std.mem.eql(u8, it.path.pen, "dim") and it.path.pts.len == 2) {
+                try soft.append(a, .{ it.path.pts[0].v(), it.path.pts[1].v() });
+            }
+        }
+    }
+    return .{ .per = per, .eff = eff, .obstacles = obstacles.items, .soft = soft.items, .knock = knock.items, .ext = ext, .meta = meta };
+}
+
+/// Push a dimension out by whole dimension spacings (0.25 paper inch) until its text clears every leader.
+fn repairDim(env: *Env, o: Obstacle, leaders: []const [3]V2, h: f64, dpush: []f64, dspecs: []const DimSpec) bool {
+    const step = 0.25 * env.S;
+    const cap = 8.0 * step;
+    if (dpush[o.owner] + step > cap + 1e-9) return false;
+    const sgn = dspecs[o.owner].sgn();
+    var chosen: f64 = 1;
+    var k: f64 = 1;
+    while (k <= 6) : (k += 1) {
+        if (dpush[o.owner] + k * step > cap + 1e-9) break;
+        if (clearOfLeaders(leaders, o.poly, o.axis.scale(sgn * k * step), h)) {
+            chosen = k;
+            break;
+        }
+    }
+    dpush[o.owner] += chosen * step;
+    return true;
+}
+
+/// Move a label (smallest move first, up/down before sideways) to where no leader comes within a text height
+/// and it overprints no other label or dimension text; prefers a spot that does not sit on drawn outlines.
+fn repairLabel(o: Obstacle, obsts: []const Obstacle, leaders: []const [3]V2, h: f64, lpush: []V2, base_segs: []const [2]V2) bool {
+    const dirs = [8]V2{ V2.init(0, 1), V2.init(0, -1), V2.init(1, 0), V2.init(-1, 0), V2.init(1, 1), V2.init(-1, 1), V2.init(1, -1), V2.init(-1, -1) };
+    const cap = 8.0 * h;
+    var relax: usize = 0;
+    while (relax < 2) : (relax += 1) {
+        var k: f64 = 1;
+        while (k * 0.5 * h <= cap) : (k += 1) {
+            const delta = @ceil(k * 0.5 * h * 4.0) / 4.0;
+            for (dirs) |dv| {
+                const dn = dv.norm().scale(delta);
+                if (@abs(lpush[o.owner].x + dn.x) > cap or @abs(lpush[o.owner].y + dn.y) > cap) continue;
+                if (!clearOfLeaders(leaders, o.poly, dn, h)) continue;
+                var q = o.poly;
+                for (&q) |*pt| pt.* = pt.add(dn);
+                var ok = true;
+                for (obsts) |ob| {
+                    if (ob.kind == .label and ob.owner == o.owner) continue;
+                    if (polysOverlap(&q, &ob.poly)) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) continue;
+                if (relax == 0 and baseHits(base_segs, &q) > 0) continue;
+                lpush[o.owner] = lpush[o.owner].add(dn);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+const Best = struct { r: route.Layout, rd: Render };
+
 // ---- main entry ---------------------------------------------------------------------------------------------------------------
 
 /// Annotate a view. Returns the annotation items (notes interleaved after their annotation's own
 /// items, in view order). Hatch lines in `base_items` are knocked out under dimension text and labels.
+///
+/// SPEC 20: dimensions are stacked (`stackDims`), notes routed (`route.route`), and when leaders still hit
+/// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
+/// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
 pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
     const a = env.a;
     const spec = env.spec;
@@ -842,11 +1223,13 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
     var note_slot: std.ArrayList(?usize) = .empty;
     var per: std.ArrayList(std.ArrayList(Item)) = .empty;
     var meta: std.ArrayList(Meta) = .empty;
+    var dspecs: std.ArrayList(DimSpec) = .empty;
+    var lspecs: std.ArrayList(LabelSpec) = .empty;
     var cur_meta = Meta{};
     var seen: std.ArrayList([]const u8) = .empty;
     const types = [_][]const u8{ "note", "dim", "label" };
     for (spec.annotations, 0..) |an, k| {
-        var its: std.ArrayList(Item) = .empty;
+        const its: std.ArrayList(Item) = .empty;
         var slot: ?usize = null;
         cur_meta = .{};
         defer {
@@ -904,9 +1287,20 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                     place = V2.init(x, y);
                 };
             };
+            var column: ?route.Side = null;
+            if (an.get("column")) |cv| if (cv != .null) {
+                const cs = cv.str() orelse "";
+                if (std.mem.eql(u8, cs, "left")) {
+                    column = .left;
+                } else if (std.mem.eql(u8, cs, "right")) {
+                    column = .right;
+                } else {
+                    env.diags.addFix(.warning, "W_PARAM", id, try std.fmt.allocPrint(a, "{s}/column", .{apath}), "note '{s}' in view {s}: \"column\" must be \"left\" or \"right\" (got {s}); ignored", .{ id, vid, if (cv.str()) |sv| try std.fmt.allocPrint(a, "\"{s}\"", .{sv}) else "a non-string value" }, "use \"column\": \"left\" or \"right\", or omit it to let the layout choose (view notes_side)");
+                }
+            };
             if (landing) |l| {
                 slot = notes.items.len;
-                try notes.append(a, .{ .id = id, .text = full, .cands = l, .movable = movable, .place = place });
+                try notes.append(a, .{ .id = id, .text = full, .cands = l, .movable = movable, .place = place, .column = column });
             } else if (at_v == null) {
                 env.diags.addFix(.warning, "W_NOTE_TARGET", id, apath, "note '{s}' in view {s}: target '{s}' is not visible in this view (outside the crop, behind the cut plane, or hidden). The note was not drawn.", .{ id, vid, target }, "move the view crop or cut_z so the target is visible, change target, or give the note an explicit \"at\" Ref");
             }
@@ -920,16 +1314,16 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             }
             const from = env.scene.point(fv.?, id, try std.fmt.allocPrint(a, "{s}/from", .{apath})) orelse continue;
             const to = env.scene.point(tv.?, id, try std.fmt.allocPrint(a, "{s}/to", .{apath})) orelse continue;
-            const dir = (if (an.get("dir")) |x| x.str() else null) orelse "h";
-            if (!(std.mem.eql(u8, dir, "h") or std.mem.eql(u8, dir, "v") or std.mem.eql(u8, dir, "aligned"))) {
-                env.diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/dir", .{apath}), "dim dir must be \"h\", \"v\" or \"aligned\" (got \"{s}\")", .{dir});
+            const dir_s = (if (an.get("dir")) |x| x.str() else null) orelse "h";
+            const dir: DimDir = if (std.mem.eql(u8, dir_s, "h")) .h else if (std.mem.eql(u8, dir_s, "v")) .v else if (std.mem.eql(u8, dir_s, "aligned")) .aligned else {
+                env.diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/dir", .{apath}), "dim dir must be \"h\", \"v\" or \"aligned\" (got \"{s}\")", .{dir_s});
                 continue;
-            }
+            };
             const off = if (an.get("offset")) |x| (units.parseLength(x) orelse 0) else 0;
             const text: ?[]const u8 = if (an.get("text")) |x| x.str() else null;
-            try dimItems(env, id, from, to, dir, off, text, &its);
-            const axis: V2 = if (std.mem.eql(u8, dir, "v")) V2.init(1, 0) else if (std.mem.eql(u8, dir, "aligned")) to.sub(from).norm().perp() else V2.init(0, 1);
-            cur_meta = .{ .id = id, .kind = .dim, .axis = axis, .off = off };
+            const ds = DimSpec{ .k = k, .id = id, .from = from, .to = to, .dir = dir, .off0 = off, .text = text };
+            cur_meta = .{ .id = id, .kind = .dim, .axis = ds.axis(), .off = off, .owner = dspecs.items.len };
+            try dspecs.append(a, ds);
         } else if (std.mem.eql(u8, ty, "label")) {
             const text = (if (an.get("text")) |x| x.str() else null) orelse {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "label '{s}' needs a string \"text\"", .{id});
@@ -945,24 +1339,66 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 loff = V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0);
                 p = p.add(loff);
             };
-            cur_meta = .{ .id = id, .kind = .label, .off = loff.x, .off2 = loff.y };
-            switch (env.landing) {
-                .section => try labelItems(env, id, text, p, &its),
-                .iso => |iso| if (iso.project(p)) |pp| try labelItems(env, id, text, pp, &its),
-            }
+            cur_meta = .{ .id = id, .kind = .label, .off = loff.x, .off2 = loff.y, .owner = lspecs.items.len };
+            const base: ?V2 = switch (env.landing) {
+                .section => p,
+                .iso => |iso| iso.project(p),
+            };
+            try lspecs.append(a, .{ .k = k, .id = id, .text = text, .base = base, .off = loff });
         } else {
             env.diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/type", .{apath}), "annotation '{s}' has type \"{s}\"; use one of {s}", .{ id, ty, model.joinQuoted(a, &types) });
         }
     }
-    // extents and obstacles
-    var ext = env.crop;
-    var obstacles: std.ArrayList(Obstacle) = .empty;
-    var soft: std.ArrayList([2]V2) = .empty;
-    var knock: std.ArrayList([4]V2) = .empty;
-    for (per.items, 0..) |its, k| {
+    var base_segs: std.ArrayList([2]V2) = .empty;
+    for (base_items) |it| if (it == .path) {
+        const pts = it.path.pts;
+        if (pts.len < 2) continue;
+        for (pts[0 .. pts.len - 1], 0..) |p, i| try base_segs.append(a, .{ p.v(), pts[i + 1].v() });
+        if (it.path.closed) try base_segs.append(a, .{ pts[pts.len - 1].v(), pts[0].v() });
+    };
+    const dl = DimLab{ .dspecs = dspecs.items, .lspecs = lspecs.items, .base_segs = base_segs.items };
+    const dpush = try a.alloc(f64, dspecs.items.len);
+    @memset(dpush, 0);
+    const lpush = try a.alloc(V2, lspecs.items.len);
+    @memset(lpush, V2.init(0, 0));
+    const outs = try a.alloc(std.ArrayList(Item), notes.items.len);
+    for (outs) |*o| o.* = .empty;
+    const prep = try prepNotes(env, notes.items);
+
+    // route, then repair what hits dimension text or labels (bounded, deterministic)
+    var best: ?Best = null;
+    var pass: usize = 0;
+    while (pass < max_repair_passes) : (pass += 1) {
+        const rd = try renderDimLabels(env, dl, per.items, meta.items, dpush, lpush);
+        const r = try routeNotes(env, prep, rd.ext, rd.obstacles, rd.soft);
+        if (best == null or r.hits.len < best.?.r.hits.len) best = .{ .r = r, .rd = rd };
+        if (r.hits.len == 0) break;
+        const touched_d = try a.alloc(bool, dspecs.items.len);
+        const touched_l = try a.alloc(bool, lspecs.items.len);
+        @memset(touched_d, false);
+        @memset(touched_l, false);
+        var changed = false;
+        for (r.hits) |ht| {
+            if (ht.kind != .dim and ht.kind != .label) continue;
+            const o = rd.obstacles[ht.other];
+            if (o.kind == .dim) {
+                if (touched_d[o.owner]) continue;
+                touched_d[o.owner] = true;
+                if (repairDim(env, o, r.leaders, prep.g.h, dpush, dspecs.items)) changed = true;
+            } else {
+                if (touched_l[o.owner]) continue;
+                touched_l[o.owner] = true;
+                if (repairLabel(o, rd.obstacles, r.leaders, prep.g.h, lpush, base_segs.items)) changed = true;
+            }
+        }
+        if (!changed) break;
+    }
+    const fin = best.?;
+    const rd = fin.rd;
+    try reportHits(env, notes.items, rd.obstacles, fin.r, prep.g);
+    for (rd.per, 0..) |its, k| {
         const bx = itemsBox(env.font, its.items);
-        ext.addBox(bx);
-        const m = meta.items[k];
+        const m = rd.meta[k];
         if (m.kind == .dim) {
             env.dims_box.addBox(bx);
             try env.ann_boxes.append(a, .{ .id = m.id, .kind = .dim, .box = bx, .offset = m.off });
@@ -971,34 +1407,16 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             env.labels_box.addBox(bx);
             try env.ann_boxes.append(a, .{ .id = m.id, .kind = .label, .box = bx });
         }
-        for (its.items) |it| {
-            if (it == .text) {
-                try knock.append(a, textPoly(env.font, it.text, 0.02 * env.S));
-                try obstacles.append(a, .{
-                    .poly = textPoly(env.font, it.text, 0),
-                    .id = it.text.src,
-                    .kind = if (m.kind == .label) .label else .dim,
-                    .text = it.text.s,
-                    .axis = m.axis,
-                    .off = m.off,
-                    .off2 = m.off2,
-                });
-            } else if (it == .path and m.kind == .dim and std.mem.eql(u8, it.path.pen, "dim") and it.path.pts.len == 2) {
-                try soft.append(a, .{ it.path.pts[0].v(), it.path.pts[1].v() });
-            }
-        }
     }
-    const outs = try a.alloc(std.ArrayList(Item), notes.items.len);
-    for (outs) |*o| o.* = .empty;
-    try layoutNotes(env, notes.items, ext, obstacles.items, soft.items, outs);
+    try emitNotes(env, notes.items, prep, fin.r, outs);
     for (outs, 0..) |o, k| {
         const bx = itemsBox(env.font, o.items);
         env.notes_box.addBox(bx);
         try env.ann_boxes.append(a, .{ .id = notes.items[k].id, .kind = .note, .box = bx });
     }
-    try knockHatch(a, base_items, knock.items);
+    try knockHatch(a, base_items, rd.knock);
     var result: std.ArrayList(Item) = .empty;
-    for (per.items, 0..) |its, k| {
+    for (rd.per, 0..) |its, k| {
         try result.appendSlice(a, its.items);
         if (note_slot.items[k]) |sl| try result.appendSlice(a, outs[sl].items);
     }
