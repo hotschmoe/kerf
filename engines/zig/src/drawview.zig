@@ -81,11 +81,18 @@ pub fn build(a: Allocator, doc: json.Value, st: *const style_mod.Style, view_id:
 /// Build a view's Drawing from an already compiled scene. `diags` receives view-level diagnostics.
 pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, diags: *model.Diags) Allocator.Error!?drawing.Drawing {
     const view_id = spec.id;
-    const prisms = try compile_mod.allPrisms(a, scene);
+    for (spec.omit) |o| {
+        if (scene.find(o) == null) {
+            const ids = try scene.compIds(a);
+            diags.add(.@"error", "E_REF_UNKNOWN", view_id, try std.fmt.allocPrint(a, "views/{s}/omit", .{view_id}), "view {s} omits '{s}', which is not a component id. Components: {s}", .{ view_id, o, scene_mod.joinIds(a, ids) });
+        }
+    }
+    const prisms = try compile_mod.viewPrisms(a, scene, spec.omit);
     var items: []const drawing.Item = &.{};
     var scale = spec.scale;
     var bounds = geom.Box{};
     var unverified = false;
+    var spec_crop_out = spec.crop;
     var detail = geom.Box{};
     const font = try a.create(font_mod.Font);
     font.* = font_mod.Font.parse(a, font_mod.embedded) catch return null;
@@ -108,15 +115,35 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         detail = annot.itemsBox(font, all.items);
         detail.addBox(spec.crop);
         _ = try annot.titleItems(&env, info, tcrop, &all);
+        if (env.unknown_glyph) diags.add(.info, "I_GLYPH", view_id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
         items = all.items;
         bounds = annot.itemsBox(font, items);
         bounds.addBox(spec.crop);
         _ = &base_items;
     } else {
-        diags.add(.info, "I_ISO_PENDING", view_id, "views", "iso view rendering is not implemented in this engine build yet", .{});
-        scale = 12;
-        bounds = spec.crop;
-        detail = spec.crop;
+        const iso = try a.create(@import("iso.zig").Iso);
+        iso.* = .{ .a = a };
+        const res = try @import("iso.zig").build(iso, scene, spec, st);
+        scale = res.scale;
+        var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = res.crop, .diags = diags, .landing = .{ .iso = iso } };
+        const base_items = try a.dupe(drawing.Item, res.items);
+        const ann = try annot.annotate(&env, base_items);
+        unverified = env.unverified;
+        var all: std.ArrayList(drawing.Item) = .empty;
+        try all.appendSlice(a, base_items);
+        try all.appendSlice(a, ann);
+        var tcrop = res.crop;
+        const ab = annot.itemsBox(font, all.items);
+        if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
+        const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
+        detail = annot.itemsBox(font, all.items);
+        detail.addBox(res.crop);
+        _ = try annot.titleItems(&env, info, tcrop, &all);
+        if (env.unknown_glyph) diags.add(.info, "I_GLYPH", view_id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
+        items = all.items;
+        bounds = annot.itemsBox(font, items);
+        bounds.addBox(res.crop);
+        spec_crop_out = res.crop;
     }
     // fit check against the sheet frame
     {
@@ -145,7 +172,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         .sheet_no = metaString(doc, "sheet"),
         .date = metaString(doc, "date"),
         .code_basis = try codeBasis(a, doc),
-        .crop = spec.crop,
+        .crop = spec_crop_out,
         .detail_bounds = detail,
         .has_unverified = unverified,
         .author = metaString(doc, "author"),

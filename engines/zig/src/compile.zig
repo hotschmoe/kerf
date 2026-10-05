@@ -506,3 +506,23 @@ test "reference documents compile without errors" {
         for (scene.comps) |c| try std.testing.expect(c.state == .ok);
     }
 }
+
+/// Visible world prisms minus the components a view omits.
+pub fn viewPrisms(a: Allocator, scene: *const Scene, omit: []const []const u8) Allocator.Error![]const model.Prism {
+    var out: std.ArrayList(model.Prism) = .empty;
+    for (scene.comps) |c| {
+        if (c.state != .ok or !c.visible) continue;
+        var skip = false;
+        for (omit) |o| if (std.mem.eql(u8, o, c.id)) {
+            skip = true;
+        };
+        if (skip) continue;
+        try out.appendSlice(a, c.world);
+    }
+    return out.items;
+}
+
+pub fn isOmitted(omit: []const []const u8, id: []const u8) bool {
+    for (omit) |o| if (std.mem.eql(u8, o, id)) return true;
+    return false;
+}

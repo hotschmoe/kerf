@@ -26,6 +26,7 @@ pub const ViewSpec = struct {
     cutaway: bool,
     notes_side: NotesSide,
     annotations: []const json.Value,
+    omit: []const []const u8,
     node: json.Value,
 };
 
@@ -125,6 +126,10 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
         cutaway = cv.bool;
     };
     if (!ok) return null;
+    var omit: std.ArrayList([]const u8) = .empty;
+    if (node.get("omit")) |ov| if (ov.arr()) |oa| for (oa) |x| {
+        if (x.str()) |sx| try omit.append(a, sx);
+    };
     const anns: []const json.Value = if (node.get("annotations")) |av| (av.arr() orelse &.{}) else &.{};
     return .{
         .id = id,
@@ -140,6 +145,7 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
         .cutaway = cutaway,
         .notes_side = notes_side,
         .annotations = anns,
+        .omit = omit.items,
         .node = node,
     };
 }

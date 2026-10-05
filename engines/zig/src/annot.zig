@@ -35,11 +35,14 @@ pub const Env = struct {
     diags: *model.Diags,
     landing: Landing,
     unverified: bool = false,
+    unknown_glyph: bool = false,
 };
 
 // ---- small helpers ------------------------------------------------------------------------------------------
 
-pub fn asciiFold(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+/// Glyph folding (SPEC 16): dashes -> '-', smart quotes -> straight, x-sign -> X, vulgar fractions ->
+/// " n/d", anything else non-ASCII -> '?'. `unknown` is set when a '?' substitution happened.
+pub fn asciiFoldFlag(a: Allocator, s: []const u8, unknown: ?*bool) Allocator.Error![]const u8 {
     var plain = true;
     for (s) |c| if (c >= 0x80) {
         plain = false;
@@ -50,18 +53,30 @@ pub fn asciiFold(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
     var it = font_mod.utf8Iter(s);
     while (it.next()) |cp| {
         switch (cp) {
-            0x2014, 0x2013 => try out.append(a, '-'),
+            0x2010...0x2015, 0x2212 => try out.append(a, '-'),
             0xD7 => try out.append(a, 'X'),
-            0x201C, 0x201D => try out.append(a, '"'),
-            0x2018, 0x2019 => try out.append(a, '\''),
-            0xA0 => try out.append(a, ' '),
-            0xB1 => try out.appendSlice(a, "+/-"),
-            0xB0 => try out.appendSlice(a, " DEG"),
+            0x201C, 0x201D, 0x201E, 0x2033 => try out.append(a, '"'),
+            0x2018, 0x2019, 0x201A, 0x2032 => try out.append(a, '\''),
+            0xA0, 0x2009, 0x200A, 0x202F, 0x2002, 0x2003 => try out.append(a, ' '),
+            0xBD => try out.appendSlice(a, " 1/2"),
+            0xBC => try out.appendSlice(a, " 1/4"),
+            0xBE => try out.appendSlice(a, " 3/4"),
+            0x215B => try out.appendSlice(a, " 1/8"),
+            0x215C => try out.appendSlice(a, " 3/8"),
+            0x215D => try out.appendSlice(a, " 5/8"),
+            0x215E => try out.appendSlice(a, " 7/8"),
             0...127 => try out.append(a, @intCast(cp)),
-            else => try out.append(a, '?'),
+            else => {
+                try out.append(a, '?');
+                if (unknown) |u| u.* = true;
+            },
         }
     }
     return out.items;
+}
+
+pub fn asciiFold(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
+    return asciiFoldFlag(a, s, null);
 }
 
 fn layerName(env: *const Env, key: []const u8) []const u8 {
@@ -73,7 +88,7 @@ fn textItem(env: *Env, layer_key: []const u8, pen: []const u8, src: []const u8, 
         .layer = layerName(env, layer_key),
         .pen = pen,
         .src = src,
-        .s = try asciiFold(env.a, s),
+        .s = try asciiFoldFlag(env.a, s, &env.unknown_glyph),
         .x = x,
         .y = y,
         .h = h,
@@ -262,6 +277,7 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?V2 {
     }
     const comp = env.scene.find(comp_id) orelse return null;
     if (comp.state != .ok) return null;
+    if (@import("compile.zig").isOmitted(env.spec.omit, comp.id)) return null;
     var shapes: std.ArrayList(Shape) = .empty;
     switch (env.landing) {
         .section => |sec| {

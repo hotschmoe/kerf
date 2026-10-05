@@ -85,10 +85,7 @@ fn versionFn(a: Allocator) ApiError!Out {
 fn catalogFn(a: Allocator, inp: json.Value) ApiError!Out {
     const fmt_v = if (inp.get("format")) |f| (f.str() orelse "json") else "json";
     if (std.mem.eql(u8, fmt_v, "markdown") or std.mem.eql(u8, fmt_v, "md")) {
-        var o: std.ArrayList(u8) = .empty;
-        try json.writeString(&o, a, try catalog.catalogMarkdown(a));
-        try o.append(a, '\n');
-        return .{ .ok = true, .bytes = o.items };
+        return .{ .ok = true, .bytes = try catalog.catalogMarkdown(a) };
     }
     if (!std.mem.eql(u8, fmt_v, "json")) return fail(a, "E_INPUT", "catalog format must be \"json\" or \"markdown\"", .{});
     var out: std.ArrayList(u8) = .empty;
@@ -319,6 +316,7 @@ fn meshFn(a: Allocator, inp: json.Value) ApiError!Out {
         .err => |e| return e,
     };
     const l = try load_mod.load(a, d, &st, false);
-    const parts = try mesh_mod.build(a, l.scene);
+    const incl = if (inp.get("include_fills")) |x| (x == .bool and x.bool) else false;
+    const parts = try mesh_mod.build(a, l.scene, incl);
     return .{ .ok = true, .bytes = try mesh_mod.toJson(a, parts) };
 }

@@ -258,13 +258,14 @@ fn hexColor(st: *const style_mod.Style, material: []const u8) []const u8 {
 const cmu_unit_len = 15.625;
 const cmu_joint = 0.375;
 
-pub fn build(a: Allocator, scene: *const scene_mod.Scene) Allocator.Error![]Part {
+pub fn build(a: Allocator, scene: *const scene_mod.Scene, include_fills: bool) Allocator.Error![]Part {
     var parts: std.ArrayList(Part) = .empty;
     const st = scene.style;
     for (scene.comps) |*c| {
         if (c.state != .ok or !c.visible) continue;
         for (c.world) |pr| {
             if (pr.kind == .ghost) continue;
+            if (!include_fills and @import("section.zig").isFillMaterial(pr.material)) continue;
             var part = Part{
                 .src = c.id,
                 .part = if (pr.part.len > 0) pr.part else null,

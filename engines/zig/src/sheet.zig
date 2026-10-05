@@ -7,6 +7,7 @@ const std = @import("std");
 const geom = @import("geom.zig");
 const drawing = @import("drawing.zig");
 const font_mod = @import("font.zig");
+const annot = @import("annot.zig");
 const style_mod = @import("style.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
@@ -95,7 +96,7 @@ pub fn withSheet(a: Allocator, d: drawing.Drawing, font: *const font_mod.Font) A
     const project = if (d.project.len > 0) try font_mod.upperAscii(a, d.project) else if (st.project.len > 0) try font_mod.upperAscii(a, st.project) else "";
     const title = try font_mod.upperAscii(a, if (d.title.len == 0) d.doc_title else d.title);
     const labels = [6][]const u8{ "DETAIL", "PROJECT", "SCALE", "DRAWN", "DATE", "DETAIL NO" };
-    const values = [6][]const u8{ title, project, d.scale_label, author, d.date, detail_no };
+    const values = [6][]const u8{ try annot.asciiFold(a, title), try annot.asciiFold(a, project), d.scale_label, try annot.asciiFold(a, author), try annot.asciiFold(a, d.date), try annot.asciiFold(a, detail_no) };
     const lh = st.label_height_in;
     var x = m;
     for (0..6) |i| {
