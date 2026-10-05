@@ -373,6 +373,13 @@ fn effectResult(m: *Model, r: teak.EffectResult) void {
                         if (std.ascii.eqlIgnoreCase(v, f.name)) m.insp = @field(model.InspTab, f.name);
                     }
                 },
+                .query_key => chatglue.setKey(m, v),
+                .query_api => {
+                    const n = @min(v.len, m.api_url.len);
+                    @memcpy(m.api_url[0..n], v[0..n]);
+                    m.api_url_len = @intCast(n);
+                    m.chat.session.cfg.url = m.api_url[0..n];
+                },
                 .query_prompt => {
                     m.chat_ed.set(v);
                     if (m.demo or chatglue.hasKey(m)) chatglue.submit(m);
@@ -517,10 +524,12 @@ fn exportAs(m: *Model, f: model.ExportFmt) void {
                 .pdf => "application/pdf",
                 .svg => "image/svg+xml",
             };
-            for (name_buf[0..name.len]) |*c| c.* = std.ascii.toUpper(c.*);
+            var up_buf: [160]u8 = undefined;
+            const up = std.ascii.upperString(&up_buf, name);
             if (m.fx.download(name, mime, bytes) != null) {
-                m.setStatus("EXPORTED {s} ({d} KB)", .{ name, (bytes.len + 1023) / 1024 });
-                m.chat.log.addNotice(m.nowMs(), std.fmt.bufPrint(&nb, "EXPORTED {s}", .{name}) catch "EXPORTED") catch {};
+                m.setStatus("EXPORTED {s} ({d} KB)", .{ up, (bytes.len + 1023) / 1024 });
+                var nbuf: [200]u8 = undefined;
+                m.chat.log.addNotice(m.nowMs(), std.fmt.bufPrint(&nbuf, "EXPORTED {s} ({d} KB)", .{ up, (bytes.len + 1023) / 1024 }) catch "EXPORTED") catch {};
             } else m.setStatus("EFFECT QUEUE FULL", .{});
         },
     }

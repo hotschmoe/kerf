@@ -12,6 +12,7 @@ const llm = @import("../llm/mod.zig");
 const docinfo = @import("docinfo.zig");
 const session = @import("session.zig");
 const editor = @import("editor.zig");
+const stampmod = @import("stamp.zig");
 
 const Model = model.Model;
 const Msg = model.Msg;
@@ -60,12 +61,12 @@ fn tab(cb: *Cb, msg: Msg, text: []const u8, active: bool) void {
     cb.popGroup();
 }
 
-/// Rubber-stamp style status tag (square corners; the rotation is faked by the
-/// 1.5px border + bold type).
-fn stamp(cb: *Cb, text: []const u8, color: th.Color) void {
-    cb.pushGroup(.{ .padding = 0, .pad_x = 7, .pad_y = 2, .gap = 0, .border = color, .border_width = 1.5 });
-    cb.textStyled(text, th.label, color);
-    cb.popGroup();
+/// Rubber stamp (DESIGN §3): a rotated outlined label drawn from the stroke font.
+fn stamp(cb: *Cb, font: *const @import("../draw/mod.zig").Font, text: []const u8, color: th.Color) void {
+    const sz = stampmod.size(font, text);
+    const tris = stampmod.build(arena(cb), font, text, color) catch &.{};
+    const prims = arena(cb).dupe(teak.CanvasPrimitive, &.{.{ .triangles = .{ .verts = tris, .key = std.hash.Wyhash.hash(0, text) } }}) catch &.{};
+    cb.canvas(.{ .width = sz.w, .height = sz.h }, prims);
 }
 
 /// Thin ink scrollbar column next to a scroll region (the Model holds the metrics).
@@ -522,7 +523,7 @@ fn noteEditor(m: *const Model, cb: *Cb, nt: docinfo.Note) void {
         cb.textStyled(fmt(cb, "{s}{s} {s}", .{ c.code, ed, c.section }), th.bold, th.ink);
         if (c.title.len > 0) for (wrap(arena(cb), c.title, INSP_COLS - 4, 2)) |l| cb.textStyled(l, th.small, th.ink2);
         cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 6, .align_cross = .center });
-        if (c.verified) stamp(cb, "VERIFIED", th.green) else stamp(cb, "UNVERIFIED", th.red);
+        if (c.verified) stamp(cb, &m.vp.font, "VERIFIED", th.green) else stamp(cb, &m.vp.font, "UNVERIFIED", th.red);
         cb.spacer(1);
         cb.buttonStyled(.{ .cite_verify = @intCast(i) }, if (c.verified) "UNVERIFY" else "VERIFY", th.button);
         cb.buttonStyled(.{ .cite_remove = @intCast(i) }, "X", th.button_danger);

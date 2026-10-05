@@ -22,6 +22,8 @@ pub const Kind = enum {
     query_select,
     query_insp,
     query_prompt,
+    query_key,
+    query_api,
     open_doc,
     attach_image,
     download,

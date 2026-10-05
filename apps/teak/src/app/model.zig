@@ -151,6 +151,8 @@ pub const Model = struct {
     boot_select: ident.MaybeId = .{},
     boot_insp: InspTab = .parts,
     boot_prompt: ?[]u8 = null,
+    api_url: [160]u8 = undefined,
+    api_url_len: u8 = 0,
 
     pub fn init() Model {
         return @import("boot.zig").init();

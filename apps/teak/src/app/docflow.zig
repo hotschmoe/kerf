@@ -63,7 +63,7 @@ pub fn loadDoc(m: *Model, json: []const u8, source: []const u8) bool {
     setSource(m, source);
     afterDocChange(m, true);
     // Claude does not see the swap unless told.
-    addEditNote(m, "opened a different document (see kerf_inspect doc)");
+    if (m.chat.log.entries.items.len > 0) addEditNote(m, "opened a different document (see kerf_inspect doc)");
     m.setStatus("LOADED {s}", .{source});
     applyBoot(m);
     return true;

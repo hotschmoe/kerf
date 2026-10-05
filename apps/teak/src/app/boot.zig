@@ -42,5 +42,7 @@ pub fn init() model.Model {
     _ = m.fx.queryParam(.query_select, "select");
     _ = m.fx.queryParam(.query_insp, "insp");
     _ = m.fx.queryParam(.query_prompt, "prompt");
+    _ = m.fx.queryParam(.query_key, "key"); // testing aid: ?key=... (not stored)
+    _ = m.fx.queryParam(.query_api, "api"); // testing aid: alternative Messages endpoint
     return m;
 }

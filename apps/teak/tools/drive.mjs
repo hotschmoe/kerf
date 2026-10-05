@@ -23,6 +23,7 @@ try {
   page.on('console', (m) => console.log(`[console.${m.type()}] ${m.text()}`));
   page.on('pageerror', (e) => { failed = true; console.log(`[pageerror] ${e.stack || e.message || e}`); });
   page.on('requestfailed', (r) => console.log(`[requestfailed] ${r.url()} ${r.failure()?.errorText}`));
+  if (opt('--downloads')) { const c = await page.createCDPSession(); await c.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: opt('--downloads') }); }
   await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const s of steps) {
