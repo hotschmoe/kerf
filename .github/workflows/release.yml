@@ -72,5 +72,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --prerelease="$( [[ "$GITHUB_REF_NAME" == *-* ]] && echo true || echo false )"
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes   # not marked prerelease: install.sh/.ps1 use releases/latest
           gh release upload "$GITHUB_REF_NAME" release/* --clobber
