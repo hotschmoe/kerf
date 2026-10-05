@@ -49,6 +49,7 @@ loop:
   results = for each tool_use block (in order): run tool → tool_result
   messages.push({role:"user", content: results})                  // ALL results in ONE message
 ```
+- Responses may contain `fallback` blocks (a declined model handed off). Keep them in history verbatim; don't render them except as a console line `▸ FALLBACK <from> → <to>`.
 - History is append-only. Never edit or drop earlier turns (thinking blocks are bound to them).
 - Tool results: `{"type":"tool_result","tool_use_id":id,"content":[...],"is_error":bool}`.
   - `kerf_apply` → text: `ok`, summary, diagnostics (engine `apply` output, minus the doc). On
