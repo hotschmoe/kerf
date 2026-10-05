@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KERF DETAIL WORKSTATION</title>
+    <link data-trunk rel="rust" data-bin="kerf-egui" data-wasm-opt="z" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #F2EFE6; overflow: hidden; }
+      #kerf_canvas { width: 100vw; height: 100vh; display: block; outline: none; }
+      #unsupported {
+        display: none; position: absolute; inset: 0; padding: 2rem; box-sizing: border-box;
+        color: #1A1A1A; background: #F2EFE6; font: 14px/1.6 "IBM Plex Mono", ui-monospace, monospace;
+      }
+      #unsupported h1 { font-size: 18px; letter-spacing: 0.08em; border-bottom: 2px solid #1A1A1A; padding-bottom: 8px; }
+      #unsupported code { background: #E9E5D8; padding: 0 4px; }
+      #loading {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: #0E120E; color: #5CF27A; font: 13px "IBM Plex Mono", ui-monospace, monospace; letter-spacing: 0.1em;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="kerf_canvas"></canvas>
+    <div id="loading">KERF DETAIL WORKSTATION &#9646; LOADING ...</div>
+    <div id="unsupported">
+      <h1>KERF NEEDS WEBGPU</h1>
+      <p>This browser did not expose <code>navigator.gpu</code> (or the app failed to start; see the console).</p>
+      <p>WebGPU requires a secure context: serve over <code>https</code> or <code>http://localhost</code>.
+         Recent Chrome, Edge, Firefox or Safari should work.</p>
+    </div>
+    <script>
+      if (!navigator.gpu) {
+        document.getElementById("kerf_canvas").style.display = "none";
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("unsupported").style.display = "block";
+      }
+      // hide the loading strip on the first frame
+      (function wait() {
+        if (window.__ready) { var l = document.getElementById("loading"); if (l) l.style.display = "none"; }
+        else requestAnimationFrame(wait);
+      })();
+      // pasted images -> queue polled by the app (window.__kerf_paste)
+      window.__kerf_paste = [];
+      document.addEventListener("paste", function (e) {
+        var items = (e.clipboardData && e.clipboardData.items) || [];
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].kind === "file" && items[i].type.indexOf("image/") === 0) {
+            var f = items[i].getAsFile();
+            var r = new FileReader();
+            r.onload = (function (name) { return function () {
+              var b64 = String(r.result).split(",")[1] || "";
+              window.__kerf_paste.push({ name: name, mime: f.type, b64: b64 });
+            }; })(f.name || "pasted.png");
+            r.readAsDataURL(f);
+            e.preventDefault();
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

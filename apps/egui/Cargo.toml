@@ -1,0 +1,61 @@
+[package]
+name = "kerf-egui"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Kerf rust-egui app: egui + wgpu, native and web, linking kerf-core in-process"
+
+# Standalone workspace: the engine lives in its own workspace under engines/rust.
+[workspace]
+
+[dependencies]
+eframe = { version = "0.36.2", default-features = false, features = ["wgpu_no_default_features", "persistence"] }
+egui = { version = "0.36", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ehttp = "0.7"
+earcutr = "0.5"
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd", "png-format"] }
+bytemuck = { version = "1", features = ["derive"] }
+web-time = "1"
+log = "0.4"
+base64 = "0.22"
+glam = "0.33"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+rfd = "0.17"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
+pollster = "1"
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "gles"] }
+eframe = { version = "0.36.2", default-features = false, features = ["wgpu_no_default_features", "persistence", "x11", "wayland"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "webgpu", "fragile-send-sync-non-atomic-wasm"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
+opt-level = "z"
+panic = "abort"
+
+# quick native iteration: optimized but not size-tuned, no LTO
+[profile.fast]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 16
+panic = "unwind"

@@ -1,0 +1,5 @@
+target/
+dist/
+shots/t*.png
+shots/tmp-*
+gitignored/

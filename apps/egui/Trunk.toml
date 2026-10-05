@@ -1,0 +1,15 @@
+# Run from apps/egui:  trunk build --release   (dist/ is gitignored)
+#                      trunk serve             (https dev server, LAN-testable, WebGPU needs a secure context)
+[build]
+target = "index.html"
+dist = "dist"
+
+[serve]
+addresses = ["0.0.0.0"]
+port = 9091
+open = false
+# Self-signed cert for LAN WebGPU (gitignored). Create with:
+#   mkdir -p gitignored/tls && openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+#     -keyout gitignored/tls/key.pem -out gitignored/tls/cert.pem -subj "/CN=kerf-egui"
+# tls_key_path = "gitignored/tls/key.pem"
+# tls_cert_path = "gitignored/tls/cert.pem"
