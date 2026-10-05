@@ -69,3 +69,16 @@ Results go in `engines/zig/NOTES.md`. Users can add or override agents in `<dir>
     Images go as `image_url` data URLs where the model supports vision.
   - In workspace mode provider calls go through `POST /api/llm`; in static mode they go direct
     (CORS permitting, with a clear error otherwise).
+
+## Clarifications (from the implementation)
+- `if_match` accepts the ETag with or without quotes. `apply` with invalid ops returns HTTP 200 with
+  `ok:false` and writes nothing.
+- `GET /api/info` without a valid token returns only `{version, token_required, authenticated:false}`.
+- `/api/agent/run` also takes `images: [{media_type, data}]` (saved to `.kerf/tmp/` and referenced in the message).
+- Agent templates (`.kerf/agents.json`) use the placeholders `{message} {session_id} {dir} {file}` and a `{resume}`
+  element that expands only when a session id exists. The server rescans the folder right before
+  emitting an agent's `exit` event, so its `log` events arrive first.
+- Verified headless invocations (2026-10-06): Claude Code 2.1.289 `claude -p … --output-format stream-json --verbose
+  --permission-mode acceptEdits --allowedTools …`; Grok Build 1.0.41 `grok -p … --output-format streaming-json
+  --always-approve --cwd <dir> [-r <id>]`; Codex 0.157.1 `codex exec --sandbox workspace-write --skip-git-repo-check
+  --cd <dir> --json [resume <id>] <msg>`.

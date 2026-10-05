@@ -8,7 +8,7 @@ verifies citations, and exports DXF/PDF.
 ## Workflow
 ```sh
 kerf new truss-cmu.kerf.json --title "PREFAB TRUSS BEARING AT CMU WALL"   # empty document
-kerf apply truss-cmu.kerf.json ops.json -w           # apply an ops file, write the result back
+kerf apply truss-cmu.kerf.json ops.json -w --why "Build initial truss bearing detail"   # apply, write back, log
 kerf apply truss-cmu.kerf.json -w --ops '[{"op":"update","path":"components/sill_plate","value":{"size":"2x6"}}]'
 echo '[…ops…]' | kerf apply truss-cmu.kerf.json - -w  # ops from stdin
 kerf check truss-cmu.kerf.json                       # summary + diagnostics (exit 1 on errors)
@@ -17,6 +17,9 @@ kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
 kerf export truss-cmu.kerf.json --view A --format dxf -o truss-cmu-A.dxf
 kerf catalog --markdown                              # component reference (also included below)
 ```
+- **Always pass `--why "…"`** with `-w`: one line for the designer saying what and why
+  (e.g. `--why "Add HETA20 anchors at 16in o.c."`). It is recorded in `<file>.log.jsonl`, and the designer
+  sees it live in the web UI as a LOCAL AGENT card.
 - `apply` is atomic. If any op fails, nothing is written, the error explains the fix, and the exit code is 1.
   On success it prints the summary: every component with resolved x/y extents in feet-inches, plus
   diagnostics. Read it every time. Fix every error, and fix or justify every warning.
