@@ -29,6 +29,59 @@ const usage =
 const cli_guide = @embedFile("kerf_cli_guide");
 const system_md = @embedFile("kerf_system_md");
 
+/// Fold text to pure ASCII for Windows consoles (PowerShell mangles UTF-8): dashes, quotes, x-sign, degree sign,
+/// vulgar fractions and NBSP get readable ASCII; anything else becomes `?`.
+pub fn asciiFold(a: std.mem.Allocator, text: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = try .initCapacity(a, text.len);
+    errdefer out.deinit(a);
+    const view = std.unicode.Utf8View.init(text) catch return error.InvalidUtf8;
+    var it = view.iterator();
+    while (it.nextCodepoint()) |cp| {
+        if (cp < 0x80) {
+            try out.append(a, @intCast(cp));
+            continue;
+        }
+        const rep: []const u8 = switch (cp) {
+            0x2010...0x2015, 0x2212, 0x2043 => "-",
+            0x2018, 0x2019, 0x201A, 0x2032 => "'",
+            0x201C, 0x201D, 0x201E, 0x2033 => "\"",
+            0xD7 => "x",
+            0xB0 => " deg",
+            0xBD => " 1/2",
+            0xBC => " 1/4",
+            0xBE => " 3/4",
+            0x215B => " 1/8",
+            0x215C => " 3/8",
+            0x215D => " 5/8",
+            0x215E => " 7/8",
+            0xA0, 0x2009, 0x202F, 0x2002, 0x2003 => " ",
+            0x2026 => "...",
+            0x2022, 0xB7 => "*",
+            0x2192 => "->",
+            0x2190 => "<-",
+            0x2264 => "<=",
+            0x2265 => ">=",
+            0x2248 => "~",
+            0xB1 => "+/-",
+            else => "?",
+        };
+        try out.appendSlice(a, rep);
+    }
+    return out.toOwnedSlice(a);
+}
+
+test "asciiFold" {
+    const a = std.testing.allocator;
+    const got = try asciiFold(a, "2\u{d7}4 \u{2014} 3\u{bd}\" \u{201c}x\u{201d} 45\u{b0} \u{2026}\u{4e2d}");
+    defer a.free(got);
+    try std.testing.expectEqualStrings("2x4 - 3 1/2\" \"x\" 45 deg ...?", got);
+    for (got) |c| try std.testing.expect(c < 0x80);
+}
+
+test "embedded guide sources are already pure ASCII (the fold is a safety net)" {
+    for (cli_guide ++ system_md) |c| try std.testing.expect(c < 0x80);
+}
+
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
     const io = init.io;
@@ -197,6 +250,12 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
     if (std.mem.eql(u8, cmd, "catalog")) {
         const r = try kerf.call(gpa, "catalog", if (o.markdown) "{\"format\":\"markdown\"}" else "{\"format\":\"json\"}");
         defer gpa.free(r.bytes);
+        if (o.markdown and r.ok) {
+            const folded = try asciiFold(gpa, r.bytes);
+            defer gpa.free(folded);
+            try writeOut(io, o.out, folded);
+            return 0;
+        }
         try writeOut(io, o.out, r.bytes);
         return if (r.ok) 0 else 1;
     }
@@ -214,7 +273,9 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         try text.appendSlice(gpa, system_md);
         try text.appendSlice(gpa, "\n# Component catalog\n\n");
         try text.appendSlice(gpa, r.bytes);
-        try writeOut(io, o.out, text.items);
+        const folded = try asciiFold(gpa, text.items);
+        defer gpa.free(folded);
+        try writeOut(io, o.out, folded);
         return 0;
     }
     if (std.mem.eql(u8, cmd, "init")) {

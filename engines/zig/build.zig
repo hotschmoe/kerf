@@ -64,6 +64,17 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_serve_tests.step);
 
+    // CLI tests (ASCII fold, guide text).
+    const cli_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{ .{ .name = "kerf", .module = kerf }, .{ .name = "ui_assets", .module = uiAssetsModule(b, null) } },
+    });
+    cli_test_mod.addAnonymousImport("kerf_cli_guide", .{ .root_source_file = b.path("../../spec/llm/cli-guide.md") });
+    cli_test_mod.addAnonymousImport("kerf_system_md", .{ .root_source_file = b.path("../../spec/llm/system.md") });
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli_test_mod })).step);
+
     // wasm32-freestanding, raw ABI (SPEC 13.1). `-Dwasm-optimize=ReleaseFast` to compare speed.
     const wasm_opt = b.option(std.builtin.OptimizeMode, "wasm-optimize", "Optimize mode of the wasm build (default ReleaseSmall)") orelse .ReleaseSmall;
     const wasm_strip = b.option(bool, "wasm-strip", "Strip the wasm build (default true; false keeps the name section for twiggy)") orelse true;
