@@ -3,7 +3,7 @@
 // Kerf engine CLI, then grades each final document against spec/evals/prompts.jsonl.
 //
 //   cd spec/evals && npm install
-//   node run.mjs --engine ../../engines/rust/target/release/kerf [--model claude-opus-5-5] [--only e01,e05]
+//   node run.mjs --engine ../../engines/zig/zig-out/bin/kerf [--model claude-opus-5-5] [--only e01,e05]
 //
 // Needs ANTHROPIC_API_KEY (or an `ant auth login` profile). Every run spends real money.
 import Anthropic from "@anthropic-ai/sdk";
@@ -20,7 +20,7 @@ const args = Object.fromEntries(
     return acc;
   }, []),
 );
-const enginePath = path.resolve(args.engine ?? path.join(root, "engines/rust/target/release/kerf"));
+const enginePath = path.resolve(args.engine ?? path.join(root, "engines/zig/zig-out/bin/kerf"));
 const model = args.model ?? "claude-opus-5-5";
 const only = args.only ? new Set(String(args.only).split(",")) : null;
 const maxRounds = 25;

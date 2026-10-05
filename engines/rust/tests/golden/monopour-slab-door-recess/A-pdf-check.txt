@@ -1,4 +1,0 @@
-OK  tests/golden/monopour-slab-door-recess//A.pdf
-%PDF-1.7  pages: 1  bytes: 161289  producer: None
-p1: 11.0x8.5 in  vector=True  path_paint=2256 path_construct=8949 text_ops=0 images=0(0px) forms=0
-png: tests/golden/monopour-slab-door-recess//A-pdf.png [1651, 1275]

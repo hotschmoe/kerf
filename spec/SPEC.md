@@ -25,16 +25,14 @@ Companion files:
 
 ```
 spec/                 this contract
-engines/rust/         kerf-core (lib), kerf-cli (bin), kerf-wasm (cdylib, raw C ABI)
-engines/zig/          same three products in Zig 0.16
-apps/web/             TypeScript + DOM + three.js UI; loads EITHER engine's kerf.wasm
-apps/egui/            Rust egui + wgpu app (links kerf-core directly)
-apps/teak/            Zig teak + zunk app (imports the Zig engine module directly)
+engines/zig/          the Kerf engine (Zig 0.16): library module `kerf`, CLI `kerf`, wasm (raw ABI)
+apps/web/             TypeScript + DOM + three.js UI; runs engines/zig/dist/kerf.wasm
 tools/                shared test tooling (dxf_check, pdf_check, shot, serve, size_report)
+install.sh / .ps1     one-line installers for the `kerf` CLI (GitHub releases)
 ```
 
-Stack names for the bake-off: **rust-ts** (engines/rust + apps/web), **rust-egui**,
-**zig-ts** (engines/zig + apps/web), **zig-teak**.
+Chosen stack (2026-10-05 bake-off): **zig-ts**. The other stacks (Rust engine + MCP server,
+egui app, teak app) are preserved at tag `archive/bakeoff-2026-10-05`; see `docs/STACKS.md`.
 
 ---
 

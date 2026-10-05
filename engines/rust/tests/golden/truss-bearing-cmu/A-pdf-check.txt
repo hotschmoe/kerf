@@ -1,4 +1,0 @@
-OK  tests/golden/truss-bearing-cmu//A.pdf
-%PDF-1.7  pages: 1  bytes: 146488  producer: None
-p1: 11.0x8.5 in  vector=True  path_paint=1893 path_construct=8204 text_ops=0 images=0(0px) forms=0
-png: tests/golden/truss-bearing-cmu//A-pdf.png [1651, 1275]

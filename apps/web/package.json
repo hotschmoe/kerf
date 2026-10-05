@@ -6,13 +6,11 @@
   "description": "Kerf web workstation (TypeScript + DOM + three.js). Loads either engine's kerf.wasm.",
   "scripts": {
     "assets": "node scripts/copy-assets.mjs",
-    "dev": "node scripts/run.mjs dev rust",
-    "dev:rust": "node scripts/run.mjs dev rust",
+    "dev": "node scripts/run.mjs dev zig",
     "dev:zig": "node scripts/run.mjs dev zig",
     "dev:fixture": "node scripts/run.mjs dev fixture",
-    "build:rust": "node scripts/run.mjs build rust",
     "build:zig": "node scripts/run.mjs build zig",
-    "build": "npm run build:rust && npm run build:zig",
+    "build": "npm run build:zig",
     "typecheck": "tsc --noEmit",
     "test:unit": "node test/unit.mjs",
     "test:e2e": "node test/e2e.mjs"

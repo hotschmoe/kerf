@@ -1,23 +1,42 @@
 # KERF ▮▮▮
 
-**Conversational construction details.** Describe a detail, or hand it a screenshot. An LLM builds it
-in a deterministic drafting engine under your supervision. Review it in section, iso and 3D, edit the
-notes, and export DXF / PDF / SVG for your CAD software.
+**Conversational construction details.** You describe a detail or hand Kerf a screenshot. An LLM
+builds it with a deterministic drafting engine while you supervise. You review it in section, iso
+and 3D, edit the notes, and export DXF / PDF / SVG for your CAD software.
 
-- **Source of truth:** `*.kerf.json` is a semantic, diffable, forkable document (components, relations, notes, code citations).
-- **Consistency:** the office style (`*.kerfstyle.json`) owns every visual decision. Same doc + style ⇒ byte-identical drawings.
-- **LLM-first:** the engine's API is shaped for LLM tool use. Components are placed relative to each other through anchors, and every edit returns a validation report.
+- **Source of truth:** `*.kerf.json` is a semantic, diffable, forkable document holding components,
+  relations, notes, and code citations.
+- **Consistency:** the office style (`*.kerfstyle.json`) owns every visual decision, so the same
+  doc + style gives byte-identical drawings.
+- **LLM-first:** components are placed relative to each other through anchors, and every edit
+  returns a validation report written for a model.
 - **US / IRC / IBC**, structural details first.
 
-This repo is currently a **bake-off**: the same spec is implemented in four stacks.
+## Install the CLI
 
-| stack | engine | UI |
-|---|---|---|
-| rust-ts | `engines/rust` (wasm, raw ABI) | `apps/web` (TypeScript + three.js) |
-| zig-ts | `engines/zig` (wasm32-freestanding) | `apps/web` |
-| rust-egui | `engines/rust` | `apps/egui` (egui + wgpu) |
-| zig-teak | `engines/zig` | `apps/teak` ([teak](https://github.com/hotschmoe/teak) + [zunk](https://github.com/hotschmoe/zunk)) |
+| platform | command |
+|---|---|
+| Windows (PowerShell) | `irm https://raw.githubusercontent.com/hotschmoe/kerf/main/install.ps1 \| iex` |
+| Linux / macOS | `curl -fsSL https://raw.githubusercontent.com/hotschmoe/kerf/main/install.sh \| sh` |
 
-Start with [`spec/SPEC.md`](spec/SPEC.md).
+## Use it with Claude Code, Grok, or any coding agent
+
+```sh
+mkdir details && cd details
+kerf init        # writes AGENTS.md + CLAUDE.md: "run `kerf guide` first"
+claude           # or grok; then ask: "detail of a prefab truss bearing on an 8in CMU wall"
+```
+The agent runs `kerf guide`, builds the detail with `kerf apply … -w`, checks its work by exporting
+and reading PNGs, and leaves `*.kerf.json` files in the folder. Open them in the web UI to review,
+edit notes, verify citations, and export.
+
+## Repository
+
+| path | what |
+|---|---|
+| `spec/` | the contract: [`SPEC.md`](spec/SPEC.md), design language, LLM prompts, reference details, evals |
+| `engines/zig/` | the engine (Zig 0.16): library, `kerf` CLI, wasm for the browser (zero imports) |
+| `apps/web/` | the web workstation (TypeScript + DOM + three.js) |
+| `docs/STACKS.md` | the 4-stack bake-off and where the archived stacks live |
 
 License: MIT. Fonts: IBM Plex Mono (OFL), Hershey Simplex (public domain, NBS).

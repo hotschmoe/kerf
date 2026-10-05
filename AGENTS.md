@@ -1,18 +1,17 @@
 # AGENTS.md — working in the Kerf repo
 
-You are one of several agents building Kerf in parallel. The orchestrator owns `spec/` and
-coordinates. Read this, then `spec/SPEC.md`, `spec/DESIGN.md`, `spec/llm/*`, and `tools/README.md`.
+You are working on Kerf. When an orchestrator is coordinating, it owns `spec/`. Read this, then `spec/SPEC.md`, `spec/DESIGN.md`, `spec/llm/*`, and `tools/README.md`.
 
 ## Ownership (stay in your lane)
-| dir | owner |
+| dir | what |
 |---|---|
-| `spec/`, `AGENTS.md`, `README.md` | orchestrator only — do NOT edit |
-| `engines/rust/` | rust-engine agent |
-| `engines/zig/` | zig-engine agent |
-| `apps/web/` | web-app agent |
-| `apps/egui/` | egui-app agent |
-| `apps/teak/` (+ the teak / zunk repos) | teak-app agent |
-| `tools/` | orchestrator (agents may ADD scripts under `tools/<yourname>/`) |
+| `spec/` | the contract (SPEC.md, style, LLM prompts, reference details, evals) |
+| `engines/zig/` | the engine: library, CLI (`kerf`), wasm |
+| `apps/web/` | the web UI (TypeScript + DOM + three.js) |
+| `tools/` | shared test tooling |
+| `docs/` | history and decisions (`docs/STACKS.md`) |
+
+When several agents work in parallel the orchestrator assigns each a directory; stay in it.
 
 If the spec is wrong, ambiguous, or missing something, do not stall. Pick the most reasonable
 interpretation, implement it, and record it in your dir's `NOTES.md` under `## SPEC ISSUES`

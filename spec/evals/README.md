@@ -26,7 +26,7 @@ Human or LLM-judge rubric (score each 0–2):
 
 Run (needs `ANTHROPIC_API_KEY` and a built engine CLI):
 ```
-node spec/evals/run.mjs --engine engines/rust/target/release/kerf --model claude-opus-5-5 [--only e01]
+node spec/evals/run.mjs --engine engines/zig/zig-out/bin/kerf --model claude-opus-5-5 [--only e01]
 ```
 The runner drives the same tool loop as the apps (spec/llm/HARNESS.md). It renders
 `kerf_render` images through the engine's SVG output and headless chromium. Each run writes
