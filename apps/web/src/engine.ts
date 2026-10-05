@@ -99,15 +99,17 @@ function wrap(c: Caller, stats: CallStat[], meta: { loadMs: number; wasmBytes: n
         try { return await c.json<ApplyResult>('apply', { doc, style, ops, actor }); } catch (err) { if (!missing(err)) throw err; compat.add('apply'); }
       }
       const r = applyOpsLocal(doc, ops);
-      const canon = await c.json<{ doc: KerfDoc }>('fmt', { doc: r.doc });
-      const chk = await c.json<CheckResult>('check', { doc: canon.doc, style });
-      return { ok: true, doc: canon.doc, diagnostics: chk.diagnostics, summary: chk.summary, changed: r.changed };
+      let outDoc = r.doc;
+      try { outDoc = (await c.json<{ doc: KerfDoc }>('fmt', { doc: r.doc })).doc; } catch (err) { if (!missing(err)) throw err; compat.add('fmt'); }
+      let chk: CheckResult = { diagnostics: [], summary: '' };
+      try { chk = await c.json<CheckResult>('check', { doc: outDoc, style }); } catch (err) { if (!missing(err)) throw err; compat.add('check'); }
+      return { ok: true, doc: outDoc, diagnostics: chk.diagnostics, summary: chk.summary, changed: r.changed };
     },
     inspect: async (doc, style, query) => {
       if (!compat.has('inspect')) {
         try { return await c.json('inspect', { doc, style, query }); } catch (err) { if (!missing(err)) throw err; compat.add('inspect'); }
       }
-      if (query.q === 'summary') return (await c.json<CheckResult>('check', { doc, style })).summary;
+      if (query.q === 'summary') { try { return (await c.json<CheckResult>('check', { doc, style })).summary; } catch { return '(summary unavailable: engine has no check)'; } }
       if (query.q === 'component') return doc.components.find((x) => x.id === query.id) ?? { error: `no component ${query.id}` };
       if (query.q === 'catalog') return c.json('catalog', { format: 'markdown' });
       return { note: 'inspect is not implemented by this engine build' };

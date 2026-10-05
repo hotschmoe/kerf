@@ -49,7 +49,7 @@ for (const worker of [1, 0]) {
         // engine call timings on the warm page: repeat each call 10x
         const calls = await page.evaluate(async () => {
           const k = window.__kerf, a = k.app, e = k.engine, doc = a.doc, st = a.style, v = a.activeView;
-          const time = async (fn, n = 10) => { const ts = []; for (let i = 0; i < n; i++) { const t0 = performance.now(); await fn(); ts.push(performance.now() - t0); } ts.sort((x, y) => x - y); return ts[Math.floor(ts.length / 2)]; };
+          const time = async (fn, n = 10) => { try { const ts = []; for (let i = 0; i < n; i++) { const t0 = performance.now(); await fn(); ts.push(performance.now() - t0); } ts.sort((x, y) => x - y); return ts[Math.floor(ts.length / 2)]; } catch (e) { return null; } };
           const res = {};
           res.apply_set = await time(() => e.apply(a.emptyDoc(), st, [{ op: 'set', path: 'doc', value: doc }], 'designer'));
           const note = a.view.annotations.find((x) => x.type === 'note');
@@ -84,7 +84,7 @@ for (const worker of [1, 0]) {
 }
 await browser.close(); server.kill();
 console.log(JSON.stringify(out, null, 1));
-const f = (n) => (n === undefined ? '-' : n.toFixed(n < 10 ? 2 : 1));
+const f = (n) => (n === undefined || n === null ? 'n/a' : n.toFixed(n < 10 ? 2 : 1));
 console.error(`\n## ${engine} (median of ${runs} loads; calls median of 10)`);
 for (const key of ['worker', 'main']) {
   console.error(`\n### engine on ${key === 'worker' ? 'Web Worker' : 'main thread'}\n| sample | TTFR ms | engine ready | wasm compile | ui ready |\n|---|---|---|---|---|`);
