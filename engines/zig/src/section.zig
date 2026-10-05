@@ -56,7 +56,8 @@ pub const Section = struct {
     truncated_hatch: bool = false,
     crop_loop: []const V2 = &.{},
 
-    pub fn init(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms: []const Prism) Allocator.Error!Section {
+    pub fn init(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms_in: []const Prism) Allocator.Error!Section {
+        const prisms = try thickenThinHardware(a, prisms_in, spec.scale);
         const cls = try a.alloc(Class, prisms.len);
         const eps = 1e-9;
         for (prisms, 0..) |p, i| {
@@ -636,6 +637,42 @@ pub const Section = struct {
     }
 };
 
+/// Minimum drawn thickness of sheet metal (straps, flashing) in paper inches: about 0.55 mm, so a CS16 strap is a visible band
+/// next to the host member's 0.5 mm outline instead of a hairline merged with it. The true thickness lives in the 3D model.
+pub const min_metal_paper_in: f64 = 0.022;
+
+/// SPEC 20 minimum visibility: thin edge-lay sheet metal (a ribbon along a centerline) is widened, on the side(s) it already
+/// occupies, to at least `min_metal_paper_in` on paper.
+fn thickenThinHardware(a: Allocator, prisms: []const Prism, scale: f64) Allocator.Error![]const Prism {
+    var out: ?[]Prism = null;
+    const min_t = min_metal_paper_in * scale;
+    for (prisms, 0..) |p, i| {
+        if (p.kind != .body or p.face_tie or p.sweep_r > 0 or p.centerline.len < 2 or p.loops.len != 1) continue;
+        if (!isMetal(p.material) or p.embedded and !std.mem.eql(u8, p.material, "steel")) continue;
+        const flat = try geom.flattenPolyline(a, p.loops[0], true, flat_tol);
+        var len: f64 = 0;
+        const cl = try geom.flattenPolyline(a, p.centerline, false, flat_tol);
+        for (cl[0 .. cl.len - 1], 0..) |q, k| len += q.dist(cl[k + 1]);
+        if (len < 1e-9) continue;
+        const t = @abs(geom.signedAreaV(flat)) / len;
+        if (t >= min_t - 1e-9) continue;
+        // which side(s) of the first segment does the ribbon occupy?
+        const d = cl[1].sub(cl[0]).norm();
+        const m = cl[0].add(cl[1]).scale(0.5);
+        const probe = @min(t, 0.5 * cl[0].dist(cl[1])) * 0.5;
+        const on_left = geom.pointInLoopEO(m.add(d.perp().scale(probe)), flat);
+        const on_right = geom.pointInLoopEO(m.sub(d.perp().scale(probe)), flat);
+        if (!on_left and !on_right) continue;
+        if (out == null) out = try a.dupe(Prism, prisms);
+        const pg = @import("pathgeom.zig");
+        const lt: f64 = if (on_left and on_right) min_t / 2 else if (on_left) min_t else 0;
+        const rt: f64 = if (on_left and on_right) min_t / 2 else if (on_right) min_t else 0;
+        const rib = try pg.ribbon(a, p.centerline, lt, rt);
+        out.?[i].loops = try model.oneLoop(a, rib);
+    }
+    return out orelse prisms;
+}
+
 /// A rebar bar in `path` mode (a swept centerline), as opposed to `along_z` dots.
 pub fn isPathBar(p: Prism) bool {
     return p.kind == .body and p.centerline.len >= 2 and std.mem.eql(u8, p.material, "rebar");
@@ -1096,4 +1133,112 @@ fn baseId(src: []const u8) []const u8 {
 pub fn isMetal(name: []const u8) bool {
     const eq = std.mem.eql;
     return eq(u8, name, "steel") or eq(u8, name, "aluminum") or eq(u8, name, "flashing_membrane");
+}
+
+// ---- SPEC 20 drawing conventions ----------------------------------------------------------------------------------
+
+fn testDrawing(a: Allocator, src: []const u8, view_id: []const u8) !drawing.Drawing {
+    const json = @import("json.zig");
+    const model_ = @import("model.zig");
+    const drawview = @import("drawview.zig");
+    var err: json.ParseError = undefined;
+    const doc = (try json.parse(a, src, &err)).?;
+    const st = try a.create(style_mod.Style);
+    st.* = try style_mod.load(a, null);
+    var diags = model_.Diags.init(a);
+    return (try drawview.build(a, doc, st, view_id, &diags)).?;
+}
+
+test "path rebar is one open centerline polyline in the rebar pen with true arcs and no fill" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const dr = try testDrawing(a, @import("testdocs.zig").palmer, "A");
+    var arcs: usize = 0;
+    var paths: usize = 0;
+    for (dr.items) |it| switch (it) {
+        .path => |p| if (std.mem.eql(u8, p.src, "dowel")) {
+            paths += 1;
+            try std.testing.expect(!p.closed);
+            try std.testing.expectEqualStrings("rebar", p.pen);
+            try std.testing.expectEqualStrings("S-DETL-REBR", p.layer);
+            for (p.pts[0 .. p.pts.len - 1]) |q| if (q.b != 0) {
+                arcs += 1;
+            };
+        },
+        .fill => |f| try std.testing.expect(!std.mem.eql(u8, f.src, "dowel")),
+        else => {},
+    };
+    try std.testing.expectEqual(@as(usize, 1), paths);
+    try std.testing.expect(arcs >= 1);
+}
+
+test "a face-on tie is outlined in the steel pen with nail dots at 1 inch pitch" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const dr = try testDrawing(a, @import("testdocs.zig").truss, "A");
+    var dots: usize = 0;
+    var outline: usize = 0;
+    for (dr.items) |it| switch (it) {
+        .fill => |f| if (std.mem.eql(u8, f.src, "hurricane_tie")) {
+            dots += 1;
+        },
+        .path => |p| if (std.mem.eql(u8, p.src, "hurricane_tie")) {
+            outline += 1;
+            try std.testing.expectEqualStrings("steel", p.pen);
+        },
+        else => {},
+    };
+    try std.testing.expect(outline >= 1);
+    try std.testing.expect(dots >= 3 and dots <= 5); // 4.4" strap, 1" pitch
+}
+
+test "edge-lay straps are never thinner than the minimum metal thickness on paper" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const dr = try testDrawing(a, @import("testdocs.zig").beam, "A");
+    var seen = false;
+    for (dr.items) |it| switch (it) {
+        .region => |r| if (std.mem.eql(u8, r.src, "strap")) {
+            seen = true;
+            const bb = geom.pointsBox(r.loops[0]);
+            try std.testing.expect(@min(bb.width(), bb.height()) * 1.0 / dr.scale >= min_metal_paper_in - 1e-6);
+        },
+        else => {},
+    };
+    try std.testing.expect(seen);
+}
+
+test "all member linework in every reference section view stays inside the crop" {
+    const json = @import("json.zig");
+    const testdocs = @import("testdocs.zig");
+    for (testdocs.layout_docs) |src| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        var err: json.ParseError = undefined;
+        const doc = (try json.parse(a, src, &err)).?;
+        for (doc.get("views").?.array) |v| {
+            if (!std.mem.eql(u8, v.get("kind").?.str().?, "section")) continue;
+            const dr = try testDrawing(a, src, v.get("id").?.str().?);
+            const c = dr.crop;
+            const tol = 1e-6;
+            for (dr.items) |it| {
+                const pts = switch (it) {
+                    .path => |p| if (isMemberPen(p.pen) and !std.mem.eql(u8, p.src, "crop")) p.pts else continue,
+                    else => continue,
+                };
+                for (pts) |q| {
+                    try std.testing.expect(q.x >= c.x0 - tol and q.x <= c.x1 + tol and q.y >= c.y0 - tol and q.y <= c.y1 + tol);
+                }
+            }
+        }
+    }
+}
+
+fn isMemberPen(pen: []const u8) bool {
+    for ([_][]const u8{ "cut", "beyond", "hidden", "steel", "rebar", "membrane", "vapor" }) |n| if (std.mem.eql(u8, pen, n)) return true;
+    return false;
 }
