@@ -306,3 +306,34 @@ test "catalog markdown and json are pure ASCII (PowerShell consoles)" {
         };
     }
 }
+
+test "rebar place.face center / station / axis" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src =
+        \\{"kerf":"0.1","id":"c","title":"T","run":[-24,24],"components":[
+        \\{"id":"stem","type":"concrete","shape":"rect","width":8,"height":24,"cover":{"bottom":0,"sides":0,"top":0}},
+        \\{"id":"b1","type":"rebar","size":"#4","place":{"in":"stem","face":"center"}},
+        \\{"id":"b2","type":"rebar","size":"#4","place":{"in":"stem","face":"center","count":3,"axis":"y","side_cover":2}},
+        \\{"id":"b3","type":"rebar","size":"#4","place":{"in":"stem","face":"center","station":2}}
+        \\],"views":[]}
+    ;
+    var err: json.ParseError = undefined;
+    const doc = (try json.parse(a, src, &err)).?;
+    const st = try style_mod.load(a, null);
+    var diags = model.Diags.init(a);
+    const scene = try compile_mod.compile(a, doc, &st, &diags);
+    try std.testing.expectEqual(@as(usize, 0), diags.errCount());
+    const b1 = scene.find("b1").?;
+    try near(4, b1.built.centers[0].x);
+    try near(12, b1.built.centers[0].y);
+    const b2 = scene.find("b2").?;
+    try std.testing.expectEqual(@as(usize, 3), b2.built.centers.len);
+    try near(4, b2.built.centers[1].x);
+    try near(2 + 0.25, b2.built.centers[0].y);
+    try near(12, b2.built.centers[1].y);
+    const b3 = scene.find("b3").?;
+    try near(2, b3.built.centers[0].x);
+    try near(12, b3.built.centers[0].y);
+}

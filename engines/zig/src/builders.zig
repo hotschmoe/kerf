@@ -821,7 +821,7 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
     const a = ctx.a;
     const p = &ctx.p;
     if (pl != .object) {
-        p.fail("place", "param 'place' must be {{\"in\": \"comp[.part]\", \"face\": \"bottom|top|left|right\", \"cover\": 3, \"count\": 2, \"side_cover\": 3}}", .{});
+        p.fail("place", "param 'place' must be {{\"in\": \"comp[.part]\", \"face\": \"bottom|top|left|right|center\", \"cover\": 3, \"count\": 2, \"side_cover\": 3}}", .{});
         return null;
     }
     const in_s = (if (pl.get("in")) |x| x.str() else null) orelse {
@@ -837,6 +837,19 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
         return null;
     }
     const count: usize = @intFromFloat(count_f);
+    const axis = (if (pl.get("axis")) |x| x.str() else null) orelse "x";
+    if (!std.mem.eql(u8, axis, "x") and !std.mem.eql(u8, axis, "y")) {
+        p.fail("place/axis", "place.axis must be \"x\" or \"y\" (got \"{s}\"): the direction a multi-bar row spreads for face \"center\"", .{axis});
+        return null;
+    }
+    const station: ?f64 = if (pl.get("station")) |x| (units.parseLength(x) orelse {
+        p.fail("place/station", "place.station must be a length measured from the zone's left face (bottom face with axis \"y\"), e.g. 4 or \"4\\\"\"", .{});
+        return null;
+    }) else null;
+    if (station != null and count > 1) {
+        p.fail("place/station", "place.station positions ONE bar; use count 1 (or drop station to spread {d} bars between the faces)", .{count});
+        return null;
+    }
     var host_id = in_s;
     var part: ?[]const u8 = null;
     if (std.mem.indexOfScalar(u8, in_s, '.')) |dot| {
@@ -874,7 +887,29 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
     const r = d / 2.0;
     var out: std.ArrayList(V2) = .empty;
     const eq = std.mem.eql;
-    if (eq(u8, face, "bottom") or eq(u8, face, "top")) {
+    if (eq(u8, face, "center")) {
+        // Centered in the zone on both axes; a row of bars spreads along `axis` at side_cover; station moves one bar.
+        const along_y = eq(u8, axis, "y");
+        const lo = (if (along_y) box.y0 else box.x0) + side_cover + r;
+        const hi = (if (along_y) box.y1 else box.x1) - side_cover - r;
+        if (hi < lo - 1e-9 and count > 1) {
+            p.fail("place", "zone '{s}' is {s} {s}: bars at side_cover {s} do not fit; reduce side_cover or count", .{ in_s, fmtNum(a, if (along_y) box.height() else box.width()), if (along_y) "tall" else "wide", fmtNum(a, side_cover) });
+            return null;
+        }
+        const mid_x = (box.x0 + box.x1) / 2;
+        const mid_y = (box.y0 + box.y1) / 2;
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            const t: f64 = if (count == 1) 0.5 else @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(count - 1));
+            if (along_y) {
+                const y = if (station) |st| box.y0 + st else lo + (hi - lo) * t;
+                try out.append(a, V2.init(mid_x, y));
+            } else {
+                const x = if (station) |st| box.x0 + st else lo + (hi - lo) * t;
+                try out.append(a, V2.init(x, mid_y));
+            }
+        }
+    } else if (eq(u8, face, "bottom") or eq(u8, face, "top")) {
         const y = if (eq(u8, face, "bottom")) box.y0 + cover + r else box.y1 - cover - r;
         const xa = box.x0 + side_cover + r;
         const xb = box.x1 - side_cover - r;
@@ -884,7 +919,7 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
         }
         var i: usize = 0;
         while (i < count) : (i += 1) {
-            const x = if (count == 1) (box.x0 + box.x1) / 2 else xa + (xb - xa) * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(count - 1));
+            const x = if (station) |st| box.x0 + st else if (count == 1) (box.x0 + box.x1) / 2 else xa + (xb - xa) * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(count - 1));
             try out.append(a, V2.init(x, y));
         }
     } else if (eq(u8, face, "left") or eq(u8, face, "right")) {
@@ -897,11 +932,11 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
         }
         var i: usize = 0;
         while (i < count) : (i += 1) {
-            const y = if (count == 1) (box.y0 + box.y1) / 2 else ya + (yb - ya) * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(count - 1));
+            const y = if (station) |st| box.y0 + st else if (count == 1) (box.y0 + box.y1) / 2 else ya + (yb - ya) * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(count - 1));
             try out.append(a, V2.init(x, y));
         }
     } else {
-        p.fail("place/face", "place.face must be one of \"bottom\", \"top\", \"left\", \"right\" (got \"{s}\")", .{face});
+        p.fail("place/face", "place.face must be one of \"bottom\", \"top\", \"left\", \"right\", \"center\" (got \"{s}\")", .{face});
         return null;
     }
     return out.items;
