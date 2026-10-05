@@ -14,7 +14,7 @@
     "build:zig": "node scripts/run.mjs build zig",
     "build": "npm run build:rust && npm run build:zig",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node --experimental-strip-types test/unit.mjs",
+    "test:unit": "node test/unit.mjs",
     "test:e2e": "node test/e2e.mjs"
   },
   "dependencies": {

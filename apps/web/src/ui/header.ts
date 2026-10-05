@@ -17,7 +17,7 @@ export interface HeaderHooks {
 export function mountHeader(app: App, el: HTMLElement, hooks: HeaderHooks) {
   const doc = h('span.hf');
   const style = h('span.hf.opt');
-  const engine = h('span.hf.opt');
+  const engine = h('span.hf.eng');
   const sampleBtn = btn('OPEN SAMPLE ▾', () => {
     const menu = h('div.menu', h('div.mh', 'REFERENCE DETAILS'));
     let close = () => {};

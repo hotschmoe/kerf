@@ -199,7 +199,8 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 
 /* ---------- status line (3270 OIA) ---------- */
 #status { background: var(--term-bg); color: var(--term-fg); font-size: 12px; line-height: 24px; display: flex; padding: 0 12px; white-space: nowrap; overflow: hidden; border-top: 1px solid var(--ink); text-transform: uppercase; letter-spacing: 0.02em; }
-#status .seg { overflow: hidden; text-overflow: ellipsis; }
+#status .seg { flex: none; }
+#status .seg:first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #status .sep { color: var(--term-dim); padding: 0 9px; flex: none; }
 #status .fill { flex: 1; min-width: 8px; }
 #status .bad { color: var(--term-red); font-weight: 700; }
@@ -226,7 +227,7 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 #mtabs { display: none; }
 @media (max-width: 899px) {
   #app { grid-template-rows: 40px 32px minmax(0, 1fr) 24px; }
-  #hdr .hsub, #hdr .hf.opt { display: none; }
+  #hdr .hsub { display: none; }
   #hdr { gap: 10px; padding: 0 10px; }
   #mtabs { display: flex; border-bottom: 1px solid var(--ink); background: var(--paper); padding: 0 8px; }
   #main { grid-template-columns: minmax(0, 1fr); }
@@ -236,5 +237,12 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 }
 @media (max-width: 1199px) and (min-width: 900px) {
   #main { grid-template-columns: 300px minmax(0, 1fr) 280px; }
-  #hdr .hsub { display: none; }
+  #hdr .hsub, #hdr .hf.opt { display: none; }
+  #hdr .hf.eng { display: block; }
+}
+@media (max-width: 899px) {
+  #hdr .btns { gap: 5px; }
+  #hdr .btn { padding: 0 7px; font-size: 11px; }
+  #hdr .hf { display: none; }
+  #status .seg.opt, #status .sep.opt { display: none; }
 }

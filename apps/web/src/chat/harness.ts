@@ -16,6 +16,7 @@ export type ChatEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool'; id: string; phase: 'start' | 'end'; title?: string; status?: string; ok?: boolean; detail?: string; thumb?: Blob; input?: unknown }
   | { type: 'notice'; text: string; level: 'info' | 'warn' | 'err' }
+  | { type: 'fallback'; text: string }
   | { type: 'round'; n: number }
   | { type: 'done' };
 
@@ -70,6 +71,14 @@ export class Harness {
         this.emit({ type: 'assistant-start' });
         const resp = await this.request(transport, signal);
         this.messages.push({ role: 'assistant', content: resp.content }); // verbatim, thinking blocks included
+        for (const b of resp.content) {
+          if (b.type === 'fallback') {
+            const f = b as Record<string, unknown>;
+            const from = String(f.from_model ?? f.from ?? f.declined_model ?? f.model ?? '?');
+            const to = String(f.to_model ?? f.to ?? f.fallback_model ?? '?');
+            this.emit({ type: 'fallback', text: `FALLBACK ${from} \u2192 ${to}` });
+          }
+        }
         if (resp.stop_reason === 'refusal') {
           const why = resp.stop_details?.explanation;
           this.emit({ type: 'notice', level: 'err', text: 'CLAUDE DECLINED THIS REQUEST' + (why ? ': ' + why : '.') });

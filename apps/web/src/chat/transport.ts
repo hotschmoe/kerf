@@ -36,12 +36,13 @@ export interface SendOpts { signal?: AbortSignal; onText?: (delta: string) => vo
 export interface Transport { send(req: ChatRequest, opts: SendOpts): Promise<ChatResponse> }
 
 export class AnthropicTransport implements Transport {
-  constructor(private apiKey: string) {}
+  /** baseURL is a test hook (local fake server); main.ts only accepts localhost values. */
+  constructor(private apiKey: string, private baseURL?: string) {}
 
   async send(req: ChatRequest, opts: SendOpts): Promise<ChatResponse> {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     // maxRetries 0: the harness owns retry/backoff (2s, 4s, 8s) so the status line can show it.
-    const client = new Anthropic({ apiKey: this.apiKey, dangerouslyAllowBrowser: true, maxRetries: 0 });
+    const client = new Anthropic({ apiKey: this.apiKey, dangerouslyAllowBrowser: true, maxRetries: 0, ...(this.baseURL ? { baseURL: this.baseURL } : {}) });
     const body: Record<string, unknown> = {
       model: req.model,
       max_tokens: 32000,

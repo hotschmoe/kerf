@@ -138,7 +138,7 @@ export function mountInspector(app: App, el: HTMLElement) {
         const anchors = (o.anchors ?? null) as unknown;
         const rest = Object.entries(o).filter(([k]) => k !== 'anchors' && k !== 'id' && k !== 'type' && k !== 'params' && k !== 'component');
         const params = (o.params ?? null) as Record<string, unknown> | null;
-        if (params && typeof params === 'object') { clear(kv); put('type', c.type); for (const [k, v] of Object.entries(params)) put(k, v); }
+        if (params && typeof params === 'object') { clear(kv); put('type', c.type); for (const [k, v] of Object.entries(params)) if (k !== 'id' && k !== 'type') put(k, v); }
         for (const [k, v] of rest) { if (k === 'q') continue; put(k, v); }
         if (anchors && typeof anchors === 'object') {
           sec.append(h('div.subh', 'ANCHORS'));

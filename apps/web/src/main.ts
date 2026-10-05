@@ -49,7 +49,9 @@ async function boot() {
     return getJson<KerfDoc>(`./samples/${s.file}`);
   };
   const mock = new MockTransport({ loadDoc: () => loadSampleDoc(), chunkMs: params.get('fast') === '1' ? 0 : 12 });
-  const transport = (): Transport | null => (demo ? mock : settings.apiKey ? new AnthropicTransport(settings.apiKey) : null);
+  const apiParam = params.get('api');
+  const testBase = apiParam && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(apiParam) ? apiParam : undefined; // test hook; never a remote host
+  const transport = (): Transport | null => (demo ? mock : settings.apiKey ? new AnthropicTransport(settings.apiKey, testBase) : null);
   const harness = new Harness(app, { transport, model: () => settings.model, catalogMd: () => catalogMd });
   const refreshClaude = () => app.setClaude({ state: demo || settings.apiKey ? 'OK' : 'NO KEY' });
   refreshClaude();

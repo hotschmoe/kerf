@@ -11,6 +11,13 @@ export interface Viewport2DCallbacks {
   onNoteMove(id: string, place: [number, number]): void;
 }
 
+function unionBox(b: [number, number, number, number][]): [number, number, number, number] | null {
+  if (!b.length) return null;
+  const u: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const t of b) { u[0] = Math.min(u[0], t[0]); u[1] = Math.min(u[1], t[1]); u[2] = Math.max(u[2], t[2]); u[3] = Math.max(u[3], t[3]); }
+  return u;
+}
+
 const COL = { vellum: '#FBFAF5', grid: '#A9C1DD', grid2: '#D3E0EE', ink: '#1A1A1A', blue: '#1D4E9E' };
 
 export class Viewport2D {
@@ -225,17 +232,18 @@ export class Viewport2D {
         ctx.fill(sel.region, 'evenodd');
         ctx.strokeStyle = COL.blue; ctx.lineWidth = 2 * onePx * dpr; ctx.lineJoin = 'round';
         ctx.stroke(sel.outline);
-        for (const [x0, y0, x1, y1] of sel.texts) {
-          if (drag) continue;
+        const ub = unionBox(sel.texts);
+        if (ub && !drag) {
           ctx.lineWidth = 1.5 * onePx * dpr;
-          ctx.strokeRect(x0 - 0.3, y0 - 0.4, x1 - x0 + 0.6, y1 - y0 + 0.8);
+          ctx.strokeRect(ub[0] - 0.3, ub[1] - 0.4, ub[2] - ub[0] + 0.6, ub[3] - ub[1] + 0.8);
         }
       }
       const hov = this.hover && this.hover !== this.selected && m.bySrc.get(this.hover);
       if (hov) {
         ctx.strokeStyle = COL.blue; ctx.lineWidth = 1.5 * onePx * dpr; ctx.lineJoin = 'round';
         ctx.stroke(hov.outline);
-        for (const [x0, y0, x1, y1] of hov.texts) ctx.strokeRect(x0 - 0.3, y0 - 0.4, x1 - x0 + 0.6, y1 - y0 + 0.8);
+        const hb = unionBox(hov.texts);
+        if (hb) ctx.strokeRect(hb[0] - 0.3, hb[1] - 0.4, hb[2] - hb[0] + 0.6, hb[3] - hb[1] + 0.8);
       }
       if (drag) {
         ctx.save();

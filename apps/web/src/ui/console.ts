@@ -103,6 +103,11 @@ export function mountConsole(app: App, el: HTMLElement, harness: Harness, hooks:
         }
         break;
       }
+      case 'fallback':
+        if (!card) newCard();
+        if (!tools) { tools = h('div.tools'); cardBody!.append(tools); seg = null; }
+        tools.append(h('div.tl', h('summary', { style: 'display:flex' }, h('span.tt', e.text))));
+        break;
       case 'notice':
         msgs.append(h('div.notice', { class: e.level === 'err' ? 'err' : e.level === 'warn' ? 'warn' : '' }, e.text));
         card = null; cardBody = null; seg = null; tools = null;

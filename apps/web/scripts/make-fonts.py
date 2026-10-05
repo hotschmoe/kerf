@@ -32,7 +32,7 @@ def make_glyphs():
     g = {}
     def new(): return TTGlyphPen(None)
     p = new(); poly(p, [(180, 0), (420, 0), (420, 700), (180, 700)][::-1]); g["blockbar"] = (0x25AE, p.glyph())
-    p = new(); poly(p, [(150, 560), (150, 120), (470, 340)][::-1]); g["tri_r"] = (0x25B8, p.glyph())
+    p = new(); poly(p, [(110, 620), (110, 60), (500, 340)][::-1]); g["tri_r"] = (0x25B8, p.glyph())
     p = new(); poly(p, [(100, 120), (500, 120), (300, 540)][::-1]); g["tri_u"] = (0x25B2, p.glyph())
     p = new(); poly(p, [(100, 540), (500, 540), (300, 120)][::-1]); g["tri_d"] = (0x25BC, p.glyph())
     p = new(); poly(p, [(110, 60), (490, 60), (490, 600), (110, 600)][::-1]); g["sq_f"] = (0x25A0, p.glyph())
