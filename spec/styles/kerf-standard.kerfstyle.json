@@ -12,7 +12,7 @@
       "dash_mm": null
     },
     "beyond": {
-      "width_mm": 0.18,
+      "width_mm": 0.25,
       "dash_mm": null
     },
     "hidden": {
@@ -54,7 +54,7 @@
       "dash_mm": null
     },
     "break": {
-      "width_mm": 0.18,
+      "width_mm": 0.25,
       "dash_mm": null
     },
     "title": {
@@ -561,7 +561,7 @@
     },
     "beyond": {
       "name": "S-DETL-BYND",
-      "lineweight_mm": 0.18
+      "lineweight_mm": 0.25
     },
     "hidden": {
       "name": "S-DETL-HIDN",
@@ -590,7 +590,7 @@
     },
     "break": {
       "name": "S-DETL-BRKL",
-      "lineweight_mm": 0.18
+      "lineweight_mm": 0.25
     }
   },
   "sheet": {

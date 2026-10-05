@@ -433,19 +433,13 @@
           20
         ]
       },
-      "notes_side": "both",
+      "notes_side": "right",
       "annotations": [
         {
           "id": "n_truss",
           "type": "note",
           "text": "PRE-ENGINEERED WOOD TRUSS @ 24\" O.C.",
           "target": "truss"
-        },
-        {
-          "id": "n_tie",
-          "type": "note",
-          "text": "H2.5A @ EA. TRUSS",
-          "target": "hurricane_tie"
         },
         {
           "id": "n_block",

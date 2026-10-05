@@ -172,12 +172,12 @@
       "kind": "section",
       "number": "1",
       "title": "FLUSH BEAM AT TOP PLATE \u2014 ELEVATION",
-      "scale": "1-1/2\"=1'-0\"",
+      "scale": "1\"=1'-0\"",
       "cut_z": -1.75,
       "crop": {
         "x": [
-          -40,
-          30
+          -28,
+          24
         ],
         "y": [
           76,
@@ -277,14 +277,14 @@
           "from": {
             "ref": "beam@bottom_left",
             "offset": [
-              24,
+              20,
               0
             ]
           },
           "to": {
             "ref": "beam@top_left",
             "offset": [
-              24,
+              20,
               0
             ]
           },
@@ -304,8 +304,8 @@
       "cut_z": 0,
       "crop": {
         "x": [
-          -40,
-          30
+          -28,
+          24
         ],
         "y": [
           76,

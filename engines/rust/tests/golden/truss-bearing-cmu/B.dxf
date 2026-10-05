@@ -21,7 +21,7 @@ $INSBASE
 9
 $EXTMIN
 10
--72.9249
+-38.1592
 20
 -40.8125
 30
@@ -303,7 +303,7 @@ S-DETL-BYND
 6
 CONTINUOUS
 370
-18
+25
 0
 LAYER
 5
@@ -1697,7 +1697,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1723,7 +1723,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1749,7 +1749,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1775,7 +1775,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1801,7 +1801,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1827,7 +1827,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1857,7 +1857,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1883,7 +1883,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1909,7 +1909,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1935,7 +1935,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1961,7 +1961,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -1987,7 +1987,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2013,7 +2013,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2039,7 +2039,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2069,7 +2069,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2095,7 +2095,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2121,7 +2121,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2147,7 +2147,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2173,7 +2173,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2199,7 +2199,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2225,7 +2225,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2251,7 +2251,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2277,7 +2277,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2303,7 +2303,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2329,7 +2329,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2355,7 +2355,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2381,7 +2381,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -6091,7 +6091,7 @@ S-ANNO-NOTE
 100
 AcDbText
 10
--72.9249
+30.6683
 20
 -16.3047
 30
@@ -6125,15 +6125,15 @@ AcDbPolyline
 70
 0
 10
--42.3467
+30.1683
 20
 -15.7188
 10
--40.7842
+28.6058
 20
 -15.7188
 10
--8.2625
+-5.9187
 20
 -15.7188
 0
@@ -6181,13 +6181,13 @@ SOLID
 20
 -15.7188
 10
--8.2625
-20
--15.3281
-10
--8.2625
+-5.9187
 20
 -16.1094
+10
+-5.9187
+20
+-15.3281
 97
 0
 75
