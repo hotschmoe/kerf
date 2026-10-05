@@ -35,6 +35,10 @@ pub const Comp = struct {
     arr_count: usize = 1,
     /// Resolved placement point (world) and rotation, for reporting.
     place_pt: V2 = .{ .x = 0, .y = 0 },
+    /// Placement rotation (rotate + slope), radians CCW.
+    angle: f64 = 0,
+    /// Truss only: the roof slope its top chord builds in (radians, negative when exterior is right); what `slope: "@truss"` follows.
+    pitch_angle: f64 = 0,
     /// Prisms of every instance, world coordinates, in builder order per instance.
     world: []const model.Prism = &.{},
 

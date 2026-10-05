@@ -386,3 +386,7 @@ fn meshFn(a: Allocator, inp: json.Value) ApiError!Out {
     const parts = try mesh_mod.build(a, l.scene, incl);
     return .{ .ok = true, .bytes = try mesh_mod.toJson(a, parts) };
 }
+
+test {
+    _ = @import("ergo_tests.zig");
+}

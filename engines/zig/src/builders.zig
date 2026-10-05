@@ -30,6 +30,8 @@ pub const Ctx = struct {
     /// Placement point (world) used as the origin of point-list builders.
     origin: V2,
     run: [2]f64,
+    /// Placement rotation (radians CCW): `until` measures along the member's rotated run direction.
+    angle: f64 = 0,
 };
 
 // ---- helpers ---------------------------------------------------------------------------------------
@@ -245,8 +247,10 @@ fn lengthOrUntil(ctx: *Ctx, run: []const u8, hint: []const u8, note: *[]const u8
         p.ok = false;
         return null;
     };
-    const start = if (along_x) ctx.origin.x else ctx.origin.y;
-    const end = if (along_x) target.x else target.y;
+    // distance along the member's own run direction (rotated by `slope`/`rotate`; plain x or y when unrotated)
+    const run_dir = if (along_x) V2.init(@cos(ctx.angle), @sin(ctx.angle)) else V2.init(-@sin(ctx.angle), @cos(ctx.angle));
+    const start = ctx.origin.x * run_dir.x + ctx.origin.y * run_dir.y;
+    const end = target.x * run_dir.x + target.y * run_dir.y;
     const len = (end - start) * dir;
     if (len <= 1e-6) {
         p.fail("until", "'until' target is {s} the anchor along {s} (anchor at {s}, target at {s}); the member would have length {s}. The anchor grows {s}", .{
@@ -1324,6 +1328,9 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
     try anchors.append(a, .{ .name = "tail_bottom", .p = tail_bottom_pt });
     try anchors.append(a, .{ .name = "tail_top", .p = tail_top });
     try anchors.append(a, .{ .name = "top_chord_at_bearing", .p = V2.init(0, lower(0, y_low0, s) + v_thick) });
+    // SPEC 19: where ties and straps land on the heel without literal offsets
+    try anchors.append(a, .{ .name = "heel_outer", .p = V2.init(0, (db + lower(0, y_low0, s) + v_thick) / 2) });
+    try anchors.append(a, .{ .name = "top_chord_bottom_at_bearing", .p = V2.init(0, lower(0, y_low0, s)) });
     try anchors.append(a, .{ .name = "top_chord_end", .p = V2.init(xe, lower(xe, y_low0, s) + v_thick) });
     try anchors.append(a, .{ .name = "bottom_chord_top_inner", .p = V2.init(xe, db) });
     var box = Box{};
@@ -1371,6 +1378,40 @@ fn buildMembrane(ctx: *Ctx) BuildError!?Built {
         p.fail("points", "a membrane needs at least 2 distinct points (got {d})", .{clean.len});
         return null;
     }
+    var until_note: []const u8 = "";
+    if (p.raw("until")) |uv| {
+        // SPEC 19: the last segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction
+        const path = try std.fmt.allocPrint(a, "{s}/{s}/until", .{ p.base, p.id });
+        const target = ctx.scene.point(uv, p.id, path) orelse {
+            p.ok = false;
+            return null;
+        };
+        const last = clean.len - 1;
+        const seg = V2.init(clean[last].x - clean[last - 1].x, clean[last].y - clean[last - 1].y);
+        if (seg.len() < 1e-9) {
+            p.fail("until", "'until' needs a last segment with a direction (the last two points coincide)", .{});
+            return null;
+        }
+        const u = seg.norm();
+        // the polyline is local (world - origin, then rotated by the placement angle): bring the target into that frame
+        const rel = target.sub(ctx.origin);
+        const ca = @cos(-ctx.angle);
+        const sa = @sin(-ctx.angle);
+        const tl = V2.init(rel.x * ca - rel.y * sa, rel.x * sa + rel.y * ca);
+        const new_len = (tl.x - clean[last - 1].x) * u.x + (tl.y - clean[last - 1].y) * u.y;
+        if (new_len <= 1e-6) {
+            p.fail("until", "'until' target lies at or behind the start of the last segment along its direction (length would be {s})", .{fmtNum(a, new_len)});
+            return null;
+        }
+        clean[last].x = clean[last - 1].x + u.x * new_len;
+        clean[last].y = clean[last - 1].y + u.y * new_len;
+        const ref_txt: []const u8 = switch (uv) {
+            .string => |t| t,
+            .object => if (uv.get("ref")) |r| (r.str() orelse "ref") else "ref",
+            else => "ref",
+        };
+        until_note = try std.fmt.allocPrint(a, " (until {s})", .{ref_txt});
+    }
     const left = std.mem.eql(u8, side.?, "left");
     const t = thick.?;
     const rib = try path_geom.ribbon(a, clean, if (left) t else 0, if (left) 0 else t);
@@ -1389,7 +1430,7 @@ fn buildMembrane(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(rib),
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "membrane {s} {s} thick L={s}", .{ material.?, ftin(a, t), ftin(a, pathLen(try vsOf(a, clean))) }),
+        .info = try std.fmt.allocPrint(a, "membrane {s} {s} thick L={s}{s}", .{ material.?, ftin(a, t), ftin(a, pathLen(try vsOf(a, clean))), until_note }),
     };
 }
 

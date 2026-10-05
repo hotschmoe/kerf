@@ -475,3 +475,53 @@ Files: `src/view.zig` (`has_scale`; crop and scale optional; `notes_side` defaul
   it"), `scale` is optional ("omitted: the largest of 3\", 1-1/2\", 1\", 3/4\", 1/2\", 3/8\", 1/4\" at which view, notes and title fit the sheet; W_VIEW_FIT
   only fires for an explicit crop or scale"), and `notes_side` defaults to `both`. The guide's minimal example may drop crop/scale.
 - `view.zig` is shared: I added `has_scale` and made crop optional there (no other edits).
+
+## v0.1.3 agent ergonomics (zig-ux agent: SPEC 19 CLI, validation, defaults, coupled geometry)
+
+Files: `src/schema.zig` (field tables + `kerf schema` + the example doc), `src/lint.zig` (W_UNKNOWN_KEY, W_NOTE_STYLE, W_DIM_ZERO, acknowledge, dim `dir`
+default), `src/main.zig`, `src/api.zig` (`schema`, `help`), `src/catalog.zig` (`example` per type, new params/anchors/text), `src/builders.zig`
+(`barrier`, `until` along the slope, membrane `until`, truss anchors), `src/compile.zig` (`slope: "@comp"`, anchor_bolt anchor default, default z),
+tests in `src/ergo_tests.zig`, `tests/cli_ergonomics.mjs` (node, runs the real binary: `node tests/cli_ergonomics.mjs [kerf]`).
+
+- **Failed `apply`:** every error diagnostic on stderr as `ERROR <code> <path>: <message>  Fix: <fix>`, then `nothing written`, exit 1 (also for
+  malformed ops JSON: `ERROR E_JSON ops:` and for engine-level failures). `--dry-run` = summary, write nothing (`--dry-run -w` is exit 2).
+  Side fix: the op log's `ops` was empty/garbage when the ops came from a file (freed buffer); now kept.
+- **`kerf schema [topic]`:** topics doc view note dim label cite ops at array acknowledge common refs + each component type. Non-component objects
+  come from the tables in `schema.zig`; component types from `catalog.zig` (the same table that validates params, so no drift). `canon.zig` takes
+  the key order of doc/view/note/dim/label/cite/at/array from `schema.zig` (a test guards `catalog.common` vs canon). `omit` is now a view key and
+  sorts before `annotations` in canonical output (docs with `omit` get a one-time key-order diff on the next `apply -w`/`fmt`).
+  `kerf guide` = cli-guide + generated schema (view note dim label cite ops) + the example document + drafting rules + catalog.
+  API: `schema {topic?}` -> `{topic,text}`; `help {}` lists every function with input/output shape (`kerf call help` does not read stdin).
+- **`kerf new --template section`:** `schema.example_doc` renamed (id from the file, `--title` optional): 2 lumber members, a section view
+  (crop, scale, notes_side), 2 notes (one cited), 1 dim, 1 label; checks with 0 errors and 0 warnings (a test pins it).
+- **W_UNKNOWN_KEY:** doc top level, views, annotations (per `type`), cite entries, component `at`/`array`/`acknowledge` entries (component params
+  were already E_PARAM; that message now suggests the nearest key). Synonym table in `lint.zig` first (`citations|citation|cites`->cite,
+  `side`->view `notes_side`, with a different hint on a note, `point|target_point|arrow`->at, `kind`->type on annotations, `pos|position`->place,
+  `ref`->`to` in `at`), then edit distance (<=1 for keys of 4 letters or fewer, else <=2). Keys are never dropped. `meta` is not linted (free-form).
+- **dim `dir`:** default = dominant axis (|dx| >= |dy| -> h). Applied by `lint.withDimDirs` to a COPY used for drawing (load, api `drawing`/`export`);
+  the stored document is unchanged. `api` pays one extra compile only when some dim has no `dir`. `W_DIM_ZERO` (< 1/16") names both extents and the other `dir`.
+- **acknowledge:** `[{code, reason}]` on a component; matches a warning whose `id` is that component, or (W_OVERLAP / W_NEAR_MISS /
+  W_UNTREATED_CONTACT) whose message quotes it. The warning becomes `INFO I_ACK <comp>: <code> ... acknowledged: <reason> (was: <message>)` (printed in
+  the summary) and `kerf apply -w` writes the I_ACK lines to the log entry as `"ack": [...]`. Errors (non `W_`) and entries without a reason are E_PARAM.
+- **`lumber.barrier`** `sill_seal | membrane`: part `barrier`, a 1/8" strip (style material `sill_seal`, solid fill; both values draw it) UNDER the member.
+  The box (and the bottom_* anchors) start at the strip underside, so the member rises 1/8" when it is placed on a support by bottom_left. Clears
+  W_UNTREATED_CONTACT because the wood no longer touches the masonry. NOTE: `spec/styles/kerf-standard.kerfstyle.json` gained `sill_seal`.
+- **W_NOTE_STYLE** (one per note, lists every problem and gives the corrected text as the Fix): lowercase letters, ` x `, `1-1/2"`, trailing period (not after
+  a known abbreviation or a dotted token such as U.N.O.), spelled-out GYPSUM BOARD / PRESSURE TREATED / ON CENTER / CONCRETE / CONTINUOUS / EACH / BOTTOM /
+  REINFORCING / MINIMUM / DIAMETER. Applied to `text` only. The three reference docs, psl and palmer have 0 warnings, no note edits needed.
+- **Defaults:** anchor_bolt `at.anchor` defaults to `top_of_concrete`. In-plane members (natural z thickness: lumber run x/y, truss, connector,
+  path rebar, anchor_bolt) default to z centred on the FIRST section view's `cut_z` when it sets one (else the middle of `run`). All five
+  reference/test docs have cut_z at the middle of run, so goldens are unchanged.
+- **Coupled geometry:** `slope: "@truss"` (any component: its rotation + truss pitch; exterior right = negative; dependency edge, so ops refuse removing the
+  followed component and ordering is automatic). `until` on lumber/panels measures along the rotated run direction (square end cut at the Ref's projection);
+  membranes take `until` on the last segment. Truss anchors `heel_outer` (middle of the heel's outer face above the bottom chord) and
+  `top_chord_bottom_at_bearing`. `array` axis z works on anchor_bolt and connector (tested, drawn in iso, one cut instance in section).
+  Roof recipe: sheathing `{"slope":"@truss","until":"truss@top_chord_end","at":{"anchor":"bottom_left","to":"truss@tail_top"}}`, roofing membrane
+  `{"slope":"@truss","points":[[0,0],[10,0]],"until":"truss@top_chord_end"}` (for exterior right use anchor bottom_right and negative x points).
+- Done from the views agent's REQUESTS: `inspect` calls `drawview.resolveSpec`.
+
+### SPEC ISSUES
+- The `barrier: "membrane"` value is drawn exactly like `sill_seal` (one 1/8" strip); only the name differs (for the note text).
+- `heel_outer` is not defined precisely in SPEC 19; chosen as the middle of the outer vertical face of the heel above the bottom chord.
+- DXF hatch angle (views NOTES SPEC ISSUES) not fixed: it needs the family offsets rotated as well, which changes DXF goldens; left to the views owner.
+

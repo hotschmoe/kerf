@@ -46,6 +46,7 @@ fn addRefDep(a: Allocator, v: json.Value, out: *std.ArrayList([]const u8)) Alloc
 pub fn collectDeps(a: Allocator, node: json.Value, out: *std.ArrayList([]const u8)) Allocator.Error!void {
     if (node.get("at")) |at| if (at.get("to")) |to| try addRefDep(a, to, out);
     if (node.get("until")) |u| try addRefDep(a, u, out);
+    if (node.get("slope")) |sv| if (sv.str()) |ss| if (ss.len > 1 and ss[0] == '@') try out.append(a, ss[1..]);
     if (node.get("points")) |pts| if (pts.arr()) |arr| for (arr) |e| try addRefDep(a, e, out);
     if (node.get("profile")) |pr| if (pr.get("points")) |pts| if (pts.arr()) |arr| for (arr) |e| try addRefDep(a, e, out);
     if (node.get("place")) |pl| if (pl.get("in")) |inn| if (inn.str()) |s| {
@@ -313,7 +314,20 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
         angle += std.math.degreesToRadians(p.num("rotate", 0) orelse 0);
     }
     if (p.raw("slope")) |sv| {
-        if (units.parseSlope(sv)) |r| angle += r else p.fail("slope", "param 'slope' must be rise:run like \"4:12\" or degrees (got {s})", .{model.kindOrText(a, sv)});
+        if (sv == .string and sv.string.len > 0 and sv.string[0] == '@') {
+            const ref_id = sv.string[1..];
+            const rc = scene.find(ref_id) orelse {
+                const ids = try scene.compIds(a);
+                const hint = if (model.nearest(a, ref_id, ids)) |n| try std.fmt.allocPrint(a, " Did you mean \"@{s}\"?", .{n}) else "";
+                scene.diags.addFix(.@"error", "E_REF_UNKNOWN", comp.id, try std.fmt.allocPrint(a, "components/{s}/slope", .{comp.id}), "slope \"{s}\": no component '{s}'.{s} Components: {s}", .{ sv.string, ref_id, hint, scene_mod.joinIds(a, ids) }, "use \"@<component id>\" of a truss (or any sloped member), or a literal \"4:12\"");
+                return;
+            };
+            if (rc.state != .ok or rc == comp) {
+                scene.diags.addFix(.@"error", "E_REF_UNKNOWN", comp.id, try std.fmt.allocPrint(a, "components/{s}/slope", .{comp.id}), "slope \"{s}\": component '{s}' did not build, so its slope is unavailable", .{ sv.string, ref_id }, "fix that component's errors first, or use a literal \"4:12\"");
+                return;
+            }
+            angle += rc.angle + rc.pitch_angle;
+        } else if (units.parseSlope(sv)) |r| angle += r else p.fail("slope", "param 'slope' must be rise:run like \"4:12\", degrees, or \"@<component>\" to follow a truss/member (got {s})", .{model.kindOrText(a, sv)});
     }
     const mirror = p.boolean("mirror", false);
     const visible = p.boolean("visible", true);
@@ -329,6 +343,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
         .p = p,
         .origin = at.to,
         .run = scene.run,
+        .angle = angle,
     };
     var built = (try builders.build(&bctx)) orelse return;
     p = bctx.p;
@@ -472,6 +487,13 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
             }
             try world.append(a, q);
         }
+    }
+    comp.angle = angle;
+    if (std.mem.eql(u8, comp.ty.name, "truss")) {
+        const pv = comp.node.get("pitch") orelse json.Value{ .string = "4:12" };
+        const th = units.parseSlope(pv) orelse 0;
+        const right = if (comp.node.get("exterior")) |ev| (if (ev.str()) |es| std.mem.eql(u8, es, "right") else false) else false;
+        comp.pitch_angle = if (right) -th else th;
     }
     comp.built = built;
     comp.xfs = xfs;
