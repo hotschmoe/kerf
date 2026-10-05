@@ -130,6 +130,8 @@ pub const Prism = struct {
     ticks: bool = false,
     /// When > 0 and the component is centered in z, this prism spans +-zhalf instead of the natural thickness.
     zhalf: f64 = 0,
+    /// `shown: "dashed"` ("where occurs"): a ghost prism (hidden pen, no hatch, never occludes) that notes can still target.
+    dashed: bool = false,
 
     pub fn transform(p: Prism, a: Allocator, xf: geom.Xf) Allocator.Error!Prism {
         var q = p;

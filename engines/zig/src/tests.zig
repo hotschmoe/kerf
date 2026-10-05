@@ -354,3 +354,22 @@ test "W_COVER on a path bar names the failing segment" {
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "segment 2 of 2") != null);
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "to the sides of") != null);
 }
+
+test "shown dashed: hidden pen outline, no floating warning, WHERE OCCURS suffix" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src =
+        \\{"kerf":"0.1","id":"c","title":"T","run":[-24,24],"components":[
+        \\{"id":"stem","type":"concrete","shape":"rect","width":8,"height":24},
+        \\{"id":"blk","type":"lumber","size":"2x4","run":"x","length":12,"shown":"dashed","at":{"to":[30,10]}}
+        \\],"views":[{"id":"A","kind":"section","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-6,50],"y":[-6,40]},"annotations":[
+        \\{"id":"n","type":"note","text":"2X4 BLOCKING","target":"blk"}]}]}
+    ;
+    const chk = try api.call(a, "check", try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{src}));
+    try std.testing.expect(std.mem.indexOf(u8, chk.bytes, "W_FLOATING") == null);
+    const r = try api.call(a, "drawing", try std.fmt.allocPrint(a, "{{\"doc\":{s},\"view\":\"A\"}}", .{src}));
+    try std.testing.expect(r.ok);
+    try std.testing.expect(std.mem.indexOf(u8, r.bytes, "WHERE OCCURS") != null or std.mem.indexOf(u8, r.bytes, "W H E R E") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.bytes, "\"hidden\"") != null);
+}

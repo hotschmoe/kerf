@@ -86,6 +86,7 @@ pub const common: []const Param = &.{
     .{ .name = "array", .def = "null", .desc = "{axis: x|y|z, count, spacing}: instance k offset by k*spacing; instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k" },
     .{ .name = "embedded", .def = "type default", .desc = "drawn over cut solids and never occluded (rebar, anchor bolts)" },
     .{ .name = "visible", .def = "true", .desc = "false hides the component from views and mesh" },
+    .{ .name = "shown", .def = "solid", .desc = "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)" },
 };
 
 pub const box_anchors = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
@@ -313,7 +314,7 @@ pub fn allowedKeysText(a: Allocator, ty: *const Entry) Allocator.Error![]const u
             try out.appendSlice(a, n);
         }
     }
-    try out.appendSlice(a, ", + common: id, type, label, at, rotate, slope, mirror, z, array, embedded, visible");
+    try out.appendSlice(a, ", + common: id, type, label, at, rotate, slope, mirror, z, array, embedded, visible, shown");
     return out.items;
 }
 

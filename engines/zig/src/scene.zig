@@ -29,6 +29,8 @@ pub const Comp = struct {
     zs: []const [2]f64 = &.{},
     embedded: bool = false,
     visible: bool = true,
+    /// `shown: "dashed"`: drawn only as hidden-pen outlines ("where occurs"); notes on it get a WHERE OCCURS suffix.
+    dashed: bool = false,
     /// Number of `array` instances (1 when there is no array); `place` bars are not array instances.
     arr_count: usize = 1,
     /// Resolved placement point (world) and rotation, for reporting.
@@ -75,6 +77,17 @@ pub fn parseRef(s: []const u8) RefError!RefParts {
     if (comp.len == 0) return error.BadRef;
     r.comp = comp;
     return r;
+}
+
+/// Note text for a note whose `target` is a `shown: "dashed"` component: appends " (WHERE OCCURS)" unless the text already says so.
+pub fn whereOccursText(a: Allocator, scene: *const Scene, target: []const u8, text: []const u8) Allocator.Error![]const u8 {
+    var id = target;
+    if (std.mem.indexOfScalar(u8, id, '.')) |d| id = id[0..d];
+    if (std.mem.indexOfScalar(u8, id, '#')) |h| id = id[0..h];
+    const c = scene.find(id) orelse return text;
+    if (!c.dashed) return text;
+    if (std.ascii.indexOfIgnoreCase(text, "where occurs") != null) return text;
+    return std.fmt.allocPrint(a, "{s} (WHERE OCCURS)", .{std.mem.trimEnd(u8, text, " ")});
 }
 
 pub const Scene = struct {

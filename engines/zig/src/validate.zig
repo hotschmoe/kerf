@@ -140,12 +140,12 @@ fn floating(a: Allocator, scene: *Scene, items: []const Pf, diags: *model.Diags)
     _ = a;
     const gap = 1.0 / 32.0;
     var n_comps: usize = 0;
-    for (scene.comps) |c| if (c.state == .ok) {
+    for (scene.comps) |c| if (c.state == .ok and !c.dashed) {
         n_comps += 1;
     };
     if (n_comps < 2) return;
     for (scene.comps) |*c| {
-        if (c.state != .ok) continue;
+        if (c.state != .ok or c.dashed) continue; // `shown: dashed` ("where occurs") graphics are exempt
         var touches = false;
         outer: for (items) |p| {
             if (p.comp != c) continue;

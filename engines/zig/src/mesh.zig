@@ -283,7 +283,7 @@ pub fn build(a: Allocator, scene: *const scene_mod.Scene, include_fills: bool) A
     for (scene.comps) |*c| {
         if (c.state != .ok or !c.visible) continue;
         for (c.world) |pr| {
-            if (pr.kind == .ghost) continue;
+            if (pr.kind == .ghost and !pr.dashed) continue;
             if (!include_fills and @import("section.zig").isFillMaterial(pr.material)) continue;
             var part = Part{
                 .src = c.id,

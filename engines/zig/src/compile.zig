@@ -302,7 +302,9 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
     }
     const mirror = p.boolean("mirror", false);
     const visible = p.boolean("visible", true);
+    const shown = p.choice("shown", "solid", &.{ "solid", "dashed" });
     if (!p.ok) return;
+    const dashed = std.mem.eql(u8, shown.?, "dashed");
 
     var bctx = builders.Ctx{
         .a = a,
@@ -448,6 +450,11 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
                 q.z1 = zc + pr.zhalf;
             }
             if (emb_override) |e| q.embedded = e;
+            if (dashed) {
+                q.kind = .ghost;
+                q.pen = "hidden";
+                q.dashed = true;
+            }
             try world.append(a, q);
         }
     }
@@ -456,6 +463,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
     comp.zs = zs;
     comp.world = world.items;
     comp.visible = visible;
+    comp.dashed = dashed;
     comp.arr_count = arr_count;
     comp.embedded = if (emb_override) |e| e else (built.prisms.len > 0 and built.prisms[0].embedded);
     comp.state = .ok;

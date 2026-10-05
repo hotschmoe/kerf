@@ -378,11 +378,11 @@ pub const Section = struct {
     /// Visible (non-occluded, in-crop) region polygons of prism `i` (for note landing points).
     pub fn visibleRegion(self: *Section, i: usize) Allocator.Error![]const []const V2 {
         const p = self.prisms[i];
-        if (self.cls[i] == .drop or p.kind == .ghost) return &.{};
+        if (self.cls[i] == .drop or (p.kind == .ghost and !p.dashed)) return &.{};
         var region: []const []const V2 = try self.flatOf(i);
         const crop = self.spec.crop;
         region = try clip.boolean(self.a, region, &.{self.crop_loop}, .intersect);
-        if (self.cls[i] == .beyond and !p.embedded) {
+        if (self.cls[i] == .beyond and !p.embedded and !p.dashed) {
             for (self.occs.items) |o| {
                 if (o.prism == i) continue;
                 if (!(o.cut or o.z1 > p.z1 + 1e-9)) continue;
@@ -486,8 +486,8 @@ pub const Section = struct {
     pub fn regionItems(self: *Section) Allocator.Error![]const drawing.Item {
         var out: std.ArrayList(drawing.Item) = .empty;
         for (self.prisms, 0..) |p, i| {
-            if (self.cls[i] == .drop or p.kind == .ghost) continue;
-            const is_cut = self.cls[i] == .cut;
+            if (self.cls[i] == .drop or (p.kind == .ghost and !p.dashed)) continue;
+            const is_cut = self.cls[i] == .cut and !p.dashed;
             const comp = &self.scene.comps[p.comp];
             const inst: u32 = if (comp.arr_count > 1) p.instance / @as(u32, @intCast(comp.xfs.len / comp.arr_count)) else p.instance;
             const part: ?[]const u8 = if (p.part.len > 0) p.part else null;
