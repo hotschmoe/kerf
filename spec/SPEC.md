@@ -733,3 +733,7 @@ whose metrics are close; minor differences in CAD are acceptable.
   blocks in iso views. With `cutaway: true` only their cut face at `cut_z` is drawn (hatched,
   without a heavy outline except the grade line chain per `outline`). Without cutaway they're omitted.
   The 3D mesh (§11) also omits fills unless a viewer asks for them (`mesh` input `{ include_fills: true }`).
+- **Glyph folding (all text, all outputs):** before layout, fold characters the stroke font lacks:
+  `— – ‒ −` → `-`, `“ ” „` → `"`, `‘ ’ ‚` → `'`, `×` → `X`, `°` → ` DEG` (the font has no degree
+  sign), `½ ¼ ¾ ⅛ ⅜ ⅝ ⅞` → ` 1/2` etc., NBSP → space. Anything else outside ASCII 32–126 → `?`
+  with an `I_GLYPH` diagnostic naming the character. DXF TEXT receives the folded string too.
