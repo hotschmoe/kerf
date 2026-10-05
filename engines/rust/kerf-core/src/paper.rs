@@ -92,6 +92,7 @@ pub fn paper_for(d: &Drawing, style: &Style, sheet: bool) -> Paper {
             }
         }
         match it {
+            Item::Region { .. } => {}
             Item::Path { layer, pen, src, closed, pts } => prims.push(Prim { layer: layer.clone(), pen: pen.clone(), src: src.clone(), geo: Geo::Path { pts: xf_loop(pts, &f), closed: *closed } }),
             Item::Fill { layer, src, loops } => prims.push(Prim {
                 layer: layer.clone(),

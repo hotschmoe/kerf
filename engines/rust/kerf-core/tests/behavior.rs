@@ -288,3 +288,38 @@ fn catalog_lists_hardware() {
     let md = call("catalog", json!({"format":"markdown"})).unwrap();
     assert!(md.as_str().unwrap().contains("- HETA20: embedded truss anchor, 1.25\" wide, 16 ga, 20\" long"));
 }
+
+#[test]
+fn every_visible_component_has_a_region_item() {
+    for name in ["truss-bearing-cmu", "monopour-slab-door-recess", "flush-beam-strap"] {
+        let path = format!("{}/../../../spec/details/{}.kerf.json", env!("CARGO_MANIFEST_DIR"), name);
+        let d: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let dr = call("drawing", json!({"doc": d, "view": "A"})).unwrap();
+        let items = dr["items"].as_array().unwrap();
+        let regions: Vec<&Value> = items.iter().filter(|i| i["t"] == "region").collect();
+        for c in d["components"].as_array().unwrap() {
+            let id = c["id"].as_str().unwrap();
+            // visible in the view = has any drawn item (path/fill/hatch)
+            let drawn = items.iter().any(|i| i["t"] != "region" && i["t"] != "text" && i["src"].as_str().map_or(false, |s| s == id || s.starts_with(&format!("{}#", id))));
+            if !drawn {
+                continue;
+            }
+            let has = regions.iter().any(|r| r["src"].as_str().map_or(false, |s| s == id || s.starts_with(&format!("{}#", id))));
+            assert!(has, "{} view A: component {} is drawn but has no region item", name, id);
+        }
+        for r in &regions {
+            for l in r["loops"].as_array().unwrap() {
+                assert!(l.as_array().unwrap().len() >= 2);
+            }
+            assert!(r["cut"].is_boolean() && r.get("instance").is_some() && r.get("part").is_some());
+        }
+        // regions are not layers and do not change exporters
+        let layers = dr["layers"].as_array().unwrap();
+        assert!(layers.iter().all(|l| !l["name"].as_str().unwrap().is_empty()));
+    }
+    // sill_plate in truss detail has a closed cut region
+    let path = format!("{}/../../../spec/details/truss-bearing-cmu.kerf.json", env!("CARGO_MANIFEST_DIR"));
+    let d: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let dr = call("drawing", json!({"doc": d, "view": "A"})).unwrap();
+    assert!(dr["items"].as_array().unwrap().iter().any(|i| i["t"] == "region" && i["src"] == "sill_plate" && i["cut"] == true));
+}

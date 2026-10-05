@@ -20,6 +20,9 @@ pub struct VisInfo {
     pub embedded: bool,
     /// Prism order in the model (component, instance, part): tie-break for note landing.
     pub ord: usize,
+    pub inst: usize,
+    /// Exact visible regions (arcs kept where untouched); empty = use `shapes`.
+    pub exact: Vec<Region>,
 }
 
 pub struct ViewBase {
@@ -581,7 +584,7 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
         }
         // visible shapes for note landing
         let shapes: Vec<Shape> = regions.iter().map(|r| poly::region_contours(r, 0.002)).collect();
-        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: true, embedded: p.embedded, ord: cut_ord[cut_i] });
+        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: true, embedded: p.embedded, ord: cut_ord[cut_i], inst: p.inst, exact: regions.clone() });
 
         // hatch
         if !p.embedded && !thin && !thin_membrane {
@@ -658,15 +661,17 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
                 }
             }
         }
-        let shapes_all: Vec<Shape> = if clip.is_empty() { vec![subj] } else { poly::difference(&subj, &clip) };
-        let mut shapes: Vec<Shape> = vec![];
-        for sh in shapes_all {
-            let r = poly::shape_to_region(&sh);
-            for cr in poly::clip_region_rect(&r, &crop) {
-                shapes.push(poly::region_contours(&cr, 0.002));
+        let mut bregions: Vec<Region> = vec![];
+        if clip.is_empty() {
+            bregions.extend(poly::clip_region_rect(&p.region, &crop));
+        } else {
+            for sh in poly::difference(&subj, &clip) {
+                let r = poly::shape_to_region(&sh);
+                bregions.extend(poly::clip_region_rect(&r, &crop));
             }
         }
-        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: false, embedded: p.embedded, ord: bey_ord[bi] });
+        let shapes: Vec<Shape> = bregions.iter().map(|cr| poly::region_contours(cr, 0.002)).collect();
+        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: false, embedded: p.embedded, ord: bey_ord[bi], inst: p.inst, exact: bregions });
     }
 
     // --- break lines along crop edges where cut solids are clipped
@@ -746,9 +751,36 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
     items.extend(fill_items);
     emit_strokes(&embedded_strokes, style, &mut items);
     items.extend(brk_items);
+    items.extend(region_items(&vis));
     ViewBase { items, vis, crop, s }
 }
 
 fn clone_stroke(s: &Stroke) -> Stroke {
     Stroke { pieces: s.pieces.clone(), closed_loop: s.closed_loop, src: s.src.clone(), comp: s.comp, internal_ok: s.internal_ok, kind_rank: s.kind_rank, overlay: s.overlay }
+}
+
+/// Non-drawn region items (SPEC 16) from the visible shapes, in drawing order (cut first, then beyond).
+pub fn region_items(vis: &[VisInfo]) -> Vec<Item> {
+    let mut out = vec![];
+    for cut in [true, false] {
+        for vi in vis.iter().filter(|v| v.cut == cut) {
+            let loops_of_region = |r: &Region| -> Vec<Vec<V>> {
+                let mut l = vec![r.outer.clone()];
+                l.extend(r.holes.iter().cloned());
+                l
+            };
+            let regions: Vec<Vec<Vec<V>>> = if !vi.exact.is_empty() {
+                vi.exact.iter().map(loops_of_region).collect()
+            } else {
+                vi.shapes.iter().map(|sh| sh.iter().map(|c| c.iter().map(|p| v(p.x, p.y)).collect()).collect()).collect()
+            };
+            for loops in regions {
+                if loops.first().map_or(true, |l| l.len() < 2) {
+                    continue;
+                }
+                out.push(Item::Region { src: vi.src.clone(), part: vi.part.clone(), instance: vi.inst, cut: vi.cut, loops });
+            }
+        }
+    }
+    out
 }

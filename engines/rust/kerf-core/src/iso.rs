@@ -211,6 +211,7 @@ impl Scene {
 struct IsoPrism {
     src: String,
     comp: usize,
+    inst: usize,
     part: Option<String>,
     region: Region,
     z0: f64,
@@ -256,6 +257,7 @@ fn gather(model: &Model, vp: &ViewParams, crop: &Rect) -> Vec<IsoPrism> {
                     out.push(IsoPrism {
                         src: p.src.clone(),
                         comp: p.comp,
+                        inst: p.inst,
                         part: p.part.clone(),
                         region: r,
                         z0,
@@ -584,7 +586,7 @@ pub fn build_iso(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut Vec
                 }
             }
         }
-        vis.push(VisInfo { comp: ip.comp, src: ip.src.clone(), part: ip.part.clone(), shapes, cut: ip.cap_cut, embedded: ip.embedded, ord: pi });
+        vis.push(VisInfo { comp: ip.comp, src: ip.src.clone(), part: ip.part.clone(), shapes, cut: ip.cap_cut, embedded: ip.embedded, ord: pi, inst: ip.inst, exact: vec![] });
     }
 
     // crop = extent of everything drawn
@@ -592,6 +594,8 @@ pub fn build_iso(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut Vec
     if crop.is_empty() {
         crop = sb;
     }
+    let mut items = items;
+    items.extend(crate::section::region_items(&vis));
     ViewBase { items, vis, crop, s }
 }
 

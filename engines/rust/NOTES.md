@@ -96,6 +96,8 @@ Remaining categories (none are bugs that change what the drawing shows):
 - **Notes** on a few multi-prism targets (n_bb, n_cmu) land in different cells (largest-area tie/centroid choice), moving the leader and text column positions.
 - **Vapor retarder:** Rust offsets the dashed centerline by (cut+vapor pen)/2 off the host's edge so it is not hidden; Zig draws it on the membrane centerline (deviation 0.16 model in).
 
+- Drawing IR `region` items (SPEC 16): non-drawn, one per visible cut region / visible beyond region (iso: best visible front face per prism), exact loops (arcs kept when unclipped), emitted after all drawn geometry and before annotations; exporters, bounds and layer lists ignore them (SVG/DXF/PDF bytes unchanged).
+
 ## REQUESTS
 - spec/styles: `beyond` 0.18 mm reads hairline on members that are the subject of a detail (the beyond truss); REFERENCE-CONTENT 2.1 says 0.25-0.35 mm for members beyond. Suggest `beyond` 0.25 and `break` 0.25.
 - kerf-mcp agent: `kerf-core` public API is `kerf_core::api::call(fn, json)` (+ `load`, `summary_of`); `engines/rust/Cargo.toml` workspace members are yours to extend. I did not touch kerf-mcp or kerf-cli's mcp subcommand.

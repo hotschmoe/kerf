@@ -402,6 +402,7 @@ fn hatch_solid(w: &mut W, layer: &str, loops: &[Vec<V>]) {
 
 fn entity(w: &mut W, it: &Item, style: &Style, s: f64) {
     match it {
+        Item::Region { .. } => {}
         Item::Path { layer, pen, pts, closed, .. } => {
             let lw = lineweight(style.pen(pen).width_mm);
             let lt = ltype_of_pen(style, pen);

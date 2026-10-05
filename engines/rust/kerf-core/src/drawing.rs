@@ -13,17 +13,20 @@ pub enum Item {
     Fill { layer: String, src: String, loops: Vec<Vec<V>> },
     Hatch { layer: String, pen: String, src: String, pattern: String, scale: f64, angle: f64, loops: Vec<Vec<V>>, lines: Vec<[f64; 4]> },
     Text { layer: String, pen: String, src: String, s: String, x: f64, y: f64, h: f64, rot: f64, align: String, valign: String },
+    /// Not drawn: a visible cut region / beyond face for UI picking and selection tint (exporters ignore it).
+    Region { src: String, part: Option<String>, instance: usize, cut: bool, loops: Vec<Vec<V>> },
 }
 
 impl Item {
     pub fn src(&self) -> &str {
         match self {
-            Item::Path { src, .. } | Item::Fill { src, .. } | Item::Hatch { src, .. } | Item::Text { src, .. } => src,
+            Item::Path { src, .. } | Item::Fill { src, .. } | Item::Hatch { src, .. } | Item::Text { src, .. } | Item::Region { src, .. } => src,
         }
     }
     pub fn layer(&self) -> &str {
         match self {
             Item::Path { layer, .. } | Item::Fill { layer, .. } | Item::Hatch { layer, .. } | Item::Text { layer, .. } => layer,
+            Item::Region { .. } => "",
         }
     }
 }
@@ -76,6 +79,7 @@ pub fn text_width(text: &str, h: f64) -> f64 {
 
 fn item_bounds(it: &Item, r: &mut Rect) {
     match it {
+        Item::Region { .. } => {}
         Item::Path { pts, closed, .. } => {
             let mut b = Rect::empty();
             if pts.len() >= 2 {
@@ -172,6 +176,14 @@ pub fn loop_json(l: &[V]) -> Value {
 
 fn item_json(it: &Item) -> Value {
     match it {
+        Item::Region { src, part, instance, cut, loops } => obj(vec![
+            ("t", s("region")),
+            ("src", s(src)),
+            ("part", part.as_ref().map(|p| s(p)).unwrap_or(Value::Null)),
+            ("instance", num(*instance as f64)),
+            ("cut", Value::Bool(*cut)),
+            ("loops", Value::Array(loops.iter().map(|l| loop_json(l)).collect())),
+        ]),
         Item::Path { layer, pen, src, closed, pts } => obj(vec![
             ("t", s("path")),
             ("layer", s(layer)),
@@ -218,7 +230,7 @@ pub fn used_layers(d: &Drawing, style: &Style) -> Vec<crate::style::LayerStyle> 
     let mut names: Vec<&str> = vec![];
     for it in &d.items {
         let l = it.layer();
-        if !names.contains(&l) {
+        if !l.is_empty() && !names.contains(&l) {
             names.push(l);
         }
     }
