@@ -1,0 +1,10 @@
+data: {"id":"chatcmpl-9k2","object":"chat.completion.chunk","created":1791000001,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-9k2","object":"chat.completion.chunk","created":1791000001,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"content":"Built the detail — "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-9k2","object":"chat.completion.chunk","created":1791000001,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{"content":"8\" CMU wall."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-9k2","object":"chat.completion.chunk","created":1791000001,"model":"gpt-6.1-sol","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

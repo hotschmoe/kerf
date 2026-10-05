@@ -1,7 +1,7 @@
 import type { App } from './app';
 import { download } from './ui/dom';
 
-const MIME = { dxf: 'application/dxf', pdf: 'application/pdf', svg: 'image/svg+xml' } as const;
+const MIME = { dxf: 'application/dxf', pdf: 'application/pdf', svg: 'image/svg+xml', png: 'image/png' } as const;
 export type ExportFormat = keyof typeof MIME;
 
 export interface ExportResult { name: string; bytes: Uint8Array; ms: number }
@@ -14,9 +14,15 @@ export async function exportActive(app: App, format: ExportFormat, save = true):
   const t0 = performance.now();
   try {
     // PDF is always a sheet; SVG is a sheet when the SHEET tab is showing; DXF is model-space only.
-    const sheet = format === 'pdf' || (format === 'svg' && app.mode === 'sheet');
-    const bytes = await app.engine.exportBytes(app.doc, app.style, view, format, sheet);
-    const name = `${app.doc.id}-${view}.${format}`;
+    const sheet = format === 'pdf' || ((format === 'svg' || format === 'png') && app.mode === 'sheet');
+    let bytes: Uint8Array, name = `${app.doc.id}-${view}.${format}`;
+    if (app.remote) { // workspace mode: the server exports the file on disk (every edit is already written there)
+      const r = await app.remote.exportFile(view, format, sheet);
+      if (!r) { app.flash('NOTHING TO EXPORT: NO FILE IS OPEN', 'warn'); return null; }
+      bytes = r.bytes; name = r.name;
+    } else if (format === 'png') {
+      app.flash('PNG EXPORT NEEDS `kerf serve` (THE ENGINE WASM HAS NO PNG EXPORT)', 'warn'); return null;
+    } else bytes = await app.engine.exportBytes(app.doc, app.style, view, format, sheet);
     const ms = performance.now() - t0;
     if (save) download(name, bytes as BlobPart, MIME[format]);
     app.flash(`EXPORTED ${name.toUpperCase()} (${Math.max(1, Math.round(bytes.length / 1024))} KB)`);

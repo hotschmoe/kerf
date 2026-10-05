@@ -1,5 +1,6 @@
 // Transport layer for the Claude Messages API. The harness only sees `Transport`; the real implementation
 // uses the official SDK (loaded lazily so demo mode and first paint never pay for it).
+import type { LlmFetch } from './net';
 
 export type TextBlock = { type: 'text'; text: string };
 export type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
@@ -37,12 +38,24 @@ export interface Transport { send(req: ChatRequest, opts: SendOpts): Promise<Cha
 
 export class AnthropicTransport implements Transport {
   /** baseURL is a test hook (local fake server); main.ts only accepts localhost values. */
-  constructor(private apiKey: string, private baseURL?: string) {}
+  constructor(private apiKey: string, private baseURL?: string, private llmFetch?: LlmFetch) {}
+
+  /** Workspace mode: the SDK's own fetch is replaced so the request goes through POST /api/llm (same headers and body). */
+  private proxied(): typeof fetch {
+    const llm = this.llmFetch!;
+    return (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      const headers: Record<string, string> = {};
+      new Headers(init?.headers).forEach((v, k) => { if (!['content-length', 'host', 'content-type'].includes(k)) headers[k] = v; });
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+      return llm({ provider: 'anthropic', baseUrl: url.origin, path: url.pathname + url.search, headers, body, signal: init?.signal ?? undefined });
+    }) as typeof fetch;
+  }
 
   async send(req: ChatRequest, opts: SendOpts): Promise<ChatResponse> {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     // maxRetries 0: the harness owns retry/backoff (2s, 4s, 8s) so the status line can show it.
-    const client = new Anthropic({ apiKey: this.apiKey, dangerouslyAllowBrowser: true, maxRetries: 0, ...(this.baseURL ? { baseURL: this.baseURL } : {}) });
+    const client = new Anthropic({ apiKey: this.apiKey, dangerouslyAllowBrowser: true, maxRetries: 0, ...(this.baseURL ? { baseURL: this.baseURL } : {}), ...(this.llmFetch ? { fetch: this.proxied() } : {}) });
     const body: Record<string, unknown> = {
       model: req.model,
       max_tokens: 32000,

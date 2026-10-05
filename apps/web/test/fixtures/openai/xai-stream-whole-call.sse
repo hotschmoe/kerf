@@ -1,0 +1,4 @@
+data: {"id":"x1","object":"chat.completion.chunk","model":"grok-4.7","choices":[{"index":0,"delta":{"role":"assistant","content":"","tool_calls":[{"id":"call_14729012","function":{"name":"kerf_render","arguments":"{\"view\":\"A\",\"mode\":\"sheet\"}"},"type":"function","index":0}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

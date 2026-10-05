@@ -24,7 +24,8 @@ export function mountInspector(app: App, el: HTMLElement) {
   const body = h('div.ibody');
   const detail = h('div.idetail');
   const exportRow = h('div.iexport', h('span.lbl', 'EXPORT'),
-    btn('DXF', () => void exportActive(app, 'dxf'), 'sm'), btn('PDF', () => void exportActive(app, 'pdf'), 'sm'), btn('SVG', () => void exportActive(app, 'svg'), 'sm'));
+    btn('DXF', () => void exportActive(app, 'dxf'), 'sm'), btn('PDF', () => void exportActive(app, 'pdf'), 'sm'), btn('SVG', () => void exportActive(app, 'svg'), 'sm'),
+    app.remote ? btn('PNG', () => void exportActive(app, 'png'), 'sm') : null);
   el.append(h('div.ph', h('span', 'INSPECTOR'), phRight), tabsEl, body, detail, exportRow);
 
   const setTab = (t: Tab) => { tab = t; renderTabs(); renderBody(); };
@@ -174,7 +175,7 @@ export function mountInspector(app: App, el: HTMLElement) {
     const v = app.view;
     if (!v) return;
     const ops: Op[] = [{ op: 'update', path: `views/${v.id}/annotations/${a.id}`, value }];
-    void app.applyOps(ops, 'designer', why).then((r) => { if (!r.ok) app.flash(`EDIT REJECTED: ${r.error ?? r.diagnostics[0]?.message ?? ''}`.slice(0, 150), 'err'); });
+    void app.applyOps(ops, 'designer', why).then((r) => { if (!r.ok) app.rejected(r, 'EDIT REJECTED'); });
   }
 
   function noteEditor(a: Annotation): HTMLElement {

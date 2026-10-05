@@ -9,10 +9,11 @@ import { mountConsole } from './ui/console';
 import { mountViewport } from './ui/viewport';
 import { mountInspector } from './ui/inspector';
 import { mountStatus } from './ui/status';
-import { Harness } from './chat/harness';
-import { AnthropicTransport, type Transport } from './chat/transport';
 import { MockTransport } from './chat/mock';
-import { settings } from './settings';
+import { ChatSession } from './chat/session';
+import { Workspace } from './workspace/workspace';
+import { WorkspaceClient, ServerError, captureToken } from './workspace/client';
+import { mountLibrary } from './ui/library';
 import { popup } from './ui/popup';
 import { exportActive } from './export';
 
@@ -32,15 +33,23 @@ async function boot() {
   const enginePromise: Promise<Engine> = ENGINE === 'fixture'
     ? import('./fixture-engine').then((m) => m.createFixtureEngine())
     : loadEngine({ url: './kerf.wasm', worker: useWorker, preloaded: pre.wasm ?? null });
-  const [engine, style, font, samples] = await Promise.all([
+  // Workspace mode = served by `kerf serve` (GET /api/info answers). Anything else is static mode, exactly as before.
+  const origin = params.get('server') ?? location.origin;
+  const token = captureToken();
+  // Only the `kerf serve` bundle (build:serve), the dev server, or ?server=/?workspace=1 probe for a server: a statically hosted build never makes the request.
+  const probe = import.meta.env.VITE_SERVE === '1' || import.meta.env.DEV || params.has('server') || params.get('workspace') === '1';
+  const detectPromise = !probe || params.get('static') === '1' || !/^https?:/.test(origin) ? Promise.resolve(null) : WorkspaceClient.detect(origin, token).catch((e) => { throw e instanceof ServerError && e.status === 401 ? new Error('THIS WORKSPACE NEEDS A TOKEN. OPEN THE URL THAT `kerf serve` PRINTED (…/?token=…).') : e; });
+  const [engine, style, font, samples, detected] = await Promise.all([
     enginePromise,
     pre.style ?? getJson<unknown>('./style.json'),
     pre.font ?? getJson<StrokeFont>('./kerf-simplex.json'),
     pre.samples ?? getJson<SampleInfo[]>('./samples/index.json'),
+    detectPromise,
   ]);
   setFont(font);
   const app = new App(engine, style, font);
   app.perf.engineReady = performance.now() - t0;
+  const ws = detected ? new Workspace(app, detected.client, detected.info) : null;
 
   // ---- chat plumbing ----
   let demo = params.get('demo') === '1';
@@ -53,30 +62,30 @@ async function boot() {
   const mock = new MockTransport({ loadDoc: () => loadSampleDoc(), chunkMs: params.get('fast') === '1' ? 0 : 12 });
   const apiParam = params.get('api');
   const testBase = apiParam && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(apiParam) ? apiParam : undefined; // test hook; never a remote host
-  const transport = (): Transport | null => (demo ? mock : settings.apiKey ? new AnthropicTransport(settings.apiKey, testBase) : null);
-  const harness = new Harness(app, { transport, model: () => settings.model, catalogMd: () => catalogMd });
-  const refreshClaude = () => app.setClaude({ state: demo || settings.apiKey ? 'OK' : 'NO KEY' });
-  refreshClaude();
+  const session = new ChatSession({ app, ws, catalogMd: () => catalogMd, mock, demo, testBase });
+  const harness = session.harness;
 
   // ---- UI ----
   const $ = (id: string) => document.getElementById(id)!;
   let con: ReturnType<typeof mountConsole>;
-  const keyBtn = () => document.querySelector<HTMLButtonElement>('#hdr .btns button:last-child')!;
   const hooks: HeaderHooks = {
-    samples,
+    samples, session, ws,
+    loadSample: (s) => getJson<KerfDoc>(`./samples/${s.file}`),
     openSample: async (s) => { const r = await app.openDoc(await getJson<KerfDoc>(`./samples/${s.file}`), `sample ${s.id}`); if (!r.ok) app.flash('OPEN FAILED: ' + (r.error ?? ''), 'err'); },
-    keyChanged: () => { refreshClaude(); con.renderIntro(); },
-    useDemo: () => { demo = true; refreshClaude(); con.renderIntro(); app.flash('DEMO MODE: SCRIPTED CLAUDE (NO API CALLS)'); },
-    get demoActive() { return demo; },
   };
   mountHeader(app, $('hdr'), hooks);
-  con = mountConsole(app, $('console'), harness, {
-    hasTransport: () => !!transport(),
-    openKeyDialog: () => keyBtn().click(),
-  });
+  const setupBtn = () => document.getElementById('setupbtn') as HTMLButtonElement;
+  if (ws) {
+    const lib = h('div#library');
+    $('console').append(lib);
+    mountLibrary(ws, lib);
+  }
+  con = mountConsole(app, $('console'), session, { openSetup: () => setupBtn().click() });
+  if (ws) { $('console').insertBefore($('library'), $('msgs')); ws.on('card', (c) => con.addAgentCard(c as never)); }
+  session.onChange(() => { app.emit('claude'); });
   const vp = mountViewport(app, $('viewport'));
   mountInspector(app, $('inspector'));
-  mountStatus(app, $('status'));
+  mountStatus(app, $('status'), ws);
 
   // narrow-screen tabs
   const main = $('main');
@@ -94,10 +103,19 @@ async function boot() {
 
   // ---- debug / test hooks ----
   const w = window as unknown as Record<string, unknown>;
-  w.__kerf = { app, harness, vp, con, exportActive: (f: 'dxf' | 'pdf' | 'svg', save = true) => exportActive(app, f, save), engine, popup, loadEngine, version: 1, params: Object.fromEntries(params) };
+  w.__kerf = { app, harness, session, ws, vp, con, exportActive: (f: 'dxf' | 'pdf' | 'svg' | 'png', save = true) => exportActive(app, f, save), engine, popup, loadEngine, version: 1, params: Object.fromEntries(params), mode: ws ? 'workspace' : 'static' };
 
   // ---- startup actions from URL ----
-  const sample = params.get('sample');
+  if (ws) {
+    ws.start();
+    await ws.refreshDocs();
+    let last: string | null = null; try { last = localStorage.getItem('kerf.lastDoc'); } catch { /* ignore */ }
+    const want = params.get('doc');
+    const pick = [want, last].find((f) => f && ws.docs.some((d) => d.file === f)) ?? (want ? null : ws.docs[0]?.file);
+    if (want && !pick) app.flash(`NO SUCH DOCUMENT IN THE LIBRARY: ${want}`, 'err');
+    if (pick) await ws.open(pick);
+  }
+  const sample = ws ? null : params.get('sample');
   if (sample || demo) {
     if (sample) {
       const r = await app.openDoc(pre.sample ? await pre.sample.catch(() => loadSampleDoc(sample)) : await loadSampleDoc(sample), `sample ${sample}`);

@@ -76,7 +76,7 @@ export function mountViewport(app: App, el: HTMLElement) {
       const v = app.view;
       if (!v) return;
       void app.applyOps([{ op: 'update', path: `views/${v.id}/annotations/${id}`, value: { place } }], 'designer', `Move note ${id} to [${place[0]}, ${place[1]}]`).then((r) => {
-        if (!r.ok) app.flash(`MOVE REJECTED: ${r.error ?? r.diagnostics[0]?.message ?? ''}`.slice(0, 140), 'err');
+        if (!r.ok) app.rejected(r, 'MOVE REJECTED');
       });
     },
   });

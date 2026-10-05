@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"extra_content":{"google":{"thought_signature":"CiQBjz1rX3sig=="}},"function":{"arguments":"{\"q\":\"summary\"}","name":"kerf_inspect"},"id":"","type":"function"}]},"finish_reason":"stop","index":0}],"created":1791000010,"model":"gemini-3.8-flash","object":"chat.completion.chunk"}
+
+data: [DONE]
+

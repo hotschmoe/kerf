@@ -28,6 +28,9 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 'S'}`;
 
 export async function runTool(app: App, name: string, input: Record<string, unknown>): Promise<ToolOutcome> {
   try {
+    if (typeof input.__invalid_json === 'string') {
+      return fail(name.replace('kerf_', '').toUpperCase(), `the arguments of ${name} were not valid JSON (${String(input.__invalid_json).slice(0, 160)}…). Resend the call with a complete, valid JSON object.`);
+    }
     if (name === 'kerf_apply') return await toolApply(app, input);
     if (name === 'kerf_inspect') return await toolInspect(app, input);
     if (name === 'kerf_render') return await toolRender(app, input);

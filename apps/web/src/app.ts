@@ -11,14 +11,30 @@ export type Selection = { id: string; kind: 'comp' | 'note' } | null;
 
 export interface LogEntry {
   n: number;
-  who: 'DESIGNER' | 'CLAUDE';
-  kind: 'op' | 'open' | 'undo';
+  who: 'DESIGNER' | 'CLAUDE' | 'AGENT';
+  kind: 'op' | 'open' | 'undo' | 'external';
   why: string;
   ops: Op[];
   ts: string;
   before: KerfDoc | null;
   changed: string[];
   undone?: boolean;
+  /** workspace mode: the library file this entry belongs to (undo never crosses documents) */
+  file?: string | null;
+}
+
+/** Workspace mode: the document lives in a folder served by `kerf serve`; every write goes through the server. */
+export interface Remote {
+  readonly file: string | null;
+  /** apply through the server (creating the file on first write when none is open); `conflict` = someone else edited (HTTP 409) */
+  apply(ops: Op[], actor: Actor, why: string): Promise<ApplyResult & { conflict?: boolean }>;
+  /** current file content from the server (also refreshes the remembered ETag), null when no file is open */
+  fetchCurrent(): Promise<{ doc: KerfDoc } | null>;
+  /** remember a document state we know is on disk (own writes) so the echo `doc_changed` is not treated as external */
+  /** export through the server (workspace mode): the file on disk is what is exported */
+  exportFile(view: string, format: string, sheet: boolean): Promise<{ name: string; bytes: Uint8Array } | null>;
+  noteKnown(doc: KerfDoc): void;
+  isKnown(doc: KerfDoc): boolean;
 }
 
 type Ev = 'doc' | 'selection' | 'view' | 'hover' | 'cursor' | 'status' | 'claude' | 'log';
@@ -42,6 +58,10 @@ export class App {
   /** designer edits not yet reported to Claude (HARNESS.md "Designer edits") */
   pendingDesignerEdits: string[] = [];
   perf: Record<string, number> = {};
+  /** set in workspace mode; null in static mode (everything below behaves exactly as before) */
+  remote: Remote | null = null;
+  /** status-line / console label of the active chat provider ("CLAUDE", "OPENAI", ...) */
+  providerLabel = 'CLAUDE';
 
   private listeners = new Map<Ev, Set<() => void>>();
   private chain: Promise<unknown> = Promise.resolve();
@@ -100,9 +120,9 @@ export class App {
   async applyOps(ops: Op[], actor: Actor, why: string): Promise<ApplyResult> {
     return this.queue(async () => {
       const before = this.doc;
-      let res: ApplyResult;
+      let res: ApplyResult & { conflict?: boolean };
       try {
-        res = await this.engine.apply(before ?? this.emptyDoc(), this.style, ops, actor);
+        res = this.remote ? await this.remote.apply(ops, actor, why) : await this.engine.apply(before ?? this.emptyDoc(), this.style, ops, actor);
       } catch (e) {
         const msg = e instanceof EngineCallError ? e.message : String(e);
         const payload = e instanceof EngineCallError ? e.payload : undefined;
@@ -110,11 +130,44 @@ export class App {
           ? (payload as { diagnostics: Diagnostic[] }).diagnostics : [];
         return { ok: false, diagnostics: diags, summary: '', error: msg } as ApplyResult;
       }
+      if (res.conflict) {
+        await this.reloadFromRemote('document changed on disk while you were editing');
+        this.flash('DOCUMENT CHANGED ON DISK — RELOADED', 'warn');
+        return res;
+      }
       if (res.ok && res.doc) {
+        this.remote?.noteKnown(res.doc);
         this.commit(res, before, actor === 'llm' ? 'CLAUDE' : 'DESIGNER', why, ops, 'op');
       }
       return res;
     });
+  }
+
+  /** Reload the open document from the server in place (view, zoom and selection survive). Runs inside the queue. */
+  private async reloadFromRemote(why: string): Promise<boolean> {
+    const cur = await this.remote?.fetchCurrent().catch(() => null);
+    if (!cur) return false;
+    const before = this.doc;
+    const r = await this.engine.apply(this.emptyDoc(), this.style, [{ op: 'set', path: 'doc', value: cur.doc }], 'designer');
+    if (!r.ok || !r.doc) { this.flash('RELOAD FAILED: ' + (r.error ?? r.diagnostics[0]?.message ?? 'engine rejected the document'), 'err'); return false; }
+    this.remote!.noteKnown(cur.doc);
+    this.commit(r, before, 'AGENT', why, [], 'external');
+    return true;
+  }
+
+  /** `doc_changed` from the server: reload when the file differs from what we hold (our own writes echo back identical). */
+  syncFromRemote(why = 'edited on disk'): Promise<boolean> {
+    return this.queue(async () => {
+      const cur = await this.remote?.fetchCurrent().catch(() => null);
+      if (!cur || this.remote!.isKnown(cur.doc)) return false;
+      return this.reloadFromRemote(why);
+    });
+  }
+
+  /** Reject toast for a failed designer edit; a 409 already toasted DOCUMENT CHANGED ON DISK. */
+  rejected(res: ApplyResult & { conflict?: boolean }, prefix: string) {
+    if (res.conflict) return;
+    this.flash(`${prefix}: ${res.error ?? res.diagnostics[0]?.message ?? ''}`.slice(0, 150), 'err');
   }
 
   private commit(res: ApplyResult, before: KerfDoc | null, who: LogEntry['who'], why: string, ops: Op[], kind: LogEntry['kind']) {
@@ -123,8 +176,9 @@ export class App {
     this.diagnostics = res.diagnostics ?? [];
     this.rev++;
     this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
-    this.opLog.push({ n: this.opLog.length + 1, who, kind, why, ops, ts: hhmm(), before, changed: res.changed ?? [] });
+    this.opLog.push({ n: this.opLog.length + 1, who, kind, why, ops, ts: hhmm(), before, changed: res.changed ?? [], file: this.remote?.file });
     if (who === 'DESIGNER') this.pendingDesignerEdits.push(`${kind === 'undo' ? 'UNDO' : kind === 'open' ? 'OPENED' : 'EDIT'}: ${why}`);
+    else if (who === 'AGENT') this.pendingDesignerEdits.push(`EXTERNAL EDIT (${why}): the document on disk was changed by someone else (a local agent or an editor); re-read it with kerf_inspect before editing`);
     if (!this.views.some((v) => v.id === this.activeView)) this.activeView = this.views[0]?.id ?? '';
     if (this.selection && !this.doc.components.some((c) => c.id === this.selection!.id) && !this.isNote(this.selection.id)) this.selection = null;
     this.emit('doc'); this.emit('log'); this.emit('view'); this.emit('selection');
@@ -152,11 +206,21 @@ export class App {
 
   /** Undo the last op group (restores its before-snapshot). */
   async undo(): Promise<boolean> {
-    const last = [...this.opLog].reverse().find((e) => !e.undone && e.kind !== 'undo');
+    // workspace mode: only real op groups can be undone (an undo is itself a write to the file on disk)
+    const last = [...this.opLog].reverse().find((e) => !e.undone && e.kind !== 'undo' && (!this.remote || (e.kind === 'op' && e.file === this.remote.file)));
     if (!last) return false;
     return this.queue(async () => {
       const cur = this.doc;
-      if (last.before === null) {
+      if (this.remote) {
+        if (last.before === null) { this.flash('NOTHING TO UNDO: THE DOCUMENT WAS CREATED BY THAT EDIT', 'warn'); return false; }
+        const r = await this.remote.apply([{ op: 'set', path: 'doc', value: last.before }], 'designer', `Undo: ${last.why}`);
+        if (r.conflict) { await this.reloadFromRemote('document changed on disk while you were editing'); this.flash('DOCUMENT CHANGED ON DISK — RELOADED', 'warn'); return false; }
+        if (!r.ok || !r.doc) { this.flash('UNDO FAILED: ' + (r.error ?? 'server rejected the snapshot'), 'err'); return false; }
+        this.remote.noteKnown(r.doc);
+        this.doc = r.doc; this.summary = r.summary; this.diagnostics = r.diagnostics ?? [];
+        this.rev++;
+        this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
+      } else if (last.before === null) {
         this.doc = null; this.summary = ''; this.diagnostics = []; this.rev++;
         this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
         this.activeView = ''; this.selection = null;

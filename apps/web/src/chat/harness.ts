@@ -12,7 +12,7 @@ export const BACKOFF_MS = [2000, 4000, 8000];
 
 export type ChatEvent =
   | { type: 'user'; text: string; images: string[]; edits: string[] }
-  | { type: 'assistant-start' }
+  | { type: 'assistant-start'; who?: string }
   | { type: 'text'; delta: string }
   | { type: 'tool'; id: string; phase: 'start' | 'end'; title?: string; status?: string; ok?: boolean; detail?: string; thumb?: Blob; input?: unknown }
   | { type: 'notice'; text: string; level: 'info' | 'warn' | 'err' }
@@ -24,6 +24,8 @@ export interface HarnessOpts {
   transport: () => Transport | null;
   model: () => string;
   catalogMd: () => string;
+  /** console card header for the active provider, e.g. KERF/OPENAI (default KERF/CLAUDE) */
+  label?: () => string;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -34,6 +36,8 @@ export function buildSystem(catalogMd: string): string {
 export class Harness {
   /** append-only: never edited, never truncated (thinking blocks are bound to their turns) */
   readonly messages: ChatMessage[] = [];
+  /** forget the conversation (provider switch, NEW) */
+  reset() { this.messages.length = 0; this.useFallbacks = true; }
   private useFallbacks = true;
   private abort: AbortController | null = null;
   busy = false;
@@ -68,7 +72,7 @@ export class Harness {
       for (let round = 1; round <= MAX_ROUNDS; round++) {
         this.app.setClaude({ state: 'BUSY', round });
         this.emit({ type: 'round', n: round });
-        this.emit({ type: 'assistant-start' });
+        this.emit({ type: 'assistant-start', who: this.opts.label?.() });
         const resp = await this.request(transport, signal);
         this.messages.push({ role: 'assistant', content: resp.content }); // verbatim, thinking blocks included
         for (const b of resp.content) {

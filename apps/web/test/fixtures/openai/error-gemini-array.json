@@ -1,0 +1,1 @@
+[{"error":{"code":400,"message":"Please ensure that function call turn comes immediately after a user turn or after a function response turn.","status":"INVALID_ARGUMENT"}}]
