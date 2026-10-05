@@ -10,7 +10,8 @@
 //! Placeholders: {message} (workspace prefix + the user's text), {session_id}, {dir}, {file}. The single
 //! element "{resume}" expands to the `resume` list when a session_id was given and to nothing otherwise.
 //! Session ids are picked up generically from any top-level `session_id` / `sessionId` / `thread_id` string
-//! in the agent's JSON lines (Claude: system/init + result; Grok: end; Codex: thread.started).
+//! in the agent's JSON lines (Claude: system/init + result; Grok: end; Codex: thread.started), plus pi's
+//! `{"type":"session","id":...}` first event.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -57,6 +58,15 @@ pub const builtin_templates = [_]Template{
         // `codex exec resume` does not take --sandbox/--cd itself, so the shared options come before the subcommand.
         .argv = &.{ "codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "--cd", "{dir}", "--json", "{resume}", "{message}" },
         .resume_args = &.{ "resume", "{session_id}" },
+    },
+    .{
+        // pi (earendil-works/pi): headless print mode, JSON event lines; uses the model configured in
+        // ~/.pi/agent/settings.json (e.g. a self-hosted vLLM endpoint). First event: {"type":"session","id":...}.
+        .id = "pi",
+        .name = "Pi",
+        .detect = &.{ "pi", "--version" },
+        .argv = &.{ "pi", "-p", "--mode", "json", "{resume}", "{message}" },
+        .resume_args = &.{ "--session-id", "{session_id}" },
     },
 };
 
@@ -482,7 +492,10 @@ fn emitLine(m: *Manager, io: Io, run: *Manager.Run, raw: []const u8, is_stderr: 
 }
 
 fn captureSession(m: *Manager, io: Io, run: *Manager.Run, v: kerf.json.Value) void {
-    for ([_][]const u8{ "session_id", "sessionId", "thread_id" }) |key| {
+    // pi announces its session as {"type":"session","id":"..."}.
+    const is_pi_session = if (v.get("type")) |t| if (t.str()) |ts| std.mem.eql(u8, ts, "session") else false else false;
+    for ([_][]const u8{ "session_id", "sessionId", "thread_id", "id" }) |key| {
+        if (std.mem.eql(u8, key, "id") and !is_pi_session) continue;
         const s = (v.get(key) orelse continue).str() orelse continue;
         if (s.len == 0 or s.len > 200) continue;
         const copy = m.gpa.dupe(u8, s) catch return;
