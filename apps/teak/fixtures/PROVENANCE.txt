@@ -1,10 +1,10 @@
 Fixtures for apps/teak/src/draw (owned by the draw agent).
 
 *.drawing.json (view A) and *.mesh.json for the three spec/details/*.kerf.json
-  Real engine output: engines/rust `kerf drawing <doc> --view A` and `kerf mesh <doc>`, built from the
-  working tree on top of commit 2e30c60 ("engine(rust): DXF, PDF, sheet, mesh") on 2026-10-05
-  (the engine tree had uncommitted edits at that moment, so re-run tools/gen_fixtures.sh against a
-  later engine build to refresh; any engine implementing SPEC 13.2 works: KERF_BIN=...).
+  Real engine output: engines/rust `kerf drawing <doc> --view A` and `kerf mesh <doc>`, built from engines/rust
+  at commit fd53f47 ("engine(rust): NOTES ... final goldens") on 2026-10-05 (working tree had only golden-file edits).
+  Re-run tools/gen_fixtures.sh to refresh; any engine implementing SPEC 13.2 works: KERF_BIN=... (the Zig
+  engine's output at 50b8105 was cross-checked: it parses and renders with the same pipeline).
   The files are used verbatim (compact JSON as emitted).
 
 tiny.drawing.json / tiny.mesh.json

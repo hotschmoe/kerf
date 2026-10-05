@@ -1702,8 +1702,8 @@ fn benchOne(a: Allocator, font: *const Font, kind: BenchKind, n: usize, units: u
     return ms;
 }
 
-test "bench: per-category and combined tessellation cost (prints ms)" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
+test "bench: per-category and combined tessellation cost (prints ms; run with -OReleaseFast)" {
+    if (builtin.os.tag != .linux or builtin.mode == .Debug) return error.SkipZigTest;
     const a = testing.allocator;
     var font = try Font.initEmbedded(a);
     defer font.deinit();

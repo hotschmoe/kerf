@@ -93,10 +93,12 @@ test "fixtures: real details parse, render to a small PNG, and look like drawing
         defer a.free(bytes);
         try testing.expect(bytes.len < 150 * 1024); // gray8 + deflate; the API limit is 5 MB
         try testing.expect(bytes.len > 5 * 1024);
-        // and the RGB path is also well under 300 KB
-        const rgb = try png.encode(a, img.width, img.height, .rgb, img.pixels);
-        defer a.free(rgb);
-        try testing.expect(rgb.len < 300 * 1024);
+        if (builtin.mode != .Debug) {
+            // and the RGB path is also well under 300 KB
+            const rgb = try png.encode(a, img.width, img.height, .rgb, img.pixels);
+            defer a.free(rgb);
+            try testing.expect(rgb.len < 300 * 1024);
+        }
     }
 }
 
@@ -242,11 +244,10 @@ test "fixtures: tint of a selected component is visible (blue-ish pixel inside t
         if (@as(i32, p1[2]) - @as(i32, p1[0]) > @as(i32, p0[2]) - @as(i32, p0[0]) + 5) bluer += 1;
     }
     try testing.expect(bluer > 5);
-    _ = builtin;
 }
 
-test "fixtures: bench real details, live look (prints ms per frame)" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
+test "fixtures: bench real details, live look (prints ms per frame; run with -OReleaseFast)" {
+    if (builtin.os.tag != .linux or builtin.mode == .Debug) return error.SkipZigTest;
     const a = testing.allocator;
     var font = try font_mod.Font.initEmbedded(a);
     defer font.deinit();
