@@ -189,5 +189,30 @@ section('4. acknowledge (I_ACK, logged) and lumber.barrier');
   check('style has material sill_seal', !!style.materials.sill_seal);
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('5. defaults: anchor_bolt anchor and z, in-plane member z = first section view cut_z');
+{
+  const doc = {
+    kerf: '0.1', id: 'dz', run: [-24, 24],
+    components: [
+      { id: 'cmu', type: 'cmu_wall', width: 8, courses: 3, at: { to: [0, 0] } },
+      { id: 'bolt', type: 'anchor_bolt', diameter: 0.5, at: { to: 'cmu@top_center' } },
+      { id: 'stud', type: 'lumber', size: '2x4', run: 'y', length: 24, at: { anchor: 'bottom_left', to: 'cmu@top_left', offset: [20, 0] } },
+      { id: 'pinned', type: 'lumber', size: '2x4', run: 'y', length: 24, z: 0, at: { anchor: 'bottom_left', to: 'cmu@top_left', offset: [30, 0] } },
+    ],
+    views: [{ id: 'S', kind: 'section', cut_z: 6, crop: { x: [-10, 40], y: [0, 40] }, scale: '1"=1\'-0"', annotations: [] }, { id: 'B', kind: 'iso', cut_z: -10 }],
+  };
+  const info = (id) => JSON.parse(kerf(['call', 'inspect'], { input: JSON.stringify({ doc, query: { q: 'component', id } }) }).out);
+  const bolt = info('bolt');
+  const top = 1 * (7.625 + 0.375) * 3 - 0.375;
+  check('anchor_bolt defaults to the top_of_concrete anchor: shank top above the CMU, hook below', bolt.bbox[3] > top && bolt.bbox[1] < top, bolt.bbox);
+  check('anchor_bolt z defaults to the first section view cut_z (6)', Math.abs((bolt.z[0] + bolt.z[1]) / 2 - 6) < 1e-9, bolt.z);
+  check('lumber run y z defaults to cut_z', Math.abs((info('stud').z[0] + info('stud').z[1]) / 2 - 6) < 1e-9);
+  check('explicit z wins', Math.abs((info('pinned').z[0] + info('pinned').z[1]) / 2) < 1e-9);
+  const noView = { ...doc, views: [] };
+  const b2 = JSON.parse(kerf(['call', 'inspect'], { input: JSON.stringify({ doc: noView, query: { q: 'component', id: 'stud' } }) }).out);
+  check('no section view: centered on the middle of run (0)', Math.abs((b2.z[0] + b2.z[1]) / 2) < 1e-9, b2.z);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

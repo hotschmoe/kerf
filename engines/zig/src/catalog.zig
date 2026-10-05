@@ -98,7 +98,7 @@ pub const common: []const Param = &.{
     .{ .name = "rotate", .def = "0", .desc = "degrees CCW about the placement point" },
     .{ .name = "slope", .def = "null", .desc = "\"4:12\" rise:run (rotation about the placement point; adds to rotate)" },
     .{ .name = "mirror", .def = "false", .desc = "mirror the profile about its vertical centerline before placement" },
-    .{ .name = "z", .def = "null", .desc = "[z0,z1] absolute, or a number = centered there with the member's natural z thickness. Default: spans doc `run` (members along Z) or centered in `run` with natural thickness" },
+    .{ .name = "z", .def = "null", .desc = "[z0,z1] absolute, or a number = centered there with the member's natural z thickness. Default: spans doc `run` (members along Z); members with a natural z thickness (lumber run x/y, truss, connector, path rebar, anchor_bolt) are centered on the first section view's `cut_z` (when it sets one, so they are cut, not hidden), else on the middle of `run`" },
     .{ .name = "array", .def = "null", .desc = "{axis: x|y|z, count, spacing}: instance k offset by k*spacing; instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k" },
     .{ .name = "embedded", .def = "type default", .desc = "drawn over cut solids and never occluded (rebar, anchor bolts)" },
     .{ .name = "visible", .def = "true", .desc = "false hides the component from views and mesh" },
@@ -216,7 +216,7 @@ pub const entries: []const Entry = &.{
         },
         .parts = "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut)",
         .anchors = "9 box anchors + top_of_concrete (where the bolt meets the host top surface, local (0,0))",
-        .draws = "Embedded steel, natural z thickness = diameter (set `z` to the bolt's z). Placement anchor named top_of_concrete.",
+        .draws = "Embedded steel, natural z thickness = diameter. The placement anchor DEFAULTS to top_of_concrete, so `\"at\": {\"to\": \"cmu@top_center\"}` seats the bolt in the top surface, projection up (you do not set `anchor`). z defaults to the first section view's cut_z, so the bolt is cut, not hidden; set `z` only to move it. `array` {axis z, count, spacing} draws bolts @ spacing in iso/3D (one is cut in section).",
         .example = "{\"id\":\"anchor_bolt\",\"type\":\"anchor_bolt\",\"diameter\":0.5,\"embed\":7,\"projection\":2.75,\"hook\":\"J\",\"at\":{\"to\":[3,0]}}",
     },
     .{

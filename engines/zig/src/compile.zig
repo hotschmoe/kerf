@@ -70,6 +70,14 @@ pub fn compile(a: Allocator, doc: json.Value, st: *const style_mod.Style, diags:
             if (z0 < z1) scene.run = .{ z0, z1 } else diags.add(.@"error", "E_PARAM", null, "run", "'run' must be [z0, z1] with z0 < z1 (got [{d}, {d}])", .{ z0, z1 });
         } else diags.add(.@"error", "E_PARAM", null, "run", "'run' must be [z0, z1] in inches, e.g. [-24, 24]", .{});
     }
+    if (doc.get("views")) |vs| if (vs.arr()) |va| for (va) |v| {
+        const kind = if (v.get("kind")) |k| (k.str() orelse "section") else "section";
+        if (std.mem.eql(u8, kind, "iso")) continue;
+        if (v.get("cut_z")) |cz| if (units.parseLength(cz)) |z| {
+            scene.default_z = z;
+        };
+        break; // only the first section view counts
+    };
     const comps_v = doc.get("components") orelse json.Value{ .array = &.{} };
     const items = comps_v.arr() orelse {
         diags.add(.@"error", "E_PARAM", null, "components", "'components' must be an array", .{});
@@ -230,13 +238,18 @@ const AtSpec = struct {
     has_to: bool = false,
 };
 
+/// Placement anchor when `at.anchor` is omitted: the bolt's datum for anchor bolts, else the box's bottom_left.
+fn defaultAnchor(comp: *const Comp) []const u8 {
+    return if (std.mem.eql(u8, comp.ty.name, "anchor_bolt")) "top_of_concrete" else "bottom_left";
+}
+
 fn parseAt(a: Allocator, scene: *Scene, comp: *Comp, p: *model.Params) Allocator.Error!?AtSpec {
-    const av = p.raw("at") orelse return AtSpec{};
+    const av = p.raw("at") orelse return AtSpec{ .anchor = defaultAnchor(comp) };
     if (av != .object) {
         p.fail("at", "param 'at' must be {{\"anchor\": \"bottom_left\", \"to\": \"comp@anchor\", \"offset\": [dx, dy]}}", .{});
         return null;
     }
-    var spec = AtSpec{};
+    var spec = AtSpec{ .anchor = defaultAnchor(comp) };
     if (av.get("anchor")) |anc| {
         if (anc.str()) |s| spec.anchor = s else {
             p.fail("at/anchor", "at.anchor must be an anchor name string", .{});
@@ -357,7 +370,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
     }
     if (!z_explicit) {
         if (built.nat_z) |th| {
-            const mid = (scene.run[0] + scene.run[1]) / 2;
+            const mid = scene.default_z orelse (scene.run[0] + scene.run[1]) / 2;
             zbase = .{ mid - th / 2, mid + th / 2 };
         }
     }

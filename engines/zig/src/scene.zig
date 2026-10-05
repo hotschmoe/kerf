@@ -96,6 +96,8 @@ pub const Scene = struct {
     comps: []Comp,
     diags: *model.Diags,
     run: [2]f64,
+    /// The first section view's `cut_z` (when it sets one): default z centre of in-plane members, so they are cut, not hidden.
+    default_z: ?f64 = null,
 
     pub fn find(self: *const Scene, id: []const u8) ?*Comp {
         for (self.comps) |*c| if (std.mem.eql(u8, c.id, id)) return c;

@@ -40,6 +40,9 @@ kerf catalog --markdown                              # component reference (also
 - **Windows PowerShell:** quoting JSON inline (`--ops '[...]'`) breaks. Write the ops to a file
   (`kerf apply x.kerf.json ops.json -w --why "..."`) or pipe a here-string:
   `@'` newline `[...ops...]` newline `'@ | kerf apply x.kerf.json - -w --why "..."`.
+- **Views:** `crop` and `scale` are optional on a section view: omit them to auto-fit (all non-fill components plus 6 inches;
+  the largest standard scale at which view, notes and title fit the frame). Set them only to deliberately frame a detail
+  (`W_VIEW_FIT` then fires if it does not fit). `notes_side` defaults to `both` (each note goes to the nearer side).
 - **Dimension direction:** `dir` defaults to the dominant axis between `from` and `to` (|dx| >= |dy| gives `h`, else `v`);
   `W_DIM_ZERO` fires when a dimension measures under 1/16 inch (usually a wrong `dir` or two coincident points).
 - **Dimension offset sign:** `dir:"h"` puts the dimension line at `max(y)+offset` when offset > 0 (above

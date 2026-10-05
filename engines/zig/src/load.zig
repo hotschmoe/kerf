@@ -284,7 +284,7 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
             return null;
         };
         const spec = try a.create(view_mod.ViewSpec);
-        spec.* = spec_v;
+        spec.* = (try drawview.resolveSpec(a, l.doc, l.style, l.scene, &spec_v)).*;
         const prisms = try compile_mod.allPrisms(a, l.scene);
         var sec = try section.Section.init(a, l.scene, spec, prisms);
         try sec.build();
