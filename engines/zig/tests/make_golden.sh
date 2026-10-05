@@ -9,7 +9,7 @@ for doc in ../../spec/details/*.kerf.json; do
   name=$(basename "$doc" .kerf.json)
   d=tests/golden/$name
   mkdir -p "$d"
-  $K check "$doc" 2> "$d/summary.txt" || true
+  $K check "$doc" > "$d/summary.txt" 2>&1 || true
   for v in A B; do
     $K drawing "$doc" --view $v -o "$d/drawing-$v.json"
     $K export "$doc" --view $v --format svg -o "$d/$v.svg"
