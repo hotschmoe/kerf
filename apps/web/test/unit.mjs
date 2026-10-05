@@ -38,6 +38,11 @@ await t('stroke font layout: width, rotation, alignment', () => {
   assert.ok(sf.layoutText({ s: 'é', x: 0, y: 0, h: 1 }).lines.length > 0); // unknown glyph -> ?
 });
 
+await t('stroke font folds characters it lacks', () => {
+  assert.equal(sf.fold('A \u2014 B \u00D7 C \u201Cq\u201D'), 'A - B X C "q"');
+  assert.ok(Math.abs(sf.textWidth('\u2014', 1) - sf.textWidth('-', 1)) < 1e-9);
+});
+
 const { MockTransport, validateHistory } = await load('/src/chat/mock.ts');
 const { Harness, MAX_ROUNDS } = await load('/src/chat/harness.ts');
 const { ChatError } = await load('/src/chat/transport.ts');
