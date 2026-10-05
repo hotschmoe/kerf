@@ -17,7 +17,7 @@ const port = 8300 + Math.floor(Math.random() * 500);
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-e2e-'));
 const sample = JSON.parse(fs.readFileSync(path.join(repo, 'spec/details/truss-bearing-cmu.kerf.json'), 'utf8'));
 
-const server = spawn('node', [path.join(repo, 'tools/serve.mjs'), dist, String(port)], { stdio: 'ignore' });
+const server = spawn('node', [path.join(repo, 'tools/serve.mjs'), dist, String(port)], { stdio: ['ignore', fs.openSync(path.join(outDir, 'serve.log'), 'a'), fs.openSync(path.join(outDir, 'serve.err'), 'a')] });
 await new Promise((r) => setTimeout(r, 600));
 const browser = await puppeteer.launch({
   executablePath: '/usr/bin/chromium', headless: 'new', protocolTimeout: 120000,
@@ -142,6 +142,57 @@ await t('2D: click selects by src; dragging a note issues an update op with plac
   await page.waitForFunction(`window.__kerf.app.selection === null`);
   assert.deepEqual(page.errors, []);
   await page.close();
+});
+
+await t('image attach: paste/drop/file -> downscaled to <=1568 px and sent before the text block', async () => {
+  const page = await open('demo=1&auto=0&fast=1');
+  const info = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 3200; c.height = 1800;
+    const g = c.getContext('2d'); g.fillStyle = '#336'; g.fillRect(0, 0, 3200, 1800); g.fillStyle = '#fff'; g.fillRect(100, 100, 800, 400);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    const input = document.querySelector('#composer input[type=file]');
+    const dt = new DataTransfer(); dt.items.add(new File([blob], 'shot.png', { type: 'image/png' }));
+    input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 500));
+    const attached = document.querySelectorAll('#attached .att').length;
+    // paste path
+    const dt2 = new DataTransfer(); dt2.items.add(new File([blob], 'p.png', { type: 'image/png' }));
+    const ev = new ClipboardEvent('paste', { clipboardData: dt2, bubbles: true, cancelable: true });
+    document.querySelector('#composer textarea').dispatchEvent(ev);
+    await new Promise((r) => setTimeout(r, 500));
+    return { attached, attached2: document.querySelectorAll('#attached .att').length };
+  });
+  assert.equal(info.attached, 1); assert.equal(info.attached2, 2);
+  await ev(page, `window.__kerf.con.sendText('recreate this detail')`);
+  await waitIdle(page);
+  const m = await ev(page, `(() => { const u = window.__kerf.harness.messages[0].content; return u.map(b => b.type === 'image' ? { t: 'image', mt: b.source.media_type, len: b.source.data.length } : { t: b.type }) })()`);
+  assert.deepEqual(m.map((x) => x.t), ['image', 'image', 'text']);
+  const dim = await page.evaluate(async (b64) => { const i = new Image(); i.src = 'data:image/png;base64,' + b64; await i.decode(); return [i.naturalWidth, i.naturalHeight]; }, await ev(page, `window.__kerf.harness.messages[0].content[0].source.data`));
+  assert.deepEqual(dim, [1568, 882]);
+  assert.equal(await page.$$eval('#msgs .msg .atts img', (a) => a.length), 2);
+  await page.close();
+});
+
+await t('save / open .kerf.json round trip', async () => {
+  const page = await open('demo=1&auto=0&sample=truss-bearing-cmu');
+  const before = await ev(page, `window.__kerf.app.doc.id`);
+  await ev(page, `[...document.querySelectorAll('#hdr .btns button')].find(b => b.textContent === 'SAVE').click()`);
+  const f = path.join(outDir, `${before}.kerf.json`);
+  for (let i = 0; i < 50 && !fs.existsSync(f); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(fs.existsSync(f), 'saved ' + f);
+  await new Promise((r) => setTimeout(r, 200));
+  const saved = JSON.parse(fs.readFileSync(f, 'utf8'));
+  assert.equal(saved.id, before);
+  assert.ok(saved.components.length >= 10);
+  // open it back into a fresh page (different doc state)
+  const page2 = await open('demo=1&auto=0&sample=flush-beam-strap');
+  assert.equal(await ev(page2, 'window.__kerf.app.doc.id'), 'flush-beam-strap');
+  const input = await page2.$('#hdr input[type=file]');
+  await input.uploadFile(f);
+  await page2.waitForFunction(`window.__kerf.app.doc.id === '${before}'`, { timeout: 15000 });
+  assert.equal(await ev(page2, 'window.__kerf.app.opLog.length'), 2);
+  assert.match(await ev(page2, 'window.__kerf.app.pendingDesignerEdits[1]'), /OPENED truss-bearing-cmu/);
+  await page.close(); await page2.close();
 });
 
 await t('engine loader in a Web Worker: calls, bytes, errors (echo.wasm)', async () => {
