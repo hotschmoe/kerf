@@ -1,0 +1,76 @@
+# Release: on a version tag, build the web UI, embed it in `kerf`, cross-compile for every platform
+# and attach the binaries (named exactly as install.sh / install.ps1 expect) plus SHA256SUMS.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      # Order matters: the web build copies engines/zig/dist/kerf.wasm, and the CLI embeds the web build.
+      - name: Build kerf.wasm
+        working-directory: engines/zig
+        run: zig build wasm
+
+      - name: Build the web UI (workspace mode, for `kerf serve`)
+        working-directory: apps/web
+        run: |
+          npm ci
+          if npm run 2>/dev/null | grep -q 'build:serve'; then
+            npm run build:serve
+            echo "UI_DIR=../../apps/web/dist-serve" >> "$GITHUB_ENV"
+          else
+            npm run build:zig
+            echo "UI_DIR=../../apps/web/dist-zig" >> "$GITHUB_ENV"
+          fi
+
+      - name: Test the engine and the server
+        working-directory: engines/zig
+        run: |
+          zig build test --summary all
+          zig build -Doptimize=ReleaseSafe -Dui="$UI_DIR"
+          node tests/serve_smoke.mjs
+
+      - name: Cross-compile kerf (UI embedded)
+        working-directory: engines/zig
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/release"
+          build() { # <zig target> <asset name>
+            rm -rf zig-out
+            zig build -Dtarget="$1" -Doptimize=ReleaseSmall -Dui="$UI_DIR"
+            if [ -f zig-out/bin/kerf.exe ]; then cp zig-out/bin/kerf.exe "$GITHUB_WORKSPACE/release/$2"; else cp zig-out/bin/kerf "$GITHUB_WORKSPACE/release/$2"; fi
+          }
+          build x86_64-windows-gnu   kerf-x86_64-windows.exe
+          build aarch64-windows-gnu  kerf-aarch64-windows.exe
+          build x86_64-linux-musl    kerf-x86_64-linux
+          build aarch64-linux-musl   kerf-aarch64-linux
+          build x86_64-macos         kerf-x86_64-macos
+          build aarch64-macos        kerf-aarch64-macos
+          cd "$GITHUB_WORKSPACE/release"
+          sha256sum kerf-* > SHA256SUMS
+          ls -l
+
+      - name: Upload to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --prerelease="$( [[ "$GITHUB_REF_NAME" == *-* ]] && echo true || echo false )"
+          gh release upload "$GITHUB_REF_NAME" release/* --clobber

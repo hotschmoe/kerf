@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engines/zig
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: zig build test
+        run: zig build test --summary all
+      - name: wasm build
+        run: zig build wasm
+      - name: cross-compile smoke (windows, macos, linux-musl)
+        run: |
+          for t in x86_64-windows-gnu aarch64-macos x86_64-linux-musl; do
+            zig build -Dtarget=$t -Doptimize=ReleaseSmall --prefix "$RUNNER_TEMP/out-$t"
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: kerf serve smoke test
+        run: |
+          zig build
+          node tests/serve_smoke.mjs
+
+  web:
+    runs-on: ubuntu-latest
+    needs: engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: wasm (the web build copies it)
+        working-directory: engines/zig
+        run: zig build wasm
+      - name: install, typecheck, unit tests
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run typecheck
+          npm run test:unit
+      - name: build the UI and embed it in kerf
+        working-directory: apps/web
+        run: |
+          npm run build:serve
+          cd ../../engines/zig
+          zig build -Doptimize=ReleaseSmall -Dui=../../apps/web/dist-serve
+          ls -l zig-out/bin/kerf

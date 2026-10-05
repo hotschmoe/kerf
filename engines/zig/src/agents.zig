@@ -54,7 +54,8 @@ pub const builtin_templates = [_]Template{
         .id = "codex",
         .name = "Codex CLI",
         .detect = &.{ "codex", "--version" },
-        .argv = &.{ "codex", "exec", "{resume}", "{message}", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check", "--cd", "{dir}" },
+        // `codex exec resume` does not take --sandbox/--cd itself, so the shared options come before the subcommand.
+        .argv = &.{ "codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "--cd", "{dir}", "--json", "{resume}", "{message}" },
         .resume_args = &.{ "resume", "{session_id}" },
     },
 };
@@ -186,6 +187,10 @@ pub const Manager = struct {
     environ: *const std.process.Environ.Map,
     /// Directory of the running `kerf` binary: put on the agent's PATH so `kerf` resolves.
     exe_dir: []const u8,
+    /// Hook run right before the `exit` event is published (the server scans the folder so the agent's last
+    /// edits are reported before the run ends).
+    before_exit_ctx: ?*anyopaque = null,
+    before_exit: ?*const fn (*anyopaque) void = null,
     next_id: u32 = 1,
     active: ?*Run = null,
     cache: std.ArrayList(CacheEntry) = .empty,
@@ -383,6 +388,8 @@ fn supervise(m: *Manager, io: Io, run: *Manager.Run) void {
         else => {},
     } else |_| {}
 
+    if (m.before_exit) |f| f(m.before_exit_ctx.?);
+
     var arena = std.heap.ArenaAllocator.init(m.gpa);
     defer arena.deinit();
     const a = arena.allocator();
@@ -505,9 +512,10 @@ test "expandArgv: resume, placeholders" {
     try std.testing.expect(found);
     const codex = try expandArgv(a, builtin_templates[2], "MSG", "t-9", "/work", "");
     try std.testing.expectEqualStrings("exec", codex[1]);
-    try std.testing.expectEqualStrings("resume", codex[2]);
-    try std.testing.expectEqualStrings("t-9", codex[3]);
-    try std.testing.expectEqualStrings("MSG", codex[4]);
+    try std.testing.expectEqualStrings("/work", codex[6]);
+    try std.testing.expectEqualStrings("resume", codex[8]);
+    try std.testing.expectEqualStrings("t-9", codex[9]);
+    try std.testing.expectEqualStrings("MSG", codex[10]);
     const grok = try expandArgv(a, builtin_templates[1], "MSG", null, "/work", "");
     try std.testing.expectEqualStrings("/work", grok[7]);
 }

@@ -687,7 +687,9 @@ fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: [
     }
     var ops_text: std.ArrayList(u8) = .empty;
     try kerf.json.writeCompact(&ops_text, a, ops_v);
-    const input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"ops\":{s},\"actor\":\"designer\"}}", .{ std.mem.trim(u8, rd.bytes, " \t\r\n"), ops_text.items });
+    // The engine only distinguishes designer edits (verified citations stay verified) from model edits.
+    const engine_actor = if (std.mem.eql(u8, who, "designer")) "designer" else "llm";
+    const input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"ops\":{s},\"actor\":\"{s}\"}}", .{ std.mem.trim(u8, rd.bytes, " \t\r\n"), ops_text.items, engine_actor });
     const r = try kerf.call(a, "apply", input);
     if (!r.ok) {
         try http.sendJson(w, 400, ka, extra, r.bytes);
@@ -876,6 +878,20 @@ fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
         if (!ws.validDocFile(f)) return badRequest(a, req, w, extra, "E_FILE", "file must be a plain NAME.kerf.json");
         file = f;
     };
+    var message_full: []const u8 = message;
+    if (body.get("images")) |iv| if (!iv.isNull()) {
+        const paths = saveImages(s, a, iv) catch |e| switch (e) {
+            error.BadImages => return badRequest(a, req, w, extra, "E_IMAGES", "images must be [{ name, data_base64 }] (png/jpg/gif/webp, at most 8, 12 MB each)"),
+            else => return e,
+        };
+        if (paths.len > 0) {
+            var m: std.ArrayList(u8) = .empty;
+            try m.appendSlice(a, message);
+            try m.appendSlice(a, "\n\nThe designer attached these images (open them with your file-reading tool):\n");
+            for (paths) |ip| try m.print(a, "- {s}\n", .{ip});
+            message_full = m.items;
+        }
+    };
     const templates = try agents.loadTemplates(a, s.io, s.dir);
     var tmpl: ?agents.Template = null;
     for (templates) |t| if (std.mem.eql(u8, t.id, agent_id)) {
@@ -885,7 +901,7 @@ fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
         try http.sendError(a, w, 404, ka, extra, "E_AGENT", try std.fmt.allocPrint(a, "unknown agent '{s}'; GET /api/info lists them", .{agent_id}));
         return ka;
     };
-    const res = try agents.start(&s.agent_mgr, s.io, a, &s.group, .{ .template = t, .message = message, .session_id = session, .file = file });
+    const res = try agents.start(&s.agent_mgr, s.io, a, &s.group, .{ .template = t, .message = message_full, .session_id = session, .file = file });
     switch (res) {
         .started => |run_id| {
             var out: std.ArrayList(u8) = .empty;
@@ -902,6 +918,44 @@ fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
         },
     }
     return ka;
+}
+
+/// Save `[{name, data_base64}]` under `<dir>/.kerf/attachments/` and return the absolute paths.
+fn saveImages(s: *Server, a: Allocator, iv: kerf.json.Value) ![]const []const u8 {
+    const items = iv.arr() orelse return error.BadImages;
+    if (items.len > 8) return error.BadImages;
+    var out: std.ArrayList([]const u8) = .empty;
+    if (items.len == 0) return out.items;
+    try s.dir.createDirPath(s.io, ".kerf/attachments");
+    for (items) |it| {
+        const name_in = (if (it.get("name")) |v| v.str() else null) orelse return error.BadImages;
+        var data = (if (it.get("data_base64")) |v| v.str() else null) orelse return error.BadImages;
+        if (std.mem.startsWith(u8, data, "data:")) {
+            const comma = std.mem.indexOfScalar(u8, data, ',') orelse return error.BadImages;
+            data = data[comma + 1 ..];
+        }
+        var safe: std.ArrayList(u8) = .empty;
+        const base = std.fs.path.basename(name_in);
+        for (base[0..@min(base.len, 60)]) |c| try safe.append(a, if (std.ascii.isAlphanumeric(c) or c == '.' or c == '-' or c == '_') c else '_');
+        const ext = std.fs.path.extension(safe.items);
+        const okext = [_][]const u8{ ".png", ".jpg", ".jpeg", ".gif", ".webp" };
+        var good = false;
+        for (okext) |e| if (std.ascii.eqlIgnoreCase(ext, e)) {
+            good = true;
+        };
+        if (!good) try safe.appendSlice(a, ".png");
+        const dec = std.base64.standard.Decoder;
+        const n = dec.calcSizeForSlice(data) catch return error.BadImages;
+        if (n > 12 << 20) return error.BadImages;
+        const bytes = try a.alloc(u8, n);
+        dec.decode(bytes, data) catch return error.BadImages;
+        var rnd: [4]u8 = undefined;
+        s.io.random(&rnd);
+        const rel = try std.fmt.allocPrint(a, ".kerf/attachments/{x}-{s}", .{ &rnd, safe.items });
+        try s.dir.writeFile(s.io, .{ .sub_path = rel, .data = bytes });
+        try out.append(a, try std.fs.path.join(a, &.{ s.dir_abs, rel }));
+    }
+    return out.items;
 }
 
 fn apiAgentStop(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8) !bool {
@@ -963,6 +1017,13 @@ const no_ui_page =
 // ---------------------------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------------------------
+
+/// Called by the agent bridge just before it publishes `exit`: report the agent's last edits (doc + log
+/// events) now instead of up to 500 ms later, so the UI sees them before the run ends.
+fn scanForAgent(ctx: *anyopaque) void {
+    const s: *Server = @ptrCast(@alignCast(ctx));
+    s.scan(true);
+}
 
 fn pollerTask(s: *Server) void {
     var tick: u32 = 0;
@@ -1138,7 +1199,7 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
         .started_ns = Io.Timestamp.now(io, .awake).nanoseconds,
     };
     server.cfg.port = port;
-    server.agent_mgr = .{ .gpa = gpa, .hub = &server.hub, .dir = dir, .dir_abs = dir_abs, .environ = environ, .exe_dir = exe_dir };
+    server.agent_mgr = .{ .gpa = gpa, .hub = &server.hub, .dir = dir, .dir_abs = dir_abs, .environ = environ, .exe_dir = exe_dir, .before_exit_ctx = &server, .before_exit = scanForAgent };
     defer server.client.deinit();
     defer server.hub.deinit();
     defer server.agent_mgr.deinit();

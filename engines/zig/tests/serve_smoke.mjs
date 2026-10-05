@@ -115,6 +115,7 @@ const cli = (dir, args, env = {}) => {
   try { return { code: 0, out: execFileSync(KERF, args, { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] }) }; }
   catch (e) { return { code: e.status ?? 1, out: (e.stdout ?? '') + (e.stderr ?? '') }; }
 };
+const isRun_exit = (rid) => (f) => f.event === 'agent' && f.data.run_id === rid && f.data.event.type === 'exit';
 const addOp = (id) => [{ op: 'add', path: 'components', value: { id, type: 'lumber', size: '2x4', at: { x: 0, y: 0 } } }];
 
 async function main() {
@@ -273,8 +274,19 @@ async function main() {
   check('agent ran in --dir with KERF_ACTOR=agent and kerf on PATH', runEvents.some((e) => e.type === 'system' && e.actor === 'agent' && fs.realpathSync(e.cwd) === fs.realpathSync(dir)) && runEvents.some((e) => e.type === 'tool_result' && /^DOC a/.test(e.text)), runEvents);
   const aLog = await ev.waitFor((f) => f.event === 'log' && f.data.entry.why === 'fake agent edit', 3000);
   check('the agent edit shows up as a log event with who:agent', !!aLog && aLog.data.entry.who === 'agent' && aLog.data.entry.tool === 'kerf-cli', aLog);
+  check('the agent\'s log event is published BEFORE its exit event', ev.frames.findIndex((f) => f.event === 'log' && f.data.entry.why === 'fake agent edit') < ev.frames.findIndex(isRun_exit(rid)), ev.frames.map((f) => f.event + ':' + (f.data?.event?.type ?? '')).slice(-12));
   check('the agent edit landed in the document', JSON.parse(fs.readFileSync(path.join(dir, 'a.kerf.json'), 'utf8')).components.some((x) => x.id === 'agent_plate'));
 
+  const png1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const runImg = await api(port, 'POST', '/api/agent/run', { body: { agent: 'fake', message: 'look at this', images: [{ name: '../../evil name.png', data_base64: png1.toString('base64') }] } });
+  const exitImg = await ev.waitFor((f) => f.event === 'agent' && f.data.run_id === runImg.json.run_id && f.data.event.type === 'exit', 8000);
+  const imgMsg = ev.frames.find((f) => f.event === 'agent' && f.data.run_id === runImg.json.run_id && f.data.event.type === 'assistant');
+  const attDir = path.join(dir, '.kerf', 'attachments');
+  const saved = fs.existsSync(attDir) ? fs.readdirSync(attDir) : [];
+  check('images: saved under .kerf/attachments with a sanitized name, bytes intact', saved.length === 1 && /^[0-9a-f]+-evil_name\.png$/.test(saved[0]) && fs.readFileSync(path.join(attDir, saved[0])).equals(png1), saved);
+  check('images: the path was appended to the agent message', !!exitImg && /attachments/.test(JSON.stringify(imgMsg?.data.event)), imgMsg?.data);
+  const badImg = await api(port, 'POST', '/api/agent/run', { body: { agent: 'fake', message: 'x', images: [{ name: 'a.png', data_base64: '!!!not base64' }] } });
+  check('images: invalid base64 -> 400 E_IMAGES', badImg.status === 400 && badImg.json.error.code === 'E_IMAGES', badImg.text);
   const runB = await api(port, 'POST', '/api/agent/run', { body: { agent: 'fake', message: 'continue', session_id: 'sess-xyz' } });
   const ridB = runB.json.run_id;
   const exitB = await ev.waitFor((f) => f.event === 'agent' && f.data.run_id === ridB && f.data.event.type === 'exit', 8000);
@@ -449,12 +461,12 @@ async function main() {
   section('misc');
   const badDir = spawn(KERF, ['serve', '--dir', '/definitely/not/here'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let berr = ''; badDir.stderr.on('data', (d) => { berr += d; });
-  const bcode = await new Promise((r) => badDir.on('exit', r));
+  const bcode = await new Promise((r) => badDir.on('close', r));
   check('bad --dir -> exit 1 with a message', bcode === 1 && /cannot open --dir/.test(berr), berr);
   const portBusy = await startServer(dir2);
   const dup = spawn(KERF, ['serve', '--dir', dir2, '--port', String(portBusy.port)], { stdio: ['ignore', 'pipe', 'pipe'] });
   let derr = ''; dup.stderr.on('data', (d) => { derr += d; });
-  const dcode = await new Promise((r) => dup.on('exit', r));
+  const dcode = await new Promise((r) => dup.on('close', r));
   check('port in use -> exit 1 with a hint', dcode === 1 && /already in use/.test(derr), derr);
   portBusy.proc.kill('SIGTERM');
 
