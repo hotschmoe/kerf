@@ -13,6 +13,8 @@ const font_mod = @import("font.zig");
 const svg = @import("svg.zig");
 const mesh_mod = @import("mesh.zig");
 const sheet_mod = @import("sheet.zig");
+const dxf_mod = @import("dxf.zig");
+const pdf_mod = @import("pdf.zig");
 const load_mod = @import("load.zig");
 const ops_mod = @import("ops.zig");
 const Allocator = std.mem.Allocator;
@@ -164,6 +166,14 @@ fn exportFn(a: Allocator, inp: json.Value) ApiError!Out {
     if (std.mem.eql(u8, format, "svg")) {
         const dd = if (want_sheet) try sheet_mod.withSheet(a, dr, &font) else dr;
         return .{ .ok = true, .bytes = try svg.render(a, &dd, &font, .{}) };
+    }
+    if (std.mem.eql(u8, format, "pdf")) {
+        const dd = try sheet_mod.withSheet(a, dr, &font);
+        return .{ .ok = true, .bytes = try pdf_mod.render(a, &dd, &font) };
+    }
+    if (std.mem.eql(u8, format, "dxf")) {
+        const dd = if (want_sheet) try sheet_mod.withSheet(a, dr, &font) else dr;
+        return .{ .ok = true, .bytes = try dxf_mod.render(a, &dd) };
     }
     return fail(a, "E_INPUT", "export format must be \"svg\", \"dxf\" or \"pdf\" (got \"{s}\")", .{format});
 }
