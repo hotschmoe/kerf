@@ -16,7 +16,9 @@ for doc in ../../spec/details/*.kerf.json; do
     $K export "$doc" --view $v --format svg -o "$TMP/$v.svg"
     $K export "$doc" --view $v --format dxf -o "$TMP/$v.dxf"
     $K export "$doc" --view $v --format pdf -o "$TMP/$v.pdf"
-    for f in drawing-$v.json $v.svg $v.dxf $v.pdf; do
+    $K export "$doc" --view $v --format png -o "$TMP/$v.raster.png"
+    $K export "$doc" --view $v --format png --sheet -o "$TMP/$v-sheet.raster.png"
+    for f in drawing-$v.json $v.svg $v.dxf $v.pdf $v.raster.png $v-sheet.raster.png; do
       cmp -s "$TMP/$f" "$g/$f" || { echo "DIFF $name/$f"; fail=1; }
     done
     $T/dxf_check.py "$TMP/$v.dxf" >/dev/null || { echo "DXF AUDIT FAIL $name/$v"; fail=1; }

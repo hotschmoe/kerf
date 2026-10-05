@@ -15,6 +15,7 @@ const mesh_mod = @import("mesh.zig");
 const sheet_mod = @import("sheet.zig");
 const dxf_mod = @import("dxf.zig");
 const pdf_mod = @import("pdf.zig");
+const raster = @import("raster.zig");
 const load_mod = @import("load.zig");
 const ops_mod = @import("ops.zig");
 const Allocator = std.mem.Allocator;
@@ -172,7 +173,19 @@ fn exportFn(a: Allocator, inp: json.Value) ApiError!Out {
         const dd = if (want_sheet) try sheet_mod.withSheet(a, dr, &font) else dr;
         return .{ .ok = true, .bytes = try dxf_mod.render(a, &dd) };
     }
-    return fail(a, "E_INPUT", "export format must be \"svg\", \"dxf\" or \"pdf\" (got \"{s}\")", .{format});
+    if (std.mem.eql(u8, format, "png")) {
+        var opt = raster.Options{};
+        if (inp.get("px")) |pv| {
+            const n = pv.num() orelse return fail(a, "E_INPUT", "export \"px\" must be a number (output width in pixels, {d}-{d}, default {d})", .{ raster.min_px, raster.max_px, raster.default_px });
+            opt.px = @intFromFloat(std.math.clamp(@round(if (n == n) n else 1600), @as(f64, raster.min_px), @as(f64, raster.max_px)));
+        }
+        const dd = if (want_sheet) try sheet_mod.withSheet(a, dr, &font) else dr;
+        return .{ .ok = true, .bytes = raster.render(a, &dd, &font, opt) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return fail(a, "E_INTERNAL", "png encoding failed ({s})", .{@errorName(e)}),
+        } };
+    }
+    return fail(a, "E_INPUT", "export format must be \"svg\", \"dxf\", \"pdf\" or \"png\" (got \"{s}\")", .{format});
 }
 
 fn checkFn(a: Allocator, inp: json.Value) ApiError!Out {

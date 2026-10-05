@@ -16,6 +16,8 @@ for doc in ../../spec/details/*.kerf.json; do
     $K export "$doc" --view $v --format svg --sheet -o "$d/$v-sheet.svg"
     $K export "$doc" --view $v --format dxf -o "$d/$v.dxf"
     $K export "$doc" --view $v --format pdf -o "$d/$v.pdf"
+    $K export "$doc" --view $v --format png -o "$d/$v.raster.png"
+    $K export "$doc" --view $v --format png --sheet -o "$d/$v-sheet.raster.png"
     if [ "${1:-}" = "--png" ]; then
       $T/zig-engine/svg2png.sh "$d/$v-sheet.svg" "$d/$v.png" 1400
       $T/dxf_check.py "$d/$v.dxf" --png "$d/$v-dxf.png" --png-size 1400 >/dev/null

@@ -3,7 +3,7 @@
 Status: feature complete for the v0.1 contract (SPEC 1-17), including keynote note mode.
 Everything is std-only Zig 0.16; one source tree builds the importable module `kerf`, the CLI and the
 wasm32-freestanding ABI module. All three reference details export SVG, DXF (zero audit errors), PDF
-(vector only) and mesh, with 0 errors / 0 warnings. Goldens are in `tests/golden/<detail>/`.
+(vector only), PNG and mesh, with 0 errors / 0 warnings. Goldens are in `tests/golden/<detail>/`.
 
 Zig: `~/tools/zig-aarch64-linux-0.16.0/zig` (0.16.0). No third-party dependencies.
 
@@ -108,6 +108,26 @@ Native debug build: `kerf export` of a section view takes about 30 ms wall inclu
 `tests/golden/<detail>/{A,B}.png` (sheet SVG rendered by chromium), `{A,B}-dxf.png` (ezdxf render of the DXF),
 `{A,B}-pdf.png` (pdfium render of the PDF); details: `truss-bearing-cmu`, `monopour-slab-door-recess`,
 `flush-beam-strap`.
+
+## PNG export (`format: "png"`, `src/raster.zig` + `src/png.zig`)
+
+`kerf export <doc> --view A --format png [--px 1600] [--sheet] -o out.png`; API input `{"format":"png","px":1600,"sheet":false}`.
+8-bit grayscale, white paper, black ink, anti-aliased. Same items, Map, pens, dashes (round caps, odd lists repeat),
+even-odd fills, hatch lines and stroke-font text as the SVG exporter; region items ignored. `px` = output width in
+pixels (default 1600, clamped 200-6000; if the page is so tall that the height would exceed 8192 the scale is reduced
+instead, so the width can come out smaller). Pen widths are true mm at the chosen scale, minimum 1 px. Bare detail
+keeps the SVG's 0.25" margin. Output is deterministic and byte-identical between native and wasm (checked on truss A sheet).
+Design: own CPU rasterizer (not the teak triangle tessellator): each item goes into a u8 coverage scratch (union by
+max, so joins never double-darken), then composited once; strokes are capsules with analytic row spans
+(coverage = clamp(r + 0.5 - dist)), fills are 8-sub-scanline even-odd with exact horizontal coverage. PNG: per-row
+adaptive filters + std `flate.Compress` zlib level `.default` (`.best` is 4x slower for 3% smaller files).
+Timing, native ReleaseFast, wall per `kerf export --format png --sheet` incl. process start: 50-66 ms for all six views
+(svg 5-22 ms); wasm ReleaseSmall in node: 184 ms for truss A sheet. wasm grows ~30 KB (662,838 -> 692,209 B raw).
+Goldens: `tests/golden/<detail>/{A,B}.raster.png` (bare) and `{A,B}-sheet.raster.png`, byte-checked by `check_golden.sh`,
+reviewed by eye against `A.png` (chromium render of the SVG). Total 0.95 MB for 12 files (60-105 KB each).
+Tests: `tests.zig` (signature/IHDR/clamp/determinism, white corners + ink inside the CMU hatch region), `raster.zig`
+(coverage and even-odd fill), `png.zig` (round trips; `png.decode` is a verification decoder). Gaps: no color; no
+text knock-out of hatch (same as SVG).
 
 ## Cross-engine comparison with engines/rust (`compare_drawings.py`, tol 1e-3")
 

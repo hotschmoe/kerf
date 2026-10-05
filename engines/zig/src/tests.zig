@@ -211,3 +211,85 @@ test "every visible component has at least one region item in section view A" {
         }
     }
 }
+
+fn pngExport(gpa: std.mem.Allocator, extra: []const u8) ![]u8 {
+    const doc = std.mem.trim(u8, testdocs.truss, " \n\r\t");
+    const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"format\":\"png\",{s}}}", .{ doc, extra });
+    defer gpa.free(input);
+    const r = try api.call(gpa, "export", input);
+    errdefer gpa.free(r.bytes);
+    try std.testing.expect(r.ok);
+    return r.bytes;
+}
+
+test "png export: signature, IHDR dimensions, px clamp, determinism" {
+    const gpa = std.testing.allocator;
+    const b1 = try pngExport(gpa, "\"view\":\"A\",\"px\":900");
+    defer gpa.free(b1);
+    const b2 = try pngExport(gpa, "\"view\":\"A\",\"px\":900");
+    defer gpa.free(b2);
+    try std.testing.expectEqualSlices(u8, b1, b2);
+    try std.testing.expectEqualSlices(u8, &.{ 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A }, b1[0..8]);
+    try std.testing.expectEqualSlices(u8, "IHDR", b1[12..16]);
+    try std.testing.expectEqual(@as(u32, 900), std.mem.readInt(u32, b1[16..20], .big));
+    try std.testing.expect(std.mem.readInt(u32, b1[20..24], .big) > 100);
+    try std.testing.expectEqual(@as(u8, 8), b1[24]); // bit depth
+    try std.testing.expectEqual(@as(u8, 0), b1[25]); // grayscale
+    // default width 1600, clamp low to 200
+    const d = try pngExport(gpa, "\"view\":\"B\",\"sheet\":true");
+    defer gpa.free(d);
+    try std.testing.expectEqual(@as(u32, 1600), std.mem.readInt(u32, d[16..20], .big));
+    const lo = try pngExport(gpa, "\"view\":\"A\",\"px\":5");
+    defer gpa.free(lo);
+    try std.testing.expectEqual(@as(u32, 200), std.mem.readInt(u32, lo[16..20], .big));
+}
+
+test "png export: white corners, ink inside the CMU wall, page is mostly paper" {
+    const gpa = std.testing.allocator;
+    const bytes = try pngExport(gpa, "\"view\":\"A\",\"px\":1200");
+    defer gpa.free(bytes);
+    const img = try @import("png.zig").decode(gpa, bytes);
+    defer gpa.free(img.pixels);
+    const w: usize = img.width;
+    const h: usize = img.height;
+    try std.testing.expectEqual(@as(u8, 255), img.pixels[0]);
+    try std.testing.expectEqual(@as(u8, 255), img.pixels[w - 1]);
+    try std.testing.expectEqual(@as(u8, 255), img.pixels[(h - 1) * w]);
+    try std.testing.expectEqual(@as(u8, 255), img.pixels[h * w - 1]);
+    // locate the first cmu hatch region (model inches) in paper pixels
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var err: json.ParseError = undefined;
+    const doc = (try json.parse(a, testdocs.truss, &err)).?;
+    const st = try style_mod.load(a, null);
+    var diags = model.Diags.init(a);
+    const dr = (try drawview.build(a, doc, &st, "A", &diags)).?;
+    const lay = @import("raster.zig").layout(&dr, .{ .px = 1200 });
+    try std.testing.expectEqual(@as(u32, @intCast(w)), lay.w);
+    const m = @import("svg.zig").Map{ .s = dr.scale, .x0 = dr.bounds[0], .y1 = dr.bounds[3], .ox = lay.margin_in, .oy = lay.margin_in };
+    const k = lay.ppi / 96.0;
+    var dark_in_wall: usize = 0;
+    var found = false;
+    for (dr.items) |it| {
+        if (it != .hatch or !std.mem.eql(u8, it.hatch.src, "cmu")) continue;
+        const lp = it.hatch.loops[0];
+        const bb = geom.pointsBox(lp);
+        const x0: usize = @intFromFloat(@max(0, @floor(m.px(bb.x0) * k)));
+        const x1: usize = @intFromFloat(@min(@as(f64, @floatFromInt(w - 1)), @ceil(m.px(bb.x1) * k)));
+        const y0: usize = @intFromFloat(@max(0, @floor(m.py(bb.y1) * k)));
+        const y1: usize = @intFromFloat(@min(@as(f64, @floatFromInt(h - 1)), @ceil(m.py(bb.y0) * k)));
+        found = true;
+        for (y0..y1 + 1) |y| for (x0..x1 + 1) |x| {
+            if (img.pixels[y * w + x] < 128) dark_in_wall += 1;
+        };
+        break;
+    }
+    try std.testing.expect(found);
+    try std.testing.expect(dark_in_wall > 20);
+    var dark: usize = 0;
+    for (img.pixels) |p| {
+        if (p < 128) dark += 1;
+    }
+    try std.testing.expect(dark > 1000 and dark < img.pixels.len / 4);
+}
