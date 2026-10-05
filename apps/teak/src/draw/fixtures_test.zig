@@ -244,3 +244,28 @@ test "fixtures: tint of a selected component is visible (blue-ish pixel inside t
     try testing.expect(bluer > 5);
     _ = builtin;
 }
+
+test "fixtures: bench real details, live look (prints ms per frame)" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const a = testing.allocator;
+    var font = try font_mod.Font.initEmbedded(a);
+    defer font.deinit();
+    var t = tess.Tessellator.init(a);
+    defer t.deinit();
+    for (real_details) |name| {
+        var d = try loadDrawing(a, name);
+        defer d.deinit();
+        const view = tess.View.fit(d.bounds, 1400, 900, 24);
+        try t.build(&d, &font, view, tess.Palette.live(), .{});
+        const reps: usize = 50;
+        var ts: std.os.linux.timespec = undefined;
+        _ = std.os.linux.clock_gettime(.MONOTONIC, &ts);
+        const t0: i128 = @as(i128, ts.sec) * 1_000_000_000 + ts.nsec;
+        for (0..reps) |_| try t.build(&d, &font, view, tess.Palette.live(), .{ .hovered = "cmu" });
+        _ = std.os.linux.clock_gettime(.MONOTONIC, &ts);
+        const t1: i128 = @as(i128, ts.sec) * 1_000_000_000 + ts.nsec;
+        const ms = @as(f64, @floatFromInt(t1 - t0)) / 1e6 / @as(f64, reps);
+        std.debug.print("[bench] {s}: {d} items, {d} tris, {d:.3} ms/frame ({s})\n", .{ name, d.items.len, t.buf.triangleCount(), ms, @tagName(builtin.mode) });
+        if (builtin.mode != .Debug) try testing.expect(ms < 20.0);
+    }
+}
