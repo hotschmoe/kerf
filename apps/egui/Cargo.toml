@@ -39,6 +39,10 @@ web-sys = { version = "0.3", features = ["Window", "Document", "Element", "Locat
 js-sys = "0.3"
 console_error_panic_hook = "0.1"
 
+[features]
+# Experimental: WebGL2 fallback for browsers without WebGPU. Measured at ~+2.5 MB wasm (naga + glow), so it is OFF by default.
+webgl = ["wgpu/webgl"]
+
 [profile.dev]
 opt-level = 0
 debug = "line-tables-only"

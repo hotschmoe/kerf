@@ -298,14 +298,14 @@ fn paint_grid(p: &egui::Painter, rect: Rect, cam: &Cam2d) {
         let px = step * cam.zoom;
         // the 1" level is always the "major" (darker); 12" shows only when 1" is too dense
         let next_px = levels.get(i + 1).map(|l| l.0 * cam.zoom).unwrap_or(f64::MAX);
-        let fade_in = ((px - 6.0) / 8.0).clamp(0.0, 1.0);
+        let fade_in = ((px - 4.0) / 6.0).clamp(0.0, 1.0);
         // minor levels fade out once the next level is itself clearly visible
         let _ = next_px;
         if fade_in <= 0.0 {
             continue;
         }
         // skip the 12"/120" levels while the finer majors are still legible
-        if i >= 2 && cam.zoom * levels[i - 1].0 >= 6.0 {
+        if i >= 2 && cam.zoom * levels[i - 1].0 >= 4.0 {
             continue;
         }
         let a = (fade_in * 255.0) as u8;
