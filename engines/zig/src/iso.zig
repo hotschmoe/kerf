@@ -53,6 +53,7 @@ const Edge = struct {
 
 const IsoPrism = struct {
     src: []const u8,
+    instance: u32 = 0,
     comp: u32,
     part: []const u8,
     loops: []const []const V2,
@@ -292,7 +293,7 @@ fn quadrant(from: view_mod.From) [2]f64 {
 }
 
 fn srcOf(a: Allocator, c: *const scene_mod.Comp, instance: u32) Allocator.Error![]const u8 {
-    if (c.xfs.len > 1) return std.fmt.allocPrint(a, "{s}#{d}", .{ c.id, instance });
+    if (c.arr_count > 1) return std.fmt.allocPrint(a, "{s}#{d}", .{ c.id, instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) });
     return c.id;
 }
 
@@ -329,6 +330,7 @@ fn gather(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
                 for (region) |h| if (geom.signedAreaV(h) < 0 and h.len > 0 and geom.pointInLoopEO(h[0], region[oi])) try loops.append(a, h);
                 try out.append(a, .{
                     .src = try srcOf(a, c, p.instance),
+                    .instance = p.instance,
                     .comp = c.index,
                     .part = p.part,
                     .loops = loops.items,
@@ -629,7 +631,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
             for (ip.loops[0], 0..) |v, i| lp[i] = proj(sx, sz, .{ v.x, v.y, ip.z1 });
             try fs.append(a, .{ .outer = lp, .holes = &.{} });
             var fi: u32 = 0;
-            if (std.mem.indexOfScalar(u8, ip.src, '#')) |h| fi = std.fmt.parseInt(u32, ip.src[h + 1 ..], 10) catch 0;
+            fi = ip.instance;
             try iso.vis.append(a, .{ .comp = ip.comp, .part = ip.part, .instance = fi, .shapes = fs.items });
             continue;
         }
@@ -690,7 +692,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         const comp = &scene.comps[ip.comp];
         _ = comp;
         var inst: u32 = 0;
-        if (std.mem.indexOfScalar(u8, ip.src, '#')) |h| inst = std.fmt.parseInt(u32, ip.src[h + 1 ..], 10) catch 0;
+        inst = ip.instance;
         try iso.vis.append(a, .{ .comp = ip.comp, .part = ip.part, .instance = inst, .shapes = shapes.items });
     }
 

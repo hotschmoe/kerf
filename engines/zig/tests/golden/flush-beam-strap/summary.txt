@@ -1,4 +1,4 @@
-DOC flush-beam-strap  7 components  2 views  0 errors 1 warning
+DOC flush-beam-strap  7 components  2 views  0 errors 0 warnings
  beam          lumber (2) 1.75x9.25 lvl run x              x -3"..3'-3"      y 7'-3 7/8"..8'-1 1/8"
  jack_studs    lumber 2x4 run y narrow [x2]                x -3"..0"         y 1 1/2"..7'-3 7/8"
  king_studs    lumber 2x4 run y narrow [x2]                x -6"..-3"        y 1 1/2"..7'-10 1/8"
@@ -7,4 +7,3 @@ DOC flush-beam-strap  7 components  2 views  0 errors 1 warning
  upper_plate   lumber 2x4 run x narrow                     x -4'-0"..-3"     y 7'-11 5/8"..8'-1 1/8"
  strap         connector CS16 16ga edge                    x -1'-2"..8"      y 8'-1 1/8"..8'-1 3/16"
 INFO I_UNVERIFIED_CITE: 3 code citation(s) await designer verification; they print with a trailing * and a footnote until verified
-WARN W_VIEW_FIT A: view A with notes and title needs 14.04 x 4.84 paper inches but the sheet area is 10.25 x 7.00 at scale 1-1/2"=1'-0" Fix: use a smaller scale (e.g. 3/4"=1'-0"), shrink the crop, or shorten the notes

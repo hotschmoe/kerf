@@ -228,7 +228,7 @@ pub fn labelPoint(a: Allocator, shapes: []const Shape) Allocator.Error!?V2 {
     var best_area: f64 = -1;
     for (shapes) |s| {
         const ar = shapeArea(s);
-        if (ar >= best_area) {
+        if (ar > best_area) {
             best_area = ar;
             best = s;
         }

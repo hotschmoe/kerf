@@ -75,7 +75,7 @@ pub const Section = struct {
 
     fn srcName(self: *const Section, p: Prism) []const u8 {
         const c = &self.scene.comps[p.comp];
-        if (c.xfs.len > 1) return std.fmt.allocPrint(self.a, "{s}#{d}", .{ c.id, p.instance }) catch c.id;
+        if (c.arr_count > 1) return std.fmt.allocPrint(self.a, "{s}#{d}", .{ c.id, p.instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) }) catch c.id;
         return c.id;
     }
 
@@ -164,7 +164,6 @@ pub const Section = struct {
                             lp = try @import("pathgeom.zig").offsetOpen(self.a, p.centerline, side * gap);
                         }
                         try self.addClipped(&self.strokes, lp, false, pen, self.srcName(p), p.embedded);
-                        if (p.ticks) try self.shingleTicks(p, pen);
                     }
                 },
                 .batt => {
@@ -361,7 +360,7 @@ pub const Section = struct {
         if (!clip.loopsBox(f).overlaps(crop, 1e-6)) return;
         const src = self.srcName(p);
         const mat = self.style.material(p.material);
-        const pen: []const u8 = if (p.embedded and mat != null and mat.?.fill) self.penFor(p.material) else "beyond";
+        const pen: []const u8 = if (mat != null and mat.?.fill) self.penFor(p.material) else "beyond";
         // occluders
         var occ: std.ArrayList(*const Occ) = .empty;
         if (!p.embedded) {
@@ -453,8 +452,7 @@ pub const Section = struct {
             }
             for (merged.items) |m| {
                 const pts = try self.breakPolyline(e, m.a, m.b);
-                const comp = &self.scene.comps[m.comp];
-                try self.breaks.append(self.a, .{ .layer = self.layerFor("break"), .pen = "break", .src = comp.id, .closed = false, .pts = pts });
+                try self.breaks.append(self.a, .{ .layer = self.layerFor("break"), .pen = "break", .src = "crop", .closed = false, .pts = pts });
             }
         }
     }
@@ -491,7 +489,7 @@ pub const Section = struct {
         var items: std.ArrayList(drawing.Item) = .empty;
         for (self.hatches.items) |h| try items.append(self.a, .{ .hatch = h });
         for (self.fills.items) |f| try items.append(self.a, .{ .fill = f });
-        const deduped = try dedupe(self.a, self.strokes.items, self.style);
+        const deduped = try chainStrokes(self.a, try dedupe(self.a, self.strokes.items, self.style));
         // stable sort by rank (lighter first)
         std.mem.sort(Stroke, deduped, {}, struct {
             fn lt(_: void, x: Stroke, y: Stroke) bool {
@@ -718,7 +716,7 @@ pub fn dedupe(a: Allocator, strokes: []const Stroke, style: *const style_mod.Sty
             const hi = @min(1.0, @max(ta, tb));
             if (hi - lo < dedupe_tol / l1) continue;
             const w2 = style.penWidthMm(strokes[s2.stroke].pen);
-            if (s1.stroke != s2.stroke and std.mem.eql(u8, strokes[s1.stroke].src, strokes[s2.stroke].src)) {
+            if (s1.stroke != s2.stroke and std.mem.eql(u8, baseId(strokes[s1.stroke].src), baseId(strokes[s2.stroke].src))) {
                 // shared edge between prisms of the same component: one line in the beyond pen
                 const p_lo = s1.a.add(d1.scale(lo));
                 const p_hi = s1.a.add(d1.scale(hi));
@@ -799,4 +797,64 @@ fn subtractInterval(a: Allocator, keep: *std.ArrayList([2]f64), lo: f64, hi: f64
         if (hi < iv[1]) try out.append(a, .{ hi, iv[1] });
     }
     keep.* = out;
+}
+
+/// Join open strokes (same pen and src) whose end points touch into longer polylines.
+pub fn chainStrokes(a: Allocator, in: []Stroke) Allocator.Error![]Stroke {
+    var list: std.ArrayList(Stroke) = .empty;
+    try list.appendSlice(a, in);
+    var changed = true;
+    while (changed) {
+        changed = false;
+        var i: usize = 0;
+        while (i < list.items.len) : (i += 1) {
+            if (list.items[i].closed) continue;
+            var j: usize = i + 1;
+            while (j < list.items.len) : (j += 1) {
+                const si = list.items[i];
+                const sj = list.items[j];
+                if (sj.closed or !std.mem.eql(u8, si.pen, sj.pen) or !std.mem.eql(u8, si.src, sj.src)) continue;
+                const i_end = si.pts[si.pts.len - 1].v();
+                const i_start = si.pts[0].v();
+                const j_start = sj.pts[0].v();
+                const j_end = sj.pts[sj.pts.len - 1].v();
+                var merged: ?[]Pt = null;
+                // arcs are not reversible cheaply here; only join in travel direction
+                if (V2.eql(i_end, j_start, 1e-7)) {
+                    var m: std.ArrayList(Pt) = .empty;
+                    try m.appendSlice(a, si.pts);
+                    m.items[m.items.len - 1].b = sj.pts[0].b;
+                    try m.appendSlice(a, sj.pts[1..]);
+                    merged = m.items;
+                } else if (V2.eql(j_end, i_start, 1e-7)) {
+                    var m: std.ArrayList(Pt) = .empty;
+                    try m.appendSlice(a, sj.pts);
+                    m.items[m.items.len - 1].b = si.pts[0].b;
+                    try m.appendSlice(a, si.pts[1..]);
+                    merged = m.items;
+                }
+                if (merged) |mp| {
+                    // drop collinear interior vertices of pure-line runs
+                    list.items[i].pts = mp;
+                    list.items[i].seq = @min(si.seq, sj.seq);
+                    _ = list.orderedRemove(j);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+    // close loops whose ends meet
+    for (list.items) |*st| {
+        if (!st.closed and st.pts.len >= 4 and V2.eql(st.pts[0].v(), st.pts[st.pts.len - 1].v(), 1e-7) and st.pts[st.pts.len - 1].b == 0) {
+            st.pts = st.pts[0 .. st.pts.len - 1];
+            st.closed = true;
+        }
+    }
+    return list.items;
+}
+
+fn baseId(src: []const u8) []const u8 {
+    if (std.mem.indexOfScalar(u8, src, '#')) |h| return src[0..h];
+    return src;
 }

@@ -29,6 +29,8 @@ pub const Comp = struct {
     zs: []const [2]f64 = &.{},
     embedded: bool = false,
     visible: bool = true,
+    /// Number of `array` instances (1 when there is no array); `place` bars are not array instances.
+    arr_count: usize = 1,
     /// Resolved placement point (world) and rotation, for reporting.
     place_pt: V2 = .{ .x = 0, .y = 0 },
     /// Prisms of every instance, world coordinates, in builder order per instance.

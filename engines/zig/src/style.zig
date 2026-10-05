@@ -143,11 +143,11 @@ pub const Style = struct {
 /// Which style layer an item drawn with `pen` belongs to.
 pub fn layerKeyForPen(pen_name: []const u8) []const u8 {
     const eq = std.mem.eql;
-    if (eq(u8, pen_name, "cut") or eq(u8, pen_name, "profile")) return "cut";
+    if (eq(u8, pen_name, "cut") or eq(u8, pen_name, "profile") or eq(u8, pen_name, "membrane") or eq(u8, pen_name, "vapor")) return "cut";
     if (eq(u8, pen_name, "beyond")) return "beyond";
     if (eq(u8, pen_name, "hidden")) return "hidden";
     if (eq(u8, pen_name, "hatch")) return "hatch";
-    if (eq(u8, pen_name, "rebar") or eq(u8, pen_name, "steel") or eq(u8, pen_name, "membrane") or eq(u8, pen_name, "vapor")) return "steel";
+    if (eq(u8, pen_name, "rebar") or eq(u8, pen_name, "steel")) return "steel";
     if (eq(u8, pen_name, "anno")) return "notes";
     if (eq(u8, pen_name, "dim")) return "dims";
     if (eq(u8, pen_name, "break")) return "break";

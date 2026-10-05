@@ -13,6 +13,9 @@
 </g>
 </g>
 <g id="S-DETL-CUT" inkscape:groupmode="layer" inkscape:label="S-DETL-CUT">
+<g data-src="vapor_retarder">
+<path d="M695 125.737L616.193 125.737L505.036 236.894" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323" stroke-dasharray="5.669 2.835"/>
+</g>
 <g data-src="slab">
 <path d="M695 90.857L471 90.857L471 102.857L407 103.857L407 234.857L503 234.857L615 122.857L695 122.857" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
@@ -37,12 +40,10 @@
 </g>
 </g>
 <g id="S-DETL-STL" inkscape:groupmode="layer" inkscape:label="S-DETL-STL">
-<g data-src="ftg_bars#0">
+<g data-src="ftg_bars">
 <path d="M436 208.357A2.5 2.5 0 0 1 431 208.357A2.5 2.5 0 0 1 436 208.357Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M436 208.357A2.5 2.5 0 0 1 431 208.357A2.5 2.5 0 0 1 436 208.357Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
-</g>
-<g data-src="ftg_bars#1">
 <path d="M479 208.357A2.5 2.5 0 0 1 474 208.357A2.5 2.5 0 0 1 479 208.357Z" fill="#000" fill-rule="evenodd" stroke="none"/>
+<path d="M436 208.357A2.5 2.5 0 0 1 431 208.357A2.5 2.5 0 0 1 436 208.357Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
 <path d="M479 208.357A2.5 2.5 0 0 1 474 208.357A2.5 2.5 0 0 1 479 208.357Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
 </g>
 <g data-src="top_bar">
@@ -61,12 +62,9 @@
 <path d="M695 108.857L694.235 109.009L693.586 109.443L693.152 110.092L693 110.857L693.152 111.623L693.586 112.271L694.235 112.705L695 112.857L695 108.857Z" fill="#000" fill-rule="evenodd" stroke="none"/>
 <path d="M695 108.857A2 2 0 0 1 693 110.857A2 2 0 0 1 695 112.857" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
 </g>
-<g data-src="vapor_retarder">
-<path d="M695 125.737L616.193 125.737L505.036 236.894" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323" stroke-dasharray="5.669 2.835"/>
-</g>
 </g>
 <g id="S-DETL-BRKL" inkscape:groupmode="layer" inkscape:label="S-DETL-BRKL">
-<g data-src="slab">
+<g data-src="crop">
 <path d="M695 128.857L695 122.257L703.8 113.017L686.2 100.697L695 91.457L695 84.857" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
 </g>
 </g>

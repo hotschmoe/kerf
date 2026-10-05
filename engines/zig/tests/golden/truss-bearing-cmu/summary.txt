@@ -1,4 +1,4 @@
-DOC truss-bearing-cmu  14 components  2 views  0 errors 1 warning
+DOC truss-bearing-cmu  14 components  2 views  0 errors 0 warnings
  cmu           cmu_wall 8" x 4 courses (1 bond beam)       x 0"..7 5/8"      y -2'-7 5/8"..0"
  bb_bars       rebar #5 along z [x2]                       x 2 1/4"..5 3/8"  y -6 1/8"..-5 1/2"
  vert_bar      rebar #5 path, 2 pts                        x 3 1/2"..4 1/8"  y -2'-7 5/8"..-2"
@@ -14,4 +14,3 @@ DOC truss-bearing-cmu  14 components  2 views  0 errors 1 warning
  roofing       membrane shingles 0.25" thk, 2 pts          x -1'-6"..3'-8 11/16" y 3 1/8"..2'-0 3/16"
  ceiling       panel gypsum 0.5" thk x 30                  x 7 5/8"..3'-1 5/8" y 1"..1 1/2"
 INFO I_UNVERIFIED_CITE: 5 code citation(s) await designer verification; they print with a trailing * and a footnote until verified
-WARN W_NOTE_TARGET n_tie: note 'n_tie' in view B: target 'hurricane_tie' is not visible in this view (outside the crop, behind the cut plane, or hidden). The note was not drawn. Fix: move the view crop or cut_z so the target is visible, change target, or give the note an explicit "at" Ref

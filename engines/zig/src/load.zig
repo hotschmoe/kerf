@@ -286,7 +286,7 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
             const c = &l.scene.comps[p.comp];
             try hits.append(a, try json.obj(a, &.{
                 .{ .key = "id", .value = .{ .string = c.id } },
-                .{ .key = "src", .value = .{ .string = if (c.xfs.len > 1) try std.fmt.allocPrint(a, "{s}#{d}", .{ c.id, p.instance }) else c.id } },
+                .{ .key = "src", .value = .{ .string = if (c.arr_count > 1) try std.fmt.allocPrint(a, "{s}#{d}", .{ c.id, p.instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) }) else c.id } },
                 .{ .key = "part", .value = if (p.part.len > 0) json.Value{ .string = p.part } else .null },
                 .{ .key = "kind", .value = .{ .string = if (sec.cls[i] == .cut) "cut" else "beyond" } },
             }));

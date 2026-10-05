@@ -455,6 +455,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
     comp.zs = zs;
     comp.world = world.items;
     comp.visible = visible;
+    comp.arr_count = arr_count;
     comp.embedded = if (emb_override) |e| e else (built.prisms.len > 0 and built.prisms[0].embedded);
     comp.state = .ok;
 }
