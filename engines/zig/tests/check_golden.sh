@@ -7,10 +7,11 @@ K=zig-out/bin/kerf
 T=../../tools
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 fail=0
-for doc in ../../spec/details/*.kerf.json; do
+for doc in ../../spec/details/*.kerf.json tests/docs/*.kerf.json; do
   name=$(basename "$doc" .kerf.json)
   g=tests/golden/$name
-  for v in A B; do
+  views=$(python3 -c 'import json,sys;print(" ".join(v["id"] for v in json.load(open(sys.argv[1]))["views"]))' "$doc")
+  for v in $views; do
     for out in "drawing-$v.json:drawing --view $v" ; do :; done
     $K drawing "$doc" --view $v -o "$TMP/drawing-$v.json"
     $K export "$doc" --view $v --format svg -o "$TMP/$v.svg"

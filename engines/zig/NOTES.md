@@ -390,3 +390,42 @@ agent's uncommitted `annot.zig` (debug code pulls `std.Io.Threaded` into wasm); 
 Iso omits `shown:"dashed"` components. Control-joint V and tooled-edge radius are tiny at scales below 1"=1'-0".
 
 REQUESTS (to the layout agent): commit the 2-line `scene_mod.whereOccursText` hook in `annot.zig` (note text) with your changes; do not drop it.
+
+## Layout v0.1.2 (zig-layout agent: SPEC 18 annotation quality)
+
+Files: `src/route.zig` (new: note routing, pure geometry), `src/annot.zig` (landing candidates, obstacles, diagnostics,
+items), `src/drawview.zig` (`W_VIEW_FIT`), tests in `src/layout_tests.zig` (+ `route.zig` unit tests).
+
+- **Case:** the style `case` transform now covers the whole rendered note, citation suffix included
+  (`(IRC TABLE R602.3(5))*`).
+- **Landing:** the SPEC 6.3 label point is kept when it is at least 2 text heights from the crop edges. Otherwise
+  (the label point is in the crop band, i.e. near a break line) the point of the visible region with the best
+  clearance is used, where distance to a crop edge counts only up to 2 text heights and the crop edges themselves are
+  ignored as region boundary (`bandedLabelPoint`). `at` is never touched. A note with `"at": null` and a target now lands
+  on its target (it used to be dropped silently).
+- **Candidates:** per target up to ~9 landing candidates inside the visible region and the inset crop: the label point,
+  four nearest grid points, the extremes in 8 directions (grid step <= 1 text height, finer for thin members like straps).
+- **Routing (`route.zig`):** baseline = SPEC 6.3 + SPEC 16 adjacent swaps. A baseline with no hit is returned unchanged
+  (so clean layouts keep the spec positions). If a leader crosses, or is within 1 text height of, another leader, a note
+  box, a dimension text or a label, each column is re-solved by dynamic programming (Viterbi): per note a landing
+  candidate and a text y on a half-pitch grid around the landing (+-12 steps), cost = obstacle hits + dimension-line
+  crossings + steepness/length + distance from the preferred landing (unary) + leader/leader hits of adjacent notes
+  (pair); non-adjacent notes of the column and the other column's leaders count as fixed (two passes). Then discrete
+  changes are tried one at a time (note to the other column when `notes_side:"both"`, re-insertion in the column) and
+  re-solved; first change that lowers (hits, cost) is kept. Work is bounded by a budget of 60 column solves. The text
+  column may stand a little above/below the crop to make room (it was clamped to the crop before).
+  Everything is deterministic (no RNG, fixed iteration order).
+- **`W_LEADER_HIT`** (warning, per leader/other pair, at most 8 per view plus a "more" line): names both items, the
+  distance in paper inches and one concrete fix: `set note 'n' "at": [x, y]` (alternative landing inside the target),
+  `"place": [x, y]`, `set dim 'd' "offset": N (now M)` or `set label 'l' "offset": [dx, dy]`. The title block is not
+  checked: it is placed below the lowest annotation (0.4 paper in), so it can never be within a text height of a leader.
+- **`W_VIEW_FIT`:** `Overflow by edge (sheet centered on the view): left a", right b", top c", bottom d".`, then per
+  overflowing axis the breakdown crop + side extensions with the culprit of each side (notes column, a named dimension or
+  label, the title block, or the crop itself), then fixes smallest first: `narrow crop.x by N in (now [..])` /
+  `shorten crop.y`, the offending dim's `offset`, `notes_side`, shorter notes, and `use a smaller scale (e.g. ...)` only when
+  the overflow is more than 15% of the frame (the suggested scale is the first standard scale that fits).
+- **Numbers:** 3 reference details (6 views), the PSL detail and the Palmer SD1 doc (5 views): leader crossings 0 -> 0,
+  leaders within 1 text height of another leader or a dim/label 7 -> 0 (truss A 3, slab A 3, PSL A 1). Dense synthetic
+  stress (20 random notes, single column) is not guaranteed hit-free; it reports `W_LEADER_HIT` with fixes.
+- **Known gaps:** leaders still cross unrelated component geometry and dimension extension lines (soft cost only);
+  non-adjacent column notes are only handled by coordinate descent; `place`d notes are obstacles, never moved.

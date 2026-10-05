@@ -1,0 +1,333 @@
+{
+  "kerf": "0.1",
+  "id": "flush-psl-2x6",
+  "title": "FLUSH PSL BEAM AT 2X6 DBL. TOP PLATE W/ STRAP",
+  "meta": {
+    "discipline": "structural",
+    "classification": {
+      "uniformat": "B1010",
+      "masterformat": [
+        "06 11 00",
+        "06 17 13"
+      ]
+    },
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "tags": [
+      "psl",
+      "flush beam",
+      "top plate",
+      "strap",
+      "continuity",
+      "2x6"
+    ],
+    "date": "2026-10-06"
+  },
+  "run": [-5.5, 0],
+  "components": [
+    {
+      "id": "bottom_plate",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [-40, 0]
+      },
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 43
+    },
+    {
+      "id": "beam",
+      "type": "lumber",
+      "at": {
+        "anchor": "top_left",
+        "to": [0, 97.125]
+      },
+      "size": "5.25x11.875",
+      "product": "psl",
+      "run": "x",
+      "face": "wide",
+      "length": 48
+    },
+    {
+      "id": "jack_studs",
+      "type": "lumber",
+      "at": {
+        "anchor": "top_left",
+        "to": "beam@bottom_left"
+      },
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 1.5
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "until": "bottom_plate@top_left"
+    },
+    {
+      "id": "lower_plate",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_right",
+        "to": {
+          "ref": "beam@top_left",
+          "offset": [0, -3]
+        }
+      },
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "upper_plate",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "lower_plate@top_right"
+      },
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "king_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "bottom_plate@top_left",
+        "offset": [40, 0]
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "until": "lower_plate@bottom_left"
+    },
+    {
+      "id": "studs",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "king_stud@bottom_left",
+          "offset": [-16, 0]
+        }
+      },
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": -16
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "until": "lower_plate@bottom_left"
+    },
+    {
+      "id": "strap",
+      "type": "connector",
+      "model": "CMST14",
+      "points": [
+        {
+          "ref": "upper_plate@top_right",
+          "offset": [-30, 0]
+        },
+        {
+          "ref": "beam@top_left",
+          "offset": [30, 0]
+        }
+      ],
+      "lay": "edge",
+      "side": "left",
+      "fasteners": "10D NAILS PER MFR."
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "FLUSH PSL BEAM AT 2X6 TOP PLATE — ELEVATION",
+      "scale": "3/4\"=1'-0\"",
+      "cut_z": -2.75,
+      "crop": {
+        "x": [-34, 35],
+        "y": [74, 104]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_strap",
+          "type": "note",
+          "text": "SIMPSON CMST14 COIL STRAP X 5'-0\" (30\" EA. SIDE OF JOINT) OVER TOP PLATE & BEAM W/ 10D NAILS, INSTALL PER MFR.",
+          "target": "strap",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R602.3.2",
+              "title": "Top plate",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_beam",
+          "type": "note",
+          "text": "5 1/4\" X 11 7/8\" PSL BEAM, T.O. BEAM FLUSH W/ T.O. DBL. TOP PLATE @ 8'-1 1/8\"",
+          "target": "beam"
+        },
+        {
+          "id": "n_plates",
+          "type": "note",
+          "text": "DBL. 2X6 TOP PLATE, INTERRUPTED AT BEAM",
+          "target": "upper_plate"
+        },
+        {
+          "id": "n_splice",
+          "type": "note",
+          "text": "OFFSET TOP PLATE END JOINTS 24\" MIN. AWAY FROM BEAM",
+          "target": "lower_plate",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R602.3.2",
+              "title": "Top plate",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_jack",
+          "type": "note",
+          "text": "(2) 2X6 JACK STUDS U.N.O.",
+          "target": "jack_studs",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R602.7.5",
+              "title": "Supports for headers",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_king",
+          "type": "note",
+          "text": "2X6 KING STUD, END NAIL TO BEAM W/ (4) 16D",
+          "target": "king_stud",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R602.7.5",
+              "title": "Supports for headers",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_studs",
+          "type": "note",
+          "text": "2X6 STUDS @ 16\" O.C.",
+          "target": "studs",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "Table R602.3(5)",
+              "title": "Size, height and spacing of wood studs",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "d_strap_l",
+          "type": "dim",
+          "from": "strap@bottom_left",
+          "to": "beam@top_left",
+          "dir": "h",
+          "offset": 4
+        },
+        {
+          "id": "d_strap_r",
+          "type": "dim",
+          "from": "beam@top_left",
+          "to": "strap@bottom_right",
+          "dir": "h",
+          "offset": 4
+        },
+        {
+          "id": "d_bearing",
+          "type": "dim",
+          "from": "jack_studs#0@top_left",
+          "to": "jack_studs#1@top_right",
+          "dir": "h",
+          "offset": -3
+        },
+        {
+          "id": "l_opening",
+          "type": "label",
+          "text": "OPENING",
+          "at": "beam@bottom_center",
+          "offset": [4, -7]
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "iso",
+      "number": "2",
+      "title": "FLUSH PSL BEAM AT 2X6 TOP PLATE — ISO",
+      "scale": "NTS",
+      "cut_z": 0,
+      "crop": {
+        "x": [-34, 35],
+        "y": [74, 104]
+      },
+      "from": "front_right",
+      "cutaway": false,
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_strap",
+          "type": "note",
+          "text": "SIMPSON CMST14 STRAP ACROSS PLATE-TO-BEAM JOINT",
+          "target": "strap"
+        },
+        {
+          "id": "n_beam",
+          "type": "note",
+          "text": "5 1/4\" X 11 7/8\" PSL BEAM",
+          "target": "beam"
+        },
+        {
+          "id": "n_plates",
+          "type": "note",
+          "text": "DBL. 2X6 TOP PLATE",
+          "target": "upper_plate"
+        },
+        {
+          "id": "n_jack",
+          "type": "note",
+          "text": "(2) 2X6 JACK STUDS",
+          "target": "jack_studs"
+        },
+        {
+          "id": "n_king",
+          "type": "note",
+          "text": "2X6 KING STUD",
+          "target": "king_stud"
+        }
+      ]
+    }
+  ]
+}

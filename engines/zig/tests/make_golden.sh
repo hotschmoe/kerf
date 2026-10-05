@@ -5,12 +5,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 K=zig-out/bin/kerf
 T=../../tools
-for doc in ../../spec/details/*.kerf.json; do
+for doc in ../../spec/details/*.kerf.json tests/docs/*.kerf.json; do
   name=$(basename "$doc" .kerf.json)
   d=tests/golden/$name
   mkdir -p "$d"
   $K check "$doc" > "$d/summary.txt" 2>&1 || true
-  for v in A B; do
+  views=$(python3 -c 'import json,sys;print(" ".join(v["id"] for v in json.load(open(sys.argv[1]))["views"]))' "$doc")
+  for v in $views; do
     $K drawing "$doc" --view $v -o "$d/drawing-$v.json"
     $K export "$doc" --view $v --format svg -o "$d/$v.svg"
     $K export "$doc" --view $v --format svg --sheet -o "$d/$v-sheet.svg"

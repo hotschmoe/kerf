@@ -58,6 +58,137 @@ pub fn codeBasis(a: Allocator, doc: json.Value) Allocator.Error![]const u8 {
     return "";
 }
 
+const FitInfo = struct { ann: []const annot.AnnBox = &.{}, title: geom.Box = .{} };
+
+const standard_scales = [_]f64{ 4, 8, 12, 16, 24, 32, 48 };
+
+const Culprit = struct { name: []const u8, ext: f64, kind: ?annot.AnnKind, id: []const u8 };
+
+/// Who extends furthest beyond the crop on one side (extents in model units, > 0 only).
+fn sideCulprit(a: Allocator, fit: FitInfo, crop: geom.Box, side: u8) Allocator.Error!Culprit {
+    var best = Culprit{ .name = "the crop itself", .ext = 0, .kind = null, .id = "" };
+    var notes_ext: f64 = 0;
+    var nnotes: usize = 0;
+    for (fit.ann) |b| {
+        const e = sideExt(b.box, crop, side);
+        if (b.kind == .note) {
+            nnotes += 1;
+            notes_ext = @max(notes_ext, e);
+            continue;
+        }
+        if (e > best.ext + 1e-9) best = .{ .name = try std.fmt.allocPrint(a, "{s} '{s}'", .{ if (b.kind == .dim) "dimension" else "label", b.id }), .ext = e, .kind = b.kind, .id = b.id };
+    }
+    if (notes_ext > best.ext + 1e-9) best = .{ .name = try std.fmt.allocPrint(a, "the notes column ({d} notes)", .{nnotes}), .ext = notes_ext, .kind = .note, .id = "" };
+    const te = sideExt(fit.title, crop, side);
+    if (te > best.ext + 1e-9) best = .{ .name = "the title block", .ext = te, .kind = null, .id = "title" };
+    return best;
+}
+
+fn sideExt(b: geom.Box, crop: geom.Box, side: u8) f64 {
+    if (b.isEmpty()) return 0;
+    return switch (side) {
+        'l' => @max(0, crop.x0 - b.x0),
+        'r' => @max(0, b.x1 - crop.x1),
+        't' => @max(0, b.y1 - crop.y1),
+        else => @max(0, crop.y0 - b.y0),
+    };
+}
+
+fn fmtNum(a: Allocator, n: f64) Allocator.Error![]const u8 {
+    var buf: [40]u8 = undefined;
+    return a.dupe(u8, json.fmtNumber(&buf, @round(n * 10) / 10));
+}
+
+/// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
+fn viewFit(a: Allocator, st: *const style_mod.Style, spec: *const view_mod.ViewSpec, scale: f64, crop: geom.Box, bounds: geom.Box, fit: FitInfo, aw: f64, ah: f64, diags: *model.Diags) Allocator.Error!void {
+    const view_id = spec.id;
+    const pw = (bounds.x1 - bounds.x0) / scale;
+    const ph = (bounds.y1 - bounds.y0) / scale;
+    const ow = @max(0, pw - aw);
+    const oh = @max(0, ph - ah);
+    const cw = crop.width() / scale;
+    const ch = crop.height() / scale;
+    var msg: std.ArrayList(u8) = .empty;
+    try msg.print(a, "view {s} with notes, dimensions and title needs {d:.2} x {d:.2} paper inches but the sheet area is {d:.2} x {d:.2} at scale {s}. Overflow by edge (sheet centered on the view): left {d:.2}\", right {d:.2}\", top {d:.2}\", bottom {d:.2}\".", .{ view_id, pw, ph, aw, ah, spec.scale_text, ow / 2, ow / 2, oh / 2, oh / 2 });
+    var fixes: std.ArrayList(u8) = .empty;
+    var nfix: usize = 0;
+    const lc = try sideCulprit(a, fit, crop, 'l');
+    const rc = try sideCulprit(a, fit, crop, 'r');
+    const tc = try sideCulprit(a, fit, crop, 't');
+    const bc = try sideCulprit(a, fit, crop, 'b');
+    if (ow > 0) {
+        try msg.print(a, " Width: crop {d:.2}\" + left side {d:.2}\" ({s}) + right side {d:.2}\" ({s}).", .{ cw, lc.ext / scale, lc.name, rc.ext / scale, rc.name });
+        const big = if (lc.ext >= rc.ext) lc else rc;
+        const need = ow * scale; // model inches to remove
+        if (cw > ow + 0.5) {
+            nfix += 1;
+            try fixes.print(a, "{d}) narrow crop.x by {s} in (now [{s}, {s}])", .{ nfix, try fmtNum(a, need), try fmtNum(a, crop.x0), try fmtNum(a, crop.x1) });
+        }
+        if (big.kind) |k| switch (k) {
+            .dim => for (fit.ann) |b| if (b.kind == .dim and std.mem.eql(u8, b.id, big.id)) {
+                const sg: f64 = if (b.offset >= 0) 1 else -1;
+                const no = b.offset - sg * @min(need, @abs(b.offset) - 1);
+                nfix += 1;
+                try fixes.print(a, "{s}{d}) change dim '{s}' offset from {s} to {s}", .{ if (nfix > 1) "; " else "", nfix, b.id, try fmtNum(a, b.offset), try fmtNum(a, no) });
+            },
+            .note => if (spec.notes_side == .both) {
+                nfix += 1;
+                try fixes.print(a, "{s}{d}) set notes_side to \"{s}\" to drop the {s} notes column (saves about {d:.2}\" if the height allows)", .{ if (nfix > 1) "; " else "", nfix, if (lc.ext >= rc.ext) "right" else "left", if (lc.ext >= rc.ext) "left" else "right", @min(lc.ext, rc.ext) / scale });
+            },
+            else => {},
+        };
+        if (big.kind != null and big.kind.? == .note) {
+            nfix += 1;
+            try fixes.print(a, "{s}{d}) shorten the longest notes (they wrap at {d} characters)", .{ if (nfix > 1) "; " else "", nfix, @as(usize, @intFromFloat(st.wrap_chars)) });
+        }
+    }
+    if (oh > 0) {
+        try msg.print(a, " Height: crop {d:.2}\" + above {d:.2}\" ({s}) + below {d:.2}\" ({s}).", .{ ch, tc.ext / scale, tc.name, bc.ext / scale, bc.name });
+        const need = oh * scale;
+        if (ch > oh + 0.5) {
+            nfix += 1;
+            try fixes.print(a, "{s}{d}) shorten crop.y by {s} in (now [{s}, {s}])", .{ if (nfix > 1) "; " else "", nfix, try fmtNum(a, need), try fmtNum(a, crop.y0), try fmtNum(a, crop.y1) });
+        }
+        const big = if (tc.ext >= bc.ext) tc else bc;
+        if (big.kind) |k| switch (k) {
+            .dim => for (fit.ann) |b| if (b.kind == .dim and std.mem.eql(u8, b.id, big.id)) {
+                const sg: f64 = if (b.offset >= 0) 1 else -1;
+                const no = b.offset - sg * @min(need, @abs(b.offset) - 1);
+                nfix += 1;
+                try fixes.print(a, "{s}{d}) change dim '{s}' offset from {s} to {s}", .{ if (nfix > 1) "; " else "", nfix, b.id, try fmtNum(a, b.offset), try fmtNum(a, no) });
+            },
+            .note => if (spec.notes_side != .both) {
+                nfix += 1;
+                try fixes.print(a, "{s}{d}) set notes_side to \"both\" to split the notes over two columns (adds about {d:.2}\" of width)", .{ if (nfix > 1) "; " else "", nfix, @as(f64, 0.0) + (st.gutter_in + st.wrap_chars * st.text_height_in * 0.75) });
+            },
+            else => {},
+        };
+        if (big.kind == null and std.mem.eql(u8, big.id, "title")) {
+            nfix += 1;
+            try fixes.print(a, "{s}{d}) the title block sits below the lowest annotation: shorten the notes column or the crop", .{ if (nfix > 1) "; " else "", nfix });
+        }
+    }
+    // a scale change only when the overflow is greater than 15% of the frame
+    if (ow > 0.15 * aw or oh > 0.15 * ah) {
+        const extra_w = pw - cw;
+        const extra_h = ph - ch;
+        var pick: ?f64 = null;
+        for (standard_scales) |s2| {
+            if (s2 <= scale) continue;
+            if (crop.width() / s2 + extra_w <= aw and crop.height() / s2 + extra_h <= ah) {
+                pick = s2;
+                break;
+            }
+        }
+        const sc: f64 = pick orelse std.math.ceil((@max(crop.width() / @max(aw - extra_w, 0.5), crop.height() / @max(ah - extra_h, 0.5))));
+        nfix += 1;
+        const lab = if (pick != null) try units.scaleLabel(a, "", sc) else try std.fmt.allocPrint(a, "1:{d:.0}", .{sc});
+        try fixes.print(a, "{s}{d}) use a smaller scale (e.g. {s})", .{ if (nfix > 1) "; " else "", nfix, lab });
+    }
+    if (nfix == 0) try fixes.appendSlice(a, "shorten the notes or shrink the crop");
+    diags.addFix(.warning, "W_VIEW_FIT", view_id, try std.fmt.allocPrint(a, "views/{s}", .{view_id}), "{s}", .{msg.items}, fixes.items);
+}
+
 /// Build the Drawing for `view_id`. Returns null (with diagnostics) if the view does not exist or is invalid.
 pub fn build(a: Allocator, doc: json.Value, st: *const style_mod.Style, view_id: []const u8, diags: *model.Diags) Allocator.Error!?drawing.Drawing {
     const vnode = view_mod.findView(doc, view_id) orelse {
@@ -94,6 +225,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
     var unverified = false;
     var spec_crop_out = spec.crop;
     var detail = geom.Box{};
+    var fit = FitInfo{};
     const font = try a.create(font_mod.Font);
     font.* = font_mod.Font.parse(a, font_mod.embedded) catch return null;
     if (spec.kind == .section) {
@@ -116,7 +248,9 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
         detail = annot.itemsBox(font, all.items);
         detail.addBox(spec.crop);
+        const title_from = all.items.len;
         _ = try annot.titleItems(&env, info, tcrop, &all);
+        fit = .{ .ann = env.ann_boxes.items, .title = annot.itemsBox(font, all.items[title_from..]) };
         if (env.unknown_glyph) diags.add(.info, "I_GLYPH", view_id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
         items = all.items;
         bounds = annot.itemsBox(font, items);
@@ -146,7 +280,9 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
             const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
             detail = annot.itemsBox(font, all.items);
             detail.addBox(res.crop);
+            const title_from = all.items.len;
             _ = try annot.titleItems(&env, info, tcrop, &all);
+            fit = .{ .ann = env.ann_boxes.items, .title = annot.itemsBox(font, all.items[title_from..]) };
             if (env.unknown_glyph) tdiags.add(.info, "I_GLYPH", view_id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
             items = all.items;
             bounds = annot.itemsBox(font, items);
@@ -168,9 +304,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         const ph = (bounds.y1 - bounds.y0) / scale;
         const aw = st.sheet_w_in - 2.0 * st.margin_in;
         const ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
-        if (pw > aw + 1e-6 or ph > ah + 1e-6) {
-            diags.addFix(.warning, "W_VIEW_FIT", view_id, try std.fmt.allocPrint(a, "views/{s}/scale", .{view_id}), "view {s} with notes and title needs {d:.2} x {d:.2} paper inches but the sheet area is {d:.2} x {d:.2} at scale {s}", .{ view_id, pw, ph, aw, ah, spec.scale_text }, "use a smaller scale (e.g. 3/4\"=1'-0\"), shrink the crop, or shorten the notes");
-        }
+        if (pw > aw + 1e-6 or ph > ah + 1e-6) try viewFit(a, st, spec, scale, spec_crop_out, bounds, fit, aw, ah, diags);
     }
     const layers = try collectLayers(a, items, st);
     return .{

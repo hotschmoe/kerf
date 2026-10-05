@@ -57,6 +57,7 @@ pub fn build(b: *std.Build) void {
     test_mod.addAnonymousImport("doc_truss", .{ .root_source_file = b.path("../../spec/details/truss-bearing-cmu.kerf.json") });
     test_mod.addAnonymousImport("doc_slab", .{ .root_source_file = b.path("../../spec/details/monopour-slab-door-recess.kerf.json") });
     test_mod.addAnonymousImport("doc_palmer", .{ .root_source_file = b.path("tests/docs/palmer-sd1-like.kerf.json") });
+    test_mod.addAnonymousImport("doc_psl", .{ .root_source_file = b.path("tests/docs/flush-psl-2x6.kerf.json") });
     test_mod.addAnonymousImport("doc_beam", .{ .root_source_file = b.path("../../spec/details/flush-beam-strap.kerf.json") });
     const tests = b.addTest(.{ .root_module = test_mod });
     const run_tests = b.addRunArtifact(tests);

@@ -13,6 +13,7 @@ const view_mod = @import("view.zig");
 const section = @import("section.zig");
 const drawing = @import("drawing.zig");
 const units = @import("units.zig");
+const route = @import("route.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -36,7 +37,16 @@ pub const Env = struct {
     landing: Landing,
     unverified: bool = false,
     unknown_glyph: bool = false,
+    /// Extents of the annotation groups (model units), filled by `annotate` (used by the view-fit check).
+    notes_box: Box = .{},
+    dims_box: Box = .{},
+    labels_box: Box = .{},
+    /// Per-annotation extents (model units) for the view-fit diagnostic.
+    ann_boxes: std.ArrayList(AnnBox) = .empty,
 };
+
+pub const AnnKind = enum { note, dim, label };
+pub const AnnBox = struct { id: []const u8, kind: AnnKind, box: Box, offset: f64 = 0 };
 
 // ---- small helpers ------------------------------------------------------------------------------------------
 
@@ -264,7 +274,151 @@ fn crossings(a: Allocator, xs: *std.ArrayList(f64), cont: []const V2, y: f64) Al
 
 // ---- note landing ---------------------------------------------------------------------------------------------------
 
-fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?V2 {
+fn shapeDepth(s: Shape, p: V2) f64 {
+    var d = std.math.inf(f64);
+    const conts = [1][]const V2{s.outer};
+    for (conts) |c| for (c, 0..) |q, i| {
+        d = @min(d, geom.distPointSeg(p, q, c[(i + 1) % c.len]));
+    };
+    for (s.holes) |c| for (c, 0..) |q, i| {
+        d = @min(d, geom.distPointSeg(p, q, c[(i + 1) % c.len]));
+    };
+    return d;
+}
+
+fn onCropEdge(crop: Box, p: V2, q: V2) bool {
+    const e = 1e-6;
+    return (@abs(p.x - crop.x0) < e and @abs(q.x - crop.x0) < e) or (@abs(p.x - crop.x1) < e and @abs(q.x - crop.x1) < e) or
+        (@abs(p.y - crop.y0) < e and @abs(q.y - crop.y0) < e) or (@abs(p.y - crop.y1) < e and @abs(q.y - crop.y1) < e);
+}
+
+/// Distance from p to the boundary of a shape, ignoring the edges that lie on the crop (the break lines).
+fn shapeDepthNoCrop(s: Shape, p: V2, crop: Box) f64 {
+    var d = std.math.inf(f64);
+    const conts = [1][]const V2{s.outer};
+    for (conts) |c| for (c, 0..) |q, i| {
+        const r = c[(i + 1) % c.len];
+        if (!onCropEdge(crop, q, r)) d = @min(d, geom.distPointSeg(p, q, r));
+    };
+    for (s.holes) |c| for (c, 0..) |q, i| {
+        const r = c[(i + 1) % c.len];
+        if (!onCropEdge(crop, q, r)) d = @min(d, geom.distPointSeg(p, q, r));
+    };
+    return d;
+}
+
+/// SPEC 18 auto landing: the label point stays at least 2 text heights away from the crop edges (and the
+/// break lines on them). When the SPEC 6.3 label point is closer than that to a crop edge, take the point of
+/// the visible region with the best clearance, where distance to a crop edge counts only up to 2 text
+/// heights (a pole of inaccessibility of the region minus the crop band). Returns the point and the inset
+/// box that landing candidates must stay in.
+fn bandedLabelPoint(env: *Env, shapes: []const Shape) Allocator.Error!?struct { p: V2, inset: Box } {
+    const crop = env.crop;
+    const prim = (try labelPoint(env.a, shapes)) orelse return null;
+    const h = env.style.text_height_in * env.S;
+    const band = 2.0 * h;
+    const inset = crop.expand(-band);
+    if (inset.x1 <= inset.x0 or inset.y1 <= inset.y0) return .{ .p = prim, .inset = crop };
+    if (inset.contains(prim)) return .{ .p = prim, .inset = inset };
+    var bb = Box{};
+    for (shapes) |x| bb.addBox(clip.loopsBox(&.{x.outer}));
+    var step = @max(@min(h, @min(bb.width(), bb.height()) / 6.0), h / 8.0);
+    while ((bb.width() / step + 1) * (bb.height() / step + 1) > 2500) step *= 1.5;
+    var best = prim;
+    var best_score: f64 = -1;
+    var best_d: f64 = std.math.inf(f64);
+    var x = bb.x0 + step * 0.5;
+    while (x < bb.x1) : (x += step) {
+        var y = bb.y0 + step * 0.5;
+        while (y < bb.y1) : (y += step) {
+            const q = V2.init(x, y);
+            for (shapes) |sh| if (shapeContains(sh, q)) {
+                const dc = @min(@min(x - crop.x0, crop.x1 - x), @min(y - crop.y0, crop.y1 - y));
+                const score = @min(shapeDepthNoCrop(sh, q, crop), @min(dc, band));
+                const dp = q.dist(prim);
+                if (score > best_score + 1e-9 or (score > best_score - 1e-9 and dp < best_d)) {
+                    best_score = score;
+                    best_d = dp;
+                    best = q;
+                }
+                break;
+            };
+        }
+    }
+    return .{ .p = best, .inset = inset };
+}
+
+/// Landing candidates inside the visible region: the label point first, then alternatives (nearest
+/// first, then the extremes in 8 directions) that keep clear of the region boundary.
+fn candidatesFor(env: *Env, shapes: []const Shape, inset: Box, primary: V2) Allocator.Error![]const V2 {
+    const a = env.a;
+    const h = env.style.text_height_in * env.S;
+    var out: std.ArrayList(V2) = .empty;
+    try out.append(a, primary);
+    var bb = Box{};
+    for (shapes) |s| bb.addBox(clip.loopsBox(&.{s.outer}));
+    if (bb.isEmpty()) return out.items;
+    // thin members (straps, flashing) need a grid finer than a text height
+    var step = @max(@min(h, @min(bb.width(), bb.height()) / 3.0), h / 8.0);
+    while ((bb.width() / step + 1) * (bb.height() / step + 1) > 2500) step *= 1.5;
+    var pts: std.ArrayList(V2) = .empty;
+    var depth: std.ArrayList(f64) = .empty;
+    var maxd: f64 = 0;
+    var x = bb.x0 + step * 0.5;
+    while (x < bb.x1) : (x += step) {
+        var y = bb.y0 + step * 0.5;
+        while (y < bb.y1) : (y += step) {
+            const q = V2.init(x, y);
+            if (!inset.contains(q)) continue;
+            for (shapes) |s| if (shapeContains(s, q)) {
+                const d = shapeDepth(s, q);
+                try pts.append(a, q);
+                try depth.append(a, d);
+                maxd = @max(maxd, d);
+                break;
+            };
+        }
+    }
+    const thr = @min(0.5 * h, 0.6 * maxd);
+    var keep: std.ArrayList(V2) = .empty;
+    for (pts.items, depth.items) |q, d| if (d >= thr) try keep.append(a, q);
+    const farFromAll = struct {
+        fn ok(list: []const V2, q: V2, d: f64) bool {
+            for (list) |o| if (o.dist(q) < d) return false;
+            return true;
+        }
+    }.ok;
+    var picked: usize = 0;
+    while (picked < 4) : (picked += 1) {
+        var best: ?V2 = null;
+        var bd: f64 = std.math.inf(f64);
+        for (keep.items) |q| {
+            if (!farFromAll(out.items, q, h)) continue;
+            const d = q.dist(primary);
+            if (d < bd) {
+                bd = d;
+                best = q;
+            }
+        }
+        if (best) |q| try out.append(a, q) else break;
+    }
+    const dirs = [8]V2{ V2.init(-1, 0), V2.init(1, 0), V2.init(0, 1), V2.init(0, -1), V2.init(-1, 1), V2.init(1, 1), V2.init(-1, -1), V2.init(1, -1) };
+    for (dirs) |dv| {
+        var best: ?V2 = null;
+        var bp: f64 = -std.math.inf(f64);
+        for (keep.items) |q| {
+            const pr = q.dot(dv);
+            if (pr > bp + 1e-9) {
+                bp = pr;
+                best = q;
+            }
+        }
+        if (best) |q| if (farFromAll(out.items, q, 0.5 * h)) try out.append(a, q);
+    }
+    return out.items;
+}
+
+fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 {
     var comp_id = target;
     var part: ?[]const u8 = null;
     var inst: ?u32 = null;
@@ -280,6 +434,7 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?V2 {
     if (comp.state != .ok) return null;
     if (@import("compile.zig").isOmitted(env.spec.omit, comp.id)) return null;
     var shapes: std.ArrayList(Shape) = .empty;
+    var all_loops: std.ArrayList([]const V2) = .empty;
     switch (env.landing) {
         .section => |sec| {
             for (sec.prisms, 0..) |p, i| {
@@ -287,6 +442,7 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?V2 {
                 if (inst) |k| if (p.instance != k) continue;
                 if (part) |pn| if (!std.mem.eql(u8, p.part, pn)) continue;
                 const reg = try sec.visibleRegion(i);
+                try all_loops.appendSlice(env.a, reg);
                 try shapes.appendSlice(env.a, try shapesOf(env.a, reg));
             }
             if (shapes.items.len == 0) if (part) |pn| {
@@ -302,15 +458,18 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?V2 {
                     const loop = try env.a.dupe(V2, &pts);
                     clip.orientCcw(loop);
                     const reg = try clip.boolean(env.a, &.{loop}, &.{sec.crop_loop}, .intersect);
+                    try all_loops.appendSlice(env.a, reg);
                     try shapes.appendSlice(env.a, try shapesOf(env.a, reg));
                 }
             };
         },
         .iso => |iso| {
-            return iso.landing(comp, inst, part);
+            const p = iso.landing(comp, inst, part) orelse return null;
+            return try env.a.dupe(V2, &.{p});
         },
     }
-    return labelPoint(env.a, shapes.items);
+    const lp = (try bandedLabelPoint(env, shapes.items)) orelse return null;
+    return try candidatesFor(env, shapes.items, lp.inset, lp.p);
 }
 
 // ---- notes ------------------------------------------------------------------------------------------------------------
@@ -318,206 +477,193 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?V2 {
 const NoteIn = struct {
     id: []const u8,
     text: []const u8,
-    landing: V2,
+    cands: []const V2,
+    /// False when the note has an explicit `at` (never nudged).
+    movable: bool,
     place: ?V2,
 };
 
-const Placed = struct {
-    lines: []const []const u8,
-    width: f64,
-    height: f64,
-    landing: V2,
-    top: f64,
-    x: f64,
-    left_side: bool,
-    fixed: bool,
+/// A dimension text or label box that leaders must keep away from, with what is needed to propose a fix.
+const Obstacle = struct {
+    poly: [4]V2,
+    id: []const u8,
+    kind: route.ObstKind,
+    text: []const u8,
+    /// dim: unit vector along which |offset| grows (before the sign of offset); label: unused
+    axis: V2 = .{ .x = 0, .y = 0 },
+    /// dim: current offset; label: current dx
+    off: f64 = 0,
+    /// label: current dy
+    off2: f64 = 0,
 };
 
-const Geo = struct { h: f64, pitch: f64, gap: f64, shoulder: f64, pad: f64 };
+const Meta = struct {
+    id: []const u8 = "",
+    kind: enum { none, dim, label } = .none,
+    axis: V2 = .{ .x = 0, .y = 0 },
+    off: f64 = 0,
+    off2: f64 = 0,
+};
 
-fn leaderOf(p: Placed, g: Geo) [3]V2 {
-    const ymid = p.top - p.height * 0.5;
-    const edge_x: f64 = if (p.left_side) p.x + p.width + g.pad else p.x - g.pad;
-    const dir: f64 = if (p.left_side) 1 else -1;
-    return .{ V2.init(edge_x, ymid), V2.init(edge_x + dir * g.shoulder, ymid), p.landing };
+fn fmtNum(a: Allocator, n: f64) Allocator.Error![]const u8 {
+    var b: [40]u8 = undefined;
+    return a.dupe(u8, json.fmtNumber(&b, n));
 }
 
-fn stack(order: []const usize, placed: []Placed, crop: Box, g: Geo) void {
-    var prev_bottom: f64 = std.math.inf(f64);
-    for (order) |i| {
-        const p = &placed[i];
-        p.top = p.landing.y + p.height * 0.5;
-        if (p.top > prev_bottom - g.gap) p.top = prev_bottom - g.gap;
-        prev_bottom = p.top - p.height;
+fn fmtPt(a: Allocator, p: V2) Allocator.Error![]const u8 {
+    return std.fmt.allocPrint(a, "[{s}, {s}]", .{ try fmtNum(a, @round(p.x * 100) / 100), try fmtNum(a, @round(p.y * 100) / 100) });
+}
+
+fn clearOfLeaders(leaders: []const [3]V2, poly: [4]V2, shift: V2, h: f64) bool {
+    var q = poly;
+    for (&q) |*pt| pt.* = pt.add(shift);
+    for (leaders) |l| if (route.polyBoxDist(l, &q) < h) return false;
+    return true;
+}
+
+/// Offset proposals for a dimension or label that a leader runs into.
+fn obstacleFix(a: Allocator, o: Obstacle, leaders: []const [3]V2, h: f64) Allocator.Error!?[]const u8 {
+    var k: usize = 1;
+    switch (o.kind) {
+        .dim => {
+            const sgn: f64 = if (o.off >= 0) 1 else -1;
+            while (k <= 24) : (k += 1) {
+                const delta = @ceil(@as(f64, @floatFromInt(k)) * 0.5 * h * 4.0) / 4.0;
+                for ([2]f64{ 1, -1 }) |dirn| {
+                    const no = o.off + sgn * dirn * delta;
+                    if (dirn < 0 and @abs(no) < 2 * h) continue;
+                    if (clearOfLeaders(leaders, o.poly, o.axis.scale(sgn * dirn * delta), h)) {
+                        return try std.fmt.allocPrint(a, "set dim '{s}' \"offset\": {s} (now {s})", .{ o.id, try fmtNum(a, no), try fmtNum(a, o.off) });
+                    }
+                }
+            }
+        },
+        .label => {
+            const dirs = [8]V2{ V2.init(0, 1), V2.init(0, -1), V2.init(1, 0), V2.init(-1, 0), V2.init(1, 1), V2.init(-1, 1), V2.init(1, -1), V2.init(-1, -1) };
+            while (k <= 24) : (k += 1) {
+                const delta = @ceil(@as(f64, @floatFromInt(k)) * 0.5 * h * 4.0) / 4.0;
+                for (dirs) |dv| {
+                    const dn = dv.norm().scale(delta);
+                    if (clearOfLeaders(leaders, o.poly, dn, h)) {
+                        return try std.fmt.allocPrint(a, "set label '{s}' \"offset\": [{s}, {s}] (now [{s}, {s}])", .{ o.id, try fmtNum(a, @round((o.off + dn.x) * 100) / 100), try fmtNum(a, @round((o.off2 + dn.y) * 100) / 100), try fmtNum(a, o.off), try fmtNum(a, o.off2) });
+                    }
+                }
+            }
+        },
     }
-    if (order.len > 0) {
-        const last = order[order.len - 1];
-        const bottom = placed[last].top - placed[last].height;
-        if (bottom < crop.y0) {
-            const d = crop.y0 - bottom;
-            for (order) |i| placed[i].top += d;
+    return null;
+}
+
+fn noteFixText(a: Allocator, id: []const u8, fa: ?V2, fp: ?V2) Allocator.Error!?[]const u8 {
+    if (fa) |p| return try std.fmt.allocPrint(a, "set note '{s}' \"at\": {s} (another point inside its target)", .{ id, try fmtPt(a, p) });
+    if (fp) |p| return try std.fmt.allocPrint(a, "set note '{s}' \"place\": {s}", .{ id, try fmtPt(a, p) });
+    return null;
+}
+
+fn reportHits(env: *Env, notes: []const NoteIn, obsts: []const Obstacle, r: route.Layout, g: route.Geo) Allocator.Error!void {
+    const a = env.a;
+    const vid = env.spec.id;
+    const maxn: usize = 8;
+    var shown: usize = 0;
+    for (r.hits) |ht| {
+        if (shown >= maxn) break;
+        shown += 1;
+        const me = notes[ht.note];
+        const rel = if (ht.dist <= 1e-9) try a.dupe(u8, "crosses") else try std.fmt.allocPrint(a, "comes within {d:.2} in (paper) of", .{ht.dist / env.S});
+        var what: []const u8 = undefined;
+        var fix: ?[]const u8 = null;
+        switch (ht.kind) {
+            .leader => {
+                const o = notes[ht.other];
+                what = try std.fmt.allocPrint(a, "the leader of note '{s}'", .{o.id});
+                fix = try noteFixText(a, o.id, ht.other_fix_at, ht.other_fix_place);
+                if (fix == null) fix = try noteFixText(a, me.id, ht.fix_at, ht.fix_place);
+            },
+            .note => {
+                const o = notes[ht.other];
+                what = try std.fmt.allocPrint(a, "the text of note '{s}'", .{o.id});
+                fix = try noteFixText(a, me.id, ht.fix_at, ht.fix_place);
+                if (fix == null) fix = try noteFixText(a, o.id, null, null);
+            },
+            .dim, .label => {
+                const o = obsts[ht.other];
+                what = if (ht.kind == .dim)
+                    try std.fmt.allocPrint(a, "the text '{s}' of dimension '{s}'", .{ o.text, o.id })
+                else
+                    try std.fmt.allocPrint(a, "label '{s}' ('{s}')", .{ o.id, o.text });
+                fix = try obstacleFix(a, o, r.leaders, g.h);
+                if (fix == null) fix = try noteFixText(a, me.id, ht.fix_at, ht.fix_place);
+            },
         }
-        const top = placed[order[0]].top;
-        if (top > crop.y1) {
-            const d = top - crop.y1;
-            for (order) |i| placed[i].top -= d;
-        }
+        const fx = fix orelse try std.fmt.allocPrint(a, "move the note with \"place\", give it another \"at\" point, or change notes_side", .{});
+        env.diags.addFix(.warning, "W_LEADER_HIT", me.id, try std.fmt.allocPrint(a, "views/{s}/annotations/{s}", .{ vid, me.id }), "view {s}: the leader (or arrowhead) of note '{s}' {s} {s}; leaders must stay at least one text height ({d:.3} in paper) clear of other leaders, notes, dimension text and labels", .{ vid, me.id, rel, what, env.style.text_height_in }, try std.fmt.allocPrint(a, "{s}", .{fx}));
+    }
+    if (r.hits.len > maxn) {
+        env.diags.add(.warning, "W_LEADER_HIT", null, try std.fmt.allocPrint(a, "views/{s}", .{vid}), "view {s}: {d} more leader hits not listed; fix the ones above first (dense notes: split the view, shorten notes, or set \"place\" on some)", .{ vid, r.hits.len - maxn });
     }
 }
 
-fn segsCross(a0: V2, a1: V2, b0: V2, b1: V2) bool {
-    var ta: [2]f64 = undefined;
-    var tb: [2]f64 = undefined;
-    return geom.segSeg(a0, a1, b0, b1, &ta, &tb) > 0;
-}
-
-fn polylinesCross(a: []const V2, b: []const V2) bool {
-    for (0..a.len - 1) |i| for (0..b.len - 1) |j| {
-        if (segsCross(a[i], a[i + 1], b[j], b[j + 1])) return true;
-    };
-    return false;
-}
-
-fn segHitsPoly(a: V2, b: V2, poly: []const V2) bool {
-    for (poly, 0..) |p, i| {
-        if (segsCross(a, b, p, poly[(i + 1) % poly.len])) return true;
-    }
-    return geom.pointInLoopEO(a, poly) or geom.pointInLoopEO(b, poly);
-}
-
-fn hitsObstacle(p: Placed, g: Geo, obstacles: []const [4]V2) bool {
-    const l = leaderOf(p, g);
-    for (obstacles) |o| {
-        if (segHitsPoly(l[0], l[1], &o) or segHitsPoly(l[1], l[2], &o)) return true;
-    }
-    return false;
-}
-
-fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obstacles: []const [4]V2, out: []std.ArrayList(Item)) Allocator.Error!void {
+fn layoutNotes(env: *Env, notes: []const NoteIn, ext: Box, obsts: []const Obstacle, soft: []const [2]V2, out: []std.ArrayList(Item)) Allocator.Error!void {
     const a = env.a;
     const st = env.style;
     const S = env.S;
     const crop = env.crop;
     const h = st.text_height_in * S;
-    const g = Geo{ .h = h, .pitch = h * st.line_spacing, .gap = st.note_gap_in * S, .shoulder = st.shoulder_in * S, .pad = 0.04 * S };
+    const g = route.Geo{ .h = h, .pitch = h * st.line_spacing, .gap = st.note_gap_in * S, .shoulder = st.shoulder_in * S, .pad = 0.04 * S };
     const gutter = st.gutter_in * S;
     const xr = @max(crop.x1, ext.x1);
     const xl = @min(crop.x0, ext.x0);
     const wrap_n: usize = @intFromFloat(st.wrap_chars);
-    var placed = try a.alloc(Placed, notes.len);
     const keynote = st.notes_mode_keynote;
     const tag_r = 0.14 * S;
+    const lines_of = try a.alloc([]const []const u8, notes.len);
+    const rin = try a.alloc(route.NoteIn, notes.len);
     for (notes, 0..) |n, i| {
+        var w: f64 = 2 * tag_r;
+        var hgt: f64 = 2 * tag_r;
         if (keynote) {
             const num = try std.fmt.allocPrint(a, "{d}", .{i + 1});
-            const left_side_k = switch (env.spec.notes_side) {
-                .left => true,
-                .both => @abs(n.landing.x - crop.x0) < @abs(crop.x1 - n.landing.x),
-                .right => false,
-            };
             const ls = try a.alloc([]const u8, 1);
             ls[0] = num;
-            placed[i] = .{ .lines = ls, .width = 2 * tag_r, .height = 2 * tag_r, .landing = n.landing, .top = n.landing.y + tag_r, .x = 0, .left_side = left_side_k, .fixed = n.place != null };
-            continue;
+            lines_of[i] = ls;
+        } else {
+            const lines = try wrap(a, n.text, wrap_n);
+            lines_of[i] = lines;
+            w = 0;
+            for (lines) |l| w = @max(w, env.font.width(try asciiFold(a, l), h));
+            hgt = h + (@as(f64, @floatFromInt(lines.len)) - 1.0) * g.pitch;
         }
-        const lines = try wrap(a, n.text, wrap_n);
-        var width: f64 = 0;
-        for (lines) |l| width = @max(width, env.font.width(try asciiFold(a, l), h));
-        const height = h + (@as(f64, @floatFromInt(lines.len)) - 1.0) * g.pitch;
-        const left_side = switch (env.spec.notes_side) {
-            .left => true,
-            .both => @abs(n.landing.x - crop.x0) < @abs(crop.x1 - n.landing.x),
-            .right => false,
-        };
-        placed[i] = .{ .lines = lines, .width = width, .height = height, .landing = n.landing, .top = n.landing.y + height * 0.5, .x = 0, .left_side = left_side, .fixed = n.place != null };
+        rin[i] = .{ .w = w, .hgt = hgt, .cands = n.cands, .movable = n.movable, .place = n.place };
     }
-    for ([2]bool{ false, true }) |want_left| {
-        var order: std.ArrayList(usize) = .empty;
-        for (placed, 0..) |p, i| if (p.left_side == want_left and !p.fixed) try order.append(a, i);
-        std.mem.sort(usize, order.items, placed, struct {
-            fn lt(pl: []Placed, x: usize, y: usize) bool {
-                if (pl[x].landing.y != pl[y].landing.y) return pl[x].landing.y > pl[y].landing.y;
-                return x < y;
-            }
-        }.lt);
-        for (order.items) |i| {
-            placed[i].x = if (want_left) xl - gutter - placed[i].width else xr + gutter;
-        }
-        if (order.items.len == 0) continue;
-        stack(order.items, placed, crop, g);
-        // swap adjacent notes whose leaders cross (bounded, deterministic)
-        var iter: usize = 0;
-        while (iter < order.items.len * 4 + 8) : (iter += 1) {
-            var swapped = false;
-            var k: usize = 0;
-            while (k + 1 < order.items.len) : (k += 1) {
-                const ia = order.items[k];
-                const ib = order.items[k + 1];
-                const la = leaderOf(placed[ia], g);
-                const lb = leaderOf(placed[ib], g);
-                if (polylinesCross(&la, &lb)) {
-                    std.mem.swap(usize, &order.items[k], &order.items[k + 1]);
-                    stack(order.items, placed, crop, g);
-                    swapped = true;
-                    break;
-                }
-            }
-            if (!swapped) break;
-        }
-        // nudge notes whose leaders run through dimension/label text
-        for (order.items, 0..) |i, k| {
-            if (!hitsObstacle(placed[i], g, obstacles)) continue;
-            const base = placed[i].top;
-            var step: usize = 1;
-            search: while (step <= 16) : (step += 1) {
-                for ([2]f64{ 1, -1 }) |sign| {
-                    const t = base + sign * @as(f64, @floatFromInt(step)) * g.pitch * 0.5;
-                    const hgt = placed[i].height;
-                    if (k > 0 and t > placed[order.items[k - 1]].top - placed[order.items[k - 1]].height - g.gap) continue;
-                    if (k + 1 < order.items.len and placed[order.items[k + 1]].top > t - hgt - g.gap) continue;
-                    const saved = placed[i].top;
-                    placed[i].top = t;
-                    var ok = !hitsObstacle(placed[i], g, obstacles);
-                    if (ok) for (order.items) |o| {
-                        if (o == i) continue;
-                        const l1 = leaderOf(placed[i], g);
-                        const l2 = leaderOf(placed[o], g);
-                        if (polylinesCross(&l1, &l2)) {
-                            ok = false;
-                            break;
-                        }
-                    };
-                    if (ok) break :search;
-                    placed[i].top = saved;
-                }
-            }
-        }
-    }
-    for (placed, 0..) |*p, i| {
-        if (notes[i].place) |pl| {
-            p.x = pl.x;
-            p.top = pl.y;
-            p.left_side = pl.x + p.width * 0.5 < p.landing.x;
-        }
-    }
-    for (placed, 0..) |p, i| {
-        const n = notes[i];
+    const ro = try a.alloc(route.Obst, obsts.len);
+    for (obsts, 0..) |o, i| ro[i] = .{ .kind = o.kind, .poly = o.poly };
+    const side: route.Side = switch (env.spec.notes_side) {
+        .left => .left,
+        .right => .right,
+        .both => .both,
+    };
+    const r = try route.route(a, .{ .geo = g, .crop = crop, .xl = xl, .xr = xr, .gutter = gutter, .side = side }, rin, ro, soft);
+    try reportHits(env, notes, obsts, r, g);
+    for (notes, 0..) |n, i| {
+        const lines = lines_of[i];
+        const px = r.x[i];
+        const ptop = r.top[i];
         if (keynote) {
             // hexagonal tag with the keynote number
-            const cx = p.x + tag_r;
-            const cy = p.top - tag_r;
+            const cx = px + tag_r;
+            const cy = ptop - tag_r;
             var hex: [6]V2 = undefined;
             for (0..6) |k| {
                 const ang = std.math.pi / 6.0 + @as(f64, @floatFromInt(k)) * std.math.pi / 3.0;
                 hex[k] = V2.init(cx + tag_r * @cos(ang), cy + tag_r * @sin(ang));
             }
             try out[i].append(a, try pathItem(env, "anno", n.id, &hex, true));
-            try out[i].append(a, try textItem(env, "notes", "anno", n.id, p.lines[0], cx, cy, h, 0, .center, .middle));
-        } else for (p.lines, 0..) |line, j| {
-            try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, p.x, p.top - h - @as(f64, @floatFromInt(j)) * g.pitch, h, 0, .left, .baseline));
+            try out[i].append(a, try textItem(env, "notes", "anno", n.id, lines[0], cx, cy, h, 0, .center, .middle));
+        } else for (lines, 0..) |line, j| {
+            try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, px, ptop - h - @as(f64, @floatFromInt(j)) * g.pitch, h, 0, .left, .baseline));
         }
-        const l = leaderOf(p, g);
-        const land = p.landing;
+        const l = r.leaders[i];
+        const land = r.landing[i];
         const d = land.sub(l[1]).norm();
         const alen = st.arrow_len_in * S;
         const aw = st.arrow_width_in * S;
@@ -648,7 +794,7 @@ fn labelItems(env: *Env, id: []const u8, text: []const u8, at: V2, out: *std.Arr
 fn noteText(env: *Env, text: []const u8, cites: []const json.Value) Allocator.Error![]const u8 {
     const a = env.a;
     var s: std.ArrayList(u8) = .empty;
-    try s.appendSlice(a, try upperIf(env, text));
+    try s.appendSlice(a, text);
     for (cites) |c| {
         const code = if (c.get("code")) |x| (x.str() orelse "") else "";
         const section_s = if (c.get("section")) |x| (x.str() orelse "") else "";
@@ -680,7 +826,8 @@ fn noteText(env: *Env, text: []const u8, cites: []const json.Value) Allocator.Er
             env.unverified = true;
         }
     }
-    return s.items;
+    // SPEC 18: the style case transform covers the whole note, citation suffix included
+    return upperIf(env, s.items);
 }
 
 // ---- main entry ---------------------------------------------------------------------------------------------------------------
@@ -694,14 +841,18 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
     var notes: std.ArrayList(NoteIn) = .empty;
     var note_slot: std.ArrayList(?usize) = .empty;
     var per: std.ArrayList(std.ArrayList(Item)) = .empty;
+    var meta: std.ArrayList(Meta) = .empty;
+    var cur_meta = Meta{};
     var seen: std.ArrayList([]const u8) = .empty;
     const types = [_][]const u8{ "note", "dim", "label" };
     for (spec.annotations, 0..) |an, k| {
         var its: std.ArrayList(Item) = .empty;
         var slot: ?usize = null;
+        cur_meta = .{};
         defer {
             per.append(a, its) catch {};
             note_slot.append(a, slot) catch {};
+            meta.append(a, cur_meta) catch {};
         }
         const id = (if (an.get("id")) |x| x.str() else null) orelse {
             env.diags.add(.@"error", "E_PARAM", null, try std.fmt.allocPrint(a, "views/{s}/annotations/{d}", .{ vid, k }), "annotation {d} of view {s} needs a string \"id\"", .{ k, vid });
@@ -719,16 +870,20 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
         try seen.append(a, id);
         const ty = (if (an.get("type")) |x| x.str() else null) orelse "";
         if (std.mem.eql(u8, ty, "note")) {
-            const text = (if (an.get("text")) |x| x.str() else null) orelse {
+            const text0 = (if (an.get("text")) |x| x.str() else null) orelse {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "note '{s}' needs a string \"text\"", .{id});
                 continue;
             };
+            const text = try scene_mod.whereOccursText(a, env.scene, if (an.get("target")) |x| (x.str() orelse "") else "", text0);
             const cites: []const json.Value = if (an.get("cite")) |c| (c.arr() orelse &.{}) else &.{};
             const full = try noteText(env, text, cites);
             const target = (if (an.get("target")) |x| x.str() else null) orelse "";
-            var landing: ?V2 = null;
-            if (an.get("at")) |atv| {
-                if (atv != .null) landing = env.scene.point(atv, id, try std.fmt.allocPrint(a, "{s}/at", .{apath}));
+            var landing: ?[]const V2 = null;
+            var movable = true;
+            const at_v: ?json.Value = if (an.get("at")) |v| (if (v == .null) null else v) else null;
+            if (at_v) |atv| {
+                if (env.scene.point(atv, id, try std.fmt.allocPrint(a, "{s}/at", .{apath}))) |p| landing = try a.dupe(V2, &.{p});
+                movable = false;
             } else if (target.len == 0) {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "note '{s}' needs a \"target\" (component id or comp.part) or an \"at\" point", .{id});
                 continue;
@@ -751,8 +906,8 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             };
             if (landing) |l| {
                 slot = notes.items.len;
-                try notes.append(a, .{ .id = id, .text = full, .landing = l, .place = place });
-            } else if (an.get("at") == null) {
+                try notes.append(a, .{ .id = id, .text = full, .cands = l, .movable = movable, .place = place });
+            } else if (at_v == null) {
                 env.diags.addFix(.warning, "W_NOTE_TARGET", id, apath, "note '{s}' in view {s}: target '{s}' is not visible in this view (outside the crop, behind the cut plane, or hidden). The note was not drawn.", .{ id, vid, target }, "move the view crop or cut_z so the target is visible, change target, or give the note an explicit \"at\" Ref");
             }
         } else if (std.mem.eql(u8, ty, "dim")) {
@@ -773,6 +928,8 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             const off = if (an.get("offset")) |x| (units.parseLength(x) orelse 0) else 0;
             const text: ?[]const u8 = if (an.get("text")) |x| x.str() else null;
             try dimItems(env, id, from, to, dir, off, text, &its);
+            const axis: V2 = if (std.mem.eql(u8, dir, "v")) V2.init(1, 0) else if (std.mem.eql(u8, dir, "aligned")) to.sub(from).norm().perp() else V2.init(0, 1);
+            cur_meta = .{ .id = id, .kind = .dim, .axis = axis, .off = off };
         } else if (std.mem.eql(u8, ty, "label")) {
             const text = (if (an.get("text")) |x| x.str() else null) orelse {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "label '{s}' needs a string \"text\"", .{id});
@@ -783,9 +940,12 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 continue;
             };
             var p = env.scene.point(atv, id, try std.fmt.allocPrint(a, "{s}/at", .{apath})) orelse continue;
+            var loff = V2.init(0, 0);
             if (an.get("offset")) |ov| if (ov.arr()) |oa| if (oa.len >= 2) {
-                p = p.add(V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0));
+                loff = V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0);
+                p = p.add(loff);
             };
+            cur_meta = .{ .id = id, .kind = .label, .off = loff.x, .off2 = loff.y };
             switch (env.landing) {
                 .section => try labelItems(env, id, text, p, &its),
                 .iso => |iso| if (iso.project(p)) |pp| try labelItems(env, id, text, pp, &its),
@@ -796,18 +956,46 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
     }
     // extents and obstacles
     var ext = env.crop;
-    var obstacles: std.ArrayList([4]V2) = .empty;
+    var obstacles: std.ArrayList(Obstacle) = .empty;
+    var soft: std.ArrayList([2]V2) = .empty;
     var knock: std.ArrayList([4]V2) = .empty;
-    for (per.items) |its| {
-        ext.addBox(itemsBox(env.font, its.items));
-        for (its.items) |it| if (it == .text) {
-            try obstacles.append(a, textPoly(env.font, it.text, 0.03 * env.S));
-            try knock.append(a, textPoly(env.font, it.text, 0.02 * env.S));
-        };
+    for (per.items, 0..) |its, k| {
+        const bx = itemsBox(env.font, its.items);
+        ext.addBox(bx);
+        const m = meta.items[k];
+        if (m.kind == .dim) {
+            env.dims_box.addBox(bx);
+            try env.ann_boxes.append(a, .{ .id = m.id, .kind = .dim, .box = bx, .offset = m.off });
+        }
+        if (m.kind == .label) {
+            env.labels_box.addBox(bx);
+            try env.ann_boxes.append(a, .{ .id = m.id, .kind = .label, .box = bx });
+        }
+        for (its.items) |it| {
+            if (it == .text) {
+                try knock.append(a, textPoly(env.font, it.text, 0.02 * env.S));
+                try obstacles.append(a, .{
+                    .poly = textPoly(env.font, it.text, 0),
+                    .id = it.text.src,
+                    .kind = if (m.kind == .label) .label else .dim,
+                    .text = it.text.s,
+                    .axis = m.axis,
+                    .off = m.off,
+                    .off2 = m.off2,
+                });
+            } else if (it == .path and m.kind == .dim and std.mem.eql(u8, it.path.pen, "dim") and it.path.pts.len == 2) {
+                try soft.append(a, .{ it.path.pts[0].v(), it.path.pts[1].v() });
+            }
+        }
     }
     const outs = try a.alloc(std.ArrayList(Item), notes.items.len);
     for (outs) |*o| o.* = .empty;
-    try layoutNotes(env, notes.items, ext, obstacles.items, outs);
+    try layoutNotes(env, notes.items, ext, obstacles.items, soft.items, outs);
+    for (outs, 0..) |o, k| {
+        const bx = itemsBox(env.font, o.items);
+        env.notes_box.addBox(bx);
+        try env.ann_boxes.append(a, .{ .id = notes.items[k].id, .kind = .note, .box = bx });
+    }
     try knockHatch(a, base_items, knock.items);
     var result: std.ArrayList(Item) = .empty;
     for (per.items, 0..) |its, k| {
