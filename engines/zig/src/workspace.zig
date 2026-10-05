@@ -60,12 +60,25 @@ pub fn writeFileAtomic(io: Io, dir: Io.Dir, path: []const u8, bytes: []const u8)
 }
 
 /// Append one line (a newline is added) to `path`, creating it when missing.
+///
+/// Windows rule (field-tested): never open append-only (FILE_APPEND_DATA without the other write bits) and never
+/// request a write-only handle that is later asked for its size. `Io.Dir.createFile` with `.read = false` asks for
+/// GENERIC_WRITE only, and `File.length` then runs NtQueryInformationFile(FileAllInformation), which needs
+/// FILE_READ_ATTRIBUTES: AccessDenied. So: a normal read+write handle (create if missing, never truncate), find the end,
+/// write there (positional write, which is "seek to end + write" without moving a shared cursor).
 pub fn appendLine(io: Io, dir: Io.Dir, path: []const u8, line: []const u8) !void {
-    var f = try dir.createFile(io, path, .{ .truncate = false });
+    var f = try dir.createFile(io, path, .{ .truncate = false, .read = true });
     defer f.close(io);
     const end = try f.length(io);
-    try f.writePositionalAll(io, line, end);
-    try f.writePositionalAll(io, "\n", end + line.len);
+    var small: [4096]u8 = undefined;
+    if (line.len < small.len) {
+        @memcpy(small[0..line.len], line);
+        small[line.len] = '\n';
+        try f.writePositionalAll(io, small[0 .. line.len + 1], end); // one write: concurrent appenders cannot split a line
+    } else {
+        try f.writePositionalAll(io, line, end);
+        try f.writePositionalAll(io, "\n", end + line.len);
+    }
 }
 
 pub const LogMeta = struct {
@@ -141,6 +154,23 @@ pub fn checkSummary(a: Allocator, doc_text: []const u8) ![]const u8 {
     var perr: kerf.json.ParseError = undefined;
     const v = (try kerf.json.parse(a, r.bytes, &perr)) orelse return "";
     return if (v.get("summary")) |s| (s.str() orelse "") else "";
+}
+
+test "appendLine creates, never truncates, appends after existing bytes" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var threaded: Io.Threaded = .init_single_threaded;
+    const io = threaded.io();
+    try appendLine(io, tmp.dir, "a.log.jsonl", "{\"n\":1}");
+    try appendLine(io, tmp.dir, "a.log.jsonl", "{\"n\":2}");
+    var big: [6000]u8 = undefined; // exercises the two-write path
+    @memset(&big, 'x');
+    try appendLine(io, tmp.dir, "a.log.jsonl", &big);
+    const got = try tmp.dir.readFileAlloc(io, "a.log.jsonl", std.testing.allocator, .limited(1 << 20));
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("{\"n\":1}\n{\"n\":2}\n", got[0..16]);
+    try std.testing.expectEqual(@as(usize, 16 + 6001), got.len);
+    try std.testing.expectEqual(@as(u8, '\n'), got[got.len - 1]);
 }
 
 test "isoFromSeconds" {

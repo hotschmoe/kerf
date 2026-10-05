@@ -275,6 +275,16 @@ pub const Server = struct {
 
     /// After the server itself wrote `name` (document and optionally one log line): refresh the scan
     /// state and publish the events with `who`. Must be called with `scan_mu` held.
+    /// Append one op-log line; a failure is reported on stderr (the document write already succeeded).
+    fn appendLogOrWarn(s: *Server, lp: []const u8, line: []const u8) void {
+        ws.appendLine(s.io, s.dir, lp, line) catch |e| {
+            var b: [512]u8 = undefined;
+            var w = Io.File.stderr().writer(s.io, &b);
+            w.interface.print("kerf serve: warning: could not append to op log {s}: {s} (the document was written)\n", .{ lp, @errorName(e) }) catch {};
+            w.interface.flush() catch {};
+        };
+    }
+
     fn noteWriteLocked(s: *Server, a: Allocator, name: []const u8, is_new: bool, who: []const u8, log_line: ?[]const u8) void {
         const st = s.dir.statFile(s.io, name, .{}) catch return;
         var f: *FileState = undefined;
@@ -626,7 +636,7 @@ fn apiCreate(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: 
     const created_ops = try std.fmt.allocPrint(a, "[{{\"op\":\"create\",\"file\":\"{s}\"}}]", .{file});
     const line = try ws.buildEntry(a, s.io, .{ .who = "designer", .tool = "kerf-serve", .why = "create" }, created_ops, &.{}, summary);
     const lp = try ws.logPath(a, file);
-    ws.appendLine(s.io, s.dir, lp, line) catch {};
+    s.appendLogOrWarn(lp, line);
     s.noteWriteLocked(a, file, true, "designer", line);
     const st = s.dir.statFile(s.io, file, .{}) catch return error.StatFailed;
     const etag = try Server.etagOf(a, st.mtime.nanoseconds, st.size);
@@ -713,7 +723,7 @@ fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: [
             try http.sendError(a, w, 500, ka, extra, "E_WRITE", try std.fmt.allocPrint(a, "could not write {s}: {s}", .{ file, @errorName(e) }));
             return ka;
         };
-        ws.appendLine(s.io, s.dir, lp, line) catch {};
+        s.appendLogOrWarn(lp, line);
         s.noteWriteLocked(a, file, false, who, line);
         if (s.dir.statFile(s.io, file, .{})) |st| final_etag = try Server.etagOf(a, st.mtime.nanoseconds, st.size) else |_| {}
     }

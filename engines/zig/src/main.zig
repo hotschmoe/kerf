@@ -148,16 +148,21 @@ fn appendJsonString(a: std.mem.Allocator, out: *std.ArrayList(u8), str: []const 
     try out.append(a, '"');
 }
 
-/// Best effort: the document is already written; a failed log append only warns (stderr).
-fn logWrite(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, meta: workspace.LogMeta, ops_text: []const u8, changed: []const []const u8, summary: []const u8) void {
-    const line = workspace.buildEntry(a, io, meta, ops_text, changed, summary) catch return;
-    const lp = workspace.logPath(a, doc_path) catch return;
-    workspace.appendLine(io, std.Io.Dir.cwd(), lp, line) catch |e| {
-        var b: [256]u8 = undefined;
-        var w = std.Io.File.stderr().writer(io, &b);
-        w.interface.print("kerf: warning: could not append to {s}: {s}\n", .{ lp, @errorName(e) }) catch {};
-        w.interface.flush() catch {};
-    };
+/// Appends the op-log line. The document is already written (atomically), so a failure here is reported on stderr
+/// (what failed, that the document is fine) and the caller exits 3. Returns true when the log line was appended.
+fn logWrite(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, meta: workspace.LogMeta, ops_text: []const u8, changed: []const []const u8, summary: []const u8) bool {
+    const lp = workspace.logPath(a, doc_path) catch return logFail(io, doc_path, "out of memory");
+    const line = workspace.buildEntry(a, io, meta, ops_text, changed, summary) catch return logFail(io, lp, "could not build the log entry");
+    workspace.appendLine(io, std.Io.Dir.cwd(), lp, line) catch |e| return logFail(io, lp, @errorName(e));
+    return true;
+}
+
+fn logFail(io: std.Io, lp: []const u8, what: []const u8) bool {
+    var b: [512]u8 = undefined;
+    var w = std.Io.File.stderr().writer(io, &b);
+    w.interface.print("kerf: error: could not append to op log {s}: {s}. The document itself WAS written; only the log entry is missing. Exit code 3.\n", .{ lp, what }) catch {};
+    w.interface.flush() catch {};
+    return false;
 }
 
 fn createOp(a: std.mem.Allocator, file: []const u8, id: []const u8, title: []const u8) ![]u8 {
@@ -262,11 +267,11 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         const stem = workspace.docStem(path);
         const text = try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
         try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, text);
-        logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
+        const logged = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
         try writeOut(io, null, "created ");
         try writeOut(io, null, path);
         try writeOut(io, null, "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
-        return 0;
+        return if (logged) 0 else 3;
     }
     if (std.mem.eql(u8, cmd, "call")) {
         if (o.npos < 1) {
@@ -368,6 +373,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             return 0;
         }
         const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
+        var logged = true;
         if (res.get("doc")) |dv| {
             const text = try kerf.canon.write(a, dv);
             if (ok) {
@@ -376,7 +382,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
                     var changed: std.ArrayList([]const u8) = .empty;
                     if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
                     const sum = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
-                    logWrite(a, io, doc_path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse "" }, std.mem.trim(u8, ops_text_for_log, " \t\r\n"), changed.items, sum);
+                    logged = logWrite(a, io, doc_path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse "" }, std.mem.trim(u8, ops_text_for_log, " \t\r\n"), changed.items, sum);
                     try writeOut(io, null, "wrote ");
                     try writeOut(io, null, doc_path);
                     try writeOut(io, null, "\n");
@@ -387,6 +393,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
                 }
             }
         }
+        if (ok and !logged) return 3;
         return if (ok) 0 else 1;
     }
     try writeOut(io, o.out, r.bytes);
