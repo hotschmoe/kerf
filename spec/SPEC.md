@@ -780,3 +780,55 @@ whose metrics are close; minor differences in CAD are acceptable.
   `{ "t": "region", "src": "<id>", "part": "<part>|null", "instance": k, "cut": true|false, "loops": [[[x,y,b],…],…] }`
   with exact closed loops (loop 0 outer, then holes), in drawing order. Exporters ignore region
   items. UIs use them for hit-testing and selection tint.
+
+## 18. v0.1.2 additions (from the first field test: Grok Build on Windows, Palmer SD1 sheet)
+
+**Annotation quality**
+- Note text **and its citations** get the style `case` transform (the citation suffix was printing
+  `Table R602.3(5)` in mixed case).
+- **Leader routing:** leaders must not cross each other, and must not cross dimension text, labels or
+  the title. After the §16 de-crossing swap, if crossings remain, try the other column (`both`), then
+  nudge the landing point within the target's visible region. Remaining hits ⇒ `W_LEADER_HIT`
+  (warning): a leader or arrowhead within one text height of another leader, note box, dimension
+  text, label or title. The message names both items and suggests `place`, `at` or `offset` values.
+- **Auto landing** prefers the target's visible-region label point at least 2 text heights away from
+  crop edges and break lines (pole of inaccessibility of the visible region minus a crop-edge band).
+- **`W_VIEW_FIT`** reports the overflow per edge in paper inches (`left 0.07", bottom 0.00" …`) and
+  names the culprit (crop geometry, the notes column, dimensions, the title block). It suggests the
+  smallest fix first (shrink the crop, `notes_side`, dim `offset`) and a scale change only when the
+  overflow is greater than 15% of the frame.
+
+**Placement & validation**
+- `rebar.place.face` also accepts `"center"`: bars are centered in the host zone on both axes. With
+  `count > 1` they spread horizontally at `side_cover`, or vertically with `axis: "y"`.
+  `place.station: <in>` positions a single bar at that x offset (or y with `axis: "y"`) from the
+  zone's left (bottom) face instead of centering it.
+- `W_COVER` on a `path` bar names the failing segment (index and endpoints in ft-in) and the face.
+- **"Where occurs" graphics:** any component may set `"shown": "dashed"`. It draws all its visible edges
+  in the `hidden` pen (no hatch, no cut mark), is exempt from `W_FLOATING` / `W_NEAR_MISS` / `W_OVERLAP`,
+  and its notes get the suffix ` (WHERE OCCURS)` unless the text already says so.
+
+**New/extended components**
+- `anchor_bolt.hook: "wedge"`: a post-installed expansion anchor. Straight shaft, expansion clip
+  drawn at the embedded end (sleeve 0.6·embed long, 1.15·d wide), nut and washer as usual. Also
+  `"screw"` (Titen HD style: thread ticks, hex washer head). `embed` is the effective embedment.
+- `flashing` (new type): sheet-metal profile. `profile: "z" | "l" | "drip" | "weep_screed" | "points"`
+  with `flange` / `leg` / `drop` lengths (defaults: Z 2"/1"/2", drip 1/2" kick, weep screed with
+  3-1/2" nailing flange and 1/2" drip), `gauge` (default 26 ga, 0.0179"), placement by `at`. Draws
+  as thin metal (§16 thin rule).
+- `joint` (new type): `kind: "expansion" | "control" | "tooled_edge" | "sealant"`. Expansion = a
+  filler strip `width` (default 1/2") × `depth` with its own hatch (`joint_filler`). Control = a saw
+  cut `depth` (default 1/4 slab) drawn as a V notch. Tooled edge = a radius (default 1/4") on a
+  concrete corner given by `at`. Sealant = a bead + backer rod circle.
+- `slab_edge.base: { material: "gravel"|"sand"|"compacted_fill", thickness }` builds a uniform
+  base course under the slab soffit and the haunch, stopping at the footing bottom. It is emitted as
+  part `base` with its fill hatch, so authors no longer hand-draw three fill polygons.
+- **Hardware table additions** (dimensions from the manufacturer's current catalog; the note
+  carries the model): RSP4, A34, A35, LTP4, LSTHD8, STHD14, LUS26, MUS26, HUS26, HHUS26-2, ST2215,
+  ST6224, FHA18, LTS12. Unknown models stay legal (they use explicit width/gauge).
+
+**CLI**
+- Op-log append failures are errors. `kerf apply -w` / `kerf new` exit 3 with a message if the
+  `.log.jsonl` append fails (the document write is still atomic). Logs are opened with a normal write
+  handle and seek-to-end, never append-only handles. That fixes AccessDenied on Windows.
+- `kerf guide` and `kerf catalog --markdown` output is pure ASCII (PowerShell consoles).
