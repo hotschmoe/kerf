@@ -176,15 +176,15 @@ pub fn parse(allocator: Allocator, json_bytes: []const u8) ParseError!Mesh {
                 try idx.ensureTotalCapacity(a, ia.len);
                 var i: usize = 0;
                 while (i + 2 < ia.len) : (i += 3) {
-                    const i0 = jv.num(ia[i]) orelse continue;
-                    const i1 = jv.num(ia[i + 1]) orelse continue;
-                    const i2 = jv.num(ia[i + 2]) orelse continue;
-                    if (i0 < 0 or i1 < 0 or i2 < 0) continue;
-                    const u0: usize = @intFromFloat(i0);
-                    const u1: usize = @intFromFloat(i1);
-                    const u2: usize = @intFromFloat(i2);
-                    if (u0 >= nv or u1 >= nv or u2 >= nv) continue;
-                    idx.appendSliceAssumeCapacity(&.{ @intCast(u0), @intCast(u1), @intCast(u2) });
+                    const ia0 = jv.num(ia[i]) orelse continue;
+                    const ia1 = jv.num(ia[i + 1]) orelse continue;
+                    const ia2 = jv.num(ia[i + 2]) orelse continue;
+                    if (ia0 < 0 or ia1 < 0 or ia2 < 0) continue;
+                    const ua0: usize = @intFromFloat(ia0);
+                    const ua1: usize = @intFromFloat(ia1);
+                    const ua2: usize = @intFromFloat(ia2);
+                    if (ua0 >= nv or ua1 >= nv or ua2 >= nv) continue;
+                    idx.appendSliceAssumeCapacity(&.{ @intCast(ua0), @intCast(ua1), @intCast(ua2) });
                 }
                 p.indices = idx.items;
             }
