@@ -131,6 +131,24 @@ pub fn run(args: &[String]) -> Result<(), String> {
             scripted.push(vec![egui::Event::PointerMoved(b)]);
         }
     }
+    // --type TEXT: typed into whatever has focus, followed by Enter then a focus-out click on empty paper
+    if let Some(txt) = arg(args, "--type") {
+        scripted.push(vec![egui::Event::Text(txt.to_owned())]);
+        scripted.push(vec![egui::Event::Key { key: egui::Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }]);
+        scripted.push(vec![egui::Event::Key { key: egui::Key::Enter, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::NONE }]);
+        let away = egui::pos2(700.0, 40.0);
+        scripted.push(vec![egui::Event::PointerMoved(away)]);
+        scripted.push(vec![btn(away, true)]);
+        scripted.push(vec![btn(away, false)]);
+    }
+    if !scripted.is_empty() {
+        // let layout settle (fonts, scroll areas) before synthetic input arrives
+        for _ in 0..3 {
+            t += 0.05;
+            app.headless_tick(&ctx);
+            let _ = run_frame(&mut app, t, &mut renderer, &ctx, vec![]);
+        }
+    }
     for ev in scripted {
         t += 0.05;
         app.headless_tick(&ctx);

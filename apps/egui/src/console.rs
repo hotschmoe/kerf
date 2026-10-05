@@ -23,6 +23,10 @@ impl KerfApp {
                 if small_button(ui, "KEY", self.settings_open).clicked() {
                     self.settings_open = !self.settings_open;
                 }
+                // a fresh conversation (the document is kept; history is append-only so it is replaced, never edited)
+                if !self.chat.entries.is_empty() && !self.chat.busy() && small_button(ui, "NEW", false).clicked() {
+                    self.chat.reset();
+                }
             });
         });
         ui.add_space(4.0);

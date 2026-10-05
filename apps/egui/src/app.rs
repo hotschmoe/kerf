@@ -76,6 +76,7 @@ pub struct KerfApp {
     pub bench: bool,
     pub saved: crate::settings::Settings,
     pub persist: bool,
+    pub param_buf: HashMap<(String, String), String>,
     pub cut3d: bool,
     pub cut_cache: Option<((u64, i32), std::sync::Arc<crate::gpu3d::CutInfo>)>,
 }
@@ -121,6 +122,7 @@ impl KerfApp {
             bench: false,
             saved: Default::default(),
             persist: true,
+            param_buf: HashMap::new(),
             cut3d: true,
             cut_cache: None,
         }
@@ -1102,6 +1104,20 @@ mod tests {
         assert!(a.session.undo().is_some());
         assert!(a.session.undo().is_some());
         assert_eq!(a.session.doc.as_ref().unwrap(), &before);
+    }
+
+    #[test]
+    fn designer_param_edit_is_an_op_through_the_engine() {
+        let mut a = app();
+        a.open_sample(0);
+        a.designer_op(json!([{"op": "update", "path": "components/sill_plate", "value": {"size": "2x10"}}]), "Set sill_plate.size = 2x10");
+        assert_eq!(a.session.component("sill_plate").unwrap()["size"], "2x10");
+        assert_eq!(a.session.log.last().unwrap().who, Who::Designer);
+        // a bad value is rejected by the engine and leaves the document untouched
+        let before = a.session.doc.clone();
+        a.designer_op(json!([{"op": "update", "path": "components/sill_plate", "value": {"size": "2x99"}}]), "Set sill_plate.size = 2x99");
+        assert_eq!(a.session.doc, before);
+        assert!(a.status_msg.as_ref().is_some_and(|m| m.2), "error shown in the status line");
     }
 
     #[test]

@@ -1,0 +1,4 @@
+# Native release binaries drop symbols too (-9 MB -> ~9.4 MB). The wasm build must NOT: stripping symbols also drops
+# the `target_features` section, and then trunk's wasm-opt rejects bulk-memory ops.
+[target.'cfg(not(target_arch = "wasm32"))']
+rustflags = ["-C", "strip=symbols"]

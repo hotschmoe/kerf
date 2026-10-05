@@ -143,42 +143,85 @@ impl KerfApp {
             self.insp_cache = Some((key.0, key.1.clone(), v));
         }
         let info = self.insp_cache.as_ref().map(|c| c.2.clone()).unwrap_or(Value::Null);
-        let mut rows: Vec<(String, String)> = Vec::new();
+        // (key, shown value, editable raw scalar)
+        let mut rows: Vec<(String, String, Option<Value>)> = Vec::new();
         if info.is_object() {
             for k in ["type", "material", "desc"] {
                 if let Some(s) = info[k].as_str() {
-                    rows.push((k.to_uppercase(), s.to_owned()));
+                    rows.push((k.to_uppercase(), s.to_owned(), None));
                 }
             }
             if let Some(p) = info["params"].as_object() {
                 for (k, v) in p {
-                    rows.push((k.to_uppercase(), compact(v)));
+                    let scalar = matches!(v, Value::String(_) | Value::Number(_) | Value::Bool(_));
+                    rows.push((k.clone(), compact(v), scalar.then(|| v.clone())));
                 }
             }
             if let Some(b) = info["bbox"].as_array().filter(|b| b.len() == 4) {
                 let f = |i: usize| b[i].as_f64().unwrap_or(0.0);
-                rows.push(("X RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(f(0)), crate::fmt::ft_in(f(2)))));
-                rows.push(("Y RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(f(1)), crate::fmt::ft_in(f(3)))));
+                rows.push(("X RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(f(0)), crate::fmt::ft_in(f(2))), None));
+                rows.push(("Y RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(f(1)), crate::fmt::ft_in(f(3))), None));
             }
             if let Some(z) = info["z"].as_array().filter(|z| z.len() == 2) {
-                rows.push(("Z RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(z[0].as_f64().unwrap_or(0.0)), crate::fmt::ft_in(z[1].as_f64().unwrap_or(0.0)))));
+                rows.push(("Z RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(z[0].as_f64().unwrap_or(0.0)), crate::fmt::ft_in(z[1].as_f64().unwrap_or(0.0))), None));
             }
             if info["instances"].as_i64().unwrap_or(1) > 1 {
-                rows.push(("INSTANCES".into(), info["instances"].to_string()));
+                rows.push(("INSTANCES".into(), info["instances"].to_string(), None));
             }
         } else if let Some(o) = c.as_object() {
             for (k, v) in o {
                 if k != "id" {
-                    rows.push((k.to_uppercase(), compact(v)));
+                    rows.push((k.to_uppercase(), compact(v), None));
                 }
             }
         }
-        table_header(ui, &[("FIELD", 132.0), ("VALUE", 0.0)]);
-        for (i, (k, v)) in rows.iter().enumerate() {
+        table_header(ui, &[("FIELD", 132.0), ("VALUE (CLICK TO EDIT)", 0.0)]);
+        let mut edit: Option<(String, Value)> = None;
+        for (i, (k, v, raw)) in rows.iter().enumerate() {
             let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::hover());
             row_bg(ui, r, i, false, false);
-            row_text_clip(ui, r, 0.0, k, INK2, 128.0);
-            row_text_clip(ui, r, 136.0, v, INK, r.width() - 140.0);
+            row_text_clip(ui, r, 0.0, &k.to_uppercase(), INK2, 128.0);
+            let vrect = Rect::from_min_max(Pos2::new(r.left() + 140.0, r.top() + 1.0), Pos2::new(r.right() - 2.0, r.bottom() - 1.0));
+            match raw {
+                Some(orig) => {
+                    // scalar params are editable: Enter / focus-out commits a designer `update` op
+                    let key = (id.to_owned(), k.clone());
+                    let buf = self.param_buf.entry(key.clone()).or_insert_with(|| v.clone());
+                    let editing = ui.memory(|m| m.has_focus(egui::Id::new(("param", id, k))));
+                    if !editing && buf != v {
+                        *buf = v.clone();
+                    }
+                    let te = egui::TextEdit::singleline(buf).id(egui::Id::new(("param", id, k))).frame(egui::Frame::NONE).font(regular(12.0)).text_color(INK).margin(egui::Margin::symmetric(0, 3)).desired_width(vrect.width());
+                    let pid = egui::Id::new(("param", id, k));
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(vrect));
+                    let mut out = te.show(&mut child);
+                    if out.response.gained_focus() {
+                        // select the whole value so typing replaces it
+                        let n = out.state.cursor.char_range().map(|_| buf.chars().count()).unwrap_or(buf.chars().count());
+                        out.state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(n))));
+                        out.state.clone().store(ui.ctx(), pid);
+                    }
+                    let resp = out.response;
+                    let col = if resp.has_focus() { BLUE } else { INK2.gamma_multiply(0.5) };
+                    ui.painter().rect_filled(Rect::from_min_size(Pos2::new(vrect.left(), vrect.bottom() - 1.0), Vec2::new(vrect.width(), if resp.has_focus() { 2.0 } else { 1.0 })), 0.0, col);
+                    if resp.lost_focus() && *buf != *v {
+                        let val = match orig {
+                            Value::Number(_) => buf.trim().parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(Value::Number).unwrap_or_else(|| Value::String(buf.trim().to_owned())),
+                            Value::Bool(_) => match buf.trim() {
+                                "true" => Value::Bool(true),
+                                "false" => Value::Bool(false),
+                                other => Value::String(other.to_owned()),
+                            },
+                            _ => Value::String(buf.trim().to_owned()),
+                        };
+                        edit = Some((k.clone(), val));
+                    }
+                }
+                None => row_text_clip(ui, r, 136.0, v, INK, r.width() - 140.0),
+            }
+        }
+        if let Some((k, val)) = edit {
+            self.designer_op(json!([{"op": "update", "path": format!("components/{id}"), "value": {k.clone(): val.clone()}}]), &format!("Set {id}.{k} = {}", compact(&val)));
         }
         let anchors = extract_anchors(&info);
         if !anchors.is_empty() {

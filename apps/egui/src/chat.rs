@@ -174,6 +174,21 @@ impl Chat {
         self.mock = script;
     }
 
+    /// Start a new conversation: the old one is dropped whole (history is never edited in place).
+    pub fn reset(&mut self) {
+        self.entries.clear();
+        self.history.clear();
+        self.phase = Phase::Idle;
+        self.in_turn = false;
+        self.round = 0;
+        self.attempts = 0;
+        self.last_body = None;
+        if self.demo {
+            // replay the scripted conversation from the top
+            self.mock = crate::demo::script();
+        }
+    }
+
     pub fn busy(&self) -> bool {
         self.phase != Phase::Idle
     }
