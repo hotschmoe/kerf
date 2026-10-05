@@ -15,7 +15,7 @@ const annot = @import("annot.zig");
 const font_mod = @import("font.zig");
 const Allocator = std.mem.Allocator;
 
-pub const layer_draw_order = [_][]const u8{ "hatch", "beyond", "cut", "steel", "hidden", "break", "notes", "dims", "title" };
+pub const layer_draw_order = [_][]const u8{ "hatch", "beyond", "cut", "steel", "rebar", "hidden", "break", "notes", "dims", "title" };
 
 pub fn collectLayers(a: Allocator, items: []const drawing.Item, st: *const style_mod.Style) Allocator.Error![]const drawing.LayerDef {
     var out: std.ArrayList(drawing.LayerDef) = .empty;
