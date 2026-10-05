@@ -925,3 +925,6 @@ whose metrics are close; minor differences in CAD are acceptable.
   creates and applies in one command.
 - Catalog `lumber` notes the standard view for beam-in-wall details: an elevation along the wall
   (beam seen lengthwise, plates interrupted) unless the designer asks for the end-on section.
+- **Render specifics (as implemented):** the `rebar` pen is 0.50 mm, and path bars go on DXF layer
+  `S-DETL-REBR` (LWPOLYLINE with bulges). Edge-on straps draw at least 0.022" paper thick. Face-on
+  ties draw on top of everything with linework beneath them knocked out, and nail dots at 1" pitch.
