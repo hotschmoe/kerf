@@ -701,7 +701,7 @@ impl eframe::App for KerfApp {
 impl KerfApp {
     pub fn open_by_name(&mut self, name: &str) {
         let low = name.to_lowercase();
-        if let Some(i) = engine::SAMPLES.iter().position(|(n, _)| n.to_lowercase() == low || low.contains(&n.to_lowercase())) {
+        if let Some(i) = engine::SAMPLES.iter().position(|(n, _)| n.to_lowercase().contains(&low) || low.contains(&n.to_lowercase())) {
             self.open_sample(i);
             return;
         }

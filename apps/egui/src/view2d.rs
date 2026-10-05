@@ -157,9 +157,16 @@ pub fn show(ui: &mut Ui, st: &mut View2dState, inp: &Inputs, rect: Rect) -> Outp
 
     // ---- paint
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 0.0, VELLUM);
     if inp.show_grid {
+        painter.rect_filled(rect, 0.0, VELLUM);
         paint_grid(&painter, rect, &cam);
+    } else {
+        // SHEET: a white page lying on the desk, with the 2px hard offset shadow
+        painter.rect_filled(rect, 0.0, PAPER2);
+        let b = prep.bounds;
+        let page = Rect::from_two_pos(cam.to_screen(rect, [b[0] as f32, b[3] as f32], [0.0, 0.0]), cam.to_screen(rect, [b[2] as f32, b[1] as f32], [0.0, 0.0]));
+        painter.rect_filled(page.translate(Vec2::new(3.0, 3.0)), 0.0, INK);
+        painter.rect_filled(page, 0.0, Color32::WHITE);
     }
     let vis_min = cam.to_model(rect, rect.left_bottom());
     let vis_max = cam.to_model(rect, rect.right_top());

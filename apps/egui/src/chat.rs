@@ -138,6 +138,7 @@ pub struct Chat {
     system_text: Option<String>,
     pub ctx: Option<egui::Context>,
     pub last_usage: Option<Value>,
+    pub mock_delay_ms: u64,
 }
 
 impl Chat {
@@ -163,6 +164,7 @@ impl Chat {
             system_text: None,
             ctx: None,
             last_usage: None,
+            mock_delay_ms: 450,
         }
     }
 
@@ -225,6 +227,7 @@ impl Chat {
         self.history.push(json!({"role": "user", "content": content}));
         self.entries.push(Entry::Designer { t: host.clock(), text, images });
         self.round = 0;
+        self.attempts = 0;
         self.in_turn = true;
         if self.demo {
             self.mock.begin_turn();
@@ -234,7 +237,7 @@ impl Chat {
 
     fn dispatch(&mut self, host: &mut dyn ToolHost, attempt: u32) {
         self.round += 1;
-        if self.round > MAX_ROUNDS + 1 {
+        if self.round > MAX_ROUNDS {
             self.entries.push(Entry::Error(format!("TOOL LOOP CAPPED AT {MAX_ROUNDS} ROUNDS. SEND A MESSAGE TO CONTINUE.")));
             self.finish();
             return;
@@ -248,7 +251,7 @@ impl Chat {
     fn transmit(&mut self, body: Value, _attempt: u32) {
         if self.demo {
             let resp = self.mock.next();
-            self.ready_at = Some((Instant::now() + Duration::from_millis(450), Ok(resp)));
+            self.ready_at = Some((Instant::now() + Duration::from_millis(self.mock_delay_ms), Ok(resp)));
             if let Some(c) = &self.ctx {
                 c.request_repaint_after(Duration::from_millis(500));
             }
@@ -494,4 +497,139 @@ fn classify(status: u16, bytes: &[u8]) -> Result<Value, ApiError> {
 /// `▸ APPLY  6 OPS   ✓ 0 ERR 1 WARN` style line (glyphs are painted by the UI).
 pub fn apply_line(n_ops: usize, errs: usize, warns: usize, ok: bool) -> String {
     format!("APPLY  {n_ops} OPS   {} {errs} ERR {warns} WARN", if ok { "\u{2713}" } else { "X" })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FakeHost {
+        calls: Vec<String>,
+    }
+    impl ToolHost for FakeHost {
+        fn run_tool(&mut self, name: &str, _input: &Value) -> ToolOutput {
+            self.calls.push(name.to_owned());
+            ToolOutput { content: vec![json!({"type": "text", "text": "ok"})], is_error: false, line: format!("{name} ok"), text: "ok".into(), image: None }
+        }
+        fn catalog_markdown(&mut self) -> String {
+            "CATALOG".into()
+        }
+        fn drain_designer_notes(&mut self) -> Option<String> {
+            None
+        }
+        fn clock(&self) -> String {
+            "00:00".into()
+        }
+    }
+
+    fn tool_resp(id: &str) -> Value {
+        json!({"stop_reason": "tool_use", "content": [{"type": "thinking", "thinking": "t", "signature": "s"}, {"type": "tool_use", "id": id, "name": "kerf_inspect", "input": {"q": "summary"}}]})
+    }
+
+    fn run_until_idle(chat: &mut Chat, host: &mut FakeHost) {
+        let start = Instant::now();
+        while chat.busy() && start.elapsed() < Duration::from_secs(10) {
+            chat.poll(host);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn tool_loop_keeps_history_append_only_and_batches_results() {
+        let mut chat = Chat::new();
+        chat.demo = true;
+        let two = json!({"stop_reason": "tool_use", "content": [
+            {"type": "tool_use", "id": "a", "name": "kerf_inspect", "input": {}},
+            {"type": "tool_use", "id": "b", "name": "kerf_render", "input": {"view": "A"}}]});
+        chat.set_mock(MockScript::new(vec![vec![two, msg_text("done", "end_turn")]]));
+        let mut host = FakeHost { calls: vec![] };
+        chat.send(&mut host, "hi".into(), vec![]);
+        run_until_idle(&mut chat, &mut host);
+        assert_eq!(host.calls, ["kerf_inspect", "kerf_render"]);
+        let roles: Vec<&str> = chat.history.iter().map(|m| m["role"].as_str().unwrap()).collect();
+        assert_eq!(roles, ["user", "assistant", "user", "assistant"]);
+        // ALL results in ONE user message, in order
+        let results = chat.history[2]["content"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["tool_use_id"], "a");
+        assert_eq!(results[1]["tool_use_id"], "b");
+        assert_eq!(chat.phase, Phase::Idle);
+    }
+
+    #[test]
+    fn thinking_blocks_are_echoed_verbatim() {
+        let mut chat = Chat::new();
+        chat.demo = true;
+        chat.set_mock(MockScript::new(vec![vec![tool_resp("x"), msg_text("ok", "end_turn")]]));
+        let mut host = FakeHost { calls: vec![] };
+        chat.send(&mut host, "go".into(), vec![]);
+        run_until_idle(&mut chat, &mut host);
+        assert_eq!(chat.history[1]["content"][0]["type"], "thinking");
+        assert_eq!(chat.history[1]["content"][0]["signature"], "s");
+    }
+
+    #[test]
+    fn refusal_stops_the_loop_and_shows_explanation() {
+        let mut chat = Chat::new();
+        chat.demo = true;
+        let r = json!({"stop_reason": "refusal", "stop_details": {"explanation": "policy"}, "content": []});
+        chat.set_mock(MockScript::new(vec![vec![r]]));
+        let mut host = FakeHost { calls: vec![] };
+        chat.send(&mut host, "x".into(), vec![]);
+        run_until_idle(&mut chat, &mut host);
+        assert!(matches!(chat.entries.last(), Some(Entry::Error(m)) if m.contains("policy")));
+        assert_eq!(chat.phase, Phase::Idle);
+    }
+
+    #[test]
+    fn loop_is_capped_at_25_rounds() {
+        let mut chat = Chat::new();
+        chat.demo = true;
+        chat.mock_delay_ms = 0;
+        let mut script = Vec::new();
+        for i in 0..40 {
+            script.push(tool_resp(&format!("t{i}")));
+        }
+        chat.set_mock(MockScript::new(vec![script]));
+        let mut host = FakeHost { calls: vec![] };
+        chat.send(&mut host, "x".into(), vec![]);
+        let start = Instant::now();
+        while chat.busy() && start.elapsed() < Duration::from_secs(60) {
+            chat.poll(&mut host);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(host.calls.len() as u32, MAX_ROUNDS);
+        assert!(matches!(chat.entries.last(), Some(Entry::Error(m)) if m.contains("CAPPED")));
+    }
+
+    #[test]
+    fn http_status_classification() {
+        assert!(matches!(classify(401, b"{}"), Err(ApiError::Auth)));
+        assert!(matches!(classify(429, b"{}"), Err(ApiError::Retryable(_))));
+        assert!(matches!(classify(529, b"{}"), Err(ApiError::Retryable(_))));
+        let beta = br#"{"type":"error","error":{"type":"invalid_request_error","message":"unknown parameter: fallbacks"}}"#;
+        assert!(matches!(classify(400, beta), Err(ApiError::BetaRejected(_))));
+        let other = br#"{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens too big"}}"#;
+        assert!(matches!(classify(400, other), Err(ApiError::Fatal(m)) if m.contains("max_tokens")));
+        assert!(classify(200, br#"{"content":[]}"#).is_ok());
+    }
+
+    #[test]
+    fn request_body_matches_harness() {
+        let mut chat = Chat::new();
+        let mut host = FakeHost { calls: vec![] };
+        chat.history.push(json!({"role": "user", "content": [{"type": "text", "text": "hi"}]}));
+        let b = chat.build_body(&mut host);
+        assert_eq!(b["model"], "claude-opus-5-5");
+        assert_eq!(b["max_tokens"], 32000);
+        assert_eq!(b["thinking"]["type"], "adaptive");
+        assert_eq!(b["output_config"]["effort"], "high");
+        assert_eq!(b["fallbacks"], "default");
+        assert_eq!(b["system"][0]["cache_control"]["type"], "ephemeral");
+        assert!(b["system"][0]["text"].as_str().unwrap().contains("CATALOG"));
+        assert_eq!(b["tools"].as_array().unwrap().len(), 3);
+        assert!(b.get("temperature").is_none() && b.get("tool_choice").is_none());
+        chat.use_beta = false;
+        assert!(chat.build_body(&mut host).get("fallbacks").is_none());
+    }
 }

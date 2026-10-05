@@ -143,8 +143,13 @@ impl Session {
             return Ok(p.clone());
         }
         let doc = self.doc.as_ref().ok_or("no document")?;
-        let json = engine::drawing_json(doc, &self.style, view, sheet)?;
-        let prep = Arc::new(Prep::from_json(&json)?);
+        let prep = if sheet {
+            let svg = engine::export(doc, &self.style, view, "svg", true)?;
+            Arc::new(crate::svgprep::svg_to_prep(&String::from_utf8_lossy(&svg), view))
+        } else {
+            let json = engine::drawing_json(doc, &self.style, view)?;
+            Arc::new(Prep::from_json(&json)?)
+        };
         self.drawings.insert(key, prep.clone());
         Ok(prep)
     }

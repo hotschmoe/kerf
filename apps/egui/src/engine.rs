@@ -28,12 +28,21 @@ pub struct ApplyOut {
 }
 
 pub fn engine_name() -> &'static str {
-    "kerf-fixture-stub"
+    "kerf-core"
 }
 
-/// Raw engine call: function name + JSON input -> JSON output.
+/// Raw engine call: function name + JSON input -> JSON output. Functions the in-process engine
+/// does not implement yet fall back to the fixture stub (see `stub`).
 fn call_raw(f: &str, input: &Value) -> Result<Value, String> {
-    stub::call(f, input)
+    let text = serde_json::to_string(input).map_err(|e| e.to_string())?;
+    match kerf_core::api::call(f, &text) {
+        Ok(out) => {
+            let bytes = out.bytes();
+            serde_json::from_slice(&bytes).map_err(|e| format!("engine returned non-JSON for {f}: {e}"))
+        }
+        Err(e) if e.starts_with("unknown function") => stub::call(f, input),
+        Err(e) => Err(e),
+    }
 }
 
 pub fn call(f: &str, input: Value) -> Result<Value, String> {
@@ -64,8 +73,8 @@ pub fn inspect(doc: &Value, style: &Value, query: &Value) -> Result<Value, Strin
     call_raw("inspect", &json!({"doc": doc, "style": style, "query": query}))
 }
 
-pub fn drawing_json(doc: &Value, style: &Value, view: &str, sheet: bool) -> Result<String, String> {
-    let v = call_raw("drawing", &json!({"doc": doc, "style": style, "view": view, "sheet": sheet}))?;
+pub fn drawing_json(doc: &Value, style: &Value, view: &str) -> Result<String, String> {
+    let v = call_raw("drawing", &json!({"doc": doc, "style": style, "view": view}))?;
     serde_json::to_string(&v).map_err(|e| e.to_string())
 }
 
@@ -83,7 +92,8 @@ pub fn catalog_markdown() -> String {
 }
 
 pub fn export(doc: &Value, style: &Value, view: &str, format: &str, sheet: bool) -> Result<Vec<u8>, String> {
-    stub::export(doc, style, view, format, sheet)
+    let input = json!({"doc": doc, "style": style, "view": view, "format": format, "sheet": sheet});
+    kerf_core::api::call("export", &input.to_string()).map(|o| o.bytes())
 }
 
 /// JSON-level stand-in used until `kerf-core` lands: real op semantics on the document tree,

@@ -160,3 +160,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
     eprintln!("wrote {out_path} ({pw}x{ph}) in {:.0} ms total", t_start.elapsed().as_secs_f32() * 1000.0);
     Ok(())
 }
+
+/// `--export out.{svg,dxf,pdf} --doc X --view A [--sheet]`: export through the engine, no UI.
+pub fn export_cli(args: &[String]) -> Result<(), String> {
+    let out = arg(args, "--export").ok_or("--export needs a path")?;
+    let doc_arg = arg(args, "--doc").ok_or("--doc needed")?;
+    let view = arg(args, "--view").unwrap_or("A");
+    let format = arg(args, "--format").map(str::to_owned).unwrap_or_else(|| out.rsplit('.').next().unwrap_or("svg").to_owned());
+    let low = doc_arg.to_lowercase();
+    let text = match crate::engine::SAMPLES.iter().find(|(n, _)| n.to_lowercase().contains(&low) || low.contains(&n.to_lowercase())) {
+        Some((_, t)) => (*t).to_owned(),
+        None => std::fs::read_to_string(doc_arg).map_err(|e| format!("{doc_arg}: {e}"))?,
+    };
+    let doc: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let sheet = args.iter().any(|a| a == "--sheet") || format != "dxf";
+    let bytes = crate::engine::export(&doc, &crate::engine::default_style(), view, &format, sheet)?;
+    std::fs::write(out, &bytes).map_err(|e| e.to_string())?;
+    eprintln!("wrote {out} ({} bytes)", bytes.len());
+    Ok(())
+}

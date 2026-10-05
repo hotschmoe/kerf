@@ -9,6 +9,7 @@ description = "Kerf rust-egui app: egui + wgpu, native and web, linking kerf-cor
 [workspace]
 
 [dependencies]
+kerf-core = { path = "../../engines/rust/kerf-core" }
 eframe = { version = "0.36.2", default-features = false, features = ["wgpu_no_default_features", "persistence"] }
 egui = { version = "0.36", default-features = false }
 serde = { version = "1", features = ["derive"] }

@@ -13,6 +13,7 @@ mod ir;
 mod platform;
 mod raster;
 mod session;
+mod svgprep;
 mod theme;
 mod view2d;
 mod view3d;
@@ -35,6 +36,13 @@ pub fn set_ready_flag() {
 fn main() -> eframe::Result {
     env_logger::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--export") {
+        if let Err(e) = headless::export_cli(&args) {
+            eprintln!("export failed: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--screenshot") {
         if let Err(e) = headless::run(&args) {
             eprintln!("screenshot failed: {e}");
