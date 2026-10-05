@@ -927,23 +927,27 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
     const proj = p.lenPos("projection", 2.5, "") orelse return null;
     const hook = p.choice("hook", "J", &.{ "J", "L", "headed", "none" });
     const nut = p.boolean("nut_washer", true);
+    const hl_default: f64 = if (hook != null and std.mem.eql(u8, hook.?, "L")) 3.0 else 2.0;
+    const hook_len = p.lenPos("hook_len", hl_default, "") orelse return null;
     if (!p.ok) return null;
     const r = d / 2.0;
-    const rc = 1.5 * d; // centreline bend radius
-    const hook_len = 3.0;
+    const rc = 1.5 * d + r; // centreline bend radius (inside radius 1.5 d)
     var cl: std.ArrayList(Pt) = .empty;
     try cl.append(a, .{ .x = 0, .y = proj });
     const h = hook.?;
+    const y_bottom_cl = -embed + r; // centreline at the lowest point of the bolt
     if (std.mem.eql(u8, h, "J")) {
-        const yb = -embed + rc;
+        const yb = y_bottom_cl + rc;
         try cl.append(a, .{ .x = 0, .y = yb, .b = geom.bulgeFromSweep(std.math.pi) });
         try cl.append(a, .{ .x = 2 * rc, .y = yb });
-        try cl.append(a, .{ .x = 2 * rc, .y = yb + hook_len });
+        try cl.append(a, .{ .x = 2 * rc, .y = -embed + hook_len });
     } else if (std.mem.eql(u8, h, "L")) {
-        const yb = -embed + rc;
+        const yb = y_bottom_cl + rc;
         try cl.append(a, .{ .x = 0, .y = yb, .b = geom.bulgeFromSweep(std.math.pi / 2.0) });
-        try cl.append(a, .{ .x = rc, .y = -embed });
-        try cl.append(a, .{ .x = rc + hook_len, .y = -embed });
+        try cl.append(a, .{ .x = rc, .y = y_bottom_cl });
+        try cl.append(a, .{ .x = @max(hook_len, rc + 0.01), .y = y_bottom_cl });
+    } else if (std.mem.eql(u8, h, "headed")) {
+        try cl.append(a, .{ .x = 0, .y = -embed + 0.5 * d });
     } else {
         try cl.append(a, .{ .x = 0, .y = -embed });
     }
@@ -955,11 +959,10 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
     }
     if (nut) {
         const nut_h = 0.875 * d;
-        const wash_t = @min(0.25, 0.4 * d + 0.03);
-        const ytop = proj - 0.125;
-        const wy0 = ytop - nut_h - wash_t;
-        try prisms.append(a, .{ .part = "washer", .material = "steel", .loops = try model.oneLoop(a, try model.rectLoop(a, -1.5, wy0, 1.5, wy0 + wash_t)), .embedded = true, .zhalf = 1.5 });
-        try prisms.append(a, .{ .part = "nut", .material = "steel", .loops = try model.oneLoop(a, try model.rectLoop(a, -0.9 * d, wy0 + wash_t, 0.9 * d, ytop)), .embedded = true, .zhalf = 0.9 * d });
+        const ytop = proj - 0.25 * d;
+        const nut_bot = ytop - nut_h;
+        try prisms.append(a, .{ .part = "washer", .material = "steel", .loops = try model.oneLoop(a, try model.rectLoop(a, -1.125 * d, nut_bot - 0.125, 1.125 * d, nut_bot)), .embedded = true, .zhalf = 1.125 * d });
+        try prisms.append(a, .{ .part = "nut", .material = "steel", .loops = try model.oneLoop(a, try model.rectLoop(a, -0.75 * d, nut_bot, 0.75 * d, ytop)), .embedded = true, .zhalf = 0.75 * d });
     }
     const bx = boxOfPrisms(prisms.items);
     return .{
