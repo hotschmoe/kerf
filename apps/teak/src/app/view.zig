@@ -323,7 +323,7 @@ fn toolLine(m: *const Model, cb: *Cb, t: llm.chatlog.Tool, idx: usize) void {
     if (t.has_image and std.mem.eql(u8, t.name, "kerf_render")) {
         if (thumbIndex(m, idx)) |k| {
             const th_ = m.thumbs[k];
-            cb.pushGroup(.{ .padding = 1, .gap = 0, .border = th.ink, .align_cross = .start });
+            cb.pushGroup(.{ .padding = 1, .gap = 0, .border = th.ink, .width = @as(f32, @floatFromInt(th_.w)) + 2 });
             cb.image(model.THUMB_KEY0 + @as(u32, @intCast(k)), .{ .width = @floatFromInt(th_.w), .height = @floatFromInt(th_.h) });
             cb.popGroup();
         }
