@@ -730,7 +730,7 @@ impl Prep {
     pub fn region_tris(&self, src: &str) -> Vec<(Vec<[f32; 2]>, Vec<u32>)> {
         self.regions
             .iter()
-            .filter(|r| r.src == src && !r.is_fill)
+            .filter(|r| r.src == src && !r.is_fill && (r.exact || self.kind == "section"))
             .map(|r| triangulate(&r.loops))
             .filter(|(_, i)| !i.is_empty())
             .collect()

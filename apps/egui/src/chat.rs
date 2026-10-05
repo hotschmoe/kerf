@@ -498,7 +498,7 @@ fn classify(status: u16, bytes: &[u8]) -> Result<Value, ApiError> {
 
 /// `▸ APPLY  6 OPS   ✓ 0 ERR 1 WARN` style line (glyphs are painted by the UI).
 pub fn apply_line(n_ops: usize, errs: usize, warns: usize, ok: bool) -> String {
-    format!("APPLY  {n_ops} OPS   {} {errs} ERR {warns} WARN", if ok { "\u{2713}" } else { "X" })
+    format!("APPLY  {n_ops} OPS   {} {errs} ERR {warns} WARN", if ok { "\u{2713}" } else { "\u{2717}" })
 }
 
 #[cfg(test)]

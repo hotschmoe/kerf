@@ -317,23 +317,10 @@ fn claude_card(ui: &mut Ui, t: &str, blocks: &mut [Block], tex: &std::collection
 fn tool_row(ui: &mut Ui, line: &str, ok: bool, expandable: bool, open: bool) -> egui::Response {
     let font = medium(11.5);
     let col = INK;
-    // split trailing check / X glyph so it can be colored
-    let (main, mark) = match line.rfind('\u{2713}') {
-        Some(_) => (line, Some(true)),
-        None if line.ends_with(" X") || line.ends_with("   X") => (line.trim_end_matches('X'), Some(false)),
-        None => (line, None),
-    };
-    let main = if mark == Some(true) {
-        // draw the line up to the check, then the check in green with the counts after it
-        main
-    } else {
-        main
-    };
-    let g = galley(ui, main.replace('\u{2713}', "\u{2713}"), font.clone(), col, 0.3);
+    let g = galley(ui, line.replace(['\u{2713}', '\u{2717}'], ""), font.clone(), col, 0.3);
     let size = Vec2::new(ui.available_width(), g.size().y + 6.0);
     let (r, resp) = ui.allocate_exact_size(size, if expandable { Sense::click() } else { Sense::hover() });
-    let hov = expandable && resp.hovered();
-    if hov {
+    if expandable && resp.hovered() {
         ui.painter().rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 14));
     }
     let cy = r.center().y;
@@ -344,21 +331,30 @@ fn tool_row(ui: &mut Ui, line: &str, ok: bool, expandable: bool, open: bool) -> 
         vec![Pos2::new(r.left() + 4.0, cy - 4.0), Pos2::new(r.left() + 4.0, cy + 4.0), Pos2::new(r.left() + 10.0, cy)]
     };
     ui.painter().add(egui::Shape::convex_polygon(tri, INK, Stroke::NONE));
-    // text, with the check/err glyph recolored
-    let ok_col = if ok { GREEN } else { RED };
-    if let Some(pos) = main.find('\u{2713}') {
-        let (a, b) = main.split_at(pos);
+    // the pass/fail mark is drawn as pen strokes (Plex's check glyph reads as a radical sign)
+    let x0 = r.left() + 16.0;
+    let mark_at = line.find(['\u{2713}', '\u{2717}']);
+    if let Some(pos) = mark_at {
+        let pass = line[pos..].starts_with('\u{2713}');
+        let mc = if pass && ok { GREEN } else { RED };
+        let (a, b) = (&line[..pos], line[pos..].trim_start_matches(['\u{2713}', '\u{2717}']));
         let ga = galley(ui, a, font.clone(), col, 0.3);
-        let gb = galley(ui, b, font.clone(), ok_col, 0.3);
-        let x = r.left() + 16.0;
+        let gb = galley(ui, b, font.clone(), mc, 0.3);
         let ty = cy - ga.size().y / 2.0;
         let wa = ga.size().x;
-        ui.painter().galley(Pos2::new(x, ty), ga, col);
-        ui.painter().galley(Pos2::new(x + wa, ty), gb, ok_col);
+        ui.painter().galley(Pos2::new(x0, ty), ga, col);
+        let cx = x0 + wa + 1.0;
+        let stroke = Stroke::new(1.8, mc);
+        if pass {
+            ui.painter().add(egui::Shape::line(vec![Pos2::new(cx, cy + 0.5), Pos2::new(cx + 3.5, cy + 4.0), Pos2::new(cx + 10.0, cy - 4.5)], stroke));
+        } else {
+            ui.painter().line_segment([Pos2::new(cx + 1.0, cy - 4.0), Pos2::new(cx + 9.0, cy + 4.0)], stroke);
+            ui.painter().line_segment([Pos2::new(cx + 1.0, cy + 4.0), Pos2::new(cx + 9.0, cy - 4.0)], stroke);
+        }
+        ui.painter().galley(Pos2::new(cx + 12.0, ty), gb, mc);
     } else {
-        let c = if mark == Some(false) { RED } else { col };
-        let g = galley(ui, main, font, c, 0.3);
-        ui.painter().galley(Pos2::new(r.left() + 16.0, cy - g.size().y / 2.0), g, c);
+        let g = galley(ui, line, font, col, 0.3);
+        ui.painter().galley(Pos2::new(x0, cy - g.size().y / 2.0), g, col);
     }
     resp
 }
@@ -390,5 +386,10 @@ fn tool_activity(ui: &mut Ui, act: &mut ToolActivity, tex: &std::collections::Ha
 fn code_block(ui: &mut Ui, s: &str, max_lines: usize) {
     let lines: Vec<&str> = s.lines().collect();
     let shown = if lines.len() > max_lines { lines[..max_lines].join("\n") + &format!("\n... ({} more lines)", lines.len() - max_lines) } else { s.to_owned() };
-    wrapped(ui, &shown, regular(11.0), INK);
+    // no wrapping: the engine summary is a column-aligned table; scroll sideways instead
+    egui::ScrollArea::horizontal().id_salt(shown.len() ^ 0x9e37).auto_shrink([false, true]).show(ui, |ui| {
+        let g = galley(ui, shown, regular(10.5), INK, 0.0);
+        let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
+        ui.painter().galley(r.min, g, INK);
+    });
 }

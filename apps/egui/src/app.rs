@@ -328,6 +328,9 @@ impl KerfApp {
         if k_f {
             self.v2.want_fit = true;
         }
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && ctx.memory(|m| m.focused().is_none()) {
+            self.selected = None;
+        }
     }
 
     fn route_dropped(&mut self, ctx: &egui::Context, name: String, bytes: Vec<u8>) {
@@ -539,6 +542,12 @@ impl KerfApp {
         ui.painter().rect_filled(strip, 0.0, PAPER);
         ui.painter().rect_filled(Rect::from_min_size(Pos2::new(strip.left(), strip.bottom() - 1.0), Vec2::new(strip.width(), 1.0)), 0.0, INK);
         let views = self.session.views();
+        // the document may have been replaced (Claude `set doc`, open): keep the tab valid
+        if let ViewTab::View(id) = &self.tab {
+            if !views.is_empty() && !views.iter().any(|(v, _)| v == id) {
+                self.tab = ViewTab::View(views[0].0.clone());
+            }
+        }
         let mut strip_ui = ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(Vec2::new(8.0, 0.0))).layout(Layout::left_to_right(Align::Center)));
         let compact = full.width() < 780.0;
         for (id, kind) in &views {
@@ -673,7 +682,7 @@ impl KerfApp {
         };
         let out = crate::view2d::show(ui, &mut self.v2, &inp, body);
         self.hover = out.hover.clone();
-        self.cursor_model = out.cursor_model;
+        self.cursor_model = if prep.kind == "iso" { None } else { out.cursor_model };
         self.zoom_now = out.zoom;
         if let Some(c) = out.clicked {
             if let Some(id) = &c {
@@ -797,6 +806,27 @@ impl KerfApp {
     }
 
     /// One pass of the non-UI per-frame logic (inbox, chat tick) for the headless runner.
+    /// Observable state for e2e scripts (`window.__kerf_state` on the web).
+    pub fn state_json(&self) -> String {
+        json!({
+            "doc": self.session.doc.as_ref().and_then(|d| d["id"].as_str()),
+            "components": self.session.components().len(),
+            "rev": self.session.rev,
+            "tab": match &self.tab { ViewTab::View(v) => format!("view:{v}"), ViewTab::ThreeD => "3d".into(), ViewTab::Sheet => "sheet".into() },
+            "insp": format!("{:?}", self.insp_tab),
+            "selected": self.selected,
+            "hover": self.hover,
+            "chat_entries": self.chat.entries.len(),
+            "chat_busy": self.chat.busy(),
+            "history": self.chat.history.len(),
+            "log": self.session.log.iter().map(|e| format!("{}:{}", e.who.label(), e.why)).collect::<Vec<_>>(),
+            "input_len": self.input.len(),
+            "attachments": self.attachments.len(),
+            "status": self.status_msg.as_ref().map(|s| s.0.clone()),
+        })
+        .to_string()
+    }
+
     pub fn headless_tick(&mut self, ctx: &egui::Context) {
         self.logic(ctx);
     }
@@ -845,6 +875,8 @@ impl KerfApp {
         self.frame_ms = t0.elapsed().as_secs_f32() * 1000.0;
         self.frame_avg = if self.frame_avg == 0.0 { self.frame_ms } else { self.frame_avg * 0.9 + self.frame_ms * 0.1 };
         self.persist_if_changed();
+        #[cfg(target_arch = "wasm32")]
+        crate::state_probe(&self.state_json());
         crate::perf_probe(self.frame_ms, self.frame_avg);
         if self.bench {
             ctx.request_repaint();
@@ -896,7 +928,7 @@ impl ToolHost for Host<'_> {
 }
 
 fn err_out(msg: String, line: &str) -> ToolOutput {
-    ToolOutput { content: vec![json!({"type": "text", "text": msg})], is_error: true, line: format!("{line}   X"), text: msg, image: None }
+    ToolOutput { content: vec![json!({"type": "text", "text": msg})], is_error: true, line: format!("{line}   \u{2717}"), text: msg, image: None }
 }
 
 fn diag_text(diags: &[Value]) -> String {

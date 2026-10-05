@@ -40,6 +40,17 @@ pub fn perf_probe(last_ms: f32, avg_ms: f32) {
     }
 }
 
+/// Web state probe for e2e scripts: `window.__kerf_state` = JSON string of the app's observable state.
+#[allow(unused_variables)]
+pub fn state_probe(json: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(w) = web_sys::window() {
+            let _ = js_sys::Reflect::set(&w, &"__kerf_state".into(), &json.into());
+        }
+    }
+}
+
 /// Web: `window.__ready = true` once the first frame is drawn (tools/shot.mjs --wait-for).
 pub fn set_ready_flag() {
     #[cfg(target_arch = "wasm32")]
@@ -57,6 +68,13 @@ pub fn set_ready_flag() {
 fn main() -> eframe::Result {
     env_logger::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--render") {
+        if let Err(e) = headless::render_cli(&args) {
+            eprintln!("render failed: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--call") {
         if let Err(e) = headless::call_cli(&args) {
             eprintln!("call failed: {e}");

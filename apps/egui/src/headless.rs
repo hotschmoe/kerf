@@ -151,7 +151,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
     eprintln!("ui frame ms: {:?}", frame_times.iter().map(|x| (x * 10.0).round() / 10.0).collect::<Vec<_>>());
 
     // ---- render the last frame
+    let t_tess = Instant::now();
     let jobs = ctx.tessellate(out.shapes, out.pixels_per_point);
+    let (nv, ni): (usize, usize) = jobs.iter().filter_map(|j| match &j.primitive { egui::epaint::Primitive::Mesh(m) => Some((m.vertices.len(), m.indices.len())), _ => None }).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+    eprintln!("tessellate: {:.2} ms, {} verts, {} tris", t_tess.elapsed().as_secs_f32() * 1000.0, nv, ni / 3);
     let screen = ScreenDescriptor { size_in_pixels: [pw, ph], pixels_per_point: out.pixels_per_point };
     let target = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("shot"),
@@ -247,5 +250,19 @@ pub fn call_cli(args: &[String]) -> Result<(), String> {
     input["doc"] = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     let out = crate::engine::call(f, input)?;
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
+    Ok(())
+}
+
+/// `--render out.png --doc X --view A [--sheet]`: the exact PNG `kerf_render` returns to Claude.
+pub fn render_cli(args: &[String]) -> Result<(), String> {
+    let out = arg(args, "--render").ok_or("--render needs a path")?;
+    let doc = arg(args, "--doc").ok_or("--doc needed")?;
+    let mut app = KerfApp::new(&egui::Context::default());
+    app.open_by_name(doc);
+    let view = arg(args, "--view").unwrap_or("A");
+    let prep = app.session.drawing_ex(view, args.iter().any(|a| a == "--sheet"))?;
+    let r = crate::raster::render(&prep, &crate::raster::RenderOpts::default())?;
+    std::fs::write(out, &r.png).map_err(|e| e.to_string())?;
+    eprintln!("wrote {out} ({}x{}, {} bytes)", r.size[0], r.size[1], r.png.len());
     Ok(())
 }
