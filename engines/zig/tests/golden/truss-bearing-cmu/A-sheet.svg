@@ -63,15 +63,6 @@
 </g>
 </g>
 <g id="S-DETL-CUT" inkscape:groupmode="layer" inkscape:label="S-DETL-CUT">
-<g data-src="soffit">
-<path d="M339 277.485L493.5 277.485L493.5 274.485L339 274.485L339 277.485Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M339 274.485L339 277.485L493.5 277.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
-<path d="M493.5 274.485L351 274.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
-</g>
-<g data-src="roof_sheathing">
-<path d="M351 230.485L733.5 102.985L733.5 99.296L349.893 227.165L351 230.485Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M733.5 99.296L349.893 227.165L351 230.485L733.5 102.985" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
-</g>
 <g data-src="roofing">
 <path d="M349.577 226.216L733.5 98.242" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
 </g>
@@ -89,6 +80,13 @@
 </g>
 <g data-src="fascia">
 <path d="M339 230.485L333 230.485L333 274.485L339 274.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+</g>
+<g data-src="soffit">
+<path d="M339 274.485L339 277.485L493.5 277.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+<path d="M493.5 274.485L351 274.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+</g>
+<g data-src="roof_sheathing">
+<path d="M733.5 99.296L349.893 227.165L351 230.485L733.5 102.985" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 <g data-src="ceiling">
 <path d="M733.5 240L554.5 240L554.5 244L733.5 244" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>

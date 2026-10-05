@@ -222,8 +222,8 @@ pub const Section = struct {
         var perim: f64 = 0;
         for (flat[0], 0..) |v, vi| perim += v.dist(flat[0][(vi + 1) % flat[0].len]);
         const thick_model = if (perim > 0) 2.0 * @abs(geom.signedAreaV(flat[0])) / perim else 1e9;
-        const is_thin = p.outline == .full and !std.mem.eql(u8, p.material, "mortar") and !is_fill_mat and !isFillMaterial(p.material) and thick_model / self.spec.scale < 2.0 * cut_in;
-        const pen_out: []const u8 = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penFor(self.materialNameForPen(p.material)) else if (is_thin and mat != null and mat.?.pen != null) self.penFor(mat.?.pen.?) else "cut";
+        const is_thin = p.outline == .full and isMetal(p.material) and !is_fill_mat and thick_model / self.spec.scale < 2.0 * cut_in;
+        const pen_out: []const u8 = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penFor(self.materialNameForPen(p.material)) else if (is_thin) "steel" else "cut";
         var region: []const []const V2 = flat;
         var region_exact: bool = fully_inside;
         if (!fully_inside) {
@@ -857,4 +857,10 @@ pub fn chainStrokes(a: Allocator, in: []Stroke) Allocator.Error![]Stroke {
 fn baseId(src: []const u8) []const u8 {
     if (std.mem.indexOfScalar(u8, src, '#')) |h| return src[0..h];
     return src;
+}
+
+/// Materials the thin-region rule applies to (SPEC 16 parity decisions).
+pub fn isMetal(name: []const u8) bool {
+    const eq = std.mem.eql;
+    return eq(u8, name, "steel") or eq(u8, name, "aluminum") or eq(u8, name, "flashing_membrane");
 }

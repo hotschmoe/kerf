@@ -111,26 +111,25 @@ Native debug build: `kerf export` of a section view takes about 30 ms wall inclu
 
 ## Cross-engine comparison with engines/rust (`compare_drawings.py`, tol 1e-3")
 
-After the convergence work (src naming, break-line src `crop`, pen->layer map, stroke chaining, summary
-parity) the remaining differences are of these kinds. None is an engine crash; each is a deliberate choice,
-an under-specified area, or a stale Rust build:
+Last run against Rust commit 98ce04b (before its parity fixes for SPEC 16 "Parity decisions"). Item counts
+zig vs rust: truss A 136/150, B 154/161; slab A 91/90, B 40/44; beam A 79/79, B 54/52. The beam A detail is
+down to 3 differences. Residuals, by cause:
 
-1. **Anchor bolt geometry**: hook radius/legs, nut and washer sizes differ (spec only gives embed, projection,
-   hook length 3"). Affects `anchor_bolt` items and the bolt's extents in the summary.
-2. **Break lines**: mine are zigzag (6 vertices, SPEC 16 tail); the Rust build I compared against emits 2-vertex
-   straight segments. Positions match; the symbol differs.
-3. **Thin cut regions**: SPEC 16 says solid fill + outline in the material pen. I use the `steel` pen for the
-   CS16 strap; Rust draws the outline with pen `frame` (layer S-ANNO-TTLB). I also apply the rule to
-   thin non-metal panels (3/8" soffit, 7/16" OSB at 1"=1'-0"), Rust does not.
-4. **Note landing for tied areas**: equal-area candidates (two bars, several grout cells) resolve to the *first*
-   max in mine; Rust differs in a few cases (`n_bb`, `n_cmu`, `n_jack`), which flips left/right columns.
-5. **Notes column x**: the column offset differs by 1.375" (0.11" paper) in `flush-beam-strap` A because the
-   extents of dimension text boxes are accumulated slightly differently; everything in the column shifts together.
-6. **Hatch line counts** differ by ~5-15% (e.g. `slab` 435 vs 422): pattern phase/clipping at region edges.
-7. **Vapor retarder pen**: mine `vapor` (dashed); the Rust build used `cut` for it in one drawing.
-8. **Iso scale for NTS**: when notes + title do not fit the sheet frame, mine grows the internal fit factor in
-   0.5 steps until they do (no W_VIEW_FIT); Rust keeps the first factor.
-9. **Summary ft-in**: mine prints `3'-0 1/4"` (architectural, SPEC 1); Rust prints `3'-1/4"`.
+1. **Not yet landed in Rust** (decided in SPEC 16, implemented here): note landing tie-break (`n_bb`,
+   `n_ftg_bars`, `n_jack` flip columns), break-line zigzag symbol and merged-group extents, hatch phase
+   (slab 435 vs 422 lines, cmu 46 vs 43), vapor pen (`vapor` here, `cut` there), metal-only thin rule.
+2. **Stroke chaining**: I join touching same-pen strokes into long polylines (e.g. one 18-vertex `cmu` outline);
+   Rust emits 15 two-vertex segments. Geometry is identical, only the path structure differs.
+3. **Anchor bolt**: same SPEC 16 geometry, but my bolt is clipped/split into closed vs open paths differently
+   (2 vs 4 paths) because of the dedupe order against the nut/washer.
+4. **Truss beyond outline**: the heel plate (hidden pen) closes in mine, stays open in Rust (1 vs 2 HIDN paths); chord
+   edges are split at different occluder intersections.
+5. **Title placement**: `title:*` items differ by 0.7" in model units at 1"=1' (lowest-annotation rule).
+6. **Iso**: Rust 160 items vs 154; arc tessellation (0.22 rad / 0.004") and silhouette edge rules differ slightly.
+7. **Summary ft-in** now agrees (`3'-0 1/4"`).
+
+Re-run after the Rust agent lands its parity commit: build `engines/rust` release, then
+`for each doc/view: kerf drawing ... -o x.json; tools/zig-engine/compare_drawings.py zig.json x.json -v`.
 
 ## SPEC ISSUES (what I chose, why)
 
