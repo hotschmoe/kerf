@@ -45,6 +45,7 @@ fn addRefDep(a: Allocator, v: json.Value, out: *std.ArrayList([]const u8)) Alloc
 
 pub fn collectDeps(a: Allocator, node: json.Value, out: *std.ArrayList([]const u8)) Allocator.Error!void {
     if (node.get("at")) |at| if (at.get("to")) |to| try addRefDep(a, to, out);
+    if (node.get("until")) |u| try addRefDep(a, u, out);
     if (node.get("points")) |pts| if (pts.arr()) |arr| for (arr) |e| try addRefDep(a, e, out);
     if (node.get("profile")) |pr| if (pr.get("points")) |pts| if (pts.arr()) |arr| for (arr) |e| try addRefDep(a, e, out);
     if (node.get("place")) |pl| if (pl.get("in")) |inn| if (inn.str()) |s| {
@@ -526,4 +527,47 @@ pub fn viewPrisms(a: Allocator, scene: *const Scene, omit: []const []const u8) A
 pub fn isOmitted(omit: []const []const u8, id: []const u8) bool {
     for (omit) |o| if (std.mem.eql(u8, o, id)) return true;
     return false;
+}
+
+test "until grows a member from its anchor to a ref" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src =
+        \\{"kerf":"0.1","id":"t","run":[-2,2],"components":[
+        \\ {"id":"plate","type":"lumber","size":"2x4","run":"x","face":"narrow","length":48,"at":{"to":[0,0]}},
+        \\ {"id":"beam","type":"lumber","size":"2x8","run":"x","length":48,"at":{"to":[0,96]}},
+        \\ {"id":"stud","type":"lumber","size":"2x4","run":"y","face":"narrow","until":"plate@top_left",
+        \\  "at":{"anchor":"top_left","to":"beam@bottom_left","offset":[10,0]}}
+        \\],"views":[]}
+    ;
+    var err: json.ParseError = undefined;
+    const doc = (try json.parse(a, src, &err)).?;
+    const st = try style_mod.load(a, null);
+    var diags = model.Diags.init(a);
+    const scene = try compile(a, doc, &st, &diags);
+    try std.testing.expectEqual(@as(usize, 0), diags.errCount());
+    const stud = scene.find("stud").?;
+    // beam bottom is y=96 (2x8 flat? upright wide: depth 7.25 in plane) -> bottom at 96; plate top = 1.5
+    try std.testing.expectApproxEqAbs(96.0 - 1.5, stud.built.box.y1 - stud.built.box.y0, 1e-9);
+}
+
+test "until with length is an error and center anchors are rejected" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src =
+        \\{"kerf":"0.1","id":"t","components":[
+        \\ {"id":"plate","type":"lumber","size":"2x4","run":"x","length":48,"at":{"to":[0,0]}},
+        \\ {"id":"s1","type":"lumber","size":"2x4","run":"y","length":10,"until":"plate@top_left","at":{"anchor":"top_left","to":[5,50]}},
+        \\ {"id":"s2","type":"lumber","size":"2x4","run":"y","until":"plate@top_left","at":{"anchor":"middle_left","to":[5,50]}}
+        \\],"views":[]}
+    ;
+    var err: json.ParseError = undefined;
+    const doc = (try json.parse(a, src, &err)).?;
+    const st = try style_mod.load(a, null);
+    var diags = model.Diags.init(a);
+    _ = try compile(a, doc, &st, &diags);
+    try std.testing.expectEqual(@as(usize, 2), diags.errCount());
+    try std.testing.expect(diags.hasCode("E_PARAM"));
 }

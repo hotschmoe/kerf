@@ -209,6 +209,65 @@ fn materialOk(ctx: *Ctx, key: []const u8, name: []const u8) bool {
     return false;
 }
 
+/// `length` or `until` (SPEC 17) for members that run along x or y. Returns the length in inches.
+fn lengthOrUntil(ctx: *Ctx, run: []const u8, hint: []const u8, note: *[]const u8) BuildError!?f64 {
+    const p = &ctx.p;
+    const a = ctx.a;
+    const has_len = p.has("length");
+    const uv = p.raw("until");
+    if (uv == null) return p.lenPos("length", null, hint);
+    if (has_len) {
+        p.fail("until", "give either 'length' or 'until', not both (the engine computes length from 'until')", .{});
+        return null;
+    }
+    // anchor of the member
+    var anchor: []const u8 = "bottom_left";
+    if (p.raw("at")) |at| if (at.get("anchor")) |an| if (an.str()) |s| {
+        anchor = s;
+    };
+    const along_x = std.mem.eql(u8, run, "x");
+    var dir: f64 = 0;
+    if (along_x) {
+        if (std.mem.endsWith(u8, anchor, "_left")) dir = 1 else if (std.mem.endsWith(u8, anchor, "_right")) dir = -1;
+    } else {
+        if (std.mem.startsWith(u8, anchor, "top_")) dir = -1 else if (std.mem.startsWith(u8, anchor, "bottom_")) dir = 1;
+    }
+    if (dir == 0) {
+        p.fail("until", "'until' needs a placement anchor at one end of the member: for run {s} use {s} (got anchor \"{s}\"); center anchors cannot define a growth direction", .{ run, if (along_x) "*_left or *_right" else "top_* or bottom_*", anchor });
+        return null;
+    }
+    const path = try std.fmt.allocPrint(a, "{s}/{s}/until", .{ p.base, p.id });
+    const target = ctx.scene.point(uv.?, p.id, path) orelse {
+        p.ok = false;
+        return null;
+    };
+    const start = if (along_x) ctx.origin.x else ctx.origin.y;
+    const end = if (along_x) target.x else target.y;
+    const len = (end - start) * dir;
+    if (len <= 1e-6) {
+        p.fail("until", "'until' target is {s} the anchor along {s} (anchor at {s}, target at {s}); the member would have length {s}. The anchor grows {s}", .{
+            if (len < -1e-6) "behind" else "at",
+            if (along_x) "x" else "y",
+            fmtNum(a, start),
+            fmtNum(a, end),
+            fmtNum(a, len),
+            if (along_x) (if (dir > 0) "right (+x)" else "left (-x)") else (if (dir > 0) "up (+y)" else "down (-y)"),
+        });
+        return null;
+    }
+    const ref_txt: []const u8 = switch (uv.?) {
+        .string => |t| t,
+        .object => if (uv.?.get("ref")) |r| (r.str() orelse "ref") else "ref",
+        else => "ref",
+    };
+    var lb: std.ArrayList(u8) = .empty;
+    try lb.appendSlice(a, " L=");
+    try units.appendFtIn(&lb, a, len);
+    try lb.print(a, " (until {s})", .{ref_txt});
+    note.* = lb.items;
+    return len;
+}
+
 // ---- lumber -------------------------------------------------------------------------------------------
 
 fn buildLumber(ctx: *Ctx) BuildError!?Built {
@@ -237,8 +296,13 @@ fn buildLumber(ctx: *Ctx) BuildError!?Built {
     }
     const n_plies: f64 = @floatFromInt(plies_i.?);
     var length: f64 = 0;
+    var until_note: []const u8 = "";
+    if (std.mem.eql(u8, run.?, "z") and p.has("until")) {
+        p.fail("until", "'until' only applies to lumber with run x or y (run z spans the document run; set 'z' instead)", .{});
+        return null;
+    }
     if (!std.mem.eql(u8, run.?, "z")) {
-        length = p.lenPos("length", null, "lumber with run x or y needs its length, e.g. \"length\": 92.625") orelse return null;
+        length = (try lengthOrUntil(ctx, run.?, "lumber with run x or y needs its length, e.g. \"length\": 92.625, or \"until\": \"other@anchor\"", &until_note)) orelse return null;
     } else if (p.has("length")) {
         // run z spans the z extent; length is ignored
     }
@@ -318,6 +382,7 @@ fn buildLumber(ctx: *Ctx) BuildError!?Built {
     if (treated) try info.appendSlice(a, " PT");
     if (blocking) try info.appendSlice(a, " blocking");
     try info.print(a, " {s}", .{info_run});
+    if (until_note.len > 0) try info.appendSlice(a, until_note);
     return .{
         .prisms = try onePrism(a, prism),
         .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h },
@@ -333,8 +398,9 @@ fn buildPanel(ctx: *Ctx) BuildError!?Built {
     const p = &ctx.p;
     const material = p.choice("material", "osb", &.{ "osb", "plywood", "gypsum", "fiber_cement", "wood_board" });
     const thickness = p.lenPos("thickness", null, "e.g. 0.4375 for 7/16\" OSB");
-    const length = p.lenPos("length", null, "the in-plane extent of the panel");
     const run = p.choice("run", "x", &.{ "x", "y" });
+    var until_note: []const u8 = "";
+    const length = if (run != null) try lengthOrUntil(ctx, run.?, "the in-plane extent of the panel: \"length\" or \"until\": \"other@anchor\"", &until_note) else null;
     if (!p.ok) return null;
     if (!materialOk(ctx, "material", material.?)) return null;
     const along_x = std.mem.eql(u8, run.?, "x");
@@ -349,7 +415,7 @@ fn buildPanel(ctx: *Ctx) BuildError!?Built {
     return .{
         .prisms = try onePrism(a, prism),
         .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h },
-        .info = try std.fmt.allocPrint(a, "{s} {s}\" thk x {s}", .{ material.?, fmtNum(a, thickness.?), fmtNum(a, length.?) }),
+        .info = try std.fmt.allocPrint(a, "{s} {s}\" thk x {s}{s}", .{ material.?, fmtNum(a, thickness.?), fmtNum(a, length.?), until_note }),
     };
 }
 
@@ -893,31 +959,8 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
 
 // ---- connector ------------------------------------------------------------------------------------------------------
 
-const Hardware = struct { model: []const u8, width: f64, gauge: u32, note: []const u8 };
-
-const hardware = [_]Hardware{
-    .{ .model = "CS14", .width = 1.25, .gauge = 14, .note = "coil strap" },
-    .{ .model = "CS16", .width = 1.25, .gauge = 16, .note = "coil strap" },
-    .{ .model = "CS18", .width = 1.25, .gauge = 18, .note = "coil strap" },
-    .{ .model = "CS20", .width = 1.25, .gauge = 20, .note = "coil strap" },
-    .{ .model = "CS22", .width = 1.25, .gauge = 22, .note = "coil strap" },
-    .{ .model = "MSTA24", .width = 1.25, .gauge = 12, .note = "strap tie" },
-    .{ .model = "MSTA30", .width = 1.25, .gauge = 12, .note = "strap tie" },
-    .{ .model = "MSTA36", .width = 1.25, .gauge = 12, .note = "strap tie" },
-    .{ .model = "MST27", .width = 2.0625, .gauge = 12, .note = "strap tie" },
-    .{ .model = "MST37", .width = 2.0625, .gauge = 12, .note = "strap tie" },
-    .{ .model = "H1", .width = 1.375, .gauge = 18, .note = "hurricane tie" },
-    .{ .model = "H2.5A", .width = 1.375, .gauge = 18, .note = "hurricane tie" },
-    .{ .model = "H10A", .width = 1.375, .gauge = 18, .note = "hurricane tie" },
-    .{ .model = "META16", .width = 1.25, .gauge = 18, .note = "embedded truss anchor" },
-    .{ .model = "META20", .width = 1.25, .gauge = 18, .note = "embedded truss anchor" },
-    .{ .model = "HETA12", .width = 1.25, .gauge = 16, .note = "embedded truss anchor" },
-    .{ .model = "HETA16", .width = 1.25, .gauge = 16, .note = "embedded truss anchor" },
-    .{ .model = "HETA20", .width = 1.25, .gauge = 16, .note = "embedded truss anchor" },
-    .{ .model = "HETA24", .width = 1.25, .gauge = 16, .note = "embedded truss anchor" },
-    .{ .model = "HHETA16", .width = 1.25, .gauge = 14, .note = "embedded truss anchor" },
-    .{ .model = "HHETA20", .width = 1.25, .gauge = 14, .note = "embedded truss anchor" },
-};
+const Hardware = catalog.Hardware;
+const hardware = catalog.hardware;
 
 pub fn gaugeThickness(g: u32) ?f64 {
     return switch (g) {

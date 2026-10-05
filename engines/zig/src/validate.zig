@@ -95,6 +95,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
     try floating(a, scene, items.items, diags);
     try untreated(a, items.items, diags);
     try cover(a, scene, diags);
+    try nearMiss(a, scene, diags);
     // infos
     for (scene.comps) |c| {
         if (c.state == .ok and std.mem.eql(u8, c.ty.name, "solid")) {
@@ -324,4 +325,117 @@ fn unverifiedCount(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator
         };
     };
     if (n > 0) diags.add(.info, "I_UNVERIFIED_CITE", null, null, "{d} code citation(s) await designer verification; they print with a trailing * and a footnote until verified", .{n});
+}
+
+// ---- near miss (SPEC 17) ---------------------------------------------------------------------------------------
+
+const CompBox = struct { c: *const scene_mod.Comp, box: geom.Box, z0: f64, z1: f64 };
+
+fn nearMiss(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void {
+    var boxes: std.ArrayList(CompBox) = .empty;
+    for (scene.comps) |*c| {
+        if (c.state != .ok) continue;
+        if (std.mem.eql(u8, c.ty.name, "fill")) continue;
+        if (!axisAligned(c) or !std.mem.eql(u8, c.ty.name, "lumber")) continue;
+        var b = geom.Box{};
+        var z0: f64 = std.math.inf(f64);
+        var z1: f64 = -std.math.inf(f64);
+        for (c.world) |p| {
+            if (p.kind == .ghost) continue;
+            for (p.loops) |l| b.addBox(geom.loopBox(l));
+            z0 = @min(z0, p.z0);
+            z1 = @max(z1, p.z1);
+        }
+        if (b.isEmpty()) continue;
+        try boxes.append(a, .{ .c = c, .box = b, .z0 = z0, .z1 = z1 });
+    }
+    const min_gap = 1.0 / 32.0;
+    const max_gap = 3.0;
+    for (boxes.items, 0..) |A, i| {
+        for (boxes.items[i + 1 ..]) |B| {
+            if (@min(A.z1, B.z1) - @max(A.z0, B.z0) <= 1e-6) continue;
+            inline for (.{ false, true }) |on_x| {
+                // gap along `on_x` axis when the boxes overlap on the other axis
+                const a0 = if (on_x) A.box.x0 else A.box.y0;
+                const a1 = if (on_x) A.box.x1 else A.box.y1;
+                const b0 = if (on_x) B.box.x0 else B.box.y0;
+                const b1 = if (on_x) B.box.x1 else B.box.y1;
+                const o0 = if (on_x) A.box.y0 else A.box.x0;
+                const o1 = if (on_x) A.box.y1 else A.box.x1;
+                const q0 = if (on_x) B.box.y0 else B.box.x0;
+                const q1 = if (on_x) B.box.y1 else B.box.x1;
+                const overlap = @min(o1, q1) - @max(o0, q0);
+                const gap = @max(a0, b0) - @min(a1, b1);
+                if (overlap > 1e-6 and gap >= min_gap - 1e-9 and gap <= max_gap + 1e-9) {
+                    // skip when a third component sits in the gap
+                    const g0 = @min(a1, b1);
+                    const g1 = @max(a0, b0);
+                    const lo = @max(o0, q0);
+                    const hi = @min(o1, q1);
+                    var blocked = false;
+                    for (boxes.items) |C| {
+                        if (C.c == A.c or C.c == B.c) continue;
+                        const c0 = if (on_x) C.box.x0 else C.box.y0;
+                        const c1 = if (on_x) C.box.x1 else C.box.y1;
+                        const d0 = if (on_x) C.box.y0 else C.box.x0;
+                        const d1 = if (on_x) C.box.y1 else C.box.x1;
+                        if (@min(c1, g1) - @max(c0, g0) > 1e-6 and @min(d1, hi) - @max(d0, lo) > 1e-6) {
+                            blocked = true;
+                            break;
+                        }
+                    }
+                    if (!blocked) {
+                    // the member that should grow: the one that is longer along the gap axis than across it
+                    const a_len = a1 - a0;
+                    const b_len = b1 - b0;
+                    const a_across = o1 - o0;
+                    const b_across = q1 - q0;
+                    var grow = A;
+                    var other = B;
+                    if (b_len / @max(b_across, 1e-9) > a_len / @max(a_across, 1e-9)) {
+                        grow = B;
+                        other = A;
+                    }
+                    const grow_len = if (grow.c == A.c) a_len else b_len;
+                    const other_lo = if (grow.c == A.c) b0 else a0;
+                    const grow_below_other = if (grow.c == A.c) a1 <= b0 else b1 <= a0; // grow member sits at lower coordinates
+                    _ = other_lo;
+                    const edge_name: []const u8 = if (on_x) (if (grow_below_other) "left" else "right") else (if (grow_below_other) "bottom" else "top");
+                    const anchor: []const u8 = if (on_x) (if (grow_below_other) "middle_left" else "middle_right") else (if (grow_below_other) "bottom_left" else "top_left");
+                    diags.addFix(.warning, "W_NEAR_MISS", grow.c.id, null, "'{s}' and '{s}' leave a {s} gap along {s} ({s}..{s}) between facing edges while overlapping along {s}; '{s}' probably should extend to the {s} edge of '{s}'", .{
+                        grow.c.id,
+                        other.c.id,
+                        ftin(a, gap),
+                        if (on_x) "x" else "y",
+                        ftin(a, g0),
+                        ftin(a, g1),
+                        if (on_x) "y" else "x",
+                        grow.c.id,
+                        edge_name,
+                        other.c.id,
+                    }, std.fmt.allocPrint(a, "set the length of '{s}' to {s}, or use \"until\": \"{s}@{s}\" so it follows '{s}'; ignore this warning if the gap is intended", .{ grow.c.id, ftin(a, grow_len + gap), other.c.id, anchor, other.c.id }) catch "");
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn isMember(c: *const scene_mod.Comp) bool {
+    return std.mem.eql(u8, c.ty.name, "lumber") or std.mem.eql(u8, c.ty.name, "panel");
+}
+
+/// Only boxy members (every prism an axis-aligned rectangle, none embedded) take part in near-miss checks.
+fn axisAligned(c: *const scene_mod.Comp) bool {
+    for (c.world) |p| {
+        if (p.kind == .ghost) continue;
+        if (p.embedded or p.loops.len != 1 or p.loops[0].len != 4) return false;
+        const l = p.loops[0];
+        for (l, 0..) |v, i| {
+            const w = l[(i + 1) % 4];
+            if (v.b != 0) return false;
+            if (@abs(v.x - w.x) > 1e-9 and @abs(v.y - w.y) > 1e-9) return false;
+        }
+    }
+    return true;
 }

@@ -20,6 +20,39 @@ pub const Entry = struct {
     draws: []const u8,
 };
 
+pub const Hardware = struct { model: []const u8, width: f64, gauge: u32, length: f64, kind: []const u8 };
+
+/// Schematic hardware table: `connector.model` fills width and gauge from here.
+pub const hardware = [_]Hardware{
+    .{ .model = "CS14", .width = 1.25, .gauge = 14, .length = 648, .kind = "coil strap" },
+    .{ .model = "CS16", .width = 1.25, .gauge = 16, .length = 648, .kind = "coil strap" },
+    .{ .model = "CS18", .width = 1.25, .gauge = 18, .length = 648, .kind = "coil strap" },
+    .{ .model = "CS20", .width = 1.25, .gauge = 20, .length = 648, .kind = "coil strap" },
+    .{ .model = "CS22", .width = 1.25, .gauge = 22, .length = 648, .kind = "coil strap" },
+    .{ .model = "MSTA24", .width = 1.25, .gauge = 12, .length = 24, .kind = "strap tie" },
+    .{ .model = "MSTA30", .width = 1.25, .gauge = 12, .length = 30, .kind = "strap tie" },
+    .{ .model = "MSTA36", .width = 1.25, .gauge = 12, .length = 36, .kind = "strap tie" },
+    .{ .model = "MST27", .width = 2.0625, .gauge = 12, .length = 27, .kind = "strap tie" },
+    .{ .model = "MST37", .width = 2.0625, .gauge = 12, .length = 37, .kind = "strap tie" },
+    .{ .model = "H1", .width = 1.375, .gauge = 18, .length = 5.5, .kind = "hurricane tie" },
+    .{ .model = "H2.5A", .width = 1.375, .gauge = 18, .length = 5.5, .kind = "hurricane tie" },
+    .{ .model = "H10A", .width = 1.375, .gauge = 18, .length = 5.5, .kind = "hurricane tie" },
+    .{ .model = "META16", .width = 1.25, .gauge = 18, .length = 16, .kind = "embedded truss anchor" },
+    .{ .model = "META20", .width = 1.25, .gauge = 18, .length = 20, .kind = "embedded truss anchor" },
+    .{ .model = "HETA12", .width = 1.25, .gauge = 16, .length = 12, .kind = "embedded truss anchor" },
+    .{ .model = "HETA16", .width = 1.25, .gauge = 16, .length = 16, .kind = "embedded truss anchor" },
+    .{ .model = "HETA20", .width = 1.25, .gauge = 16, .length = 20, .kind = "embedded truss anchor" },
+    .{ .model = "HETA24", .width = 1.25, .gauge = 16, .length = 24, .kind = "embedded truss anchor" },
+    .{ .model = "HHETA16", .width = 1.25, .gauge = 14, .length = 16, .kind = "embedded truss anchor" },
+    .{ .model = "HHETA20", .width = 1.25, .gauge = 14, .length = 20, .kind = "embedded truss anchor" },
+};
+
+pub fn hardwareLine(a: Allocator, h: Hardware) Allocator.Error![]const u8 {
+    var wb: [40]u8 = undefined;
+    var lb: [40]u8 = undefined;
+    return std.fmt.allocPrint(a, "{s}: {s}, width {s}\", gauge {d}, length {s}\"", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge, json.fmtNumber(&lb, h.length) });
+}
+
 pub const common: []const Param = &.{
     .{ .name = "id", .def = "required", .desc = "unique slug [a-z][a-z0-9_]*; annotations and refs name it" },
     .{ .name = "type", .def = "required", .desc = "one of the catalog types" },
@@ -46,7 +79,8 @@ pub const entries: []const Entry = &.{
             .{ .name = "run", .def = "z", .desc = "axis the length runs along: z (seen end-on in section), x or y" },
             .{ .name = "orient", .def = "upright", .desc = "run z only: upright (depth vertical) or flat (depth horizontal)" },
             .{ .name = "face", .def = "wide", .desc = "run x/y only: face seen by the viewer: wide (depth in-plane) or narrow (thickness in-plane)" },
-            .{ .name = "length", .def = "required for run x/y", .desc = "member length (inches or ft-in string)" },
+            .{ .name = "length", .def = "required for run x/y", .desc = "member length (inches or ft-in string); alternative: `until`" },
+            .{ .name = "until", .def = "null", .desc = "run x/y alternative to length: a Ref (or {ref, offset}); the member grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate on that axis (anchor *_left grows right, *_right left, top_* down, bottom_* up; center anchors are an error; length and until together are E_PARAM). Example jack stud: \"at\": {\"anchor\": \"top_left\", \"to\": \"beam@bottom_left\"}, \"until\": \"bottom_plate@top_left\"" },
             .{ .name = "plies", .def = "1", .desc = "built-up members; plies stack along X for run z, along Z otherwise; draws ply lines" },
             .{ .name = "treated", .def = "false", .desc = "preservative treated (material wood_treated; W_UNTREATED_CONTACT checks)" },
             .{ .name = "blocking", .def = "false", .desc = "discontinuous member: section mark is one diagonal instead of an X" },
@@ -62,7 +96,8 @@ pub const entries: []const Entry = &.{
         .params = &.{
             .{ .name = "material", .def = "osb", .desc = "osb | plywood | gypsum | fiber_cement | wood_board" },
             .{ .name = "thickness", .def = "required", .desc = "e.g. 0.4375 (7/16\"), 0.46875 (15/32), 0.5, 0.625, 0.75" },
-            .{ .name = "length", .def = "required", .desc = "in-plane extent" },
+            .{ .name = "length", .def = "required", .desc = "in-plane extent; alternative: `until` (same rule as lumber)" },
+            .{ .name = "until", .def = "null", .desc = "alternative to length: a Ref; the panel grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate" },
             .{ .name = "run", .def = "x", .desc = "in-plane direction of length before rotation: x (length x thickness) or y (thickness x length)" },
         },
         .parts = "none",
@@ -273,6 +308,19 @@ fn paramJson(a: Allocator, p: Param) Allocator.Error!json.Value {
 pub fn entryJson(a: Allocator, e: *const Entry) Allocator.Error!json.Value {
     const ps = try a.alloc(json.Value, e.params.len);
     for (e.params, 0..) |p, i| ps[i] = try paramJson(a, p);
+    if (std.mem.eql(u8, e.name, "connector")) {
+        const ms = try a.alloc(json.Value, hardware.len);
+        for (hardware, 0..) |h, i| ms[i] = .{ .string = try hardwareLine(a, h) };
+        return json.obj(a, &.{
+            .{ .key = "type", .value = .{ .string = e.name } },
+            .{ .key = "summary", .value = .{ .string = e.summary } },
+            .{ .key = "params", .value = .{ .array = ps } },
+            .{ .key = "models", .value = .{ .array = ms } },
+            .{ .key = "parts", .value = .{ .string = e.parts } },
+            .{ .key = "anchors", .value = .{ .string = e.anchors } },
+            .{ .key = "draws", .value = .{ .string = e.draws } },
+        });
+    }
     return json.obj(a, &.{
         .{ .key = "type", .value = .{ .string = e.name } },
         .{ .key = "summary", .value = .{ .string = e.summary } },
@@ -300,6 +348,10 @@ pub fn appendEntryMarkdown(out: *std.ArrayList(u8), a: Allocator, e: *const Entr
     try out.print(a, "### `{s}`: {s}\n\n", .{ e.name, e.summary });
     try out.appendSlice(a, "| param | default | notes |\n|---|---|---|\n");
     for (e.params) |p| try out.print(a, "| `{s}` | {s} | {s} |\n", .{ p.name, p.def, p.desc });
+    if (std.mem.eql(u8, e.name, "connector")) {
+        try out.appendSlice(a, "\nHardware models (auto-fill width and gauge):\n");
+        for (hardware) |h| try out.print(a, "- {s}\n", .{try hardwareLine(a, h)});
+    }
     try out.print(a, "\n- Parts: {s}\n- Anchors: {s}\n- Draws: {s}\n\n", .{ e.parts, e.anchors, e.draws });
 }
 
