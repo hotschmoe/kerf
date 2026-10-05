@@ -11,13 +11,32 @@ use crate::view::{ViewParams, find_view, view_ids, view_params};
 use serde_json::Value;
 
 pub fn render_view(doc: &Value, model: &Model, view_id: &str, style: &Style) -> Result<Drawing, Diag> {
+    let mut d = render_inner(doc, model, view_id, style, None)?;
+    // NTS (SPEC 16 parity): grow the factor in 0.5 steps until drawing + notes + title fit the frame
+    let aw = style.sheet_w - 2.0 * style.margin;
+    let ah = style.sheet_h - 2.0 * style.margin - style.title_block_h;
+    let nts = find_view(doc, view_id).and_then(|v| v.get("scale")).and_then(|s| s.as_str()).map_or(false, |s| s.trim().eq_ignore_ascii_case("nts"));
+    let mut guard = 0;
+    while nts && guard < 80 && (d.bounds.w() / d.scale > aw + 1e-6 || d.bounds.h() / d.scale > ah + 1e-6) {
+        let next = d.scale + 0.5;
+        d = render_inner(doc, model, view_id, style, Some(next))?;
+        guard += 1;
+    }
+    Ok(d)
+}
+
+fn render_inner(doc: &Value, model: &Model, view_id: &str, style: &Style, forced: Option<f64>) -> Result<Drawing, Diag> {
     let Some(vv) = find_view(doc, view_id) else {
         let ids = view_ids(doc);
         let mut d = Diag::error("E_REF_UNKNOWN", format!("unknown view \"{}\".", view_id));
         d = d.fix(format!("views in this document: {}", if ids.is_empty() { "(none)".to_string() } else { ids.join(", ") }));
         return Err(d);
     };
-    let vp = view_params(vv, model)?;
+    let mut vp = view_params(vv, model)?;
+    let nts = vp.factor.is_none();
+    if forced.is_some() {
+        vp.factor = forced;
+    }
     let mut diags: Vec<Diag> = vec![];
     let base = if vp.kind == "iso" { crate::iso::build_iso(model, &vp, style, &mut diags) } else { crate::section::build_section(model, &vp, style, &mut diags) };
     let crop = base.crop;
@@ -93,7 +112,7 @@ pub fn render_view(doc: &Value, model: &Model, view_id: &str, style: &Style) -> 
     let ph = d.bounds.h() / s;
     let aw = style.sheet_w - 2.0 * style.margin;
     let ah = style.sheet_h - 2.0 * style.margin - style.title_block_h;
-    if pw > aw + 1e-6 || ph > ah + 1e-6 {
+    if !nts && (pw > aw + 1e-6 || ph > ah + 1e-6) {
         d.diagnostics.push(
             Diag::warn(
                 "W_VIEW_FIT",

@@ -45,7 +45,15 @@ fn shape_contains(sh: &Shape, p: Pt) -> bool {
 
 /// SPEC 6.3 step 2: label point of the largest visible polygon.
 pub fn label_point(shapes: &[Shape]) -> Option<Pt> {
-    let best = shapes.iter().filter(|s| !s.is_empty() && s[0].len() >= 3).max_by(|a, b| shape_area(a).partial_cmp(&shape_area(b)).unwrap_or(std::cmp::Ordering::Equal))?;
+    // largest area; ties (relative difference < 1e-6) go to the first in item order
+    let mut best: Option<&Shape> = None;
+    for sh in shapes.iter().filter(|s| !s.is_empty() && s[0].len() >= 3) {
+        match best {
+            Some(b) if shape_area(sh) <= shape_area(b) * (1.0 + 1e-6) => {}
+            _ => best = Some(sh),
+        }
+    }
+    let best = best?;
     let c = poly_centroid(&best[0]);
     if shape_contains(best, c) {
         return Some(c);
@@ -88,7 +96,9 @@ pub fn target_landing(target: &str, vis: &[VisInfo], model: &crate::model::Model
     let cid = cid.split('#').next().unwrap_or(cid);
     let comp = model.comps.iter().find(|c| c.id == cid)?;
     let mut shapes: Vec<Shape> = vec![];
-    for vi in vis.iter().filter(|v| v.comp == comp.idx) {
+    let mut mine: Vec<&VisInfo> = vis.iter().filter(|v| v.comp == comp.idx).collect();
+    mine.sort_by_key(|v| v.ord);
+    for vi in mine {
         match part {
             Some(p) if vi.part.as_deref() != Some(p) => continue,
             _ => shapes.extend(vi.shapes.iter().cloned()),

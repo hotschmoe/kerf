@@ -13,5 +13,5 @@ linetypes used: {'BYLAYER': 43, 'DASH_VAPOR': 1}  (defined: 5, see --json)
 text styles used: {'KERF': 7} fonts: {'KERF': 'romans.shx'}  (defined: 2)
 dimstyles defined: 1  blocks: []  paperspace: ['Layout1']
 hatch patterns: {'KERF-CONC': 1, 'KERF-GRAVEL': 1, 'EARTH': 1, 'SOLID': 2}
-extents: {'min': [-25.9808, -46.8126, 0.0], 'max': [60.0465, 33.0, 0.0], 'size': [86.0273, 79.8126, 0.0]}
+extents: {'min': [-25.9808, -45.7876, 0.0], 'max': [57.736, 33.0, 0.0], 'size': [83.7168, 78.7876, 0.0]}
 png: tests/golden/monopour-slab-door-recess//B-dxf.png

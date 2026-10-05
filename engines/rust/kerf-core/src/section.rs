@@ -18,6 +18,8 @@ pub struct VisInfo {
     pub shapes: Vec<Shape>,
     pub cut: bool,
     pub embedded: bool,
+    /// Prism order in the model (component, instance, part): tie-break for note landing.
+    pub ord: usize,
 }
 
 pub struct ViewBase {
@@ -361,19 +363,25 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
     // classify
     let mut cuts: Vec<&Prism> = vec![];
     let mut beyonds: Vec<&Prism> = vec![];
+    let mut cut_ord: Vec<usize> = vec![];
+    let mut bey_ord: Vec<usize> = vec![];
+    let mut ord_counter = 0usize;
     for c in &model.comps {
         if !c.visible || c.failed || vp.omit.contains(&c.id) {
             continue;
         }
         for inst in &c.insts {
             for p in &inst.prisms {
+                ord_counter += 1;
                 if p.only == Only::Solid3d {
                     continue;
                 }
                 if p.z0 < cut_z && cut_z < p.z1 {
                     cuts.push(p);
+                    cut_ord.push(ord_counter);
                 } else if p.z1 <= cut_z {
                     beyonds.push(p);
+                    bey_ord.push(ord_counter);
                 }
             }
         }
@@ -405,9 +413,9 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
     let mut push_prism_strokes = |p: &Prism, occ: &[&Occ], default_pen: &str, kind_rank: u8, strokes: &mut Vec<Stroke>| {
         let mut pen = pen_of(p, default_pen);
         {
-            let metal = p.fill_solid || matches!(p.material.as_str(), "steel" | "aluminum" | "rebar");
+            let metal = matches!(p.material.as_str(), "steel" | "aluminum" | "flashing_membrane");
             if kind_rank != 0 && metal && p.center.is_none() && p.bar.is_none() && region_thickness(&p.region) / s < 2.0 * style.pen_width_in(&pen) {
-                pen = "frame".to_string(); // thin sheet metal reads as a bold line
+                pen = "steel".to_string(); // thin sheet metal: fill + steel-pen outline
             }
         }
         let mut loops: Vec<&Loop> = vec![&p.region.outer];
@@ -508,10 +516,10 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
     let mut mark_items: Vec<Item> = vec![];
     let mut fill_items: Vec<Item> = vec![];
     let embedded_cuts: Vec<&&Prism> = cuts.iter().filter(|p| p.embedded).collect();
-    for p in &cuts {
+    for (cut_i, p) in cuts.iter().enumerate() {
         let mst = style.material(&p.material);
         let pen_w = style.pen_width_in(p.pen.as_deref().unwrap_or("cut"));
-        let metal = p.fill_solid || matches!(p.material.as_str(), "steel" | "aluminum" | "rebar");
+        let metal = matches!(p.material.as_str(), "steel" | "aluminum" | "flashing_membrane");
         let thin = metal && p.center.is_none() && region_thickness(&p.region) / s < 2.0 * pen_w;
         let thin_membrane = p.center.as_ref().map_or(false, |(_, t)| *t / s < 2.0 * style.pen_width_in(p.pen.as_deref().unwrap_or("membrane")));
         // visible region (for notes) and hatch loops
@@ -573,7 +581,7 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
         }
         // visible shapes for note landing
         let shapes: Vec<Shape> = regions.iter().map(|r| poly::region_contours(r, 0.002)).collect();
-        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: true, embedded: p.embedded });
+        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: true, embedded: p.embedded, ord: cut_ord[cut_i] });
 
         // hatch
         if !p.embedded && !thin && !thin_membrane {
@@ -658,23 +666,27 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
                 shapes.push(poly::region_contours(&cr, 0.002));
             }
         }
-        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: false, embedded: p.embedded });
+        vis.push(VisInfo { comp: p.comp, src: p.src.clone(), part: p.part.clone(), shapes, cut: false, embedded: p.embedded, ord: bey_ord[bi] });
     }
 
     // --- break lines along crop edges where cut solids are clipped
     let mut brk_items: Vec<Item> = vec![];
     {
-        let edges: [(Pt, Pt); 4] = [
-            (pt(crop.x0, crop.y0), pt(crop.x1, crop.y0)),
-            (pt(crop.x1, crop.y0), pt(crop.x1, crop.y1)),
-            (pt(crop.x1, crop.y1), pt(crop.x0, crop.y1)),
-            (pt(crop.x0, crop.y1), pt(crop.x0, crop.y0)),
+        // (vertical edge?, coordinate of the edge, lo, hi); order: left, right, bottom, top
+        let edges: [(bool, f64, f64, f64); 4] = [
+            (true, crop.x0, crop.y0, crop.y1),
+            (true, crop.x1, crop.y0, crop.y1),
+            (false, crop.y0, crop.x0, crop.x1),
+            (false, crop.y1, crop.x0, crop.x1),
         ];
-        for (a, b) in edges {
+        for (vertical, c, elo, ehi) in edges {
+            let (a, b) = if vertical { (pt(c, elo), pt(c, ehi)) } else { (pt(elo, c), pt(ehi, c)) };
             let eseg = Seg::Line(a, b);
+            let len = ehi - elo;
             let mut intervals: Vec<(f64, f64)> = vec![];
             for (pi, p) in cuts.iter().enumerate() {
-                if p.embedded || is_fill_material(&p.material) {
+                let mst = style.material(&p.material);
+                if p.embedded || p.center.is_some() || is_fill_material(&p.material) || mst.fill {
                     continue;
                 }
                 let o = &cut_occ[pi];
@@ -690,12 +702,12 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
                 ts.sort_by(|x, y| x.partial_cmp(y).unwrap());
                 ts.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
                 for w in ts.windows(2) {
-                    if w[1] - w[0] < 1e-7 {
+                    if (w[1] - w[0]) * len < 1e-6 {
                         continue;
                     }
                     let m = eseg.at((w[0] + w[1]) * 0.5);
                     if o.locate(m) == Loc::Inside {
-                        intervals.push((w[0], w[1]));
+                        intervals.push((elo + w[0] * len, elo + w[1] * len));
                     }
                 }
             }
@@ -703,32 +715,23 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
             let mut merged: Vec<(f64, f64)> = vec![];
             for iv in intervals {
                 if let Some(last) = merged.last_mut() {
-                    if iv.0 <= last.1 + 1e-6 {
+                    if iv.0 <= last.1 + 1e-3 {
                         last.1 = last.1.max(iv.1);
                         continue;
                     }
                 }
                 merged.push(iv);
             }
-            let len = a.dist(b);
-            let d = (b - a).norm();
-            let nrm = d.perp();
-            let ov = style.brk_over * s;
-            let z = style.brk_zig * s;
-            let per = style.brk_period * s;
-            for (t0, t1) in merged {
-                let p0 = a + d * (t0 * len - ov);
-                let p1 = a + d * (t1 * len + ov);
-                let l = p0.dist(p1);
-                let m = p0.lerp(p1, 0.5);
-                let mut pts = vec![v(p0.x, p0.y)];
-                if l > per * 0.6 {
-                    let q = [m - d * (per * 0.25), m - d * (per * 0.08) + nrm * z, m + d * (per * 0.08) - nrm * z, m + d * (per * 0.25)];
-                    for k in q {
-                        pts.push(v(k.x, k.y));
-                    }
-                }
-                pts.push(v(p1.x, p1.y));
+            for (u0, u1) in merged {
+                // SPEC 16 parity: start, a, peak, valley, b, end (one zigzag at the middle)
+                let a_ = u0 - style.brk_over * s;
+                let b_ = u1 + style.brk_over * s;
+                let l = b_ - a_;
+                let mid = (a_ + b_) * 0.5;
+                let half = (style.brk_period * s * 0.5).min(l * 0.35);
+                let zig = (style.brk_zig * s).min(l * 0.2);
+                let uv = [(a_, 0.0), (mid - half, 0.0), (mid - half * 0.4, zig), (mid + half * 0.4, -zig), (mid + half, 0.0), (b_, 0.0)];
+                let pts: Vec<V> = uv.iter().map(|&(u, off)| if vertical { v(c + off, u) } else { v(u, c + off) }).collect();
                 brk_items.push(Item::Path { layer: layer_name(style, "break"), pen: "break".into(), src: "crop".into(), closed: false, pts });
             }
         }

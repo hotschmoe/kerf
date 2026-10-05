@@ -13,5 +13,5 @@ linetypes used: {'BYLAYER': 161}  (defined: 5, see --json)
 text styles used: {'KERF': 8} fonts: {'KERF': 'romans.shx'}  (defined: 2)
 dimstyles defined: 1  blocks: []  paperspace: ['Layout1']
 hatch patterns: {'ANSI31': 4, 'KERF-CONC': 4, 'KERF-SAND': 1, 'SOLID': 3}
-extents: {'min': [-38.1592, -40.8126, 0.0], 'max': [58.7076, 40.0018, 0.0], 'size': [96.8668, 80.8144, 0.0]}
+extents: {'min': [-38.1592, -39.7876, 0.0], 'max': [56.0883, 40.0018, 0.0], 'size': [94.2475, 79.7894, 0.0]}
 png: tests/golden/truss-bearing-cmu//B-dxf.png

@@ -12,5 +12,5 @@ linetypes used: {'BYLAYER': 52}  (defined: 5, see --json)
 text styles used: {'KERF': 8} fonts: {'KERF': 'romans.shx'}  (defined: 2)
 dimstyles defined: 1  blocks: []  paperspace: ['Layout1']
 hatch patterns: {'SOLID': 3}
-extents: {'min': [-42.2085, 66.65, 0.0], 'max': [40.1755, 112.875, 0.0], 'size': [82.384, 46.225, 0.0]}
+extents: {'min': [-40.213, 67.675, 0.0], 'max': [38.3571, 112.875, 0.0], 'size': [78.5701, 45.2, 0.0]}
 png: tests/golden/flush-beam-strap//B-dxf.png

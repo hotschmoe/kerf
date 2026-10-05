@@ -59,12 +59,12 @@ Functions: `version`, `catalog` (markdown = raw UTF-8), `fmt`, `check`, `apply`,
 - Wood cut marks use pen `beyond`; marks apply to any prism whose length runs along Z whose material has `cut_mark` (lumber run z, wood_board panels).
 - `lumber` plies stack along the thickness direction (X upright, Y flat) for `run: z`; along Z for run x/y (face wide only).
 - `cmu_wall grout: reinforced` grouts the cut cell of every course; `none` leaves cells hollow except bond-beam courses. 3D: face shells are split into 15 5/8" units with 3/8" head joints (running bond, alternate courses offset 8") as `Only::Solid3d` prisms; the section uses full-run shells.
-- New in this pass: thin METAL cut regions (steel/aluminum/rebar, `fill_solid`) thinner than 2x the pen on paper render as solid fill + stroke in pen `frame` (0.7 mm) so straps/flashing read as a bold line (the orchestrator rule said "material's pen"; the steel pen alone (0.35) was not bold enough beside 0.5 mm cut lines). Thin membranes draw a single centerline stroke in their pen (dashed `vapor` stays dashed), offset away from the host's cut line by (cut+pen)/2 paper so it does not hide under it. Thin wood/panels/mortar are NOT filled (a 7/16" OSB or 3/8" mortar joint at 1"=1' would turn into black bars).
+- New in this pass: thin METAL cut regions (steel/aluminum/rebar, `fill_solid`) thinner than 2x the pen on paper render as solid fill + stroke in pen `steel` (SPEC 16 parity decision; metal = steel, aluminum, flashing_membrane). Thin membranes draw a single centerline stroke in their pen (dashed `vapor` stays dashed), offset away from the host's cut line by (cut+pen)/2 paper so it does not hide under it. Thin wood/panels/mortar are NOT filled (a 7/16" OSB or 3/8" mortar joint at 1"=1' would turn into black bars).
 - `W_COVER` checks `along_z` bars only; host for cmu is the bond-beam/course zone, for concrete the prism with `cover.parts` zone override.
 - Break lines are drawn for CUT regions only (SPEC 8.1); beyond members (e.g. the truss in detail 1) just stop at the crop. Break pen is style `break` (0.18 mm), which reads faintly on the sheet: suggest style `break` 0.25-0.35 mm.
 - Notes: left column text blocks are left-aligned with their right edge at the gutter; columns clear dims/labels (SPEC 16); leader de-crossing is adjacent swaps on the y-order (bounded), then a nudge pass moves a note up/down (<= 8 cap heights) to keep leaders off dim/label text. Dimension text slides along its line when it would sit on linework; hatch is knocked out under dim/label text.
 - Title is placed below the lowest annotation. Footnote `* CODE REFERENCE NOT VERIFIED BY DESIGNER` is part of the view drawing; the sheet moves it to the footer.
-- Iso: true orthographic projection, drafting isometric (unit axis scale): u = sz*x - sx*z (cos30), v = y - (sx*x + sz*z) sin30 with camera quadrant (sx, sz); arcs split by chord tolerance 0.004" (max step 0.22 rad), not a flat 2 degrees (circles would be 180-gons). NTS scale = ceil2(max(w,h)/5.5) so the view is <= 5.5" on paper. Iso dimensions are ignored; labels are projected at z = cut_z. Iso crop = XY window clipping the solids; the drawing extent for notes is the projected geometry.
+- Iso: true orthographic projection, drafting isometric (unit axis scale): u = sz*x - sx*z (cos30), v = y - (sx*x + sz*z) sin30 with camera quadrant (sx, sz); arcs split by chord tolerance 0.004" (max step 0.22 rad), not a flat 2 degrees (circles would be 180-gons). NTS scale starts at ceil to 0.5 of the geometry fit to the sheet area and grows in 0.5 steps until drawing + notes + title fit (no W_VIEW_FIT for NTS). Iso dimensions are ignored; labels are projected at z = cut_z. Iso crop = XY window clipping the solids; the drawing extent for notes is the projected geometry.
 - Iso notes: landing = label point of the best unoccluded front face (cut cap first), with a sample-grid fallback; a fully hidden target gives `W_NOTE_TARGET`.
 - `check`/`apply` render every view to collect `W_NOTE_TARGET`/`W_VIEW_FIT`; `drawing` diagnostics are the view's own.
 - Reference docs: `flush-beam-strap` view A reports `W_VIEW_FIT` (needs ~14.0" x 4.8" of paper at 1 1/2"=1'-0" with notes on both sides; sheet area is 10.25" x 7"): the doc's scale or notes are too big, the engine is right. `truss-bearing-cmu` view B reports `W_NOTE_TARGET n_tie` because `hurricane_tie` has z = -11.2, inside the bird block's z range [-11.25, 11.25], so it is hidden in the iso (doc issue: move the tie to z <= -11.5 or off the block) and `W_VIEW_FIT` borderline for view B (10.70" wide with notes).
@@ -73,6 +73,28 @@ Functions: `version`, `catalog` (markdown = raw UTF-8), `fmt`, `check`, `apply`,
 - SPEC 17 (`until`, `W_NEAR_MISS`, hardware catalog) implemented. `until` (lumber and panel, run x/y): length = distance from the placement point to the Ref on the run axis in the growth direction; errors (E_PARAM) for both length+until, center/wrong-axis anchors, a target behind the anchor, rotate/slope, or other types; summary shows `(until <ref>)`; it is a DAG dependency. `W_NEAR_MISS` considers axis-aligned rectangular prisms of structural components (not fill, membrane, connector, rebar, anchor_bolt, insulation, embedded), with positive z overlap and positive overlap on the other axis, gap 1/32"-3"; skipped when ANY other prism (including the same components' other instances/parts) occupies the gap; one warning per component pair. The three reference docs stay at 0 near-miss warnings.
 
 - Parity pass: feet-inch prints `3'-0 1/4"` (zero inches with a fraction). Anchor bolt geometry follows SPEC 16 exactly (J = 180 degree bend inside radius 1.5 d, 2" return leg from the lowest point; L = 90 degree bend, 3" leg; headed = 2 d x 0.5 d head; nut 1.5 d x 0.875 d, top at projection - 0.25 d; washer 2.25 d x 1/8" under it). Also fixed two real bugs found while reviewing the hook: SVG arc sweep flag was inverted (only visible on non-semicircle arcs), and the bar stroker emitted zero-length line elements between touching fillet arcs.
+
+## Cross-engine residual (tools/zig-engine/compare_drawings.py, Zig vs Rust, tol 1e-3)
+After the parity round (6-vertex break symbol, `steel` pen for thin metal, first-in-order landing ties, vapor pen, NTS growth; breaks now match exactly in all 6 drawings; membranes no longer create break lines):
+
+| drawing | items zig vs rust | differences |
+|---|---|---|
+| truss A | 136 vs 150 | 24 |
+| truss B | 154 vs 161 | 56 |
+| monopour A | 91 vs 90 | 9 |
+| monopour B | 40 vs 44 | 25 |
+| flush A | 79 vs 79 | 3 |
+| flush B | 54 vs 52 | 36 |
+
+Remaining categories (none are bugs that change what the drawing shows):
+- **Chaining of cut outlines.** Where same-component edges are downgraded/deduped (CMU shells/grout/mortar, plates) Rust emits more, shorter open paths than Zig (e.g. cmu: 15 paths vs 1 path of 18 vertices); path start vertex and winding also differ for open/closed paths (strap: same rectangle, opposite winding).
+- **Hatch line counts** differ by a few lines (e.g. slab 435 vs 422, cmu 46 vs 43): dash-phase/ends at region edges; same pattern, origin and spacing.
+- **Anchor bolt** outline is split differently where it coincides with the vertical rebar bar (Rust drops the lower-rank duplicate edges; Zig keeps the bolt's).
+- **Iso:** Rust draws every visible 3D edge in pens `beyond`/`profile`/`cut`; Zig reports rebar/steel items on layer S-DETL-CUT vs Rust S-DETL-STL (Rust puts all rebar/steel pen items on the steel layer); different edge splitting of truss/beam silhouettes (counts differ by 1-5 per member).
+- **NTS scale:** Rust grows from a fit of the projected geometry to the frame and stops as soon as drawing + notes + title fit; Zig lands one 0.5 step higher on truss B (12.5 vs 11.5) and flush B (9 vs 8). Probably a difference in what is measured (title box size). Note/title positions in B views follow the scale.
+- **Title block geometry** (bubble, title, scale line) differs by 0.05-0.1 paper inch; SPEC 6.5 does not pin the layout.
+- **Notes** on a few multi-prism targets (n_bb, n_cmu) land in different cells (largest-area tie/centroid choice), moving the leader and text column positions.
+- **Vapor retarder:** Rust offsets the dashed centerline by (cut+vapor pen)/2 off the host's edge so it is not hidden; Zig draws it on the membrane centerline (deviation 0.16 model in).
 
 ## REQUESTS
 - spec/styles: `beyond` 0.18 mm reads hairline on members that are the subject of a detail (the beyond truss); REFERENCE-CONTENT 2.1 says 0.25-0.35 mm for members beyond. Suggest `beyond` 0.25 and `break` 0.25.

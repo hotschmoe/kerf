@@ -392,7 +392,7 @@ pub fn build_iso(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut Vec
     scene.build_grid();
     let s = match vp.factor {
         Some(f) => f,
-        None => ((sb.w().max(sb.h()) / 5.5) * 2.0).ceil() / 2.0,
+        None => (((sb.w() / (style.sheet_w - 2.0 * style.margin)).max(sb.h() / (style.sheet_h - 2.0 * style.margin - style.title_block_h))) * 2.0).ceil() / 2.0,
     }
     .max(0.5);
 
@@ -584,7 +584,7 @@ pub fn build_iso(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut Vec
                 }
             }
         }
-        vis.push(VisInfo { comp: ip.comp, src: ip.src.clone(), part: ip.part.clone(), shapes, cut: ip.cap_cut, embedded: ip.embedded });
+        vis.push(VisInfo { comp: ip.comp, src: ip.src.clone(), part: ip.part.clone(), shapes, cut: ip.cap_cut, embedded: ip.embedded, ord: pi });
     }
 
     // crop = extent of everything drawn
@@ -603,7 +603,9 @@ pub fn iso_landing(target: &str, vis: &[VisInfo], model: &Model, _crop: &Rect) -
     let cid = cid.split('#').next().unwrap_or(cid);
     let comp = model.comps.iter().find(|c| c.id == cid)?;
     let mut shapes = vec![];
-    for vi in vis.iter().filter(|v| v.comp == comp.idx) {
+    let mut mine: Vec<&VisInfo> = vis.iter().filter(|v| v.comp == comp.idx).collect();
+    mine.sort_by_key(|v| v.ord);
+    for vi in mine {
         if let Some(p) = part {
             if vi.part.as_deref() != Some(p) {
                 continue;
