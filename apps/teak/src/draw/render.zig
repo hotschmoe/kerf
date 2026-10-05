@@ -87,10 +87,28 @@ pub fn renderImage(a: Allocator, drawing: *const ir.Drawing, font: *const font_m
     });
 }
 
+/// Encode an RGB image; if every pixel is gray (white-ink palette) an 8-bit gray PNG is written,
+/// which is ~3x smaller raw and compresses better.
+pub fn encodeImage(a: Allocator, img: *const raster.Image) ![]u8 {
+    var gray = true;
+    var i: usize = 0;
+    while (i < img.pixels.len) : (i += 3) {
+        if (img.pixels[i] != img.pixels[i + 1] or img.pixels[i] != img.pixels[i + 2]) {
+            gray = false;
+            break;
+        }
+    }
+    if (!gray) return png.encode(a, img.width, img.height, .rgb, img.pixels);
+    const g = try a.alloc(u8, @as(usize, img.width) * img.height);
+    defer a.free(g);
+    for (g, 0..) |*v, k| v.* = img.pixels[k * 3];
+    return png.encode(a, img.width, img.height, .gray, g);
+}
+
 pub fn renderPngWithFont(a: Allocator, drawing: *const ir.Drawing, font: *const font_mod.Font, opts: Options) ![]u8 {
     var img = try renderImage(a, drawing, font, opts);
     defer img.deinit(a);
-    return png.encode(a, img.width, img.height, .rgb, img.pixels);
+    return encodeImage(a, &img);
 }
 
 /// Render with the embedded stroke font (needs the `spec_font_json` import).
@@ -104,7 +122,7 @@ pub fn renderPng(a: Allocator, drawing: *const ir.Drawing, opts: Options) ![]u8 
 pub fn renderLivePng(a: Allocator, drawing: *const ir.Drawing, font: *const font_mod.Font, view: tess.View, selected: ?[]const u8, hovered: ?[]const u8) ![]u8 {
     var img = try renderView(a, drawing, font, view, tess.Palette.live(), .{ .selected = selected, .hovered = hovered });
     defer img.deinit(a);
-    return png.encode(a, img.width, img.height, .rgb, img.pixels);
+    return encodeImage(a, &img);
 }
 
 const testing = std.testing;

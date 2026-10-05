@@ -89,10 +89,14 @@ test "fixtures: real details parse, render to a small PNG, and look like drawing
         try testing.expectEqual(@as([3]u8, .{ 255, 255, 255 }), img.pixel(1, 1));
         try testing.expectEqual(@as([3]u8, .{ 255, 255, 255 }), img.pixel(img.width - 2, img.height - 2));
 
-        const bytes = try png.encode(a, img.width, img.height, .rgb, img.pixels);
+        const bytes = try render.encodeImage(a, &img);
         defer a.free(bytes);
-        try testing.expect(bytes.len < 300 * 1024);
+        try testing.expect(bytes.len < 150 * 1024); // gray8 + deflate; the API limit is 5 MB
         try testing.expect(bytes.len > 5 * 1024);
+        // and the RGB path is also well under 300 KB
+        const rgb = try png.encode(a, img.width, img.height, .rgb, img.pixels);
+        defer a.free(rgb);
+        try testing.expect(rgb.len < 300 * 1024);
     }
 }
 

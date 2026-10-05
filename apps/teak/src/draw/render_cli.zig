@@ -13,7 +13,6 @@ const ir = @import("ir.zig");
 const tess = @import("tess.zig");
 const font_mod = @import("font.zig");
 const render = @import("render.zig");
-const png = @import("png.zig");
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
@@ -83,7 +82,7 @@ pub fn main(init: std.process.Init) !void {
             .min_line_px = min_line,
         });
         defer img.deinit(gpa);
-        out = try png.encode(gpa, img.width, img.height, .rgb, img.pixels);
+        out = try render.encodeImage(gpa, &img);
     } else {
         out = try render.renderPngWithFont(gpa, &d, &font, .{
             .width_px = w_px,
