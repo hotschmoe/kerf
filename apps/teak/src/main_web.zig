@@ -36,7 +36,7 @@ export fn resize(w: u32, h: u32) void {
     gpu.resize(w, h);
 }
 
-// Timing probe: logs the time of the first frame and the mean frame cost every 300 frames.
+// Timing probe: logs the time of the first frame and the mean frame cost every 60 frames.
 var frames: u32 = 0;
 var acc_ms: f64 = 0;
 
@@ -50,8 +50,8 @@ export fn frame(_: f32) void {
     if (frames == 1) {
         const s = std.fmt.bufPrint(&buf, "kerf: first frame at {d:.0} ms (frame cost {d:.1} ms)", .{ t0, dt }) catch return;
         zapp.logInfo(s);
-    } else if (frames % 300 == 0) {
-        const s = std.fmt.bufPrint(&buf, "kerf: mean frame cost {d:.2} ms over 300 frames", .{acc_ms / 300.0}) catch return;
+    } else if (frames % 60 == 0) {
+        const s = std.fmt.bufPrint(&buf, "kerf: mean frame cost {d:.2} ms over 60 frames", .{acc_ms / 60.0}) catch return;
         zapp.logInfo(s);
         acc_ms = 0;
     }

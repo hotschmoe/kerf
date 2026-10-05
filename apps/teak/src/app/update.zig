@@ -403,7 +403,7 @@ fn effectResult(m: *Model, r: teak.EffectResult) void {
             switch (kind) {
                 .open_doc => {
                     var label_buf: [48]u8 = undefined;
-                    const label = std.fmt.bufPrint(&label_buf, "FILE {s}", .{f.name}) catch "FILE";
+                    const label = std.ascii.upperString(&label_buf, std.fmt.bufPrint(&label_buf, "FILE {s}", .{f.name}) catch "FILE");
                     _ = flow.loadDoc(m, f.bytes, label);
                 },
                 .attach_image => attachImage(m, f.name, f.mime, f.bytes, 0, 0, "", 0, 0),

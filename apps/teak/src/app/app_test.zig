@@ -98,3 +98,19 @@ test "demo mode drives the whole chat loop" {
     try std.testing.expect(m.doc.log.items.len >= 1);
     try frame(&m, &cb, &rects, 1440, 900);
 }
+
+test "claude building a document from scratch shows its drawing" {
+    var m = Model.init();
+    var cb = teak.CmdBuffer(Msg).init(std.testing.allocator);
+    defer cb.deinit();
+    var rects: std.ArrayList(teak.Rect) = .empty;
+    defer rects.deinit(std.testing.allocator);
+    update(&m, .toggle_demo);
+    m.chat_ed.set("truss bearing detail please");
+    update(&m, .chat_send);
+    var guard: u32 = 0;
+    while (guard < 40 and (m.chat.session.isBusy() or m.demo_pending != null)) : (guard += 1) update(&m, .tick);
+    try std.testing.expect(m.ready);
+    try std.testing.expect(m.vp.drawing != null); // regression: used to stay empty on a fresh session
+    try frame(&m, &cb, &rects, 1440, 900);
+}

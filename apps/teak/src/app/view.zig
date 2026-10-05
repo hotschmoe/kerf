@@ -34,6 +34,37 @@ fn upper(cb: *Cb, s: []const u8) []const u8 {
     return out;
 }
 
+/// Plex Mono has no U+25B8 / U+2713 / U+25D0; map the harness's status glyphs to
+/// 3270-style ASCII so every backend (browser fonts fall back, stb does not) draws them.
+fn asciiize(cb: *Cb, s: []const u8, spin: u8) []const u8 {
+    const Map = struct { from: []const u8, to: []const u8 };
+    const maps = [_]Map{
+        .{ .from = "\u{25B8}", .to = ">" },
+        .{ .from = "\u{2713}", .to = "OK" },
+        .{ .from = "\u{2717}", .to = "FAIL" },
+        .{ .from = "\u{2192}", .to = "->" },
+    };
+    var out: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    outer: while (i < s.len) {
+        inline for (maps) |mp| {
+            if (std.mem.startsWith(u8, s[i..], mp.from)) {
+                out.appendSlice(arena(cb), mp.to) catch return s;
+                i += mp.from.len;
+                continue :outer;
+            }
+        }
+        if (std.mem.startsWith(u8, s[i..], "\u{25D0}")) {
+            out.append(arena(cb), spin) catch return s;
+            i += "\u{25D0}".len;
+            continue;
+        }
+        out.append(arena(cb), s[i]) catch return s;
+        i += 1;
+    }
+    return out.items;
+}
+
 // ── small widgets ──────────────────────────────────────────────────
 
 fn label(cb: *Cb, s: []const u8) void {
@@ -260,7 +291,7 @@ fn claudeCard(m: *const Model, cb: *Cb, entries: []const llm.chatlog.Entry, base
         switch (e.body) {
             .assistant_text => |t| for (wrap(arena(cb), t, msgCols(m), 200)) |l| cb.textStyled(l, th.body, th.ink),
             .tool => |t| toolLine(m, cb, t, base + k),
-            .notice => |t| for (wrap(arena(cb), t, msgCols(m), 3)) |l| cb.textStyled(l, th.small, th.ink2),
+            .notice => |t| for (wrap(arena(cb), asciiize(cb, t, '*'), msgCols(m), 3)) |l| cb.textStyled(l, th.small, th.ink2),
             .err => |er| for (wrap(arena(cb), er.message, msgCols(m), 6)) |l| cb.textStyled(l, th.body, th.red),
             .refusal => |t| {
                 cb.textStyled("REQUEST REFUSED", th.bold, th.red);
@@ -286,15 +317,14 @@ fn thumbIndex(m: *const Model, upto: usize) ?usize {
 
 fn toolLine(m: *const Model, cb: *Cb, t: llm.chatlog.Tool, idx: usize) void {
     const buf = arena(cb).alloc(u8, 160) catch return;
-    const line = llm.chatlog.toolLine(t, buf);
+    const line = asciiize(cb, llm.chatlog.toolLine(t, buf), "|/-\\"[m.ticks % 4]);
     const style = if (t.state == .failed) th.button_flat_danger else th.button_flat;
     cb.buttonStyled(.{ .toggle_tool = @intCast(idx) }, line, style);
     if (t.has_image and std.mem.eql(u8, t.name, "kerf_render")) {
         if (thumbIndex(m, idx)) |k| {
             const th_ = m.thumbs[k];
-            const w: f32 = 300;
             cb.pushGroup(.{ .padding = 1, .gap = 0, .border = th.ink, .align_cross = .start });
-            cb.image(model.THUMB_KEY0 + @as(u32, @intCast(k)), .{ .width = w, .height = w * @as(f32, @floatFromInt(th_.h)) / @as(f32, @floatFromInt(th_.w)) });
+            cb.image(model.THUMB_KEY0 + @as(u32, @intCast(k)), .{ .width = @floatFromInt(th_.w), .height = @floatFromInt(th_.h) });
             cb.popGroup();
         }
     }
@@ -597,10 +627,16 @@ fn diagTab(m: *const Model, cb: *Cb) void {
             .warning => th.amber,
             .info => th.ink2,
         };
+        cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 8, .align_cross = .start });
+        // DESIGN §3: a 16 px square carrying a single-letter level tag.
+        cb.pushGroup(.{ .width = 16, .height = 16, .padding = 0, .gap = 0, .border = color, .align_cross = .center, .justify = .center });
+        cb.textStyled(fmt(cb, "{c}", .{d.level.letter()}), th.small, color);
+        cb.popGroup();
         cb.pushGroup(.{ .padding = 0, .gap = 0, .align_cross = .stretch });
-        const head = fmt(cb, "{c}  {s}{s}{s}", .{ d.level.letter(), d.code, if (d.id.len > 0) "  " else "", d.id });
-        if (d.id.len > 0) cb.buttonStyled(.{ .select = ident_of(d.id) }, head, th.button_flat) else cb.textStyled(head, th.bold, color);
-        for (wrap(arena(cb), d.message, INSP_COLS, 6)) |l| cb.textStyled(l, th.small, th.ink);
+        const head = fmt(cb, "{s}{s}{s}", .{ d.code, if (d.id.len > 0) "  " else "", d.id });
+        if (d.id.len > 0) cb.buttonStyled(.{ .select = ident_of(d.id) }, head, th.button_flat) else cb.textStyled(head, th.bold, th.ink);
+        for (wrap(arena(cb), d.message, INSP_COLS - 4, 8)) |l| cb.textStyled(l, th.small, th.ink);
+        cb.popGroup();
         cb.popGroup();
     }
     if (m.doc.diags.len == 0) cb.textStyled("NO DIAGNOSTICS.", th.body, th.ink2);
@@ -617,7 +653,6 @@ fn statusLine(m: *const Model, cb: *Cb) void {
             c.popGroup();
         }
     };
-    const busy = m.chat.session.isBusy();
     cb.textStyled(if (m.status_len > 0 and m.status_age < 40) m.statusText() else "READY", f, th.term_fg);
     seg.sep(cb);
     if (m.ready) {
@@ -646,7 +681,7 @@ fn statusLine(m: *const Model, cb: *Cb) void {
     const sb = arena(cb).alloc(u8, 64) catch return;
     const st = m.chat.log.statusText(sb);
     const spinner = "|/-\\";
-    cb.textStyled(if (busy) fmt(cb, "{s} {c}", .{ st, spinner[m.ticks % 4] }) else st, f, th.term_fg);
+    cb.textStyled(asciiize(cb, st, spinner[m.ticks % 4]), f, th.term_fg);
     cb.popGroup();
 }
 

@@ -16,5 +16,5 @@ pub fn main() !void {
     try host.registerFont(.mono, .bold, @embedFile("font_plex_bold"));
     var gpu = try gpu_native.Gpu.initWithOptions(host.nativeHandle(), 1440, 900, .{ .msaa = true });
     defer gpu.deinit();
-    try teak.run(App, gpa, &host, &gpu, .{ .clear_color = .{ 0.949, 0.937, 0.902, 1 } });
+    try teak.run(App, gpa, &host, &gpu, .{ .app_name = "kerf", .clear_color = .{ 0.949, 0.937, 0.902, 1 } });
 }

@@ -29,6 +29,7 @@ try {
   for (const s of steps) {
     if (s.wait !== undefined) await sleep(s.wait);
     else if (s.click) { await page.mouse.move(...s.click); await sleep(60); await page.mouse.move(s.click[0] + 1, s.click[1]); await sleep(60); await page.mouse.down(); await sleep(60); await page.mouse.up(); await sleep(120); }
+    else if (s.clickfile) { const [x, y, f] = s.clickfile; const chooser = page.waitForFileChooser({ timeout: 8000 }); await page.mouse.move(x, y); await sleep(60); await page.mouse.move(x + 1, y); await sleep(60); await page.mouse.down(); await sleep(60); await page.mouse.up(); try { const fc = await chooser; await fc.accept([f]); console.log('[chooser] accepted', f); } catch (e) { console.log('[chooser] none', e.message); } await sleep(800); }
     else if (s.move) { await page.mouse.move(...s.move); await sleep(60); await page.mouse.move(s.move[0] + 1, s.move[1] + 1, { steps: 2 }); await sleep(100); }
     else if (s.drag) { const [x0, y0, x1, y1] = s.drag; await page.mouse.move(x0, y0); await sleep(60); await page.mouse.down(); await sleep(60); await page.mouse.move(x1, y1, { steps: 12 }); await sleep(80); await page.mouse.up(); await sleep(150); }
     else if (s.wheel) { await page.mouse.move(s.wheel[0], s.wheel[1]); await sleep(60); await page.mouse.wheel({ deltaY: s.wheel[2] }); await sleep(150); }

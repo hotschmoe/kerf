@@ -199,10 +199,10 @@ fn toolApply(ctx: *anyopaque, a: std.mem.Allocator, ops_json: []const u8, why: [
     defer gpa.free(r.text);
     const text = a.dupe(u8, r.text) catch "out of memory";
     if (r.ok) {
+        m.ready = true; // before afterDocChange: the active tab depends on it
         flow.afterDocChange(m, m.nViews() == 0 or r.op_count == 0 or std.mem.indexOf(u8, ops_json, "\"path\":\"doc\"") != null);
         flow.setSource(m, "CLAUDE");
         m.setStatus("CLAUDE: {s}", .{why[0..@min(why.len, 80)]});
-        m.ready = true;
     }
     return .{ .ok = r.ok, .text = text, .n_err = r.errors, .n_warn = r.warnings };
 }
