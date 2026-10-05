@@ -2,9 +2,9 @@
 //! and the handful of hand-painted widgets (buttons, tabs, typed-form fields, stamps, rules)
 //! that replace egui's default chrome.
 
-use egui::epaint::{CornerRadiusF32, Shadow, StrokeKind};
+use egui::epaint::{Shadow, StrokeKind};
 use egui::{
-    Align2, Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Galley, Pos2, Rect, Response, Sense, Shape,
+    Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Galley, Pos2, Rect, Response, Sense, Shape,
     Stroke, Ui, Vec2, text::LayoutJob,
 };
 use std::sync::Arc;
@@ -185,6 +185,7 @@ pub fn hline_at(ui: &Ui, rect: Rect, y: f32, weight: f32, color: Color32) {
 pub enum Kind {
     Normal,
     Primary,
+    #[allow(dead_code)]
     Danger,
 }
 
@@ -261,13 +262,6 @@ pub fn small_button(ui: &mut Ui, label: &str, active: bool) -> Response {
 
 // ------------------------------------------------------------------ fields
 
-/// Typed-form text field: UPPERCASE label above, value cell with only a bottom rule
-/// (2px blue when focused). Returns the TextEdit response.
-pub fn field(ui: &mut Ui, label: &str, value: &mut String, hint: &str, password: bool, multiline: Option<usize>) -> Response {
-    label_caps(ui, label);
-    field_cell(ui, value, hint, password, multiline)
-}
-
 pub fn field_cell(ui: &mut Ui, value: &mut String, hint: &str, password: bool, multiline: Option<usize>) -> Response {
     let width = ui.available_width();
     let mut te = match multiline {
@@ -317,19 +311,6 @@ pub fn stamp(ui: &mut Ui, label: &str, color: Color32) -> Response {
     resp
 }
 
-pub fn status_dot(ui: &Ui, center: Pos2, color: Color32) {
-    ui.painter().rect_filled(Rect::from_center_size(center, Vec2::splat(7.0)), 0.0, color);
-}
-
-/// Radio-ish square marker: filled when on.
-pub fn marker(ui: &Ui, rect: Rect, on: bool, color: Color32) {
-    let p = ui.painter();
-    p.circle_stroke(rect.center(), 5.0, Stroke::new(1.0, color));
-    if on {
-        p.circle_filled(rect.center(), 3.0, color);
-    }
-}
-
 /// Square check box (typed-form style). Returns true when toggled.
 pub fn check_box(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     let g = galley(ui, label.to_uppercase(), medium(11.0), INK, 0.5);
@@ -356,12 +337,3 @@ pub fn shadowed_frame() -> egui::Frame {
         .shadow(Shadow { offset: [2, 2], blur: 0, spread: 0, color: INK })
 }
 
-/// Draw text anchored (for painter-level labels in viewports).
-pub fn paint_text(ui: &Ui, pos: Pos2, anchor: Align2, text: &str, font: FontId, color: Color32) -> Rect {
-    ui.painter().text(pos, anchor, text, font, color)
-}
-
-#[allow(dead_code)]
-pub fn zero_radius() -> CornerRadiusF32 {
-    CornerRadiusF32::ZERO
-}

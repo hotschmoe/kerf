@@ -13,6 +13,7 @@ pub struct Settings {
     pub demo: bool,
 }
 
+#[cfg(target_arch = "wasm32")]
 const KEY: &str = "kerf-egui.settings";
 
 #[cfg(not(target_arch = "wasm32"))]

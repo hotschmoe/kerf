@@ -117,10 +117,6 @@ mod stub {
         }
     }
 
-    pub fn export(_doc: &Value, _style: &Value, _view: &str, _format: &str, _sheet: bool) -> Result<Vec<u8>, String> {
-        Err("export needs the kerf-core engine (fixture stub)".into())
-    }
-
     fn summary(doc: &Value) -> String {
         let comps = doc["components"].as_array().map(|a| a.len()).unwrap_or(0);
         let views = doc["views"].as_array().map(|a| a.len()).unwrap_or(0);

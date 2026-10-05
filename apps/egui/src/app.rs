@@ -9,7 +9,7 @@ use crate::platform::{Incoming, Pick, Platform};
 use crate::session::{Session, Who};
 use crate::theme::*;
 use crate::view2d::{View2dState};
-use egui::{Align, Layout, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{Align, Layout, Pos2, Rect, Sense, Ui, Vec2};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use web_time::{Duration, Instant};
@@ -517,6 +517,11 @@ impl KerfApp {
             let r = p.text(Pos2::new(x, cy), egui::Align2::LEFT_CENTER, s, font.clone(), *col);
             x = r.right();
         }
+        // blinking block cursor, like a 3270 input field
+        if (self.started.elapsed().as_millis() / 530) % 2 == 0 {
+            p.rect_filled(Rect::from_min_size(Pos2::new(x + 10.0, cy - 6.0), Vec2::new(7.0, 12.0)), 0.0, TERM_FG);
+        }
+        ui.ctx().request_repaint_after(Duration::from_millis(530));
         // right side: engine + frame time
         let right = format!("{}  {:.1}MS", engine::engine_name().to_uppercase(), self.frame_avg);
         let rw = p.layout_no_wrap(right.clone(), regular(11.0), TERM_FG).size().x;
@@ -610,21 +615,33 @@ impl KerfApp {
         painter.rect_filled(body, 0.0, VELLUM);
         let cam = crate::view2d::Cam2d { center: [0.0, 0.0], zoom: 24.0 };
         crate::view2d::paint_grid_public(&painter, body, &cam);
-        let c = body.center();
-        let g = galley(ui, "NO DETAIL LOADED. DESCRIBE ONE IN THE CONSOLE, OR OPEN A .KERF.JSON.", regular(13.0), INK, 0.3);
-        let w = g.size().x.min(body.width() - 40.0);
-        let mut job = spaced("NO DETAIL LOADED. DESCRIBE ONE IN THE CONSOLE,\nOR OPEN A .KERF.JSON.", regular(13.0), INK, 0.3);
-        job.halign = egui::Align::Center;
-        let g2 = ui.painter().layout_job(job);
-        let box_r = Rect::from_center_size(c, Vec2::new(w.min(g2.size().x) + 32.0, g2.size().y + 28.0));
-        painter.rect_filled(box_r.translate(Vec2::new(2.0, 2.0)), 0.0, INK);
-        painter.rect_filled(box_r, 0.0, PAPER);
-        painter.rect_stroke(box_r, 0.0, Stroke::new(1.0, INK), egui::StrokeKind::Inside);
-        painter.galley(Pos2::new(c.x - g2.size().x / 2.0, c.y - g2.size().y / 2.0), g2, INK);
-        // sample shortcuts
-        let btn_y = box_r.bottom() + 12.0;
-        let mut x = c.x - 3.0 * 100.0 / 2.0 - 40.0;
-        let _ = (&mut x, btn_y);
+        let w = 470.0_f32.min(body.width() - 32.0);
+        let rect = Rect::from_center_size(body.center(), Vec2::new(w, 200.0));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(Layout::top_down(Align::Center)));
+        let mut pick = None;
+        shadowed_frame().inner_margin(16).show(&mut child, |ui| {
+            ui.set_width(w - 34.0);
+            ui.vertical_centered(|ui| {
+                let mut job = spaced("NO DETAIL LOADED. DESCRIBE ONE IN THE CONSOLE, OR OPEN A .KERF.JSON.", regular(13.0), INK, 0.3);
+                job.wrap.max_width = w - 40.0;
+                job.halign = egui::Align::Center;
+                let g = ui.painter().layout_job(job);
+                let (r, _) = ui.allocate_exact_size(Vec2::new(w - 40.0, g.size().y), Sense::hover());
+                ui.painter().galley(Pos2::new(r.center().x, r.top()), g, INK);
+                ui.add_space(12.0);
+                label_caps(ui, "Open a sample");
+                ui.add_space(4.0);
+                for (i, (name, _)) in engine::SAMPLES.iter().enumerate() {
+                    if button(ui, name).clicked() {
+                        pick = Some(i);
+                    }
+                    ui.add_space(2.0);
+                }
+            });
+        });
+        if let Some(i) = pick {
+            self.open_sample(i);
+        }
     }
 
     fn view2d_ui(&mut self, ui: &mut Ui, body: Rect, view: &str, sheet: bool) {

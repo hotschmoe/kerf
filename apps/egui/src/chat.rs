@@ -139,6 +139,7 @@ pub struct Chat {
     pub ctx: Option<egui::Context>,
     pub last_usage: Option<Value>,
     pub mock_delay_ms: u64,
+    pub api_url: String,
 }
 
 impl Chat {
@@ -165,6 +166,7 @@ impl Chat {
             ctx: None,
             last_usage: None,
             mock_delay_ms: 450,
+            api_url: API_URL.to_owned(),
         }
     }
 
@@ -257,7 +259,7 @@ impl Chat {
             }
             return;
         }
-        let mut req = ehttp::Request::post(API_URL, serde_json::to_vec(&body).unwrap_or_default());
+        let mut req = ehttp::Request::post(self.api_url.clone(), serde_json::to_vec(&body).unwrap_or_default());
         req.headers.insert("content-type", "application/json");
         req.headers.insert("x-api-key", self.api_key.trim());
         req.headers.insert("anthropic-version", "2023-06-01");
@@ -631,5 +633,115 @@ mod tests {
         assert!(b.get("temperature").is_none() && b.get("tool_choice").is_none());
         chat.use_beta = false;
         assert!(chat.build_body(&mut host).get("fallbacks").is_none());
+    }
+
+    /// A throwaway HTTP server that records requests and replies from a queue of (status, body).
+    fn serve(replies: Vec<(u16, String)>) -> (String, std::sync::Arc<std::sync::Mutex<Vec<(String, Value)>>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/v1/messages", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen2 = seen.clone();
+        std::thread::spawn(move || {
+            for (status, body) in replies {
+                let (mut s, _) = listener.accept().unwrap();
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                let (head, len) = loop {
+                    let n = s.read(&mut chunk).unwrap();
+                    buf.extend_from_slice(&chunk[..n]);
+                    if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let head = String::from_utf8_lossy(&buf[..p]).to_string();
+                        let len = head.lines().find_map(|l| l.to_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+                        break (head, len + p + 4);
+                    }
+                };
+                while buf.len() < len {
+                    let n = s.read(&mut chunk).unwrap();
+                    buf.extend_from_slice(&chunk[..n]);
+                }
+                let json_body: Value = serde_json::from_slice(&buf[len - (len - head.len() - 4)..]).unwrap_or(Value::Null);
+                seen2.lock().unwrap().push((head, json_body));
+                let resp = format!("HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                s.write_all(resp.as_bytes()).unwrap();
+            }
+        });
+        (url, seen)
+    }
+
+    #[test]
+    fn http_transport_sends_documented_headers_and_body() {
+        let reply = json!({"id": "m", "type": "message", "role": "assistant", "content": [{"type": "text", "text": "hello"}], "stop_reason": "end_turn", "usage": {}});
+        let (url, seen) = serve(vec![(200, reply.to_string())]);
+        let mut chat = Chat::new();
+        chat.api_url = url;
+        chat.api_key = "sk-ant-test".into();
+        let mut host = FakeHost { calls: vec![] };
+        chat.send(&mut host, "hi".into(), vec![]);
+        run_until_idle(&mut chat, &mut host);
+        let seen = seen.lock().unwrap();
+        let (head, body) = &seen[0];
+        let h = head.to_lowercase();
+        assert!(h.contains("x-api-key: sk-ant-test"), "{h}");
+        assert!(h.contains("anthropic-version: 2023-06-01"));
+        assert!(h.contains("anthropic-dangerous-direct-browser-access: true"));
+        assert!(h.contains(&format!("anthropic-beta: {BETA_FALLBACK}")));
+        assert!(h.contains("content-type: application/json"));
+        assert_eq!(body["fallbacks"], "default");
+        assert_eq!(body["messages"][0]["content"][0]["text"], "hi");
+        assert!(matches!(chat.entries.last(), Some(Entry::Claude { blocks, .. }) if matches!(&blocks[0], Block::Text(t) if t == "hello")));
+    }
+
+    #[test]
+    fn rejected_fallbacks_param_is_retried_once_without_it() {
+        let err = json!({"type": "error", "error": {"type": "invalid_request_error", "message": "fallbacks: Extra inputs are not permitted"}});
+        let ok = json!({"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn"});
+        let (url, seen) = serve(vec![(400, err.to_string()), (200, ok.to_string())]);
+        let mut chat = Chat::new();
+        chat.api_url = url;
+        chat.api_key = "k".into();
+        let mut host = FakeHost { calls: vec![] };
+        chat.send(&mut host, "hi".into(), vec![]);
+        run_until_idle(&mut chat, &mut host);
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert!(seen[0].1.get("fallbacks").is_some());
+        assert!(seen[1].1.get("fallbacks").is_none());
+        assert!(!seen[1].0.to_lowercase().contains("anthropic-beta"));
+        assert!(!chat.use_beta, "remembered for the session");
+        // history was not corrupted by the retry: one user message, one assistant message
+        assert_eq!(chat.history.len(), 2);
+    }
+
+    #[test]
+    fn invalid_key_shows_message_and_leaves_history_clean() {
+        let err = json!({"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}});
+        let (url, _seen) = serve(vec![(401, err.to_string())]);
+        let mut chat = Chat::new();
+        chat.api_url = url;
+        chat.api_key = "bad".into();
+        let mut host = FakeHost { calls: vec![] };
+        chat.send(&mut host, "hi".into(), vec![]);
+        run_until_idle(&mut chat, &mut host);
+        assert!(matches!(chat.entries.last(), Some(Entry::Error(m)) if m == "INVALID API KEY"));
+        assert!(chat.history.is_empty(), "unanswered user turn is dropped so the designer can resend");
+    }
+
+    #[test]
+    fn overloaded_is_retried_after_backoff() {
+        let err = json!({"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}});
+        let ok = json!({"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn"});
+        let (url, seen) = serve(vec![(529, err.to_string()), (200, ok.to_string())]);
+        let mut chat = Chat::new();
+        chat.api_url = url;
+        chat.api_key = "k".into();
+        let mut host = FakeHost { calls: vec![] };
+        let t = Instant::now();
+        chat.send(&mut host, "hi".into(), vec![]);
+        run_until_idle(&mut chat, &mut host);
+        assert_eq!(seen.lock().unwrap().len(), 2);
+        assert!(t.elapsed() >= Duration::from_secs(2), "first backoff is 2 s");
+        assert!(chat.entries.iter().any(|e| matches!(e, Entry::Info(m) if m.contains("RETRY IN 2 S"))));
+        assert!(matches!(chat.entries.last(), Some(Entry::Claude { .. })));
     }
 }

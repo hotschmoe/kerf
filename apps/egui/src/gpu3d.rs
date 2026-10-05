@@ -470,12 +470,15 @@ impl Cam3d {
         let d = self.dir();
         let eye = self.target + d * (radius * 3.0 + 10.0);
         let up = if self.pitch.abs() > 1.5 { Vec3::new(0.0, 0.0, -self.pitch.signum()) } else { Vec3::Y };
-        Mat4::look_at_rh(eye, self.target, up)
+        #[allow(deprecated)]
+        let m = Mat4::look_at_rh(eye, self.target, up);
+        m
     }
 
     pub fn view_proj(&self, aspect: f32, radius: f32) -> Mat4 {
         let h = self.half_h;
         let far = radius * 6.0 + 20.0;
+        #[allow(deprecated)]
         let proj = Mat4::orthographic_rh(-h * aspect, h * aspect, -h, h, 0.1, far);
         proj * self.view(radius)
     }

@@ -22,8 +22,8 @@ impl Default for RenderOpts {
 }
 
 pub struct Raster {
-    pub pixmap: Pixmap,
     pub png: Vec<u8>,
+    pub size: [u32; 2],
 }
 
 fn paint(c: [u8; 3]) -> Paint<'static> {
@@ -119,5 +119,5 @@ pub fn render(prep: &Prep, opts: &RenderOpts) -> Result<Raster, String> {
         }
     }
     let png = pm.encode_png().map_err(|e| format!("png encode: {e}"))?;
-    Ok(Raster { pixmap: pm, png })
+    Ok(Raster { png, size: [w, h] })
 }
