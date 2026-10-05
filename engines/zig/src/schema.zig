@@ -82,6 +82,7 @@ pub const note: Object = .{
         .{ .name = "target", .ty = "string", .desc = "component id or `comp.part` (e.g. `slab.footing`); the arrow lands inside its visible region. Required unless `at` is given" },
         .{ .name = "at", .ty = "point", .desc = "exact arrow landing: \"comp@anchor\", {\"ref\":\"comp@anchor\",\"offset\":[dx,dy]} or [x, y]. Use it when the target is hidden or the label point is bad" },
         .{ .name = "place", .ty = "[x, y]", .desc = "model-inch position of the text (designer override; the note is then fixed). Not `side`/`pos`: the column side is the VIEW's `notes_side`" },
+        .{ .name = "column", .ty = "left|right", .desc = "which notes column this note's text goes in (per-note version of the view's `notes_side`; the layout never moves it to the other column). A note with `place` right-aligns its text when it sits left of its arrow" },
         .{ .name = "cite", .ty = "[cite]", .desc = "code citations printed after the text, e.g. (IRC R403.1.6)* (`kerf schema cite`). The key is `cite`, not citations" },
     },
     .example = "{\"id\":\"n_sill\",\"type\":\"note\",\"text\":\"2X6 PT SILL PLATE\",\"target\":\"sill\",\"cite\":[{\"code\":\"IRC\",\"edition\":2021,\"section\":\"R317.1\",\"title\":\"Location required\",\"status\":\"suggested\"}]}",
