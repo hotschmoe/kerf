@@ -765,3 +765,15 @@ whose metrics are close; minor differences in CAD are acceptable.
   top at +projection − 0.25·d (thread stick-out). Washer: 2.25·d wide × 0.125 thick, directly under the nut.
   `nut_washer:false` omits both.
 - **Feet-inch with zero inches and a fraction:** `3'-0 1/4"` (never `3'-1/4"`); `-0'-0 1/4"` prints as `-1/4"`.
+- **Parity decisions (from the cross-engine compare):**
+  - Thin-region rule applies to **metal only** (`steel`, `aluminum`, `flashing_membrane`); fill +
+    outline in the material pen (`steel`). Thin non-metal panels keep the normal outline.
+  - Break line symbol: a polyline crossing the member group with ONE zigzag at its middle:
+    `start, a, peak, valley, b, end`, i.e. 6 vertices; peak/valley offsets ±`zig_in`·scale, zig width
+    `zig_in`·scale; ends extended by `overshoot_in`·scale. Pen `break`, layer `S-DETL-BRKL`.
+  - Note landing ties: when candidate visible polygons tie on area (relative difference < 1e-6), take
+    the first in Drawing item order (component order, then part order, then instance order).
+  - Vapor retarder always uses pen `vapor` (dashed), never `cut`.
+  - Hatch phase: pattern origin at model (0,0) after the family's own x0/y0, never per-region.
+  - NTS (iso) fit: start at the factor that fits the cropped geometry in the frame, then grow the
+    factor in steps of 0.5 until drawing + notes + title fit. NTS views never raise `W_VIEW_FIT`.
