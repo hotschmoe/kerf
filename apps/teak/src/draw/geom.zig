@@ -340,7 +340,11 @@ pub fn pointInLoop(pts: []const BPt, x: f64, y: f64) bool {
         if (dx * dx + dy * dy > arc.r * arc.r) continue;
         // side of the chord: bulge > 0 => arc lies to the RIGHT of p0->p1 (cross < 0)
         const cr = (q.x - p.x) * (y - p.y) - (q.y - p.y) * (x - p.x);
-        if ((p.b > 0 and cr < 0) or (p.b < 0 and cr > 0)) inside = !inside;
+        // exactly on the chord: count it for one direction only (so a 2-vertex circle has an inside centre)
+        const cdx = q.x - p.x;
+        const cdy = q.y - p.y;
+        const on_chord = cr == 0 and (cdx > 0 or (cdx == 0 and cdy > 0));
+        if ((p.b > 0 and (cr < 0 or on_chord)) or (p.b < 0 and (cr > 0 or on_chord))) inside = !inside;
     }
     return inside;
 }
@@ -688,6 +692,7 @@ test "pointInLoop with arcs: rounded notch and bulge" {
 test "pointInLoop: full circle as two bulge vertices" {
     const circ = [_]BPt{ .{ .x = 1, .y = 0, .b = 1 }, .{ .x = -1, .y = 0, .b = 1 } };
     // two bulged vertices = full circle
+    try testing.expect(pointInLoop(&circ, 0, 0)); // exactly on both chords
     try testing.expect(pointInLoop(&circ, 0, 0.99));
     try testing.expect(pointInLoop(&circ, 0, -0.99));
     try testing.expect(!pointInLoop(&circ, 1.01, 0));

@@ -7,4 +7,5 @@ test {
     _ = @import("raster.zig");
     _ = @import("png.zig");
     _ = @import("render.zig");
+    _ = @import("pick.zig");
 }
