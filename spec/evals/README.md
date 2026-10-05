@@ -68,3 +68,22 @@ node spec/evals/run-cli.mjs --agent claude [--kerf ~/kerf-eval/bin/kerf-baseline
 - `--regrade <runDir>` re-grades saved final docs; `--recover <runDir> [--only id]` rebuilds a case from its saved
   transcript and workspace if post-processing crashed. Neither re-runs the agent.
 - Results are written up in `spec/evals/results/` (first one: `2026-10-06-claude-code-baseline.md`).
+
+### Geometry checks and the visual judge
+
+- `geom.mjs` computes independent checks from `kerf call drawing` (not from engine warnings): leader/leader crossings,
+  leaders through other text, dim text overlapping text/lines or sitting on outlines, overlapping annotation text,
+  sloped panels ending short of their host truss (crop-aware: a member clipped by the crop is not "short"), and strap
+  overhang past a beam face/joint (min 6"). Text widths are estimated (0.88 x cap height per character). They are added to
+  `checks` as `geom: <metric> == 0` gates and stored under `geometry` in `score.json`.
+- `judge.mjs` is a visual judge: one `claude -p` call per case (`--tools Read`, JSON output, default model, ~$0.10), given
+  the PNG, the request, the engine summary, the notes and citations and the agent's report, scoring the 4 rubric criteria
+  0-2 with one-line reasons. `node spec/evals/judge.mjs --run <runDir> --kerf <bin>` judges a saved run;
+  `run-cli.mjs --judge` does it inline. `--hand spec/evals/calibration/hand-scores.json --hand-key alpha4` prints agreement
+  with the author's hand scores (never shown to the judge).
+- Calibration (judge prompt v3, 19 saved PNGs: baseline 9 + alpha4 10): mean abs diff per criterion 0.25 (baseline) and
+  0.15 (alpha4) on the 0-2 scale; totals within +-1 of the hand total on 89% / 80% of cases; mean total 6.1 -> 7.2 for the
+  judge vs 6.7 -> 7.7 by hand (same before/after improvement); judge bias -0.6 (slightly stricter than the author, mostly
+  on r2: it flags minor leader/dimension clashes). Per-case correlation is only 0.4-0.5 because the cases cluster at 6-8:
+  use the judge for run-to-run and engine-to-engine comparison, not to rank two cases within a run. The prompt was tuned on
+  these same 19 cases (3 iterations), so expect slightly worse agreement on new ones.

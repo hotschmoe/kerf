@@ -14,6 +14,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { geometryChecks } from "./geom.mjs";
+import { judgeCase } from "./judge.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
@@ -192,6 +194,20 @@ function grade(c, doc, startDoc, finalText) {
     check("gate: no leader hits/crossings (W_LEADER_HIT)", count("W_LEADER_HIT") === 0, `${count("W_LEADER_HIT")}`);
     check("gate: every note target visible (W_NOTE_TARGET)", count("W_NOTE_TARGET") === 0, `${count("W_NOTE_TARGET")}`);
   }
+  // Independent geometry checks from the drawing IR (see geom.mjs): crossings, dim text legibility,
+  // sloped panel vs host, strap overhang. Counted as gates only when applicable to the document.
+  let geometry = null;
+  if ((doc.views ?? []).length && doc.components?.length) {
+    try {
+      const view = (doc.views.find((v) => v.id === "A") ?? doc.views[0]).id;
+      geometry = geometryChecks(doc, kerfCall("drawing", { doc, style, view }));
+      for (const m of ["leader_crossings", "leader_text_hits", "dim_text_overlaps", "dim_text_on_geometry", "text_overlaps", "sloped_panel_short", "strap_problems"]) {
+        if (m in geometry.metrics) check(`geom: ${m} == 0`, geometry.metrics[m] === 0, `${geometry.metrics[m]}`);
+      }
+    } catch (err) {
+      geometry = { error: String(err.stderr ?? err.message ?? err).slice(0, 200) };
+    }
+  }
   const passed = checks.filter((x) => x.pass).length;
   const penalised = warns.filter((d) => !GATE_CODES.includes(d.code)).length;
   return {
@@ -206,6 +222,7 @@ function grade(c, doc, startDoc, finalText) {
     notes: notes.length,
     citations: cites.length,
     unknown_keys: unknown,
+    geometry,
     checks,
   };
 }
@@ -333,6 +350,14 @@ async function runCase(c, runDir, agent) {
     }
   }
   result.final_message = parsed.finalText?.slice(0, 2000);
+  // --judge: one visual LLM-judge call (claude -p, Read only) on the final PNG; see judge.mjs.
+  if (args.judge && result.png && finalPath) {
+    try {
+      const doc = JSON.parse(fs.readFileSync(finalPath, "utf8"));
+      const summary = kerfCall("check", { doc, style }).summary ?? "";
+      result.judge = judgeCase({ c, doc, summary, finalMessage: result.final_message, png: path.join(runDir, result.png), referencePng: c.attach ? path.join(root, c.attach) : null });
+    } catch (e) { result.judge = { error: String(e.message).slice(0, 200) }; }
+  }
   Object.assign(result, meta);
   fs.writeFileSync(path.join(outDir, "score.json"), JSON.stringify(result, null, 2));
   return result;
@@ -349,7 +374,7 @@ if (args.regrade) {
     if (!c || !fs.existsSync(f)) continue;
     const startDoc = c.start ? JSON.parse(fs.readFileSync(path.join(root, "spec/details", `${c.start}.kerf.json`), "utf8")) : null;
     const g = grade(c, JSON.parse(fs.readFileSync(f, "utf8")), startDoc, r.final_message ?? "");
-    Object.assign(r, { score: g.score, score_v1: g.score_v1, unknown_keys: g.unknown_keys, passed: g.passed, total: g.total, warnings: g.warnings, warning_codes: g.warning_codes, errors: g.errors, checks: g.checks });
+    Object.assign(r, { score: g.score, score_v1: g.score_v1, unknown_keys: g.unknown_keys, geometry: g.geometry, passed: g.passed, total: g.total, warnings: g.warnings, warning_codes: g.warning_codes, errors: g.errors, checks: g.checks });
     fs.writeFileSync(path.join(dir, r.id, "score.json"), JSON.stringify(r, null, 2));
     console.log(`${r.id} ${g.passed}/${g.total} warn ${g.warnings} score ${g.score}`);
   }
