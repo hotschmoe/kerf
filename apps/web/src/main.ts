@@ -105,10 +105,12 @@ async function boot() {
   const view = params.get('view'); if (view) app.setActiveView(view);
   const mode = params.get('mode'); if (mode === '3d' || mode === 'sheet' || mode === 'view') app.setMode(mode);
   const sel = params.get('select'); if (sel) app.setSelection(sel);
+  if (params.get('cut') === '1') { const t = setInterval(() => { const v3 = vp.view3; if (v3 && v3.ok && v3.cut === null && (window as unknown as { __rendered3d?: boolean }).__rendered3d) { v3.setCut(app.view?.cut_z ?? 0); clearInterval(t); (window as unknown as { __cut?: boolean }).__cut = true; } }, 100); }
   const tab = params.get('tab'); if (tab) (document.querySelector(`.itabs .tab:nth-child(${['parts', 'notes', 'diff', 'diag'].indexOf(tab) + 1})`) as HTMLElement | null)?.click();
   if (demo && params.get('auto') !== '0') {
     con.sendText('Build a detail of a prefab roof truss bearing on an 8-inch CMU wall with a grouted bond beam, hurricane ties and a PT sill plate.');
   }
+  document.getElementById('boot')?.remove();
   app.perf.uiReady = performance.now() - t0;
   w.__ready = true;
   if (!app.doc) w.__rendered = true;
@@ -116,6 +118,7 @@ async function boot() {
 }
 
 boot().catch((e) => {
+  document.getElementById('boot')?.remove();
   console.error('KERF boot failed:', e);
   document.body.prepend(h('pre', { style: 'color:#C8102E;padding:16px;white-space:pre-wrap' }, `KERF FAILED TO START\n${e?.message ?? e}`));
   (window as unknown as Record<string, unknown>).__bootError = String(e?.message ?? e);

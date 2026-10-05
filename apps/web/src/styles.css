@@ -160,6 +160,7 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 .field textarea { resize: vertical; min-height: 44px; line-height: 1.4; }
 .field input:focus, .field textarea:focus, .field select:focus { border-bottom-color: var(--blue); box-shadow: 0 1px 0 var(--blue); }
 .field .v { overflow-wrap: anywhere; }
+.field select { appearance: none; -webkit-appearance: none; border-radius: 0; cursor: pointer; padding-right: 18px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 6z' fill='%231A1A1A'/%3E%3C/svg%3E") no-repeat right 2px center; }
 .field .v.ro { color: var(--ink); }
 .kv { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 0 10px; font-size: 12px; }
 .kv .k { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); padding: 2px 0; border-bottom: 1px solid var(--rule-soft); overflow-wrap: anywhere; }
@@ -216,7 +217,7 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 .menu .mi:last-child { border-bottom: 0; }
 .menu .mi b { font-weight: 500; text-transform: uppercase; font-size: 12px; letter-spacing: 0.03em; }
 .menu .mi small { color: var(--ink-2); font-size: 11px; }
-.menu .mh { padding: 3px 12px; background: var(--paper-2); border-bottom: 1px solid var(--ink); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+.float .mh { padding: 3px 12px; background: var(--paper-2); border-bottom: 1px solid var(--ink); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
 .dlg { width: 380px; }
 .dlg .db { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 4px; }
 .dlg .note { font-size: 11px; color: var(--ink-2); margin-top: 4px; }

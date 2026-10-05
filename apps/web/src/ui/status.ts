@@ -31,7 +31,12 @@ export function mountStatus(app: App, el: HTMLElement) {
       : cl.state === 'ERR' ? [h('span', { class: 'bad' }, 'CLAUDE ERR')]
       : cl.state === 'NO KEY' ? [h('span', { class: 'warn' }, 'NO KEY')]
       : ['CLAUDE OK'];
-    segs.forEach((s, i) => { if (i) el.append(h('span.sep', '▮')); el.append(h('span.seg', ...s)); });
+    segs.forEach((s0, i) => {
+      const opt = s0[0] === 'opt';
+      const s = opt ? s0.slice(1) : s0;
+      if (i) el.append(h('span.sep', { class: opt ? 'opt' : '' }, '▮'));
+      el.append(h('span.seg', { class: opt ? 'opt' : '' }, ...s));
+    });
     el.append(h('span.fill'), h('span.sep', '▮'), h('span.seg', ...claude));
   };
   for (const ev of ['doc', 'selection', 'hover', 'cursor', 'status', 'claude', 'view'] as const) app.on(ev, render);

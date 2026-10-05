@@ -56,6 +56,8 @@ export function mountInspector(app: App, el: HTMLElement) {
       const tr = h('tr.row', { class: selId() === base ? 'sel' : '', tabindex: 0, on: { click: () => app.setSelection(base), keydown: ((e: KeyboardEvent) => { if (e.key === 'Enter') app.setSelection(base); }) as EventListener } },
         h('td.no', r.no), h('td.id', r.id, r.params ? h('span.sub', r.params) : null), h('td.ty', r.type));
       tr.dataset.id = base;
+      tr.addEventListener('mouseenter', () => app.setHover(base));
+      tr.addEventListener('mouseleave', () => app.setHover(null));
       tb.append(tr);
     }
     t.append(tb);

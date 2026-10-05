@@ -3,7 +3,8 @@
 import {
   WebGLRenderer, Scene, OrthographicCamera, BufferGeometry, Float32BufferAttribute, Mesh as TMesh,
   MeshLambertMaterial, Color, AmbientLight, DirectionalLight, GridHelper, Vector3, Box3, Raycaster, Vector2,
-  Matrix4, LineBasicMaterial, LineSegments, Object3D,
+  Matrix4, LineBasicMaterial, LineSegments, Object3D, Plane, PlaneGeometry, MeshBasicMaterial, BackSide, FrontSide,
+  IncrementWrapStencilOp, DecrementWrapStencilOp, type StencilOp, AlwaysStencilFunc, NotEqualStencilFunc, ReplaceStencilOp,
 } from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
@@ -11,7 +12,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { Mesh } from './types';
 
 export type Preset = 'front' | 'iso' | 'top' | 'right';
-const PAPER = 0xf2efe6, INK = 0x1a1a1a, GRID2 = 0xd3e0ee, GRID = 0xa9c1dd, BLUE = 0x1d4e9e;
+const PAPER = 0xf2efe6, INK = 0x1a1a1a, GRID2 = 0xd3e0ee, GRID = 0xa9c1dd, BLUE = 0x1d4e9e, MANILA = 0xe9d9a6;
 
 interface PartObj { src: string; mesh: TMesh; edges: LineSegments2 | LineSegments; mat: MeshLambertMaterial }
 
@@ -42,12 +43,13 @@ export class View3D {
     this.canvas.className = 'vp-canvas';
     host.appendChild(this.canvas);
     try {
-      this.renderer = new WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+      this.renderer = new WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: false, stencil: true, powerPreference: 'high-performance' });
     } catch (e) {
       this.failed = 'WEBGL2 NOT AVAILABLE (' + (e as Error).message + ')';
       return;
     }
     this.renderer.setClearColor(PAPER, 1);
+    this.renderer.localClippingEnabled = true;
     this.scene.add(new AmbientLight(0xffffff, 1.15));
     const key = new DirectionalLight(0xffffff, 1.35); key.position.set(-0.5, 1.2, 1.0); this.scene.add(key);
     const fill = new DirectionalLight(0xffffff, 0.35); fill.position.set(1, -0.3, 0.2); this.scene.add(fill);
@@ -111,8 +113,52 @@ export class View3D {
       this.scene.add(this.grid);
     }
     this.applyHighlight();
+    if (this.cutZ !== null) this.setCut(this.cutZ);
     this.fit();
   }
+
+  private cutPlane = new Plane(new Vector3(0, 0, -1), 0);
+  private cutZ: number | null = null;
+  private capObjs: Object3D[] = [];
+
+  /** Section cut at z (keeps z <= cutZ, the far side from the viewer) with manila stencil caps; null = off. */
+  setCut(z: number | null) {
+    this.cutZ = z;
+    for (const o of this.capObjs) { this.group.remove(o); (o as TMesh).geometry?.dispose(); }
+    this.capObjs = [];
+    const on = z !== null;
+    this.cutPlane.constant = z ?? 0;
+    for (const p of this.parts) {
+      const planes = on ? [this.cutPlane] : [];
+      p.mat.clippingPlanes = planes; p.mat.needsUpdate = true;
+      if (p.edges instanceof LineSegments2) { p.edges.material.clippingPlanes = planes; p.edges.material.needsUpdate = true; }
+    }
+    if (on && !this.box.isEmpty()) {
+      const size = this.box.getSize(new Vector3()), c = this.box.getCenter(new Vector3());
+      const span = Math.max(size.x, size.y) * 1.2 + 10;
+      let order = 1;
+      for (const p of this.parts) {
+        const mk = (side: typeof BackSide | typeof FrontSide, op: StencilOp) => {
+          const m = new MeshBasicMaterial({ side, depthWrite: false, depthTest: false, colorWrite: false, stencilWrite: true, stencilFunc: AlwaysStencilFunc, clippingPlanes: [this.cutPlane] });
+          m.stencilFail = op; m.stencilZFail = op; m.stencilZPass = op;
+          const o = new TMesh(p.mesh.geometry, m);
+          o.renderOrder = order;
+          return o;
+        };
+        const back = mk(BackSide, IncrementWrapStencilOp), front = mk(FrontSide, DecrementWrapStencilOp);
+        const capMat = new MeshBasicMaterial({ color: MANILA, stencilWrite: true, stencilRef: 0, stencilFunc: NotEqualStencilFunc, stencilFail: ReplaceStencilOp, stencilZFail: ReplaceStencilOp, stencilZPass: ReplaceStencilOp });
+        const cap = new TMesh(new PlaneGeometry(span, span), capMat);
+        cap.position.set(c.x, c.y, z!);
+        cap.renderOrder = order + 0.1;
+        cap.onAfterRender = (r) => r.clearStencil();
+        this.group.add(back, front, cap);
+        this.capObjs.push(back, front, cap);
+        order += 1;
+      }
+    }
+    this.requestRender();
+  }
+  get cut() { return this.cutZ; }
 
   setSelection(id: string | null) { this.selected = id; this.applyHighlight(); this.requestRender(); }
   setHover(id: string | null) { this.hover = id; this.applyHighlight(); this.requestRender(); }

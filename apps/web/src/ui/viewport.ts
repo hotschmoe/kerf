@@ -158,6 +158,7 @@ export function mountViewport(app: App, el: HTMLElement) {
       for (const [p, l] of [['front', 'FRONT'], ['iso', 'ISO'], ['top', 'TOP'], ['right', 'RIGHT']] as [Preset, string][]) {
         tools.append(tabBtn(`[${l}]`, false, () => view3?.preset(p), 'sm'));
       }
+      tools.append(tabBtn('[CUT]', view3?.cut != null, () => { if (!view3) return; view3.setCut(view3.cut === null ? (app.view?.cut_z ?? 0) : null); renderTabs(); }, 'sm'));
       tools.append(tabBtn('[FIT]', false, () => view3?.fit(), 'sm'));
     } else {
       const z = (f: number) => () => (app.mode === 'sheet' ? sheet.zoomBy(f) : vp2.zoomBy(f));
@@ -167,7 +168,7 @@ export function mountViewport(app: App, el: HTMLElement) {
 
   app.on('view', () => void refresh());
   app.on('selection', () => { vp2.setSelection(app.selection?.id ?? null); view3?.setSelection(app.selection?.id ?? null); });
-  app.on('hover', () => { /* 2D hover is driven by pointer; 3D by its own raycast */ });
+  app.on('hover', () => { vp2.setHover(app.hover); view3?.setHover(app.hover); });
   void refresh();
   return { vp2, sheet, get view3() { return view3; }, refresh, showMsg };
 }
