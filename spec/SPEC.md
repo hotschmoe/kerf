@@ -703,3 +703,19 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Detail-1 style check:** `truss` geometry for the standard heel: bottom chord top at
   bearing = 3.5 above bearing (2x4); top chord's lower edge passes through
   (bearing_outer.x, bottom-chord top) at the pitch; `tail_top` = top of top chord at the plumb tail.
+- **Thin cut regions:** a cut region whose minimum paper thickness is < 2× the `cut` pen width
+  renders as a solid `fill` plus an outline in the material's pen (steel → `steel`). This applies
+  to sheet metal, straps, flashing and thin panels. Membranes render at least their pen width.
+- **Break lines across groups:** the crop edges of adjacent cut regions (touching or sharing an
+  edge) merge into ONE continuous break line spanning the whole member group (e.g. a CMU wall's
+  face shells + grout).
+- **Notes vs dimensions:** the notes-column x position clears the union of crop, dimension
+  geometry and labels. Dimension text and label boxes are obstacles that leaders must not cross.
+- **Leader de-crossing:** after the §6.3 y-ordering, repeatedly swap adjacent column notes whose
+  leaders intersect (scan top→bottom, at most n² swaps), then re-run the overlap resolution.
+- **Accepted interpretations (from engine NOTES):** canonical key order puts the common fields
+  (`id type label material at rotate slope mirror z array embedded visible`) first, then type
+  params in catalog order. `slab_edge.recess.depth` is measured at the interior end, and the floor
+  falls by `recess_slope` toward the exterior. In point lists with `at`, literal points are
+  relative to `at.to + offset` and `anchor` is ignored. Shared edges between prisms of the SAME
+  component (CMU shell/grout/mortar) draw in the `beyond` pen.
