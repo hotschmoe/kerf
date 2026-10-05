@@ -832,3 +832,57 @@ whose metrics are close; minor differences in CAD are acceptable.
   `.log.jsonl` append fails (the document write is still atomic). Logs are opened with a normal write
   handle and seek-to-end, never append-only handles. That fixes AccessDenied on Windows.
 - `kerf guide` and `kerf catalog --markdown` output is pure ASCII (PowerShell consoles).
+
+## 19. v0.1.3 agent ergonomics (from the Claude Code headless eval, spec/evals/results/2026-10-06-claude-code-baseline.md)
+
+**CLI**
+- A failed `kerf apply` prints every error diagnostic to stderr as
+  `ERROR <code> <path>: <message>  Fix: <fix>`, then `nothing written`, and exits 1. Warnings print
+  after the summary. Add `kerf apply --dry-run` (validate and print the summary, write nothing; the
+  same as omitting `-w`, but explicit).
+- `kerf schema [doc|view|note|dim|label|cite|ops|<component type>]` prints the field reference
+  for that object (required/optional, types, defaults, one example). `kerf guide` embeds
+  `kerf schema view`, `kerf schema note|dim|label|cite`, `kerf schema ops`, and ONE complete minimal
+  example document: two components, a section view with crop/scale/notes_side, two notes (one
+  citation), one dim, one label.
+- `kerf new <file> --template section` writes that minimal example (renamed) instead of an empty doc.
+- `kerf call help` lists functions with their input shapes.
+
+**Validation**
+- `W_UNKNOWN_KEY`: any key not in the schema for that object warns, names the object path, and
+  suggests the nearest valid key (edit distance + a synonym table: `citations|citation|cites → cite`,
+  `side → (view) notes_side`, `point|target_point|arrow → at`, `kind → type`, `pos|position → place`).
+  Unknown keys are still preserved in the document.
+- `dim.dir` defaults to the dominant axis between `from` and `to` (|dx| ≥ |dy| ⇒ `h`, else `v`).
+  `W_DIM_ZERO` fires when a dim measures under 1/16".
+- `acknowledge: [{ "code": "W_UNTREATED_CONTACT", "reason": "truss seat moisture barrier by mfr." }]`
+  on any component suppresses that warning for it. The reason prints in the summary as an `I_ACK` line, and
+  `kerf apply` logs it. `lumber.barrier: "sill_seal" | "membrane"` draws a 1/8" sill-sealer strip under
+  the member and also clears `W_UNTREATED_CONTACT`.
+- `W_NOTE_STYLE` (lint): note text containing lowercase letters (before the case transform), a
+  trailing period, ` x ` as a dimension separator (use ` X `), `1-1/2"` style fractions (house style is
+  `1 1/2"`), or a word on the abbreviation list spelled out (`GYPSUM BOARD → GYP. BD.`,
+  `CONCRETE → CONC.`, `CONTINUOUS → CONT.`, `EACH → EA.`, `ON CENTER → O.C.`, `BOTTOM → BOTT.`,
+  `REINFORCING → REINF.`, `MINIMUM → MIN.`, `DIAMETER → DIA.`, `PRESSURE TREATED → PT`).
+
+**Defaults that should just work**
+- `anchor_bolt` placement anchor defaults to `top_of_concrete`. Its default `z` (and the default z
+  of any in-plane member when the doc has a section view) is the first section view's `cut_z`, so
+  it is cut, not hidden.
+- `crop` is optional. When omitted it auto-fits the bounding box of all non-fill components plus
+  6" (fills are clipped to that box). `scale` is optional: when omitted, the engine picks the largest
+  standard scale (3", 1-1/2", 1", 3/4", 1/2", 3/8", 1/4") at which the view + notes + title fits the
+  frame. `W_VIEW_FIT` fires only when the author set crop or scale explicitly.
+- `notes_side` defaults to `"both"`.
+
+**Coupled geometry**
+- `slope` accepts a Ref-like string `"@<component>"`, e.g. `"@truss"` (inherits the truss pitch).
+  `until` works on sloped panels and membranes along their own run direction, so sheathing can run to
+  `truss@top_chord_end`.
+- Truss named anchors gain `heel_outer` (outer face of the heel at the bearing) and
+  `top_chord_bottom_at_bearing`.
+- `array` is allowed on `anchor_bolt` and connectors (z spacing), so "@ 32" O.C." can be drawn in 3D/iso.
+
+**Graphics**
+- Lumber cut lengthwise (run x/y, cut by the section plane) gets the `KERF-GRAIN` pattern (a sparse
+  wavy grain line, style material `wood` → `grain`), so stud walls in section don't read as voids.
