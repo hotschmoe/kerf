@@ -185,6 +185,21 @@ pub const Drawing = struct {
     }
 };
 
+/// Component id of a `src` ("truss#1" -> "truss"; instance suffix `#k`, SPEC 16).
+pub fn srcBase(src: []const u8) []const u8 {
+    if (std.mem.indexOfScalar(u8, src, '#')) |i| return src[0..i];
+    return src;
+}
+
+/// Does an item's `src` belong to the wanted id? `wanted` = "truss" matches "truss" and "truss#0";
+/// `wanted` = "truss#1" matches only instance 1. Empty strings never match.
+pub fn srcMatches(item_src: []const u8, wanted: []const u8) bool {
+    if (item_src.len == 0 or wanted.len == 0) return false;
+    if (std.mem.eql(u8, item_src, wanted)) return true;
+    if (std.mem.indexOfScalar(u8, wanted, '#') == null) return std.mem.eql(u8, srcBase(item_src), wanted);
+    return false;
+}
+
 pub const ParseError = error{ InvalidJson, NotADrawing, OutOfMemory };
 
 /// Conservative (never too small) model-space bbox of a text item, rotation
@@ -578,4 +593,16 @@ test "textBBox grows with length" {
     const a = textBBox(.{ .s = "AB", .x = 0, .y = 0, .h = 1 });
     const b = textBBox(.{ .s = "ABCDEFGH", .x = 0, .y = 0, .h = 1 });
     try testing.expect(b.x1 > a.x1);
+}
+
+test "srcBase / srcMatches handle instance suffixes" {
+    try testing.expectEqualStrings("truss", srcBase("truss#1"));
+    try testing.expectEqualStrings("cmu", srcBase("cmu"));
+    try testing.expect(srcMatches("truss#0", "truss"));
+    try testing.expect(srcMatches("truss", "truss"));
+    try testing.expect(srcMatches("truss#1", "truss#1"));
+    try testing.expect(!srcMatches("truss#0", "truss#1"));
+    try testing.expect(!srcMatches("truss2", "truss"));
+    try testing.expect(!srcMatches("", ""));
+    try testing.expect(!srcMatches("a", ""));
 }

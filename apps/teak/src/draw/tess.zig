@@ -38,7 +38,8 @@
 //!
 //! ## Draw order
 //! vellum, grid, selection tint, then drawing items in IR order, then
-//! hover/selection outlines (blue, >= 2 px).
+//! hover/selection outlines (blue, >= 2 px; dashed pens are not outlined). A selected src
+//! with a cut region gets the 15 % tint; one made only of fills / text / lines gets the outline instead.
 //! Items whose bbox is outside the viewport are skipped. Text smaller than
 //! ~2.5 px cap height is greeked into a single thin line.
 
@@ -587,28 +588,14 @@ pub const Tessellator = struct {
 
     // ---- selection / hover ------------------------------------------------
 
+    /// Tint the cut region of `src`. Region sources, in order: hatch loops (loop 0 outer, rest holes);
+    /// else closed cut/profile paths plus loops formed by chaining its open cut/profile paths end to end
+    /// (the engines emit cut outlines as open chains); else nothing. Returns true if a region was tinted.
     fn drawTint(self: *Tessellator, src: []const u8) Allocator.Error!bool {
         const tint = self.pal.blue.withAlpha(self.pal.tint_alpha);
         var drew = false;
         for (self.drawing.items) |it| {
-            if (it.src.len == 0 or !std.mem.eql(u8, it.src, src)) continue;
-            if (it.body != .path or !it.body.path.closed) continue;
-            // only "cut" regions (pens cut/profile or unnamed), not beyond/hidden/annotation outlines
-            const name = self.drawing.penOf(it).name;
-            if (!(std.mem.eql(u8, name, "cut") or std.mem.eql(u8, name, "profile") or name.len == 0)) continue;
-            if (!self.visible(it, 2)) {
-                drew = true;
-                continue;
-            }
-            self.beginLoops();
-            try self.addLoop(it.body.path.pts, true);
-            try self.fillPrepared(tint);
-            drew = true;
-        }
-        if (drew) return true;
-        // no closed cut path: use hatch loops (with holes), then solid fills
-        for (self.drawing.items) |it| {
-            if (it.src.len == 0 or !std.mem.eql(u8, it.src, src)) continue;
+            if (!ir.srcMatches(it.src, src)) continue;
             switch (it.body) {
                 .hatch => |h| {
                     if (h.loops.len == 0) continue;
@@ -622,17 +609,39 @@ pub const Tessellator = struct {
             }
         }
         if (drew) return true;
+
+        // closed cut paths + chained open cut paths
+        var arena = std.heap.ArenaAllocator.init(self.gpa);
+        defer arena.deinit();
+        const ar = arena.allocator();
+        var open: std.ArrayList([]const ir.Pt) = .empty;
         for (self.drawing.items) |it| {
-            if (it.src.len == 0 or !std.mem.eql(u8, it.src, src)) continue;
-            switch (it.body) {
-                .fill => |f| {
-                    drew = true;
-                    if (!self.visible(it, 2)) continue;
-                    self.beginLoops();
-                    for (f.loops, 0..) |l, i| try self.addLoop(l, i == 0);
-                    try self.fillPrepared(tint);
-                },
-                else => {},
+            if (!ir.srcMatches(it.src, src)) continue;
+            if (it.body != .path) continue;
+            const name = self.drawing.penOf(it).name;
+            if (!(std.mem.eql(u8, name, "cut") or std.mem.eql(u8, name, "profile") or name.len == 0)) continue;
+            const p = it.body.path;
+            if (p.closed) {
+                if (p.pts.len < 3) continue;
+                drew = true;
+                if (!self.visible(it, 2)) continue;
+                self.beginLoops();
+                try self.addLoop(p.pts, true);
+                try self.fillPrepared(tint);
+            } else {
+                try open.append(ar, p.pts);
+            }
+        }
+        if (open.items.len > 0) {
+            const loops = try chainLoops(ar, open.items);
+            for (loops) |l| {
+                drew = true;
+                var bb = geom.bboxOfPath(l, true);
+                bb = bb.grow(2.0 / @as(f64, self.ppi));
+                if (!bb.intersects(self.cull)) continue;
+                self.beginLoops();
+                try self.addLoop(l, true);
+                try self.fillPrepared(tint);
             }
         }
         return drew;
@@ -642,9 +651,10 @@ pub const Tessellator = struct {
     fn drawOutline(self: *Tessellator, src: []const u8) Allocator.Error!void {
         const blue = self.pal.blue;
         for (self.drawing.items) |it| {
-            if (it.src.len == 0 or !std.mem.eql(u8, it.src, src)) continue;
+            if (!ir.srcMatches(it.src, src)) continue;
             switch (it.body) {
                 .path => |p| {
+                    if (self.drawing.penOf(it).dash_mm.len >= 2) continue; // hidden/dashed linework is not outlined
                     const W = @max(2.0, self.penPx(it) + 1.0);
                     if (!self.visible(it, W)) continue;
                     try self.pathToScreen(&self.tp, p.pts, p.closed);
@@ -1161,6 +1171,69 @@ pub const Tessellator = struct {
     }
 };
 
+fn ptEq(a: ir.Pt, b: ir.Pt) bool {
+    return @abs(a.x - b.x) < 2e-3 and @abs(a.y - b.y) < 2e-3;
+}
+
+/// Reverse a bulge path (vertex k = p[n-k], bulge of segment k = -bulge of the original segment n-1-k).
+fn reversedPath(ar: Allocator, p: []const ir.Pt) Allocator.Error![]ir.Pt {
+    const n = p.len;
+    const out = try ar.alloc(ir.Pt, n);
+    for (0..n) |k| {
+        const src_i = n - 1 - k;
+        out[k] = .{ .x = p[src_i].x, .y = p[src_i].y, .b = if (src_i >= 1) -p[src_i - 1].b else 0 };
+    }
+    return out;
+}
+
+/// Greedily chain open paths (matching end points within 0.002 in) into closed loops.
+/// Chains that do not close are closed with a straight chord when they have >= 3 vertices and a real
+/// area (a U-shaped wood outline whose bottom edge is shared with a neighbour), else dropped.
+/// Allocations come from `ar` (an arena).
+pub fn chainLoops(ar: Allocator, paths: []const []const ir.Pt) Allocator.Error![]const []const ir.Pt {
+    const used = try ar.alloc(bool, paths.len);
+    @memset(used, false);
+    var loops: std.ArrayList([]const ir.Pt) = .empty;
+    for (paths, 0..) |first, fi| {
+        if (used[fi] or first.len < 2) continue;
+        used[fi] = true;
+        var chain: std.ArrayList(ir.Pt) = .empty;
+        try chain.appendSlice(ar, first);
+        var guard: usize = 0;
+        while (guard < paths.len + 1) : (guard += 1) {
+            if (chain.items.len >= 3 and ptEq(chain.items[0], chain.items[chain.items.len - 1])) break;
+            const end = chain.items[chain.items.len - 1];
+            var progressed = false;
+            for (paths, 0..) |cand, ci| {
+                if (used[ci] or cand.len < 2) continue;
+                var piece: ?[]const ir.Pt = null;
+                if (ptEq(cand[0], end)) {
+                    piece = cand;
+                } else if (ptEq(cand[cand.len - 1], end)) {
+                    piece = try reversedPath(ar, cand);
+                }
+                if (piece) |pc| {
+                    used[ci] = true;
+                    // the join vertex keeps the new piece's first bulge
+                    chain.items[chain.items.len - 1].b = pc[0].b;
+                    try chain.appendSlice(ar, pc[1..]);
+                    progressed = true;
+                    break;
+                }
+            }
+            if (!progressed) break;
+        }
+        if (chain.items.len >= 4 and ptEq(chain.items[0], chain.items[chain.items.len - 1])) {
+            _ = chain.pop(); // drop the duplicated closing vertex; its bulge is the closing segment's
+            try loops.append(ar, chain.items);
+        } else if (chain.items.len >= 3) {
+            chain.items[chain.items.len - 1].b = 0;
+            if (@abs(geom.loopArea(chain.items)) > 1e-4) try loops.append(ar, chain.items);
+        }
+    }
+    return loops.items;
+}
+
 inline fn mk(x: f32, y: f32, c: Color, a: f32) Vert {
     return .{ .x = x, .y = y, .r = c.r, .g = c.g, .b = c.b, .a = a };
 }
@@ -1643,4 +1716,50 @@ test "bench: per-category and combined tessellation cost (prints ms)" {
     total += try benchOne(a, &font, .text, 150, 150);
     std.debug.print("[bench] sum of categories (~5k items): {d:.2} ms\n", .{total});
     if (builtin.mode != .Debug) try testing.expect(total < 30.0);
+}
+
+test "chainLoops: open edges chain into a loop (reversed pieces + bulges)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const ar = arena.allocator();
+    const a = [_]ir.Pt{ .{ .x = 0, .y = 0 }, .{ .x = 4, .y = 0 } };
+    const b = [_]ir.Pt{ .{ .x = 4, .y = 3 }, .{ .x = 4, .y = 0 } }; // reversed on purpose
+    const c = [_]ir.Pt{ .{ .x = 4, .y = 3, .b = 0.3 }, .{ .x = 0, .y = 3 } };
+    const d = [_]ir.Pt{ .{ .x = 0, .y = 3 }, .{ .x = 0, .y = 0 } };
+    const stray = [_]ir.Pt{ .{ .x = 10, .y = 10 }, .{ .x = 11, .y = 10 } };
+    const paths = [_][]const ir.Pt{ &a, &b, &c, &d, &stray };
+    const loops = try chainLoops(ar, &paths);
+    try testing.expectEqual(@as(usize, 1), loops.len);
+    try testing.expectEqual(@as(usize, 4), loops[0].len);
+    // area = 12 plus the circular segment of the bulged top edge
+    const area = @abs(geom.loopArea(loops[0]));
+    try testing.expect(area > 12.0);
+    // a lone 2-point edge is dropped; a U-shape is closed by a chord
+    const lone = [_][]const ir.Pt{&a};
+    try testing.expectEqual(@as(usize, 0), (try chainLoops(ar, &lone)).len);
+    const u = [_]ir.Pt{ .{ .x = 0, .y = 0 }, .{ .x = 0, .y = 2 }, .{ .x = 3, .y = 2 }, .{ .x = 3, .y = 0 } };
+    const ul = [_][]const ir.Pt{&u};
+    const uloops = try chainLoops(ar, &ul);
+    try testing.expectEqual(@as(usize, 1), uloops.len);
+    try testing.expectApproxEqAbs(@as(f64, 6), @abs(geom.loopArea(uloops[0])), 1e-9);
+}
+
+test "selected component made of open cut chains still gets a 15% tint" {
+    var d = try parseOne(
+        \\{"kerf_drawing":"0.1","scale":12,"pens":{"cut":{"width_mm":0.5}},"items":[
+        \\ {"t":"path","pen":"cut","src":"sill","pts":[[0,0],[4,0],[4,1.5]]},
+        \\ {"t":"path","pen":"cut","src":"sill","pts":[[4,1.5],[0,1.5],[0,0]]}]}
+    );
+    defer d.deinit();
+    var font = try Font.initEmbedded(testing.allocator);
+    defer font.deinit();
+    var t = Tessellator.init(testing.allocator);
+    defer t.deinit();
+    const pal = Palette.live();
+    try t.build(&d, &font, testView(200, 100, 20), pal, .{ .grid = false, .background = false, .selected = "sill" });
+    var tint: usize = 0;
+    for (t.verts()) |v| {
+        if (v.r == pal.blue.r and @abs(v.a - 0.15) < 1e-6) tint += 1;
+    }
+    try testing.expect(tint >= 6);
 }

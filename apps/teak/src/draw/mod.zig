@@ -8,4 +8,5 @@ test {
     _ = @import("png.zig");
     _ = @import("render.zig");
     _ = @import("pick.zig");
+    _ = @import("fixtures_test.zig");
 }

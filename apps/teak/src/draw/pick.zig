@@ -15,6 +15,8 @@
 //!  4. interiors of closed `cut`/`profile`/unnamed-pen paths and of hatch regions (even-odd
 //!     with holes): the smallest enclosing region wins (nested components pick the inner one),
 //!     ties go to the item drawn later.
+//! `bboxOfSrc` / `textOrigin` accept a component id ("truss" also matches "truss#0", "truss#1")
+//! or an exact instance ("truss#1"). `pick` returns the item's full `src` (use `ir.srcBase`).
 //! Items without a `src` are never hit. Hatch pattern lines themselves are not pickable.
 //! Everything works on arcs analytically (no allocation).
 
@@ -172,7 +174,7 @@ pub fn bboxOfSrc(d: *const ir.Drawing, font: *const Font, src: []const u8) ?BBox
     if (src.len == 0) return null;
     var bb = BBox.empty;
     for (d.items) |it| {
-        if (!std.mem.eql(u8, it.src, src)) continue;
+        if (!ir.srcMatches(it.src, src)) continue;
         switch (it.body) {
             .text => |t| bb.merge(font.textBBox(t.s, t.h, t.x, t.y, t.rot, t.halign, t.valign)),
             .hatch => |h| {
@@ -202,7 +204,7 @@ pub fn textOrigin(d: *const ir.Drawing, src: []const u8) ?TextOrigin {
     if (src.len == 0) return null;
     var best: ?ir.Text = null;
     for (d.items) |it| {
-        if (it.body != .text or !std.mem.eql(u8, it.src, src)) continue;
+        if (it.body != .text or !ir.srcMatches(it.src, src)) continue;
         const t = it.body.text;
         if (best) |b| {
             if (t.y > b.y + 1e-9 or (@abs(t.y - b.y) <= 1e-9 and t.x < b.x)) best = t;
