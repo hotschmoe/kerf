@@ -12,6 +12,10 @@ fn addSpecImports(b: *std.Build, mod: *std.Build.Module) void {
         .{ .name = "sample_truss_json", .path = "../../spec/details/truss-bearing-cmu.kerf.json" },
         .{ .name = "sample_slab_json", .path = "../../spec/details/monopour-slab-door-recess.kerf.json" },
         .{ .name = "sample_strap_json", .path = "../../spec/details/flush-beam-strap.kerf.json" },
+        .{ .name = "fixture_truss_drawing", .path = "fixtures/truss-bearing-cmu.drawing.json" },
+        .{ .name = "fixture_slab_drawing", .path = "fixtures/monopour-slab-door-recess.drawing.json" },
+        .{ .name = "fixture_strap_drawing", .path = "fixtures/flush-beam-strap.drawing.json" },
+        .{ .name = "fixture_truss_mesh", .path = "fixtures/truss-bearing-cmu.mesh.json" },
     };
     for (files) |f| mod.addAnonymousImport(f.name, .{ .root_source_file = b.path(f.path) });
 }
