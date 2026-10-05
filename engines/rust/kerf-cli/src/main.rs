@@ -16,7 +16,8 @@ fn usage() -> &'static str {
      \x20 kerf drawing <doc> --view A [--style S] [-o out.json]\n\
      \x20 kerf export <doc> --view A --format svg|dxf|pdf [--style S] [--sheet] -o <file>\n\
      \x20 kerf mesh <doc> [-o mesh.json]\n\
-     \x20 kerf call <fn> < input.json\n"
+     \x20 kerf call <fn> < input.json\n\
+     \x20 kerf mcp [--dir <workspace>] [--style S]     (stdio MCP server for Claude Code / Claude Desktop)\n"
 }
 
 struct Args {
@@ -89,11 +90,24 @@ fn output_text(o: Output) -> Result<String, String> {
     String::from_utf8(o.bytes()).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "mcp")]
+fn run_mcp(args: &[String]) -> Result<u8, String> {
+    kerf_mcp::run_cli(args).map(|_| 0)
+}
+
+#[cfg(not(feature = "mcp"))]
+fn run_mcp(_args: &[String]) -> Result<u8, String> {
+    Err("this kerf binary was built without the `mcp` feature (cargo build -p kerf-cli --features mcp)".into())
+}
+
 fn run(args: Vec<String>) -> Result<u8, String> {
     let Some(cmd) = args.first() else {
         print!("{}", usage());
         return Ok(2);
     };
+    if cmd == "mcp" {
+        return run_mcp(&args[1..]);
+    }
     let a = parse_args(&args[1..])?;
     match cmd.as_str() {
         "version" => {

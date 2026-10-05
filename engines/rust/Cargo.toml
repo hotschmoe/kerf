@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["kerf-core", "kerf-cli", "kerf-wasm"]
+members = ["kerf-core", "kerf-cli", "kerf-wasm", "kerf-mcp"]
 
 [workspace.package]
 version = "0.1.0"
