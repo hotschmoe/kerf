@@ -17,7 +17,7 @@ export interface SrcGeom {
   closed: number[][]; // flattened closed loops [x,y,x,y,...] (closed paths, hatch outers, fills)
   open: number[][];   // flattened open polylines
   texts: [number, number, number, number][]; // text boxes
-  textItems: { x: number; y: number; s: string }[];
+  textItems: { x: number; y: number; h: number; s: string }[];
   outline: Path2D;    // true-arc outline of everything (for hover)
   region: Path2D;     // closed loops with even-odd (for selection tint)
   bbox: [number, number, number, number];
@@ -177,7 +177,7 @@ export class DrawingModel {
           gb([lay.bbox[0], lay.bbox[1], lay.bbox[2], lay.bbox[3]]);
           if (g) {
             g.texts.push(lay.bbox);
-            g.textItems.push({ x: it.x, y: it.y, s: it.s });
+            g.textItems.push({ x: it.x, y: it.y, h: it.h, s: it.s });
             grow(g, [lay.bbox[0], lay.bbox[1], lay.bbox[2], lay.bbox[3]]);
           }
           break;

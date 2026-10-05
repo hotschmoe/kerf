@@ -5,6 +5,17 @@ import { blobToImageBlock } from '../chat/images';
 import type { ImageBlock } from '../chat/transport';
 import { h, btn, hhmm, clear } from './dom';
 
+/** Tool input for display: a whole-document `set` collapses to a one-line stand-in. */
+export function abbrevInput(input: unknown): string {
+  return JSON.stringify(input, (k, v) => {
+    if (k === 'ops' && Array.isArray(v)) {
+      return v.map((o) => (o && o.op === 'set' && o.path === 'doc' && o.value && typeof o.value === 'object'
+        ? { ...o, value: `<document ${o.value.id ?? ''}: ${o.value.components?.length ?? 0} components, ${o.value.views?.length ?? 0} views>` } : o));
+    }
+    return v;
+  }, 2);
+}
+
 /** Minimal inline formatting for Claude's replies: **bold** and `code`. Everything else stays plain text. */
 export function fmtInline(text: string): (Node | string)[] {
   const out: (Node | string)[] = [];
@@ -99,7 +110,7 @@ export function mountConsole(app: App, el: HTMLElement, harness: Harness, hooks:
         if (e.phase === 'start') {
           const status = h('span.ts', h('span.spin', '◐'));
           const title = h('span.tt', e.title ?? '');
-          const det = h('details.tl', h('summary', title, status), h('pre', JSON.stringify(e.input, null, 2)));
+          const det = h('details.tl', h('summary', title, status), h('pre', abbrevInput(e.input)));
           tools.append(det);
           toolEls.set(e.id, { det, status, title });
         } else {
@@ -111,6 +122,7 @@ export function mountConsole(app: App, el: HTMLElement, harness: Harness, hooks:
             if (!e.ok) t.status.classList.add('bad');
             const pre = t.det.querySelector('pre')!;
             if (e.detail) pre.textContent = e.detail;
+            else pre.textContent = abbrevInput(e.input);
             if (e.thumb) {
               const url = URL.createObjectURL(e.thumb);
               t.det.append(h('img.thumb', { src: url, alt: 'render' }));

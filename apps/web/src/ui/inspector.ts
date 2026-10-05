@@ -18,6 +18,7 @@ function fmtVal(v: unknown): string {
 
 export function mountInspector(app: App, el: HTMLElement) {
   let tab: Tab = 'parts';
+  let compact: boolean | null = null; // null = automatic (compact when there are many parts)
   const phRight = h('span.r');
   const tabsEl = h('div.itabs');
   const body = h('div.ibody');
@@ -49,19 +50,25 @@ export function mountInspector(app: App, el: HTMLElement) {
   function partsTable(): HTMLElement {
     const rows = app.partsRows();
     if (!rows.length) return h('div.empty', 'NO COMPONENTS.');
-    const t = h('table.t', h('thead', h('tr', h('th', 'NO'), h('th', 'ID'), h('th', 'TYPE'))));
+    const isCompact = compact ?? rows.length > 12;
+    const bar = h('div.logbar', h('span', `${rows.length} PART${rows.length === 1 ? '' : 'S'}`),
+      btn(isCompact ? 'EXPAND' : 'COMPACT', () => { compact = !isCompact; renderBody(); }, 'sm'));
+    const wrap = h('div', bar);
+    const t = h('table.t.' + (isCompact ? 'compact' : 'full'), h('thead', h('tr', h('th', 'NO'), h('th', 'ID'), h('th', 'TYPE'))));
     const tb = h('tbody');
     for (const r of rows) {
       const base = r.id.replace(/#\d+$/, '');
       const tr = h('tr.row', { class: selId() === base ? 'sel' : '', tabindex: 0, on: { click: () => app.setSelection(base), keydown: ((e: KeyboardEvent) => { if (e.key === 'Enter') app.setSelection(base); }) as EventListener } },
-        h('td.no', r.no), h('td.id', r.id, r.params ? h('span.sub', r.params) : null), h('td.ty', r.type));
+        h('td.no', r.no), h('td.id', r.id, r.params && !isCompact ? h('span.sub', r.params) : null), h('td.ty', isCompact ? [r.type, r.params].filter(Boolean).join(' ') : r.type));
+      tr.title = r.raw.trim();
       tr.dataset.id = base;
       tr.addEventListener('mouseenter', () => app.setHover(base));
       tr.addEventListener('mouseleave', () => app.setHover(null));
       tb.append(tr);
     }
     t.append(tb);
-    return t;
+    wrap.append(t);
+    return wrap;
   }
 
   function notes(): Annotation[] { return app.view?.annotations ?? []; }
@@ -129,21 +136,23 @@ export function mountInspector(app: App, el: HTMLElement) {
     detail.append(sec);
     const kv = h('div.kv');
     sec.append(kv);
-    const put = (k: string, v: unknown) => kv.append(h('div.k', k), h('div.vv', fmtVal(v)));
-    // declared params immediately (from the document), resolved params/anchors when the engine answers
+    // ordered field map: declared document fields first, overridden/extended by what the engine resolves
+    const fields = new Map<string, unknown>();
     const prow = app.partsRows().find((r) => r.id === c.id || r.id === `${c.id}#0`);
-    if (prow) { put('x extent', prow.x); put('y extent', prow.y); }
-    for (const [k, v] of Object.entries(c)) if (k !== 'id' && k !== 'type') put(k, v);
+    if (prow) { fields.set('x extent', prow.x); fields.set('y extent', prow.y); }
+    for (const [k, v] of Object.entries(c)) if (k !== 'id' && k !== 'type') fields.set(k, v);
+    const paint = () => { clear(kv); for (const [k, v] of fields) kv.append(h('div.k', k.replace(/_/g, ' ')), h('div.vv', fmtVal(v))); };
+    paint();
     try {
       const r = (await app.inspect({ q: 'component', id: c.id })) as unknown;
       if (t !== detailToken) return;
       if (r && typeof r === 'object') {
         const o = r as Record<string, unknown>;
-        const anchors = (o.anchors ?? null) as unknown;
-        const rest = Object.entries(o).filter(([k]) => k !== 'anchors' && k !== 'id' && k !== 'type' && k !== 'params' && k !== 'component');
         const params = (o.params ?? null) as Record<string, unknown> | null;
-        if (params && typeof params === 'object') { clear(kv); put('type', c.type); for (const [k, v] of Object.entries(params)) if (k !== 'id' && k !== 'type') put(k, v); }
-        for (const [k, v] of rest) { if (k === 'q') continue; put(k, v); }
+        if (params && typeof params === 'object') for (const [k, v] of Object.entries(params)) if (k !== 'id' && k !== 'type') fields.set(k, v);
+        for (const [k, v] of Object.entries(o)) if (!['q', 'anchors', 'id', 'type', 'params', 'component'].includes(k)) fields.set(k, v);
+        paint();
+        const anchors = (o.anchors ?? null) as unknown;
         if (anchors && typeof anchors === 'object') {
           sec.append(h('div.subh', 'ANCHORS'));
           const ak = h('div.kv');
@@ -151,7 +160,7 @@ export function mountInspector(app: App, el: HTMLElement) {
           for (const [k, v] of entries) {
             const val = v as Record<string, unknown>;
             const txt = val && typeof val === 'object' && !Array.isArray(val) ? Object.entries(val).filter(([kk]) => kk !== 'name').map(([, x]) => fmtVal(x)).join('  ') : fmtVal(v);
-            ak.append(h('div.k', k), h('div.vv', txt));
+            ak.append(h('div.k', k.replace(/_/g, ' ')), h('div.vv', txt));
           }
           sec.append(ak);
         }

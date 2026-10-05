@@ -17,6 +17,8 @@ import { popup } from './ui/popup';
 import { exportActive } from './export';
 
 const t0 = performance.now();
+interface Pre { wasm?: Promise<ArrayBuffer>; style?: Promise<unknown>; font?: Promise<StrokeFont>; samples?: Promise<SampleInfo[]>; sample?: Promise<KerfDoc> }
+const pre: Pre = (window as unknown as { __pre?: Pre }).__pre ?? {};
 const params = new URLSearchParams(location.search);
 const ENGINE = (import.meta.env.VITE_ENGINE as string | undefined) ?? 'rust';
 
@@ -29,12 +31,12 @@ async function boot() {
   const useWorker = params.get('worker') !== '0';
   const enginePromise: Promise<Engine> = ENGINE === 'fixture'
     ? import('./fixture-engine').then((m) => m.createFixtureEngine())
-    : loadEngine({ url: './kerf.wasm', worker: useWorker });
+    : loadEngine({ url: './kerf.wasm', worker: useWorker, preloaded: pre.wasm ?? null });
   const [engine, style, font, samples] = await Promise.all([
     enginePromise,
-    getJson<unknown>('./style.json'),
-    getJson<StrokeFont>('./kerf-simplex.json'),
-    getJson<SampleInfo[]>('./samples/index.json'),
+    pre.style ?? getJson<unknown>('./style.json'),
+    pre.font ?? getJson<StrokeFont>('./kerf-simplex.json'),
+    pre.samples ?? getJson<SampleInfo[]>('./samples/index.json'),
   ]);
   setFont(font);
   const app = new App(engine, style, font);
@@ -98,7 +100,7 @@ async function boot() {
   const sample = params.get('sample');
   if (sample || demo) {
     if (sample) {
-      const r = await app.openDoc(await loadSampleDoc(sample), `sample ${sample}`);
+      const r = await app.openDoc(pre.sample ? await pre.sample.catch(() => loadSampleDoc(sample)) : await loadSampleDoc(sample), `sample ${sample}`);
       if (!r.ok) app.flash('OPEN FAILED: ' + (r.error ?? ''), 'err');
     }
   }
@@ -110,6 +112,10 @@ async function boot() {
   if (demo && params.get('auto') !== '0') {
     con.sendText('Build a detail of a prefab roof truss bearing on an 8-inch CMU wall with a grouted bond beam, hurricane ties and a PT sill plate.');
   }
+  // The chrome must be in IBM Plex Mono before anything signals ready (font-display: block hides text until loaded).
+  await Promise.all(['400 13px', '500 12px', '700 22px'].map((f) => document.fonts.load(`${f} "Plex Mono"`))).catch(() => undefined);
+  await document.fonts.ready;
+  w.__fontOk = document.fonts.check('13px "Plex Mono"');
   document.getElementById('boot')?.remove();
   app.perf.uiReady = performance.now() - t0;
   w.__ready = true;

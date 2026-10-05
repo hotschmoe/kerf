@@ -119,7 +119,7 @@ function wrap(c: Caller, stats: CallStat[], meta: { loadMs: number; wasmBytes: n
   return e;
 }
 
-export interface LoadOptions { url: string; worker?: boolean }
+export interface LoadOptions { url: string; worker?: boolean; /** wasm bytes already being fetched (index.html starts the fetch early) */ preloaded?: Promise<ArrayBuffer> | null }
 
 export async function loadEngine(opts: LoadOptions): Promise<Engine> {
   const stats: CallStat[] = [];
@@ -140,15 +140,15 @@ export async function loadEngine(opts: LoadOptions): Promise<Engine> {
     };
     const send = (msg: Record<string, unknown>, transfer: Transferable[] = []) =>
       new Promise<any>((res, rej) => { const id = ++seq; pending.set(id, { res, rej }); w.postMessage({ id, ...msg }, transfer); });
-    const url = new URL(opts.url, location.href).href;
-    const init = await send({ kind: 'init', url });
+    const bytes = await (opts.preloaded ?? fetch(opts.url).then((r) => { if (!r.ok) throw new Error(`${opts.url}: HTTP ${r.status}`); return r.arrayBuffer(); }));
+    const init = await send({ kind: 'init', bytes }, [bytes]);
     meta.loadMs = init.loadMs; meta.wasmBytes = init.wasmBytes;
     caller = {
       json: (fn, input) => send({ kind: 'call', fn, input }),
-      bytes: (fn, input) => send({ kind: 'call', fn, input, bytes: true }),
+      bytes: (fn, input) => send({ kind: 'call', fn, input, binary: true }),
     };
   } else {
-    const raw = await RawEngine.load(opts.url);
+    const raw = await RawEngine.load(opts.preloaded ? await opts.preloaded : opts.url);
     meta.loadMs = raw.loadMs; meta.wasmBytes = raw.wasmBytes;
     raw.stats = stats;
     caller = {

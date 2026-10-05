@@ -54,7 +54,7 @@ async function toolApply(app: App, input: Record<string, unknown>): Promise<Tool
     return { content: [text(body)], is_error: true, title, status: `✗ ${c('error')} ERR`, detail: body };
   }
   const body = ['ok', res.summary, diag].filter(Boolean).join('\n');
-  return { content: [text(body)], is_error: false, title, status: `✓ ${c('error')} ERR ${c('warning')} WARN`, detail: JSON.stringify(ops, null, 2) };
+  return { content: [text(body)], is_error: false, title, status: `✓ ${c('error')} ERR ${c('warning')} WARN`, detail: JSON.stringify(ops.map((o) => (o.op === 'set' && o.path === 'doc' ? { ...o, value: '<whole document>' } : o)), null, 2) };
 }
 
 async function toolInspect(app: App, input: Record<string, unknown>): Promise<ToolOutcome> {

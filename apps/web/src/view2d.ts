@@ -33,6 +33,8 @@ export class Viewport2D {
   private drag: null | { kind: 'pan'; sx: number; sy: number; tx: number; ty: number; moved: boolean }
     | { kind: 'note'; id: string; mx: number; my: number; dx: number; dy: number; ref: [number, number]; moved: boolean } = null;
   lastPaintMs = 0;
+  /** true once the user pans/zooms; until then every resize re-fits the drawing */
+  private touched = false;
 
   constructor(private host: HTMLElement, private cb: Viewport2DCallbacks) {
     this.canvas.className = 'vp-canvas';
@@ -66,7 +68,8 @@ export class Viewport2D {
 
   fit() {
     if (!this.model || this.w === 0) return;
-    this.view = fitView(this.model.bounds, this.w, this.h, 36);
+    this.touched = false;
+    this.view = fitView(this.model.bounds, this.w, this.h, Math.max(10, 0.05 * Math.min(this.w, this.h)));
     this.requestRender();
   }
   zoomBy(f: number) {
@@ -74,6 +77,7 @@ export class Viewport2D {
     this.zoomAt(cx, cy, f);
   }
   private zoomAt(sx: number, sy: number, f: number) {
+    this.touched = true;
     const v = this.view;
     const nz = Math.max(0.05, Math.min(v.zoom * f, 4000));
     const k = nz / v.zoom;
@@ -87,6 +91,7 @@ export class Viewport2D {
     const dpr = window.devicePixelRatio || 1;
     if (w === this.w && h === this.h && dpr === this.dpr) return;
     const hadSize = this.w > 0;
+    if (hadSize && w > 0 && this.model && !this.touched) { this.w = w; this.h = h; this.dpr = dpr; this.canvas.width = Math.max(1, Math.round(w * dpr)); this.canvas.height = Math.max(1, Math.round(h * dpr)); this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px'; this.fit(); return; }
     if (hadSize && w > 0 && this.model) this.view = { ...this.view, tx: this.view.tx + (w - this.w) / 2, ty: this.view.ty + (h - this.h) / 2 }; // keep the view centered
     this.w = w; this.h = h; this.dpr = dpr;
     this.canvas.width = Math.max(1, Math.round(w * dpr));
@@ -129,7 +134,7 @@ export class Viewport2D {
       const inText = g?.texts.some(([x0, y0, x1, y1]) => x >= x0 - 0.5 && x <= x1 + 0.5 && y >= y0 - 0.5 && y <= y1 + 0.5);
       if (g && g.textItems.length && inText) {
         const t = g.textItems[0];
-        this.drag = { kind: 'note', id, mx: sx, my: sy, dx: 0, dy: 0, ref: [t.x, t.y], moved: false };
+        this.drag = { kind: 'note', id, mx: sx, my: sy, dx: 0, dy: 0, ref: [t.x, t.y + t.h], moved: false }; // SPEC: place = top-left of the first text line (cap height above its baseline)
         return;
       }
     }
@@ -144,7 +149,7 @@ export class Viewport2D {
     if (d?.kind === 'pan') {
       const dx = sx - d.sx, dy = sy - d.sy;
       if (!d.moved && Math.hypot(dx, dy) > 3) { d.moved = true; this.canvas.style.cursor = 'grabbing'; }
-      if (d.moved) { this.view = { ...this.view, tx: d.tx + dx, ty: d.ty + dy }; this.requestRender(); }
+      if (d.moved) { this.touched = true; this.view = { ...this.view, tx: d.tx + dx, ty: d.ty + dy }; this.requestRender(); }
     } else if (d?.kind === 'note') {
       const dx = (sx - d.mx) / this.view.zoom, dy = -(sy - d.my) / this.view.zoom;
       if (!d.moved && Math.hypot(sx - d.mx, sy - d.my) > 3) d.moved = true;

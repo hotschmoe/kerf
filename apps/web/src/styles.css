@@ -8,7 +8,7 @@
   --grid: #A9C1DD; --grid-2: #D3E0EE; --blue: #1D4E9E; --red: #C8102E; --amber: #D98E04; --green: #2E7D32;
   --manila: #E9D9A6; --term-bg: #0E120E; --term-fg: #5CF27A;
   --rule-soft: #BDB8A9; --manila-2: #DCC98A; --term-dim: #2F7A40; --term-red: #FF6B5E;
-  --mono: 'Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --mono: 'Plex Mono', 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 }
 * { box-sizing: border-box; border-radius: 0; }
 html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink); overflow: hidden; }
@@ -250,3 +250,10 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
   #hdr .hf { display: none; }
   #status .seg.opt, #status .sep.opt { display: none; }
 }
+
+table.t.compact td { padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+table.t.compact td.no { width: 2.6em; max-width: none; }
+table.t.compact td.id { width: 9.5em; max-width: none; }
+table.t.compact td.ty { text-transform: none; font-size: 11px; }
+table.t.compact th:nth-child(3) { width: auto; }
+table.t th { top: 38px; }

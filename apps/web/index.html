@@ -20,6 +20,19 @@
   <div id="boot" style="position:fixed;inset:0;background:#F2EFE6;display:flex;align-items:center;justify-content:center;font:500 13px 'Plex Mono',ui-monospace,monospace;letter-spacing:.08em;color:#55524B">
     <div><b style="font-size:22px;letter-spacing:.2em;color:#1A1A1A">KERF</b> &nbsp;LOADING ENGINE...</div>
   </div>
+  <script>
+    // Start the network work now, in parallel with the JS module graph (main.ts consumes these).
+    (function () {
+      var f = function (u, k) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u + ': HTTP ' + r.status); return r[k](); }); };
+      var p = new URLSearchParams(location.search);
+      var pre = window.__pre = { t0: performance.now() };
+      pre.wasm = f('./kerf.wasm', 'arrayBuffer'); pre.style = f('./style.json', 'json'); pre.font = f('./kerf-simplex.json', 'json');
+      pre.samples = f('./samples/index.json', 'json');
+      var s = p.get('sample') || (p.get('demo') === '1' ? 'truss-bearing-cmu' : '');
+      if (s) pre.sample = pre.samples.then(function (idx) { var e = idx.find(function (x) { return x.id === s; }) || idx[0]; return f('./samples/' + e.file, 'json'); });
+      for (var k in pre) if (pre[k] && pre[k].catch) pre[k].catch(function () {});
+    })();
+  </script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
