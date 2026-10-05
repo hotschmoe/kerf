@@ -28,7 +28,7 @@ async function boot() {
     if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
     return r.json() as Promise<T>;
   };
-  const useWorker = params.get('worker') !== '0';
+  const useWorker = params.get('worker') === '1'; // measured: main thread is faster for these call sizes (see NOTES)
   const enginePromise: Promise<Engine> = ENGINE === 'fixture'
     ? import('./fixture-engine').then((m) => m.createFixtureEngine())
     : loadEngine({ url: './kerf.wasm', worker: useWorker, preloaded: pre.wasm ?? null });
