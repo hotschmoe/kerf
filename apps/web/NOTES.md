@@ -54,6 +54,44 @@ exist for tests.
 - The `view` argument of `drawing` / `export` is passed as the view id string (`"A"`); `export` gets `sheet:true` for PDF and for the SHEET tab's SVG.
 - `catalog` with `format:"markdown"` may return JSON-encoded string or raw text; both are accepted.
 
+## Measured numbers (this box: aarch64, headless chromium, other agents loading the CPU, so timings are +-30% noisy)
+Bundle (dist JS/CSS/wasm/fonts, `tools/size_report.sh`; raw / gzip-9 / brotli-11):
+| stack | initial JS (app shell) | CSS | fonts (3 woff2) | wasm | lazy 3D chunk (three.js) | lazy SDK chunk |
+|---|---|---|---|---|---|---|
+| rust-ts | 80.5 kB / 30.8 / 27.2 | 17.6 / 4.4 / 3.9 | 25.6 / 25.8 / 25.7 | 878.8 kB / 325.3 / 258.5 | 566.5 / 139.8 / 114.8 | 206.8 / 49.8 / 40.4 |
+| zig-ts | same JS/CSS/fonts | | | see ZIGNUM | same | same |
+Everything the first render needs: shell JS + CSS + fonts + wasm. three.js and the Anthropic SDK are only fetched when the 3D tab / a real
+API call is used.
+
+Timing (median of 5 fresh loads, `node test/perf/measure.mjs rust`; engine on main thread, `?worker=1` = Web Worker):
+| sample | time to first render | engine ready (fetch+compile) | wasm compile |
+|---|---|---|---|
+| truss-bearing-cmu | ~290-370 ms | ~50 ms | 4-13 ms |
+| monopour-slab-door-recess | ~295-450 ms | ~60 ms | 6-14 ms |
+| flush-beam-strap | ~290-525 ms | ~55-130 ms | 8 ms |
+TTFR = navigation start to the first drawing painted, with the sample opened through `apply` (set doc), `drawing`, canvas paint (0.2-3 ms).
+Engine call medians (rust, truss-bearing-cmu): apply set doc 17-21 ms, apply update 17-19, check 16, drawing 11-12, mesh 11, inspect summary 2-3,
+export svg 14, svg sheet 14-16, dxf 8-10, pdf 14-15. Designer edit -> new drawing painted: 75-114 ms (apply + drawing + model build + paint).
+Worker vs main thread: engine calls are 5-20 ms, so postMessage structured-clone of doc/drawing JSON costs about as much as it saves; the
+Worker version is NOT faster here (and starts later). Default is the main thread; `?worker=1` keeps the Worker path (tested).
+2D paint stress (`test/perf/paint-stress.mjs`): 40,000 hatch lines + 400 text items: model build 57 ms, repaint 2.3 ms avg (Path2D batches).
+
+## Features implemented
+Layout (console | viewport | inspector | 3270 status line, narrow-screen tabs), vellum + blue grid, true-pen-weight canvas drawing with arcs, dashes,
+hatch lines, fills, stroke-font text; pan/zoom/fit; hover/select by `src`; drag notes (sets `place`, top-left anchor, as an op); 3D (WebGL2,
+flat shading with the style colors, feature edges 1.25 px, orbit/pan/zoom, FRONT/ISO/TOP/RIGHT, manila CUT caps); SHEET (engine SVG);
+chat with BYO key, model picker, image paste/drop/attach (<=1568 px), tool loop with kerf_apply/inspect/render, retries, refusal and
+fallback handling, STOP, demo mode; inspector PARTS (auto-compact), NOTES editor with citations, VERIFIED stamps (designer actor), DIFF with undo, DIAG;
+export DXF/PDF/SVG, save/open `.kerf.json`; samples menu.
+
+## Known gaps
+- No pinch-zoom on touch devices (wheel/drag only). 3D has no touch orbit tuning.
+- Undo is a snapshot restore of the last op group only (no redo, no multi-step history browser).
+- The Anthropic request path is verified against a local fake Messages API (headers, body, SSE streaming, tool loop, 401/refusal/529), not against
+  api.anthropic.com (no key available here).
+- Sheet view is an image of the engine SVG: no picking on the sheet.
+- `kerf_render` PNG uses my canvas renderer, which should match the engine SVG within pen/dash rounding but is not byte-identical to the SVG export.
+
 ## REQUESTS
 (none yet)
 
