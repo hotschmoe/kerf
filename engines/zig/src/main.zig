@@ -207,10 +207,27 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         } else try writeOut(io, o.out, text.items);
         return 0;
     }
-    if (std.mem.eql(u8, cmd, "apply")) {
-        // result {ok, doc, ...}: print summary to stderr, doc to -o
-        try writeOut(io, o.out, r.bytes);
-        return 0;
+    if (std.mem.eql(u8, cmd, "apply") or std.mem.eql(u8, cmd, "check")) {
+        var arena = std.heap.ArenaAllocator.init(gpa);
+        defer arena.deinit();
+        const a = arena.allocator();
+        var perr: kerf.json.ParseError = undefined;
+        const res = (try kerf.json.parse(a, r.bytes, &perr)) orelse return error.BadEngineOutput;
+        if (res.get("summary")) |sv| if (sv.str()) |txt| try err.writeAll(txt);
+        if (std.mem.eql(u8, cmd, "check")) {
+            // diagnostics already appear in the summary; exit 1 on errors
+            const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
+            for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) return 1;
+            return 0;
+        }
+        const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
+        if (res.get("doc")) |dv| {
+            const text = try kerf.canon.write(a, dv);
+            if (ok) {
+                try writeOut(io, o.out, text);
+            }
+        }
+        return if (ok) 0 else 1;
     }
     try writeOut(io, o.out, r.bytes);
     return 0;

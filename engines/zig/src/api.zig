@@ -11,6 +11,8 @@ const drawview = @import("drawview.zig");
 const drawing = @import("drawing.zig");
 const font_mod = @import("font.zig");
 const svg = @import("svg.zig");
+const load_mod = @import("load.zig");
+const ops_mod = @import("ops.zig");
 const Allocator = std.mem.Allocator;
 
 pub const version = "0.1.0";
@@ -63,6 +65,9 @@ fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
     if (std.mem.eql(u8, name, "version")) return versionFn(a);
     if (std.mem.eql(u8, name, "catalog")) return catalogFn(a, inp);
     if (std.mem.eql(u8, name, "fmt")) return fmtFn(a, inp);
+    if (std.mem.eql(u8, name, "check")) return checkFn(a, inp);
+    if (std.mem.eql(u8, name, "apply")) return applyFn(a, inp);
+    if (std.mem.eql(u8, name, "inspect")) return inspectFn(a, inp);
     if (std.mem.eql(u8, name, "drawing")) return drawingFn(a, inp);
     if (std.mem.eql(u8, name, "export")) return exportFn(a, inp);
     return fail(a, "E_FN", "unknown function '{s}'. Functions: version, catalog, fmt, check, apply, inspect, drawing, mesh, export", .{name});
@@ -74,11 +79,15 @@ fn versionFn(a: Allocator) ApiError!Out {
 
 fn catalogFn(a: Allocator, inp: json.Value) ApiError!Out {
     const fmt_v = if (inp.get("format")) |f| (f.str() orelse "json") else "json";
-    if (std.mem.eql(u8, fmt_v, "markdown")) return .{ .ok = true, .bytes = try catalog.catalogMarkdown(a) };
+    if (std.mem.eql(u8, fmt_v, "markdown") or std.mem.eql(u8, fmt_v, "md")) {
+        var o: std.ArrayList(u8) = .empty;
+        try json.writeString(&o, a, try catalog.catalogMarkdown(a));
+        try o.append(a, '\n');
+        return .{ .ok = true, .bytes = o.items };
+    }
     if (!std.mem.eql(u8, fmt_v, "json")) return fail(a, "E_INPUT", "catalog format must be \"json\" or \"markdown\"", .{});
     var out: std.ArrayList(u8) = .empty;
-    var pw = json.Pretty{ .out = &out, .a = a };
-    try pw.write(try catalog.catalogJson(a), 0);
+    try json.writeCompact(&out, a, try catalog.catalogJson(a));
     try out.append(a, '\n');
     return .{ .ok = true, .bytes = out.items };
 }
@@ -109,6 +118,8 @@ fn fmtFn(a: Allocator, inp: json.Value) ApiError!Out {
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(a, "{\"doc\":");
     try out.appendSlice(a, std.mem.trimEnd(u8, text, "\n"));
+    try out.appendSlice(a, ",\"text\":");
+    try json.writeString(&out, a, text);
     try out.appendSlice(a, "}\n");
     return .{ .ok = true, .bytes = out.items };
 }
@@ -148,4 +159,104 @@ fn exportFn(a: Allocator, inp: json.Value) ApiError!Out {
     const font = font_mod.Font.parse(a, font_mod.embedded) catch return fail(a, "E_INTERNAL", "embedded font failed to parse", .{});
     if (std.mem.eql(u8, format, "svg")) return .{ .ok = true, .bytes = try svg.render(a, &dr, &font, .{}) };
     return fail(a, "E_INPUT", "export format must be \"svg\", \"dxf\" or \"pdf\" (got \"{s}\")", .{format});
+}
+
+fn checkFn(a: Allocator, inp: json.Value) ApiError!Out {
+    const d = switch (try getDoc(a, inp)) {
+        .doc => |x| x,
+        .err => |e| return e,
+    };
+    const st = switch (try getStyle(a, inp)) {
+        .style => |x| x,
+        .err => |e| return e,
+    };
+    const l = try load_mod.load(a, d, &st, true);
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "{\"diagnostics\":");
+    try json.writeCompact(&out, a, try load_mod.diagsJson(a, l.diags.list.items));
+    try out.appendSlice(a, ",\"summary\":");
+    try json.writeString(&out, a, try load_mod.summary(&l));
+    try out.appendSlice(a, "}\n");
+    return .{ .ok = true, .bytes = out.items };
+}
+
+fn inspectFn(a: Allocator, inp: json.Value) ApiError!Out {
+    const d = switch (try getDoc(a, inp)) {
+        .doc => |x| x,
+        .err => |e| return e,
+    };
+    const st = switch (try getStyle(a, inp)) {
+        .style => |x| x,
+        .err => |e| return e,
+    };
+    const l = try load_mod.load(a, d, &st, false);
+    const q = inp.get("query") orelse json.Value{ .object = &.{} };
+    var ie: load_mod.InspectError = undefined;
+    const r = (try load_mod.inspect(&l, q, &ie)) orelse return fail(a, ie.code, "{s}", .{ie.message});
+    var out: std.ArrayList(u8) = .empty;
+    try json.writeCompact(&out, a, r);
+    try out.append(a, '\n');
+    return .{ .ok = true, .bytes = out.items };
+}
+
+fn applyFn(a: Allocator, inp: json.Value) ApiError!Out {
+    const d = switch (try getDoc(a, inp)) {
+        .doc => |x| x,
+        .err => |e| return e,
+    };
+    const st = switch (try getStyle(a, inp)) {
+        .style => |x| x,
+        .err => |e| return e,
+    };
+    var ops = inp.get("ops") orelse return fail(a, "E_INPUT", "missing \"ops\": an array of ops (see SPEC 14)", .{});
+    if (ops == .object) if (ops.get("ops")) |inner| {
+        ops = inner;
+    };
+    const actor: ops_mod.Actor = if (inp.get("actor")) |x| (if (x.str()) |s| (if (std.mem.eql(u8, s, "designer")) .designer else .llm) else .llm) else .llm;
+    var op_diags = model.Diags.init(a);
+    const applied = try ops_mod.apply(a, d, ops, actor, &op_diags);
+    var ok = false;
+    var final_doc = d;
+    var changed: []const []const u8 = &.{};
+    var all: std.ArrayList(model.Diag) = .empty;
+    var summary_text: []const u8 = "";
+    if (applied) |ap| {
+        const l = try load_mod.load(a, ap.doc, &st, true);
+        try all.appendSlice(a, op_diags.list.items);
+        try all.appendSlice(a, l.diags.list.items);
+        var errs: usize = 0;
+        for (all.items) |x| if (x.level == .@"error") {
+            errs += 1;
+        };
+        if (errs == 0) {
+            ok = true;
+            final_doc = ap.doc;
+            changed = ap.changed;
+            const dg = try a.create(model.Diags);
+            dg.* = .{ .a = a, .list = all };
+            summary_text = try load_mod.summary(&.{ .a = a, .doc = l.doc, .style = l.style, .scene = l.scene, .diags = dg, .nviews = l.nviews });
+        } else {
+            const before = try load_mod.load(a, d, &st, false);
+            summary_text = try load_mod.summary(&before);
+        }
+    } else {
+        try all.appendSlice(a, op_diags.list.items);
+        const before = try load_mod.load(a, d, &st, false);
+        summary_text = try load_mod.summary(&before);
+    }
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, if (ok) "{\"ok\":true,\"doc\":" else "{\"ok\":false,\"doc\":");
+    const text = try canon.write(a, final_doc);
+    try out.appendSlice(a, std.mem.trimEnd(u8, text, "\n"));
+    try out.appendSlice(a, ",\"diagnostics\":");
+    try json.writeCompact(&out, a, try load_mod.diagsJson(a, all.items));
+    try out.appendSlice(a, ",\"summary\":");
+    try json.writeString(&out, a, summary_text);
+    try out.appendSlice(a, ",\"changed\":[");
+    for (changed, 0..) |c, i| {
+        if (i > 0) try out.append(a, ',');
+        try json.writeString(&out, a, c);
+    }
+    try out.appendSlice(a, "]}\n");
+    return .{ .ok = true, .bytes = out.items };
 }

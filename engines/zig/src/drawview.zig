@@ -73,6 +73,12 @@ pub fn build(a: Allocator, doc: json.Value, st: *const style_mod.Style, view_id:
     const spec = try a.create(view_mod.ViewSpec);
     spec.* = spec_opt orelse return null;
     const scene = try compile_mod.compile(a, doc, st, diags);
+    return buildFromScene(a, doc, st, scene, spec, diags);
+}
+
+/// Build a view's Drawing from an already compiled scene. `diags` receives view-level diagnostics.
+pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, diags: *model.Diags) Allocator.Error!?drawing.Drawing {
+    const view_id = spec.id;
     const prisms = try compile_mod.allPrisms(a, scene);
     var items: []const drawing.Item = &.{};
     var scale = spec.scale;
@@ -84,7 +90,7 @@ pub fn build(a: Allocator, doc: json.Value, st: *const style_mod.Style, view_id:
         bounds = spec.crop;
         bounds.addBox(itemBounds(items));
     } else {
-        diags.add(.@"error", "E_PARAM", view_id, "views", "iso views are not implemented yet", .{});
+        diags.add(.info, "I_ISO_PENDING", view_id, "views", "iso view rendering is not implemented in this engine build yet", .{});
         scale = 12;
         bounds = spec.crop;
     }

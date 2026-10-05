@@ -466,9 +466,8 @@ pub const Section = struct {
         const b_ = b0 + over;
         const len = b_ - a_;
         const mid = (a_ + b_) / 2;
-        const half = @min(self.style.break_period_in * S / 2, len * 0.3);
-        // short intervals (thin members) get a plain line, no zigzag
-        const zig = if (len < 8.0 * self.style.break_zig_in * S) 0 else @min(self.style.break_zig_in * S, half * 1.2);
+        const half = @min(self.style.break_period_in * S / 2, len * 0.35);
+        const zig = @min(self.style.break_zig_in * S, len * 0.2);
         // along-edge parameter u, perpendicular offset v
         const uv = [_][2]f64{
             .{ a_, 0 },

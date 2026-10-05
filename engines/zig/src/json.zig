@@ -465,22 +465,20 @@ pub const Pretty = struct {
         const ctx = KeyCtx{ .path = self.path.items, .obj = members };
         const schema = f(&ctx);
         const out = try self.a.alloc(Member, members.len);
+        const used = try self.a.alloc(bool, members.len);
+        @memset(used, false);
         var n: usize = 0;
         for (schema) |k| {
-            for (members) |m| if (std.mem.eql(u8, m.key, k)) {
+            for (members, 0..) |m, i| if (!used[i] and std.mem.eql(u8, m.key, k)) {
                 out[n] = m;
+                used[i] = true;
                 n += 1;
                 break;
             };
         }
         const start = n;
-        for (members) |m| {
-            var known = false;
-            for (schema) |k| if (std.mem.eql(u8, m.key, k)) {
-                known = true;
-                break;
-            };
-            if (!known) {
+        for (members, 0..) |m, i| {
+            if (!used[i]) {
                 out[n] = m;
                 n += 1;
             }

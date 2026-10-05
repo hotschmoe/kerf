@@ -43,7 +43,7 @@ fn addRefDep(a: Allocator, v: json.Value, out: *std.ArrayList([]const u8)) Alloc
     }
 }
 
-fn collectDeps(a: Allocator, node: json.Value, out: *std.ArrayList([]const u8)) Allocator.Error!void {
+pub fn collectDeps(a: Allocator, node: json.Value, out: *std.ArrayList([]const u8)) Allocator.Error!void {
     if (node.get("at")) |at| if (at.get("to")) |to| try addRefDep(a, to, out);
     if (node.get("points")) |pts| if (pts.arr()) |arr| for (arr) |e| try addRefDep(a, e, out);
     if (node.get("profile")) |pr| if (pr.get("points")) |pts| if (pts.arr()) |arr| for (arr) |e| try addRefDep(a, e, out);

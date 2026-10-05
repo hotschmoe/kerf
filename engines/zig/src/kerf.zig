@@ -26,6 +26,9 @@ pub const drawview = @import("drawview.zig");
 pub const textgeom = @import("textgeom.zig");
 pub const svg = @import("svg.zig");
 pub const canon = @import("canon.zig");
+pub const validate = @import("validate.zig");
+pub const load = @import("load.zig");
+pub const ops = @import("ops.zig");
 
 pub const Result = api.Result;
 pub const call = api.call;
