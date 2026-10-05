@@ -1,0 +1,13 @@
+DOC monopour-slab-door-recess  9 components  2 views  0 errors 1 warning
+ slab          concrete slab_edge 4" slab, 12x18 turndown  x 0"..4'-0"       y -1'-6"..0"
+ ftg_bars      rebar #5 along z [x2]                       x 3"..9"          y -1'-3"..-1'-2 3/8"
+ top_bar       rebar #4 along z                            x 5 3/4"..6 1/4"  y -4 3/4"..-4 1/4"
+ slab_bars_x   rebar #4 path, 2 pts                        x 1'-2"..4'-0"    y -2 1/4"..-1 3/4"
+ slab_bars_z   rebar #4 along z [x2]                       x 1'-7 3/4"..3'-0 1/4" y -2 3/4"..-2 1/4"
+ vapor_retarder membrane vapor_retarder 0.04" thk, 3 pts    x 1'-0"..4'-0"    y -1'-6"..-4"
+ base          fill gravel fill, 4 pts                     x 1'-10"..4'-0"   y -8"..-4"
+ soil          fill earth fill, 8 pts                      x -2'-0"..4'-0"   y -2'-4"..-6"
+ door_sill     solid aluminum 6.5625 x 1.25 "SLIDING DOOR SILL (SCHEMATIC)" x 15/16"..7 1/2"  y -1 1/2"..-1/4"
+INFO I_SOLID_USED door_sill: component 'door_sill' uses the 'solid' escape hatch (material aluminum); prefer a typed component when one fits so reviewers can read its intent
+INFO I_UNVERIFIED_CITE: 6 code citation(s) await designer verification; they print with a trailing * and a footnote until verified
+WARN W_VIEW_FIT B: view B with notes and title needs 7.89 x 7.30 paper inches but the sheet area is 10.25 x 7.00 at scale NTS Fix: use a smaller scale (e.g. 3/4"=1'-0"), shrink the crop, or shorten the notes

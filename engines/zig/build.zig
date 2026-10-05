@@ -42,6 +42,7 @@ pub fn build(b: *std.Build) void {
 
     // wasm32-freestanding, raw ABI (SPEC 13.1). `-Dwasm-optimize=ReleaseFast` to compare speed.
     const wasm_opt = b.option(std.builtin.OptimizeMode, "wasm-optimize", "Optimize mode of the wasm build (default ReleaseSmall)") orelse .ReleaseSmall;
+    const wasm_strip = b.option(bool, "wasm-strip", "Strip the wasm build (default true; false keeps the name section for twiggy)") orelse true;
     const wasm_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const wasm_kerf = b.createModule(.{
         .root_source_file = b.path("src/kerf.zig"),
@@ -54,7 +55,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/wasm.zig"),
             .target = wasm_target,
             .optimize = wasm_opt,
-            .strip = true,
+            .strip = wasm_strip,
             .single_threaded = true,
             .imports = &.{.{ .name = "kerf", .module = wasm_kerf }},
         }),
