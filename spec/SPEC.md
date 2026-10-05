@@ -886,3 +886,42 @@ whose metrics are close; minor differences in CAD are acceptable.
 **Graphics**
 - Lumber cut lengthwise (run x/y, cut by the section plane) gets the `KERF-GRAIN` pattern (a sparse
   wavy grain line, style material `wood` → `grain`), so stud walls in section don't read as voids.
+
+## 20. v0.1.4 (from the alpha.4 eval, spec/evals/results/2026-10-06-claude-code-alpha4.md)
+
+**Layout resolves its own collisions**
+- Before emitting `W_LEADER_HIT`, the layout runs a bounded repair loop (deterministic, ≤ 8 passes):
+  move the landing point inside the target's visible region; move the note to the other column; push the
+  dimension line out by one dim spacing (`offset` += sign·0.25" paper); move a label away from the leader.
+  `W_LEADER_HIT` remains only for what repair cannot fix.
+- Notes take an optional `column: "left" | "right"` hint (the per-note version of the view's `notes_side`).
+- A note with `place` in the left column right-aligns its text block to `place.x + width`, so text never
+  runs into the drawing (fixes "placing by coordinate backfired").
+- **Dimension stacking:** dims sharing an axis and side whose lines would overlap or whose text would
+  overprint are stacked automatically at increments of 0.25" paper, the shortest nearest the object.
+- **Text that doesn't fit:** when dim text doesn't fit between the extension lines, it moves outside with a
+  short leader. It is never shrunk and never dropped.
+
+**Drawing conventions**
+- Rebar in `path` mode draws as a single continuous centerline polyline (bends as arcs) in the `rebar` pen,
+  with no filled outline. `along_z` bars remain filled dots. This is the US structural convention: bars read
+  as heavy lines that are distinct from concrete outlines and don't blacken small details.
+- Hardware/connector minimum visibility: straps and connectors draw at least at the `steel` pen width.
+  Face-on ties (`lay:"face"`) draw their outline in the `steel` pen with nail-hole dots at 1" pitch along
+  the centerline, so H2.5A-type ties read at 1"=1'-0".
+
+**Coupled geometry & validation**
+- `W_SHORT_SLOPE`: a sloped panel or membrane resting on a sloped member (same slope within 0.5°, touching)
+  whose upper end stops more than 1/2" short of the member's end, or of the crop boundary if that is nearer,
+  warns with the fix `"until": "<member>@top_chord_end"` (or the right anchor).
+- `acknowledge` accepts `I_*` codes as a no-op instead of erroring.
+
+**Agent docs**
+- `kerf guide` is at most ~12 KB: workflow, one-command-per-line recipes (write the ops file with your
+  file-writing tool, then `kerf apply f ops.json -w --why "..."`; never `&&`, `;` chains or heredocs),
+  the doc/view/annotation schema, one complete example, a roof-pitch recipe using `slope:"@truss"` +
+  `until`, and the list of `kerf schema` topics. `kerf guide --full` keeps the long form (with catalog).
+- `kerf schema` takes several topics (`kerf schema note dim cite`). `kerf new <file> --ops ops.json`
+  creates and applies in one command.
+- Catalog `lumber` notes the standard view for beam-in-wall details: an elevation along the wall
+  (beam seen lengthwise, plates interrupted) unless the designer asks for the end-on section.
