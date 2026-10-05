@@ -117,7 +117,7 @@ pub const Section = struct {
         const margin = 1e-6;
         // gather occluders (flattened cut/beyond bodies that touch the crop)
         for (self.prisms, 0..) |p, i| {
-            if (self.cls[i] == .drop or p.kind != .body) continue;
+            if (self.cls[i] == .drop or p.kind != .body or p.face_tie) continue;
             const f = try self.flatOf(i);
             const bx = clip.loopsBox(f);
             if (!bx.overlaps(crop, margin)) continue;
@@ -210,9 +210,11 @@ pub const Section = struct {
             .body => {},
             else => return,
         }
+        if (p.face_tie) return self.drawFaceTie(i, p);
         const flat = try self.flatOf(i);
         const bx = clip.loopsBox(flat);
         if (!bx.overlaps(crop, 1e-6)) return;
+        const path_bar = isPathBar(p);
         const mat = self.style.material(p.material);
         const is_fill_mat = if (mat) |m| m.fill else false;
         const fully_inside = bx.x0 >= crop.x0 - 1e-9 and bx.x1 <= crop.x1 + 1e-9 and bx.y0 >= crop.y0 - 1e-9 and bx.y1 <= crop.y1 + 1e-9;
@@ -244,7 +246,7 @@ pub const Section = struct {
         }
         // hatch / fill
         const want_hatch = mat != null and mat.?.hatch.len > 0;
-        if (want_hatch or ((is_fill_mat or is_thin) and p.kind == .body)) {
+        if (want_hatch or (!path_bar and (is_fill_mat or is_thin) and p.kind == .body)) {
             if (region.len > 0) {
                 const groups = try groupRegion(self.a, region, if (region_exact) p.loops else null);
                 for (groups) |g| {
@@ -295,7 +297,10 @@ pub const Section = struct {
             }
         }
         // ----- outline -----
-        switch (p.outline) {
+        if (path_bar) {
+            // SPEC 20: a path-mode bar is one centerline in the rebar pen (bends stay true arcs); the ribbon only clears hatch.
+            try self.addClipped(&self.strokes, p.centerline, false, self.penFor("rebar"), src, true);
+        } else switch (p.outline) {
             .none => {},
             .full => for (p.loops) |l| try self.addClipped(&self.strokes, l, true, pen_out, src, p.embedded),
             .top => for (p.loops) |l| try self.topEdges(l, pen_out, src),
@@ -320,6 +325,70 @@ pub const Section = struct {
             if (pathclip.clipSeg(pl[0], pl[1], crop)) |s| {
                 try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, "beyond", src, false);
             }
+        }
+    }
+
+    /// Lines of ordinary members run hidden under a face-on tie (the strap is in front of them): remove the
+    /// parts of non-embedded strokes that fall inside a tie outline so the tie and its nail dots read cleanly.
+    fn knockOutFaceTies(self: *Section) Allocator.Error!void {
+        var occs: std.ArrayList(Occ) = .empty;
+        for (self.prisms, 0..) |p, i| {
+            if (self.cls[i] == .drop or !p.face_tie) continue;
+            const f = try self.flatOf(i);
+            try occs.append(self.a, .{ .loops = f, .box = clip.loopsBox(f), .z1 = p.z1, .cut = false, .prism = i });
+        }
+        if (occs.items.len == 0) return;
+        var out: std.ArrayList(Stroke) = .empty;
+        for (self.strokes.items) |st| {
+            if (st.rank >= 10) {
+                try out.append(self.a, st);
+                continue;
+            }
+            const pieces = try visibleOpen(self.a, st.pts, st.closed, occs.items);
+            for (pieces) |pc| {
+                var q = st;
+                q.pts = pc.pts;
+                q.closed = pc.closed;
+                try out.append(self.a, q);
+            }
+        }
+        self.strokes = out;
+    }
+
+    /// Face-on hardware (SPEC 20): outline in the steel pen plus nail-hole dots at 1" pitch along the centerline,
+    /// drawn over everything so H2.5A / HETA style ties read at small scales.
+    fn drawFaceTie(self: *Section, i: usize, p: Prism) Allocator.Error!void {
+        const crop = self.spec.crop;
+        const src = self.srcName(p);
+        const S = self.spec.scale;
+        const pen = self.penFor("steel");
+        for (p.loops) |l| try self.addClipped(&self.strokes, l, true, pen, src, true);
+        if (p.centerline.len < 2) return;
+        const flat = try geom.flattenPolyline(self.a, p.centerline, false, flat_tol);
+        var total: f64 = 0;
+        for (flat[0 .. flat.len - 1], 0..) |q, k| total += q.dist(flat[k + 1]);
+        // dot size follows the paper (0.016" radius), never below a true 0.05" hole; pitch is whole inches, >= 0.07" on paper
+        const strap_w = if (total > 0) @abs(geom.signedAreaV((try self.flatOf(i))[0])) / total else 0;
+        const r = @min(@max(0.05, 0.016 * S), 0.15 * strap_w + 0.02);
+        const pitch = @ceil(@max(1.0, 0.07 * S));
+        if (total < 0.5 * pitch) return;
+        const n: usize = @max(1, @as(usize, @intFromFloat(@floor(total / pitch + 1e-9))));
+        const first = (total - @as(f64, @floatFromInt(n - 1)) * pitch) / 2;
+        var seg: usize = 0;
+        var seg_start: f64 = 0;
+        var k: usize = 0;
+        while (k < n) : (k += 1) {
+            const d = first + @as(f64, @floatFromInt(k)) * pitch;
+            while (seg + 2 < flat.len and d > seg_start + flat[seg].dist(flat[seg + 1])) {
+                seg_start += flat[seg].dist(flat[seg + 1]);
+                seg += 1;
+            }
+            const a0 = flat[seg];
+            const b0 = flat[seg + 1];
+            const sl = a0.dist(b0);
+            const c = if (sl < 1e-12) a0 else a0.add(b0.sub(a0).scale((d - seg_start) / sl));
+            if (c.x - r < crop.x0 or c.x + r > crop.x1 or c.y - r < crop.y0 or c.y + r > crop.y1) continue;
+            try self.fills.append(self.a, .{ .layer = self.layerFor(pen), .src = src, .loops = try model.oneLoop(self.a, try model.circleLoop(self.a, c.x, c.y, r)) });
         }
     }
 
@@ -385,10 +454,12 @@ pub const Section = struct {
 
     fn drawBeyond(self: *Section, i: usize, p: Prism) Allocator.Error!void {
         if (p.kind != .body) return;
+        if (p.face_tie) return self.drawFaceTie(i, p);
         const crop = self.spec.crop;
         const f = try self.flatOf(i);
         if (!clip.loopsBox(f).overlaps(crop, 1e-6)) return;
         const src = self.srcName(p);
+        if (isPathBar(p)) return self.addClipped(&self.strokes, p.centerline, false, self.penFor("rebar"), src, true);
         const mat = self.style.material(p.material);
         const pen: []const u8 = if (mat != null and mat.?.fill) self.penFor(p.material) else "beyond";
         // occluders
@@ -549,6 +620,7 @@ pub const Section = struct {
         var items: std.ArrayList(drawing.Item) = .empty;
         for (self.hatches.items) |h| try items.append(self.a, .{ .hatch = h });
         for (self.fills.items) |f| try items.append(self.a, .{ .fill = f });
+        try self.knockOutFaceTies();
         const deduped = try chainStrokes(self.a, try dedupe(self.a, self.strokes.items, self.style));
         // stable sort by rank (lighter first)
         std.mem.sort(Stroke, deduped, {}, struct {
@@ -563,6 +635,11 @@ pub const Section = struct {
         return items.items;
     }
 };
+
+/// A rebar bar in `path` mode (a swept centerline), as opposed to `along_z` dots.
+pub fn isPathBar(p: Prism) bool {
+    return p.kind == .body and p.centerline.len >= 2 and std.mem.eql(u8, p.material, "rebar");
+}
 
 /// Direction (degrees, 0..180) of the longest edge of a member outline: the way its grain runs.
 fn memberAngleDeg(loop: []const Pt) f64 {
@@ -734,6 +811,82 @@ pub fn visiblePieces(a: Allocator, loop: []const Pt, occ: []const *const Occ) Al
             try out.append(a, .{ .pts = cur.items, .closed = false });
         }
     }
+    return out.items;
+}
+
+/// Like `visiblePieces` but also for open polylines (arcs allowed): the parts outside every occluder.
+pub fn visibleOpen(a: Allocator, pts: []const Pt, closed: bool, occs: []const Occ) Allocator.Error![]const PieceOut {
+    var out: std.ArrayList(PieceOut) = .empty;
+    const n = pts.len;
+    const nseg = if (closed) n else n -| 1;
+    var cur: std.ArrayList(Pt) = .empty;
+    var any_hidden = false;
+    for (0..nseg) |i| {
+        const p0 = pts[i].v();
+        const p1 = pts[(i + 1) % n].v();
+        const bulge = pts[i].b;
+        var sbox = Box{};
+        geom.segBoxInto(&sbox, p0, p1, bulge);
+        var ts: std.ArrayList(f64) = .empty;
+        for (occs) |o| {
+            if (!o.box.overlaps(sbox, 1e-7)) continue;
+            for (o.loops) |ol| {
+                for (ol, 0..) |q0, k| {
+                    const q1 = ol[(k + 1) % ol.len];
+                    var ta: [2]f64 = undefined;
+                    var tb: [2]f64 = undefined;
+                    const cnt = if (bulge == 0) geom.segSeg(p0, p1, q0, q1, &ta, &tb) else geom.arcSeg(p0, p1, bulge, q0, q1, &ta, &tb);
+                    for (0..cnt) |c| try pushUnique(a, &ts, ta[c]);
+                }
+            }
+        }
+        std.mem.sort(f64, ts.items, {}, std.sort.asc(f64));
+        var t_prev: f64 = 0;
+        var k: usize = 0;
+        while (k <= ts.items.len) : (k += 1) {
+            const t_next: f64 = if (k < ts.items.len) ts.items[k] else 1;
+            if (t_next - t_prev < 1e-10) {
+                t_prev = t_next;
+                continue;
+            }
+            const sub = geom.subSeg(p0, p1, bulge, t_prev, t_next);
+            const mid = geom.segPoint(p0, p1, bulge, (t_prev + t_next) / 2);
+            var hidden = false;
+            for (occs) |o| {
+                if (!o.box.contains(mid)) continue;
+                if (geom.locate(mid, o.loops, 1e-7) == .inside) {
+                    hidden = true;
+                    break;
+                }
+            }
+            if (hidden) {
+                any_hidden = true;
+                if (cur.items.len > 0) {
+                    cur.items[cur.items.len - 1].b = 0;
+                    try out.append(a, .{ .pts = cur.items, .closed = false });
+                    cur = .empty;
+                }
+            } else {
+                const joins = cur.items.len > 0 and V2.eql(cur.items[cur.items.len - 1].v(), sub.a, 1e-9);
+                if (!joins) {
+                    if (cur.items.len > 1) {
+                        cur.items[cur.items.len - 1].b = 0;
+                        try out.append(a, .{ .pts = cur.items, .closed = false });
+                    }
+                    cur = .empty;
+                    try cur.append(a, .{ .x = sub.a.x, .y = sub.a.y, .b = sub.bulge });
+                } else cur.items[cur.items.len - 1].b = sub.bulge;
+                try cur.append(a, .{ .x = sub.b.x, .y = sub.b.y, .b = 0 });
+            }
+            t_prev = t_next;
+        }
+    }
+    if (!any_hidden) {
+        out.clearRetainingCapacity();
+        try out.append(a, .{ .pts = pts, .closed = closed });
+        return out.items;
+    }
+    if (cur.items.len > 1) try out.append(a, .{ .pts = cur.items, .closed = false });
     return out.items;
 }
 

@@ -27,7 +27,7 @@
       "dash_mm": null
     },
     "rebar": {
-      "width_mm": 0.35,
+      "width_mm": 0.5,
       "dash_mm": null
     },
     "steel": {
@@ -649,6 +649,10 @@
     "steel": {
       "name": "S-DETL-STL",
       "lineweight_mm": 0.35
+    },
+    "rebar": {
+      "name": "S-DETL-REBR",
+      "lineweight_mm": 0.5
     },
     "notes": {
       "name": "S-ANNO-NOTE",

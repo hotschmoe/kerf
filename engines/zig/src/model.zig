@@ -132,6 +132,9 @@ pub const Prism = struct {
     zhalf: f64 = 0,
     /// `shown: "dashed"` ("where occurs"): a ghost prism (hidden pen, no hatch, never occludes) that notes can still target.
     dashed: bool = false,
+    /// Face-on hardware (connector `lay:"face"`): a schematic symbol drawn outline-only in the `steel` pen with nail-hole
+    /// dots along its centerline, on top of everything (never occluded, never filled, never a hatch hole). SPEC 20.
+    face_tie: bool = false,
 
     pub fn transform(p: Prism, a: Allocator, xf: geom.Xf) Allocator.Error!Prism {
         var q = p;

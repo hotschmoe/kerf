@@ -146,7 +146,10 @@ pub const Style = struct {
     /// Layer name for a pen (see `layerKeyForPen`).
     pub fn layerForPen(self: *const Style, pen_name: []const u8) []const u8 {
         const key = layerKeyForPen(pen_name);
-        return if (self.layerByKey(key)) |l| l.name else "0";
+        if (self.layerByKey(key)) |l| return l.name;
+        // a user style without a `rebar` layer keeps rebar on the steel layer
+        if (std.mem.eql(u8, key, "rebar")) if (self.layerByKey("steel")) |l| return l.name;
+        return "0";
     }
 };
 
@@ -157,7 +160,8 @@ pub fn layerKeyForPen(pen_name: []const u8) []const u8 {
     if (eq(u8, pen_name, "beyond")) return "beyond";
     if (eq(u8, pen_name, "hidden")) return "hidden";
     if (eq(u8, pen_name, "hatch")) return "hatch";
-    if (eq(u8, pen_name, "rebar") or eq(u8, pen_name, "steel")) return "steel";
+    if (eq(u8, pen_name, "rebar")) return "rebar";
+    if (eq(u8, pen_name, "steel")) return "steel";
     if (eq(u8, pen_name, "anno")) return "notes";
     if (eq(u8, pen_name, "dim")) return "dims";
     if (eq(u8, pen_name, "break")) return "break";

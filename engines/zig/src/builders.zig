@@ -1200,7 +1200,7 @@ fn buildConnector(ctx: *Ctx) BuildError!?Built {
         try path_geom.ribbon(a, clean, if (std.mem.eql(u8, side.?, "left")) thickness else 0, if (std.mem.eql(u8, side.?, "right")) thickness else 0)
     else
         try path_geom.ribbon(a, clean, width.? / 2, width.? / 2);
-    const prism = Prism{ .material = "steel", .loops = try model.oneLoop(a, rib), .centerline = clean };
+    const prism = Prism{ .material = "steel", .loops = try model.oneLoop(a, rib), .centerline = clean, .face_tie = !edge };
     return .{
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(rib),
