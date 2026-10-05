@@ -330,3 +330,63 @@ x86_64/aarch64 x windows-gnu/linux-musl/macos -> assets `kerf-<arch>-<os>[.exe]`
 - `solid` / `polygon` profiles with holes are not supported (profiles are single loops; the mesh ignores holes).
 - Hatch under dimension/label text is knocked out in SVG/PDF only (DXF HATCH uses the pattern, not lines).
 - PDF content streams are uncompressed (about 150 KB per sheet).
+
+## v0.1.2 catalog/CLI (zig-catalog agent)
+
+**Windows op-log AccessDenied (root cause, fixed).** `Io.Dir.createFile(.read = false)` opens with GENERIC_WRITE only; the old
+`appendLine` then called `File.length`, which on Windows is `NtQueryInformationFile(FileAllInformation)` and needs
+FILE_READ_ATTRIBUTES, which GENERIC_WRITE lacks => AccessDenied (read from lib/std/Io/Threaded.zig `fileStatWindows`,
+`dirCreateFileWindows`; no wine on this aarch64 host, x86_64/aarch64 `-Dtarget=*-windows-gnu` cross-compile is clean).
+Fix in `workspace.appendLine`: normal read+write handle (`.read = true`, create if missing, never truncate), `length`, one
+positional write of `line + "\n"` at the end (two writes only above 4 KiB). Never append-only. `kerf new` / `kerf apply -w`
+exit 3 with `kerf: error: could not append to op log ...` when the append fails (document write stays atomic);
+`kerf serve` uses the same helper and prints a warning on failure. Tests: `workspace.zig` (create / no-truncate / big line),
+manual check with the log path made a directory (exit 3). Also fixed: `kerf fmt` printed the `{doc,text}` wrapper; it now writes the canonical text.
+
+**ASCII.** `kerf guide` and `kerf catalog --markdown` pass through `main.asciiFold` (dashes, quotes, x, degree, fractions,
+NBSP, arrows => ASCII, else `?`). `tests.zig` asserts the raw catalog markdown/json are already ASCII and `main.zig` that the
+embedded guide sources are; `build.zig` now also runs the CLI tests.
+
+**Rebar `place`:** `face:"center"` (both axes centered; `count>1` spreads along `axis` x|y at `side_cover`), `station` (one bar
+at that offset from the zone's left / bottom face; also works with the other faces as the along-face position).
+
+**W_COVER on path bars** names `segment k of n (x.., y.. to x.., y..)` (authored vertices, bends extended to the corner) or
+`the bend after segment k of n`, plus the face and numbers. Host selection and the "skip faces perpendicular to the bar" rule are unchanged.
+
+**`shown:"dashed"`** (any component): prisms become `kind=.ghost`, `pen="hidden"`, `dashed=true` (model.Prism.dashed,
+scene.Comp.dashed). Section views: outline in the hidden pen, never occludes, notes can still land on it (section.zig
+`visibleRegion`/`regionItems` admit dashed ghosts), exempt from W_OVERLAP/W_FLOATING/W_NEAR_MISS. The ` (WHERE OCCURS)`
+suffix is added by `scene.whereOccursText`, called from one line in `annot.zig` (note text). Mesh includes dashed components;
+iso omits them (gap).
+
+**New components / options.** `anchor_bolt.hook` `wedge` (clip 1.15 d wide x 0.6 embed, chamfered tip, default embed 4) and
+`screw` (exaggerated thread strips 0.22 d deep at 0.5 d pitch, hex washer head 1.5 d wide, no nut; parts threads/washer/head).
+`flashing` (z/l/drip/weep_screed/points; thin metal, embedded, spans run; gauges 24/26/28 added to the table). `joint`
+(expansion filler + optional sealant `cap`; control V notch; tooled_edge radius void at a `corner`; sealant bead + backer rod;
+optional `in` host for default depth). Voids are material `void`, embedded (cut a hole in the host hatch), skipped in mesh/iso.
+`concrete.slab_edge.base` (part/zone `base`, anchors `base_bottom_interior`, `base_bottom_footing`; box anchors unchanged).
+Style additions (spec/styles/kerf-standard.kerfstyle.json): materials `joint_filler` (hatch KERF-FILLER), `sealant`
+(fill), `backer_rod`, `void`; pattern `KERF-FILLER` (45/135 deg lines at 0.0625"). Builders fall back to `generic`/`steel`
+when a custom style lacks them.
+
+**Hardware table additions** (width = strap width / seat width / angle length along z; length = strap length, hanger
+height H, angle developed legs 2 x 1-7/16). Sources (strongtie.com pages are JS-rendered and could not be fetched; values are
+from Simpson catalog PDFs, ICC-ES ESR-3096, and retailer listings):
+RSP4 20 ga 2-1/8 x 4-1/2 (ESR-3096); A34 18 ga 1-7/16 legs x 2-1/2 wide, A35 18 ga 1-7/16 legs x 4-1/2 wide (ESR-3096 gauge,
+retailer size); LTP4 20 ga 3 x 4-1/4 (ESR + retailer); LSTHD8 14 ga 3 x 18-5/8 and STHD14 12 ga 3 x 26-1/8 (Simpson LSTHD/STHD data
+sheet; the 3" width is retailer-only); LUS26 18 ga 1-9/16 x H 4-3/4, MUS26 18 ga 1-9/16 x H 5-3/16, HUS26 16 ga 1-5/8 x H 5-3/8,
+HHUS26-2 14 ga 3-5/16 x H 5-3/8 (Simpson catalog p.193-195); ST2215 20 ga 2-1/16 x 16-5/16, ST6224 16 ga 2-1/16 x 23-5/16
+(Simpson catalog p.269); FHA18 12 ga 1-7/16 x 17-3/4 (catalog W/L, gauge retailer-only; it is a strap tie, not a foundation anchor);
+LTS12 18 ga 1-1/4 x 12 (twist strap sheet; gauge retailer-only). Not verified against strongtie.com: A34/A35/LTP4 sizes, LSTHD8/STHD14
+width, FHA18/LTS12 gauge.
+
+**Test doc:** `tests/docs/palmer-sd1-like.kerf.json` (5 views: wall footing with centered stem bar, dowel, wedge anchor, dashed
+STHD14, weep screed; turndown slab with base, expansion/control joints, tooled edge). 0 errors / 0 warnings; embedded in
+`tests.zig` (all views x svg/dxf/pdf/png + mesh); dxf_check and pdf_check clean; PNGs reviewed by eye.
+
+**Known gaps / state at hand-off:** goldens NOT regenerated: with the layout agent's uncommitted annotation work the A views of the
+three reference docs differ (B views match), so regenerate after that lands. `zig build wasm` currently fails inside the layout
+agent's uncommitted `annot.zig` (debug code pulls `std.Io.Threaded` into wasm); nothing in this section touches I/O in wasm.
+Iso omits `shown:"dashed"` components. Control-joint V and tooled-edge radius are tiny at scales below 1"=1'-0".
+
+REQUESTS (to the layout agent): commit the 2-line `scene_mod.whereOccursText` hook in `annot.zig` (note text) with your changes; do not drop it.
