@@ -185,9 +185,10 @@ fn emitItem(out: *std.ArrayList(u8), a: Allocator, st: *const style_mod.Style, i
 /// Bare detail SVG: the drawing's bounds plus a margin, true paper scale.
 pub fn render(a: Allocator, d: *const drawing.Drawing, font: *const font_mod.Font, opt: Options) Allocator.Error![]u8 {
     const s = d.scale;
-    const w_in = (d.bounds[2] - d.bounds[0]) / s + 2 * opt.margin_in;
-    const h_in = (d.bounds[3] - d.bounds[1]) / s + 2 * opt.margin_in;
-    const m = Map{ .s = s, .x0 = d.bounds[0], .y1 = d.bounds[3], .ox = opt.margin_in, .oy = opt.margin_in };
+    const margin = if (d.page_w > 0) 0 else opt.margin_in;
+    const w_in = (d.bounds[2] - d.bounds[0]) / s + 2 * margin;
+    const h_in = (d.bounds[3] - d.bounds[1]) / s + 2 * margin;
+    const m = Map{ .s = s, .x0 = d.bounds[0], .y1 = d.bounds[3], .ox = margin, .oy = margin };
     var out: std.ArrayList(u8) = .empty;
     try header(&out, a, w_in, h_in);
     try out.appendSlice(a, "<rect width=\"100%\" height=\"100%\" fill=\"#fff\"/>\n");

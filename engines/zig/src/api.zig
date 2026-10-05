@@ -11,6 +11,8 @@ const drawview = @import("drawview.zig");
 const drawing = @import("drawing.zig");
 const font_mod = @import("font.zig");
 const svg = @import("svg.zig");
+const mesh_mod = @import("mesh.zig");
+const sheet_mod = @import("sheet.zig");
 const load_mod = @import("load.zig");
 const ops_mod = @import("ops.zig");
 const Allocator = std.mem.Allocator;
@@ -65,6 +67,7 @@ fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
     if (std.mem.eql(u8, name, "version")) return versionFn(a);
     if (std.mem.eql(u8, name, "catalog")) return catalogFn(a, inp);
     if (std.mem.eql(u8, name, "fmt")) return fmtFn(a, inp);
+    if (std.mem.eql(u8, name, "mesh")) return meshFn(a, inp);
     if (std.mem.eql(u8, name, "check")) return checkFn(a, inp);
     if (std.mem.eql(u8, name, "apply")) return applyFn(a, inp);
     if (std.mem.eql(u8, name, "inspect")) return inspectFn(a, inp);
@@ -157,7 +160,11 @@ fn exportFn(a: Allocator, inp: json.Value) ApiError!Out {
         return fail(a, "E_VIEW", "{s}", .{if (diags.list.items.len > 0) diags.list.items[0].message else "view could not be built"});
     };
     const font = font_mod.Font.parse(a, font_mod.embedded) catch return fail(a, "E_INTERNAL", "embedded font failed to parse", .{});
-    if (std.mem.eql(u8, format, "svg")) return .{ .ok = true, .bytes = try svg.render(a, &dr, &font, .{}) };
+    const want_sheet = if (inp.get("sheet")) |sv| (sv == .bool and sv.bool) else false;
+    if (std.mem.eql(u8, format, "svg")) {
+        const dd = if (want_sheet) try sheet_mod.withSheet(a, dr, &font) else dr;
+        return .{ .ok = true, .bytes = try svg.render(a, &dd, &font, .{}) };
+    }
     return fail(a, "E_INPUT", "export format must be \"svg\", \"dxf\" or \"pdf\" (got \"{s}\")", .{format});
 }
 
@@ -290,4 +297,18 @@ test "api: every function runs on the reference documents without leaking" {
     const bad = try call(gpa, "nope", "{}");
     defer gpa.free(bad.bytes);
     try std.testing.expect(!bad.ok);
+}
+
+fn meshFn(a: Allocator, inp: json.Value) ApiError!Out {
+    const d = switch (try getDoc(a, inp)) {
+        .doc => |x| x,
+        .err => |e| return e,
+    };
+    const st = switch (try getStyle(a, inp)) {
+        .style => |x| x,
+        .err => |e| return e,
+    };
+    const l = try load_mod.load(a, d, &st, false);
+    const parts = try mesh_mod.build(a, l.scene);
+    return .{ .ok = true, .bytes = try mesh_mod.toJson(a, parts) };
 }

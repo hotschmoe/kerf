@@ -148,5 +148,8 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         .crop = spec.crop,
         .detail_bounds = detail,
         .has_unverified = unverified,
+        .author = metaString(doc, "author"),
+        .project = metaString(doc, "project"),
+        .doc_title = if (doc.get("title")) |t| (t.str() orelse "") else "",
     };
 }

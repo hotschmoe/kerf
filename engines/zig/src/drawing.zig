@@ -97,6 +97,12 @@ pub const Drawing = struct {
     crop: geom.Box = .{},
     /// Content extents excluding title items.
     detail_bounds: geom.Box = .{},
+    author: []const u8 = "",
+    project: []const u8 = "",
+    doc_title: []const u8 = "",
+    /// Page size in paper inches when `bounds` is a full sheet (0 = not a sheet).
+    page_w: f64 = 0,
+    page_h: f64 = 0,
 };
 
 // ---- JSON output ----------------------------------------------------------------------------------------
