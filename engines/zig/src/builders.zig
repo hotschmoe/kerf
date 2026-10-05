@@ -650,6 +650,25 @@ fn buildConcrete(ctx: *Ctx) BuildError!?Built {
         }
     }
     const rslope = p.len("recess_slope", 0, "");
+    var base_mat: []const u8 = "";
+    var base_t: f64 = 0;
+    if (p.raw("base")) |bv| {
+        if (bv != .object) {
+            p.fail("base", "param 'base' must be {{\"material\": \"gravel\"|\"sand\"|\"compacted_fill\", \"thickness\": 4}} or null", .{});
+        } else {
+            base_mat = (if (bv.get("material")) |x| x.str() else null) orelse "gravel";
+            var ok_mat = false;
+            for ([_][]const u8{ "gravel", "sand", "compacted_fill" }) |m| {
+                if (std.mem.eql(u8, m, base_mat)) ok_mat = true;
+            }
+            if (!ok_mat) p.fail("base/material", "base.material must be \"gravel\", \"sand\" or \"compacted_fill\" (got \"{s}\")", .{base_mat});
+            base_t = (if (bv.get("thickness")) |x| units.parseLength(x) else null) orelse blk: {
+                p.fail("base/thickness", "base needs a numeric 'thickness' (inches), e.g. {{\"material\": \"gravel\", \"thickness\": 4}}", .{});
+                break :blk 0;
+            };
+            if (p.ok and base_t <= 0) p.fail("base/thickness", "base.thickness must be greater than 0", .{});
+        }
+    }
     if (!p.ok) return null;
     if (fd.? <= st.?) {
         p.fail("footing_depth", "footing_depth ({s}) must exceed slab_thickness ({s}): it is measured from the top of the slab", .{ fmtNum(a, fd.?), fmtNum(a, st.?) });
@@ -710,16 +729,64 @@ fn buildConcrete(ctx: *Ctx) BuildError!?Built {
         try zoneRect(a, "footing", 0, -fd.?, fw.?, -st.?),
         try zoneRect(a, "slab", 0, -st.?, sl.?, 0),
     });
+    var prisms_out: std.ArrayList(Prism) = .empty;
+    try prisms_out.append(a, prism);
+    var zones_out: std.ArrayList(model.Zone) = .empty;
+    try zones_out.appendSlice(a, zones);
+    if (base_t > 0) {
+        // uniform base course under the slab soffit and along the haunch, stopping at the footing bottom
+        const dx = hx - fw.?;
+        const dy = fd.? - st.?;
+        const dl = @sqrt(dx * dx + dy * dy);
+        const ux = dx / dl;
+        const uy = dy / dl;
+        const nx = uy; // soil-side normal of the haunch line (down and toward the interior)
+        const ny = -ux;
+        const o = V2.init(fw.? + nx * base_t, -fd.? + ny * base_t);
+        if (st.? + base_t >= fd.? - 1e-9) {
+            p.fail("base/thickness", "base.thickness {s} must be less than footing_depth - slab_thickness ({s}) so the base stops above the footing bottom", .{ fmtNum(a, base_t), fmtNum(a, fd.? - st.?) });
+            return null;
+        }
+        const s1 = (-st.? - base_t - o.y) / uy; // along the offset haunch line to the soffit-offset level
+        const s2 = (-fd.? - o.y) / uy; // ... to the footing-bottom level
+        const q1 = V2.init(o.x + ux * s1, -st.? - base_t);
+        const q2 = V2.init(o.x + ux * s2, -fd.?);
+        if (q1.x >= sl.? - 1e-9) {
+            p.fail("base/thickness", "the base course meets the slab end before the haunch offset does; lengthen slab_length or reduce base.thickness", .{});
+            return null;
+        }
+        const bpts = [_]Pt{
+            .{ .x = fw.?, .y = -fd.? },
+            .{ .x = hx, .y = -st.? },
+            .{ .x = sl.?, .y = -st.? },
+            .{ .x = sl.?, .y = -st.? - base_t },
+            .{ .x = q1.x, .y = q1.y },
+            .{ .x = q2.x, .y = q2.y },
+        };
+        const bloop = try orientedCcw(a, try dropDuplicatePoints(a, &bpts));
+        try prisms_out.append(a, .{ .part = "base", .material = base_mat, .loops = try model.oneLoop(a, bloop) });
+        const bb = geom.loopBox(bloop);
+        try zones_out.append(a, .{ .name = "base", .loops = try model.oneLoop(a, bloop), .box = bb });
+        try anchors.append(a, .{ .name = "base_bottom_interior", .p = V2.init(sl.?, -st.? - base_t) });
+        try anchors.append(a, .{ .name = "base_bottom_footing", .p = V2.init(q2.x, -fd.?) });
+    }
     var built = Built{
-        .prisms = try onePrism(a, prism),
+        .prisms = prisms_out.items,
         .anchors = anchors.items,
-        .zones = zones,
+        .zones = zones_out.items,
         .box = geom.loopBox(loop),
         .host = .{ .outline = loop, .cover = cov.?.cover, .part_cover = cov.?.parts },
-        .info = try std.fmt.allocPrint(a, "concrete slab_edge {s} slab, ftg {s} x {s}{s}", .{ ftin(a, st.?), ftin(a, fw.?), ftin(a, fd.?), if (has_recess) try std.fmt.allocPrint(a, ", recess {s} x {s}", .{ ftin(a, rw), ftin(a, rd) }) else "" }),
+        .info = try std.fmt.allocPrint(a, "concrete slab_edge {s} slab, ftg {s} x {s}{s}{s}", .{
+            ftin(a, st.?),
+            ftin(a, fw.?),
+            ftin(a, fd.?),
+            if (has_recess) try std.fmt.allocPrint(a, ", recess {s} x {s}", .{ ftin(a, rw), ftin(a, rd) }) else "",
+            if (base_t > 0) try std.fmt.allocPrint(a, ", {s} {s} base", .{ ftin(a, base_t), base_mat }) else "",
+        }),
     };
     if (std.mem.eql(u8, exterior.?, "right")) {
         built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
+        built.box = geom.loopBox(built.host.?.outline); // the base course does not move the 9 box anchors
     }
     return built;
 }
@@ -958,9 +1025,10 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
     const d = p.lenPos("diameter", 0.5, "") orelse return null;
-    const embed = p.lenPos("embed", 7, "") orelse return null;
+    const hook = p.choice("hook", "J", &.{ "J", "L", "headed", "none", "wedge", "screw" });
+    const post = hook != null and (std.mem.eql(u8, hook.?, "wedge") or std.mem.eql(u8, hook.?, "screw"));
+    const embed = p.lenPos("embed", if (post) 4 else 7, "") orelse return null;
     const proj = p.lenPos("projection", 2.5, "") orelse return null;
-    const hook = p.choice("hook", "J", &.{ "J", "L", "headed", "none" });
     const nut = p.boolean("nut_washer", true);
     const hl_default: f64 = if (hook != null and std.mem.eql(u8, hook.?, "L")) 3.0 else 2.0;
     const hook_len = p.lenPos("hook_len", hl_default, "") orelse return null;
@@ -992,7 +1060,45 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
     if (std.mem.eql(u8, h, "headed")) {
         try prisms.append(a, .{ .part = "shank", .material = "steel", .loops = try model.oneLoop(a, try model.rectLoop(a, -d, -embed, d, -embed + 0.5 * d)), .embedded = true, .zhalf = d });
     }
-    if (nut) {
+    if (std.mem.eql(u8, h, "wedge")) {
+        // post-installed expansion anchor: expansion clip (sleeve 0.6 embed long, 1.15 d wide) at the embedded end, chamfered tip
+        const hw = 0.575 * d;
+        const ch = @min(0.35 * d, 0.2 * embed);
+        const clip_pts = [_]Pt{
+            .{ .x = -hw + ch, .y = -embed },
+            .{ .x = hw - ch, .y = -embed },
+            .{ .x = hw, .y = -embed + ch },
+            .{ .x = hw, .y = -embed + 0.6 * embed },
+            .{ .x = -hw, .y = -embed + 0.6 * embed },
+            .{ .x = -hw, .y = -embed + ch },
+        };
+        try prisms.append(a, .{ .part = "clip", .material = "steel", .loops = try model.oneLoop(a, try a.dupe(Pt, &clip_pts)), .embedded = true, .zhalf = hw });
+    }
+    if (std.mem.eql(u8, h, "screw")) {
+        // Titen HD style: thread ticks along the embedded length (exaggerated sawtooth strips) and a hex washer head
+        const td = 0.22 * d;
+        const pitch = 0.5 * d;
+        const n_f = @floor(embed / pitch);
+        const n: usize = @intFromFloat(@min(n_f, 80));
+        if (n >= 1) {
+            for ([_]f64{ -1, 1 }) |sgn| {
+                var strip: std.ArrayList(Pt) = .empty;
+                try strip.append(a, .{ .x = sgn * r, .y = 0 });
+                var i: usize = 0;
+                while (i < n) : (i += 1) {
+                    const fi: f64 = @floatFromInt(i);
+                    try strip.append(a, .{ .x = sgn * (r + td), .y = -(fi + 0.5) * pitch });
+                    try strip.append(a, .{ .x = sgn * r, .y = -(fi + 1) * pitch });
+                }
+                const loop = try orientedCcw(a, strip.items);
+                try prisms.append(a, .{ .part = "threads", .material = "steel", .loops = try model.oneLoop(a, loop), .embedded = true, .zhalf = r + td });
+            }
+        }
+        const head_h = 0.6 * d;
+        const fl_t = 0.1 * d;
+        try prisms.append(a, .{ .part = "washer", .material = "steel", .loops = try model.oneLoop(a, try model.rectLoop(a, -0.95 * d, proj - head_h - fl_t, 0.95 * d, proj - head_h)), .embedded = true, .zhalf = 0.95 * d });
+        try prisms.append(a, .{ .part = "head", .material = "steel", .loops = try model.oneLoop(a, try model.rectLoop(a, -0.75 * d, proj - head_h, 0.75 * d, proj)), .embedded = true, .zhalf = 0.75 * d });
+    } else if (nut) {
         const nut_h = 0.875 * d;
         const ytop = proj - 0.25 * d;
         const nut_bot = ytop - nut_h;
@@ -1005,7 +1111,7 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
         .anchors = try a.dupe(model.NamedAnchor, &.{.{ .name = "top_of_concrete", .p = V2.init(0, 0) }}),
         .box = bx,
         .nat_z = d,
-        .info = try std.fmt.allocPrint(a, "anchor_bolt {s}\" dia, embed {s}, proj {s}, {s} hook", .{ fmtNum(a, d), ftin(a, embed), ftin(a, proj), h }),
+        .info = try std.fmt.allocPrint(a, "anchor_bolt {s}\" dia, embed {s}, proj {s}, {s}{s}", .{ fmtNum(a, d), ftin(a, embed), ftin(a, proj), h, if (post) "" else " hook" }),
     };
 }
 
@@ -1024,6 +1130,9 @@ pub fn gaugeThickness(g: u32) ?f64 {
         18 => 0.0478,
         20 => 0.0359,
         22 => 0.0299,
+        24 => 0.0239,
+        26 => 0.0179,
+        28 => 0.0149,
         else => null,
     };
 }
@@ -1051,7 +1160,7 @@ fn buildConnector(ctx: *Ctx) BuildError!?Built {
     };
     if (!p.ok) return null;
     const thickness = gaugeThickness(@intFromFloat(@round(gauge_n.?))) orelse {
-        p.fail("gauge", "gauge {s} is not in the table; use 10, 11, 12, 14, 16, 18, 20 or 22", .{fmtNum(a, gauge_n.?)});
+        p.fail("gauge", "gauge {s} is not in the table; use 10, 11, 12, 14, 16, 18, 20, 22, 24, 26 or 28", .{fmtNum(a, gauge_n.?)});
         return null;
     };
     const pts = (try parsePointList(ctx, "points", pv, true)) orelse return null;
@@ -1418,6 +1527,173 @@ fn buildSolid(ctx: *Ctx) BuildError!?Built {
     };
 }
 
+// ---- flashing -----------------------------------------------------------------------------------------------------
+
+/// A style material when the style defines it, else `fallback` (custom styles may lack the v0.1.2 additions).
+fn materialOr(ctx: *const Ctx, name: []const u8, fallback: []const u8) []const u8 {
+    return if (ctx.style.material(name) != null) name else fallback;
+}
+
+fn buildFlashing(ctx: *Ctx) BuildError!?Built {
+    const a = ctx.a;
+    const p = &ctx.p;
+    const prof = p.choice("profile", "z", &.{ "z", "l", "drip", "weep_screed", "points" });
+    const exterior = p.choice("exterior", "left", &.{ "left", "right" });
+    const gauge_n = p.num("gauge", 26);
+    if (!p.ok) return null;
+    const pr = prof.?;
+    const is = struct {
+        fn f(x: []const u8, y: []const u8) bool {
+            return std.mem.eql(u8, x, y);
+        }
+    }.f;
+    const flange_def: f64 = if (is(pr, "weep_screed")) 3.5 else 2;
+    const leg_def: f64 = if (is(pr, "l")) 2 else 1;
+    const drop_def: f64 = if (is(pr, "drip")) 1.5 else if (is(pr, "weep_screed")) 0.5 else 2;
+    const flange = p.lenPos("flange", flange_def, "") orelse return null;
+    const leg = p.lenPos("leg", leg_def, "") orelse return null;
+    const drop = p.lenPos("drop", drop_def, "") orelse return null;
+    const kick = p.lenPos("kick", 0.5, "") orelse return null;
+    const thickness = gaugeThickness(@intFromFloat(@round(gauge_n.?))) orelse {
+        p.fail("gauge", "gauge {s} is not in the table; use 20, 22, 24, 26 (default, 0.0179\") or 28", .{fmtNum(a, gauge_n.?)});
+        return null;
+    };
+    var pts: std.ArrayList(Pt) = .empty;
+    var points_mode = false;
+    // local frame: corner (the first bend) at (0,0); the wall surface is x = 0 and the exterior is -x
+    if (is(pr, "z") or is(pr, "weep_screed")) {
+        try pts.appendSlice(a, &.{ .{ .x = 0, .y = flange }, .{ .x = 0, .y = 0 }, .{ .x = -leg, .y = 0 }, .{ .x = -leg, .y = -drop } });
+    } else if (is(pr, "l")) {
+        try pts.appendSlice(a, &.{ .{ .x = 0, .y = flange }, .{ .x = 0, .y = 0 }, .{ .x = -leg, .y = 0 } });
+    } else if (is(pr, "drip")) {
+        try pts.appendSlice(a, &.{ .{ .x = flange, .y = 0 }, .{ .x = 0, .y = 0 }, .{ .x = 0, .y = -drop }, .{ .x = -kick, .y = -drop - 0.5 * kick } });
+    } else {
+        const pv = p.raw("points") orelse {
+            p.fail("points", "profile \"points\" needs 'points': the sheet-metal centerline polyline, e.g. [[0,2],[0,0],[-1,0],[-1,-2]] (or Refs)", .{});
+            return null;
+        };
+        const pl = (try parsePointList(ctx, "points", pv, true)) orelse return null;
+        const clean = try dropDuplicatePoints(a, pl);
+        if (clean.len < 2) {
+            p.fail("points", "flashing points need at least 2 distinct points (got {d})", .{clean.len});
+            return null;
+        }
+        try pts.appendSlice(a, clean);
+        points_mode = true;
+    }
+    const rib = try path_geom.ribbon(a, pts.items, thickness / 2, thickness / 2);
+    const mat = materialOr(ctx, "steel", "generic");
+    const prism = Prism{ .material = mat, .loops = try model.oneLoop(a, rib), .embedded = true, .centerline = pts.items };
+    const anchors = try a.dupe(model.NamedAnchor, &.{
+        .{ .name = "corner", .p = if (points_mode) pts.items[0].v() else V2.init(0, 0) },
+        .{ .name = "start", .p = pts.items[0].v() },
+        .{ .name = "end", .p = pts.items[pts.items.len - 1].v() },
+    });
+    var built = Built{
+        .prisms = try onePrism(a, prism),
+        .anchors = anchors,
+        .box = geom.loopBox(rib),
+        .points_mode = points_mode,
+        .info = try std.fmt.allocPrint(a, "flashing {s} {d} ga ({s}\" thick)", .{ pr, @as(i64, @intFromFloat(@round(gauge_n.?))), fmtNum(a, thickness) }),
+    };
+    if (!points_mode and std.mem.eql(u8, exterior.?, "right")) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
+    return built;
+}
+
+// ---- joint --------------------------------------------------------------------------------------------------------
+
+fn buildJoint(ctx: *Ctx) BuildError!?Built {
+    const a = ctx.a;
+    const p = &ctx.p;
+    const kind = p.choice("kind", null, &.{ "expansion", "control", "tooled_edge", "sealant" });
+    if (!p.ok) return null;
+    const k = kind.?;
+    const is = struct {
+        fn f(x: []const u8, y: []const u8) bool {
+            return std.mem.eql(u8, x, y);
+        }
+    }.f;
+    // optional host zone: default depth = slab thickness (expansion) or a quarter of it (control)
+    var host_h: f64 = 0;
+    if (p.raw("in")) |iv| {
+        const in_s = iv.str() orelse {
+            p.fail("in", "param 'in' must be \"<component>[.<part>]\", the concrete zone the joint cuts (its height sets the default depth)", .{});
+            return null;
+        };
+        var hid = in_s;
+        var part: ?[]const u8 = null;
+        if (std.mem.indexOfScalar(u8, in_s, '.')) |dot| {
+            hid = in_s[0..dot];
+            part = in_s[dot + 1 ..];
+        }
+        const host = ctx.scene.find(hid) orelse {
+            const ids = try ctx.scene.compIds(a);
+            p.fail("in", "no component '{s}'. Known ids: {s}", .{ hid, scene_mod.joinIds(a, ids) });
+            return null;
+        };
+        if (host.state != .ok) {
+            p.fail("in", "host '{s}' did not build; fix its errors first", .{hid});
+            return null;
+        }
+        const bx = if (part) |pt| (scene_mod.Scene.partBox(host, pt) orelse {
+            p.fail("in", "component '{s}' has no part '{s}'", .{ hid, pt });
+            return null;
+        }) else host.built.box;
+        host_h = bx.height();
+    }
+    const width_def: f64 = if (is(k, "control")) 0.25 else 0.5;
+    const width = p.lenPos("width", width_def, "") orelse return null;
+    const depth_def: f64 = if (is(k, "control")) (if (host_h > 0) host_h / 4.0 else 1.0) else if (is(k, "sealant")) @max(0.25, 0.5 * width) else if (host_h > 0) host_h else 4.0;
+    const depth = p.lenPos("depth", depth_def, "") orelse return null;
+    const radius = p.lenPos("radius", 0.25, "") orelse return null;
+    const cap = p.len("cap", 0, "") orelse return null;
+    const rod = p.boolean("backer_rod", true);
+    const corner = p.choice("corner", "top_right", &.{ "top_right", "top_left", "bottom_right", "bottom_left" });
+    if (!p.ok) return null;
+    var prisms: std.ArrayList(Prism) = .empty;
+    var anchors: std.ArrayList(model.NamedAnchor) = .empty;
+    try anchors.append(a, .{ .name = "joint_top", .p = V2.init(0, 0) });
+    const void_mat = materialOr(ctx, "void", "generic");
+    if (is(k, "expansion")) {
+        if (cap < 0 or cap >= depth) {
+            p.fail("cap", "cap (sealant depth at the top of the joint) must be from 0 to less than depth {s} (got {s})", .{ fmtNum(a, depth), fmtNum(a, cap) });
+            return null;
+        }
+        const hw = width / 2;
+        try prisms.append(a, .{ .part = "filler", .material = materialOr(ctx, "joint_filler", "generic"), .loops = try model.oneLoop(a, try model.rectLoop(a, -hw, -depth, hw, -cap)) });
+        if (cap > 0) try prisms.append(a, .{ .part = "sealant", .material = materialOr(ctx, "sealant", "steel"), .loops = try model.oneLoop(a, try model.rectLoop(a, -hw, -cap, hw, 0)) });
+    } else if (is(k, "control")) {
+        const tri = [_]Pt{ .{ .x = -width / 2, .y = 0 }, .{ .x = 0, .y = -depth }, .{ .x = width / 2, .y = 0 } };
+        try prisms.append(a, .{ .part = "notch", .material = void_mat, .loops = try model.oneLoop(a, try orientedCcw(a, &tri)), .embedded = true });
+    } else if (is(k, "tooled_edge")) {
+        // the sliver between the sharp corner and the radius, drawn for the top-right corner then flipped into place
+        const r = radius;
+        const loop0 = [_]Pt{ .{ .x = 0, .y = 0 }, .{ .x = -r, .y = 0, .b = geom.bulgeFromSweep(-std.math.pi / 2.0) }, .{ .x = 0, .y = -r } };
+        const c = corner.?;
+        const sx: f64 = if (is(c, "top_left") or is(c, "bottom_left")) -1 else 1;
+        const sy: f64 = if (is(c, "bottom_left") or is(c, "bottom_right")) -1 else 1;
+        const xf = geom.Xf.scaling(sx, sy);
+        const loop = try orientedCcw(a, try xf.applyLoop(a, &loop0));
+        try prisms.append(a, .{ .part = "radius", .material = void_mat, .loops = try model.oneLoop(a, loop), .embedded = true });
+        try anchors.append(a, .{ .name = "corner", .p = V2.init(0, 0) });
+    } else {
+        // sealant bead over a backer rod, in a gap of `width`
+        const hw = width / 2;
+        try prisms.append(a, .{ .part = "bead", .material = materialOr(ctx, "sealant", "steel"), .loops = try model.oneLoop(a, try model.rectLoop(a, -hw, -depth, hw, 0)) });
+        if (rod) {
+            const rd = 1.25 * width;
+            const loop = try model.circleLoop(a, 0, -depth - rd / 2, rd / 2);
+            try prisms.append(a, .{ .part = "rod", .material = materialOr(ctx, "backer_rod", "generic"), .loops = try model.oneLoop(a, loop) });
+        }
+    }
+    return .{
+        .prisms = prisms.items,
+        .anchors = anchors.items,
+        .box = boxOfPrisms(prisms.items),
+        .info = try std.fmt.allocPrint(a, "joint {s} {s} wide x {s} deep", .{ k, ftin(a, width), ftin(a, depth) }),
+    };
+}
+
 // ---- dispatch -----------------------------------------------------------------------------------------------------------------------
 
 pub fn build(ctx: *Ctx) BuildError!?Built {
@@ -1435,6 +1711,8 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
     if (eq(u8, name, "fill")) return buildFill(ctx);
     if (eq(u8, name, "insulation")) return buildInsulation(ctx);
     if (eq(u8, name, "solid")) return buildSolid(ctx);
+    if (eq(u8, name, "flashing")) return buildFlashing(ctx);
+    if (eq(u8, name, "joint")) return buildJoint(ctx);
     unreachable;
 }
 

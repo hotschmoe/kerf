@@ -1,0 +1,467 @@
+{
+  "kerf": "0.1",
+  "id": "palmer-sd1-like",
+  "title": "WALL FOOTING AND TURNDOWN SLAB (FIELD-TEST SHEET)",
+  "meta": {
+    "discipline": "structural",
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "sheet": "SD1"
+  },
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "ftg",
+      "type": "concrete",
+      "shape": "footing",
+      "cover": {
+        "bottom": 3,
+        "sides": 3,
+        "top": 1.5
+      },
+      "width": 24,
+      "height": 12
+    },
+    {
+      "id": "stem",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "ftg@top_left",
+        "offset": [8, 0]
+      },
+      "shape": "rect",
+      "cover": {
+        "bottom": 3,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "width": 8,
+      "height": 30
+    },
+    {
+      "id": "ftg_bars",
+      "type": "rebar",
+      "size": "#4",
+      "place": {
+        "in": "ftg",
+        "face": "bottom",
+        "cover": 3,
+        "count": 2,
+        "side_cover": 3
+      }
+    },
+    {
+      "id": "stem_bar",
+      "type": "rebar",
+      "size": "#4",
+      "place": {
+        "in": "stem",
+        "face": "center"
+      }
+    },
+    {
+      "id": "dowel",
+      "type": "rebar",
+      "at": {
+        "to": "ftg@bottom_left"
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [10.5, 40],
+        [10.5, 4],
+        [19, 4]
+      ]
+    },
+    {
+      "id": "sill",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "stem@top_center"
+      },
+      "size": "2x6",
+      "orient": "flat",
+      "treated": true
+    },
+    {
+      "id": "stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "sill@top_center"
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 30
+    },
+    {
+      "id": "sheathing",
+      "type": "panel",
+      "material": "osb",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "sill@bottom_left"
+      },
+      "thickness": 0.4375,
+      "length": 31.5,
+      "run": "y"
+    },
+    {
+      "id": "wedge",
+      "type": "anchor_bolt",
+      "at": {
+        "anchor": "top_of_concrete",
+        "to": "stem@top_center"
+      },
+      "diameter": 0.5,
+      "embed": 4,
+      "projection": 2.5,
+      "hook": "wedge"
+    },
+    {
+      "id": "holdown",
+      "type": "connector",
+      "at": {
+        "to": "stem@bottom_left"
+      },
+      "shown": "dashed",
+      "model": "STHD14",
+      "points": [
+        [5, 3],
+        [5, 29.125]
+      ]
+    },
+    {
+      "id": "screed",
+      "type": "flashing",
+      "at": {
+        "anchor": "corner",
+        "to": "stem@top_left",
+        "offset": [0.8125, 0]
+      },
+      "profile": "weep_screed",
+      "leg": 0.875
+    },
+    {
+      "id": "slab",
+      "type": "concrete",
+      "at": {
+        "anchor": "top_exterior",
+        "to": [100, 0]
+      },
+      "shape": "slab_edge",
+      "cover": {
+        "bottom": 3,
+        "sides": 3,
+        "top": 1.5,
+        "parts": {
+          "slab": {
+            "bottom": 0.75
+          }
+        }
+      },
+      "exterior": "left",
+      "slab_thickness": 4,
+      "slab_length": 48,
+      "footing_width": 12,
+      "footing_depth": 18,
+      "haunch": 45,
+      "base": {
+        "material": "gravel",
+        "thickness": 4
+      }
+    },
+    {
+      "id": "slab_ftg_bars",
+      "type": "rebar",
+      "size": "#5",
+      "place": {
+        "in": "slab.footing",
+        "face": "bottom",
+        "cover": 3,
+        "count": 2,
+        "side_cover": 3
+      }
+    },
+    {
+      "id": "slab_mesh",
+      "type": "rebar",
+      "size": "#4",
+      "place": {
+        "in": "slab.slab",
+        "face": "center",
+        "count": 3,
+        "side_cover": 8
+      }
+    },
+    {
+      "id": "exp_joint",
+      "type": "joint",
+      "at": {
+        "anchor": "top_center",
+        "to": "slab@slab_top",
+        "offset": [0.25, 0]
+      },
+      "kind": "expansion",
+      "width": 0.5,
+      "depth": 4,
+      "cap": 0.5
+    },
+    {
+      "id": "slab2",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "slab@slab_bottom_interior",
+        "offset": [0.5, 0]
+      },
+      "shape": "rect",
+      "cover": {
+        "bottom": 0.75,
+        "sides": 3,
+        "top": 1.5
+      },
+      "width": 16,
+      "height": 4
+    },
+    {
+      "id": "ctl_joint",
+      "type": "joint",
+      "at": {
+        "anchor": "top_center",
+        "to": "slab2@top_center"
+      },
+      "kind": "control",
+      "in": "slab2"
+    },
+    {
+      "id": "edge_radius",
+      "type": "joint",
+      "at": {
+        "anchor": "corner",
+        "to": "slab@top_exterior"
+      },
+      "kind": "tooled_edge",
+      "radius": 0.5,
+      "corner": "top_left"
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "WALL FOOTING AT STEM WALL",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [-6, 32],
+        "y": [-4, 50]
+      },
+      "notes_side": "right",
+      "annotations": [
+        {
+          "id": "n_stem_bar",
+          "type": "note",
+          "text": "(1) #4 CONT. CENTERED IN STEM WALL",
+          "target": "stem_bar"
+        },
+        {
+          "id": "n_dowel",
+          "type": "note",
+          "text": "#4 DOWEL W/ STD. HOOK @ 24\" O.C., LAP 30\" MIN. W/ STEM BAR",
+          "target": "dowel"
+        },
+        {
+          "id": "n_ftg_bars",
+          "type": "note",
+          "text": "(2) #4 CONT. BOTT., 3\" CLR.",
+          "target": "ftg_bars"
+        },
+        {
+          "id": "n_wedge",
+          "type": "note",
+          "text": "1/2\" DIA. WEDGE ANCHOR, 4\" EMBED. @ 32\" O.C.",
+          "target": "wedge"
+        },
+        {
+          "id": "n_holdown",
+          "type": "note",
+          "text": "STHD14 HOLDOWN",
+          "target": "holdown"
+        },
+        {
+          "id": "n_screed",
+          "type": "note",
+          "text": "WEEP SCREED, 3 1/2\" NAILING FLANGE",
+          "target": "screed"
+        },
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "2X6 P.T. SILL PLATE",
+          "target": "sill"
+        },
+        {
+          "id": "n_stem",
+          "type": "note",
+          "text": "8\" CONC. STEM WALL",
+          "target": "stem"
+        },
+        {
+          "id": "d_ftg",
+          "type": "dim",
+          "from": "ftg@bottom_left",
+          "to": "ftg@bottom_right",
+          "dir": "h",
+          "offset": -6
+        },
+        {
+          "id": "d_h",
+          "type": "dim",
+          "from": "ftg@bottom_left",
+          "to": "stem@top_left",
+          "dir": "v",
+          "offset": -6
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "kind": "section",
+      "number": "3",
+      "title": "SILL ANCHORAGE AND WEEP SCREED",
+      "scale": "3\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [-2, 26],
+        "y": [30, 52]
+      },
+      "notes_side": "right",
+      "annotations": [
+        {
+          "id": "n_wedge",
+          "type": "note",
+          "text": "1/2\" DIA. WEDGE ANCHOR, 4\" EMBED.",
+          "target": "wedge"
+        },
+        {
+          "id": "n_screed",
+          "type": "note",
+          "text": "WEEP SCREED, 3 1/2\" NAILING FLANGE",
+          "target": "screed"
+        },
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "2X6 P.T. SILL PLATE",
+          "target": "sill"
+        },
+        {
+          "id": "n_sheath",
+          "type": "note",
+          "text": "7/16\" OSB SHEATHING",
+          "target": "sheathing"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "number": "2",
+      "title": "TURNDOWN SLAB EDGE AT EXPANSION JOINT",
+      "scale": "3/4\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [92, 166],
+        "y": [-24, 6]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_slab",
+          "type": "note",
+          "text": "4\" CONC. SLAB W/ #4 @ 16\" O.C. EA. WAY",
+          "target": "slab_mesh"
+        },
+        {
+          "id": "n_base",
+          "type": "note",
+          "text": "4\" COMPACTED GRAVEL BASE",
+          "target": "slab.base"
+        },
+        {
+          "id": "n_exp",
+          "type": "note",
+          "text": "1/2\" EXPANSION JOINT FILLER W/ SEALANT CAP",
+          "target": "exp_joint"
+        },
+        {
+          "id": "n_ctl",
+          "type": "note",
+          "text": "SAW-CUT CONTROL JOINT, 1/4 SLAB DEPTH",
+          "target": "ctl_joint"
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "(2) #5 CONT. BOTT., 3\" CLR.",
+          "target": "slab_ftg_bars"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "kind": "section",
+      "number": "4",
+      "title": "JOINTS AT SLAB EDGE",
+      "scale": "3\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [142, 160],
+        "y": [-6, 2]
+      },
+      "notes_side": "right",
+      "annotations": [
+        {
+          "id": "n_exp",
+          "type": "note",
+          "text": "1/2\" EXPANSION JOINT FILLER W/ 1/2\" SEALANT CAP",
+          "target": "exp_joint"
+        },
+        {
+          "id": "n_ctl",
+          "type": "note",
+          "text": "SAW-CUT CONTROL JOINT",
+          "target": "ctl_joint"
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "kind": "section",
+      "number": "5",
+      "title": "TOOLED EDGE",
+      "scale": "3\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [96, 114],
+        "y": [-6, 2]
+      },
+      "notes_side": "right",
+      "annotations": [
+        {
+          "id": "n_rad",
+          "type": "note",
+          "text": "1/2\" RADIUS TOOLED EDGE",
+          "target": "edge_radius"
+        }
+      ]
+    }
+  ]
+}

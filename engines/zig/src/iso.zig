@@ -326,7 +326,7 @@ fn gather(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         if (c.state != .ok or !c.visible) continue;
         if (@import("compile.zig").isOmitted(spec.omit, c.id)) continue;
         for (c.world) |p| {
-            if (p.kind == .ghost) continue;
+            if (p.kind == .ghost or std.mem.eql(u8, p.material, "void")) continue;
             const fill_mat0 = @import("section.zig").isFillMaterial(p.material);
             if (fill_mat0 and !spec.cutaway) continue;
             var segs: []const @import("mesh.zig").ZSeg = &.{.{ .z0 = p.z0, .z1 = p.z1, .mortar = false }};

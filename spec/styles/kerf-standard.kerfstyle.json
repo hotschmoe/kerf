@@ -292,6 +292,33 @@
       "hatch": [],
       "cut_mark": null,
       "color3d": "#B8BCC2"
+    },
+    "joint_filler": {
+      "hatch": [
+        {
+          "pattern": "KERF-FILLER",
+          "scale": 1.0,
+          "angle": 0
+        }
+      ],
+      "cut_mark": null,
+      "color3d": "#C9B27C"
+    },
+    "sealant": {
+      "hatch": [],
+      "cut_mark": null,
+      "fill": true,
+      "color3d": "#3A3A3A"
+    },
+    "backer_rod": {
+      "hatch": [],
+      "cut_mark": null,
+      "color3d": "#B9BDB0"
+    },
+    "void": {
+      "hatch": [],
+      "cut_mark": null,
+      "color3d": "#FFFFFF"
     }
   },
   "patterns": {
@@ -324,6 +351,22 @@
     "KERF-LAM": [
       [
         0,
+        0,
+        0,
+        0,
+        0.0625
+      ]
+    ],
+    "KERF-FILLER": [
+      [
+        45,
+        0,
+        0,
+        0,
+        0.0625
+      ],
+      [
+        135,
         0,
         0,
         0,

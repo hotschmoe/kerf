@@ -408,13 +408,15 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         return 1;
     }
     if (std.mem.eql(u8, cmd, "fmt")) {
-        // r.bytes is {"doc": ...}; strip the wrapper for file output
-        const body = std.mem.trim(u8, r.bytes, " \t\r\n");
-        const inner = body["{\"doc\":".len .. body.len - 1];
+        // r.bytes is {"doc": ..., "text": "<canonical text>"}: write the canonical text itself
+        var farena = std.heap.ArenaAllocator.init(gpa);
+        defer farena.deinit();
+        var fperr: kerf.json.ParseError = undefined;
+        const fres = (try kerf.json.parse(farena.allocator(), r.bytes, &fperr)) orelse return error.BadEngineOutput;
+        const canon_text = (if (fres.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
         var text: std.ArrayList(u8) = .empty;
         defer text.deinit(gpa);
-        try text.appendSlice(gpa, inner);
-        try text.append(gpa, '\n');
+        try text.appendSlice(gpa, canon_text);
         if (o.write) {
             try writeOut(io, doc_path, text.items);
         } else try writeOut(io, o.out, text.items);

@@ -373,3 +373,27 @@ test "shown dashed: hidden pen outline, no floating warning, WHERE OCCURS suffix
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "WHERE OCCURS") != null or std.mem.indexOf(u8, r.bytes, "W H E R E") != null);
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "\"hidden\"") != null);
 }
+
+test "palmer-sd1-like: 0 errors / 0 warnings; every view exports to every format and the mesh builds" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var err: json.ParseError = undefined;
+    const doc = (try json.parse(a, testdocs.palmer, &err)).?;
+    const st = try style_mod.load(a, null);
+    const l = try load_mod.load(a, doc, &st, true);
+    for (l.diags.list.items) |d| {
+        if (d.level != .info) std.debug.print("{s} {s}\n", .{ d.code, d.message });
+        try std.testing.expect(d.level == .info);
+    }
+    for ([_][]const u8{ "A", "B", "C", "D", "E" }) |v| {
+        for ([_][]const u8{ "svg", "dxf", "pdf", "png" }) |f| {
+            const inp = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"view\":\"{s}\",\"format\":\"{s}\",\"sheet\":true,\"px\":600}}", .{ testdocs.palmer, v, f });
+            const r = try api.call(a, "export", inp);
+            try std.testing.expect(r.ok);
+            try std.testing.expect(r.bytes.len > 100);
+        }
+    }
+    const m = try api.call(a, "mesh", try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{testdocs.palmer}));
+    try std.testing.expect(m.ok);
+}
