@@ -777,3 +777,8 @@ whose metrics are close; minor differences in CAD are acceptable.
   - Hatch phase: pattern origin at model (0,0) after the family's own x0/y0, never per-region.
   - NTS (iso) fit: start at the factor that fits the cropped geometry in the frame, then grow the
     factor in steps of 0.5 until drawing + notes + title fit. NTS views never raise `W_VIEW_FIT`.
+- **Region items (for picking, not drawn):** for every visible cut region and every visible
+  beyond face in a section/iso view, the Drawing IR also emits
+  `{ "t": "region", "src": "<id>", "part": "<part>|null", "instance": k, "cut": true|false, "loops": [[[x,y,b],…],…] }`
+  with exact closed loops (loop 0 outer, then holes), in drawing order. Exporters ignore region
+  items. UIs use them for hit-testing and selection tint.
