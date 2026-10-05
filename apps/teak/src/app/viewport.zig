@@ -68,6 +68,7 @@ pub const Vp = struct {
     hover: MaybeId = .{},
     sel: MaybeId = .{},
     grid: bool = true,
+    page: bool = false,
     drag: Drag = .none,
     cursor: ?[2]f64 = null,
     /// Names of annotation ids of kind "note" in this view (drag eligible).
@@ -134,6 +135,7 @@ pub const Vp = struct {
             .selected = self.sel.get(),
             .hovered = self.hover.get(),
             .grid = self.grid,
+            .page = self.page,
         });
         self.key +%= 1;
     }

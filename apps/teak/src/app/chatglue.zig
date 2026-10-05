@@ -15,6 +15,10 @@ const Model = model.Model;
 const gpa = alloc.gpa;
 const tools = llm.tools;
 
+fn draw_font(m: *Model) draw.Font {
+    return m.vp.font;
+}
+
 pub fn hasKey(m: *const Model) bool {
     return m.key_len > 0;
 }
@@ -235,6 +239,12 @@ fn toolRender(ctx: *anyopaque, a: std.mem.Allocator, view: []const u8, mode: []c
             defer d.deinit();
             const png = draw.renderPng(gpa, &d, .{ .width_px = 1400 }) catch return .{ .ok = false, .caption = "rasterizing failed" };
             defer gpa.free(png);
+            // Console thumbnail of exactly what Claude is shown.
+            if (draw.render.renderImage(gpa, &d, &draw_font(m), .{ .width_px = model.THUMB_W, .max_height_px = 400, .margin_px = 8 })) |timg| {
+                var t = timg;
+                defer t.deinit(gpa);
+                flow.addThumb(m, &t);
+            } else |_| {}
             const info = m.doc.info.?;
             var scale: []const u8 = "";
             var notes: usize = 0;

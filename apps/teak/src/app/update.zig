@@ -124,6 +124,7 @@ pub fn update(m: *Model, msg: Msg) void {
             saveSettings(m);
         },
         .key_save => {
+            m.demo_key = false;
             chatglue.setKey(m, m.key_ed.content());
             m.key_ed.clear();
             m.show_key_card = false;
@@ -142,6 +143,13 @@ pub fn update(m: *Model, msg: Msg) void {
         },
         .toggle_demo => {
             m.demo = !m.demo;
+            if (m.demo and m.key_len == 0) {
+                chatglue.setKey(m, "demo-mode");
+                m.demo_key = true;
+            } else if (!m.demo and m.demo_key) {
+                chatglue.setKey(m, "");
+                m.demo_key = false;
+            }
             saveSettings(m);
             m.setStatus("{s}", .{if (m.demo) "DEMO MODE: SCRIPTED CLAUDE, NO KEY NEEDED" else "DEMO MODE OFF"});
         },
@@ -420,7 +428,13 @@ fn loadSettings(m: *Model, v: []const u8) void {
             if (std.mem.eql(u8, kv[6..], "sonnet_5_5")) m.model_pick = .sonnet_5_5;
             if (std.mem.eql(u8, kv[6..], "opus_5_5")) m.model_pick = .opus_5_5;
         }
-        if (std.mem.startsWith(u8, kv, "demo=")) m.demo = kv.len > 5 and kv[5] == '1';
+        if (std.mem.startsWith(u8, kv, "demo=")) {
+            m.demo = kv.len > 5 and kv[5] == '1';
+            if (m.demo and m.key_len == 0) {
+                chatglue.setKey(m, "demo-mode");
+                m.demo_key = true;
+            }
+        }
     }
     chatglue.applyConfig(m);
 }

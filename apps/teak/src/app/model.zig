@@ -44,6 +44,11 @@ pub const Attachment = struct {
 };
 
 pub const MAX_ATTACH = 4;
+pub const MAX_THUMBS = 16;
+pub const THUMB_KEY0: u32 = 100;
+pub const THUMB_W: u32 = 300;
+
+pub const Thumb = struct { rgba: []u8, w: u32, h: u32 };
 
 pub const Sample = struct { id: []const u8, label: []const u8, json: []const u8 };
 pub const samples = [_]Sample{
@@ -73,8 +78,11 @@ pub const Model = struct {
     mesh: ?*draw.Mesh = null,
     mesh_rev: u32 = 0,
     scene: ?*scene3d.Built = null,
-    res: [1]teak.Resource = undefined,
+    res: [1 + MAX_THUMBS]teak.Resource = undefined,
     res_len: usize = 0,
+    /// Thumbnails of kerf_render results, in chat order (resource keys THUMB_KEY0 + i).
+    thumbs: [MAX_THUMBS]Thumb = undefined,
+    n_thumbs: u8 = 0,
     mesh_doc_rev: u32 = std.math.maxInt(u32),
     scene_w: f32 = 0,
     scene_h: f32 = 0,
@@ -108,6 +116,8 @@ pub const Model = struct {
     show_key_card: bool = false,
     model_pick: Model3 = .opus_5_5,
     demo: bool = false,
+    /// The Session needs a non-empty key; demo mode uses a placeholder.
+    demo_key: bool = false,
     console_scroll: f32 = 0,
     console_viewport: f32 = 0,
     console_content: f32 = 0,

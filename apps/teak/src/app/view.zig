@@ -63,8 +63,22 @@ fn tab(cb: *Cb, msg: Msg, text: []const u8, active: bool) void {
 /// Rubber-stamp style status tag (square corners; the rotation is faked by the
 /// 1.5px border + bold type).
 fn stamp(cb: *Cb, text: []const u8, color: th.Color) void {
-    cb.pushGroup(.{ .padding = 0, .pad_x = 4, .pad_y = 1, .gap = 0, .border = color, .border_width = 1.5 });
+    cb.pushGroup(.{ .padding = 0, .pad_x = 7, .pad_y = 2, .gap = 0, .border = color, .border_width = 1.5 });
     cb.textStyled(text, th.label, color);
+    cb.popGroup();
+}
+
+/// Thin ink scrollbar column next to a scroll region (the Model holds the metrics).
+fn scrollBar(cb: *Cb, scroll: f32, viewport: f32, content: f32) void {
+    cb.pushGroup(.{ .width = 6, .padding = 0, .gap = 0, .align_cross = .stretch });
+    if (viewport > 1 and content > viewport + 1) {
+        const thumb = @max(18, viewport * viewport / content);
+        const top = (viewport - thumb) * std.math.clamp(scroll / (content - viewport), 0, 1);
+        cb.pushGroup(.{ .height = top, .padding = 0, .gap = 0 });
+        cb.popGroup();
+        cb.pushGroup(.{ .height = thumb, .padding = 0, .gap = 0, .bg = th.ink2 });
+        cb.popGroup();
+    }
     cb.popGroup();
 }
 
@@ -129,7 +143,7 @@ fn console(m: *const Model, cb: *Cb) void {
     label(cb, "OPERATOR CONSOLE");
     cb.spacer(1);
     cb.buttonStyled(.{ .menu = .model }, fmt(cb, "{s}", .{chatglue.modelLabel(m.model_pick)}), th.button);
-    cb.buttonStyled(.toggle_key_card, if (chatglue.hasKey(m)) "KEY" else "NO KEY", if (chatglue.hasKey(m) or m.demo) th.button else th.button_danger);
+    cb.buttonStyled(.toggle_key_card, if (m.demo) "DEMO" else if (chatglue.hasKey(m)) "KEY" else "NO KEY", if (chatglue.hasKey(m) or m.demo) th.button else th.button_danger);
     cb.popGroup();
     rule(cb, 1);
 
@@ -162,6 +176,7 @@ fn keyCard(m: *const Model, cb: *Cb) void {
 const MSG_COLS = 38;
 
 fn messages(m: *const Model, cb: *Cb) void {
+    cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 0, .flex = 1, .align_cross = .stretch });
     cb.pushScroll(.{
         .id = model.CONSOLE_SCROLL,
         .padding = 10,
@@ -195,6 +210,8 @@ fn messages(m: *const Model, cb: *Cb) void {
         }
     }
     cb.popScroll();
+    scrollBar(cb, m.console_scroll, m.console_viewport, m.console_content);
+    cb.popGroup();
 }
 
 fn clock(m: *const Model, cb: *Cb, ts_ms: i64) []const u8 {
@@ -230,12 +247,32 @@ fn claudeCard(m: *const Model, cb: *Cb, entries: []const llm.chatlog.Entry, base
     cb.popGroup();
 }
 
+fn thumbIndex(m: *const Model, upto: usize) ?usize {
+    // The k-th kerf_render result with an image <-> the k-th thumbnail.
+    var k: usize = 0;
+    for (m.chat.log.entries.items[0..upto]) |e| switch (e.body) {
+        .tool => |t| if (t.has_image and std.mem.eql(u8, t.name, "kerf_render")) {
+            k += 1;
+        },
+        else => {},
+    };
+    return if (k < m.n_thumbs) k else null;
+}
+
 fn toolLine(m: *const Model, cb: *Cb, t: llm.chatlog.Tool, idx: usize) void {
-    _ = m;
     const buf = arena(cb).alloc(u8, 160) catch return;
     const line = llm.chatlog.toolLine(t, buf);
     const style = if (t.state == .failed) th.button_flat_danger else th.button_flat;
     cb.buttonStyled(.{ .toggle_tool = @intCast(idx) }, line, style);
+    if (t.has_image and std.mem.eql(u8, t.name, "kerf_render")) {
+        if (thumbIndex(m, idx)) |k| {
+            const th_ = m.thumbs[k];
+            const w: f32 = 300;
+            cb.pushGroup(.{ .padding = 1, .gap = 0, .border = th.ink, .align_cross = .start });
+            cb.image(model.THUMB_KEY0 + @as(u32, @intCast(k)), .{ .width = w, .height = w * @as(f32, @floatFromInt(th_.h)) / @as(f32, @floatFromInt(th_.w)) });
+            cb.popGroup();
+        }
+    }
     if (!t.expanded) return;
     cb.pushGroup(.{ .padding = 4, .gap = 1, .bg = th.paper, .align_cross = .stretch });
     const pretty = llm.jsonw.pretty(arena(cb), t.input_json) catch t.input_json;
@@ -295,17 +332,24 @@ fn tabsBar(m: *const Model, cb: *Cb) void {
     }
     cb.spacer(1);
     cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 4, .align_cross = .center });
-    if (m.ready and m.tabKind() == .d3) {
-        key(cb, .{ .preset3d = .front }, "[FRONT]");
-        key(cb, .{ .preset3d = .iso }, "[ISO]");
-        key(cb, .{ .preset3d = .top }, "[TOP]");
-        key(cb, .{ .preset3d = .right }, "[RIGHT]");
-    }
     key(cb, .{ .zoom = 0.8 }, "-");
     key(cb, .{ .zoom = 1.25 }, "+");
     key(cb, .fit, "FIT");
     cb.popGroup();
     cb.popGroup();
+    // View-cube row for the 3D tab (DESIGN §4): bracketed text keys.
+    if (m.ready and m.tabKind() == .d3) {
+        rule(cb, 1);
+        cb.pushGroup(.{ .direction = .horizontal, .pad_x = 12, .pad_y = 4, .gap = 4, .align_cross = .center });
+        label(cb, "VIEW");
+        key(cb, .{ .preset3d = .front }, "[FRONT]");
+        key(cb, .{ .preset3d = .iso }, "[ISO]");
+        key(cb, .{ .preset3d = .top }, "[TOP]");
+        key(cb, .{ .preset3d = .right }, "[RIGHT]");
+        cb.spacer(1);
+        cb.textStyled("DRAG ORBIT  SHIFT-DRAG PAN  WHEEL ZOOM", th.small, th.ink2);
+        cb.popGroup();
+    }
 }
 
 fn emptyViewport(cb: *Cb) void {
@@ -361,6 +405,7 @@ fn inspector(m: *const Model, cb: *Cb) void {
     cb.popGroup();
     rule(cb, 1);
 
+    cb.pushGroup(.{ .direction = .horizontal, .padding = 0, .gap = 0, .flex = 1, .align_cross = .stretch });
     cb.pushScroll(.{
         .id = model.INSPECTOR_SCROLL,
         .padding = 12,
@@ -378,6 +423,8 @@ fn inspector(m: *const Model, cb: *Cb) void {
         cb.textStyled("NOTHING TO INSPECT.", th.body, th.ink2);
     }
     cb.popScroll();
+    scrollBar(cb, m.insp_scroll, m.insp_viewport, m.insp_content);
+    cb.popGroup();
 
     rule(cb, 1);
     cb.pushGroup(.{ .direction = .horizontal, .padding = 10, .gap = 6, .align_cross = .center });
@@ -414,7 +461,8 @@ fn partsTab(m: *const Model, cb: *Cb) void {
     if (m.insp_text.len > 0) {
         rule(cb, 1);
         label(cb, fmt(cb, "COMPONENT {s}", .{upper(cb, m.insp_text_for.slice())}));
-        for (wrap(arena(cb), m.insp_text, INSP_COLS + 2, 60)) |l| cb.textStyled(l, th.small, th.ink);
+        const pretty = llm.jsonw.pretty(arena(cb), m.insp_text) catch m.insp_text;
+        for (wrap(arena(cb), pretty, INSP_COLS + 2, 80)) |l| cb.textStyled(l, th.small, th.ink);
     }
 }
 
@@ -434,7 +482,7 @@ fn notesTab(m: *const Model, cb: *Cb) void {
     for (notes, 0..) |nt, i| {
         const text = if (nt.text.len > 0) nt.text else upper(cb, nt.kind);
         const unv = unverifiedCount(nt);
-        const line = fmt(cb, "{d:0>2}  {s}{s}", .{ i + 1, padTo(cb, nt.id, 6), text[0..@min(text.len, 24)] });
+        const line = fmt(cb, "{d:0>2} {s} {s}", .{ i + 1, padTo(cb, nt.id, 8), text[0..@min(text.len, 22)] });
         rowButton(cb, .{ .select_note = @intCast(i) }, if (unv > 0) fmt(cb, "{s}*", .{line}) else line, m.note_sel == @as(i32, @intCast(i)));
     }
     if (flow.currentNote(m)) |nt| noteEditor(m, cb, nt);

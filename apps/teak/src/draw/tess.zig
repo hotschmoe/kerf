@@ -81,6 +81,8 @@ pub const Palette = struct {
     grid: Color,
     grid2: Color,
     blue: Color,
+    /// Desk behind a sheet page (`Options.page`).
+    desk: Color = Color.hex(0xCFCABB),
     /// Alpha of the selected-region tint (DESIGN.md: 15 % blue).
     tint_alpha: f32 = 0.15,
 
@@ -214,6 +216,8 @@ pub const Options = struct {
     min_line_px: f32 = 1.0,
     /// Emit the vellum background rectangle.
     background: bool = true,
+    /// Sheet preview: the viewport is a desk, and `drawing.bounds` is a white page with a hard offset shadow.
+    page: bool = false,
 };
 
 // ---------------------------------------------------------------------------
@@ -344,7 +348,15 @@ pub const Tessellator = struct {
         self.ppp = view.px_per_model_in * @as(f32, @floatCast(d.scale));
         self.cull = view.modelBounds();
 
-        if (opt.background) try self.rect(0, 0, view.width, view.height, pal.vellum, 1);
+        if (opt.page) {
+            try self.rect(0, 0, view.width, view.height, pal.desk, 1);
+            const x0 = view.sx(d.bounds[0]);
+            const x1 = view.sx(d.bounds[2]);
+            const y0 = view.sy(d.bounds[3]);
+            const y1 = view.sy(d.bounds[1]);
+            try self.rect(x0 + 4, y0 + 4, x1 + 4, y1 + 4, pal.ink, 1);
+            try self.rect(x0, y0, x1, y1, Color.hex(0xFFFFFF), 1);
+        } else if (opt.background) try self.rect(0, 0, view.width, view.height, pal.vellum, 1);
         if (opt.grid) try self.drawGrid();
 
         // Selection tint goes under the linework.

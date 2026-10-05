@@ -73,6 +73,8 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main_web.zig"),
             .target = wasm_target,
             .optimize = web_optimize,
+            .strip = true,
+            .single_threaded = true,
             .imports = &.{.{ .name = "kerf", .module = web_kerf.module("kerf") }},
         }),
     });

@@ -112,7 +112,7 @@ pub const Orbit = struct {
         const dy = hi[1] - lo[1];
         const dz = hi[2] - lo[2];
         const r = 0.5 * @sqrt(dx * dx + dy * dy + dz * dz);
-        self.dist = @max(r * 2.6, 6);
+        self.dist = @max(r * 3.7, 6);
     }
 
     /// Column-major view-projection (right-handed, depth 0..1 as WebGPU).

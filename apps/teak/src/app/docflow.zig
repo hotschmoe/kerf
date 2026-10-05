@@ -166,6 +166,7 @@ pub fn loadDrawing(m: *Model, view_id: []const u8, sheet: bool, refit: bool) voi
         .ok => |json| {
             defer gpa.free(json);
             m.vp.grid = !sheet;
+            m.vp.page = sheet;
             m.vp.setDrawing(json, refit) catch |e| {
                 m.setStatus("DRAWING PARSE FAILED: {s}", .{@errorName(e)});
                 return;
@@ -231,8 +232,36 @@ pub fn rebuildScene(m: *Model) void {
     }
     m.scene = p;
     m.mesh_rev +%= 1;
-    m.res[0] = .{ .mesh = .{ .key = model.MESH_KEY, .rev = m.mesh_rev, .data = p.data } };
-    m.res_len = 1;
+    syncResources(m);
+}
+
+/// The declarative resource list: the 3D mesh and the console thumbnails.
+pub fn syncResources(m: *Model) void {
+    var n: usize = 0;
+    if (m.scene) |sc| {
+        m.res[n] = .{ .mesh = .{ .key = model.MESH_KEY, .rev = m.mesh_rev, .data = sc.data } };
+        n += 1;
+    }
+    for (m.thumbs[0..m.n_thumbs], 0..) |t, i| {
+        m.res[n] = .{ .image = .{ .key = model.THUMB_KEY0 + @as(u32, @intCast(i)), .rev = 1, .width = t.w, .height = t.h, .rgba = t.rgba } };
+        n += 1;
+    }
+    m.res_len = n;
+}
+
+pub fn addThumb(m: *Model, img: *const draw.raster.Image) void {
+    if (m.n_thumbs >= model.MAX_THUMBS) return;
+    const px = @as(usize, img.width) * img.height;
+    const rgba = gpa.alloc(u8, px * 4) catch return;
+    for (0..px) |i| {
+        rgba[i * 4] = img.pixels[i * 3];
+        rgba[i * 4 + 1] = img.pixels[i * 3 + 1];
+        rgba[i * 4 + 2] = img.pixels[i * 3 + 2];
+        rgba[i * 4 + 3] = 255;
+    }
+    m.thumbs[m.n_thumbs] = .{ .rgba = rgba, .w = img.width, .h = img.height };
+    m.n_thumbs += 1;
+    syncResources(m);
 }
 
 pub fn frameMesh(m: *Model) void {
