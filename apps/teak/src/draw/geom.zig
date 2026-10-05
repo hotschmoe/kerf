@@ -320,7 +320,7 @@ pub fn pointInPolygon(pts: []const Vec2, x: f64, y: f64) bool {
 /// Valid for simple (non self-intersecting) loops.
 pub fn pointInLoop(pts: []const BPt, x: f64, y: f64) bool {
     const n = pts.len;
-    if (n < 3) return false;
+    if (n < 2) return false; // two bulged vertices = a full circle (engine emits rebar dots this way)
     var inside = false;
     var j = n - 1;
     for (pts, 0..) |p, i| {
@@ -687,8 +687,10 @@ test "pointInLoop with arcs: rounded notch and bulge" {
 
 test "pointInLoop: full circle as two bulge vertices" {
     const circ = [_]BPt{ .{ .x = 1, .y = 0, .b = 1 }, .{ .x = -1, .y = 0, .b = 1 } };
-    // A 2-vertex loop has no chord polygon (needs >= 3 points); use 4 vertices.
-    _ = circ;
+    // two bulged vertices = full circle
+    try testing.expect(pointInLoop(&circ, 0, 0.99));
+    try testing.expect(pointInLoop(&circ, 0, -0.99));
+    try testing.expect(!pointInLoop(&circ, 1.01, 0));
     const c4 = [_]BPt{
         .{ .x = 1, .y = 0, .b = @tan(std.math.pi / 8.0) },
         .{ .x = 0, .y = 1, .b = @tan(std.math.pi / 8.0) },
