@@ -719,3 +719,10 @@ whose metrics are close; minor differences in CAD are acceptable.
   falls by `recess_slope` toward the exterior. In point lists with `at`, literal points are
   relative to `at.to + offset` and `anchor` is ignored. Shared edges between prisms of the SAME
   component (CMU shell/grout/mortar) draw in the `beyond` pen.
+- **`place` anchor:** `place` is the model-space point at the TOP-LEFT of the note's text block,
+  i.e. the left end of the first line, one cap height above that line's baseline (for
+  right-aligned notes the text grows leftward from `place.x + block width`; `place` remains the
+  top-left of the block's bounding box).
+- **`drawing` / `export` `view` argument:** the view id string (`"A"`). `export` takes an
+  optional `sheet: true` (PDF always produces a sheet).
+- **`catalog` markdown:** returned as raw UTF-8 text (not JSON-encoded) from the CLI and wasm.
