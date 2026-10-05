@@ -165,6 +165,7 @@ pub fn update(m: *Model, msg: Msg) void {
         },
 
         // ── time + effects ──
+        .submit => submit(m),
         .tick => tick(m),
         .fx => |r| effectResult(m, r),
     }

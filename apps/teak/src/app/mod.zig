@@ -8,6 +8,7 @@ pub const viewport = @import("viewport.zig");
 pub const units = @import("units.zig");
 pub const cam = @import("cam.zig");
 pub const theme = @import("theme.zig");
+pub const app = @import("app.zig");
 pub const model = @import("model.zig");
 pub const update = @import("update.zig");
 pub const view = @import("view.zig");
@@ -23,6 +24,7 @@ test {
     _ = units;
     _ = cam;
     _ = theme;
+    _ = app;
     _ = update;
     _ = view;
     _ = textwrap;

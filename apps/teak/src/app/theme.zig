@@ -203,7 +203,8 @@ pub const prompt: teak.TextInputStyle = .{
     .selection_bg = .{ term_fg[0], term_fg[1], term_fg[2], 0.3 },
     .border_width = 1,
     .height = 32,
-    .flex = 0,
+    .flex = 1,
+    .min_width = 80,
 };
 
 pub const theme: teak.Theme = .{

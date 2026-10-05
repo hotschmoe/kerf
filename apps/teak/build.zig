@@ -1,4 +1,5 @@
 const std = @import("std");
+const teak_build = @import("teak");
 
 /// Spec files shared by every Kerf stack are embedded through anonymous
 /// imports (Zig forbids `@embedFile` outside a module's own directory).
@@ -59,5 +60,45 @@ pub fn build(b: *std.Build) void {
         addSpecImports(b, mod);
         const t = b.addTest(.{ .root_module = mod });
         ui_test_step.dependOn(&b.addRunArtifact(t).step);
+    }
+
+    // ── Web (wasm + WebGPU via zunk) -> dist/ ──
+    const wasm_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding, .abi = .none });
+    const web_optimize = b.option(std.builtin.OptimizeMode, "web-optimize", "Optimize mode of the wasm build (default ReleaseFast)") orelse .ReleaseFast;
+    const web_teak = b.dependency("teak", .{ .target = wasm_target, .optimize = web_optimize });
+    const web_kerf = b.dependency("kerf", .{ .target = wasm_target, .optimize = web_optimize });
+    const web_exe = b.addExecutable(.{
+        .name = "kerf-teak",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main_web.zig"),
+            .target = wasm_target,
+            .optimize = web_optimize,
+            .imports = &.{.{ .name = "kerf", .module = web_kerf.module("kerf") }},
+        }),
+    });
+    addSpecImports(b, web_exe.root_module);
+    teak_build.linkWebWgpu(b, web_exe, .{});
+    _ = web_teak;
+
+    // ── Native desktop (X11/Win32 + wgpu-native) ──
+    if (teak_build.hasNativeBackend(target.result.os.tag)) {
+        const ui_exe = b.addExecutable(.{
+            .name = "kerf-teak-ui",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/main_ui.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{.{ .name = "kerf", .module = kerf_dep.module("kerf") }},
+            }),
+        });
+        addSpecImports(b, ui_exe.root_module);
+        teak_build.linkNativeWgpu(b, ui_exe, .{});
+        const install_ui = b.addInstallArtifact(ui_exe, .{});
+        const ui_step = b.step("ui", "Build (and with `run`, launch) the native desktop app");
+        ui_step.dependOn(&install_ui.step);
+        const run_ui = b.addRunArtifact(ui_exe);
+        run_ui.step.dependOn(&install_ui.step);
+        if (b.args) |args| run_ui.addArgs(args);
+        b.step("run-ui", "Run the native desktop app").dependOn(&run_ui.step);
     }
 }

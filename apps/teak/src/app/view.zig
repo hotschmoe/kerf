@@ -318,16 +318,31 @@ fn emptyViewport(cb: *Cb) void {
 fn canvas2d(m: *const Model, cb: *Cb) void {
     const vp = m.vp;
     const style: teak.CanvasStyle = .{ .width = 200, .height = 200, .flex = 1, .bg = th.vellum };
-    _ = vp;
-    cb.canvasInteractive(style, &.{}, model.CANVAS_ID, "drawing viewport");
+    const verts: []const teak.CanvasPrimitive.TriVertex = @ptrCast(vp.verts());
+    const prims = arena(cb).dupe(teak.CanvasPrimitive, &.{.{ .triangles = .{ .verts = verts, .key = vp.key } }}) catch &.{};
+    cb.canvasInteractive(style, prims, model.CANVAS_ID, "drawing viewport");
 }
 
 fn scene3d(m: *const Model, cb: *Cb) void {
-    // Filled in with the teak scene3d widget.
-    _ = m;
-    cb.pushGroup(.{ .padding = 24, .flex = 1, .bg = th.paper, .align_cross = .center, .justify = .center });
-    cb.textStyled("3D VIEW", th.heading, th.ink2);
-    cb.popGroup();
+    if (m.scene == null) {
+        cb.pushGroup(.{ .padding = 24, .flex = 1, .bg = th.paper, .align_cross = .center, .justify = .center });
+        cb.textStyled("NO 3D GEOMETRY FOR THIS DOCUMENT.", th.body, th.ink2);
+        cb.popGroup();
+        return;
+    }
+    const aspect: f32 = if (m.scene_h > 8) m.scene_w / m.scene_h else 1.5;
+    cb.scene3d(.{
+        .style = .{ .width = 200, .height = 200, .flex = 1 },
+        .mesh = model.MESH_KEY,
+        .camera = .{ .view_proj = m.orbit.viewProj(aspect), .eye = m.orbit.eye(), .light_dir = .{ -0.35, -0.8, -0.5 } },
+        .clear = th.paper,
+        .edge_color = .{ 1, 1, 1, 1 },
+        .edge_px = 1.25,
+        .key = m.mesh_rev,
+        .id = model.SCENE_ID,
+        .pointer = true,
+        .label = "3D view",
+    });
 }
 
 // ── inspector ──────────────────────────────────────────────────────
@@ -546,8 +561,8 @@ fn statusLine(m: *const Model, cb: *Cb) void {
         cb.textStyled("0 COMPONENTS", f, th.term_fg);
     }
     cb.spacer(1);
-    var sb: [64]u8 = undefined;
-    const st = m.chat.log.statusText(&sb);
+    const sb = arena(cb).alloc(u8, 64) catch return;
+    const st = m.chat.log.statusText(sb);
     const spinner = "|/-\\";
     cb.textStyled(if (busy) fmt(cb, "{s} {c}", .{ st, spinner[m.ticks % 4] }) else st, f, th.term_fg);
     cb.popGroup();

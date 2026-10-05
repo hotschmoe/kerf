@@ -9,6 +9,7 @@ const docops = @import("docops.zig");
 const docinfo = @import("docinfo.zig");
 const ident = @import("ident.zig");
 const draw = @import("../draw/mod.zig");
+const scene3d = @import("scene3d.zig");
 
 const Model = model.Model;
 const gpa = alloc.gpa;
@@ -206,11 +207,32 @@ pub fn refreshMesh(m: *Model) void {
             };
             p.* = mesh;
             m.mesh = p;
-            m.mesh_rev +%= 1;
             m.mesh_doc_rev = m.doc.rev;
+            rebuildScene(m);
             if (first) frameMesh(m);
         },
     }
+}
+
+/// Rebuild the GPU mesh data (selection tint is baked into vertex colors).
+pub fn rebuildScene(m: *Model) void {
+    const mesh = m.mesh orelse return;
+    var built = scene3d.build(gpa, mesh, m.sel.get()) catch return;
+    const p = gpa.create(scene3d.Built) catch {
+        built.deinit();
+        return;
+    };
+    p.* = built;
+    // The runtime may still reference the old data this frame: bumping `rev`
+    // makes it re-upload; the old arena is freed one rebuild later.
+    if (m.scene) |old| {
+        old.deinit();
+        gpa.destroy(old);
+    }
+    m.scene = p;
+    m.mesh_rev +%= 1;
+    m.res[0] = .{ .mesh = .{ .key = model.MESH_KEY, .rev = m.mesh_rev, .data = p.data } };
+    m.res_len = 1;
 }
 
 pub fn frameMesh(m: *Model) void {
@@ -255,7 +277,7 @@ pub fn refreshInspectText(m: *Model) void {
 pub fn select(m: *Model, id: []const u8) void {
     m.sel = ident.MaybeId.of(id);
     m.vp.setSelection(m.sel) catch {};
-    m.cursor_model = m.cursor_model;
+    rebuildScene(m);
     const info = &(m.doc.info orelse return);
     // Note?
     const vi: usize = switch (m.tabKind()) {
@@ -282,6 +304,7 @@ pub fn clearSelection(m: *Model) void {
     m.sel = .{};
     m.note_sel = -1;
     m.vp.setSelection(.{}) catch {};
+    rebuildScene(m);
     refreshInspectText(m);
 }
 

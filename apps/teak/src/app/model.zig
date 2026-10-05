@@ -11,11 +11,13 @@ const ident = @import("ident.zig");
 const fx = @import("fx.zig");
 const cam = @import("cam.zig");
 const editor = @import("editor.zig");
+const scene3d = @import("scene3d.zig");
 
 pub const Editor = editor.Editor;
 pub const MaybeId = ident.MaybeId;
 
 pub const CANVAS_ID: u32 = 1;
+pub const MESH_KEY: u32 = 1;
 pub const SCENE_ID: u32 = 2;
 pub const CONSOLE_SCROLL: u32 = 10;
 pub const INSPECTOR_SCROLL: u32 = 11;
@@ -70,6 +72,9 @@ pub const Model = struct {
     orbit: cam.Orbit = .{},
     mesh: ?*draw.Mesh = null,
     mesh_rev: u32 = 0,
+    scene: ?*scene3d.Built = null,
+    res: [1]teak.Resource = undefined,
+    res_len: usize = 0,
     mesh_doc_rev: u32 = std.math.maxInt(u32),
     scene_w: f32 = 0,
     scene_h: f32 = 0,
@@ -214,6 +219,7 @@ pub const Msg = union(enum) {
     console_scroll_by: f32,
     console_extent: [2]f32,
     // time + effects
+    submit,
     tick,
     fx: teak.EffectResult,
 };
