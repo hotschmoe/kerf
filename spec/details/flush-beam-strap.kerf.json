@@ -274,10 +274,22 @@
         {
           "id": "d_beam",
           "type": "dim",
-          "from": "beam@bottom_right",
-          "to": "beam@top_right",
+          "from": {
+            "ref": "beam@bottom_left",
+            "offset": [
+              24,
+              0
+            ]
+          },
+          "to": {
+            "ref": "beam@top_left",
+            "offset": [
+              24,
+              0
+            ]
+          },
           "dir": "v",
-          "offset": 4
+          "offset": 1
         }
       ]
     },
