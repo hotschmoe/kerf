@@ -1,5 +1,7 @@
 const std = @import("std");
 const kerf = @import("kerf");
+const workspace = @import("workspace.zig");
+const serve = @import("serve.zig");
 
 const usage =
     \\kerf: conversational construction details (https://github.com/hotschmoe/kerf)
@@ -8,8 +10,11 @@ const usage =
     \\  kerf guide                       instructions for LLM agents + component catalog (start here)
     \\  kerf init [dir]                  make a details folder agent-ready (AGENTS.md + CLAUDE.md)
     \\  kerf new <file> [--id ID] [--title "TITLE"]
-    \\  kerf apply <doc> <ops.json|-> [-w] [-o out]   apply ops (file or stdin); -w writes back to <doc>
-    \\  kerf apply <doc> --ops '<json>' [-w]
+    \\  kerf apply <doc> <ops.json|-> [-w] [--why "REASON"] [-o out]   apply ops (file or stdin); -w writes back to <doc>
+    \\  kerf apply <doc> --ops '<json>' [-w] [--why "REASON"]
+    \\      -w also appends one line to <doc>.log.jsonl (who = $KERF_ACTOR or "agent"; --why = the reason, shown to the designer)
+    \\  kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no-token]
+    \\      local workspace server: web UI + /api over the folder of *.kerf.json (see spec/SERVE.md)
     \\  kerf check <doc>                 summary + diagnostics (exit 1 on errors)
     \\  kerf export <doc> --view A --format png|svg|dxf|pdf [--px 1600] [--sheet] -o <file>
     \\  kerf catalog [--markdown]
@@ -35,13 +40,20 @@ pub fn main(init: std.process.Init) !void {
     while (args_it.next()) |a| try args.append(gpa, a);
     var buf: [4096]u8 = undefined;
     var stderr = std.Io.File.stderr().writer(io, &buf);
-    const code = run(gpa, io, args.items, &stderr.interface) catch |e| blk: {
+    const ctx = Ctx{ .actor = init.environ_map.get("KERF_ACTOR") orelse "agent", .environ_map = init.environ_map };
+    const code = run(gpa, io, args.items, &stderr.interface, ctx) catch |e| blk: {
         stderr.interface.print("kerf: {s}\n", .{@errorName(e)}) catch {};
         break :blk @as(u8, 2);
     };
     stderr.interface.flush() catch {};
     if (code != 0) std.process.exit(code);
 }
+
+/// Process context: who is acting (op log `who`) and the environment (agent bridge PATH/children).
+pub const Ctx = struct {
+    actor: []const u8,
+    environ_map: *const std.process.Environ.Map,
+};
 
 fn readFile(gpa: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .limited(256 << 20));
@@ -70,6 +82,7 @@ const Opts = struct {
     id: ?[]const u8 = null,
     title: ?[]const u8 = null,
     px: ?[]const u8 = null,
+    why: ?[]const u8 = null,
     pos: [4][]const u8 = undefined,
     npos: usize = 0,
 };
@@ -89,7 +102,7 @@ fn parseOpts(args: []const []const u8, err: *std.Io.Writer) !Opts {
                 return all[idx.*];
             }
         }.get;
-        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
+        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--why")) o.why = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
             try err.print("kerf: unknown option {s}\n", .{a});
             return error.Usage;
         } else {
@@ -135,12 +148,37 @@ fn appendJsonString(a: std.mem.Allocator, out: *std.ArrayList(u8), str: []const 
     try out.append(a, '"');
 }
 
-fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.Io.Writer) !u8 {
+/// Best effort: the document is already written; a failed log append only warns (stderr).
+fn logWrite(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, meta: workspace.LogMeta, ops_text: []const u8, changed: []const []const u8, summary: []const u8) void {
+    const line = workspace.buildEntry(a, io, meta, ops_text, changed, summary) catch return;
+    const lp = workspace.logPath(a, doc_path) catch return;
+    workspace.appendLine(io, std.Io.Dir.cwd(), lp, line) catch |e| {
+        var b: [256]u8 = undefined;
+        var w = std.Io.File.stderr().writer(io, &b);
+        w.interface.print("kerf: warning: could not append to {s}: {s}\n", .{ lp, @errorName(e) }) catch {};
+        w.interface.flush() catch {};
+    };
+}
+
+fn createOp(a: std.mem.Allocator, file: []const u8, id: []const u8, title: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "[{\"op\":\"create\",\"file\":");
+    try appendJsonString(a, &out, file);
+    try out.appendSlice(a, ",\"id\":");
+    try appendJsonString(a, &out, id);
+    try out.appendSlice(a, ",\"title\":");
+    try appendJsonString(a, &out, title);
+    try out.appendSlice(a, "}]");
+    return out.items;
+}
+
+fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.Io.Writer, ctx: Ctx) !u8 {
     if (args.len == 0) {
         try err.writeAll(usage);
         return 2;
     }
     const cmd = args[0];
+    if (std.mem.eql(u8, cmd, "serve")) return serve.cliMain(gpa, io, args[1..], err, ctx.environ_map);
     const o = parseOpts(args[1..], err) catch {
         try err.writeAll(usage);
         return 2;
@@ -218,24 +256,13 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             try err.print("kerf new: {s} already exists (refusing to overwrite)\n", .{path});
             return 1;
         } else |_| {}
-        const base = std.fs.path.basename(path);
-        const stem = if (std.mem.indexOf(u8, base, ".")) |dot| base[0..dot] else base;
-        var idbuf: std.ArrayList(u8) = .empty;
-        defer idbuf.deinit(gpa);
-        for (o.id orelse stem) |c| try idbuf.append(gpa, if (std.ascii.isAlphanumeric(c)) std.ascii.toLower(c) else '-');
         var arena = std.heap.ArenaAllocator.init(gpa);
         defer arena.deinit();
         const a = arena.allocator();
-        var doc: std.ArrayList(u8) = .empty;
-        try doc.print(a, "{{\"kerf\":\"0.1\",\"id\":", .{});
-        try appendJsonString(a, &doc, idbuf.items);
-        try doc.appendSlice(a, ",\"title\":");
-        try appendJsonString(a, &doc, o.title orelse "");
-        try doc.appendSlice(a, ",\"meta\":{\"jurisdiction\":{\"code\":\"IRC\",\"edition\":2021}},\"run\":[-24,24],\"components\":[],\"views\":[]}");
-        var perr: kerf.json.ParseError = undefined;
-        const v = (try kerf.json.parse(a, doc.items, &perr)) orelse return error.BadDoc;
-        const text = try kerf.canon.write(a, v);
-        try writeOut(io, path, text);
+        const stem = workspace.docStem(path);
+        const text = try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
+        try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, text);
+        logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
         try writeOut(io, null, "created ");
         try writeOut(io, null, path);
         try writeOut(io, null, "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
@@ -264,6 +291,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
     var extra: std.ArrayList(u8) = .empty;
     defer extra.deinit(gpa);
     var fname: []const u8 = cmd;
+    var ops_text_for_log: []const u8 = "[]";
     if (std.mem.eql(u8, cmd, "drawing")) {
         const v = o.view orelse {
             try err.writeAll("kerf drawing: --view <id> is required\n");
@@ -297,6 +325,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             try err.writeAll("kerf apply: needs ops: <doc> <ops.json>, <doc> - (stdin), or --ops '<json>'\n");
             return 2;
         };
+        ops_text_for_log = ops;
         try extra.print(gpa, "\"ops\":{s}", .{std.mem.trim(u8, ops, " \t\r\n")});
     } else if (!(std.mem.eql(u8, cmd, "fmt") or std.mem.eql(u8, cmd, "check") or std.mem.eql(u8, cmd, "mesh"))) {
         try err.print("kerf: unknown command '{s}'\n", .{cmd});
@@ -343,7 +372,11 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             const text = try kerf.canon.write(a, dv);
             if (ok) {
                 if (o.write) {
-                    try writeOut(io, doc_path, text);
+                    try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), doc_path, text);
+                    var changed: std.ArrayList([]const u8) = .empty;
+                    if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
+                    const sum = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
+                    logWrite(a, io, doc_path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse "" }, std.mem.trim(u8, ops_text_for_log, " \t\r\n"), changed.items, sum);
                     try writeOut(io, null, "wrote ");
                     try writeOut(io, null, doc_path);
                     try writeOut(io, null, "\n");
