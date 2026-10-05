@@ -9,9 +9,11 @@ const usage =
     \\usage:
     \\  kerf guide                       instructions for LLM agents + component catalog (start here)
     \\  kerf init [dir]                  make a details folder agent-ready (AGENTS.md + CLAUDE.md)
-    \\  kerf new <file> [--id ID] [--title "TITLE"]
+    \\  kerf schema [topic]              field reference: doc view note dim label cite ops <component type> (no topic: list)
+    \\  kerf new <file> [--id ID] [--title "TITLE"] [--template section]
     \\  kerf apply <doc> <ops.json|-> [-w] [--why "REASON"] [-o out]   apply ops (file or stdin); -w writes back to <doc>
-    \\  kerf apply <doc> --ops '<json>' [-w] [--why "REASON"]
+    \\  kerf apply <doc> --ops '<json>' [-w] [--why "REASON"] [--dry-run]
+    \\      a failed apply prints "ERROR <code> <path>: <message>  Fix: <fix>" per error on stderr, then "nothing written" (exit 1)
     \\      -w also appends one line to <doc>.log.jsonl (who = $KERF_ACTOR or "agent"; --why = the reason, shown to the designer)
     \\  kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no-token]
     \\      local workspace server: web UI + /api over the folder of *.kerf.json (see spec/SERVE.md)
@@ -21,7 +23,7 @@ const usage =
     \\  kerf fmt <doc> [-w]
     \\  kerf drawing <doc> --view A [-o out.json]
     \\  kerf mesh <doc> [-o mesh.json]
-    \\  kerf call <fn> < input.json      raw engine API (JSON in, JSON/bytes out)
+    \\  kerf call <fn> < input.json      raw engine API (JSON in, JSON/bytes out); `kerf call help` lists functions + input shapes
     \\  kerf version
     \\common: [--style file.kerfstyle.json]
     \\
@@ -136,6 +138,8 @@ const Opts = struct {
     title: ?[]const u8 = null,
     px: ?[]const u8 = null,
     why: ?[]const u8 = null,
+    dry_run: bool = false,
+    template: ?[]const u8 = null,
     pos: [4][]const u8 = undefined,
     npos: usize = 0,
 };
@@ -155,7 +159,7 @@ fn parseOpts(args: []const []const u8, err: *std.Io.Writer) !Opts {
                 return all[idx.*];
             }
         }.get;
-        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--why")) o.why = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
+        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--why")) o.why = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--dry-run")) o.dry_run = true else if (std.mem.eql(u8, a, "--template")) o.template = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
             try err.print("kerf: unknown option {s}\n", .{a});
             return error.Usage;
         } else {
@@ -228,6 +232,32 @@ fn createOp(a: std.mem.Allocator, file: []const u8, id: []const u8, title: []con
     try appendJsonString(a, &out, title);
     try out.appendSlice(a, "}]");
     return out.items;
+}
+
+/// `ERROR <code> <path>: <message>  Fix: <fix>` (SPEC 19). `path` falls back to the diagnostic id, then `-`.
+fn printDiagError(err: *std.Io.Writer, d: kerf.json.Value) !void {
+    const code = if (d.get("code")) |c| (c.str() orelse "E_UNKNOWN") else "E_UNKNOWN";
+    const path_s: []const u8 = blk: {
+        if (d.get("path")) |p| if (p.str()) |ps| if (ps.len > 0) break :blk ps;
+        if (d.get("id")) |p| if (p.str()) |ps| if (ps.len > 0) break :blk ps;
+        break :blk "-";
+    };
+    const msg = if (d.get("message")) |m| (m.str() orelse "") else "";
+    try err.print("ERROR {s} {s}: {s}", .{ code, path_s, msg });
+    if (d.get("fix")) |f| if (f.str()) |fs| if (fs.len > 0) try err.print("  Fix: {s}", .{fs});
+    try err.writeAll("\n");
+}
+
+/// Print an engine failure `{"error": {code, message}}` as `ERROR <code>: <message>`; falls back to the raw bytes.
+fn printApiError(a: std.mem.Allocator, err: *std.Io.Writer, bytes: []const u8) !void {
+    var perr: kerf.json.ParseError = undefined;
+    if (try kerf.json.parse(a, bytes, &perr)) |v| if (v.get("error")) |e| {
+        const code = if (e.get("code")) |c| (c.str() orelse "E_UNKNOWN") else "E_UNKNOWN";
+        const msg = if (e.get("message")) |m| (m.str() orelse "") else "";
+        try err.print("ERROR {s}: {s}\n", .{ code, msg });
+        return;
+    };
+    try err.writeAll(bytes);
 }
 
 fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.Io.Writer, ctx: Ctx) !u8 {
@@ -391,6 +421,20 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             try err.writeAll("kerf apply: needs ops: <doc> <ops.json>, <doc> - (stdin), or --ops '<json>'\n");
             return 2;
         };
+        if (o.dry_run and o.write) {
+            try err.writeAll("kerf apply: --dry-run and -w contradict each other (dry-run writes nothing)\n");
+            return 2;
+        }
+        {
+            var vperr: kerf.json.ParseError = undefined;
+            var varena = std.heap.ArenaAllocator.init(gpa);
+            defer varena.deinit();
+            const parsed = try kerf.json.parse(varena.allocator(), std.mem.trim(u8, ops, " \t\r\n"), &vperr);
+            if (parsed == null) {
+                try err.print("ERROR E_JSON ops: the ops are not valid JSON: {s} (line {d}, column {d})  Fix: pass a JSON array of ops, e.g. [{{\"op\":\"update\",\"path\":\"components/x\",\"value\":{{...}}}}]; on PowerShell write the ops to a file\nnothing written\n", .{ vperr.msg, vperr.line, vperr.col });
+                return 1;
+            }
+        }
         ops_text_for_log = ops;
         try extra.print(gpa, "\"ops\":{s}", .{std.mem.trim(u8, ops, " \t\r\n")});
     } else if (!(std.mem.eql(u8, cmd, "fmt") or std.mem.eql(u8, cmd, "check") or std.mem.eql(u8, cmd, "mesh"))) {
@@ -404,7 +448,10 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
     const r = try kerf.call(gpa, fname, input);
     defer gpa.free(r.bytes);
     if (!r.ok) {
-        try err.writeAll(r.bytes);
+        var earena = std.heap.ArenaAllocator.init(gpa);
+        defer earena.deinit();
+        try printApiError(earena.allocator(), err, r.bytes);
+        if (std.mem.eql(u8, cmd, "apply")) try err.writeAll("nothing written\n");
         return 1;
     }
     if (std.mem.eql(u8, cmd, "fmt")) {
@@ -436,11 +483,18 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             return 0;
         }
         const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
+        if (!ok) {
+            // SPEC 19: every error diagnostic on stderr, then `nothing written`
+            const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
+            for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) try printDiagError(err, d);
+            try err.writeAll("nothing written\n");
+            return 1;
+        }
         var logged = true;
         if (res.get("doc")) |dv| {
             const text = try kerf.canon.write(a, dv);
             if (ok) {
-                if (o.write) {
+                if (o.write and !o.dry_run) {
                     try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), doc_path, text);
                     var changed: std.ArrayList([]const u8) = .empty;
                     if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
@@ -449,6 +503,8 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
                     try writeOut(io, null, "wrote ");
                     try writeOut(io, null, doc_path);
                     try writeOut(io, null, "\n");
+                } else if (o.dry_run) {
+                    try writeOut(io, null, "(dry run: nothing written)\n");
                 } else if (o.out) |_| {
                     try writeOut(io, o.out, text);
                 } else {
