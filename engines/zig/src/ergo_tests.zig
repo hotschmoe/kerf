@@ -173,3 +173,61 @@ test "acknowledge replaces the warning with I_ACK; barrier clears the contact wa
     const bad = try loadSrc(a, try std.fmt.allocPrint(a, base, .{",\"acknowledge\":[{\"code\":\"E_PARAM\",\"reason\":\"x\"}]"}), false);
     try std.testing.expect(bad.diags.errCount() >= 1);
 }
+
+fn replaceAll(a: std.mem.Allocator, text: []const u8, from: []const u8, to: []const u8) ![]u8 {
+    return std.mem.replaceOwned(u8, a, text, from, to);
+}
+
+test "W_SHORT_SLOPE: e07 repro warns with the until fix; reference truss and the until fix stay at 0 warnings" {
+    const testdocs = @import("testdocs.zig");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // negative: the reference document
+    const ref = try loadSrc(a, testdocs.truss, true);
+    try std.testing.expectEqual(@as(usize, 0), count(ref, "W_SHORT_SLOPE"));
+    try std.testing.expectEqual(@as(usize, 0), ref.diags.errCount());
+    // e07 repro: pitch changed to 6:12, sheathing follows with slope "@truss" but keeps a literal length that no longer reaches the truss end
+    var src = try replaceAll(a, testdocs.truss, "\"pitch\": \"4:12\"", "\"pitch\": \"6:12\"");
+    src = try replaceAll(a, src, "\"slope\": \"4:12\"", "\"slope\": \"@truss\"");
+    src = try replaceAll(a, src, "\"length\": 66", "\"length\": 40");
+    const bad = try loadSrc(a, src, true);
+    try std.testing.expectEqual(@as(usize, 1), count(bad, "W_SHORT_SLOPE"));
+    for (bad.diags.list.items) |d| if (std.mem.eql(u8, d.code, "W_SHORT_SLOPE")) {
+        try std.testing.expectEqualStrings("roof_sheathing", d.id.?);
+        try std.testing.expect(std.mem.indexOf(u8, d.fix.?, "\"until\": \"truss@top_chord_end\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, d.message, "short") != null);
+    };
+    // the literal length that is long enough, and `until` itself, do not warn
+    const long = try loadSrc(a, try replaceAll(a, src, "\"length\": 40", "\"length\": 66"), true);
+    try std.testing.expectEqual(@as(usize, 0), count(long, "W_SHORT_SLOPE"));
+    const fixed = try loadSrc(a, try replaceAll(a, src, "\"length\": 40,", "\"until\": \"truss@top_chord_end\","), true);
+    try std.testing.expectEqual(@as(usize, 0), fixed.diags.errCount());
+    try std.testing.expectEqual(@as(usize, 0), count(fixed, "W_SHORT_SLOPE"));
+    // it can be acknowledged
+    const acked = try loadSrc(a, try replaceAll(a, src, "\"slope\": \"@truss\"", "\"slope\": \"@truss\", \"acknowledge\": [{\"code\": \"W_SHORT_SLOPE\", \"reason\": \"stops at the ridge block\"}]"), true);
+    try std.testing.expectEqual(@as(usize, 0), count(acked, "W_SHORT_SLOPE"));
+    try std.testing.expectEqual(@as(usize, 1), count(acked, "I_ACK"));
+    // a roofing membrane that stops short of its sloped sheathing warns too
+    const mem = try loadSrc(a,
+        \\{"kerf":"0.1","id":"t","components":[
+        \\{"id":"rafter","type":"lumber","size":"2x6","run":"x","length":120,"slope":"4:12","at":{"anchor":"bottom_left","to":[0,0]}},
+        \\{"id":"deck","type":"panel","thickness":0.5,"length":120,"slope":"4:12","at":{"anchor":"bottom_left","to":"rafter@top_left"}},
+        \\{"id":"roofing","type":"membrane","material":"shingles","slope":"4:12","points":[[0,0],[60,0]],"at":{"to":"deck@top_left"}}
+        \\],"views":[]}
+    , false);
+    try std.testing.expectEqual(@as(usize, 0), mem.diags.errCount());
+    try std.testing.expectEqual(@as(usize, 1), count(mem, "W_SHORT_SLOPE"));
+}
+
+test "acknowledge accepts I_* codes as a no-op" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const l = try loadSrc(a,
+        \\{"kerf":"0.1","id":"t","components":[
+        \\{"id":"blk","type":"solid","material":"steel","profile":{"rect":[3,0.25]},"acknowledge":[{"code":"I_SOLID_USED","reason":"no typed component fits"}]}
+        \\],"views":[]}
+    , false);
+    try std.testing.expectEqual(@as(usize, 0), l.diags.errCount());
+}

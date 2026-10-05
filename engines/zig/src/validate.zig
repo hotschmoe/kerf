@@ -96,6 +96,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
     try untreated(a, items.items, diags);
     try cover(a, scene, diags);
     try nearMiss(a, scene, diags);
+    try shortSlope(a, scene, items.items, doc, diags);
     // infos
     for (scene.comps) |c| {
         if (c.state == .ok and std.mem.eql(u8, c.ty.name, "solid")) {
@@ -514,6 +515,129 @@ fn nearMiss(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!vo
                 }
             }
         }
+    }
+}
+
+// ---- short slope (SPEC 20) -----------------------------------------------------------------------------------------
+
+/// Crop box of the first section view that sets an explicit crop (auto-fit crops contain every member, so they never cut).
+fn explicitCrop(doc: json.Value) ?geom.Box {
+    const views = (doc.get("views") orelse return null).arr() orelse return null;
+    for (views) |v| {
+        if (v.get("kind")) |k| if (k.str()) |ks| if (std.mem.eql(u8, ks, "iso")) continue;
+        const cv = v.get("crop") orelse continue;
+        if (cv == .null) continue;
+        const xr = range2(cv.get("x")) orelse continue;
+        const yr = range2(cv.get("y")) orelse continue;
+        return .{ .x0 = xr[0], .x1 = xr[1], .y0 = yr[0], .y1 = yr[1] };
+    }
+    return null;
+}
+
+fn range2(v: ?json.Value) ?[2]f64 {
+    const arr = (v orelse return null).arr() orelse return null;
+    if (arr.len != 2) return null;
+    return .{ units.parseLength(arr[0]) orelse return null, units.parseLength(arr[1]) orelse return null };
+}
+
+/// Angle of the member's long axis (radians) that a sloped panel/membrane can rest on; null when it is not a candidate host.
+fn hostAngle(h: *const scene_mod.Comp) ?f64 {
+    const eq = std.mem.eql;
+    if (eq(u8, h.ty.name, "truss")) return h.angle + h.pitch_angle;
+    if (eq(u8, h.ty.name, "lumber") or eq(u8, h.ty.name, "panel")) return h.angle;
+    return null;
+}
+
+fn sameSlope(a1: f64, a2: f64) bool {
+    var d = @mod(a1 - a2, std.math.pi);
+    if (d > std.math.pi / 2.0) d = std.math.pi - d;
+    return d < std.math.degreesToRadians(0.5);
+}
+
+/// Extent of a component's instance-0 prisms (optionally one part only) projected on `u`; null when it has none.
+fn projExtent(items: []const Pf, c: *const scene_mod.Comp, part: ?[]const u8, u: V2) ?[2]f64 {
+    var lo: f64 = std.math.inf(f64);
+    var hi: f64 = -std.math.inf(f64);
+    for (items) |it| {
+        if (it.comp != c or it.prism.instance != 0) continue;
+        if (part) |pn| if (!std.mem.eql(u8, it.prism.part, pn)) continue;
+        for (it.flat) |l| for (l) |v| {
+            const t = v.x * u.x + v.y * u.y;
+            lo = @min(lo, t);
+            hi = @max(hi, t);
+        };
+    }
+    if (lo > hi) return null;
+    return .{ lo, hi };
+}
+
+/// A sloped panel or membrane that rests on a sloped member (same slope within 0.5 degrees, touching) must reach that
+/// member's far end, or the crop edge when that comes first. A literal `length` that goes stale when the pitch changes
+/// is the usual cause; the fix is `"until": "<member>@<end anchor>"`.
+fn shortSlope(a: Allocator, scene: *Scene, items: []const Pf, doc: json.Value, diags: *model.Diags) Allocator.Error!void {
+    const crop = explicitCrop(doc);
+    const slack = 0.5;
+    const touch = 1.0 / 16.0;
+    for (scene.comps) |*c| {
+        const is_panel = std.mem.eql(u8, c.ty.name, "panel");
+        if (c.state != .ok or c.dashed or !(is_panel or std.mem.eql(u8, c.ty.name, "membrane"))) continue;
+        var u = V2.init(@cos(c.angle), @sin(c.angle));
+        if (@abs(u.y) < @sin(std.math.degreesToRadians(0.5))) continue; // not sloped
+        if (u.y < 0) u = V2.init(-u.x, -u.y);
+        // the subject's upper end: the vertex with the largest projection on u
+        var pmax: f64 = -std.math.inf(f64);
+        var vtx = V2.init(0, 0);
+        for (items) |it| {
+            if (it.comp != c or it.prism.instance != 0) continue;
+            for (it.flat) |l| for (l) |v| {
+                const t = v.x * u.x + v.y * u.y;
+                if (t > pmax) {
+                    pmax = t;
+                    vtx = v;
+                }
+            };
+        }
+        if (pmax == -std.math.inf(f64)) continue;
+        // the host this component rests on that ends farthest up the slope
+        var best: ?*const scene_mod.Comp = null;
+        var best_end: f64 = 0;
+        for (scene.comps) |*h| {
+            if (h == c or h.state != .ok or h.dashed) continue;
+            if (is_panel and std.mem.eql(u8, h.ty.name, "panel")) continue;
+            const ha = hostAngle(h) orelse continue;
+            if (!sameSlope(ha, c.angle)) continue;
+            const part: ?[]const u8 = if (std.mem.eql(u8, h.ty.name, "truss")) "top_chord" else null;
+            var touching = false;
+            for (items) |sp| {
+                if (sp.comp != c or sp.prism.instance != 0) continue;
+                for (items) |hp| {
+                    if (hp.comp != h or hp.prism.instance != 0) continue;
+                    if (part) |pn| if (!std.mem.eql(u8, hp.prism.part, pn)) continue;
+                    if (zGap(sp.prism, hp.prism) > touch or !sp.box.expand(touch).overlaps(hp.box, 0)) continue;
+                    if (regionDist(sp.flat, hp.flat, touch) <= touch) touching = true;
+                }
+            }
+            if (!touching) continue;
+            const ext = projExtent(items, h, part, u) orelse continue;
+            if (best == null or ext[1] > best_end) {
+                best = h;
+                best_end = ext[1];
+            }
+        }
+        const h = best orelse continue;
+        // distance the subject may still grow before it leaves the crop
+        var crop_room: f64 = std.math.inf(f64);
+        if (crop) |cb| {
+            if (u.x > 1e-9) crop_room = @min(crop_room, (cb.x1 - vtx.x) / u.x) else if (u.x < -1e-9) crop_room = @min(crop_room, (cb.x0 - vtx.x) / u.x);
+            if (u.y > 1e-9) crop_room = @min(crop_room, (cb.y1 - vtx.y) / u.y);
+        }
+        const gap_host = best_end - pmax;
+        const short = @min(gap_host, crop_room);
+        if (short <= slack) continue;
+        const by_crop = crop_room < gap_host;
+        const anchor: []const u8 = if (std.mem.eql(u8, h.ty.name, "truss")) "top_chord_end" else if (u.x >= 0) "top_right" else "top_left";
+        const what = if (by_crop) std.fmt.allocPrint(a, "the view crop (where '{s}' continues)", .{h.id}) catch "the crop" else std.fmt.allocPrint(a, "the end of '{s}'", .{h.id}) catch "the member";
+        diags.addFix(.warning, "W_SHORT_SLOPE", c.id, null, "'{s}' rests on the sloped '{s}' (same slope) but its upper end stops {s} short of {s}", .{ c.id, h.id, ftin(a, short), what }, std.fmt.allocPrint(a, "replace the literal length of '{s}' (it does not follow the pitch) with \"until\": \"{s}@{s}\" (grows along the slope to the member's end; pair it with \"slope\": \"@{s}\"), or lengthen it by {s}; acknowledge W_SHORT_SLOPE if it should stop there", .{ c.id, h.id, anchor, h.id, ftin(a, short) }) catch "");
     }
 }
 

@@ -189,10 +189,10 @@ pub const ack: Object = .{
     .brief = "suppress a warning with a logged reason",
     .summary = "`acknowledge` on a component: suppress a warning for that component with a reason that is logged.",
     .fields = &.{
-        .{ .name = "code", .ty = "string", .required = true, .desc = "the warning code, e.g. W_UNTREATED_CONTACT, W_OVERLAP, W_NEAR_MISS, W_COVER" },
+        .{ .name = "code", .ty = "string", .required = true, .desc = "the warning code, e.g. W_UNTREATED_CONTACT, W_OVERLAP, W_NEAR_MISS, W_SHORT_SLOPE, W_COVER" },
         .{ .name = "reason", .ty = "string", .required = true, .desc = "why it is fine; prints in the summary as an I_ACK line and is logged by `kerf apply -w`" },
     },
-    .notes = "Usage: \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}] on the component the warning names. Errors cannot be acknowledged. Prefer fixing the cause; for wood on masonry use `\"barrier\": \"sill_seal\"` (lumber) instead.",
+    .notes = "Usage: \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}] on the component the warning names. Errors (E_*) cannot be acknowledged; an I_* info code is accepted and ignored (no error, nothing to suppress). Prefer fixing the cause; for wood on masonry use `\"barrier\": \"sill_seal\"` (lumber) instead.",
     .example = "[{\"code\":\"W_UNTREATED_CONTACT\",\"reason\":\"truss seat moisture barrier by mfr.\"}]",
 };
 

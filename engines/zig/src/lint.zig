@@ -423,8 +423,9 @@ pub fn withDimDirsFromDoc(a: Allocator, doc: json.Value, st: *const @import("sty
 
 // ---- acknowledge ------------------------------------------------------------------------------------------------------------------
 
+/// Warnings are suppressed; info codes (I_*) are accepted as a no-op (an agent acknowledging I_SOLID_USED is not an error).
 fn isAckable(code: []const u8) bool {
-    return std.mem.startsWith(u8, code, "W_");
+    return std.mem.startsWith(u8, code, "W_") or std.mem.startsWith(u8, code, "I_");
 }
 
 /// Shape errors of `acknowledge` (array of {code, reason}; codes must be warning codes).
@@ -447,7 +448,7 @@ fn ackShape(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) A
             if (it != .object or code.len == 0 or reason.len == 0) {
                 diags.addFix(.@"error", "E_PARAM", cid, ipath, "acknowledge entry {d} of '{s}' needs a string \"code\" and a non-empty \"reason\"", .{ i, cid }, "e.g. {\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"why this is fine\"}");
             } else if (!isAckable(code)) {
-                diags.addFix(.@"error", "E_PARAM", cid, ipath, "'{s}' cannot be acknowledged: only warnings (W_*) can; errors must be fixed", .{code}, "fix the cause, or acknowledge a W_ code");
+                diags.addFix(.@"error", "E_PARAM", cid, ipath, "'{s}' cannot be acknowledged: only warnings (W_*) can (I_* is accepted and ignored); errors must be fixed", .{code}, "fix the cause, or acknowledge a W_ code");
             }
         }
     }
