@@ -24,33 +24,54 @@ pub const Hardware = struct { model: []const u8, width: f64, gauge: u32, length:
 
 /// Schematic hardware table: `connector.model` fills width and gauge from here.
 pub const hardware = [_]Hardware{
-    .{ .model = "CS14", .width = 1.25, .gauge = 14, .length = 648, .kind = "coil strap" },
-    .{ .model = "CS16", .width = 1.25, .gauge = 16, .length = 648, .kind = "coil strap" },
-    .{ .model = "CS18", .width = 1.25, .gauge = 18, .length = 648, .kind = "coil strap" },
-    .{ .model = "CS20", .width = 1.25, .gauge = 20, .length = 648, .kind = "coil strap" },
-    .{ .model = "CS22", .width = 1.25, .gauge = 22, .length = 648, .kind = "coil strap" },
-    .{ .model = "MSTA24", .width = 1.25, .gauge = 12, .length = 24, .kind = "strap tie" },
-    .{ .model = "MSTA30", .width = 1.25, .gauge = 12, .length = 30, .kind = "strap tie" },
-    .{ .model = "MSTA36", .width = 1.25, .gauge = 12, .length = 36, .kind = "strap tie" },
-    .{ .model = "MST27", .width = 2.0625, .gauge = 12, .length = 27, .kind = "strap tie" },
-    .{ .model = "MST37", .width = 2.0625, .gauge = 12, .length = 37, .kind = "strap tie" },
-    .{ .model = "H1", .width = 1.375, .gauge = 18, .length = 5.5, .kind = "hurricane tie" },
     .{ .model = "H2.5A", .width = 1.375, .gauge = 18, .length = 5.5, .kind = "hurricane tie" },
-    .{ .model = "H10A", .width = 1.375, .gauge = 18, .length = 5.5, .kind = "hurricane tie" },
+    .{ .model = "H1", .width = 1.375, .gauge = 18, .length = 5.5, .kind = "hurricane tie" },
+    .{ .model = "H10A", .width = 1.5, .gauge = 18, .length = 8, .kind = "hurricane tie" },
+    .{ .model = "MSTA9", .width = 1.25, .gauge = 12, .length = 9, .kind = "strap" },
+    .{ .model = "MSTA12", .width = 1.25, .gauge = 12, .length = 12, .kind = "strap" },
+    .{ .model = "MSTA15", .width = 1.25, .gauge = 12, .length = 15, .kind = "strap" },
+    .{ .model = "MSTA18", .width = 1.25, .gauge = 12, .length = 18, .kind = "strap" },
+    .{ .model = "MSTA21", .width = 1.25, .gauge = 12, .length = 21, .kind = "strap" },
+    .{ .model = "MSTA24", .width = 1.25, .gauge = 12, .length = 24, .kind = "strap" },
+    .{ .model = "MSTA30", .width = 1.25, .gauge = 12, .length = 30, .kind = "strap" },
+    .{ .model = "MSTA36", .width = 1.25, .gauge = 12, .length = 36, .kind = "strap" },
+    .{ .model = "MSTA49", .width = 1.25, .gauge = 12, .length = 49, .kind = "strap" },
+    .{ .model = "LSTA9", .width = 1.25, .gauge = 20, .length = 9, .kind = "strap" },
+    .{ .model = "LSTA12", .width = 1.25, .gauge = 20, .length = 12, .kind = "strap" },
+    .{ .model = "LSTA15", .width = 1.25, .gauge = 20, .length = 15, .kind = "strap" },
+    .{ .model = "LSTA18", .width = 1.25, .gauge = 20, .length = 18, .kind = "strap" },
+    .{ .model = "LSTA21", .width = 1.25, .gauge = 20, .length = 21, .kind = "strap" },
+    .{ .model = "LSTA24", .width = 1.25, .gauge = 20, .length = 24, .kind = "strap" },
+    .{ .model = "LSTA36", .width = 1.25, .gauge = 20, .length = 36, .kind = "strap" },
+    .{ .model = "CS14", .width = 1.25, .gauge = 14, .length = 0, .kind = "coil strap" },
+    .{ .model = "CS16", .width = 1.25, .gauge = 16, .length = 0, .kind = "coil strap" },
+    .{ .model = "CS18", .width = 1.25, .gauge = 18, .length = 0, .kind = "coil strap" },
+    .{ .model = "CS20", .width = 1.25, .gauge = 20, .length = 0, .kind = "coil strap" },
+    .{ .model = "CMST14", .width = 3, .gauge = 14, .length = 0, .kind = "coil strap" },
+    .{ .model = "CMST12", .width = 3, .gauge = 12, .length = 0, .kind = "coil strap" },
+    .{ .model = "CMSTC16", .width = 3, .gauge = 16, .length = 0, .kind = "coil strap" },
+    .{ .model = "MST37", .width = 3, .gauge = 12, .length = 37.5, .kind = "strap" },
+    .{ .model = "MST48", .width = 3, .gauge = 12, .length = 48, .kind = "strap" },
+    .{ .model = "META12", .width = 1.25, .gauge = 18, .length = 12, .kind = "embedded truss anchor" },
     .{ .model = "META16", .width = 1.25, .gauge = 18, .length = 16, .kind = "embedded truss anchor" },
     .{ .model = "META20", .width = 1.25, .gauge = 18, .length = 20, .kind = "embedded truss anchor" },
+    .{ .model = "META24", .width = 1.25, .gauge = 18, .length = 24, .kind = "embedded truss anchor" },
     .{ .model = "HETA12", .width = 1.25, .gauge = 16, .length = 12, .kind = "embedded truss anchor" },
     .{ .model = "HETA16", .width = 1.25, .gauge = 16, .length = 16, .kind = "embedded truss anchor" },
     .{ .model = "HETA20", .width = 1.25, .gauge = 16, .length = 20, .kind = "embedded truss anchor" },
     .{ .model = "HETA24", .width = 1.25, .gauge = 16, .length = 24, .kind = "embedded truss anchor" },
+    .{ .model = "HETA40", .width = 1.25, .gauge = 16, .length = 40, .kind = "embedded truss anchor" },
     .{ .model = "HHETA16", .width = 1.25, .gauge = 14, .length = 16, .kind = "embedded truss anchor" },
     .{ .model = "HHETA20", .width = 1.25, .gauge = 14, .length = 20, .kind = "embedded truss anchor" },
+    .{ .model = "HETAL20", .width = 1.25, .gauge = 16, .length = 20, .kind = "embedded truss anchor" },
+    .{ .model = "DETAL20", .width = 2.5, .gauge = 16, .length = 20, .kind = "embedded truss anchor" },
 };
 
 pub fn hardwareLine(a: Allocator, h: Hardware) Allocator.Error![]const u8 {
     var wb: [40]u8 = undefined;
     var lb: [40]u8 = undefined;
-    return std.fmt.allocPrint(a, "{s}: {s}, width {s}\", gauge {d}, length {s}\"", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge, json.fmtNumber(&lb, h.length) });
+    if (h.length == 0) return std.fmt.allocPrint(a, "{s}: {s}, {s}\" wide, {d} ga, cut to length", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge });
+    return std.fmt.allocPrint(a, "{s}: {s}, {s}\" wide, {d} ga, {s}\" long", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge, json.fmtNumber(&lb, h.length) });
 }
 
 pub const common: []const Param = &.{

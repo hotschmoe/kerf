@@ -102,7 +102,7 @@ pub fn summary(l: *const Loaded) Allocator.Error![]const u8 {
     const e = l.diags.errCount();
     const w = l.diags.warnCount();
     const id = if (l.doc == .object) (if (l.doc.get("id")) |x| (x.str() orelse "") else "") else "";
-    try out.print(a, "DOC {s}  {d} component{s}  {d} view{s}  {d} error{s} {d} warning{s}\n", .{
+    try out.print(a, "DOC {s}  {d} component{s}  {d} view{s}  {d} error{s}  {d} warning{s}\n", .{
         id,
         l.scene.comps.len,
         if (l.scene.comps.len == 1) "" else "s",
@@ -122,8 +122,14 @@ pub fn summary(l: *const Loaded) Allocator.Error![]const u8 {
             continue;
         }
         var desc: std.ArrayList(u8) = .empty;
-        try desc.print(a, "{s} {s}", .{ c.ty.name, c.built.info });
-        if (c.xfs.len > 1) try desc.print(a, " [x{d}]", .{c.xfs.len});
+        try desc.appendSlice(a, c.built.info);
+        if (c.arr_count > 1) {
+            if (c.node.get("array")) |av| {
+                const ax = if (av.get("axis")) |x| (x.str() orelse "x") else "x";
+                const sp = if (av.get("spacing")) |x| (units.parseLength(x) orelse 0) else 0;
+                try desc.print(a, " [x{d} {s} @ {s}]", .{ c.arr_count, ax, try units.fmtFtIn(a, sp) });
+            }
+        }
         if (c.label) |lb| try desc.print(a, " \"{s}\"", .{lb});
         try padTo(&out, a, desc.items, 44);
         const b = compBox(c);

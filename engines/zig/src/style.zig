@@ -6,7 +6,7 @@ const std = @import("std");
 const json = @import("json.zig");
 const Allocator = std.mem.Allocator;
 
-pub const default_json = @embedFile("data/kerf-standard.kerfstyle.json");
+pub const default_json = @embedFile("kerf_style_json");
 
 pub const Pen = struct {
     name: []const u8,

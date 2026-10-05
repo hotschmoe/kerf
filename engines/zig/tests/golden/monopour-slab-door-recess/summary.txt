@@ -1,12 +1,12 @@
-DOC monopour-slab-door-recess  9 components  2 views  0 errors 0 warnings
- slab          concrete slab_edge 4" slab, 12x18 turndown  x 0"..4'-0"       y -1'-6"..0"
- ftg_bars      rebar #5 along z [x2]                       x 3"..9"          y -1'-3"..-1'-2 3/8"
+DOC monopour-slab-door-recess  9 components  2 views  0 errors  0 warnings
+ slab          concrete slab_edge 4" slab, ftg 1'-0" x 1'-6", recess 8" x 1 1/2" x 0"..4'-0"       y -1'-6"..0"
+ ftg_bars      rebar (2) #5 along z @ bottom face          x 3"..9"          y -1'-3"..-1'-2 3/8"
  top_bar       rebar #4 along z                            x 5 3/4"..6 1/4"  y -4 3/4"..-4 1/4"
- slab_bars_x   rebar #4 path, 2 pts                        x 1'-2"..4'-0"    y -2 1/4"..-1 3/4"
- slab_bars_z   rebar #4 along z [x2]                       x 1'-7 3/4"..3'-0 1/4" y -2 3/4"..-2 1/4"
- vapor_retarder membrane vapor_retarder 0.04" thk, 3 pts    x 1'-0"..4'-0"    y -1'-6"..-4"
- base          fill gravel fill, 4 pts                     x 1'-10"..4'-0"   y -8"..-4"
- soil          fill earth fill, 8 pts                      x -2'-0"..4'-0"   y -2'-4"..-6"
- door_sill     solid aluminum 6.5625 x 1.25 "SLIDING DOOR SILL (SCHEMATIC)" x 15/16"..7 1/2"  y -1 1/2"..-1/4"
-INFO I_SOLID_USED door_sill: component 'door_sill' uses the 'solid' escape hatch (material aluminum); prefer a typed component when one fits so reviewers can read its intent
-INFO I_UNVERIFIED_CITE: 6 code citation(s) await designer verification; they print with a trailing * and a footnote until verified
+ slab_bars_x   rebar #4 path L=2'-10" (#4 @ 16" O.C. EA. WAY) x 1'-2"..4'-0"    y -2 1/4"..-1 3/4"
+ slab_bars_z   rebar #4 along z [x2 x @ 1'-4"]             x 1'-7 3/4"..3'-0 1/4" y -2 3/4"..-2 1/4"
+ vapor_retarder membrane vapor_retarder 1/16" thick L=3'-5 13/16" x 1'-0"..4'-0"    y -1'-6"..-4"
+ base          fill gravel                                 x 1'-10"..4'-0"   y -8"..-4"
+ soil          fill earth                                  x -2'-0"..4'-0"   y -2'-4"..-6"
+ door_sill     solid aluminum (escape hatch) "SLIDING DOOR SILL (SCHEMATIC)" x 15/16"..7 1/2"  y -1 1/2"..-1/4"
+INFO I_SOLID_USED door_sill: door_sill uses the `solid` escape hatch (material aluminum); a reviewer should confirm no typed component fits.
+INFO I_UNVERIFIED_CITE: 6 citation(s) await designer verification (notes: A/n_slab, A/n_vr, A/n_base, A/n_ftg, A/n_sill, A/n_grade). Citations print with a trailing * until verified.

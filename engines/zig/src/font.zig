@@ -6,7 +6,7 @@ const geom = @import("geom.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 
-pub const embedded = @embedFile("data/kerf-simplex.json");
+pub const embedded = @embedFile("kerf_font_json");
 
 pub const Glyph = struct {
     adv: f64,

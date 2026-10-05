@@ -1,5 +1,11 @@
 const std = @import("std");
 
+/// The default style and stroke font are embedded straight from spec/ (single source of truth).
+fn addSpecImports(b: *std.Build, m: *std.Build.Module) void {
+    m.addAnonymousImport("kerf_style_json", .{ .root_source_file = b.path("../../spec/styles/kerf-standard.kerfstyle.json") });
+    m.addAnonymousImport("kerf_font_json", .{ .root_source_file = b.path("../../spec/fonts/kerf-simplex.json") });
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -10,6 +16,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    addSpecImports(b, kerf);
 
     // CLI.
     const exe = b.addExecutable(.{
@@ -32,6 +39,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    addSpecImports(b, test_mod);
     test_mod.addAnonymousImport("doc_truss", .{ .root_source_file = b.path("../../spec/details/truss-bearing-cmu.kerf.json") });
     test_mod.addAnonymousImport("doc_slab", .{ .root_source_file = b.path("../../spec/details/monopour-slab-door-recess.kerf.json") });
     test_mod.addAnonymousImport("doc_beam", .{ .root_source_file = b.path("../../spec/details/flush-beam-strap.kerf.json") });
@@ -49,6 +57,7 @@ pub fn build(b: *std.Build) void {
         .target = wasm_target,
         .optimize = wasm_opt,
     });
+    addSpecImports(b, wasm_kerf);
     const wasm = b.addExecutable(.{
         .name = "kerf",
         .root_module = b.createModule(.{
@@ -57,6 +66,8 @@ pub fn build(b: *std.Build) void {
             .optimize = wasm_opt,
             .strip = wasm_strip,
             .single_threaded = true,
+            .error_tracing = false,
+            .unwind_tables = .none,
             .imports = &.{.{ .name = "kerf", .module = wasm_kerf }},
         }),
     });

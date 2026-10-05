@@ -51,6 +51,10 @@ fn onePrism(a: Allocator, prism: Prism) Allocator.Error![]Prism {
     return out;
 }
 
+fn ftin(a: Allocator, x: f64) []const u8 {
+    return units.fmtFtIn(a, x) catch "?";
+}
+
 fn fmtNum(a: Allocator, x: f64) []const u8 {
     var b: [40]u8 = undefined;
     return a.dupe(u8, json.fmtNumber(&b, x)) catch "?";
@@ -260,11 +264,7 @@ fn lengthOrUntil(ctx: *Ctx, run: []const u8, hint: []const u8, note: *[]const u8
         .object => if (uv.?.get("ref")) |r| (r.str() orelse "ref") else "ref",
         else => "ref",
     };
-    var lb: std.ArrayList(u8) = .empty;
-    try lb.appendSlice(a, " L=");
-    try units.appendFtIn(&lb, a, len);
-    try lb.print(a, " (until {s})", .{ref_txt});
-    note.* = lb.items;
+    note.* = try std.fmt.allocPrint(a, " (until {s})", .{ref_txt});
     return len;
 }
 
@@ -376,13 +376,13 @@ fn buildLumber(ctx: *Ctx) BuildError!?Built {
         .ply_lines = ply_lines.items,
     };
     var info: std.ArrayList(u8) = .empty;
+    try info.appendSlice(a, "lumber ");
     if (plies_i.? > 1) try info.print(a, "({d}) ", .{plies_i.?});
-    try info.print(a, "{s}", .{size.?});
-    if (!is_sawn) try info.print(a, " {s}", .{product.?});
-    if (treated) try info.appendSlice(a, " PT");
-    if (blocking) try info.appendSlice(a, " blocking");
-    try info.print(a, " {s}", .{info_run});
-    if (until_note.len > 0) try info.appendSlice(a, until_note);
+    if (std.mem.eql(u8, run.?, "z")) {
+        try info.print(a, "{s}{s} {s} run z", .{ size.?, if (treated) " PT" else "", orient.? });
+    } else {
+        try info.print(a, "{s} {s}{s} {s} run {s} L={s}{s}", .{ size.?, run.?, if (treated) " PT" else "", face.?, run.?, ftin(a, length), until_note });
+    }
     return .{
         .prisms = try onePrism(a, prism),
         .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h },
@@ -415,7 +415,7 @@ fn buildPanel(ctx: *Ctx) BuildError!?Built {
     return .{
         .prisms = try onePrism(a, prism),
         .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h },
-        .info = try std.fmt.allocPrint(a, "{s} {s}\" thk x {s}{s}", .{ material.?, fmtNum(a, thickness.?), fmtNum(a, length.?), until_note }),
+        .info = try std.fmt.allocPrint(a, "panel {s} {s} x {s} run {s}{s}", .{ material.?, ftin(a, thickness.?), ftin(a, length.?), run.?, until_note }),
     };
 }
 
@@ -541,7 +541,7 @@ fn buildCmu(ctx: *Ctx) BuildError!?Built {
         .zones = zones.items,
         .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = total_h },
         .host = .{ .outline = outline, .cover = cov.?.cover, .part_cover = cov.?.parts },
-        .info = try std.fmt.allocPrint(a, "{s}\" x {d} courses ({d} bond beam)", .{ fmtNum(a, nom), n, nbb }),
+        .info = try std.fmt.allocPrint(a, "cmu_wall {s}\" x {d} courses{s}", .{ fmtNum(a, nom), n, if (nbb > 0) try std.fmt.allocPrint(a, " ({d} bond beam)", .{nbb}) else "" }),
     };
 }
 
@@ -597,7 +597,7 @@ fn buildConcrete(ctx: *Ctx) BuildError!?Built {
             .zones = zones,
             .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h },
             .host = .{ .outline = loop, .cover = cov.?.cover, .part_cover = cov.?.parts },
-            .info = try std.fmt.allocPrint(a, "{s} {s} x {s}", .{ sh, fmtNum(a, w), fmtNum(a, h) }),
+            .info = try std.fmt.allocPrint(a, "concrete {s} {s} x {s}", .{ sh, ftin(a, w), ftin(a, h) }),
         };
     }
     if (std.mem.eql(u8, sh, "polygon")) {
@@ -619,7 +619,7 @@ fn buildConcrete(ctx: *Ctx) BuildError!?Built {
             .box = bx,
             .points_mode = true,
             .host = .{ .outline = loop, .cover = cov.?.cover, .part_cover = cov.?.parts },
-            .info = try std.fmt.allocPrint(a, "polygon {d} pts", .{clean.len}),
+            .info = "concrete polygon",
         };
     }
     // slab_edge
@@ -716,7 +716,7 @@ fn buildConcrete(ctx: *Ctx) BuildError!?Built {
         .zones = zones,
         .box = geom.loopBox(loop),
         .host = .{ .outline = loop, .cover = cov.?.cover, .part_cover = cov.?.parts },
-        .info = try std.fmt.allocPrint(a, "slab_edge {s}\" slab, {s}x{s} turndown", .{ fmtNum(a, st.?), fmtNum(a, fw.?), fmtNum(a, fd.?) }),
+        .info = try std.fmt.allocPrint(a, "concrete slab_edge {s} slab, ftg {s} x {s}{s}", .{ ftin(a, st.?), ftin(a, fw.?), ftin(a, fd.?), if (has_recess) try std.fmt.allocPrint(a, ", recess {s} x {s}", .{ ftin(a, rw), ftin(a, rd) }) else "" }),
     };
     if (std.mem.eql(u8, exterior.?, "right")) {
         built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
@@ -743,12 +743,24 @@ pub fn rebarDiameter(size: []const u8) ?f64 {
     };
 }
 
+fn vsOf(a: Allocator, pts: []const Pt) Allocator.Error![]V2 {
+    const out = try a.alloc(V2, pts.len);
+    for (pts, 0..) |q, i| out[i] = q.v();
+    return out;
+}
+
+fn pathLen(vs: []const V2) f64 {
+    var t: f64 = 0;
+    for (vs[0 .. vs.len - 1], 0..) |q, i| t += q.dist(vs[i + 1]);
+    return t;
+}
+
 fn buildRebar(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
     const size = p.str("size", "#4");
     const mode = p.choice("mode", "along_z", &.{ "along_z", "path" });
-    _ = p.str("spacing_note", "");
+    const spacing_note = p.str("spacing_note", "") orelse "";
     if (!p.ok) return null;
     const d = rebarDiameter(size.?) orelse {
         p.fail("size", "bar size '{s}' is not recognised. Use #3 (.375), #4 (.5), #5 (.625), #6 (.75), #7 (.875) or #8 (1.0)", .{size.?});
@@ -762,10 +774,12 @@ fn buildRebar(ctx: *Ctx) BuildError!?Built {
             .prisms = try onePrism(a, prism),
             .box = .{ .x0 = -r, .y0 = -r, .x1 = r, .y1 = r },
             .bar_d = d,
-            .info = try std.fmt.allocPrint(a, "{s} along z", .{size.?}),
+            .info = try std.fmt.allocPrint(a, "rebar {s} along z", .{size.?}),
         };
         if (p.raw("place")) |pl| {
             built.centers = (try placeRebar(ctx, pl, d)) orelse return null;
+            const face = if (pl.get("face")) |f| (f.str() orelse "bottom") else "bottom";
+            built.info = try std.fmt.allocPrint(a, "rebar ({d}) {s} along z @ {s} face", .{ built.centers.len, size.?, face });
         }
         return built;
     }
@@ -798,7 +812,7 @@ fn buildRebar(ctx: *Ctx) BuildError!?Built {
         .nat_z = d,
         .points_mode = true,
         .bar_d = d,
-        .info = try std.fmt.allocPrint(a, "{s} path, {d} pts", .{ size.?, clean.len }),
+        .info = try std.fmt.allocPrint(a, "rebar {s} path L={s}{s}", .{ size.?, ftin(a, pathLen(vs)), if (spacing_note.len > 0) try std.fmt.allocPrint(a, " ({s})", .{spacing_note}) else "" }),
     };
 }
 
@@ -953,7 +967,7 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
         .anchors = try a.dupe(model.NamedAnchor, &.{.{ .name = "top_of_concrete", .p = V2.init(0, 0) }}),
         .box = bx,
         .nat_z = d,
-        .info = try std.fmt.allocPrint(a, "{s}\" dia {s}-bolt, {s}\" embed", .{ fmtNum(a, d), h, fmtNum(a, embed) }),
+        .info = try std.fmt.allocPrint(a, "anchor_bolt {s}\" dia, embed {s}, proj {s}, {s} hook", .{ fmtNum(a, d), ftin(a, embed), ftin(a, proj), h }),
     };
 }
 
@@ -1019,9 +1033,12 @@ fn buildConnector(ctx: *Ctx) BuildError!?Built {
         .box = geom.loopBox(rib),
         .nat_z = if (edge) width.? else thickness,
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "{s} {s}ga {s}", .{
-            if (model_name != null and model_name.?.len > 0) model_name.? else "strap",
-            fmtNum(a, gauge_n.?),
+        .info = try std.fmt.allocPrint(a, "connector {s}{s}{s}{d} ga x {s} lay {s}", .{
+            if (model_name != null and model_name.?.len > 0) model_name.? else "",
+            if (model_name != null and model_name.?.len > 0) " " else "",
+            if (hw) |h| try std.fmt.allocPrint(a, "{s} ", .{h.kind}) else "",
+            @as(i64, @intFromFloat(@round(gauge_n.?))),
+            ftin(a, width.?),
             lay.?,
         }),
     };
@@ -1150,7 +1167,7 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
         .zones = zones.items,
         .box = box,
         .nat_z = tsz.t,
-        .info = try std.fmt.allocPrint(a, "{s} pitch, {s}/{s} chords, {s} heel, {s}\" overhang", .{ if (pitch_v == .string) pitch_v.string else "?", top.?, bot.?, heel.?, fmtNum(a, ov.?) }),
+        .info = try std.fmt.allocPrint(a, "truss {s}:12 {s} heel, {s}+{s} chords, ovh {s}", .{ fmtNum(a, @tan(theta) * 12.0), heel.?, top.?, bot.?, ftin(a, ov.?) }),
     };
     if (std.mem.eql(u8, exterior.?, "right")) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
     return built;
@@ -1203,7 +1220,7 @@ fn buildMembrane(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(rib),
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "{s} {s}\" thk, {d} pts", .{ material.?, fmtNum(a, t), clean.len }),
+        .info = try std.fmt.allocPrint(a, "membrane {s} {s} thick L={s}", .{ material.?, ftin(a, t), ftin(a, pathLen(try vsOf(a, clean))) }),
     };
 }
 
@@ -1233,7 +1250,7 @@ fn buildFill(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(loop),
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "{s} fill, {d} pts", .{ material.?, clean.len }),
+        .info = try std.fmt.allocPrint(a, "fill {s}", .{material.?}),
     };
 }
 
@@ -1274,7 +1291,7 @@ fn buildInsulation(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = bx,
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "{s} {s} x {s}", .{ form.?, fmtNum(a, bx.width()), fmtNum(a, bx.height()) }),
+        .info = try std.fmt.allocPrint(a, "insulation {s}", .{form.?}),
     };
 }
 
@@ -1359,7 +1376,7 @@ fn buildSolid(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = bx,
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "{s} {s} x {s}", .{ material.?, fmtNum(a, bx.width()), fmtNum(a, bx.height()) }),
+        .info = try std.fmt.allocPrint(a, "solid {s} (escape hatch)", .{material.?}),
     };
 }
 

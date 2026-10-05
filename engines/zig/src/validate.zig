@@ -99,7 +99,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
     // infos
     for (scene.comps) |c| {
         if (c.state == .ok and std.mem.eql(u8, c.ty.name, "solid")) {
-            diags.add(.info, "I_SOLID_USED", c.id, null, "component '{s}' uses the 'solid' escape hatch (material {s}); prefer a typed component when one fits so reviewers can read its intent", .{ c.id, if (c.world.len > 0) c.world[0].material else "?" });
+            diags.add(.info, "I_SOLID_USED", c.id, null, "{s} uses the `solid` escape hatch (material {s}); a reviewer should confirm no typed component fits.", .{ c.id, if (c.world.len > 0) c.world[0].material else "?" });
         }
     }
     try unverifiedCount(a, doc, diags);
@@ -314,17 +314,23 @@ fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void 
 }
 
 fn unverifiedCount(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error!void {
-    _ = a;
     var n: usize = 0;
+    var ids: std.ArrayList([]const u8) = .empty;
     if (doc.get("views")) |vs| if (vs.arr()) |va| for (va) |v| {
+        const vid = if (v.get("id")) |x| (x.str() orelse "?") else "?";
         if (v.get("annotations")) |an| if (an.arr()) |aa| for (aa) |x| {
+            var mine = false;
             if (x.get("cite")) |cv| if (cv.arr()) |ca| for (ca) |c| {
                 const st = if (c.get("status")) |s| (s.str() orelse "suggested") else "suggested";
-                if (!std.mem.eql(u8, st, "verified")) n += 1;
+                if (!std.mem.eql(u8, st, "verified")) {
+                    n += 1;
+                    mine = true;
+                }
             };
+            if (mine) try ids.append(a, try std.fmt.allocPrint(a, "{s}/{s}", .{ vid, if (x.get("id")) |i| (i.str() orelse "?") else "?" }));
         };
     };
-    if (n > 0) diags.add(.info, "I_UNVERIFIED_CITE", null, null, "{d} code citation(s) await designer verification; they print with a trailing * and a footnote until verified", .{n});
+    if (n > 0) diags.add(.info, "I_UNVERIFIED_CITE", null, null, "{d} citation(s) await designer verification (notes: {s}). Citations print with a trailing * until verified.", .{ n, scene_mod.joinIds(a, ids.items) });
 }
 
 // ---- near miss (SPEC 17) ---------------------------------------------------------------------------------------
