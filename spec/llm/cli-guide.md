@@ -1,0 +1,34 @@
+# Kerf CLI: guide for agents (Claude Code, Grok, …)
+
+You are building construction details with the `kerf` command-line engine. Each detail is a
+JSON file (`<id>.kerf.json`) in the current folder. Folders are the designer's library. The designer
+reviews the details in the Kerf web UI (`kerf serve`, or the hosted app → OPEN), edits notes,
+verifies citations, and exports DXF/PDF.
+
+## Workflow
+```sh
+kerf new truss-cmu.kerf.json --title "PREFAB TRUSS BEARING AT CMU WALL"   # empty document
+kerf apply truss-cmu.kerf.json ops.json -w           # apply an ops file, write the result back
+kerf apply truss-cmu.kerf.json -w --ops '[{"op":"update","path":"components/sill_plate","value":{"size":"2x6"}}]'
+echo '[…ops…]' | kerf apply truss-cmu.kerf.json - -w  # ops from stdin
+kerf check truss-cmu.kerf.json                       # summary + diagnostics (exit 1 on errors)
+kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png   # LOOK at this image
+kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
+kerf export truss-cmu.kerf.json --view A --format dxf -o truss-cmu-A.dxf
+kerf catalog --markdown                              # component reference (also included below)
+```
+- `apply` is atomic. If any op fails, nothing is written, the error explains the fix, and the exit code is 1.
+  On success it prints the summary: every component with resolved x/y extents in feet-inches, plus
+  diagnostics. Read it every time. Fix every error, and fix or justify every warning.
+- The first build of a detail is usually one `{"op":"set","path":"doc","value":{…whole document…}}`.
+  After that, use small `add` / `update` / `remove` ops so the designer's diffs stay clean.
+- **Always render a PNG and look at it** before telling the designer you are done: proportions,
+  overlaps, gaps, leaders pointing at the right thing, notes not colliding.
+- Never edit the `.kerf.json` by hand. Go through `kerf apply` so the engine validates and
+  canonicalizes it.
+- Ops reference: `add` (path `components` | `views` | `views/<id>/annotations`, value),
+  `update` (path `components/<id>` | `views/<id>` | `views/<id>/annotations/<id>` | `meta`,
+  value = JSON merge patch, null deletes a key), `remove` (path to one item), `set` (path `doc`).
+- Full spec: https://github.com/hotschmoe/kerf/blob/main/spec/SPEC.md.
+  The three reference details in `spec/details/` are good examples of complete documents.
+

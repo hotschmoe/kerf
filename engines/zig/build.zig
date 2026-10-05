@@ -28,6 +28,8 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "kerf", .module = kerf }},
         }),
     });
+    exe.root_module.addAnonymousImport("kerf_cli_guide", .{ .root_source_file = b.path("../../spec/llm/cli-guide.md") });
+    exe.root_module.addAnonymousImport("kerf_system_md", .{ .root_source_file = b.path("../../spec/llm/system.md") });
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     if (b.args) |args| run.addArgs(args);
