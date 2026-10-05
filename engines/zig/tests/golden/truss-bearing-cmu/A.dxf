@@ -325,7 +325,7 @@ S-DETL-BYND
 6
 CONTINUOUS
 370
-18
+25
 0
 LAYER
 5
@@ -405,7 +405,7 @@ S-DETL-BRKL
 6
 CONTINUOUS
 370
-18
+25
 0
 LAYER
 5
@@ -2983,7 +2983,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3015,7 +3015,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3047,7 +3047,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3075,7 +3075,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3111,7 +3111,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3143,7 +3143,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3175,7 +3175,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3203,7 +3203,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3239,7 +3239,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3271,7 +3271,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3303,7 +3303,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3331,7 +3331,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3367,7 +3367,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3395,7 +3395,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3423,7 +3423,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3451,7 +3451,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3479,7 +3479,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3507,7 +3507,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3535,7 +3535,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3563,7 +3563,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3591,7 +3591,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3619,7 +3619,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3647,7 +3647,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3675,7 +3675,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -3703,7 +3703,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -4481,7 +4481,7 @@ AcDbEntity
 8
 S-DETL-BRKL
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -4525,7 +4525,7 @@ AcDbEntity
 8
 S-DETL-BRKL
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -4569,7 +4569,7 @@ AcDbEntity
 8
 S-DETL-BRKL
 370
-18
+25
 100
 AcDbPolyline
 90

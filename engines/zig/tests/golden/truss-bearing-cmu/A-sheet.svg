@@ -22,43 +22,43 @@
 </g>
 <g id="S-DETL-BYND" inkscape:groupmode="layer" inkscape:label="S-DETL-BYND">
 <g data-src="cmu">
-<path d="M503.5 476L503.5 444L493.5 444" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M554.5 444L544.5 444L544.5 476" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M544.5 444L503.5 444" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M554.5 441L544.5 441L503.5 441L493.5 441" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M503.5 441L503.5 380L493.5 380" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M554.5 380L544.5 380L544.5 441" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M544.5 380L503.5 380" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M554.5 377L544.5 377L503.5 377L493.5 377" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M503.5 377L503.5 316L493.5 316" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M554.5 316L544.5 316L544.5 377" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M544.5 316L503.5 316" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M554.5 313L544.5 313L503.5 313L493.5 313" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M503.5 313L503.5 252" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M544.5 252L544.5 313" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M503.5 476L503.5 444L493.5 444" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M554.5 444L544.5 444L544.5 476" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M544.5 444L503.5 444" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M554.5 441L544.5 441L503.5 441L493.5 441" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M503.5 441L503.5 380L493.5 380" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M554.5 380L544.5 380L544.5 441" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M544.5 380L503.5 380" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M554.5 377L544.5 377L503.5 377L493.5 377" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M503.5 377L503.5 316L493.5 316" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M554.5 316L544.5 316L544.5 377" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M544.5 316L503.5 316" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M554.5 313L544.5 313L503.5 313L493.5 313" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M503.5 313L503.5 252" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M544.5 252L544.5 313" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="sill_plate">
-<path d="M495 252L553 240" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M553 252L495 240" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M495 252L553 240" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M553 252L495 240" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="bird_block">
-<path d="M495 240L507 196" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M495 240L507 196" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="subfascia">
-<path d="M339 274.485L351 230.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M351 274.485L339 230.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M339 274.485L351 230.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M351 274.485L339 230.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="fascia">
-<path d="M333 274.485L339 230.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M333 274.485L339 230.485" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="anchor_bolt">
-<path d="M528.5 235.375L519.5 235.375" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M528.5 235.375L519.5 235.375" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="truss#0">
-<path d="M553 240L554.5 240" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M733.5 212L507 212" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M507 208L733.5 132.5" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M351 260L495 212" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M553 240L554.5 240" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M733.5 212L507 212" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M507 208L733.5 132.5" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M351 260L495 212" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 </g>
 <g id="S-DETL-CUT" inkscape:groupmode="layer" inkscape:label="S-DETL-CUT">
@@ -132,9 +132,9 @@
 </g>
 <g id="S-DETL-BRKL" inkscape:groupmode="layer" inkscape:label="S-DETL-BRKL">
 <g data-src="crop">
-<path d="M733.5 250L733.5 247.6L736.7 244.24L730.3 239.76L733.5 236.4L733.5 234" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M733.5 108.985L733.5 106.632L736.638 103.337L730.362 98.944L733.5 95.649L733.5 93.296" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M487.5 476L500 476L514.4 464L533.6 488L548 476L560.5 476" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M733.5 250L733.5 247.6L736.7 244.24L730.3 239.76L733.5 236.4L733.5 234" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M733.5 108.985L733.5 106.632L736.638 103.337L730.362 98.944L733.5 95.649L733.5 93.296" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M487.5 476L500 476L514.4 464L533.6 488L548 476L560.5 476" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 </g>
 <g id="S-ANNO-NOTE" inkscape:groupmode="layer" inkscape:label="S-ANNO-NOTE">

@@ -305,10 +305,15 @@ fn gather(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         if (@import("compile.zig").isOmitted(spec.omit, c.id)) continue;
         for (c.world) |p| {
             if (p.kind == .ghost) continue;
-            const fill_mat = @import("section.zig").isFillMaterial(p.material);
-            if (fill_mat and !spec.cutaway) continue;
-            const z0 = p.z0;
-            var z1 = p.z1;
+            const fill_mat0 = @import("section.zig").isFillMaterial(p.material);
+            if (fill_mat0 and !spec.cutaway) continue;
+            var segs: []const @import("mesh.zig").ZSeg = &.{.{ .z0 = p.z0, .z1 = p.z1, .mortar = false }};
+            if (p.cmu_unit and !std.mem.eql(u8, p.material, "grout")) segs = try @import("mesh.zig").cmuSplit(a, p);
+            for (segs) |sg| {
+            const fill_mat = fill_mat0;
+            const mat_name: []const u8 = if (sg.mortar) "mortar" else p.material;
+            const z0 = sg.z0;
+            var z1 = sg.z1;
             var cap = false;
             if (spec.cutaway) {
                 if (z0 >= spec.cut_z) continue;
@@ -338,11 +343,12 @@ fn gather(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
                     .z1 = z1,
                     .cap_cut = cap,
                     .pen = if (p.kind == .ghost) p.pen else null,
-                    .material = p.material,
+                    .material = mat_name,
                     .embedded = p.embedded,
                     .is_fill = fill_mat,
                     .outline = p.outline,
                 });
+            }
             }
         }
     }
@@ -446,7 +452,7 @@ pub const Result = struct {
 };
 
 /// Build the iso view. `iso` is initialised here and stays alive for annotation landing/projection.
-pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.ViewSpec, style: *const style_mod.Style) Allocator.Error!Result {
+pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.ViewSpec, style: *const style_mod.Style, scale_override: f64) Allocator.Error!Result {
     const a = iso.a;
     const q = quadrant(spec.from);
     iso.sx = q[0];
@@ -468,7 +474,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
     if (sb.isEmpty()) return .{ .items = &.{}, .scale = 12, .crop = .{ .x0 = 0, .y0 = 0, .x1 = 12, .y1 = 12 } };
     iso.eps = 1e-4 * @max(@max(sb.width(), sb.height()), 1.0);
     try iso.buildGrid();
-    const s: f64 = if (spec.scale > 0) spec.scale else @max(@ceil(@max(sb.width(), sb.height()) / 5.5 * 2.0) / 2.0, 0.5);
+    const s: f64 = if (scale_override > 0) scale_override else if (spec.scale > 0) spec.scale else @max(@ceil(@max(sb.width(), sb.height()) / 5.5 * 2.0) / 2.0, 0.5);
     const sx = iso.sx;
     const sz = iso.sz;
 

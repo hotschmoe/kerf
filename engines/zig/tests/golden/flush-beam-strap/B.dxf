@@ -305,7 +305,7 @@ S-DETL-BYND
 6
 CONTINUOUS
 370
-18
+25
 0
 LAYER
 5
@@ -681,7 +681,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -713,7 +713,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -741,7 +741,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -769,7 +769,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -801,7 +801,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -833,7 +833,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -861,7 +861,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -893,7 +893,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -921,7 +921,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -953,7 +953,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -985,7 +985,7 @@ AcDbEntity
 8
 S-DETL-BYND
 370
-18
+25
 100
 AcDbPolyline
 90
@@ -2367,7 +2367,7 @@ AcDbText
 40
 0.84375
 1
-SCALE: 1:9
+SCALE: NTS
 7
 KERF
 100

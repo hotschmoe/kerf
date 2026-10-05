@@ -8,10 +8,10 @@
 </g>
 <g id="S-DETL-BYND" inkscape:groupmode="layer" inkscape:label="S-DETL-BYND">
 <g data-src="jack_studs#0">
-<path d="M546.571 429.75L546.571 334.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M546.571 429.75L546.571 334.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 <g data-src="king_studs#0">
-<path d="M522.571 284.75L522.571 429.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M522.571 284.75L522.571 429.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 </g>
 <g id="S-DETL-CUT" inkscape:groupmode="layer" inkscape:label="S-DETL-CUT">
@@ -62,10 +62,10 @@
 </g>
 <g id="S-DETL-BRKL" inkscape:groupmode="layer" inkscape:label="S-DETL-BRKL">
 <g data-src="crop">
-<path d="M334.571 290.75L334.571 285.35L341.771 277.79L327.371 267.71L334.571 260.15L334.571 254.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M750.571 340.75L750.571 321.75L762.571 307.35L738.571 288.15L750.571 273.75L750.571 254.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M378.571 429.75L382.171 429.75L387.211 424.95L393.931 434.55L398.971 429.75L402.571 429.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
-<path d="M504.571 429.75L513.571 429.75L526.171 417.75L542.971 441.75L555.571 429.75L564.571 429.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>
+<path d="M334.571 290.75L334.571 285.35L341.771 277.79L327.371 267.71L334.571 260.15L334.571 254.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M750.571 340.75L750.571 321.75L762.571 307.35L738.571 288.15L750.571 273.75L750.571 254.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M378.571 429.75L382.171 429.75L387.211 424.95L393.931 434.55L398.971 429.75L402.571 429.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
+<path d="M504.571 429.75L513.571 429.75L526.171 417.75L542.971 441.75L555.571 429.75L564.571 429.75" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
 </g>
 </g>
 <g id="S-ANNO-NOTE" inkscape:groupmode="layer" inkscape:label="S-ANNO-NOTE">

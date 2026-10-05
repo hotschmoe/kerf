@@ -7,6 +7,8 @@ K=zig-out/bin/kerf
 T=../../tools
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 fail=0
+cmp -s src/data/kerf-standard.kerfstyle.json ../../spec/styles/kerf-standard.kerfstyle.json || { echo 'STALE src/data style: copy spec/styles/kerf-standard.kerfstyle.json'; fail=1; }
+cmp -s src/data/kerf-simplex.json ../../spec/fonts/kerf-simplex.json || { echo 'STALE src/data font: copy spec/fonts/kerf-simplex.json'; fail=1; }
 for doc in ../../spec/details/*.kerf.json; do
   name=$(basename "$doc" .kerf.json)
   g=tests/golden/$name

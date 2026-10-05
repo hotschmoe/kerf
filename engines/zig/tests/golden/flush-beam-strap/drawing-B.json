@@ -1,6 +1,6 @@
 {"kerf_drawing":"0.1","doc":"flush-beam-strap","view":"B","kind":"iso","scale":9,"bounds":[-42.2085,67.6288,43.7443,112.875],
-"pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.18,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.35,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.18,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
-"layers":[{"name":"S-DETL-BYND","lineweight_mm":0.18},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
+"pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.35,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
+"layers":[{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
 {"t":"path","layer":"S-DETL-BYND","pen":"beyond","src":"beam","closed":false,"pts":[[20.7846,75.875],[20.7846,85.125],[-2.5981,98.625]]},
 {"t":"path","layer":"S-DETL-BYND","pen":"beyond","src":"beam","closed":false,"pts":[[23.8157,86.875],[20.7846,85.125]]},
@@ -55,6 +55,6 @@
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:B","s":"S-502","x":-21.4362,"y":68.0563,"h":0.6328,"rot":0,"align":"center","valign":"middle"},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","s":"FLUSH BEAM AT TOP PLATE - ISO","x":-17.2737,"y":69.6425,"h":1.4063,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","closed":false,"pts":[[-17.2737,69.0125],[18.6861,69.0125]]},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:B","s":"SCALE: 1:9","x":-17.2737,"y":67.6288,"h":0.8438,"rot":0,"align":"left","valign":"baseline"}
+{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:B","s":"SCALE: NTS","x":-17.2737,"y":67.6288,"h":0.8438,"rot":0,"align":"left","valign":"baseline"}
 ],
 "diagnostics":[]}

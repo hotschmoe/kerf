@@ -255,6 +255,25 @@ fn hexColor(st: *const style_mod.Style, material: []const u8) []const u8 {
     return "#A0A0A0";
 }
 
+pub const ZSeg = struct { z0: f64, z1: f64, mortar: bool };
+
+/// Split a CMU shell prism along z into 15 5/8" units with 3/8" head joints (running bond: odd
+/// courses start 8" earlier). Joints are returned as `mortar` segments.
+pub fn cmuSplit(a: Allocator, pr: model.Prism) Allocator.Error![]const ZSeg {
+    var out: std.ArrayList(ZSeg) = .empty;
+    const offset: f64 = if (pr.course % 2 == 0) 8.0 else 0.0;
+    var z = pr.z0 - offset;
+    while (z < pr.z1) : (z += cmu_unit_len + cmu_joint) {
+        const a0 = @max(z, pr.z0);
+        const a1 = @min(z + cmu_unit_len, pr.z1);
+        if (a1 - a0 > 1e-6) try out.append(a, .{ .z0 = a0, .z1 = a1, .mortar = false });
+        const j0 = @max(z + cmu_unit_len, pr.z0);
+        const j1 = @min(z + cmu_unit_len + cmu_joint, pr.z1);
+        if (j1 - j0 > 1e-6) try out.append(a, .{ .z0 = j0, .z1 = j1, .mortar = true });
+    }
+    return out.items;
+}
+
 const cmu_unit_len = 15.625;
 const cmu_joint = 0.375;
 

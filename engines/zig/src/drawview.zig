@@ -111,7 +111,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         var tcrop = spec.crop;
         const ab = annot.itemsBox(font, all.items);
         if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
-        const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
+        const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
         detail = annot.itemsBox(font, all.items);
         detail.addBox(spec.crop);
         _ = try annot.titleItems(&env, info, tcrop, &all);
@@ -121,29 +121,43 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         bounds.addBox(spec.crop);
         _ = &base_items;
     } else {
-        const iso = try a.create(@import("iso.zig").Iso);
-        iso.* = .{ .a = a };
-        const res = try @import("iso.zig").build(iso, scene, spec, st);
-        scale = res.scale;
-        var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = res.crop, .diags = diags, .landing = .{ .iso = iso } };
-        const base_items = try a.dupe(drawing.Item, res.items);
-        const ann = try annot.annotate(&env, base_items);
-        unverified = env.unverified;
-        var all: std.ArrayList(drawing.Item) = .empty;
-        try all.appendSlice(a, base_items);
-        try all.appendSlice(a, ann);
-        var tcrop = res.crop;
-        const ab = annot.itemsBox(font, all.items);
-        if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
-        const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
-        detail = annot.itemsBox(font, all.items);
-        detail.addBox(res.crop);
-        _ = try annot.titleItems(&env, info, tcrop, &all);
-        if (env.unknown_glyph) diags.add(.info, "I_GLYPH", view_id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
-        items = all.items;
-        bounds = annot.itemsBox(font, items);
-        bounds.addBox(res.crop);
-        spec_crop_out = res.crop;
+        var trial: usize = 0;
+        var fitted: f64 = 0;
+        while (true) : (trial += 1) {
+            var tdiags = model.Diags.init(a);
+            const iso = try a.create(@import("iso.zig").Iso);
+            iso.* = .{ .a = a };
+            const res = try @import("iso.zig").build(iso, scene, spec, st, if (trial == 0) 0 else fitted + 0.5 * @as(f64, @floatFromInt(trial)));
+            if (trial == 0) fitted = res.scale;
+            scale = res.scale;
+            var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = res.crop, .diags = &tdiags, .landing = .{ .iso = iso } };
+            const base_items = try a.dupe(drawing.Item, res.items);
+            const ann = try annot.annotate(&env, base_items);
+            unverified = env.unverified;
+            var all: std.ArrayList(drawing.Item) = .empty;
+            try all.appendSlice(a, base_items);
+            try all.appendSlice(a, ann);
+            var tcrop = res.crop;
+            const ab = annot.itemsBox(font, all.items);
+            if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
+            const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
+            detail = annot.itemsBox(font, all.items);
+            detail.addBox(res.crop);
+            _ = try annot.titleItems(&env, info, tcrop, &all);
+            if (env.unknown_glyph) tdiags.add(.info, "I_GLYPH", view_id, null, "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)", .{});
+            items = all.items;
+            bounds = annot.itemsBox(font, items);
+            bounds.addBox(res.crop);
+            spec_crop_out = res.crop;
+            // NTS views grow their (internal) fit factor until notes and title fit the sheet frame
+            const pw = (bounds.x1 - bounds.x0) / scale;
+            const ph = (bounds.y1 - bounds.y0) / scale;
+            const fits = pw <= st.sheet_w_in - 2.0 * st.margin_in + 1e-6 and ph <= st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in + 1e-6;
+            if (fits or spec.scale != 0 or trial >= 16) {
+                try diags.list.appendSlice(a, tdiags.list.items);
+                break;
+            }
+        }
     }
     // fit check against the sheet frame
     {
@@ -168,7 +182,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         .style = st,
         .number = spec.number,
         .title = spec.title,
-        .scale_label = try units.scaleLabel(a, spec.scale_text, scale),
+        .scale_label = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale),
         .sheet_no = metaString(doc, "sheet"),
         .date = metaString(doc, "date"),
         .code_basis = try codeBasis(a, doc),
