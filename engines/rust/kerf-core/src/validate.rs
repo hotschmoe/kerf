@@ -120,6 +120,9 @@ pub fn validate(doc: &Value, model: &Model, style: &Style, diags: &mut Vec<Diag>
         }
     }
 
+    // --- W_NEAR_MISS
+    near_miss(model, &prs, diags);
+
     // --- W_FLOATING
     for c in &model.comps {
         if c.failed || !c.visible || model.comps.len() < 2 {
@@ -386,5 +389,120 @@ pub fn ref_ok(model: &Model, s: &str) -> bool {
     match parse_ref(s) {
         Ok(r) => lk.point(&r).is_ok(),
         Err(_) => false,
+    }
+}
+
+fn near_miss(model: &Model, prs: &[Pr], diags: &mut Vec<Diag>) {
+    // axis-aligned rectangular prisms of structural (non-fill, non-thin-layer) components
+    let rects: Vec<&Pr> = prs
+        .iter()
+        .filter(|p| {
+            !p.p.embedded
+                && p.p.only != Only::Solid3d
+                && !matches!(p.comp.ctype.as_str(), "fill" | "membrane" | "connector" | "rebar" | "anchor_bolt" | "insulation")
+                && (loop_area(&p.p.region.outer).abs() - p.bbox.w() * p.bbox.h()).abs() < 1e-6 * (1.0 + p.bbox.w() * p.bbox.h())
+                && p.p.region.holes.is_empty()
+        })
+        .collect();
+    let mut reported: Vec<(usize, usize)> = vec![];
+    const MIN: f64 = 1.0 / 32.0;
+    for i in 0..rects.len() {
+        for j in 0..rects.len() {
+            if i == j {
+                continue;
+            }
+            let (a, b) = (rects[i], rects[j]);
+            if a.comp.idx >= b.comp.idx || z_overlap(a.p, b.p) <= 1e-6 {
+                continue;
+            }
+            let (ba, bb) = (&a.bbox, &b.bbox);
+            // horizontal gap (facing vertical edges) when y ranges overlap
+            let y_ov = ba.y1.min(bb.y1) - ba.y0.max(bb.y0);
+            let x_ov = ba.x1.min(bb.x1) - ba.x0.max(bb.x0);
+            let mut hit: Option<(bool, f64, Rect)> = None; // (horizontal gap, size, gap rect)
+            if y_ov > 1e-4 {
+                let gap = (bb.x0 - ba.x1).max(ba.x0 - bb.x1);
+                if (MIN..=3.0).contains(&gap) {
+                    let (x0, x1) = if bb.x0 >= ba.x1 { (ba.x1, bb.x0) } else { (bb.x1, ba.x0) };
+                    hit = Some((true, gap, Rect::new(x0, ba.y0.max(bb.y0), x1, ba.y1.min(bb.y1))));
+                }
+            }
+            if hit.is_none() && x_ov > 1e-4 {
+                let gap = (bb.y0 - ba.y1).max(ba.y0 - bb.y1);
+                if (MIN..=3.0).contains(&gap) {
+                    let (y0, y1) = if bb.y0 >= ba.y1 { (ba.y1, bb.y0) } else { (bb.y1, ba.y0) };
+                    hit = Some((false, gap, Rect::new(ba.x0.max(bb.x0), y0, ba.x1.min(bb.x1), y1)));
+                }
+            }
+            let Some((horizontal, gap, grect)) = hit else { continue };
+            // separated by a third component in the gap?
+            let blocked = prs.iter().any(|t| {
+                !std::ptr::eq(t.p, a.p) && !std::ptr::eq(t.p, b.p) && t.p.only != Only::Solid3d && !t.p.embedded && z_overlap(t.p, a.p) > 1e-6 && {
+                    let ox = t.bbox.x1.min(grect.x1) - t.bbox.x0.max(grect.x0);
+                    let oy = t.bbox.y1.min(grect.y1) - t.bbox.y0.max(grect.y0);
+                    ox > 1e-6 && oy > 1e-6
+                }
+            });
+            if blocked {
+                continue;
+            }
+            let key = (a.comp.idx, b.comp.idx);
+            if reported.contains(&key) {
+                continue;
+            }
+            reported.push(key);
+            // suggest extending a lumber/panel that runs along the gap axis
+            let axis = if horizontal { "x" } else { "y" };
+            let run_of = |c: &Comp| -> Option<f64> {
+                let v = &c.value;
+                if !matches!(c.ctype.as_str(), "lumber" | "panel") {
+                    return None;
+                }
+                let r = v.get("run").and_then(|r| r.as_str()).unwrap_or(if c.ctype == "panel" { "x" } else { "z" });
+                if r == axis { v.get("length").and_then(|l| l.as_f64()) } else { None }
+            };
+            let (other_edge_a_left, _) = (if horizontal { ba.x1 <= bb.x0 + 1e-9 } else { ba.y1 <= bb.y0 + 1e-9 }, ());
+            // (mover, target): prefer the member that has a length along the gap axis
+            let (mover, target, target_is_b) = if run_of(a.comp).is_some() { (a, b, true) } else if run_of(b.comp).is_some() { (b, a, false) } else { (a, b, true) };
+            let mover_before = other_edge_a_left == target_is_b; // mover lies before the target along the axis
+            let anchor = match (horizontal, mover_before) {
+                (true, true) => "bottom_left",
+                (true, false) => "bottom_right",
+                (false, true) => "bottom_left",
+                (false, false) => "top_left",
+            };
+            let fix = match run_of(mover.comp) {
+                Some(len) => format!(
+                    "if \"{}\" should reach \"{}\": set length to {} (now {}) or use \"until\": \"{}@{}\"; if the gap is intended, move one so the gap is 0 or more than 3\"",
+                    mover.comp.id,
+                    target.comp.id,
+                    fmt_ftin(len + gap),
+                    fmt_ftin(len),
+                    target.comp.id,
+                    anchor
+                ),
+                None => format!(
+                    "if the members should touch, move \"{}\" by {} or resize it; if the gap is intended, make it 0 or more than 3\"",
+                    mover.comp.id,
+                    fmt_ftin(gap)
+                ),
+            };
+            let _ = model;
+            diags.push(
+                Diag::warn(
+                    "W_NEAR_MISS",
+                    format!(
+                        "{} and {} are {} apart ({}) with facing edges {} each other: a gap this small is usually an arithmetic slip.",
+                        a.p.src,
+                        b.p.src,
+                        fmt_ftin(gap),
+                        bbox_text(&grect),
+                        if horizontal { "side by side facing" } else { "stacked facing" }
+                    ),
+                )
+                .id(mover.comp.id.clone())
+                .fix(fix),
+            );
+        }
     }
 }

@@ -70,8 +70,11 @@ Functions: `version`, `catalog` (markdown = raw UTF-8), `fmt`, `check`, `apply`,
 - Reference docs: `flush-beam-strap` view A reports `W_VIEW_FIT` (needs ~14.0" x 4.8" of paper at 1 1/2"=1'-0" with notes on both sides; sheet area is 10.25" x 7"): the doc's scale or notes are too big, the engine is right. `truss-bearing-cmu` view B reports `W_NOTE_TARGET n_tie` because `hurricane_tie` has z = -11.2, inside the bird block's z range [-11.25, 11.25], so it is hidden in the iso (doc issue: move the tie to z <= -11.5 or off the block) and `W_VIEW_FIT` borderline for view B (10.70" wide with notes).
 - `truss`: `plate: true` draws a dashed rectangle (0.5..5.5" from the bearing, 0.5" up to just under the top chord lower edge); `heel: raised` adds a 1.5" wide `heel_web` prism. Standard-heel geometry verified against SPEC 5.8/16 (see tests/behavior.rs).
 
+- SPEC 17 (`until`, `W_NEAR_MISS`, hardware catalog) implemented. `until` (lumber and panel, run x/y): length = distance from the placement point to the Ref on the run axis in the growth direction; errors (E_PARAM) for both length+until, center/wrong-axis anchors, a target behind the anchor, rotate/slope, or other types; summary shows `(until <ref>)`; it is a DAG dependency. `W_NEAR_MISS` considers axis-aligned rectangular prisms of structural components (not fill, membrane, connector, rebar, anchor_bolt, insulation, embedded), with positive z overlap and positive overlap on the other axis, gap 1/32"-3"; skipped when ANY other prism (including the same components' other instances/parts) occupies the gap; one warning per component pair. The three reference docs stay at 0 near-miss warnings.
+
 ## REQUESTS
 - spec/styles: `beyond` 0.18 mm reads hairline on members that are the subject of a detail (the beyond truss); REFERENCE-CONTENT 2.1 says 0.25-0.35 mm for members beyond. Suggest `beyond` 0.25 and `break` 0.25.
+- kerf-mcp agent: `kerf-core` public API is `kerf_core::api::call(fn, json)` (+ `load`, `summary_of`); `engines/rust/Cargo.toml` workspace members are yours to extend. I did not touch kerf-mcp or kerf-cli's mcp subcommand.
 - `.gitignore` ignores `engines/rust/dist/`; consumers must run `engines/rust/build-wasm.sh` (about 20 s cold) to get `dist/kerf.wasm`.
 
 ## Measured numbers (aarch64, this box)

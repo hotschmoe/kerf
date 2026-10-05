@@ -84,10 +84,7 @@ pub fn gauge_t(g: i64) -> Option<f64> {
     }
 }
 
-/// model -> (width, gauge, length, kind)
-pub fn hardware(model: &str) -> Option<(f64, i64, f64, &'static str)> {
-    let m = model.to_uppercase();
-    let t: &[(&str, f64, i64, f64, &str)] = &[
+pub const HARDWARE: &[(&str, f64, i64, f64, &str)] = &[
         ("H2.5A", 1.375, 18, 5.5, "hurricane tie"),
         ("H1", 1.375, 18, 5.5, "hurricane tie"),
         ("H10A", 1.5, 18, 8.0, "hurricane tie"),
@@ -130,6 +127,11 @@ pub fn hardware(model: &str) -> Option<(f64, i64, f64, &'static str)> {
         ("HETAL20", 1.25, 16, 20.0, "embedded truss anchor"),
         ("DETAL20", 2.5, 16, 20.0, "embedded truss anchor"),
     ];
+
+/// model -> (width, gauge, length, kind)
+pub fn hardware(model: &str) -> Option<(f64, i64, f64, &'static str)> {
+    let m = model.to_uppercase();
+    let t = HARDWARE;
     t.iter().find(|r| r.0 == m).map(|r| (r.1, r.2, r.3, r.4))
 }
 

@@ -216,3 +216,75 @@ fn wrap_width_is_respected() {
         }
     }
 }
+
+#[test]
+fn until_computes_length() {
+    let d = doc(json!([
+        {"id":"beam","type":"lumber","size":"2x10","orient":"flat","at":{"anchor":"bottom_left","to":[0,100]}},
+        {"id":"floor","type":"lumber","size":"2x4","run":"x","face":"narrow","length":40,"at":{"anchor":"bottom_left","to":[-5,0]}},
+        {"id":"jack","type":"lumber","size":"2x4","run":"y","face":"narrow","at":{"anchor":"top_left","to":"beam@bottom_left"},"until":"floor@top_left"}
+    ]));
+    // beam is 7.25 x ... flat 2x10: depth 9.25 wide, 1.5 high; bottom_left at y=100; floor top at y = 3.5? (2x4 narrow run x: 1.5 high)
+    let r = call("inspect", json!({"doc": d, "query": {"q":"component","id":"jack"}})).unwrap();
+    let bbox = r["bbox"].as_array().unwrap();
+    // jack grows down from beam bottom (y=100) to floor top (y=1.5)
+    assert!((bbox[1].as_f64().unwrap() - 1.5).abs() < 1e-3 && (bbox[3].as_f64().unwrap() - 100.0).abs() < 1e-3, "{:?}", bbox);
+    let s = call("check", json!({"doc": d})).unwrap();
+    assert!(s["summary"].as_str().unwrap().contains("(until floor@top_left)"), "{}", s["summary"]);
+    // both length and until
+    let bad = doc(json!([{"id":"a","type":"lumber","size":"2x4","run":"y","length":10,"until":"@origin","at":{"anchor":"bottom_left","to":[0,0]}}]));
+    let r = call("check", json!({"doc": bad})).unwrap();
+    assert!(r["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "E_PARAM" && x["message"].as_str().unwrap().contains("not both")));
+    // center anchor and wrong side
+    let bad = doc(json!([{"id":"a","type":"lumber","size":"2x4","run":"y","until":"@origin","at":{"anchor":"middle_left","to":[0,10]}}]));
+    assert!(codes(&bad).contains(&"E_PARAM".to_string()));
+    let bad = doc(json!([{"id":"a","type":"lumber","size":"2x4","run":"y","until":"@origin","at":{"anchor":"bottom_left","to":[0,10]}}]));
+    let r = call("check", json!({"doc": bad})).unwrap();
+    assert!(r["diagnostics"][0]["fix"].as_str().unwrap().contains("flip the anchor"));
+    // until creates a DAG dependency: cycle detected
+    let cyc = doc(json!([
+        {"id":"a","type":"lumber","size":"2x4","run":"y","until":"b@top_left","at":{"anchor":"bottom_left","to":[0,0]}},
+        {"id":"b","type":"lumber","size":"2x4","run":"y","length":10,"at":{"anchor":"bottom_left","to":"a@top_right"}}
+    ]));
+    assert!(codes(&cyc).contains(&"E_CYCLE".to_string()));
+}
+
+#[test]
+fn near_miss_warns_with_fix() {
+    // stud stops 3" short of the plate
+    let d = doc(json!([
+        {"id":"plate","type":"lumber","size":"2x4","run":"x","face":"narrow","length":48,"at":{"anchor":"bottom_left","to":[0,90]}},
+        {"id":"stud","type":"lumber","size":"2x4","run":"y","face":"narrow","length":87,"at":{"anchor":"bottom_left","to":[10,0]}}
+    ]));
+    let r = call("check", json!({"doc": d})).unwrap();
+    let w = r["diagnostics"].as_array().unwrap().iter().find(|x| x["code"] == "W_NEAR_MISS").expect("W_NEAR_MISS");
+    let m = w["message"].as_str().unwrap();
+    assert!(m.contains("stud") && m.contains("plate") && m.contains("3\""), "{}", m);
+    assert!(w["fix"].as_str().unwrap().contains("\"until\": \"plate@bottom_left\"") && w["fix"].as_str().unwrap().contains("7'-6\""), "{}", w["fix"]);
+    // touching, far, or separated by a third member: no warning
+    for len in [90.0, 80.0] {
+        let d = doc(json!([
+            {"id":"plate","type":"lumber","size":"2x4","run":"x","face":"narrow","length":48,"at":{"anchor":"bottom_left","to":[0,90]}},
+            {"id":"stud","type":"lumber","size":"2x4","run":"y","face":"narrow","length":len,"at":{"anchor":"bottom_left","to":[10,0]}}
+        ]));
+        assert!(!codes(&d).contains(&"W_NEAR_MISS".to_string()), "len {}", len);
+    }
+    let d = doc(json!([
+        {"id":"plate","type":"lumber","size":"2x4","run":"x","face":"narrow","length":48,"at":{"anchor":"bottom_left","to":[0,90]}},
+        {"id":"mid","type":"lumber","size":"2x4","run":"x","face":"narrow","length":48,"at":{"anchor":"bottom_left","to":[0,88.5]}},
+        {"id":"stud","type":"lumber","size":"2x4","run":"y","face":"narrow","length":86,"at":{"anchor":"bottom_left","to":[10,0]}}
+    ]));
+    let r = call("check", json!({"doc": d})).unwrap();
+    assert!(!r["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "W_NEAR_MISS" && x["message"].as_str().unwrap().contains("stud") && x["message"].as_str().unwrap().contains("plate")));
+}
+
+#[test]
+fn catalog_lists_hardware() {
+    let c = call("catalog", json!({"format":"json"})).unwrap();
+    let conn = c["types"].as_array().unwrap().iter().find(|t| t["type"] == "connector").unwrap();
+    let hw = conn["hardware"].as_array().unwrap();
+    assert!(hw.iter().any(|h| h["model"] == "H2.5A" && h["gauge"] == 18 && h["kind"] == "hurricane tie"));
+    assert!(hw.iter().any(|h| h["model"] == "CS16"));
+    let md = call("catalog", json!({"format":"markdown"})).unwrap();
+    assert!(md.as_str().unwrap().contains("- HETA20: embedded truss anchor, 1.25\" wide, 16 ga, 20\" long"));
+}

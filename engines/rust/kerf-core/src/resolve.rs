@@ -82,6 +82,9 @@ pub fn dependencies(c: &Map<String, Value>) -> Vec<String> {
             push_value_refs(to, &mut out);
         }
     }
+    if let Some(u) = c.get("until") {
+        push_value_refs(u, &mut out);
+    }
     if let Some(Value::Array(pts)) = c.get("points") {
         for p in pts {
             push_value_refs(p, &mut out);
@@ -472,6 +475,81 @@ fn resolve_comp(idx: usize, cv: &Value, cid: &str, style: &Style, run: (f64, f64
         host = Some(Host { region });
     }
 
+    // `until`: computed length for lumber/panel members that run along x or y
+    let mut until_text: Option<String> = None;
+    let mut m_owned: Map<String, Value>;
+    let mut m = m;
+    if let Some(u) = m.get("until").filter(|u| !u.is_null()) {
+        if !matches!(ctype.as_str(), "lumber" | "panel") {
+            diags.push(Diag::error("E_PARAM", format!("{}/until: only lumber and panel accept until", cpath)).id(cid).path(format!("{}/until", cpath)));
+            return comp;
+        }
+        if m.get("length").map_or(false, |l| !l.is_null()) {
+            diags.push(
+                Diag::error("E_PARAM", format!("{}: give either length or until, not both", cpath)).id(cid).path(format!("{}/until", cpath)).fix("remove \"length\" (the engine computes it from until) or remove \"until\""),
+            );
+            return comp;
+        }
+        let run_axis = if ctype == "panel" { m.get("run").and_then(|r| r.as_str()).unwrap_or("x").to_string() } else { m.get("run").and_then(|r| r.as_str()).unwrap_or("z").to_string() };
+        if run_axis != "x" && run_axis != "y" {
+            diags.push(Diag::error("E_PARAM", format!("{}/until: until needs a member that runs along x or y (run is \"{}\")", cpath, run_axis)).id(cid).path(format!("{}/until", cpath)));
+            return comp;
+        }
+        if m.get("rotate").and_then(|r| r.as_f64()).unwrap_or(0.0) != 0.0 || m.get("slope").map_or(false, |x| !x.is_null()) {
+            diags.push(Diag::error("E_PARAM", format!("{}/until: until cannot be combined with rotate or slope; give length", cpath)).id(cid).path(format!("{}/until", cpath)));
+            return comp;
+        }
+        let target = match lk.point_value(u) {
+            Ok(p) => p,
+            Err(d) => {
+                diags.push(with_id(d, cid, &format!("{}/until", cpath)));
+                return comp;
+            }
+        };
+        let anchor_pt = place_pt.unwrap_or(pt(0.0, 0.0));
+        let grows = |a: &str| -> Option<f64> {
+            // +1 grows toward +axis
+            if run_axis == "x" {
+                if a.ends_with("_left") { Some(1.0) } else if a.ends_with("_right") { Some(-1.0) } else { None }
+            } else if a.starts_with("top_") {
+                Some(-1.0)
+            } else if a.starts_with("bottom_") {
+                Some(1.0)
+            } else {
+                None
+            }
+        };
+        let Some(dir) = grows(&anchor_name) else {
+            diags.push(
+                Diag::error("E_PARAM", format!("{}/until: anchor \"{}\" has no growth direction for a member running along {}", cpath, anchor_name, run_axis))
+                    .id(cid)
+                    .path(format!("{}/at/anchor", cpath))
+                    .fix(if run_axis == "x" { "use a *_left anchor (grows right) or *_right anchor (grows left)" } else { "use a top_* anchor (grows down) or bottom_* anchor (grows up)" }),
+            );
+            return comp;
+        };
+        let (from, to) = if run_axis == "x" { (anchor_pt.x, target.x) } else { (anchor_pt.y, target.y) };
+        let len = (to - from) * dir;
+        if len <= 1e-6 {
+            diags.push(
+                Diag::error(
+                    "E_PARAM",
+                    format!("{}/until: the target is {} the {} anchor (coordinate {} vs {} on {}); the member would have length {}.", cpath, if len < 0.0 { "behind" } else { "at" }, anchor_name, crate::num::fmt_ftin(to), crate::num::fmt_ftin(from), if run_axis == "x" { "x" } else { "y" }, crate::num::fmt_ftin(len)),
+                )
+                .id(cid)
+                .path(format!("{}/until", cpath))
+                .fix("flip the anchor (top_* <-> bottom_*, *_left <-> *_right) or pick a target on the growth side"),
+            );
+            return comp;
+        }
+        m_owned = m.clone();
+        m_owned.insert("length".into(), crate::json::num(crate::num::r4(len)));
+        m = &m_owned;
+        until_text = Some(match u {
+            Value::String(s) => s.clone(),
+            other => crate::json::compact(other),
+        });
+    }
     let inp = BuildIn { id: cid, ctype: &ctype, m, style, run, pts, host };
     let mut built = match build::build(&inp) {
         Ok(b) => b,
@@ -687,6 +765,9 @@ fn resolve_comp(idx: usize, cv: &Value, cid: &str, style: &Style, run: (f64, f64
         comp.material = built.material.clone();
     }
     comp.desc = built.desc.clone();
+    if let Some(u) = &until_text {
+        comp.desc.push_str(&format!(" (until {})", u));
+    }
     comp.cover = ca;
     comp.failed = false;
     comp
