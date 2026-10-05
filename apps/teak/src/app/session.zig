@@ -103,6 +103,11 @@ pub const Session = struct {
         self.undo_stack.deinit(self.gpa);
     }
 
+    /// The engine uses its embedded kerf-standard style when none is given.
+    fn styleOpt(self: *const Session) ?[]const u8 {
+        return if (self.style_json.len > 0) self.style_json else null;
+    }
+
     pub fn hasDoc(self: *const Session) bool {
         return self.doc.len > 0;
     }
@@ -146,7 +151,7 @@ pub const Session = struct {
 
     /// Run `check` and refresh summary + diagnostics.
     pub fn refreshCheck(self: *Session) !void {
-        const req = try (eng.Request{ .doc = self.doc, .style = self.style_json }).build(self.gpa);
+        const req = try (eng.Request{ .doc = self.doc, .style = self.styleOpt() }).build(self.gpa);
         defer self.gpa.free(req);
         const res = self.engine.call(self.gpa, "check", req);
         switch (res) {
@@ -226,7 +231,7 @@ pub const Session = struct {
         const doc_for_req: []const u8 = if (self.hasDoc()) self.doc else "{}";
         const req = try (eng.Request{
             .doc = doc_for_req,
-            .style = self.style_json,
+            .style = self.styleOpt(),
             .ops = ops_json,
             .actor = if (who == .designer) "designer" else "llm",
         }).build(self.gpa);
@@ -327,26 +332,26 @@ pub const Session = struct {
     // ── Read paths ──────────────────────────────────────────────────
 
     pub fn drawingJson(self: *Session, view: []const u8) eng.CallResult {
-        const req = (eng.Request{ .doc = self.doc, .style = self.style_json, .view = view }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
+        const req = (eng.Request{ .doc = self.doc, .style = self.styleOpt(), .view = view }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
         defer self.gpa.free(req);
         return self.engine.call(self.gpa, "drawing", req);
     }
 
     pub fn meshJson(self: *Session) eng.CallResult {
-        const req = (eng.Request{ .doc = self.doc, .style = self.style_json }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
+        const req = (eng.Request{ .doc = self.doc, .style = self.styleOpt() }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
         defer self.gpa.free(req);
         return self.engine.call(self.gpa, "mesh", req);
     }
 
     pub fn exportBytes(self: *Session, view: []const u8, format: []const u8, sheet: bool) eng.CallResult {
-        const req = (eng.Request{ .doc = self.doc, .style = self.style_json, .view = view, .format = format, .sheet = sheet }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
+        const req = (eng.Request{ .doc = self.doc, .style = self.styleOpt(), .view = view, .format = format, .sheet = sheet }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
         defer self.gpa.free(req);
         return self.engine.call(self.gpa, "export", req);
     }
 
     /// `query_json` is the raw JSON object for the query, e.g. `{"q":"summary"}`.
     pub fn inspectJson(self: *Session, query_json: []const u8) eng.CallResult {
-        const req = (eng.Request{ .doc = self.doc, .style = self.style_json, .query = query_json }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
+        const req = (eng.Request{ .doc = self.doc, .style = self.styleOpt(), .query = query_json }).build(self.gpa) catch return .{ .err = self.gpa.dupe(u8, "out of memory") catch &.{} };
         defer self.gpa.free(req);
         return self.engine.call(self.gpa, "inspect", req);
     }

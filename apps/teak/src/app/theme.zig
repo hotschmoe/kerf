@@ -127,6 +127,56 @@ pub const button_flat: teak.ButtonStyle = blk: {
     break :blk b;
 };
 
+pub const button_flat_danger: teak.ButtonStyle = blk: {
+    var b = button_flat;
+    b.fg = red;
+    break :blk b;
+};
+
+/// Table row as a key: flat, left aligned, full width; inverts on hover.
+pub const button_row: teak.ButtonStyle = blk: {
+    var b = button_flat;
+    b.hover_bg = ink;
+    b.hover_fg = paper;
+    b.press_bg = ink;
+    b.press_fg = paper;
+    b.height = 22;
+    b.h_padding = 6;
+    break :blk b;
+};
+
+pub const button_row_selected: teak.ButtonStyle = blk: {
+    var b = button_row;
+    b.bg = ink;
+    b.fg = paper;
+    break :blk b;
+};
+
+pub const button_row_header: teak.ButtonStyle = blk: {
+    var b = button_row;
+    b.bg = paper2;
+    b.hover_bg = paper2;
+    b.hover_fg = ink2;
+    b.press_bg = paper2;
+    b.press_fg = ink2;
+    b.fg = ink2;
+    break :blk b;
+};
+
+pub const button_disabled: teak.ButtonStyle = blk: {
+    var b = button;
+    b.fg = ink2;
+    b.hover_bg = paper;
+    b.hover_fg = ink2;
+    b.press_bg = paper;
+    b.press_fg = ink2;
+    b.border = ink2;
+    break :blk b;
+};
+
+/// Red that stays readable on the terminal strip.
+pub const red_on_dark: Color = hex(0xFF6B6B);
+
 /// Typed-form field: label above (drawn by the view), 1px bottom rule, 2px blue when focused.
 pub const field: teak.TextInputStyle = .{
     .variant = .underline,
