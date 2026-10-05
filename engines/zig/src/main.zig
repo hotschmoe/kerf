@@ -405,6 +405,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             \\workflow, drafting rules, note grammar, and component catalog. Edit details only via
             \\`kerf apply <file> ... -w`, never by hand. After changes, export a PNG
             \\(`kerf export <file> --view A --format png -o <file>-A.png`) and look at it before reporting.
+            \\Shell rules: ONE kerf command per tool call (no `&&`, `;`, pipes or heredocs); create ops files with your file-writing tool.
             \\The designer reviews and exports in the Kerf web UI.
             \\
         ;
