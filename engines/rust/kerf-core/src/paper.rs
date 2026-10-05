@@ -24,6 +24,7 @@ pub struct Prim {
 pub struct Paper {
     pub w: f64,
     pub h: f64,
+    pub origin: (f64, f64),
     pub prims: Vec<Prim>,
 }
 
@@ -126,7 +127,7 @@ pub fn paper_for(d: &Drawing, style: &Style, sheet: bool) -> Paper {
     if sheet {
         sheet_prims(d, style, &mut prims);
     }
-    Paper { w, h, prims }
+    Paper { w, h, origin: (px, py), prims }
 }
 
 fn sheet_prims(d: &Drawing, style: &Style, out: &mut Vec<Prim>) {

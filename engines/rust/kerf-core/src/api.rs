@@ -157,6 +157,10 @@ pub fn call(fn_name: &str, input: &str) -> Result<Output, String> {
             let d = crate::render::render_view(&l.canon, &l.model, view, &l.style).map_err(|d| d.message + &d.fix.map(|f| format!(" Fix: {}", f)).unwrap_or_default())?;
             Ok(Output::Json(json::compact(&d.to_json(&l.style))))
         }
+        "mesh" => {
+            let l = load(&doc_of(&inp)?, style_of(&inp)?);
+            Ok(Output::Json(json::compact(&crate::mesh::mesh_json(&l.model, &l.style))))
+        }
         "export" => {
             let l = load(&doc_of(&inp)?, style_of(&inp)?);
             let view = inp.get("view").and_then(|v| v.as_str()).ok_or("missing \"view\": the view id, e.g. \"A\"")?;
@@ -165,6 +169,8 @@ pub fn call(fn_name: &str, input: &str) -> Result<Output, String> {
             let d = crate::render::render_view(&l.canon, &l.model, view, &l.style).map_err(|d| d.message + &d.fix.map(|f| format!(" Fix: {}", f)).unwrap_or_default())?;
             match format {
                 "svg" => Ok(Output::Bytes(crate::export_svg::export_svg(&d, &l.style, sheet).into_bytes())),
+                "dxf" => Ok(Output::Bytes(crate::export_dxf::export_dxf(&d, &l.style, sheet).into_bytes())),
+                "pdf" => Ok(Output::Bytes(crate::export_pdf::export_pdf(&d, &l.style, sheet))),
                 other => Err(format!("unsupported export format \"{}\": use svg, dxf or pdf", other)),
             }
         }
