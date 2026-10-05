@@ -217,6 +217,69 @@ fn coverFor(h: model.HostInfo, zones_world: []const ZoneBox, c: V2) model.Cover 
     return h.cover;
 }
 
+/// One authored leg of a path bar (straight run between bends) or one bend, for naming the failing segment in W_COVER.
+const Piece = struct {
+    /// flattened sub-segments of this piece (world)
+    segs: []const [2]V2,
+    /// 1-based leg number of a straight leg; for a bend, the number of the leg it follows
+    leg: usize,
+    is_bend: bool,
+    /// leg ends extended to the authored vertices (legs only)
+    p0: V2 = V2.init(0, 0),
+    p1: V2 = V2.init(0, 0),
+};
+
+fn lineIntersect(p: V2, d: V2, q: V2, e: V2) ?V2 {
+    const den = d.cross(e);
+    if (@abs(den) < 1e-9) return null;
+    const t = q.sub(p).cross(e) / den;
+    return p.add(d.scale(t));
+}
+
+/// Split a bar centreline (bulge polyline: straight legs have bulge 0, fillets are arcs) into pieces.
+fn barPieces(a: Allocator, cl: []const geom.Pt) Allocator.Error![]Piece {
+    var out: std.ArrayList(Piece) = .empty;
+    var legs: usize = 0;
+    for (0..cl.len - 1) |i| {
+        var fl: std.ArrayList(V2) = .empty;
+        try fl.append(a, cl[i].v());
+        try geom.flattenSegInto(&fl, a, cl[i].v(), cl[i + 1].v(), cl[i].b, flat_tol);
+        const ss = try a.alloc([2]V2, fl.items.len - 1);
+        for (0..ss.len) |k| ss[k] = .{ fl.items[k], fl.items[k + 1] };
+        const bend = cl[i].b != 0;
+        if (!bend) legs += 1;
+        try out.append(a, .{ .segs = ss, .leg = legs, .is_bend = bend, .p0 = cl[i].v(), .p1 = cl[i + 1].v() });
+    }
+    // extend each leg to the authored vertex where a bend sits at its end
+    for (out.items, 0..) |*pc, i| {
+        if (pc.is_bend or pc.p0.dist(pc.p1) < 1e-6) continue;
+        const d = pc.p1.sub(pc.p0).norm();
+        if (i > 0 and out.items[i - 1].is_bend and i >= 2) {
+            const prev = out.items[i - 2];
+            if (!prev.is_bend and prev.p0.dist(prev.p1) > 1e-6) if (lineIntersect(pc.p0, d, prev.p0, prev.p1.sub(prev.p0).norm())) |x| {
+                pc.p0 = x;
+            };
+        }
+        if (i + 2 < out.items.len and out.items[i + 1].is_bend) {
+            const next = out.items[i + 2];
+            if (!next.is_bend and next.p0.dist(next.p1) > 1e-6) if (lineIntersect(pc.p0, d, next.p0, next.p1.sub(next.p0).norm())) |x| {
+                pc.p1 = x;
+            };
+        }
+    }
+    return out.items;
+}
+
+fn pieceText(a: Allocator, pieces: []const Piece, k: usize) []const u8 {
+    const pc = pieces[k];
+    var nlegs: usize = 0;
+    for (pieces) |q| if (!q.is_bend) {
+        nlegs += 1;
+    };
+    if (pc.is_bend) return std.fmt.allocPrint(a, "the bend after segment {d} of {d} (near x {s}, y {s})", .{ pc.leg, nlegs, ftin(a, pc.segs[pc.segs.len / 2][0].x), ftin(a, pc.segs[pc.segs.len / 2][0].y) }) catch "?";
+    return std.fmt.allocPrint(a, "segment {d} of {d} (x {s}, y {s} to x {s}, y {s})", .{ pc.leg, nlegs, ftin(a, pc.p0.x), ftin(a, pc.p0.y), ftin(a, pc.p1.x), ftin(a, pc.p1.y) }) catch "?";
+}
+
 fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void {
     for (scene.comps) |*bar| {
         if (bar.state != .ok or !std.mem.eql(u8, bar.ty.name, "rebar")) continue;
@@ -227,7 +290,9 @@ fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void 
             var centre: V2 = undefined;
             var dir: ?V2 = null;
             var segs: []const [2]V2 = &.{};
+            var pieces: []const Piece = &.{};
             if (bp.centerline.len >= 2) {
+                pieces = try barPieces(a, bp.centerline);
                 const flat = try geom.flattenPolyline(a, bp.centerline, false, flat_tol);
                 const ss = try a.alloc([2]V2, flat.len - 1);
                 var longest: usize = 0;
@@ -274,6 +339,7 @@ fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void 
                     const req = coverFor(host, zw.items, centre);
                     var min_clear = [3]f64{ std.math.inf(f64), std.math.inf(f64), std.math.inf(f64) };
                     var min_edge: [3]?Edge = .{ null, null, null };
+                    var min_piece: [3]usize = .{ 0, 0, 0 };
                     for (edges) |e| {
                         var dist: f64 = undefined;
                         if (segs.len > 0) {
@@ -281,7 +347,20 @@ fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void 
                             const ed = e.b.sub(e.a).norm();
                             if (@abs(dir.?.dot(ed.perp())) > 0.7) continue;
                             dist = std.math.inf(f64);
-                            for (segs) |s| dist = @min(dist, segDist(s[0], s[1], e.a, e.b));
+                            var best_key = std.math.inf(f64);
+                            var best_pi: usize = 0;
+                            for (pieces, 0..) |pc, pi| {
+                                var pd = std.math.inf(f64);
+                                for (pc.segs) |s| pd = @min(pd, segDist(s[0], s[1], e.a, e.b));
+                                // ties (a bend touches the extreme its legs already reach) are blamed on the straight leg
+                                const key = pd + (if (pc.is_bend) @as(f64, 1e-4) else 0);
+                                if (key < best_key - 1e-12) {
+                                    best_key = key;
+                                    best_pi = pi;
+                                }
+                                dist = @min(dist, pd);
+                            }
+                            if (dist - r < min_clear[e.class]) min_piece[e.class] = best_pi;
                         } else dist = geom.distPointSeg(centre, e.a, e.b);
                         const clear = dist - r;
                         if (clear < min_clear[e.class]) {
@@ -293,16 +372,27 @@ fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void 
                     const names = [3][]const u8{ "bottom", "top", "sides" };
                     for (0..3) |k| {
                         if (min_clear[k] < reqs[k] - 1e-3) {
-                            diags.addFix(.warning, "W_COVER", bar.id, null, "clear cover from {s} {s} to the {s} of '{s}' is {s} < required {s}; bar center at x {s}, y {s}", .{
-                                bar.built.info,
-                                "bar",
-                                names[k],
-                                h.id,
-                                ftin(a, min_clear[k]),
-                                ftin(a, reqs[k]),
-                                ftin(a, centre.x),
-                                ftin(a, centre.y),
-                            }, "move the bar inward (increase place.cover / side_cover or the offset) or lower the host's cover requirement");
+                            const fix = "move the bar inward (increase place.cover / side_cover or the offset) or lower the host's cover requirement";
+                            if (pieces.len > 0) {
+                                diags.addFix(.warning, "W_COVER", bar.id, null, "clear cover from {s}, {s}, to the {s} of '{s}' is {s} < required {s}", .{
+                                    bar.built.info,
+                                    pieceText(a, pieces, min_piece[k]),
+                                    names[k],
+                                    h.id,
+                                    ftin(a, min_clear[k]),
+                                    ftin(a, reqs[k]),
+                                }, fix);
+                            } else {
+                                diags.addFix(.warning, "W_COVER", bar.id, null, "clear cover from {s} bar to the {s} of '{s}' is {s} < required {s}; bar center at x {s}, y {s}", .{
+                                    bar.built.info,
+                                    names[k],
+                                    h.id,
+                                    ftin(a, min_clear[k]),
+                                    ftin(a, reqs[k]),
+                                    ftin(a, centre.x),
+                                    ftin(a, centre.y),
+                                }, fix);
+                            }
                         }
                     }
                     break;

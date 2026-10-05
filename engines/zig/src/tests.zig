@@ -337,3 +337,20 @@ test "rebar place.face center / station / axis" {
     try near(2, b3.built.centers[0].x);
     try near(12, b3.built.centers[0].y);
 }
+
+test "W_COVER on a path bar names the failing segment" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src =
+        \\{"kerf":"0.1","id":"c","title":"T","run":[-24,24],"components":[
+        \\{"id":"stem","type":"concrete","shape":"rect","width":8,"height":24},
+        \\{"id":"d","type":"rebar","size":"#4","mode":"path","points":[[4,2],[4,12],[1,22]]}
+        \\],"views":[]}
+    ;
+    const r = try api.call(a, "check", try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{src}));
+    try std.testing.expect(r.ok);
+    try std.testing.expect(std.mem.indexOf(u8, r.bytes, "W_COVER") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.bytes, "segment 2 of 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.bytes, "to the sides of") != null);
+}
