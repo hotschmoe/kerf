@@ -292,6 +292,11 @@ Timestamps (UTC, seconds) exist only in the log.
 | Grok Build `grok` (1.0.41) | `grok -p <msg> --output-format streaming-json --always-approve --cwd <dir> [--resume <id>]` | `-r/--resume <id or title>`, `-c`; `-s/--session-id <uuid>` only creates NEW sessions | `--output-format plain\|json\|streaming-json\|streaming-messages-json`; streaming-json = ACP updates: `available_commands`, `thought`, `tool_call`, `tool_call_update`, `text` (`{"type":"text","data":"token"}`), `usage`, `end` (`stopReason`, `sessionId`), `error`; exit codes 0/1/130/143 | docs.x.ai/build/cli/headless-scripting, github.com/xai-org/grok-build (docs/user-guide/14-headless-mode.md); verified live with `grok -p hi --output-format streaming-json --always-approve` |
 | Codex CLI `codex` (0.157.1) | `codex exec --sandbox workspace-write --skip-git-repo-check --cd <dir> --json [resume <id>] <msg>` | `codex exec resume <SESSION_ID> "<prompt>"` (or `--last`); `resume` does NOT accept `--sandbox/--cd`, so shared options go before it | `--json` JSONL: `thread.started {thread_id}`, `turn.started`, `item.started/completed`, `turn.completed`, `error`; `--full-auto` is deprecated for `--sandbox workspace-write` | developers.openai.com/codex/cli/reference (redirects to learn.chatgpt.com/docs/developer-commands), `codex exec --help`, `codex exec resume --help` |
 
+Verified live through the bridge on this machine (the three CLIs are installed here): a trivial prompt and then a `session_id` resume for each of
+grok 1.0.41, claude 2.1.289 and codex-cli 0.157.1 all ran to `exit` code 0 with the session id captured from `end.sessionId`, `result.session_id`
+and `thread.started.thread_id`, and the resumed run answered from the earlier turn. (codex prints `Reading additional input from stdin...`
+on stderr when stdin is /dev/null; it arrives as a `{type:"stderr"}` event.)
+
 Choices: Claude gets only Bash(kerf), Read, Write, Edit pre-approved plus `acceptEdits` (no prompts can be answered headless; `--bare` is not
 used because it ignores the subscription login and CLAUDE.md, which is where `kerf init` puts the "run kerf guide" instruction; both the
 legacy `Bash(kerf:*)` and the current `Bash(kerf *)` rule syntax are passed). Grok has no per-tool allowlist semantics we could verify for
