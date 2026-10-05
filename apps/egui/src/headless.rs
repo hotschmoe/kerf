@@ -50,6 +50,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
         app.open_by_name(d);
     }
     app.apply_view_args(arg(args, "--tab"), arg(args, "--select"), arg(args, "--insp"));
+    if let Some(p) = arg(args, "--attach") {
+        let bytes = std::fs::read(p).map_err(|e| format!("{p}: {e}"))?;
+        app.attach_image(&ctx, p, &bytes);
+    }
     if args.iter().any(|a| a == "--settings") {
         app.settings_open = true;
     }
@@ -87,6 +91,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
 
+    if args.iter().any(|a| a == "--open-tools") {
+        for e in app.chat.entries.iter_mut() {
+            if let crate::chat::Entry::Claude { blocks, .. } = e {
+                for b in blocks {
+                    if let crate::chat::Block::Tool(t) = b {
+                        t.open = true;
+                    }
+                }
+            }
+        }
+    }
     // scripted pointer input: --click x,y | --hover x,y | --drag x0,y0:x1,y1  (points in egui points)
     let pt = |s: &str| -> Option<egui::Pos2> {
         let (a, b) = s.split_once(',')?;
@@ -218,5 +233,20 @@ pub fn export_cli(args: &[String]) -> Result<(), String> {
     let bytes = crate::engine::export(&doc, &crate::engine::default_style(), view, &format, sheet)?;
     std::fs::write(out, &bytes).map_err(|e| e.to_string())?;
     eprintln!("wrote {out} ({} bytes)", bytes.len());
+    Ok(())
+}
+
+/// `--call <fn> --doc X [--input '{"query":{...}}']`: raw engine call, prints the JSON.
+pub fn call_cli(args: &[String]) -> Result<(), String> {
+    let f = arg(args, "--call").ok_or("--call needs a function name")?;
+    let low = arg(args, "--doc").unwrap_or("truss").to_lowercase();
+    let text = match crate::engine::SAMPLES.iter().find(|(n, _)| n.to_lowercase().contains(&low) || low.contains(&n.to_lowercase())) {
+        Some((_, t)) => (*t).to_owned(),
+        None => std::fs::read_to_string(&low).map_err(|e| format!("{low}: {e}"))?,
+    };
+    let mut input: serde_json::Value = arg(args, "--input").map(serde_json::from_str).transpose().map_err(|e| e.to_string())?.unwrap_or(serde_json::json!({}));
+    input["doc"] = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let out = crate::engine::call(f, input)?;
+    println!("{}", serde_json::to_string_pretty(&out).unwrap());
     Ok(())
 }

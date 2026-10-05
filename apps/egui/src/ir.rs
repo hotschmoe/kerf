@@ -392,7 +392,7 @@ pub struct Prep {
     pub regions: Vec<Region>,
     /// per-src text bbox for notes/dims/labels: [x0,y0,x1,y1]
     pub text_boxes: BTreeMap<String, [f64; 4]>,
-    /// first text anchor per src (x,y) — used to turn a note drag into a `place`
+    /// top-left (x, first baseline + h) of each src's text block: the value `place` would hold
     pub text_anchor: BTreeMap<String, [f64; 2]>,
     pub diagnostics: Vec<serde_json::Value>,
 }
@@ -548,7 +548,8 @@ impl Prep {
                             b[3] = b[3].max(tb[3]);
                         })
                         .or_insert(tb);
-                    text_anchor.entry(src.clone()).or_insert([*x, *y]);
+                    // `place` is the top-left of the text block: first baseline + cap height
+                    text_anchor.entry(src.clone()).or_insert([*x, *y + *h]);
                     items.push(PItem { src: src.clone(), pen: pen.clone(), layer: layer.clone(), kind: PKind::Text { strokes: strokes32 }, bbox });
                 }
             }

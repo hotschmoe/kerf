@@ -72,6 +72,7 @@ pub struct KerfApp {
     pub insp_cache: Option<(u64, String, Value)>,
     pub expand_ops: std::collections::HashSet<usize>,
     pub pending_open_dialog: bool,
+    pub scroll_to_sel: bool,
 }
 
 impl KerfApp {
@@ -111,6 +112,7 @@ impl KerfApp {
             insp_cache: None,
             expand_ops: Default::default(),
             pending_open_dialog: false,
+            scroll_to_sel: false,
         }
     }
 
@@ -635,6 +637,9 @@ impl KerfApp {
             if let Some(id) = &c {
                 self.insp_tab = if self.session.annotation(id).is_some() { InspTab::Notes } else { InspTab::Parts };
             }
+            if c.is_some() && c != self.selected {
+                self.scroll_to_sel = true;
+            }
             self.selected = c;
         }
         if let Some((id, place)) = out.note_moved {
@@ -1034,7 +1039,7 @@ mod tests {
         let p = a.session.drawing_ex("A", false).unwrap();
         // the note text now sits at the designer's position (anchor within a text height)
         let anchor = p.text_anchor["n_roof"];
-        assert!((anchor[0] - 30.5).abs() < 3.0, "text anchor {:?}", anchor);
+        assert!((anchor[0] - 30.5).abs() < 1e-3 && (anchor[1] - 12.25).abs() < 1e-3, "text anchor {:?}", anchor);
     }
 
     #[test]

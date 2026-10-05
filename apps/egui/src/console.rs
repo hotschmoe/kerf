@@ -64,7 +64,13 @@ impl KerfApp {
             label_caps(ui, "Model");
             ui.horizontal(|ui| {
                 for (i, m) in MODELS.iter().enumerate() {
-                    let label = m.trim_start_matches("claude-").replace('-', " ");
+                    let label = {
+                        let t = m.trim_start_matches("claude-");
+                        match t.rsplit_once('-') {
+                            Some((a, b)) => format!("{}.{}", a.replace('-', " "), b),
+                            None => t.to_owned(),
+                        }
+                    };
                     if small_button(ui, &label, self.model_idx == i).clicked() {
                         self.model_idx = i;
                         self.chat.model = (*m).to_owned();

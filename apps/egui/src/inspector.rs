@@ -54,15 +54,19 @@ impl KerfApp {
             ui.add_space(4.0);
         });
 
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            ui.set_width(ui.available_width());
+        if self.insp_tab == InspTab::Parts {
             ui.spacing_mut().item_spacing.y = 0.0;
-            match self.insp_tab {
-                InspTab::Parts => self.parts_tab(ui),
-                InspTab::Notes => self.notes_tab(ui),
-                InspTab::Diff => self.diff_tab(ui),
-            }
-        });
+            self.parts_tab(ui);
+        } else {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.spacing_mut().item_spacing.y = 0.0;
+                match self.insp_tab {
+                    InspTab::Notes => self.notes_tab(ui),
+                    _ => self.diff_tab(ui),
+                }
+            });
+        }
     }
 
     // ------------------------------------------------------------ parts
@@ -72,63 +76,61 @@ impl KerfApp {
             wrapped(ui, "NO DETAIL LOADED.", regular(12.0), INK2);
             return;
         }
-        table_header(ui, &[("NO", 30.0), ("ID", 118.0), ("TYPE", 0.0)]);
-        let comps: Vec<(String, String, String)> = self
+        let comps: Vec<(String, String)> = self
             .session
             .components()
             .iter()
-            .map(|c| (c["id"].as_str().unwrap_or("?").to_owned(), c["type"].as_str().unwrap_or("?").to_owned(), c["label"].as_str().unwrap_or("").to_owned()))
+            .map(|c| (c["id"].as_str().unwrap_or("?").to_owned(), c["type"].as_str().unwrap_or("?").to_owned()))
             .collect();
+        let avail = ui.available_height();
+        let table_h = (comps.len() as f32 * ROW_H + 20.0).min((avail * 0.42).max(120.0));
+        table_header(ui, &[("NO", 30.0), ("ID", 118.0), ("TYPE", 0.0)]);
         let mut hover = None;
-        for (i, (id, ty, _label)) in comps.iter().enumerate() {
-            let sel = self.selected.as_deref() == Some(id.as_str());
-            let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
-            row_bg(ui, r, i, sel, resp.hovered());
-            let fg = if sel { PAPER } else { INK };
-            row_text(ui, r, 0.0, &format!("{:02}", i + 1), if sel { PAPER } else { INK2 }, false);
-            row_text(ui, r, 34.0, id, fg, sel);
-            row_text(ui, r, 34.0 + 118.0, &ty.to_uppercase(), fg, false);
-            if resp.hovered() {
-                hover = Some(id.clone());
+        egui::ScrollArea::vertical().id_salt("parts-table").max_height(table_h - 20.0).auto_shrink([false, true]).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for (i, (id, ty)) in comps.iter().enumerate() {
+                let sel = self.selected.as_deref() == Some(id.as_str());
+                let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
+                row_bg(ui, r, i, sel, resp.hovered());
+                let fg = if sel { PAPER } else { INK };
+                row_text(ui, r, 0.0, &format!("{:02}", i + 1), if sel { PAPER } else { INK2 }, false);
+                row_text(ui, r, 34.0, id, fg, sel);
+                row_text(ui, r, 34.0 + 118.0, &ty.to_uppercase(), fg, false);
+                if resp.hovered() {
+                    hover = Some(id.clone());
+                }
+                if resp.clicked() {
+                    self.selected = Some(id.clone());
+                }
+                if sel && self.scroll_to_sel {
+                    resp.scroll_to_me(Some(Align::Center));
+                }
             }
-            if resp.clicked() {
-                self.selected = Some(id.clone());
-            }
-        }
+        });
+        self.scroll_to_sel = false;
         if hover.is_some() {
             self.hover = hover;
         }
         ui.add_space(10.0);
-        if let Some(sel) = self.selected.clone() {
-            if let Some(c) = self.session.component(&sel).cloned() {
-                self.component_fields(ui, &sel, &c);
-            } else if self.session.annotation(&sel).is_some() {
-                wrapped(ui, &format!("{sel} IS AN ANNOTATION. SEE [NOTES]."), regular(12.0), INK2);
+        egui::ScrollArea::vertical().id_salt("parts-fields").auto_shrink([false, false]).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 0.0;
+            if let Some(sel) = self.selected.clone() {
+                if let Some(c) = self.session.component(&sel).cloned() {
+                    self.component_fields(ui, &sel, &c);
+                } else if self.session.annotation(&sel).is_some() {
+                    wrapped(ui, &format!("{sel} IS AN ANNOTATION. SEE [NOTES]."), regular(12.0), INK2);
+                }
+            } else {
+                wrapped(ui, "SELECT A COMPONENT IN THE VIEWPORT OR THE TABLE.", regular(12.0), INK2);
             }
-        } else {
-            wrapped(ui, "SELECT A COMPONENT IN THE VIEWPORT OR THE TABLE.", regular(12.0), INK2);
-        }
+        });
     }
 
     fn component_fields(&mut self, ui: &mut Ui, id: &str, c: &Value) {
         heading(ui, id);
         ui.add_space(4.0);
-        table_header(ui, &[("FIELD", 132.0), ("VALUE", 0.0)]);
-        let mut i = 0;
-        if let Some(o) = c.as_object() {
-            for (k, v) in o {
-                if k == "id" {
-                    continue;
-                }
-                let val = compact(v);
-                let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::hover());
-                row_bg(ui, r, i, false, false);
-                row_text_clip(ui, r, 0.0, &k.to_uppercase(), INK2, 128.0);
-                row_text_clip(ui, r, 136.0, &val, INK, r.width() - 140.0);
-                i += 1;
-            }
-        }
-        // resolved anchors from the engine
+        // resolved view of the component from the engine (cached per revision + id)
         let key = (self.session.rev, id.to_owned());
         let cached = matches!(&self.insp_cache, Some((r, i, _)) if *r == key.0 && *i == key.1);
         if !cached {
@@ -138,18 +140,54 @@ impl KerfApp {
             };
             self.insp_cache = Some((key.0, key.1.clone(), v));
         }
-        if let Some((_, _, v)) = &self.insp_cache {
-            let anchors = extract_anchors(v);
-            if !anchors.is_empty() {
-                ui.add_space(8.0);
-                table_header(ui, &[("ANCHOR", 130.0), ("X", 70.0), ("Y", 0.0)]);
-                for (n, (name, x, y)) in anchors.iter().enumerate() {
-                    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::hover());
-                    row_bg(ui, r, n, false, false);
-                    row_text(ui, r, 0.0, name, INK2, false);
-                    row_text(ui, r, 134.0, &crate::fmt::ft_in(*x), INK, false);
-                    row_text(ui, r, 204.0, &crate::fmt::ft_in(*y), INK, false);
+        let info = self.insp_cache.as_ref().map(|c| c.2.clone()).unwrap_or(Value::Null);
+        let mut rows: Vec<(String, String)> = Vec::new();
+        if info.is_object() {
+            for k in ["type", "material", "desc"] {
+                if let Some(s) = info[k].as_str() {
+                    rows.push((k.to_uppercase(), s.to_owned()));
                 }
+            }
+            if let Some(p) = info["params"].as_object() {
+                for (k, v) in p {
+                    rows.push((k.to_uppercase(), compact(v)));
+                }
+            }
+            if let Some(b) = info["bbox"].as_array().filter(|b| b.len() == 4) {
+                let f = |i: usize| b[i].as_f64().unwrap_or(0.0);
+                rows.push(("X RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(f(0)), crate::fmt::ft_in(f(2)))));
+                rows.push(("Y RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(f(1)), crate::fmt::ft_in(f(3)))));
+            }
+            if let Some(z) = info["z"].as_array().filter(|z| z.len() == 2) {
+                rows.push(("Z RANGE".into(), format!("{} .. {}", crate::fmt::ft_in(z[0].as_f64().unwrap_or(0.0)), crate::fmt::ft_in(z[1].as_f64().unwrap_or(0.0)))));
+            }
+            if info["instances"].as_i64().unwrap_or(1) > 1 {
+                rows.push(("INSTANCES".into(), info["instances"].to_string()));
+            }
+        } else if let Some(o) = c.as_object() {
+            for (k, v) in o {
+                if k != "id" {
+                    rows.push((k.to_uppercase(), compact(v)));
+                }
+            }
+        }
+        table_header(ui, &[("FIELD", 132.0), ("VALUE", 0.0)]);
+        for (i, (k, v)) in rows.iter().enumerate() {
+            let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::hover());
+            row_bg(ui, r, i, false, false);
+            row_text_clip(ui, r, 0.0, k, INK2, 128.0);
+            row_text_clip(ui, r, 136.0, v, INK, r.width() - 140.0);
+        }
+        let anchors = extract_anchors(&info);
+        if !anchors.is_empty() {
+            ui.add_space(8.0);
+            table_header(ui, &[("ANCHOR", 130.0), ("X", 70.0), ("Y", 0.0)]);
+            for (n, (name, x, y)) in anchors.iter().enumerate() {
+                let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::hover());
+                row_bg(ui, r, n, false, false);
+                row_text(ui, r, 0.0, name, INK2, false);
+                row_text(ui, r, 134.0, &crate::fmt::ft_in(*x), INK, false);
+                row_text(ui, r, 204.0, &crate::fmt::ft_in(*y), INK, false);
             }
         }
     }
@@ -366,7 +404,8 @@ impl KerfApp {
             text(ui, "CLEAN.", GREEN);
             return;
         }
-        egui::ScrollArea::vertical().max_height(96.0).auto_shrink([false, true]).id_salt("diag").show(ui, |ui| {
+        egui::ScrollArea::vertical().max_height(78.0).auto_shrink([false, true]).id_salt("diag").show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
             for d in &diags {
                 let (tag, col) = match d["level"].as_str() {
                     Some("error") => ("E", RED),
@@ -374,22 +413,21 @@ impl KerfApp {
                     _ => ("I", INK2),
                 };
                 let msg = format!("{} {}", d["code"].as_str().unwrap_or(""), d["message"].as_str().unwrap_or(""));
-                let mut job = spaced(msg, regular(11.0), INK, 0.0);
-                job.wrap.max_width = ui.available_width() - 22.0;
-                let g = ui.painter().layout_job(job);
-                let h = g.size().y.max(16.0) + 4.0;
-                let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::click());
+                let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::click());
                 if resp.hovered() {
                     ui.painter().rect_filled(r, 0.0, PAPER2);
                 }
                 let sq = Rect::from_min_size(Pos2::new(r.left(), r.top() + 2.0), Vec2::splat(16.0));
                 ui.painter().rect_filled(sq, 0.0, col);
                 ui.painter().text(sq.center(), egui::Align2::CENTER_CENTER, tag, bold(11.0), if col == AMBER { INK } else { Color32::WHITE });
-                ui.painter().galley(Pos2::new(sq.right() + 6.0, r.top() + 2.0), g, INK);
+                let clip = Rect::from_min_max(Pos2::new(sq.right() + 6.0, r.top()), r.max);
+                ui.painter().with_clip_rect(clip).text(Pos2::new(clip.left(), r.center().y), egui::Align2::LEFT_CENTER, &msg, regular(11.0), INK);
+                let resp = resp.on_hover_text(egui::RichText::new(&msg).font(regular(11.0)));
                 if resp.clicked() {
                     if let Some(id) = d["id"].as_str() {
                         self.selected = Some(id.to_owned());
                         self.insp_tab = InspTab::Parts;
+                        self.scroll_to_sel = true;
                     }
                 }
             }

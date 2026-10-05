@@ -112,9 +112,13 @@ pub fn show(ui: &mut Ui, st: &mut View2dState, inp: &Inputs, rect: Rect) -> Outp
 
     // ---- input: drag (pan or note)
     if resp.drag_started_by(egui::PointerButton::Primary) {
-        if let (Some(h), Some(p)) = (out.hover.clone().or_else(|| inp.hover_prev.map(str::to_owned)), ptr) {
-            if (inp.notes)(&h) && out.hover.as_deref() == Some(h.as_str()) {
-                st.drag = Some(NoteDrag { id: h, delta: [0.0, 0.0], start_model: cam.to_model(rect, p) });
+        // egui starts a drag after the pointer has moved a few px: hit-test where it was pressed
+        if let Some(o) = ui.input(|i| i.pointer.press_origin()) {
+            let m = cam.to_model(rect, o);
+            if let Some(h) = prep.pick(m, 4.0 / cam.zoom) {
+                if (inp.notes)(&h) {
+                    st.drag = Some(NoteDrag { id: h, delta: [0.0, 0.0], start_model: m });
+                }
             }
         }
     }
