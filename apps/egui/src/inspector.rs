@@ -58,14 +58,16 @@ impl KerfApp {
             ui.spacing_mut().item_spacing.y = 0.0;
             self.parts_tab(ui);
         } else {
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.spacing_mut().item_spacing.y = 0.0;
-                match self.insp_tab {
-                    InspTab::Notes => self.notes_tab(ui),
-                    _ => self.diff_tab(ui),
+            ui.spacing_mut().item_spacing.y = 0.0;
+            match self.insp_tab {
+                InspTab::Notes => self.notes_tab(ui),
+                _ => {
+                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        self.diff_tab(ui);
+                    });
                 }
-            });
+            }
         }
     }
 
@@ -200,34 +202,46 @@ impl KerfApp {
             return;
         };
         let anns: Vec<Value> = self.session.view_doc(&view).and_then(|v| v["annotations"].as_array()).cloned().unwrap_or_default();
+        let avail = ui.available_height();
+        let table_h = (anns.len() as f32 * ROW_H + 20.0).min((avail * 0.36).max(110.0));
         table_header(ui, &[("ID", 74.0), ("TYPE", 44.0), ("TEXT", 0.0)]);
-        for (i, a) in anns.iter().enumerate() {
-            let id = a["id"].as_str().unwrap_or("?");
-            let sel = self.selected.as_deref() == Some(id);
-            let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
-            row_bg(ui, r, i, sel, resp.hovered());
-            let fg = if sel { PAPER } else { INK };
-            row_text(ui, r, 0.0, id, fg, sel);
-            row_text(ui, r, 78.0, a["type"].as_str().unwrap_or(""), if sel { PAPER } else { INK2 }, false);
-            let txt = a["text"].as_str().unwrap_or("");
-            row_text_clip(ui, r, 126.0, txt, fg, r.width() - 130.0);
-            if resp.hovered() {
-                self.hover = Some(id.to_owned());
+        egui::ScrollArea::vertical().id_salt("notes-table").max_height(table_h - 20.0).auto_shrink([false, true]).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for (i, a) in anns.iter().enumerate() {
+                let id = a["id"].as_str().unwrap_or("?");
+                let sel = self.selected.as_deref() == Some(id);
+                let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
+                row_bg(ui, r, i, sel, resp.hovered());
+                let fg = if sel { PAPER } else { INK };
+                row_text(ui, r, 0.0, id, fg, sel);
+                row_text(ui, r, 78.0, a["type"].as_str().unwrap_or(""), if sel { PAPER } else { INK2 }, false);
+                let txt = a["text"].as_str().unwrap_or("");
+                row_text_clip(ui, r, 126.0, txt, fg, r.width() - 130.0);
+                if resp.hovered() {
+                    self.hover = Some(id.to_owned());
+                }
+                if resp.clicked() {
+                    self.selected = Some(id.to_owned());
+                }
+                if sel && self.scroll_to_sel {
+                    resp.scroll_to_me(Some(Align::Center));
+                }
             }
-            if resp.clicked() {
-                self.selected = Some(id.to_owned());
-            }
-        }
+        });
+        self.scroll_to_sel = false;
         ui.add_space(10.0);
-        let Some(sel) = self.selected.clone() else {
-            wrapped(ui, "SELECT A NOTE IN THE VIEWPORT OR THE TABLE TO EDIT IT.", regular(12.0), INK2);
-            return;
-        };
-        let Some((vid, ann)) = self.session.annotation(&sel).map(|(v, a)| (v, a.clone())) else {
-            wrapped(ui, "SELECT A NOTE (NOT A COMPONENT) TO EDIT TEXT AND CITATIONS.", regular(12.0), INK2);
-            return;
-        };
-        self.note_editor(ui, &vid, &sel, &ann);
+        egui::ScrollArea::vertical().id_salt("notes-editor").auto_shrink([false, false]).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let Some(sel) = self.selected.clone() else {
+                wrapped(ui, "SELECT A NOTE IN THE VIEWPORT OR THE TABLE TO EDIT IT.", regular(12.0), INK2);
+                return;
+            };
+            let Some((vid, ann)) = self.session.annotation(&sel).map(|(v, a)| (v, a.clone())) else {
+                wrapped(ui, "SELECT A NOTE (NOT A COMPONENT) TO EDIT TEXT AND CITATIONS.", regular(12.0), INK2);
+                return;
+            };
+            self.note_editor(ui, &vid, &sel, &ann);
+        });
     }
 
     fn note_editor(&mut self, ui: &mut Ui, vid: &str, id: &str, ann: &Value) {

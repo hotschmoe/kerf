@@ -73,6 +73,9 @@ pub struct KerfApp {
     pub expand_ops: std::collections::HashSet<usize>,
     pub pending_open_dialog: bool,
     pub scroll_to_sel: bool,
+    pub bench: bool,
+    pub cut3d: bool,
+    pub cut_cache: Option<((u64, i32), std::sync::Arc<crate::gpu3d::CutInfo>)>,
 }
 
 impl KerfApp {
@@ -113,6 +116,9 @@ impl KerfApp {
             expand_ops: Default::default(),
             pending_open_dialog: false,
             scroll_to_sel: false,
+            bench: false,
+            cut3d: true,
+            cut_cache: None,
         }
     }
 
@@ -248,30 +254,23 @@ impl KerfApp {
                 Incoming::Error(s) => self.flash(s, true),
             }
         }
-        // drag-drop
+        // drag-drop (web: bytes arrive with the event; native: read the path)
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         for f in dropped {
-            let name = f.path().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "dropped".into());
-            #[cfg(not(target_arch = "wasm32"))]
-            match f.bytes() {
-                Ok(bytes) => self.route_dropped(ctx, name, bytes),
-                Err(e) => self.flash(format!("DROP FAILED: {e}"), true),
-            }
-            #[cfg(target_arch = "wasm32")]
-            {
-                let tx = self.platform.sender();
-                let c = ctx.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    match f.bytes_async().await {
-                        Ok(bytes) => {
-                            let _ = tx.send(Incoming::Dropped { name, bytes });
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Incoming::Error(format!("DROP FAILED: {e}")));
-                        }
-                    }
-                    c.request_repaint();
-                });
+            let name = if f.name.is_empty() { f.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "dropped".into()) } else { f.name.clone() };
+            let bytes: Option<Vec<u8>> = f.bytes.as_ref().map(|b| b.to_vec()).or_else(|| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    f.path.as_ref().and_then(|p| std::fs::read(p).ok())
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    None
+                }
+            });
+            match bytes {
+                Some(bytes) => self.route_dropped(ctx, name, bytes),
+                None => self.flash(format!("DROP FAILED: {name}"), true),
             }
         }
         // chat tick
@@ -514,8 +513,9 @@ impl KerfApp {
         ui.painter().rect_filled(Rect::from_min_size(Pos2::new(strip.left(), strip.bottom() - 1.0), Vec2::new(strip.width(), 1.0)), 0.0, INK);
         let views = self.session.views();
         let mut strip_ui = ui.new_child(egui::UiBuilder::new().max_rect(strip.shrink2(Vec2::new(8.0, 0.0))).layout(Layout::left_to_right(Align::Center)));
+        let compact = full.width() < 780.0;
         for (id, kind) in &views {
-            let label = format!("{} {}", kind, id);
+            let label = if compact { id.clone() } else { format!("{} {}", kind, id) };
             let active = self.tab == ViewTab::View(id.clone());
             if tab(&mut strip_ui, &label, active).clicked() {
                 self.tab = ViewTab::View(id.clone());
@@ -538,6 +538,9 @@ impl KerfApp {
                 ui.add_space(4.0);
                 if small_button(ui, "FIT", false).clicked() {
                     self.cam3_key = None;
+                }
+                if self.section_cut_z().is_some() && small_button(ui, "CUT", self.cut3d).clicked() {
+                    self.cut3d = !self.cut3d;
                 }
             } else {
                 if small_button(ui, "FIT", false).clicked() {
@@ -730,6 +733,7 @@ impl KerfApp {
                 (a == k).then(|| b.to_owned())
             })
         };
+        self.bench = get("bench").as_deref() == Some("1");
         if get("demo").as_deref() == Some("1") {
             self.enable_demo(true);
         }
@@ -807,6 +811,10 @@ impl KerfApp {
         // frame stats
         self.frame_ms = t0.elapsed().as_secs_f32() * 1000.0;
         self.frame_avg = if self.frame_avg == 0.0 { self.frame_ms } else { self.frame_avg * 0.9 + self.frame_ms * 0.1 };
+        crate::perf_probe(self.frame_ms, self.frame_avg);
+        if self.bench {
+            ctx.request_repaint();
+        }
         if !self.ready_flag_set && self.first_frame.is_some_and(|t| t.elapsed() > Duration::from_millis(0)) {
             self.ready_flag_set = true;
             crate::set_ready_flag();

@@ -3,7 +3,7 @@
 //! exported". Handles the subset the engine emits: `<style>` pen classes, `<g data-src>`,
 //! `<path class d>` with M / L / A / Z, and `path.fill` solids (even-odd).
 
-use crate::ir::{P2, PItem, PKind, PenDef, Prep, Region, point_in_loop, polygon_area, triangulate};
+use crate::ir::{P2, PItem, PKind, PenDef, Prep, Region, even_odd_groups, polygon_area, triangulate};
 use std::collections::BTreeMap;
 
 const PX_PER_IN: f64 = 96.0;
@@ -155,42 +155,6 @@ fn bbox32(pts: &[[f32; 2]]) -> [f32; 4] {
         b[3] = b[3].max(p[1]);
     }
     b
-}
-
-/// Even-odd grouping: depth-even loops are outers, depth-odd loops become holes of their parent.
-fn even_odd_groups(loops: Vec<Vec<P2>>) -> Vec<Vec<Vec<P2>>> {
-    let n = loops.len();
-    let areas: Vec<f64> = loops.iter().map(|l| polygon_area(l).abs()).collect();
-    let mut parent: Vec<Option<usize>> = vec![None; n];
-    let mut depth = vec![0usize; n];
-    for i in 0..n {
-        let mut best: Option<usize> = None;
-        for j in 0..n {
-            if i != j && areas[j] > areas[i] && point_in_loop(loops[i][0], &loops[j]) {
-                depth[i] += 1;
-                if best.is_none_or(|b| areas[j] < areas[b]) {
-                    best = Some(j);
-                }
-            }
-        }
-        parent[i] = best;
-    }
-    let mut groups: Vec<(usize, Vec<Vec<P2>>)> = Vec::new();
-    for i in 0..n {
-        if depth[i] % 2 == 0 {
-            groups.push((i, vec![loops[i].clone()]));
-        }
-    }
-    for i in 0..n {
-        if depth[i] % 2 == 1 {
-            if let Some(p) = parent[i] {
-                if let Some(g) = groups.iter_mut().find(|g| g.0 == p) {
-                    g.1.push(loops[i].clone());
-                }
-            }
-        }
-    }
-    groups.into_iter().map(|g| g.1).collect()
 }
 
 pub fn svg_to_prep(svg: &str, view: &str) -> Prep {

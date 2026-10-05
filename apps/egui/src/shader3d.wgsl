@@ -6,6 +6,7 @@ struct Globals {
     viewport: vec2<f32>,   // pixels
     srgb: f32,             // 1.0 when the target is an sRGB format (colours are converted)
     line_bias: f32,
+    clip: vec4<f32>,       // x = enabled, y = world z of the section plane (keep z <= y)
 };
 @group(0) @binding(0) var<uniform> g: Globals;
 
@@ -27,12 +28,19 @@ struct MeshIn {
 struct MeshOut {
     @builtin(position) p: vec4<f32>,
     @location(0) col: vec4<f32>,
+    @location(1) wz: f32,
 };
 
 @vertex
 fn vs_mesh(v: MeshIn) -> MeshOut {
     var o: MeshOut;
     o.p = g.view_proj * vec4<f32>(v.pos, 1.0);
+    o.wz = v.pos.z;
+    if (dot(v.nor, v.nor) < 1e-6) {
+        // cut caps: flat, unlit
+        o.col = v.col;
+        return o;
+    }
     let n = normalize(v.nor);
     let ndl = max(dot(n, normalize(g.light.xyz)), 0.0);
     // a second, weaker fill light from the opposite side keeps shadowed faces readable
@@ -44,6 +52,7 @@ fn vs_mesh(v: MeshIn) -> MeshOut {
 
 @fragment
 fn fs_mesh(i: MeshOut) -> @location(0) vec4<f32> {
+    if (g.clip.x > 0.5 && i.wz > g.clip.y + 0.002) { discard; }
     return vec4<f32>(to_target(clamp(i.col.rgb, vec3<f32>(0.0), vec3<f32>(1.0))), 1.0);
 }
 
@@ -59,6 +68,7 @@ struct LineIn {
 struct LineOut {
     @builtin(position) p: vec4<f32>,
     @location(0) col: vec4<f32>,
+    @location(1) wz: f32,
 };
 
 @vertex
@@ -82,11 +92,13 @@ fn vs_line(l: LineIn) -> LineOut {
     let off = (nrm * ss * l.w * 0.5 + d * ext) / (g.viewport * 0.5);
     o.p = vec4<f32>(c.xy + off * c.w, c.z - g.line_bias * c.w, c.w);
     o.col = l.col;
+    o.wz = mix(l.a.z, l.b.z, tt);
     return o;
 }
 
 @fragment
 fn fs_line(i: LineOut) -> @location(0) vec4<f32> {
+    if (g.clip.x > 0.5 && i.wz > g.clip.y + 0.002) { discard; }
     return vec4<f32>(to_target(i.col.rgb), 1.0);
 }
 

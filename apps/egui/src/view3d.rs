@@ -7,6 +7,24 @@ use egui::{Pos2, Rect, Sense, Ui, Vec2};
 use glam::Vec3;
 
 impl KerfApp {
+    /// z of the first section view (`cut_z`), if the document has one.
+    pub fn section_cut_z(&self) -> Option<f32> {
+        self.session.doc.as_ref()?["views"].as_array()?.iter().find(|v| v["kind"] == "section").and_then(|v| v["cut_z"].as_f64()).map(|z| z as f32)
+    }
+
+    fn cut_info(&mut self, mesh: &std::sync::Arc<crate::ir::Mesh>) -> Option<std::sync::Arc<gpu3d::CutInfo>> {
+        let z = self.section_cut_z().unwrap_or(0.0);
+        let key = (self.session.rev, (z * 1000.0) as i32);
+        if let Some((k, c)) = &self.cut_cache {
+            if *k == key {
+                return Some(c.clone());
+            }
+        }
+        let c = std::sync::Arc::new(gpu3d::CutInfo { z, caps: crate::section3d::build_caps(mesh, z) });
+        self.cut_cache = Some((key, c.clone()));
+        Some(c)
+    }
+
     pub fn view3d_ui(&mut self, ui: &mut Ui, body: Rect) {
         let mesh = match self.session.mesh() {
             Ok(m) => m,
@@ -16,21 +34,26 @@ impl KerfApp {
                 return;
             }
         };
-        let Some((lo, hi)) = mesh.bounds() else {
+        let Some((lo, mut hi)) = mesh.bounds() else {
             ui.painter().rect_filled(body, 0.0, PAPER);
             ui.painter().text(body.center(), egui::Align2::CENTER_CENTER, "NO GEOMETRY", regular(13.0), INK2);
             return;
         };
+        if let (true, Some(z)) = (self.cut3d, self.section_cut_z()) {
+            hi[2] = hi[2].min(z).max(lo[2] + 1.0);
+        }
         let center = (Vec3::from(lo) + Vec3::from(hi)) * 0.5;
         let radius = (Vec3::from(hi) - Vec3::from(lo)).length() * 0.5;
         let aspect_fit = body.width() / body.height().max(1.0);
         // fit when the document (or view) changes
-        let key = (self.session.rev, "fit".to_owned());
+        let key = (self.session.rev, format!("fit{}", self.cut3d));
         if self.cam3_key.as_ref() != Some(&key) {
             self.cam3.target = center;
             self.cam3.half_h = radius * 1.08 / aspect_fit.min(1.0);
             self.cam3_key = Some(key);
         }
+        // section plane from the first section view, caps cached per (rev, z)
+        let cut = if self.cut3d { self.cut_info(&mesh) } else { None };
         let resp = ui.allocate_rect(body, Sense::click_and_drag());
         let aspect = body.width() / body.height().max(1.0);
         // orbit / pan / zoom
@@ -58,7 +81,7 @@ impl KerfApp {
         if let Some(p) = resp.hover_pos() {
             let ndc = [(p.x - body.left()) / body.width() * 2.0 - 1.0, 1.0 - (p.y - body.top()) / body.height() * 2.0];
             let (o, d) = self.cam3.ray(ndc, aspect, radius);
-            hover = gpu3d::pick(&mesh, o, d).map(|(_, s)| s);
+            hover = gpu3d::pick(&mesh, o, d, cut.as_deref()).map(|(_, s)| s);
             ui.ctx().set_cursor_icon(if resp.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
         }
         if resp.clicked() {
@@ -82,6 +105,7 @@ impl KerfApp {
             bg: paper,
             line_scale: 1.0,
             grid_y: lo[1],
+            cut: cut.clone(),
         };
         ui.painter().add(egui_wgpu_callback(body, params));
         // overlays

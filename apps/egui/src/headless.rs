@@ -64,10 +64,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
         raw.events = events;
         raw.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(ppp);
         let out = ctx.run_ui(raw, |ui| app.draw(ui));
-        for (id, deltas) in &out.textures_delta.set {
-            for delta in deltas {
-                renderer.update_texture(&device, &queue, *id, delta);
-            }
+        for (id, delta) in &out.textures_delta.set {
+            renderer.update_texture(&device, &queue, *id, delta);
         }
         out
     };
@@ -198,7 +196,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     });
     device.poll(wgpu::PollType::wait_indefinitely()).map_err(|e| format!("poll: {e:?}"))?;
     rx.recv().map_err(|e| e.to_string())?.map_err(|e| format!("map: {e:?}"))?;
-    let data = slice.get_mapped_range().map_err(|e| format!("map range: {e:?}"))?;
+    let data = slice.get_mapped_range();
     let mut img = image::RgbaImage::new(pw, ph);
     for y in 0..ph as usize {
         let row = &data[y * bpr as usize..y * bpr as usize + (pw * 4) as usize];

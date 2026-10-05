@@ -12,6 +12,7 @@ mod inspector;
 mod ir;
 mod platform;
 mod raster;
+mod section3d;
 mod session;
 mod svgprep;
 mod theme;
@@ -22,12 +23,31 @@ mod headless;
 
 pub use app::KerfApp;
 
+/// Web perf probe for tools/shot.mjs --eval "window.__perf": last/avg UI-pass ms and frame count.
+#[allow(unused_variables)]
+pub fn perf_probe(last_ms: f32, avg_ms: f32) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(w) = web_sys::window() {
+            let o = js_sys::Object::new();
+            let _ = js_sys::Reflect::set(&o, &"last".into(), &(last_ms as f64).into());
+            let _ = js_sys::Reflect::set(&o, &"avg".into(), &(avg_ms as f64).into());
+            let n = js_sys::Reflect::get(&w, &"__perf".into()).ok().and_then(|p| js_sys::Reflect::get(&p, &"n".into()).ok()).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let _ = js_sys::Reflect::set(&o, &"n".into(), &(n + 1.0).into());
+            let _ = js_sys::Reflect::set(&w, &"__perf".into(), &o);
+        }
+    }
+}
+
 /// Web: `window.__ready = true` once the first frame is drawn (tools/shot.mjs --wait-for).
 pub fn set_ready_flag() {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(w) = web_sys::window() {
             let _ = js_sys::Reflect::set(&w, &"__ready".into(), &true.into());
+            if let Some(p) = w.performance() {
+                let _ = js_sys::Reflect::set(&w, &"__ready_ms".into(), &p.now().into());
+            }
         }
     }
 }

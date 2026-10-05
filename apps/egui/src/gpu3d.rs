@@ -19,6 +19,7 @@ struct Globals {
     viewport: [f32; 2],
     srgb: f32,
     line_bias: f32,
+    clip: [f32; 4],
 }
 
 #[repr(C)]
@@ -54,6 +55,7 @@ struct SceneKey {
     selected: Option<String>,
     hover: Option<String>,
     grid_y: i32,
+    cut: Option<i32>,
 }
 
 struct Targets {
@@ -126,11 +128,11 @@ impl Gpu3d {
                 module: &shader,
                 entry_point: Some("vs_mesh"),
                 compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
+                buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vtx>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4],
-                })],
+                }],
             },
             fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_mesh"), compilation_options: Default::default(), targets: &target }),
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
@@ -146,11 +148,11 @@ impl Gpu3d {
                 module: &shader,
                 entry_point: Some("vs_line"),
                 compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
+                buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<LineInst>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32, 2 => Float32x3, 3 => Float32, 4 => Float32x4],
-                })],
+                }],
             },
             fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_line"), compilation_options: Default::default(), targets: &target }),
             primitive: wgpu::PrimitiveState::default(),
@@ -235,7 +237,7 @@ impl Gpu3d {
     }
 
     fn ensure_scene(&mut self, device: &wgpu::Device, p: &Params) {
-        let key = SceneKey { rev: p.rev, selected: p.selected.clone(), hover: p.hover.clone(), grid_y: p.grid_y.round() as i32 };
+        let key = SceneKey { rev: p.rev, selected: p.selected.clone(), hover: p.hover.clone(), grid_y: p.grid_y.round() as i32, cut: p.cut.as_ref().map(|c| (c.z * 1000.0) as i32) };
         if self.scene.as_ref().is_some_and(|s| s.key == key) {
             return;
         }
@@ -273,6 +275,35 @@ impl Gpu3d {
             let (lc, lw) = if sel { (blue, 2.5) } else if hov { (blue, 2.0) } else { (ink, 1.25 * p.line_scale) };
             for e in part.edges.chunks_exact(6) {
                 lines.push(LineInst { a: [e[0], e[1], e[2]], w: lw, b: [e[3], e[4], e[5]], pad: 0.0, col: [lc[0], lc[1], lc[2], 1.0] });
+            }
+        }
+        // section caps (manila; steel/rebar dark) with their outline
+        if let Some(cut) = &p.cut {
+            let manila = lin([0xE9, 0xD9, 0xA6]);
+            let dark = lin([0x3A, 0x3A, 0x3A]);
+            for cap in &cut.caps {
+                let steel = matches!(cap.material.as_str(), "steel" | "rebar" | "aluminum");
+                let sel = p.selected.as_deref() == Some(cap.src.as_str());
+                let hov = p.hover.as_deref() == Some(cap.src.as_str());
+                let base = if steel { dark } else { manila };
+                let tint = lin([0x5B, 0x86, 0xC8]);
+                let col = if sel { [base[0] * 0.55 + tint[0] * 0.45, base[1] * 0.55 + tint[1] * 0.45, base[2] * 0.55 + tint[2] * 0.45] } else if hov { [base[0] * 0.75 + tint[0] * 0.25, base[1] * 0.75 + tint[1] * 0.25, base[2] * 0.75 + tint[2] * 0.25] } else { base };
+                for (xy, tri) in crate::section3d::tris(cap) {
+                    let b0 = verts.len() as u32;
+                    for v in &xy {
+                        verts.push(Vtx { pos: [v[0], v[1], cut.z], nor: [0.0; 3], col: [col[0], col[1], col[2], 1.0] });
+                    }
+                    idx.extend(tri.iter().map(|i| i + b0));
+                }
+                let (lc, lw) = if sel || hov { (blue, 2.5) } else { (ink, 1.8 * p.line_scale) };
+                for group in &cap.groups {
+                    for lp in group {
+                        for i in 0..lp.len() {
+                            let (a, b) = (lp[i], lp[(i + 1) % lp.len()]);
+                            lines.push(LineInst { a: [a[0] as f32, a[1] as f32, cut.z], w: lw, b: [b[0] as f32, b[1] as f32, cut.z], pad: 0.0, col: [lc[0], lc[1], lc[2], 1.0] });
+                        }
+                    }
+                }
             }
         }
         // ground grid on the XZ plane under the model
@@ -334,6 +365,13 @@ pub struct Params {
     pub bg: [f64; 3],
     pub line_scale: f32,
     pub grid_y: f32,
+    pub cut: Option<Arc<CutInfo>>,
+}
+
+/// The active section plane and its caps.
+pub struct CutInfo {
+    pub z: f32,
+    pub caps: Vec<crate::section3d::Cap>,
 }
 
 pub struct Callback {
@@ -358,7 +396,11 @@ impl CallbackTrait for Callback {
             light: [-0.45, 0.8, 0.55, 0.52],
             viewport: [size[0] as f32, size[1] as f32],
             srgb: if gpu.format.is_srgb() { 1.0 } else { 0.0 },
-            line_bias: 3e-4,
+            line_bias: 1.2e-3,
+            clip: match &self.p.cut {
+                Some(c) => [1.0, c.z, 0.0, 0.0],
+                None => [0.0; 4],
+            },
         };
         queue.write_buffer(&gpu.globals, 0, bytemuck::bytes_of(&g));
         let (t, s) = (gpu.targets.as_ref().unwrap(), gpu.scene.as_ref().unwrap());
@@ -448,20 +490,40 @@ impl Cam3d {
 }
 
 /// Closest hit of a ray against all mesh triangles: (distance, src).
-pub fn pick(mesh: &Mesh, origin: Vec3, dir: Vec3) -> Option<(f32, String)> {
+pub fn pick(mesh: &Mesh, origin: Vec3, dir: Vec3, cut: Option<&CutInfo>) -> Option<(f32, String)> {
     let mut best: Option<(f32, &str)> = None;
     for part in &mesh.parts {
         let p = &part.positions;
         for t in part.indices.chunks_exact(3) {
             let v = |i: u32| Vec3::new(p[i as usize * 3], p[i as usize * 3 + 1], p[i as usize * 3 + 2]);
             if let Some(d) = ray_tri(origin, dir, v(t[0]), v(t[1]), v(t[2])) {
+                if cut.is_some_and(|c| (origin + dir * d).z > c.z + 0.002) {
+                    continue; // clipped away
+                }
                 if best.is_none_or(|(bd, _)| d < bd) {
                     best = Some((d, &part.src));
                 }
             }
         }
     }
-    best.map(|(d, s)| (d, s.to_owned()))
+    let mut best = best.map(|(d, s)| (d, s.to_owned()));
+    if let Some(c) = cut {
+        // the cap is a surface at z = cut.z
+        if dir.z.abs() > 1e-6 {
+            let t = (c.z - origin.z) / dir.z;
+            if t > 0.0 {
+                let h = origin + dir * t;
+                let pt = [h.x as f64, h.y as f64];
+                for cap in &c.caps {
+                    let hit = cap.groups.iter().any(|g| crate::ir::point_in_loop(pt, &g[0]) && !g[1..].iter().any(|hole| crate::ir::point_in_loop(pt, hole)));
+                    if hit && best.as_ref().is_none_or(|(bd, _)| t <= *bd + 1e-3) {
+                        best = Some((t, cap.src.clone()));
+                    }
+                }
+            }
+        }
+    }
+    best
 }
 
 fn ray_tri(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {

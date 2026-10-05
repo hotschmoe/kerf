@@ -266,6 +266,43 @@ pub fn triangulate(loops: &[Vec<P2>]) -> (Vec<[f32; 2]>, Vec<u32>) {
     (verts, idx.into_iter().map(|i| i as u32).collect())
 }
 
+/// Even-odd grouping: depth-even loops are outers, depth-odd loops become holes of their parent.
+pub fn even_odd_groups(loops: Vec<Vec<P2>>) -> Vec<Vec<Vec<P2>>> {
+    let n = loops.len();
+    let areas: Vec<f64> = loops.iter().map(|l| polygon_area(l).abs()).collect();
+    let mut parent: Vec<Option<usize>> = vec![None; n];
+    let mut depth = vec![0usize; n];
+    for i in 0..n {
+        let mut best: Option<usize> = None;
+        for j in 0..n {
+            if i != j && areas[j] > areas[i] && point_in_loop(loops[i][0], &loops[j]) {
+                depth[i] += 1;
+                if best.is_none_or(|b| areas[j] < areas[b]) {
+                    best = Some(j);
+                }
+            }
+        }
+        parent[i] = best;
+    }
+    let mut groups: Vec<(usize, Vec<Vec<P2>>)> = Vec::new();
+    for i in 0..n {
+        if depth[i] % 2 == 0 {
+            groups.push((i, vec![loops[i].clone()]));
+        }
+    }
+    for i in 0..n {
+        if depth[i] % 2 == 1 {
+            if let Some(p) = parent[i] {
+                if let Some(g) = groups.iter_mut().find(|g| g.0 == p) {
+                    g.1.push(loops[i].clone());
+                }
+            }
+        }
+    }
+    groups.into_iter().map(|g| g.1).collect()
+}
+
+
 // ---------------------------------------------------------------- stroke font
 
 #[derive(Deserialize)]
