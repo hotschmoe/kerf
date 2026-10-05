@@ -11,6 +11,8 @@ const view_mod = @import("view.zig");
 const section = @import("section.zig");
 const drawing = @import("drawing.zig");
 const units = @import("units.zig");
+const annot = @import("annot.zig");
+const font_mod = @import("font.zig");
 const Allocator = std.mem.Allocator;
 
 pub const layer_draw_order = [_][]const u8{ "hatch", "beyond", "cut", "steel", "hidden", "break", "notes", "dims", "title" };
@@ -83,16 +85,48 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
     var items: []const drawing.Item = &.{};
     var scale = spec.scale;
     var bounds = geom.Box{};
+    var unverified = false;
+    var detail = geom.Box{};
+    const font = try a.create(font_mod.Font);
+    font.* = font_mod.Font.parse(a, font_mod.embedded) catch return null;
     if (spec.kind == .section) {
         var sec = try section.Section.init(a, scene, spec, prisms);
         try sec.build();
-        items = try sec.finish();
-        bounds = spec.crop;
-        bounds.addBox(itemBounds(items));
+        const base = try sec.finish();
+        var base_items = try a.dupe(drawing.Item, base);
+        var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = spec.crop, .diags = diags, .landing = .{ .section = &sec } };
+        const ann = try annot.annotate(&env, base_items);
+        unverified = env.unverified;
+        var all: std.ArrayList(drawing.Item) = .empty;
+        try all.appendSlice(a, base_items);
+        try all.appendSlice(a, ann);
+        // title below the lowest annotation
+        var tcrop = spec.crop;
+        const ab = annot.itemsBox(font, all.items);
+        if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
+        const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
+        detail = annot.itemsBox(font, all.items);
+        detail.addBox(spec.crop);
+        _ = try annot.titleItems(&env, info, tcrop, &all);
+        items = all.items;
+        bounds = annot.itemsBox(font, items);
+        bounds.addBox(spec.crop);
+        _ = &base_items;
     } else {
         diags.add(.info, "I_ISO_PENDING", view_id, "views", "iso view rendering is not implemented in this engine build yet", .{});
         scale = 12;
         bounds = spec.crop;
+        detail = spec.crop;
+    }
+    // fit check against the sheet frame
+    {
+        const pw = (bounds.x1 - bounds.x0) / scale;
+        const ph = (bounds.y1 - bounds.y0) / scale;
+        const aw = st.sheet_w_in - 2.0 * st.margin_in;
+        const ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
+        if (pw > aw + 1e-6 or ph > ah + 1e-6) {
+            diags.addFix(.warning, "W_VIEW_FIT", view_id, try std.fmt.allocPrint(a, "views/{s}/scale", .{view_id}), "view {s} with notes and title needs {d:.2} x {d:.2} paper inches but the sheet area is {d:.2} x {d:.2} at scale {s}", .{ view_id, pw, ph, aw, ah, spec.scale_text }, "use a smaller scale (e.g. 3/4\"=1'-0\"), shrink the crop, or shorten the notes");
+        }
     }
     const layers = try collectLayers(a, items, st);
     return .{
@@ -112,6 +146,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         .date = metaString(doc, "date"),
         .code_basis = try codeBasis(a, doc),
         .crop = spec.crop,
-        .detail_bounds = bounds,
+        .detail_bounds = detail,
+        .has_unverified = unverified,
     };
 }

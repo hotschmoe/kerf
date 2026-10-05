@@ -6,6 +6,7 @@ const json = @import("json.zig");
 const geom = @import("geom.zig");
 const model = @import("model.zig");
 const catalog = @import("catalog.zig");
+const units = @import("units.zig");
 const style_mod = @import("style.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
@@ -138,6 +139,10 @@ pub const Scene = struct {
         return null;
     }
 
+    pub fn point(self: *Scene, v: json.Value, from_id: []const u8, path: []const u8) ?V2 {
+        return pointFromValue(self, v, from_id, path);
+    }
+
     /// Resolve a Ref string to a world point, reporting E_REF_UNKNOWN / E_ANCHOR_UNKNOWN.
     pub fn resolveRefStr(self: *Scene, ref: []const u8, from_id: []const u8, path: []const u8) ?V2 {
         const r = parseRef(ref) catch {
@@ -181,6 +186,28 @@ pub const Scene = struct {
         return null;
     }
 };
+
+/// Resolve a point value: Ref string, {ref, offset} or literal [x, y]. Reports diagnostics on failure.
+pub fn pointFromValue(self: *Scene, v: json.Value, from_id: []const u8, path: []const u8) ?V2 {
+    switch (v) {
+        .string => |s| return self.resolveRefStr(s, from_id, path),
+        .array => |xy| {
+            if (xy.len >= 2) if (units.parseLength(xy[0])) |x| if (units.parseLength(xy[1])) |y| return V2.init(x, y);
+        },
+        .object => {
+            if (v.get("ref")) |r| if (r.str()) |rs| {
+                var pt = self.resolveRefStr(rs, from_id, path) orelse return null;
+                if (v.get("offset")) |off| if (off.arr()) |oa| if (oa.len >= 2) {
+                    pt = pt.add(V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0));
+                };
+                return pt;
+            };
+        },
+        else => {},
+    }
+    self.diags.add(.@"error", "E_PARAM", from_id, path, "expected a point: a Ref \"comp@anchor\", {{\"ref\": ..., \"offset\": [dx, dy]}} or [x, y]", .{});
+    return null;
+}
 
 const box_names_text = "top_left, top_center, top_right, middle_left, center, middle_right, bottom_left, bottom_center, bottom_right";
 

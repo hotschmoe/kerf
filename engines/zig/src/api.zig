@@ -260,3 +260,34 @@ fn applyFn(a: Allocator, inp: json.Value) ApiError!Out {
     try out.appendSlice(a, "]}\n");
     return .{ .ok = true, .bytes = out.items };
 }
+
+test "api: every function runs on the reference documents without leaking" {
+    const testdocs = @import("testdocs.zig");
+    const gpa = std.testing.allocator;
+    for (testdocs.all) |doc| {
+        const trimmed = std.mem.trim(u8, doc, " \n\r\t");
+        inline for (.{ "check", "inspect" }) |fname| {
+            const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s}}}", .{trimmed});
+            defer gpa.free(input);
+            const r = try call(gpa, fname, input);
+            defer gpa.free(r.bytes);
+            try std.testing.expect(r.ok);
+        }
+        for ([_][]const u8{ "A" }) |v| {
+            for ([_][]const u8{ "drawing", "export" }) |fname| {
+                const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"view\":\"{s}\",\"format\":\"svg\"}}", .{ trimmed, v });
+                defer gpa.free(input);
+                const r = try call(gpa, fname, input);
+                defer gpa.free(r.bytes);
+                try std.testing.expect(r.ok);
+            }
+        }
+        const finput = try std.fmt.allocPrint(gpa, "{{\"doc\":{s}}}", .{trimmed});
+        defer gpa.free(finput);
+        const r = try call(gpa, "fmt", finput);
+        gpa.free(r.bytes);
+    }
+    const bad = try call(gpa, "nope", "{}");
+    defer gpa.free(bad.bytes);
+    try std.testing.expect(!bad.ok);
+}
