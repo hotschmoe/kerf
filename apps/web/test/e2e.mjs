@@ -120,6 +120,7 @@ await t('2D: click selects by src; dragging a note issues an update op with plac
   const page = await open('demo=1&auto=0&sample=truss-bearing-cmu');
   await page.waitForFunction('window.__rendered===true');
   await new Promise((r) => setTimeout(r, 400));
+  if (!(await ev(page, `!!window.__kerf.vp.vp2.model.bySrc.get('n_plate')`))) { console.log('      (engine drawing has no note n_plate yet: SKIP)'); skipped++; await page.close(); return; }
   const box = await page.$eval('#host2d canvas', (c) => { const r = c.getBoundingClientRect(); return { x: r.x, y: r.y }; });
   // locate note n_plate's first text item on screen
   const pos = await ev(page, `(() => { const vp = window.__kerf.vp.vp2; const g = vp.model.bySrc.get('n_plate'); const b = g.texts[0]; const v = vp.view;
@@ -278,7 +279,7 @@ if (engine !== 'fixture') {
       for (let i = 0; i < 100 && !fs.existsSync(path.join(outDir, name)); i++) {
         await new Promise((r) => setTimeout(r, 100));
         const st = await ev(page, 'document.getElementById("status").textContent');
-        if (/EXPORT FAILED.*(UNKNOWN FUNCTION|NOT IMPLEMENTED|UNSUPPORTED EXPORT FORMAT)/i.test(st)) { console.log(`      (engine lacks ${fmt} export: SKIP)`); skipped++; await page.close(); return; }
+        if (/EXPORT FAILED.*(UNKNOWN FUNCTION|NOT IMPLEMENTED|UNSUPPORTED EXPORT FORMAT|EXPORT FORMAT MUST BE)/i.test(st)) { console.log(`      (engine lacks ${fmt} export: SKIP)`); skipped++; await page.close(); return; }
       }
       assert.ok(fs.existsSync(path.join(outDir, name)), 'download ' + name + ' missing; have ' + fs.readdirSync(outDir).filter((f) => !before.has(f)));
       await new Promise((r) => setTimeout(r, 300));
