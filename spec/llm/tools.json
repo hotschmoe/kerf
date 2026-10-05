@@ -1,0 +1,53 @@
+[
+  {
+    "name": "kerf_apply",
+    "description": "Apply a batch of edit ops to the current Kerf document, atomically. Returns ok, the updated summary (every component with resolved x/y extents in feet-inches) and diagnostics. If any op fails nothing changes; read the error, fix, resend. For a brand-new detail send one {\"op\":\"set\",\"path\":\"doc\",\"value\":{...whole document...}}; afterwards prefer small add/update/remove ops so the designer sees clean diffs. Ops: add (path components | views | views/<id>/annotations, value), update (path components/<id> | views/<id> | views/<id>/annotations/<id> | meta, value = JSON merge patch, null deletes a key), remove (path to one item), set (path doc).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "ops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "op": { "type": "string", "enum": ["add", "update", "remove", "set"] },
+              "path": { "type": "string" },
+              "value": { "type": "object" },
+              "before": { "type": "string" }
+            },
+            "required": ["op", "path"]
+          }
+        },
+        "why": { "type": "string", "description": "One short line for the designer's change log, e.g. 'Add HETA20 embedded truss anchor'." }
+      },
+      "required": ["ops", "why"]
+    }
+  },
+  {
+    "name": "kerf_inspect",
+    "description": "Read the current document without changing it. q: 'summary' (component table + diagnostics), 'component' (resolved params, parts, every anchor with coordinates, z range; needs id), 'anchors' (needs id), 'at' (components under point [x,y] in view), 'catalog' (one component type's params and anchors; needs type), 'doc' (full JSON).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "q": { "type": "string", "enum": ["summary", "component", "anchors", "at", "catalog", "doc"] },
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "point": { "type": "array", "items": { "type": "number" } },
+        "view": { "type": "string" }
+      },
+      "required": ["q"]
+    }
+  },
+  {
+    "name": "kerf_render",
+    "description": "Render a view exactly as it will export and return it as an image so you can check your work: overlaps, gaps, leader clutter, notes pointing at the wrong thing, proportions vs the designer's reference screenshot. Call after every significant change and before telling the designer you are done.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "view": { "type": "string", "description": "View id, e.g. 'A'." },
+        "mode": { "type": "string", "enum": ["view", "sheet"], "description": "view = cropped drawing (default); sheet = full page with title block." }
+      },
+      "required": ["view"]
+    }
+  }
+]

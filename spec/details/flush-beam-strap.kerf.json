@@ -1,0 +1,326 @@
+{
+  "kerf": "0.1",
+  "id": "flush-beam-strap",
+  "title": "FLUSH BEAM AT DBL. TOP PLATE W/ STRAP",
+  "meta": {
+    "author": "kerf reference",
+    "discipline": "structural",
+    "classification": {
+      "uniformat": "B1010",
+      "masterformat": [
+        "06 11 00",
+        "06 17 13"
+      ]
+    },
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "tags": [
+      "lvl",
+      "flush beam",
+      "top plate",
+      "strap",
+      "continuity"
+    ],
+    "sheet": "S-502",
+    "date": "2026-10-05"
+  },
+  "run": [
+    -3.5,
+    0
+  ],
+  "components": [
+    {
+      "id": "beam",
+      "type": "lumber",
+      "product": "lvl",
+      "size": "1.75x9.25",
+      "plies": 2,
+      "run": "x",
+      "face": "wide",
+      "length": 42,
+      "at": {
+        "anchor": "top_left",
+        "to": [
+          -3,
+          97.125
+        ]
+      }
+    },
+    {
+      "id": "jack_studs",
+      "type": "lumber",
+      "size": "2x4",
+      "run": "y",
+      "face": "narrow",
+      "length": 86.375,
+      "at": {
+        "anchor": "top_left",
+        "to": "beam@bottom_left"
+      },
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 1.5
+      }
+    },
+    {
+      "id": "king_studs",
+      "type": "lumber",
+      "size": "2x4",
+      "run": "y",
+      "face": "narrow",
+      "length": 92.625,
+      "at": {
+        "anchor": "bottom_right",
+        "to": {
+          "ref": "beam@bottom_left",
+          "offset": [
+            0,
+            -86.375
+          ]
+        }
+      },
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": -1.5
+      }
+    },
+    {
+      "id": "studs",
+      "type": "lumber",
+      "size": "2x4",
+      "run": "y",
+      "face": "narrow",
+      "length": 92.625,
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "king_studs@bottom_left",
+          "offset": [
+            -17.25,
+            0
+          ]
+        }
+      },
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": -16
+      }
+    },
+    {
+      "id": "lower_plate",
+      "type": "lumber",
+      "size": "2x4",
+      "run": "x",
+      "face": "narrow",
+      "length": 45,
+      "at": {
+        "anchor": "bottom_right",
+        "to": {
+          "ref": "beam@top_left",
+          "offset": [
+            0,
+            -3
+          ]
+        }
+      }
+    },
+    {
+      "id": "upper_plate",
+      "type": "lumber",
+      "size": "2x4",
+      "run": "x",
+      "face": "narrow",
+      "length": 45,
+      "at": {
+        "anchor": "bottom_right",
+        "to": "lower_plate@top_right"
+      }
+    },
+    {
+      "id": "strap",
+      "type": "connector",
+      "model": "CS16",
+      "lay": "edge",
+      "side": "left",
+      "points": [
+        {
+          "ref": "upper_plate@top_right",
+          "offset": [
+            -11,
+            0
+          ]
+        },
+        {
+          "ref": "beam@top_left",
+          "offset": [
+            11,
+            0
+          ]
+        }
+      ],
+      "fasteners": "(20) 10D X 2 1/2\" EA. SIDE"
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "FLUSH BEAM AT TOP PLATE \u2014 ELEVATION",
+      "scale": "1-1/2\"=1'-0\"",
+      "cut_z": -1.75,
+      "crop": {
+        "x": [
+          -40,
+          30
+        ],
+        "y": [
+          76,
+          104
+        ]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_strap",
+          "type": "note",
+          "text": "SIMPSON CS16 STRAP X 22\" (11\" EA. SIDE OF JOINT) OVER TOP OF PLATE & BEAM W/ (20) 10D X 2 1/2\" EA. SIDE, INSTALL PER MFR.",
+          "target": "strap",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R602.3.2",
+              "title": "Top plate",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_beam",
+          "type": "note",
+          "text": "(2) 1 3/4\" X 9 1/4\" LVL BEAM, T.O. BEAM FLUSH W/ T.O. DBL. TOP PLATE. NAIL PLIES PER MFR.",
+          "target": "beam"
+        },
+        {
+          "id": "n_plates",
+          "type": "note",
+          "text": "DBL. 2X4 TOP PLATE, INTERRUPTED AT BEAM",
+          "target": "upper_plate"
+        },
+        {
+          "id": "n_splice",
+          "type": "note",
+          "text": "OFFSET TOP PLATE END JOINTS 24\" MIN. AWAY FROM BEAM",
+          "target": "lower_plate",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R602.3.2",
+              "title": "Top plate",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_jack",
+          "type": "note",
+          "text": "(2) 2X4 JACK STUDS",
+          "target": "jack_studs"
+        },
+        {
+          "id": "n_king",
+          "type": "note",
+          "text": "(2) 2X4 KING STUDS, END NAIL TO BEAM W/ (4) 16D",
+          "target": "king_studs",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R602.7.5",
+              "title": "Supports for headers",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_studs",
+          "type": "note",
+          "text": "2X4 STUDS @ 16\" O.C.",
+          "target": "studs"
+        },
+        {
+          "id": "d_strap_l",
+          "type": "dim",
+          "from": "strap@bottom_left",
+          "to": "beam@top_left",
+          "dir": "h",
+          "offset": 4
+        },
+        {
+          "id": "d_strap_r",
+          "type": "dim",
+          "from": "beam@top_left",
+          "to": "strap@bottom_right",
+          "dir": "h",
+          "offset": 4
+        },
+        {
+          "id": "d_beam",
+          "type": "dim",
+          "from": "beam@bottom_right",
+          "to": "beam@top_right",
+          "dir": "v",
+          "offset": 4
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "iso",
+      "number": "2",
+      "title": "FLUSH BEAM AT TOP PLATE \u2014 ISO",
+      "scale": "NTS",
+      "from": "front_right",
+      "cutaway": false,
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -40,
+          30
+        ],
+        "y": [
+          76,
+          104
+        ]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_strap",
+          "type": "note",
+          "text": "CS16 STRAP ACROSS PLATE-TO-BEAM JOINT",
+          "target": "strap"
+        },
+        {
+          "id": "n_beam",
+          "type": "note",
+          "text": "(2) 1 3/4\" X 9 1/4\" LVL",
+          "target": "beam"
+        },
+        {
+          "id": "n_plates",
+          "type": "note",
+          "text": "DBL. TOP PLATE",
+          "target": "upper_plate"
+        }
+      ]
+    }
+  ]
+}

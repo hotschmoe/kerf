@@ -1,0 +1,465 @@
+{
+  "kerf": "0.1",
+  "id": "truss-bearing-cmu",
+  "title": "PREFAB TRUSS BEARING AT CMU WALL",
+  "meta": {
+    "author": "kerf reference",
+    "discipline": "structural",
+    "classification": {
+      "uniformat": "B1020",
+      "masterformat": [
+        "04 22 00",
+        "06 17 53"
+      ]
+    },
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "tags": [
+      "cmu",
+      "truss",
+      "bond beam",
+      "uplift",
+      "roof-to-wall"
+    ],
+    "sheet": "S-501",
+    "date": "2026-10-05"
+  },
+  "run": [
+    -24,
+    24
+  ],
+  "components": [
+    {
+      "id": "cmu",
+      "type": "cmu_wall",
+      "width": 8,
+      "courses": 4,
+      "bond_beam_courses": 1,
+      "grout": "reinforced",
+      "at": {
+        "anchor": "top_left",
+        "to": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "bb_bars",
+      "type": "rebar",
+      "size": "#5",
+      "mode": "along_z",
+      "place": {
+        "in": "cmu.bond_beam",
+        "face": "bottom",
+        "cover": 1.5,
+        "count": 2,
+        "side_cover": 2.25
+      }
+    },
+    {
+      "id": "vert_bar",
+      "type": "rebar",
+      "size": "#5",
+      "mode": "path",
+      "points": [
+        "cmu@bottom_center",
+        {
+          "ref": "cmu@top_center",
+          "offset": [
+            0,
+            -2
+          ]
+        }
+      ],
+      "z": -8,
+      "spacing_note": "#5 @ 32\" O.C."
+    },
+    {
+      "id": "sill_plate",
+      "type": "lumber",
+      "size": "2x8",
+      "orient": "flat",
+      "treated": true,
+      "at": {
+        "anchor": "bottom_center",
+        "to": "cmu@top_center"
+      }
+    },
+    {
+      "id": "anchor_bolt",
+      "type": "anchor_bolt",
+      "diameter": 0.625,
+      "embed": 7,
+      "projection": 2.75,
+      "hook": "J",
+      "at": {
+        "anchor": "top_of_concrete",
+        "to": "cmu@top_center"
+      },
+      "z": 0
+    },
+    {
+      "id": "truss",
+      "type": "truss",
+      "exterior": "left",
+      "pitch": "4:12",
+      "top_chord": "2x4",
+      "bottom_chord": "2x4",
+      "heel": "standard",
+      "bearing_width": 7.25,
+      "overhang": 18,
+      "tail": "plumb",
+      "span_shown": 36,
+      "at": {
+        "anchor": "bearing_outer",
+        "to": "sill_plate@top_left"
+      },
+      "z": -12,
+      "array": {
+        "axis": "z",
+        "count": 2,
+        "spacing": 24
+      }
+    },
+    {
+      "id": "bird_block",
+      "type": "lumber",
+      "size": "2x6",
+      "orient": "upright",
+      "blocking": true,
+      "at": {
+        "anchor": "bottom_left",
+        "to": "sill_plate@top_left"
+      },
+      "z": [
+        -11.25,
+        11.25
+      ]
+    },
+    {
+      "id": "hurricane_tie",
+      "type": "connector",
+      "model": "H2.5A",
+      "lay": "face",
+      "points": [
+        {
+          "ref": "sill_plate@top_left",
+          "offset": [
+            1.5,
+            -1.125
+          ]
+        },
+        {
+          "ref": "sill_plate@top_left",
+          "offset": [
+            1.5,
+            3.25
+          ]
+        }
+      ],
+      "z": -11.2
+    },
+    {
+      "id": "subfascia",
+      "type": "lumber",
+      "size": "2x6",
+      "orient": "upright",
+      "at": {
+        "anchor": "top_right",
+        "to": "truss@tail_top"
+      }
+    },
+    {
+      "id": "fascia",
+      "type": "panel",
+      "material": "wood_board",
+      "thickness": 0.75,
+      "length": 5.5,
+      "run": "y",
+      "at": {
+        "anchor": "top_right",
+        "to": "subfascia@top_left"
+      }
+    },
+    {
+      "id": "soffit",
+      "type": "panel",
+      "material": "plywood",
+      "thickness": 0.375,
+      "length": 19.3125,
+      "run": "x",
+      "at": {
+        "anchor": "top_left",
+        "to": "subfascia@bottom_left"
+      }
+    },
+    {
+      "id": "roof_sheathing",
+      "type": "panel",
+      "material": "osb",
+      "thickness": 0.4375,
+      "length": 66,
+      "run": "x",
+      "slope": "4:12",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "truss@tail_top"
+      }
+    },
+    {
+      "id": "roofing",
+      "type": "membrane",
+      "material": "shingles",
+      "thickness": 0.25,
+      "side": "left",
+      "points": [
+        "roof_sheathing@top_left",
+        "roof_sheathing@top_right"
+      ]
+    },
+    {
+      "id": "ceiling",
+      "type": "panel",
+      "material": "gypsum",
+      "thickness": 0.5,
+      "length": 30,
+      "run": "x",
+      "at": {
+        "anchor": "top_left",
+        "to": {
+          "ref": "cmu@top_right",
+          "offset": [
+            0,
+            1.5
+          ]
+        }
+      }
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "TRUSS BEARING AT CMU WALL",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -24,
+          30
+        ],
+        "y": [
+          -28,
+          20
+        ]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_roof",
+          "type": "note",
+          "text": "ASPHALT SHINGLES ON #30 UNDERLAYMENT W/ DRIP EDGE AT EAVE",
+          "target": "roofing",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R905.1.1",
+              "title": "Underlayment",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_shtg",
+          "type": "note",
+          "text": "7/16\" OSB ROOF SHEATHING",
+          "target": "roof_sheathing"
+        },
+        {
+          "id": "n_truss",
+          "type": "note",
+          "text": "PRE-ENGINEERED WOOD TRUSS @ 24\" O.C. PER MFR. DWGS",
+          "target": "truss",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R802.10",
+              "title": "Wood trusses",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_tie",
+          "type": "note",
+          "text": "SIMPSON H2.5A HURRICANE TIE @ EA. TRUSS, INSTALL PER MFR.",
+          "target": "hurricane_tie",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R802.11.1",
+              "title": "Uplift resistance",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_block",
+          "type": "note",
+          "text": "2X6 BIRD BLOCKING BETWEEN TRUSSES",
+          "target": "bird_block"
+        },
+        {
+          "id": "n_plate",
+          "type": "note",
+          "text": "2X8 PT SILL PLATE W/ 5/8\" DIA. J-BOLTS @ 48\" O.C., 7\" MIN. EMBED.",
+          "target": "sill_plate",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R403.1.6",
+              "title": "Foundation anchorage",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_bb",
+          "type": "note",
+          "text": "GROUTED BOND BEAM W/ (2) #5 CONT. HORIZ.",
+          "target": "bb_bars"
+        },
+        {
+          "id": "n_vert",
+          "type": "note",
+          "text": "#5 VERT. @ 32\" O.C. IN GROUTED CELLS",
+          "target": "vert_bar"
+        },
+        {
+          "id": "n_cmu",
+          "type": "note",
+          "text": "8\" CMU WALL",
+          "target": "cmu",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R606",
+              "title": "General masonry construction",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_fascia",
+          "type": "note",
+          "text": "1X6 FASCIA OVER 2X6 SUBFASCIA",
+          "target": "fascia"
+        },
+        {
+          "id": "n_soffit",
+          "type": "note",
+          "text": "3/8\" PLY. VENTED SOFFIT",
+          "target": "soffit"
+        },
+        {
+          "id": "n_clg",
+          "type": "note",
+          "text": "1/2\" GYP. BD. CEILING",
+          "target": "ceiling"
+        },
+        {
+          "id": "l_ext",
+          "type": "label",
+          "text": "EXTERIOR",
+          "at": "cmu@middle_left",
+          "offset": [
+            -14,
+            0
+          ]
+        },
+        {
+          "id": "l_int",
+          "type": "label",
+          "text": "INTERIOR",
+          "at": "cmu@middle_right",
+          "offset": [
+            8,
+            0
+          ]
+        },
+        {
+          "id": "d_wall",
+          "type": "dim",
+          "from": "cmu@bottom_left",
+          "to": "cmu@bottom_right",
+          "dir": "h",
+          "offset": -3
+        },
+        {
+          "id": "d_ovh",
+          "type": "dim",
+          "from": "fascia@top_left",
+          "to": "cmu@top_left",
+          "dir": "h",
+          "offset": 14
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "iso",
+      "number": "2",
+      "title": "TRUSS BEARING AT CMU WALL \u2014 ISO",
+      "scale": "NTS",
+      "from": "front_left",
+      "cutaway": true,
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -24,
+          30
+        ],
+        "y": [
+          -28,
+          20
+        ]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_truss",
+          "type": "note",
+          "text": "PRE-ENGINEERED WOOD TRUSS @ 24\" O.C.",
+          "target": "truss"
+        },
+        {
+          "id": "n_tie",
+          "type": "note",
+          "text": "H2.5A @ EA. TRUSS",
+          "target": "hurricane_tie"
+        },
+        {
+          "id": "n_block",
+          "type": "note",
+          "text": "2X6 BIRD BLOCKING",
+          "target": "bird_block"
+        },
+        {
+          "id": "n_cmu",
+          "type": "note",
+          "text": "8\" CMU W/ GROUTED BOND BEAM",
+          "target": "cmu"
+        }
+      ]
+    }
+  ]
+}

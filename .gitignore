@@ -1,0 +1,23 @@
+# Python / tooling
+tools/.venv/
+__pycache__/
+*.pyc
+node_modules/
+
+# Build outputs (each stack lives under stacks/<name>/)
+target/
+zig-out/
+.zig-cache/
+zig-cache/
+dist/
+/build/
+/pkg/
+*.wasm.map
+.wasm-pack/
+
+# Scratch / test artifacts
+/tmp/
+*.log
+.DS_Store
+.vscode/
+.idea/

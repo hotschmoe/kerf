@@ -1,0 +1,468 @@
+{
+  "kerf": "0.1",
+  "id": "monopour-slab-door-recess",
+  "title": "MONOLITHIC SLAB EDGE AT SLIDING DOOR",
+  "meta": {
+    "author": "kerf reference",
+    "discipline": "structural",
+    "classification": {
+      "uniformat": "A1010",
+      "masterformat": [
+        "03 30 00"
+      ]
+    },
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "tags": [
+      "slab-on-grade",
+      "monolithic",
+      "turndown",
+      "door recess",
+      "depression"
+    ],
+    "sheet": "S-501",
+    "date": "2026-10-05"
+  },
+  "run": [
+    -30,
+    30
+  ],
+  "components": [
+    {
+      "id": "slab",
+      "type": "concrete",
+      "shape": "slab_edge",
+      "exterior": "left",
+      "slab_thickness": 4,
+      "slab_length": 48,
+      "footing_width": 12,
+      "footing_depth": 18,
+      "haunch": 45,
+      "recess": {
+        "width": 8,
+        "depth": 1.5,
+        "from_edge": 0
+      },
+      "recess_slope": 0.125,
+      "cover": {
+        "bottom": 3,
+        "sides": 3,
+        "top": 1.5,
+        "parts": {
+          "slab": {
+            "bottom": 0.75
+          }
+        }
+      },
+      "at": {
+        "anchor": "top_exterior",
+        "to": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "ftg_bars",
+      "type": "rebar",
+      "size": "#5",
+      "mode": "along_z",
+      "place": {
+        "in": "slab.footing",
+        "face": "bottom",
+        "cover": 3,
+        "count": 2,
+        "side_cover": 3
+      }
+    },
+    {
+      "id": "top_bar",
+      "type": "rebar",
+      "size": "#4",
+      "mode": "along_z",
+      "at": {
+        "anchor": "center",
+        "to": {
+          "ref": "slab@top_exterior",
+          "offset": [
+            6,
+            -4.5
+          ]
+        }
+      }
+    },
+    {
+      "id": "slab_bars_x",
+      "type": "rebar",
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        {
+          "ref": "slab@top_exterior",
+          "offset": [
+            14,
+            -2
+          ]
+        },
+        {
+          "ref": "slab@top_exterior",
+          "offset": [
+            48,
+            -2
+          ]
+        }
+      ],
+      "z": 0,
+      "spacing_note": "#4 @ 16\" O.C. EA. WAY"
+    },
+    {
+      "id": "slab_bars_z",
+      "type": "rebar",
+      "size": "#4",
+      "mode": "along_z",
+      "at": {
+        "anchor": "center",
+        "to": {
+          "ref": "slab@top_exterior",
+          "offset": [
+            20,
+            -2.5
+          ]
+        }
+      },
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 16
+      }
+    },
+    {
+      "id": "vapor_retarder",
+      "type": "membrane",
+      "material": "vapor_retarder",
+      "side": "left",
+      "points": [
+        "slab@slab_bottom_interior",
+        "slab@haunch_top",
+        "slab@footing_bottom_interior"
+      ]
+    },
+    {
+      "id": "base",
+      "type": "fill",
+      "material": "gravel",
+      "outline": "none",
+      "points": [
+        "slab@slab_bottom_interior",
+        "slab@haunch_top",
+        {
+          "ref": "slab@haunch_top",
+          "offset": [
+            -4,
+            -4
+          ]
+        },
+        {
+          "ref": "slab@slab_bottom_interior",
+          "offset": [
+            0,
+            -4
+          ]
+        }
+      ]
+    },
+    {
+      "id": "soil",
+      "type": "fill",
+      "material": "earth",
+      "outline": "top",
+      "points": [
+        {
+          "ref": "slab@top_exterior",
+          "offset": [
+            -24,
+            -6
+          ]
+        },
+        {
+          "ref": "slab@top_exterior",
+          "offset": [
+            0,
+            -6
+          ]
+        },
+        "slab@footing_bottom_exterior",
+        "slab@footing_bottom_interior",
+        {
+          "ref": "slab@haunch_top",
+          "offset": [
+            -4,
+            -4
+          ]
+        },
+        {
+          "ref": "slab@slab_bottom_interior",
+          "offset": [
+            0,
+            -4
+          ]
+        },
+        {
+          "ref": "slab@slab_bottom_interior",
+          "offset": [
+            0,
+            -24
+          ]
+        },
+        {
+          "ref": "slab@slab_bottom_interior",
+          "offset": [
+            -72,
+            -24
+          ]
+        }
+      ]
+    },
+    {
+      "id": "door_sill",
+      "type": "solid",
+      "material": "aluminum",
+      "label": "SLIDING DOOR SILL (SCHEMATIC)",
+      "profile": {
+        "rect": [
+          6.5625,
+          1.25
+        ]
+      },
+      "at": {
+        "anchor": "bottom_right",
+        "to": {
+          "ref": "slab@recess_bottom_interior",
+          "offset": [
+            -0.5,
+            0
+          ]
+        }
+      }
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "2",
+      "title": "SLAB EDGE AT SLIDING DOOR",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -16,
+          36
+        ],
+        "y": [
+          -26,
+          8
+        ]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_slab",
+          "type": "note",
+          "text": "4\" CONC. SLAB W/ #4 @ 16\" O.C. EA. WAY",
+          "target": "slab_bars_x",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R506.1",
+              "title": "Concrete floors on ground",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_vr",
+          "type": "note",
+          "text": "10 MIL VAPOR RETARDER, LAP 6\" MIN.",
+          "target": "vapor_retarder",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R506.2.3",
+              "title": "Vapor retarder",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_base",
+          "type": "note",
+          "text": "4\" COMPACTED GRAVEL BASE",
+          "target": "base",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R506.2.2",
+              "title": "Base",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "MONOLITHIC TURNED-DOWN FTG. 12\" W X 18\" DEEP BELOW T.O. SLAB, BOTT. 12\" MIN. BELOW UNDISTURBED GRADE & BELOW FROST DEPTH",
+          "target": "slab",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R403.1.4",
+              "title": "Minimum depth",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_ftg_bars",
+          "type": "note",
+          "text": "(2) #5 CONT. BOTT., 3\" CLR.",
+          "target": "ftg_bars"
+        },
+        {
+          "id": "n_top_bar",
+          "type": "note",
+          "text": "(1) #4 CONT. TOP",
+          "target": "top_bar"
+        },
+        {
+          "id": "n_recess",
+          "type": "note",
+          "text": "SLAB DEPRESSION 1 1/2\" DEEP X 8\" WIDE FOR SLIDING DOOR SILL, SLOPE TO EXTERIOR. VERIFY SILL DEPTH W/ DOOR MFR.",
+          "target": "slab",
+          "at": {
+            "ref": "slab@recess_bottom_interior",
+            "offset": [
+              -3,
+              0.01
+            ]
+          }
+        },
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "SLIDING DOOR SILL ON PAN FLASHING, SEAL TO CONC. PER MFR.",
+          "target": "door_sill",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R703.4",
+              "title": "Flashing",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "n_grade",
+          "type": "note",
+          "text": "FINISH GRADE, SLOPE AWAY 6\" MIN. IN FIRST 10'-0\"",
+          "target": "soil",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R401.3",
+              "title": "Drainage",
+              "status": "suggested"
+            }
+          ]
+        },
+        {
+          "id": "l_ext",
+          "type": "label",
+          "text": "EXTERIOR",
+          "at": "slab@top_exterior",
+          "offset": [
+            -12,
+            3
+          ]
+        },
+        {
+          "id": "l_int",
+          "type": "label",
+          "text": "INTERIOR",
+          "at": "slab@top_exterior",
+          "offset": [
+            24,
+            3
+          ]
+        },
+        {
+          "id": "d_ftg_w",
+          "type": "dim",
+          "from": "slab@footing_bottom_exterior",
+          "to": "slab@footing_bottom_interior",
+          "dir": "h",
+          "offset": -4
+        },
+        {
+          "id": "d_ftg_d",
+          "type": "dim",
+          "from": "slab@top_exterior",
+          "to": "slab@footing_bottom_exterior",
+          "dir": "v",
+          "offset": -10
+        },
+        {
+          "id": "d_recess",
+          "type": "dim",
+          "from": "slab@recess_bottom_interior",
+          "to": "slab@recess_top_interior",
+          "dir": "v",
+          "offset": 4
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "iso",
+      "number": "3",
+      "title": "SLAB EDGE AT SLIDING DOOR \u2014 ISO",
+      "scale": "NTS",
+      "from": "front_left",
+      "cutaway": true,
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -16,
+          36
+        ],
+        "y": [
+          -26,
+          8
+        ]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_recess",
+          "type": "note",
+          "text": "SLAB DEPRESSION FOR DOOR SILL",
+          "target": "slab"
+        },
+        {
+          "id": "n_ftg_bars",
+          "type": "note",
+          "text": "(2) #5 CONT. BOTT.",
+          "target": "ftg_bars"
+        }
+      ]
+    }
+  ]
+}

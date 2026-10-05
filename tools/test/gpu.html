@@ -1,0 +1,34 @@
+<!doctype html><body style="margin:0;background:#fff"><canvas id=c width=400 height=200></canvas><canvas id=g width=400 height=200></canvas><pre id=log></pre>
+<script type=module>
+const log=(s)=>{document.getElementById('log').textContent+=s+'\n';console.log(s)};
+window.result={};
+try{
+ const gl=document.getElementById('g').getContext('webgl2');
+ if(!gl) log('WEBGL2: none'); else {
+  gl.clearColor(0,0,1,1);gl.clear(gl.COLOR_BUFFER_BIT);
+  const e=gl.getExtension('WEBGL_debug_renderer_info');
+  log('WEBGL2: '+(e?gl.getParameter(e.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)));
+  window.result.webgl2=true;}
+}catch(e){log('WEBGL2 error '+e)}
+try{
+ if(!navigator.gpu){log('WEBGPU: navigator.gpu undefined (secureContext='+isSecureContext+')')}
+ else{
+  const ad=await navigator.gpu.requestAdapter();
+  if(!ad){log('WEBGPU: requestAdapter null')}
+  else{
+   const info=ad.info||{};
+   log('WEBGPU adapter: vendor='+info.vendor+' arch='+info.architecture+' device='+info.device+' desc='+info.description+' fallback='+ad.isFallbackAdapter);
+   const dev=await ad.requestDevice();
+   const ctx=document.getElementById('c').getContext('webgpu');
+   const fmt=navigator.gpu.getPreferredCanvasFormat();
+   ctx.configure({device:dev,format:fmt,alphaMode:'opaque'});
+   const frame=()=>{const enc=dev.createCommandEncoder();
+   const pass=enc.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),clearValue:{r:1,g:0.5,b:0,a:1},loadOp:'clear',storeOp:'store'}]});
+   pass.end();dev.queue.submit([enc.finish()]);};
+   const loop=()=>{frame();requestAnimationFrame(loop)};requestAnimationFrame(loop);frame();
+   await dev.queue.onSubmittedWorkDone();
+   log('WEBGPU: clear ok (orange expected), fmt='+fmt);window.result.webgpu=true;
+  }}
+}catch(e){log('WEBGPU error '+e)}
+window.done=true;
+</script>
