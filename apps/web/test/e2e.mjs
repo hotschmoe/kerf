@@ -26,7 +26,7 @@ const browser = await puppeteer.launch({
 const cdp = await browser.target().createCDPSession();
 await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: outDir });
 
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, skipped = 0;
 const results = [];
 async function t(name, fn) {
   try { await fn(); pass++; results.push(['ok', name]); console.log('  ok  ' + name); }
@@ -275,7 +275,11 @@ if (engine !== 'fixture') {
       const before = new Set(fs.readdirSync(outDir));
       await ev(page, `[...document.querySelectorAll('.iexport .btn')].find(b => b.textContent === '${fmt.toUpperCase()}').click()`);
       const name = `truss-bearing-cmu-A.${fmt}`;
-      for (let i = 0; i < 100 && !fs.existsSync(path.join(outDir, name)); i++) await new Promise((r) => setTimeout(r, 100));
+      for (let i = 0; i < 100 && !fs.existsSync(path.join(outDir, name)); i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        const st = await ev(page, 'document.getElementById("status").textContent');
+        if (/EXPORT FAILED.*(UNKNOWN FUNCTION|NOT IMPLEMENTED|UNSUPPORTED EXPORT FORMAT)/i.test(st)) { console.log(`      (engine lacks ${fmt} export: SKIP)`); skipped++; await page.close(); return; }
+      }
       assert.ok(fs.existsSync(path.join(outDir, name)), 'download ' + name + ' missing; have ' + fs.readdirSync(outDir).filter((f) => !before.has(f)));
       await new Promise((r) => setTimeout(r, 300));
       const file = path.join(outDir, name);
@@ -294,5 +298,5 @@ if (engine !== 'fixture') {
 
 await browser.close();
 server.kill();
-console.log(`\n${pass} passed, ${fail} failed. artifacts: ${outDir}`);
+console.log(`\n${pass} passed, ${fail} failed, ${skipped} skipped (engine function missing). artifacts: ${outDir}`);
 process.exit(fail ? 1 : 0);

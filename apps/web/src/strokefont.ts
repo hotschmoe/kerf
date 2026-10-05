@@ -10,8 +10,16 @@ export function getFont(): StrokeFont {
   return font;
 }
 
-export function textWidth(s: string, h: number): number {
+/** Fold characters the stroke font lacks to their ASCII look-alikes (engine text may contain them). */
+export function fold(s: string): string {
+  return s.replace(/[\u2013\u2014\u2212]/g, '-').replace(/[\u2018\u2019\u2032]/g, "'").replace(/[\u201C\u201D\u2033]/g, '"')
+    .replace(/\u00D7/g, 'X').replace(/\u00B7|\u2022/g, '.').replace(/\u00BD/g, '1/2').replace(/\u00BC/g, '1/4').replace(/\u00BE/g, '3/4')
+    .replace(/\u00B0/g, ' DEG').replace(/\u2026/g, '...').replace(/\u00A0/g, ' ');
+}
+
+export function textWidth(s0: string, h: number): number {
   const f = getFont();
+  const s = fold(s0);
   const k = h / f.cap_height;
   let w = 0;
   for (const ch of s) w += (f.glyphs[ch] ?? f.glyphs['?'])?.adv * k || 0;
@@ -23,8 +31,9 @@ export interface TextSpec {
 }
 
 /** Strokes in model space for one text item, plus its axis-aligned bounding box. */
-export function layoutText(t: TextSpec): { lines: Polyline[]; bbox: [number, number, number, number]; width: number } {
+export function layoutText(t0: TextSpec): { lines: Polyline[]; bbox: [number, number, number, number]; width: number } {
   const f = getFont();
+  const t = { ...t0, s: fold(t0.s) };
   const k = t.h / f.cap_height;
   const width = textWidth(t.s, t.h);
   const ox = t.align === 'center' || t.align === 'middle' ? -width / 2 : t.align === 'right' ? -width : 0;

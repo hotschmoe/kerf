@@ -229,9 +229,10 @@ export class App {
     const lines = this.summary.split('\n');
     const comps = new Set(this.doc?.components.map((c) => c.id) ?? []);
     for (const raw of lines) {
-      const m = /^\s*(\S+)\s+(\S+)\s+(.*?)\s+x\s+(.+?)\s+y\s+(.+?)\s*$/.exec(raw);
+      // " id  type params…   x <range>  y <range>": params may itself contain " x " (e.g. 8" x 4 courses), so take the LAST " x ... y " pair
+      const m = /^\s*(\S+)\s+(\S+)\s+(.*)\s+x\s+(\S.*?)\s+y\s+(\S.*?)\s*$/.exec(raw);
       if (!m || !comps.has(m[1].replace(/#\d+$/, ''))) continue;
-      rows.push({ no: String(rows.length + 1).padStart(2, '0'), id: m[1], type: m[2], params: m[3], x: m[4], y: m[5], raw });
+      rows.push({ no: String(rows.length + 1).padStart(2, '0'), id: m[1], type: m[2], params: m[3].trim(), x: m[4], y: m[5], raw });
     }
     if (!rows.length && this.doc) {
       this.doc.components.forEach((c, i) => rows.push({ no: String(i + 1).padStart(2, '0'), id: c.id, type: c.type, params: '', x: '', y: '', raw: c.id }));

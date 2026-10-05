@@ -15,7 +15,7 @@ export interface HeaderHooks {
 }
 
 export function mountHeader(app: App, el: HTMLElement, hooks: HeaderHooks) {
-  const doc = h('span.hf');
+  const doc = h('span.hf.doc');
   const style = h('span.hf.opt');
   const engine = h('span.hf.eng');
   const sampleBtn = btn('OPEN SAMPLE ▾', () => {
@@ -60,7 +60,7 @@ export function mountHeader(app: App, el: HTMLElement, hooks: HeaderHooks) {
     clear(style);
     style.append(h('span', 'STYLE:'), h('b', String((app.style as { id?: string })?.id ?? '?').toUpperCase()));
     clear(engine);
-    engine.append(h('span', 'ENGINE:'), h('b', `${app.engine.info.engine}`.toUpperCase()), ` ${app.engine.info.version}`);
+    engine.append(h('span', 'ENGINE:'), h('b', `${app.engine.info.engine}`.toUpperCase()), ` ${app.engine.info.version}`, app.engine.compat?.size ? h('span', { title: 'Functions emulated in the browser because this engine build lacks them', style: 'color:#D98E04' }, ` (EMULATED: ${[...app.engine.compat].join(',')})`) : '');
   };
   app.on('doc', render);
   app.on('log', render);

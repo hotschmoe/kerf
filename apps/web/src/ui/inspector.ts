@@ -131,6 +131,8 @@ export function mountInspector(app: App, el: HTMLElement) {
     sec.append(kv);
     const put = (k: string, v: unknown) => kv.append(h('div.k', k), h('div.vv', fmtVal(v)));
     // declared params immediately (from the document), resolved params/anchors when the engine answers
+    const prow = app.partsRows().find((r) => r.id === c.id || r.id === `${c.id}#0`);
+    if (prow) { put('x extent', prow.x); put('y extent', prow.y); }
     for (const [k, v] of Object.entries(c)) if (k !== 'id' && k !== 'type') put(k, v);
     try {
       const r = (await app.inspect({ q: 'component', id: c.id })) as unknown;

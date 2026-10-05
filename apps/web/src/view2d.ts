@@ -188,7 +188,7 @@ export class Viewport2D {
       const alpha = Math.max(0, Math.min(1, (px - 5) / 9));
       if (alpha <= 0.02) return;
       // a coarser level stays visible; a finer one fades out
-      ctx.globalAlpha = li === 0 ? alpha * 0.9 : alpha;
+      ctx.globalAlpha = li === 0 ? alpha * 0.9 : li === 1 ? alpha : alpha * 0.55;
       ctx.strokeStyle = col;
       ctx.beginPath();
       const i0 = Math.floor(x0 / sp), i1 = Math.ceil(x1 / sp);

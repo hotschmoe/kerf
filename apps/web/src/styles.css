@@ -34,7 +34,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .hf { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .hf span { color: var(--ink-2); font-weight: 500; margin-right: 6px; }
 .hf b { font-weight: 700; }
-#hdr .sp { flex: 1; }
+#hdr .sp { flex: 1; min-width: 4px; }
+#hdr .hf.doc, #hdr .hf.eng { flex: none; }
 #hdr .btns { display: flex; gap: 8px; flex: none; }
 
 /* ---------- buttons ---------- */
