@@ -403,7 +403,13 @@ pub fn build_section(model: &Model, vp: &ViewParams, style: &Style, _diags: &mut
     // --- strokes for cut prisms
     let pen_of = |p: &Prism, default: &str| p.pen.clone().unwrap_or_else(|| default.to_string());
     let mut push_prism_strokes = |p: &Prism, occ: &[&Occ], default_pen: &str, kind_rank: u8, strokes: &mut Vec<Stroke>| {
-        let pen = pen_of(p, default_pen);
+        let mut pen = pen_of(p, default_pen);
+        {
+            let metal = p.fill_solid || matches!(p.material.as_str(), "steel" | "aluminum" | "rebar");
+            if kind_rank != 0 && metal && p.center.is_none() && p.bar.is_none() && region_thickness(&p.region) / s < 2.0 * style.pen_width_in(&pen) {
+                pen = "frame".to_string(); // thin sheet metal reads as a bold line
+            }
+        }
         let mut loops: Vec<&Loop> = vec![&p.region.outer];
         loops.extend(p.region.holes.iter());
         let thin_center = p.center.as_ref().filter(|(_, t)| t.abs() / s < 2.0 * style.pen_width_in(&pen));

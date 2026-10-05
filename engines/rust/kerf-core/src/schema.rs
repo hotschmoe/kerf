@@ -330,6 +330,10 @@ fn perr(errs: Errs, path: &str, msg: String, fix: Option<String>) {
 
 fn canon_len(v: &Value, path: &str, errs: Errs) -> Value {
     match length_of(v) {
+        Ok(x) if x.abs() > 1.0e6 || !x.is_finite() => {
+            perr(errs, path, format!("{}: {} is not a plausible length in inches (limit 1,000,000)", path, crate::json::compact(v)), None);
+            v.clone()
+        }
         Ok(x) => crate::json::num(crate::num::r4(x)),
         Err(e) => {
             perr(errs, path, format!("{}: {}", path, e), None);
@@ -469,7 +473,7 @@ pub fn canon_kind(v: &Value, kind: &K, path: &str, errs: Errs) -> Value {
             }
         }
         K::Int => match v.as_f64() {
-            Some(x) if x.fract() == 0.0 => v.clone(),
+            Some(x) if x.fract() == 0.0 && x.abs() <= 100000.0 => v.clone(),
             _ => {
                 perr(errs, path, format!("{}: expected an integer, got {}", path, crate::json::compact(v)), None);
                 v.clone()

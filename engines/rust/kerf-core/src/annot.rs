@@ -241,7 +241,7 @@ fn stack(order: &[usize], placed: &mut [Placed], crop: &Rect, g: &Geo) {
 
 /// Lay out notes (SPEC 6.3). `ext` is the extent of the drawing including dimensions and labels
 /// (columns start beyond it); `obstacles` are text boxes leaders must not cross.
-pub fn layout_notes(notes: &[NoteIn], style: &Style, crop: &Rect, ext: &Rect, obstacles: &[Vec<Pt>], s: f64, side: &str, out: &mut Vec<Vec<Item>>) -> f64 {
+pub fn layout_notes(notes: &[NoteIn], style: &Style, crop: &Rect, ext: &Rect, obstacles: &[Vec<Pt>], s: f64, side: &str, tag_r: Option<f64>, out: &mut Vec<Vec<Item>>) -> f64 {
     out.clear();
     out.resize(notes.len(), vec![]);
     let h = style.text_height * s;
@@ -252,8 +252,10 @@ pub fn layout_notes(notes: &[NoteIn], style: &Style, crop: &Rect, ext: &Rect, ob
     let mut placed: Vec<Placed> = vec![];
     for n in notes.iter() {
         let lines = wrap(&n.text, style.wrap_chars);
-        let width = lines.iter().map(|l| text_width(l, h)).fold(0.0, f64::max);
-        let height = h + (lines.len() as f64 - 1.0) * g.pitch;
+        let (width, height) = match tag_r {
+            Some(r) => (2.0 * r, 2.0 * r),
+            None => (lines.iter().map(|l| text_width(l, h)).fold(0.0, f64::max), h + (lines.len() as f64 - 1.0) * g.pitch),
+        };
         let left_side = match side {
             "left" => true,
             "both" => (n.landing.x - crop.x0).abs() < (crop.x1 - n.landing.x).abs(),
@@ -333,8 +335,15 @@ pub fn layout_notes(notes: &[NoteIn], style: &Style, crop: &Rect, ext: &Rect, ob
     for (i, p) in placed.iter().enumerate() {
         let n = &notes[i];
         let o = &mut out[i];
-        for (j, line) in p.lines.iter().enumerate() {
-            o.push(text_item(style, "notes", "anno", &n.id, line, p.x, p.top - h - j as f64 * g.pitch, h, 0.0, "left", "baseline"));
+        if let Some(r) = tag_r {
+            let c = pt(p.x + r, p.top - r);
+            let hex: Vec<Pt> = (0..6).map(|k| { let a = std::f64::consts::FRAC_PI_3 * k as f64; pt(c.x + r * a.cos(), c.y + r * a.sin()) }).collect();
+            o.push(path_item(style, "anno", &n.id, &hex, true));
+            o.push(text_item(style, "notes", "anno", &n.id, &n.text, c.x, c.y, h, 0.0, "center", "middle"));
+        } else {
+            for (j, line) in p.lines.iter().enumerate() {
+                o.push(text_item(style, "notes", "anno", &n.id, line, p.x, p.top - h - j as f64 * g.pitch, h, 0.0, "left", "baseline"));
+            }
         }
         let l = leader_of(p, &g);
         let land = p.landing;

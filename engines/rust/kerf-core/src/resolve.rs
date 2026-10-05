@@ -105,6 +105,8 @@ pub fn dependencies(c: &Map<String, Value>) -> Vec<String> {
 
 pub struct Lookup<'a> {
     pub comps: &'a [Comp],
+    /// Every component id in the document (for "did you mean" hints before all are resolved).
+    pub all_ids: &'a [String],
 }
 
 impl<'a> Lookup<'a> {
@@ -112,7 +114,7 @@ impl<'a> Lookup<'a> {
         self.comps.iter().find(|c| c.id == id)
     }
     fn ids(&self) -> Vec<&'a str> {
-        self.comps.iter().map(|c| c.id.as_str()).collect()
+        if self.all_ids.is_empty() { self.comps.iter().map(|c| c.id.as_str()).collect() } else { self.all_ids.iter().map(|s| s.as_str()).collect() }
     }
 
     /// Resolve a Ref to a world point.
@@ -318,7 +320,7 @@ pub fn compile(doc: &Value, style: &Style, diags: &mut Vec<Diag>) -> Model {
         if dup[k] {
             continue;
         }
-        let comp = resolve_comp(k, cv, &cid, style, run, &comps, diags);
+        let comp = resolve_comp(k, cv, &cid, style, run, &comps, &ids, diags);
         comps.push(comp);
     }
     comps.sort_by_key(|c| c.idx);
@@ -342,7 +344,7 @@ fn uses_points(ctype: &str, m: &Map<String, Value>) -> bool {
     }
 }
 
-fn resolve_comp(idx: usize, cv: &Value, cid: &str, style: &Style, run: (f64, f64), resolved: &[Comp], diags: &mut Vec<Diag>) -> Comp {
+fn resolve_comp(idx: usize, cv: &Value, cid: &str, style: &Style, run: (f64, f64), resolved: &[Comp], all_ids: &[String], diags: &mut Vec<Diag>) -> Comp {
     let empty = Map::new();
     let m = cv.as_object().unwrap_or(&empty);
     let ctype = m.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string();
@@ -364,7 +366,7 @@ fn resolve_comp(idx: usize, cv: &Value, cid: &str, style: &Style, run: (f64, f64
     if schema::type_spec(&ctype).is_none() {
         return comp; // E_PARAM already reported by canonicalization
     }
-    let lk = Lookup { comps: resolved };
+    let lk = Lookup { comps: resolved, all_ids };
     let cpath = format!("components/{}", cid);
 
     // placement
@@ -574,6 +576,10 @@ fn resolve_comp(idx: usize, cv: &Value, cid: &str, style: &Style, run: (f64, f64
     if let Some(Value::Object(am)) = m.get("array") {
         let axis = am.get("axis").and_then(|a| a.as_str()).unwrap_or("z").to_string();
         let count = am.get("count").and_then(|c| c.as_f64()).unwrap_or(1.0).max(1.0) as usize;
+        if count > 500 {
+            diags.push(Diag::error("E_PARAM", format!("{}/array/count: {} is too many instances (limit 500)", cpath, count)).id(cid).path(format!("{}/array/count", cpath)));
+            return comp;
+        }
         let spacing = am.get("spacing").and_then(|c| c.as_f64()).unwrap_or(0.0);
         array = Some((axis, count, spacing));
     }

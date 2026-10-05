@@ -44,7 +44,7 @@ pub fn view_params(v: &Value, model: &Model) -> Result<ViewParams, Diag> {
     let crop = v.get("crop").and_then(|c| {
         let x = c.get("x")?.as_array()?;
         let y = c.get("y")?.as_array()?;
-        Some(Rect::new(x[0].as_f64()?, y[0].as_f64()?, x[1].as_f64()?, y[1].as_f64()?))
+        Some(Rect::new(x.first()?.as_f64()?, y.first()?.as_f64()?, x.get(1)?.as_f64()?, y.get(1)?.as_f64()?))
     });
     let notes_side = v.get("notes_side").and_then(|i| i.as_str()).unwrap_or("right").to_string();
     Ok(ViewParams {

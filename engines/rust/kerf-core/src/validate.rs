@@ -200,7 +200,7 @@ pub fn validate(doc: &Value, model: &Model, style: &Style, diags: &mut Vec<Diag>
     }
 
     // --- annotation references and citations
-    let lk = Lookup { comps: &model.comps };
+    let lk = Lookup { comps: &model.comps, all_ids: &[] };
     let mut unverified: Vec<String> = vec![];
     if let Some(views) = doc.get("views").and_then(|v| v.as_array()) {
         for v in views {
@@ -370,7 +370,7 @@ fn check_cover(model: &Model, bar_comp: &Comp, bar: &Prism, ctr: Pt, r: f64, dia
 }
 
 pub fn ref_ok(model: &Model, s: &str) -> bool {
-    let lk = Lookup { comps: &model.comps };
+    let lk = Lookup { comps: &model.comps, all_ids: &[] };
     match parse_ref(s) {
         Ok(r) => lk.point(&r).is_ok(),
         Err(_) => false,

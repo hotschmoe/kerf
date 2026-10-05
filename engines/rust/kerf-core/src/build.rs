@@ -212,6 +212,9 @@ fn lumber(i: &BuildIn) -> R {
     let product = i.s("product", "sawn");
     let (t, d) = lumber_actual(&size, &product).map_err(|e| i.err("size", format!("components/{}/size: {}", i.id, e)))?;
     let plies = i.f("plies", 1.0).max(1.0) as usize;
+    if plies > 20 {
+        return Err(i.err("plies", format!("components/{}/plies: {} is too many plies (limit 20)", i.id, plies)));
+    }
     let run = i.s("run", "z");
     let treated = i.b("treated", false);
     let blocking = i.b("blocking", false);
@@ -268,7 +271,7 @@ fn lumber(i: &BuildIn) -> R {
             desc = format!("lumber {}{} {}", if plies > 1 { format!("({}) ", plies) } else { String::new() }, size, run);
             desc = format!("{}{} {} run {} L={}", desc, if treated { " PT" } else { "" }, face, run, fmt_ftin(len));
         }
-        _ => unreachable!(),
+        other => return Err(i.err("run", format!("components/{}/run: {:?} is not allowed. Allowed: z, x, y", i.id, other))),
     }
     b.desc = desc;
     b.prisms.push(prism);
@@ -308,6 +311,9 @@ fn cmu_wall(i: &BuildIn) -> R {
     let n = i.f("courses", 0.0) as i64;
     if n < 1 {
         return Err(i.err("courses", format!("components/{}/courses: required, integer >= 1 (number of 8\" courses)", i.id)));
+    }
+    if n > 200 {
+        return Err(i.err("courses", format!("components/{}/courses: {} is too tall (limit 200 courses)", i.id, n)));
     }
     let bb = i.f("bond_beam_courses", 0.0) as i64;
     if bb < 0 || bb > n {
@@ -483,6 +489,9 @@ fn rebar(i: &BuildIn) -> R {
             let face = pl.get("face").and_then(|f| f.as_str()).unwrap_or("bottom");
             let cover = pl.get("cover").and_then(|f| f.as_f64()).unwrap_or(1.5);
             let count = pl.get("count").and_then(|f| f.as_f64()).unwrap_or(1.0).max(1.0) as usize;
+            if count > 200 {
+                return Err(i.err("place", format!("components/{}/place/count: {} bars is too many (limit 200)", i.id, count)));
+            }
             let side = pl.get("side_cover").and_then(|f| f.as_f64()).unwrap_or(cover);
             let (horizontal, fixed, lo, hi) = match face {
                 "bottom" => (true, bb.y0 + cover + r, bb.x0 + side + r, bb.x1 - side - r),
@@ -835,7 +844,7 @@ fn solid(i: &BuildIn) -> R {
     let prof = i.m.get("profile").and_then(|p| p.as_object()).cloned().unwrap_or_default();
     let mut b = Built::new(&mat);
     let region = if let Some(r) = prof.get("rect").and_then(|r| r.as_array()) {
-        let (w, h) = (length_of(&r[0]).unwrap_or(0.0), length_of(&r[1]).unwrap_or(0.0));
+        let (w, h) = (r.first().and_then(|x| length_of(x).ok()).unwrap_or(0.0), r.get(1).and_then(|x| length_of(x).ok()).unwrap_or(0.0));
         if w <= 0.0 || h <= 0.0 {
             return Err(i.err("profile", format!("components/{}/profile/rect: width and height must be > 0", i.id)));
         }

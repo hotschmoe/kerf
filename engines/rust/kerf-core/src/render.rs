@@ -39,7 +39,7 @@ pub fn render_view(doc: &Value, model: &Model, view_id: &str, style: &Style) -> 
         None => String::new(),
     };
     let mut unverified = false;
-    let lk = Lookup { comps: &model.comps };
+    let lk = Lookup { comps: &model.comps, all_ids: &[] };
     let pending = annotate(&vp, &base.vis, model, &lk, style, &crop, s, &mut diags, &mut unverified, &mut items);
     items.extend(pending);
 
@@ -216,8 +216,13 @@ fn annotate(
         note_slot.push(slot);
     }
     let mut note_items: Vec<Vec<Item>> = vec![];
+    let mut per_annot = per_annot;
+    for its in per_annot.iter_mut() {
+        slide_dim_texts(its, base_items, s);
+    }
     let mut ext = *crop;
     let mut knock: Vec<Vec<Pt>> = vec![];
+    let mut legend: Vec<(String, String, String)> = vec![];
     let mut obstacles: Vec<Vec<Pt>> = vec![];
     for its in &per_annot {
         ext.union(&crate::drawing::items_bounds(its));
@@ -230,13 +235,42 @@ fn annotate(
             }
         }
     }
-    layout_notes(&notes, style, crop, &ext, &obstacles, s, &vp.notes_side, &mut note_items);
+    let keynote = style.notes_mode == "keynote";
+    let mut laid = notes.iter().map(|n| NoteIn { id: n.id.clone(), text: n.text.clone(), landing: n.landing, place: n.place }).collect::<Vec<_>>();
+    if keynote {
+        for (k, n) in laid.iter_mut().enumerate() {
+            n.text = (k + 1).to_string();
+        }
+    }
+    layout_notes(&laid, style, crop, &ext, &obstacles, s, &vp.notes_side, if keynote { Some(0.14 * s) } else { None }, &mut note_items);
+    if keynote {
+        legend = notes.iter().enumerate().map(|(k, n)| ((k + 1).to_string(), n.text.clone(), n.id.clone())).collect();
+    }
     knock_hatch(base_items, &knock);
     let mut out = vec![];
     for (k, its) in per_annot.into_iter().enumerate() {
         out.extend(its);
         if let Some(sl) = note_slot[k] {
             out.extend(note_items[sl].drain(..));
+        }
+    }
+    if !legend.is_empty() {
+        // legend block under the view: "<n>  TEXT" lines, wrapped at twice the note width
+        let h = style.text_height * s;
+        let pitch = h * style.line_spacing;
+        let mut b = crate::drawing::items_bounds(&out);
+        b.union(crop);
+        let mut y = b.y0 - 0.3 * s - h;
+        let x = crop.x0;
+        out.push(text_item(style, "notes", "anno", "legend", "KEYNOTES", x, y, h * 1.15, 0.0, "left", "baseline"));
+        y -= pitch * 1.3;
+        for (num, text, _id) in &legend {
+            let lines = crate::font::wrap(text, style.wrap_chars * 2);
+            for (j, line) in lines.iter().enumerate() {
+                let t = if j == 0 { format!("{}  {}", num, line) } else { format!("    {}", line) };
+                out.push(text_item(style, "notes", "anno", "legend", &t, x, y, h, 0.0, "left", "baseline"));
+                y -= pitch;
+            }
         }
     }
     out
@@ -319,4 +353,78 @@ fn convex_interval(a: Pt, b: Pt, poly: &[Pt]) -> Option<(f64, f64)> {
         }
     }
     Some((t0, t1))
+}
+
+/// Slide dimension text along its dimension line until it no longer sits on drawing linework.
+fn slide_dim_texts(its: &mut [Item], base: &[Item], s: f64) {
+    let mut strokes: Vec<(Pt, Pt)> = vec![];
+    for it in base {
+        if let Item::Path { pen, pts, closed, .. } = it {
+            if !matches!(pen.as_str(), "cut" | "profile" | "beyond" | "steel" | "rebar" | "frame") {
+                continue;
+            }
+            let fl = flatten_poly(pts, 0.01);
+            for w in fl.windows(2) {
+                strokes.push((w[0], w[1]));
+            }
+            if *closed && fl.len() > 2 {
+                strokes.push((fl[fl.len() - 1], fl[0]));
+            }
+        }
+    }
+    let hits = |poly: &[Pt]| -> bool {
+        let mut bb = Rect::empty();
+        for q in poly {
+            bb.add(*q);
+        }
+        strokes.iter().any(|(a, b)| {
+            let sb = Rect::new(a.x, a.y, b.x, b.y);
+            sb.overlaps(&bb, 0.0) && {
+                let sg = Seg::Line(*a, *b);
+                let n = poly.len();
+                (0..n).any(|i| !intersect(&sg, &Seg::Line(poly[i], poly[(i + 1) % n])).is_empty()) || poly_contains(poly, *a)
+            }
+        })
+    };
+    for it in its.iter_mut() {
+        let (is_dim, rot, h) = match it {
+            Item::Text { pen, rot, h, .. } => (pen == "dim", *rot, *h),
+            _ => (false, 0.0, 0.0),
+        };
+        if !is_dim {
+            continue;
+        }
+        let pad = 0.015 * s;
+        match text_poly(it, pad) {
+            Some(p) if hits(&p) => {}
+            _ => continue,
+        }
+        let u = pt(rot.to_radians().cos(), rot.to_radians().sin());
+        let step = h * 1.2;
+        let mut found: Option<(f64, f64)> = None;
+        if let Item::Text { x, y, .. } = it {
+            let (ox, oy) = (*x, *y);
+            'search: for k in 1..=10 {
+                for sign in [1.0, -1.0] {
+                    let (nx, ny) = (ox + u.x * step * k as f64 * sign, oy + u.y * step * k as f64 * sign);
+                    let mut tmp = Item::Text { layer: String::new(), pen: String::new(), src: String::new(), s: String::new(), x: nx, y: ny, h, rot, align: String::new(), valign: String::new() };
+                    if let (Item::Text { s: ts, align: ta, valign: tv, .. }, Item::Text { s: ss, align: sa, valign: sv, .. }) = (&mut tmp, &*it) {
+                        *ts = ss.clone();
+                        *ta = sa.clone();
+                        *tv = sv.clone();
+                    }
+                    if let Some(poly) = text_poly(&tmp, pad) {
+                        if !hits(&poly) {
+                            found = Some((nx, ny));
+                            break 'search;
+                        }
+                    }
+                }
+            }
+        }
+        if let (Some((nx, ny)), Item::Text { x, y, .. }) = (found, it) {
+            *x = nx;
+            *y = ny;
+        }
+    }
 }
