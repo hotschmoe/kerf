@@ -87,6 +87,42 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
 
+    // scripted pointer input: --click x,y | --hover x,y | --drag x0,y0:x1,y1  (points in egui points)
+    let pt = |s: &str| -> Option<egui::Pos2> {
+        let (a, b) = s.split_once(',')?;
+        Some(egui::pos2(a.parse().ok()?, b.parse().ok()?))
+    };
+    let mut scripted: Vec<Vec<egui::Event>> = Vec::new();
+    let btn = |p: egui::Pos2, pressed: bool| egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+    if let Some(p) = arg(args, "--hover").and_then(pt) {
+        scripted.push(vec![egui::Event::PointerMoved(p)]);
+    }
+    if let Some(p) = arg(args, "--click").and_then(pt) {
+        scripted.push(vec![egui::Event::PointerMoved(p)]);
+        scripted.push(vec![btn(p, true)]);
+        scripted.push(vec![btn(p, false)]);
+        scripted.push(vec![egui::Event::PointerMoved(p)]);
+    }
+    if let Some((a, b)) = arg(args, "--drag").and_then(|s| s.split_once(':')) {
+        if let (Some(a), Some(b)) = (pt(a), pt(b)) {
+            scripted.push(vec![egui::Event::PointerMoved(a)]);
+            scripted.push(vec![btn(a, true)]);
+            for k in 1..=4 {
+                let f = k as f32 / 4.0;
+                scripted.push(vec![egui::Event::PointerMoved(a + (b - a) * f)]);
+            }
+            if !args.iter().any(|x| x == "--drag-hold") {
+                scripted.push(vec![btn(b, false)]);
+            }
+            scripted.push(vec![egui::Event::PointerMoved(b)]);
+        }
+    }
+    for ev in scripted {
+        t += 0.05;
+        app.headless_tick(&ctx);
+        let _ = run_frame(&mut app, t, &mut renderer, &ctx, ev);
+    }
+
     let t_start = Instant::now();
     let mut last = None;
     let mut frame_times = Vec::new();
@@ -173,6 +209,11 @@ pub fn export_cli(args: &[String]) -> Result<(), String> {
         None => std::fs::read_to_string(doc_arg).map_err(|e| format!("{doc_arg}: {e}"))?,
     };
     let doc: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    if format == "json" {
+        let s = crate::engine::drawing_json(&doc, &crate::engine::default_style(), view)?;
+        std::fs::write(out, s).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
     let sheet = args.iter().any(|a| a == "--sheet") || format != "dxf";
     let bytes = crate::engine::export(&doc, &crate::engine::default_style(), view, &format, sheet)?;
     std::fs::write(out, &bytes).map_err(|e| e.to_string())?;

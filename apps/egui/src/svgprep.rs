@@ -228,7 +228,7 @@ pub fn svg_to_prep(svg: &str, view: &str) -> Prep {
                     let bbox = bbox32(&verts);
                     if !cur_src.is_empty() {
                         let b = group[0].iter().fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |b, p| [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])]);
-                        regions.push(Region { src: cur_src.clone(), area: polygon_area(&group[0]).abs(), loops: group.clone(), bbox: b, is_fill: true });
+                        regions.push(Region { src: cur_src.clone(), area: polygon_area(&group[0]).abs(), loops: group.clone(), bbox: b, is_fill: true, exact: true });
                     }
                     items.push(PItem { src: cur_src.clone(), pen: String::new(), layer: String::new(), kind: PKind::Fill { verts, idx }, bbox });
                 }

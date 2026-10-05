@@ -632,6 +632,9 @@ impl KerfApp {
         self.cursor_model = out.cursor_model;
         self.zoom_now = out.zoom;
         if let Some(c) = out.clicked {
+            if let Some(id) = &c {
+                self.insp_tab = if self.session.annotation(id).is_some() { InspTab::Notes } else { InspTab::Parts };
+            }
             self.selected = c;
         }
         if let Some((id, place)) = out.note_moved {
@@ -663,7 +666,6 @@ fn header_field(ui: &mut Ui, label: &str, value: Option<&str>) {
 }
 
 fn menu_row(ui: &mut Ui, label: &str) -> bool {
-    let g = galley(ui, label, medium(12.0), INK, 0.4);
     let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::click());
     let hov = resp.hovered();
     if hov {
@@ -952,5 +954,95 @@ impl Host<'_> {
             }
             Err(e) => err_out(format!("render failed: {e}"), &format!("RENDER VIEW {view}")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app() -> KerfApp {
+        KerfApp::new(&egui::Context::default())
+    }
+
+    fn drive(app: &mut KerfApp, ctx: &egui::Context) {
+        let t = Instant::now();
+        while app.chat.busy() && t.elapsed() < Duration::from_secs(20) {
+            app.headless_tick(ctx);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn demo_conversation_drives_the_real_engine() {
+        let ctx = egui::Context::default();
+        let mut a = KerfApp::new(&ctx);
+        a.enable_demo(true);
+        a.chat.mock_delay_ms = 0;
+        a.input = "truss bearing on CMU".into();
+        a.send_chat();
+        drive(&mut a, &ctx);
+        assert_eq!(a.session.components().len(), 14, "set doc applied");
+        // claude's attempt to verify a citation is downgraded by the engine
+        let (_, n) = a.session.annotation("n_demo").expect("note added by turn 1");
+        assert_eq!(n["cite"][0]["status"], "suggested");
+        // tool_result for the two-tool message was ONE user message with an image block
+        let two = a.chat.history.iter().find(|m| m["role"] == "user" && m["content"].as_array().is_some_and(|c| c.len() == 2 && c[0]["type"] == "tool_result")).expect("batched results");
+        let img = two["content"][1]["content"].as_array().unwrap().iter().any(|b| b["type"] == "image");
+        assert!(img, "kerf_render result carries a PNG");
+        assert!(a.session.log.iter().filter(|e| e.who == Who::Claude).count() >= 2);
+        // turn 2: rejected op is an error tool_result, then the fix lands
+        a.input = "remove the bird blocking note".into();
+        a.send_chat();
+        drive(&mut a, &ctx);
+        assert!(!a.session.view_doc("A").unwrap()["annotations"].as_array().unwrap().iter().any(|x| x["id"] == "n_block"));
+        let errs = a.chat.history.iter().filter(|m| m["role"] == "user").flat_map(|m| m["content"].as_array().cloned().unwrap_or_default()).filter(|b| b["is_error"] == true).count();
+        assert_eq!(errs, 1);
+        assert!(a.session.doc.as_ref().unwrap()["components"].as_array().unwrap().len() == 14);
+    }
+
+    #[test]
+    fn designer_edits_are_ops_undoable_and_reported_to_claude() {
+        let mut a = app();
+        a.open_sample(0);
+        let before = a.session.doc.clone().unwrap();
+        a.designer_op(json!([{"op": "update", "path": "views/A/annotations/n_cmu", "value": {"text": "8\" CMU, GROUTED"}}]), "Edit text of n_cmu");
+        assert_eq!(a.session.annotation("n_cmu").unwrap().1["text"], "8\" CMU, GROUTED");
+        assert_eq!(a.session.log.last().unwrap().who, Who::Designer);
+        // designer may verify, and it sticks
+        a.designer_op(
+            json!([{"op": "update", "path": "views/A/annotations/n_cmu", "value": {"cite": [{"code": "IRC", "edition": 2021, "section": "R606", "title": "General masonry construction", "status": "verified"}]}}]),
+            "Verify citation IRC R606 on n_cmu",
+        );
+        assert_eq!(a.session.annotation("n_cmu").unwrap().1["cite"][0]["status"], "verified");
+        // the next LLM turn carries the designer's edits
+        let mut host = Host { session: &mut a.session, ctx: egui::Context::default() };
+        let note = host.drain_designer_notes().unwrap();
+        assert!(note.contains("designer edits since your last turn") && note.contains("Edit text of n_cmu"));
+        // undo twice returns to the loaded document
+        assert!(a.session.undo().is_some());
+        assert!(a.session.undo().is_some());
+        assert_eq!(a.session.doc.as_ref().unwrap(), &before);
+    }
+
+    #[test]
+    fn note_drag_sets_place() {
+        let mut a = app();
+        a.open_sample(0);
+        a.designer_op(json!([{"op": "update", "path": "views/A/annotations/n_roof", "value": {"place": [30.5, 12.25]}}]), "Move note n_roof to [30.5, 12.25]");
+        assert_eq!(a.session.annotation("n_roof").unwrap().1["place"], json!([30.5, 12.25]));
+        let p = a.session.drawing_ex("A", false).unwrap();
+        // the note text now sits at the designer's position (anchor within a text height)
+        let anchor = p.text_anchor["n_roof"];
+        assert!((anchor[0] - 30.5).abs() < 3.0, "text anchor {:?}", anchor);
+    }
+
+    #[test]
+    fn exports_pass_through_the_engine() {
+        let mut a = app();
+        a.open_sample(0);
+        let doc = a.session.doc.clone().unwrap();
+        let svg = engine::export(&doc, &a.session.style, "A", "svg", true).unwrap();
+        assert!(String::from_utf8_lossy(&svg).starts_with("<svg"));
     }
 }

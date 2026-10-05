@@ -260,12 +260,14 @@ pub fn show(ui: &mut Ui, st: &mut View2dState, inp: &Inputs, rect: Rect) -> Outp
         }
         let mut any = false;
         for it in prep.outlines(id) {
-            if let PKind::Line { pts, .. } = &it.kind {
-                painter.add(Shape::closed_line(pts.iter().map(|p| cam.to_screen(rect, *p, [0.0, 0.0])).collect(), hl_stroke));
+            if let PKind::Line { pts, closed } = &it.kind {
+                let sp: Vec<Pos2> = pts.iter().map(|p| cam.to_screen(rect, *p, [0.0, 0.0])).collect();
+                painter.add(if *closed { Shape::closed_line(sp, hl_stroke) } else { Shape::line(sp, hl_stroke) });
                 any = true;
             }
         }
-        if !any {
+        let _ = any;
+        {
             if let Some(b) = prep.text_boxes.get(id) {
                 let off = if Some(id) == drag_id { drag_off } else { [0.0, 0.0] };
                 let r = Rect::from_two_pos(

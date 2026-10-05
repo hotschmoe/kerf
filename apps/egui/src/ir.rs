@@ -376,6 +376,9 @@ pub struct Region {
     pub bbox: [f64; 4],
     /// fill items (rebar dots, steel) win over the host they sit inside
     pub is_fill: bool,
+    /// false = approximated (convex hull of the member's cut linework); the engine only
+    /// emits exact loops for hatched/filled regions
+    pub exact: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -422,6 +425,44 @@ fn bbox64(loops: &[Vec<P2>]) -> [f64; 4] {
     b
 }
 
+/// Component/annotation id of an IR `src` (`truss#1` and `cmu.bond_beam` -> `truss`, `cmu`).
+pub fn base_id(src: &str) -> &str {
+    src.split(['#', '.']).next().unwrap_or(src)
+}
+
+fn convex_hull(mut pts: Vec<P2>) -> Vec<P2> {
+    pts.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap().then(a[1].partial_cmp(&b[1]).unwrap()));
+    pts.dedup_by(|a, b| (a[0] - b[0]).abs() < 1e-6 && (a[1] - b[1]).abs() < 1e-6);
+    if pts.len() < 3 {
+        return pts;
+    }
+    let cross = |o: P2, a: P2, b: P2| (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    let mut h: Vec<P2> = Vec::new();
+    for &p in &pts {
+        while h.len() >= 2 && cross(h[h.len() - 2], h[h.len() - 1], p) <= 1e-9 {
+            h.pop();
+        }
+        h.push(p);
+    }
+    let lower = h.len() + 1;
+    for &p in pts.iter().rev().skip(1) {
+        while h.len() >= lower && cross(h[h.len() - 2], h[h.len() - 1], p) <= 1e-9 {
+            h.pop();
+        }
+        h.push(p);
+    }
+    h.pop();
+    h
+}
+
+fn dist_pt_seg(p: P2, a: [f32; 2], b: [f32; 2]) -> f64 {
+    let (ax, ay, bx, by) = (a[0] as f64, a[1] as f64, b[0] as f64, b[1] as f64);
+    let (dx, dy) = (bx - ax, by - ay);
+    let l2 = dx * dx + dy * dy;
+    let t = if l2 < 1e-12 { 0.0 } else { (((p[0] - ax) * dx + (p[1] - ay) * dy) / l2).clamp(0.0, 1.0) };
+    ((p[0] - (ax + t * dx)).powi(2) + (p[1] - (ay + t * dy)).powi(2)).sqrt()
+}
+
 impl Prep {
     pub fn from_json(json: &str) -> Result<Prep, String> {
         let raw: RawDrawing = serde_json::from_str(json).map_err(|e| format!("drawing IR: {e}"))?;
@@ -437,6 +478,7 @@ impl Prep {
         for it in &raw.items {
             match it {
                 RawItem::Path { layer, pen, src, closed, pts } => {
+                    let src = &base_id(src).to_owned();
                     let poly = tessellate(pts, *closed);
                     if poly.len() < 2 {
                         continue;
@@ -446,12 +488,13 @@ impl Prep {
                     if *closed && poly.len() >= 3 && !src.is_empty() && !layer.contains("ANNO") && !layer.contains("BRKL") {
                         let area = polygon_area(&poly).abs();
                         if area > 1e-6 {
-                            regions.push(Region { src: src.clone(), bbox: bbox64(std::slice::from_ref(&poly)), loops: vec![poly], area, is_fill: false });
+                            regions.push(Region { src: src.clone(), bbox: bbox64(std::slice::from_ref(&poly)), loops: vec![poly], area, is_fill: false, exact: true });
                         }
                     }
                     items.push(PItem { src: src.clone(), pen: pen.clone(), layer: layer.clone(), kind: PKind::Line { pts: pts32, closed: *closed }, bbox });
                 }
                 RawItem::Fill { layer, src, loops } => {
+                    let src = &base_id(src).to_owned();
                     let ls: Vec<Vec<P2>> = loops.iter().map(|l| tessellate(l, true)).collect();
                     let (verts, idx) = triangulate(&ls);
                     if idx.is_empty() {
@@ -460,11 +503,12 @@ impl Prep {
                     let bbox = bbox_of_pts(verts.iter());
                     if !src.is_empty() && !layer.contains("ANNO") {
                         let area = polygon_area(&ls[0]).abs();
-                        regions.push(Region { src: src.clone(), bbox: bbox64(&ls[..1]), loops: ls.clone(), area, is_fill: true });
+                        regions.push(Region { src: src.clone(), bbox: bbox64(&ls[..1]), loops: ls.clone(), area, is_fill: true, exact: true });
                     }
                     items.push(PItem { src: src.clone(), pen: String::new(), layer: layer.clone(), kind: PKind::Fill { verts, idx }, bbox });
                 }
                 RawItem::Hatch { layer, pen, src, loops, lines } => {
+                    let src = &base_id(src).to_owned();
                     let segs: Vec<[f32; 4]> = lines.iter().map(|l| [l[0] as f32, l[1] as f32, l[2] as f32, l[3] as f32]).collect();
                     let ls: Vec<Vec<P2>> = loops.iter().map(|l| tessellate(l, true)).collect();
                     let mut bbox = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
@@ -479,12 +523,13 @@ impl Prep {
                     if !src.is_empty() && !ls.is_empty() {
                         let area = polygon_area(&ls[0]).abs();
                         if area > 1e-6 {
-                            regions.push(Region { src: src.clone(), bbox: bbox64(&ls[..1]), loops: ls, area, is_fill: false });
+                            regions.push(Region { src: src.clone(), bbox: bbox64(&ls[..1]), loops: ls, area, is_fill: false, exact: true });
                         }
                     }
                     items.push(PItem { src: src.clone(), pen: pen.clone(), layer: layer.clone(), kind: PKind::Hatch { segs }, bbox });
                 }
                 RawItem::Text { layer, pen, src, s, x, y, h, rot, align, valign } => {
+                    let src = &base_id(src).to_owned();
                     let strokes = f.layout(s, *x, *y, *h, *rot, align, valign);
                     let strokes32: Vec<Vec<[f32; 2]>> = strokes.iter().map(|st| to_f32(st)).collect();
                     let mut bbox = bbox_of_pts(strokes32.iter().flatten());
@@ -508,7 +553,7 @@ impl Prep {
                 }
             }
         }
-        Prep {
+        let mut prep = Prep {
             view: raw.view,
             kind: raw.kind,
             scale: raw.scale,
@@ -519,6 +564,38 @@ impl Prep {
             text_boxes,
             text_anchor,
             diagnostics: raw.diagnostics,
+        };
+        prep.add_hull_regions();
+        prep
+    }
+
+    /// Members with no exact region (unhatched wood, panels, steel) get the convex hull of their
+    /// cut-pen linework as an approximate pick/tint region.
+    fn add_hull_regions(&mut self) {
+        let mut pts: BTreeMap<String, Vec<P2>> = BTreeMap::new();
+        for it in &self.items {
+            if it.src.is_empty() || it.layer.contains("ANNO") || it.layer.contains("BRKL") {
+                continue;
+            }
+            if let PKind::Line { pts: p, .. } = &it.kind {
+                if matches!(it.pen.as_str(), "cut" | "steel" | "membrane" | "profile" | "rebar") {
+                    pts.entry(it.src.clone()).or_default().extend(p.iter().map(|q| [q[0] as f64, q[1] as f64]));
+                }
+            }
+        }
+        for (src, p) in pts {
+            if self.regions.iter().any(|r| r.src == src && !r.is_fill) {
+                continue;
+            }
+            let hull = convex_hull(p);
+            if hull.len() < 3 {
+                continue;
+            }
+            let area = polygon_area(&hull).abs();
+            if area < 1e-4 {
+                continue;
+            }
+            self.regions.push(Region { src, bbox: bbox64(std::slice::from_ref(&hull)), loops: vec![hull], area, is_fill: false, exact: false });
         }
     }
 
@@ -537,37 +614,75 @@ impl Prep {
         }
     }
 
-    /// Topmost-meaningful src at a model-space point: filled dots first, then the smallest region.
+    /// The src under a model-space point. `slop` is the pick radius in model inches (~4 px).
+    /// Order: annotation text, filled dots, linework within `slop`, exact regions (smallest),
+    /// then approximate hull regions (smallest).
     pub fn pick(&self, p: P2, slop: f64) -> Option<String> {
-        // annotation text boxes first (notes, dims, labels sit outside the material)
         for (src, b) in &self.text_boxes {
             if p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3] {
                 return Some(src.clone());
             }
         }
-        let mut best: Option<(&Region, f64)> = None;
-        for r in &self.regions {
+        let inside = |r: &Region| -> bool {
             if p[0] < r.bbox[0] - slop || p[0] > r.bbox[2] + slop || p[1] < r.bbox[1] - slop || p[1] > r.bbox[3] + slop {
-                continue;
+                return false;
             }
-            let mut inside = point_in_loop(p, &r.loops[0]);
-            if inside {
+            let mut ins = point_in_loop(p, &r.loops[0]);
+            if ins {
                 for h in &r.loops[1..] {
                     if point_in_loop(p, h) {
-                        inside = false;
+                        ins = false;
                     }
                 }
             }
-            if !inside && r.is_fill && r.area < 4.0 {
-                // tiny dots: allow a pixel-ish slop
+            if !ins && r.is_fill && r.area < 4.0 {
                 let c = [(r.bbox[0] + r.bbox[2]) / 2.0, (r.bbox[1] + r.bbox[3]) / 2.0];
-                inside = (c[0] - p[0]).hypot(c[1] - p[1]) < slop.max((r.bbox[2] - r.bbox[0]) / 2.0);
+                ins = (c[0] - p[0]).hypot(c[1] - p[1]) < slop.max((r.bbox[2] - r.bbox[0]) / 2.0);
             }
-            if inside {
-                let score = if r.is_fill { r.area * 0.01 } else { r.area };
-                if best.is_none_or(|(_, s)| score < s) {
-                    best = Some((r, score));
+            ins
+        };
+        // filled dots (rebar, bolts) first
+        let mut best: Option<(&Region, f64)> = None;
+        for r in self.regions.iter().filter(|r| r.is_fill && inside(r)) {
+            if best.is_none_or(|(_, a)| r.area < a) {
+                best = Some((r, r.area));
+            }
+        }
+        if let Some((r, _)) = best {
+            return Some(r.src.clone());
+        }
+        // linework within slop (nearest wins; annotation leaders and dim lines count)
+        let mut near: Option<(&str, f64)> = None;
+        for it in &self.items {
+            if it.src.is_empty() || it.layer.contains("BRKL") || it.src == "crop" {
+                continue;
+            }
+            let b = it.bbox;
+            if p[0] < b[0] as f64 - slop || p[0] > b[2] as f64 + slop || p[1] < b[1] as f64 - slop || p[1] > b[3] as f64 + slop {
+                continue;
+            }
+            if let PKind::Line { pts, closed } = &it.kind {
+                if it.pen == "hidden" {
+                    continue;
                 }
+                let n = pts.len();
+                let segs = if *closed { n } else { n - 1 };
+                for i in 0..segs {
+                    let d = dist_pt_seg(p, pts[i], pts[(i + 1) % n]);
+                    if d <= slop && near.is_none_or(|(_, bd)| d < bd) {
+                        near = Some((&it.src, d));
+                    }
+                }
+            }
+        }
+        if let Some((s, _)) = near {
+            return Some(s.to_owned());
+        }
+        let mut best: Option<(&Region, f64)> = None;
+        for r in self.regions.iter().filter(|r| !r.is_fill && inside(r)) {
+            let score = if r.exact { r.area } else { r.area + 1e6 };
+            if best.is_none_or(|(_, a)| score < a) {
+                best = Some((r, score));
             }
         }
         best.map(|(r, _)| r.src.clone())
@@ -583,9 +698,9 @@ impl Prep {
             .collect()
     }
 
-    /// Outline polylines of a src (closed paths) for the hover/selection outline.
+    /// Stroked polylines of a src (for the hover/selection outline). Hidden/break lines excluded.
     pub fn outlines(&self, src: &str) -> impl Iterator<Item = &PItem> {
         let src = src.to_owned();
-        self.items.iter().filter(move |i| i.src == src && matches!(i.kind, PKind::Line { closed: true, .. }))
+        self.items.iter().filter(move |i| i.src == src && !i.layer.contains("BRKL") && i.pen != "hidden" && matches!(i.kind, PKind::Line { .. }))
     }
 }

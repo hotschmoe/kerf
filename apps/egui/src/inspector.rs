@@ -113,7 +113,7 @@ impl KerfApp {
     fn component_fields(&mut self, ui: &mut Ui, id: &str, c: &Value) {
         heading(ui, id);
         ui.add_space(4.0);
-        table_header(ui, &[("FIELD", 84.0), ("VALUE", 0.0)]);
+        table_header(ui, &[("FIELD", 132.0), ("VALUE", 0.0)]);
         let mut i = 0;
         if let Some(o) = c.as_object() {
             for (k, v) in o {
@@ -123,8 +123,8 @@ impl KerfApp {
                 let val = compact(v);
                 let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::hover());
                 row_bg(ui, r, i, false, false);
-                row_text(ui, r, 0.0, &k.to_uppercase(), INK2, false);
-                row_text_clip(ui, r, 88.0, &val, INK, r.width() - 92.0);
+                row_text_clip(ui, r, 0.0, &k.to_uppercase(), INK2, 128.0);
+                row_text_clip(ui, r, 136.0, &val, INK, r.width() - 140.0);
                 i += 1;
             }
         }
@@ -366,7 +366,7 @@ impl KerfApp {
             text(ui, "CLEAN.", GREEN);
             return;
         }
-        egui::ScrollArea::vertical().max_height(132.0).auto_shrink([false, true]).id_salt("diag").show(ui, |ui| {
+        egui::ScrollArea::vertical().max_height(96.0).auto_shrink([false, true]).id_salt("diag").show(ui, |ui| {
             for d in &diags {
                 let (tag, col) = match d["level"].as_str() {
                     Some("error") => ("E", RED),
