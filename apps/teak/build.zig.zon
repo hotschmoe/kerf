@@ -7,6 +7,8 @@
         // Local checkouts of the owner's frameworks (branch `kerf` in each).
         // zunk is reached through teak's own build.zig.zon (`../zunk`).
         .teak = .{ .path = "../../../teak" },
+        // The Zig engine, imported in-process (module `kerf`).
+        .kerf = .{ .path = "../../engines/zig" },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "fixtures", "web" },
 }

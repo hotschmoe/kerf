@@ -6,4 +6,5 @@ test {
     _ = @import("session.zig");
     _ = @import("units.zig");
     _ = @import("cam.zig");
+    _ = @import("editor.zig");
 }

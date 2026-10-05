@@ -37,4 +37,23 @@ pub fn build(b: *std.Build) void {
         const t = b.addTest(.{ .root_module = mod });
         test_step.dependOn(&b.addRunArtifact(t).step);
     }
+
+    // ── UI-layer tests (need teak; headless golden/snapshot tests). ──
+    const teak_dep = b.dependency("teak", .{ .target = target, .optimize = optimize });
+    const kerf_dep = b.dependency("kerf", .{ .target = target, .optimize = optimize });
+    const ui_test_step = b.step("test-ui", "Run UI-layer tests (teak snapshot/golden)");
+    {
+        const mod = b.createModule(.{
+            .root_source_file = b.path("src/ui_root.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "teak", .module = teak_dep.module("teak") },
+                .{ .name = "kerf", .module = kerf_dep.module("kerf") },
+            },
+        });
+        addSpecImports(b, mod);
+        const t = b.addTest(.{ .root_module = mod });
+        ui_test_step.dependOn(&b.addRunArtifact(t).step);
+    }
 }
