@@ -211,12 +211,21 @@ await t('designer edits go to /apply (actor designer, if_match), land on disk, a
   assert.equal(await ev(page, 'window.__kerf.app.opLog.filter(e => e.kind === "external").length'), 0);
   assert.equal(await ev(page, 'document.querySelectorAll(".msg.agent").length'), 0);
   assert.equal(await ev(page, 'window.__kerf.ws.lastAgentEdit'), null);
+  // a component parameter edit (scalar field in the inspector) is also a designer apply
+  await ev(page, `window.__kerf.app.setSelection('anchor_bolt'); document.querySelectorAll('.itabs .tab')[0].click();`);
+  await page.waitForSelector('.idetail input.pe[data-key="embed"]');
+  await page.$eval('.idetail input.pe[data-key="embed"]', (el) => { el.value = '9'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+  await waitFor(page, 'window.__kerf.app.opLog.filter(e => e.kind === "op").length === 3');
+  assert.equal(readDoc(m, TRUSS).components.find((c) => c.id === 'anchor_bolt').embed, 9); // numbers stay numbers
+  assert.match(readLog(m, TRUSS).at(-1).why, /Set anchor_bolt embed to 9/);
+  await shot(page, '14-param-edit');
   // undo writes the previous document back
   await ev(page, `document.querySelectorAll('.itabs .tab')[2].click()`);
   await page.waitForSelector('.logrow');
   await ev(page, `[...document.querySelectorAll('.logbar .btn')].find(b => b.textContent === 'UNDO LAST').click()`);
   await waitFor(page, 'window.__kerf.app.opLog.some(e => e.kind === "undo")');
-  assert.equal(note(m, TRUSS, 'n_truss').cite[0].status, 'suggested');
+  assert.equal(readDoc(m, TRUSS).components.find((c) => c.id === 'anchor_bolt').embed, 7); // the param edit was the last op group
+  assert.equal(note(m, TRUSS, 'n_truss').cite[0].status, 'verified');
   assert.equal(note(m, TRUSS, 'n_truss').text, 'DESIGNER EDITED NOTE');
   assert.match(readLog(m, TRUSS).at(-1).why, /^Undo: /);
   noErrors(page);

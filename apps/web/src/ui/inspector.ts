@@ -142,7 +142,21 @@ export function mountInspector(app: App, el: HTMLElement) {
     const prow = app.partsRows().find((r) => r.id === c.id || r.id === `${c.id}#0`);
     if (prow) { fields.set('x extent', prow.x); fields.set('y extent', prow.y); }
     for (const [k, v] of Object.entries(c)) if (k !== 'id' && k !== 'type') fields.set(k, v);
-    const paint = () => { clear(kv); for (const [k, v] of fields) kv.append(h('div.k', k.replace(/_/g, ' ')), h('div.vv', fmtVal(v))); };
+    // scalar fields written in the document (size, length, label, ...) are editable: one `update components/<id>` op per change (designer)
+    const editable = new Set(Object.entries(c).filter(([k, v]) => k !== 'id' && k !== 'type' && (typeof v === 'string' || typeof v === 'number')).map(([k]) => k));
+    const editCell = (k: string, v: unknown): HTMLElement => {
+      const inp = h('input.pe', { value: String(v), spellcheck: false, 'aria-label': `Edit ${k}`, 'data-key': k }) as HTMLInputElement;
+      const commit = () => {
+        const raw = inp.value.trim();
+        if (raw === String(v) || raw === '') { inp.value = String(v); return; }
+        const val = typeof v === 'number' && Number.isFinite(Number(raw)) ? Number(raw) : raw;
+        void app.applyOps([{ op: 'update', path: `components/${c.id}`, value: { [k]: val } }], 'designer', `Set ${c.id} ${k} to ${raw}`).then((r) => { if (!r.ok) { app.rejected(r, 'EDIT REJECTED'); inp.value = String(v); } });
+      };
+      inp.addEventListener('change', commit);
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+      return h('div.vv', inp);
+    };
+    const paint = () => { clear(kv); for (const [k, v] of fields) kv.append(h('div.k', k.replace(/_/g, ' ')), editable.has(k) && fields.get(k) === c[k] ? editCell(k, v) : h('div.vv', fmtVal(v))); };
     paint();
     try {
       const r = (await app.inspect({ q: 'component', id: c.id })) as unknown;

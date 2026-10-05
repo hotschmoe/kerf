@@ -134,7 +134,7 @@ export function mountConsole(app: App, el: HTMLElement, session: ChatSession, ho
         intro.remove();
         const m = h('div.msg', h('div.mh', h('span', 'DESIGNER'), h('span', hhmm())), h('div.mb', e.text));
         if (e.images.length) m.append(h('div.atts', ...e.images.map((u) => h('img', { src: u, alt: 'attachment' }))));
-        if (e.edits.length) m.append(h('div.edits', `EDITS REPORTED TO CLAUDE: ${e.edits.join('; ')}`));
+        if (e.edits.length) m.append(h('div.edits', `EDITS REPORTED TO THE MODEL: ${e.edits.join('; ')}`));
         msgs.append(m);
         card = null; cardBody = null;
         stick = true;
@@ -184,6 +184,7 @@ export function mountConsole(app: App, el: HTMLElement, session: ChatSession, ho
         tools.append(h('div.tl', h('summary', { style: 'display:flex' }, h('span.tt', e.text))));
         break;
       case 'notice':
+        if (card && cardBody && !cardBody.childElementCount && !cardBody.textContent) card.remove(); // a failed request leaves no empty card behind
         msgs.append(h('div.notice', { class: e.level === 'err' ? 'err' : e.level === 'warn' ? 'warn' : '' }, e.text));
         card = null; cardBody = null; seg = null; tools = null;
         break;

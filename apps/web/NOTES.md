@@ -163,7 +163,7 @@ Worker version is NOT faster here (and starts later). Default is the main thread
 Layout (console | viewport | inspector | 3270 status line, narrow-screen tabs), vellum + blue grid, true-pen-weight canvas drawing with arcs, dashes,
 hatch lines, fills, stroke-font text; pan/zoom/fit; hover/select by `src`; drag notes (sets `place`, top-left anchor, as an op); 3D (WebGL2,
 flat shading with the style colors, feature edges 1.25 px, orbit/pan/zoom, FRONT/ISO/TOP/RIGHT, manila CUT caps); SHEET (engine SVG);
-chat with BYO key, model picker, image paste/drop/attach (<=1568 px), tool loop with kerf_apply/inspect/render, retries, refusal and
+component scalar fields (size, embed, diameter, ...) editable in the inspector (one `update components/<id>` designer op each), chat with BYO key, model picker, image paste/drop/attach (<=1568 px), tool loop with kerf_apply/inspect/render, retries, refusal and
 fallback handling, STOP, demo mode; inspector PARTS (auto-compact), NOTES editor with citations, VERIFIED stamps (designer actor), DIFF with undo, DIAG;
 export DXF/PDF/SVG, save/open `.kerf.json`; samples menu.
 

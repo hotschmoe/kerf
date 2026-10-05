@@ -293,3 +293,6 @@ table.t th { top: 38px; }
 .sform { display: flex; flex-direction: column; }
 .sform .note + .note { margin-top: 6px; }
 @media (max-width: 1199px) { #hdr .hf.dir { display: none; } }
+
+.kv input.pe { display: block; width: 100%; border: 0; border-bottom: 1px dotted var(--ink-2); background: transparent; padding: 0; outline: 0; min-height: 18px; }
+.kv input.pe:focus { border-bottom: 2px solid var(--blue); }
