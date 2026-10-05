@@ -28,12 +28,24 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "kerf", .module = kerf }},
         }),
     });
+    const ui_mod = uiAssetsModule(b, b.option([]const u8, "ui", "Directory of the built web UI to embed in `kerf serve` (for example ../../apps/web/dist-serve)"));
+    exe.root_module.addImport("ui_assets", ui_mod);
     exe.root_module.addAnonymousImport("kerf_cli_guide", .{ .root_source_file = b.path("../../spec/llm/cli-guide.md") });
     exe.root_module.addAnonymousImport("kerf_system_md", .{ .root_source_file = b.path("../../spec/llm/system.md") });
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     if (b.args) |args| run.addArgs(args);
     b.step("run", "Run the kerf CLI").dependOn(&run.step);
+
+    // Tests of the serve code (HTTP plumbing, access rules, proxy URL rules, agent templates, op log).
+    const serve_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/serve.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{ .{ .name = "kerf", .module = kerf }, .{ .name = "ui_assets", .module = uiAssetsModule(b, null) } },
+    });
+    const serve_tests = b.addTest(.{ .root_module = serve_test_mod });
+    const run_serve_tests = b.addRunArtifact(serve_tests);
 
     // Tests. The reference documents are embedded for integration tests.
     const test_mod = b.createModule(.{
@@ -48,7 +60,9 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = test_mod });
     const run_tests = b.addRunArtifact(tests);
     run_tests.setCwd(b.path("."));
-    b.step("test", "Run unit tests").dependOn(&run_tests.step);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&run_serve_tests.step);
 
     // wasm32-freestanding, raw ABI (SPEC 13.1). `-Dwasm-optimize=ReleaseFast` to compare speed.
     const wasm_opt = b.option(std.builtin.OptimizeMode, "wasm-optimize", "Optimize mode of the wasm build (default ReleaseSmall)") orelse .ReleaseSmall;
@@ -78,4 +92,42 @@ pub fn build(b: *std.Build) void {
     wasm.stack_size = 256 * 1024;
     const install_wasm = b.addInstallFileWithDir(wasm.getEmittedBin(), .{ .custom = "../dist" }, "kerf.wasm");
     b.step("wasm", "Build dist/kerf.wasm").dependOn(&install_wasm.step);
+}
+
+/// The `ui_assets` module: `pub const files = &.{ .{ .path = "index.html", .data = @embedFile(...) }, ... }`.
+/// With a directory, every regular file under it is copied next to a generated source file and embedded;
+/// without one the module is the empty stub (the server then shows a "UI not embedded" page).
+fn uiAssetsModule(b: *std.Build, ui_dir: ?[]const u8) *std.Build.Module {
+    const dir = ui_dir orelse return b.createModule(.{ .root_source_file = b.path("src/ui_stub.zig") });
+    const io = b.graph.io;
+    const abs = b.pathFromRoot(dir);
+    var d = std.Io.Dir.cwd().openDir(io, abs, .{ .iterate = true }) catch |e|
+        std.debug.panic("-Dui={s}: cannot open directory {s}: {s}", .{ dir, abs, @errorName(e) });
+    defer d.close(io);
+    var walker = d.walk(b.allocator) catch @panic("OOM");
+    var paths: std.ArrayList([]const u8) = .empty;
+    while (walker.next(io) catch |e| std.debug.panic("-Dui walk failed: {s}", .{@errorName(e)})) |entry| {
+        if (entry.kind != .file) continue;
+        const rel = b.allocator.dupe(u8, entry.path) catch @panic("OOM");
+        for (rel) |*c| if (c.* == '\\') {
+            c.* = '/';
+        };
+        paths.append(b.allocator, rel) catch @panic("OOM");
+    }
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn lt(_: void, x: []const u8, y: []const u8) bool {
+            return std.mem.lessThan(u8, x, y);
+        }
+    }.lt);
+    if (paths.items.len == 0) std.debug.panic("-Dui={s}: directory is empty (build the web UI first)", .{dir});
+    var src: std.ArrayList(u8) = .empty;
+    src.appendSlice(b.allocator, "pub const File = struct { path: []const u8, data: []const u8 };\npub const files: []const File = &.{\n") catch @panic("OOM");
+    for (paths.items) |p| {
+        src.print(b.allocator, "    .{{ .path = \"{s}\", .data = @embedFile(\"ui/{s}\") }},\n", .{ p, p }) catch @panic("OOM");
+    }
+    src.appendSlice(b.allocator, "};\n") catch @panic("OOM");
+    const wf = b.addWriteFiles();
+    _ = wf.addCopyDirectory(.{ .cwd_relative = abs }, "ui", .{});
+    const gen = wf.add("ui_assets.zig", src.items);
+    return b.createModule(.{ .root_source_file = gen });
 }
