@@ -6,6 +6,7 @@ const cast = @import("num.zig");
 const geom = @import("geom.zig");
 const drawing = @import("drawing.zig");
 const style_mod = @import("style.zig");
+const Pen = @import("pen.zig").Pen;
 const font_mod = @import("font.zig");
 const textgeom = @import("textgeom.zig");
 const json = @import("json.zig");
@@ -83,7 +84,7 @@ const Cs = struct {
         if (closed) try self.out.appendSlice(self.a, "h\n");
     }
 
-    fn setPen(self: *Cs, st: *const style_mod.Style, pen: []const u8) Allocator.Error!void {
+    fn setPen(self: *Cs, st: *const style_mod.Style, pen: Pen) Allocator.Error!void {
         const p = st.pen(pen);
         const w_mm = if (p) |x| x.width_mm else 0.25;
         try num(&self.out, self.a, w_mm / 25.4 * pt_per_in);

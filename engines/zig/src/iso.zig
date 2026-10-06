@@ -12,6 +12,7 @@ const clip = @import("clip.zig");
 const model = @import("model.zig");
 const scene_mod = @import("scene.zig");
 const style_mod = @import("style.zig");
+const Pen = @import("pen.zig").Pen;
 const view_mod = @import("view.zig");
 const hatch_mod = @import("hatch.zig");
 const drawing = @import("drawing.zig");
@@ -45,7 +46,7 @@ const Face = struct {
 const Edge = struct {
     a: [3]f64,
     b: [3]f64,
-    pen: []const u8,
+    pen: Pen,
     prism: usize,
     f1: usize,
     f2: usize,
@@ -61,7 +62,7 @@ const IsoPrism = struct {
     z0: f64,
     z1: f64,
     cap_cut: bool,
-    pen: ?[]const u8,
+    pen: ?Pen,
     material: []const u8,
     embedded: bool,
     is_fill: bool = false,
@@ -454,16 +455,16 @@ fn addPrism(iso: *Iso, pi: usize) Allocator.Error!void {
             const fc = iso.faces.items[cur].front;
             // smooth vertical edges only where facing differs (silhouettes)
             if (fl.smooth[i] and fp == fc) continue;
-            const pen: []const u8 = if (ip.pen) |x| x else if (fp != fc) "profile" else "beyond";
+            const pen: Pen = if (ip.pen) |x| x else if (fp != fc) .profile else .beyond;
             try iso.edges.append(a, .{ .a = .{ p.x, p.y, ip.z0 }, .b = .{ p.x, p.y, ip.z1 }, .pen = pen, .prism = pi, .f1 = prev, .f2 = cur, .chain = std.math.maxInt(usize) - (pi * 4096 + li * 1024 + i) });
         }
     }
 }
 
-fn penOf(iso: *const Iso, ip: IsoPrism, f1: usize, f2: usize, cut_cap_edge: bool) []const u8 {
+fn penOf(iso: *const Iso, ip: IsoPrism, f1: usize, f2: usize, cut_cap_edge: bool) Pen {
     if (ip.pen) |p| return p;
-    if (cut_cap_edge) return "cut";
-    return if (iso.faces.items[f1].front != iso.faces.items[f2].front) "profile" else "beyond";
+    if (cut_cap_edge) return .cut;
+    return if (iso.faces.items[f1].front != iso.faces.items[f2].front) .profile else .beyond;
 }
 
 pub const Result = struct {
@@ -601,28 +602,28 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
                     }
                     loops[k] = pl;
                 }
-                try items.append(a, .{ .hatch = .{ .layer = style.layerForPen("hatch"), .pen = "hatch", .src = ip.src, .pattern = hs.pattern, .scale = hs.scale, .angle = hs.angle, .loops = loops, .lines = out_lines.items } });
+                try items.append(a, .{ .hatch = .{ .layer = style.layerForPen(.hatch), .pen = .hatch, .src = ip.src, .pattern = hs.pattern, .scale = hs.scale, .angle = hs.angle, .loops = loops, .lines = out_lines.items } });
             }
             if (ip.is_fill and ip.outline != .none) try fillOutline(a, &items, ip, style, sx, sz);
         }
     }
 
     // chain visible pieces into paths, lighter pens first
-    var pens: std.ArrayList([]const u8) = .empty;
+    var pens: std.ArrayList(Pen) = .empty;
     for (pieces.items) |pc| {
         const pen = iso.edges.items[pc.edge].pen;
         var found = false;
-        for (pens.items) |p| if (std.mem.eql(u8, p, pen)) {
+        for (pens.items) |p| if (p == pen) {
             found = true;
         };
         if (!found) try pens.append(a, pen);
     }
-    std.mem.sort([]const u8, pens.items, style, struct {
-        fn lt(st: *const style_mod.Style, x: []const u8, y: []const u8) bool {
+    std.mem.sort(Pen, pens.items, style, struct {
+        fn lt(st: *const style_mod.Style, x: Pen, y: Pen) bool {
             const wx = st.penWidthMm(x);
             const wy = st.penWidthMm(y);
             if (wx != wy) return wx < wy;
-            return std.mem.lessThan(u8, x, y);
+            return std.mem.lessThan(u8, @tagName(x), @tagName(y));
         }
     }.lt);
     for (pens.items) |pen| {
@@ -631,7 +632,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         var cur_chain: usize = std.math.maxInt(usize);
         for (pieces.items) |pc| {
             const e = iso.edges.items[pc.edge];
-            if (!std.mem.eql(u8, e.pen, pen)) continue;
+            if (e.pen != pen) continue;
             const src = iso.prisms.items[e.prism].src;
             for (pc.segs) |sg| {
                 const continues = cur_chain == e.chain and std.mem.eql(u8, cur_src, src) and cur.items.len > 0 and V2.eql(cur.items[cur.items.len - 1].v(), sg[0], 1e-7);
@@ -755,11 +756,11 @@ fn fillOutline(a: Allocator, items: *std.ArrayList(drawing.Item), ip: IsoPrism, 
                 if (cur.items.len == 0) try cur.append(a, Pt.at(pp, 0));
                 try cur.append(a, Pt.at(qq, 0));
             } else if (cur.items.len > 0) {
-                try items.append(a, .{ .path = .{ .layer = style.layerForPen("cut"), .pen = "cut", .src = ip.src, .closed = false, .pts = cur.items } });
+                try items.append(a, .{ .path = .{ .layer = style.layerForPen(.cut), .pen = .cut, .src = ip.src, .closed = false, .pts = cur.items } });
                 cur = .empty;
             }
         }
-        if (cur.items.len > 0) try items.append(a, .{ .path = .{ .layer = style.layerForPen("cut"), .pen = "cut", .src = ip.src, .closed = false, .pts = cur.items } });
+        if (cur.items.len > 0) try items.append(a, .{ .path = .{ .layer = style.layerForPen(.cut), .pen = .cut, .src = ip.src, .closed = false, .pts = cur.items } });
     }
 }
 

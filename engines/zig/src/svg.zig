@@ -7,6 +7,7 @@ const drawing = @import("drawing.zig");
 const font_mod = @import("font.zig");
 const textgeom = @import("textgeom.zig");
 const style_mod = @import("style.zig");
+const Pen = @import("pen.zig").Pen;
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -71,7 +72,7 @@ fn pathData(out: *std.ArrayList(u8), a: Allocator, m: Map, pts: []const Pt, clos
     if (closed) try out.append(a, 'Z');
 }
 
-fn strokeAttrs(out: *std.ArrayList(u8), a: Allocator, st: *const style_mod.Style, pen: []const u8) Allocator.Error!void {
+fn strokeAttrs(out: *std.ArrayList(u8), a: Allocator, st: *const style_mod.Style, pen: Pen) Allocator.Error!void {
     const p = st.pen(pen);
     const w_mm = if (p) |x| x.width_mm else 0.25;
     try out.appendSlice(a, " fill=\"none\" stroke=\"#000\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"");

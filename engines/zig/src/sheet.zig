@@ -9,6 +9,8 @@ const drawing = @import("drawing.zig");
 const font_mod = @import("font.zig");
 const annot = @import("annot.zig");
 const style_mod = @import("style.zig");
+const pen_mod = @import("pen.zig");
+const Pen = pen_mod.Pen;
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -29,17 +31,17 @@ const Ctx = struct {
         return V2.init(self.ox + x * self.s, self.oy + y * self.s);
     }
 
-    fn layer(self: *const Ctx, key: []const u8) []const u8 {
-        return if (self.st.layerByKey(key)) |l| l.name else "0";
+    fn layer(self: *const Ctx, key: pen_mod.LayerKey) []const u8 {
+        return self.st.layerName(key);
     }
 
-    fn path(self: *Ctx, pen: []const u8, pts: []const [2]f64, closed: bool) Allocator.Error!void {
+    fn path(self: *Ctx, pen: Pen, pts: []const [2]f64, closed: bool) Allocator.Error!void {
         const out = try self.a.alloc(Pt, pts.len);
         for (pts, 0..) |q, i| out[i] = Pt.at(self.m(q[0], q[1]), 0);
         try self.items.append(self.a, .{ .path = .{ .layer = self.st.layerForPen(pen), .pen = pen, .src = "sheet", .closed = closed, .pts = out } });
     }
 
-    fn rect(self: *Ctx, pen: []const u8, x0: f64, y0: f64, x1: f64, y1: f64) Allocator.Error!void {
+    fn rect(self: *Ctx, pen: Pen, x0: f64, y0: f64, x1: f64, y1: f64) Allocator.Error!void {
         try self.path(pen, &.{ .{ x0, y0 }, .{ x1, y0 }, .{ x1, y1 }, .{ x0, y1 } }, true);
     }
 
@@ -49,12 +51,12 @@ const Ctx = struct {
         for (cs, 0..) |q, i| l[i] = Pt.at(self.m(q[0], q[1]), 0);
         const loops = try self.a.alloc([]const Pt, 1);
         loops[0] = l;
-        try self.items.append(self.a, .{ .fill = .{ .layer = self.layer("title"), .src = "sheet", .loops = loops } });
+        try self.items.append(self.a, .{ .fill = .{ .layer = self.layer(.title), .src = "sheet", .loops = loops } });
     }
 
-    fn text(self: *Ctx, pen: []const u8, s: []const u8, x: f64, y: f64, h: f64) Allocator.Error!void {
+    fn text(self: *Ctx, pen: Pen, s: []const u8, x: f64, y: f64, h: f64) Allocator.Error!void {
         const p = self.m(x, y);
-        try self.items.append(self.a, .{ .text = .{ .layer = self.layer("title"), .pen = pen, .src = "sheet", .s = s, .x = p.x, .y = p.y, .h = h * self.s, .rot = 0, .align_ = .left, .valign = .baseline } });
+        try self.items.append(self.a, .{ .text = .{ .layer = self.layer(.title), .pen = pen, .src = "sheet", .s = s, .x = p.x, .y = p.y, .h = h * self.s, .rot = 0, .align_ = .left, .valign = .baseline } });
     }
 };
 
@@ -85,8 +87,8 @@ pub fn withSheet(a: Allocator, d: drawing.Drawing, font: *const font_mod.Font) A
     }
     const fx1 = W - m;
     const fy1 = H - m;
-    try c.rect("frame", m, m, fx1, fy1);
-    try c.rect("title", m, m, fx1, m + tbh);
+    try c.rect(.frame, m, m, fx1, fy1);
+    try c.rect(.title, m, m, fx1, m + tbh);
     const total = fx1 - m;
     const ratios = [6]f64{ 3.4, 2.0, 1.2, 1.15, 1.2, 1.3 };
     var sum: f64 = 0;
@@ -101,16 +103,16 @@ pub fn withSheet(a: Allocator, d: drawing.Drawing, font: *const font_mod.Font) A
     var x = m;
     for (0..6) |i| {
         const cw = ratios[i] * total / sum;
-        if (i > 0) try c.path("title", &.{ .{ x, m }, .{ x, m + tbh } }, false);
-        try c.text("anno", labels[i], x + 0.06, m + tbh - 0.06 - lh * 0.8, lh * 0.8);
+        if (i > 0) try c.path(.title, &.{ .{ x, m }, .{ x, m + tbh } }, false);
+        try c.text(.anno, labels[i], x + 0.06, m + tbh - 0.06 - lh * 0.8, lh * 0.8);
         const vh = fitH(font, values[i], 0.125, cw - 0.14);
-        try c.text("title", values[i], x + 0.07, m + 0.2, vh);
+        try c.text(.title, values[i], x + 0.07, m + 0.2, vh);
         x += cw;
     }
     // footer in the margin below the frame
     const fy = m * 0.42;
     const fth = lh;
-    try c.text("title", "KERF", m, fy, fth * 1.1);
+    try c.text(.title, "KERF", m, fy, fth * 1.1);
     const kw = font.width("KERF", fth * 1.1);
     for (0..3) |k| {
         const bx = m + kw + 0.06 + @as(f64, @floatFromInt(k)) * 0.045;
@@ -122,7 +124,7 @@ pub fn withSheet(a: Allocator, d: drawing.Drawing, font: *const font_mod.Font) A
         if (foot.items.len > 0) try foot.appendSlice(a, "   ");
         try foot.appendSlice(a, st.cite_footnote);
     }
-    if (foot.items.len > 0) try c.text("anno", foot.items, m + kw + 0.3, fy, fth);
+    if (foot.items.len > 0) try c.text(.anno, foot.items, m + kw + 0.3, fy, fth);
     var out = d;
     out.items = c.items.items;
     out.bounds = .{ c.ox, c.oy, c.ox + W * s, c.oy + H * s };

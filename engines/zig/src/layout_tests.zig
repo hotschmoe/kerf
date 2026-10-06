@@ -34,7 +34,7 @@ fn leadersOf(a: std.mem.Allocator, dr: drawing.Drawing) ![]Leader {
     for (dr.items) |it| {
         if (it != .path) continue;
         const p = it.path;
-        if (p.closed or p.pts.len != 3 or !std.mem.eql(u8, p.pen, "anno")) continue;
+        if (p.closed or p.pts.len != 3 or p.pen != .anno) continue;
         if (std.mem.startsWith(u8, p.src, "title:") or std.mem.eql(u8, p.src, "sheet")) continue;
         try out.append(a, .{ .src = p.src, .l = .{ p.pts[0].v(), p.pts[1].v(), p.pts[2].v() } });
     }
@@ -257,7 +257,7 @@ fn textsOf(a: std.mem.Allocator, dr: drawing.Drawing, src: []const u8) ![]drawin
 fn vdimLineX(a: std.mem.Allocator, dr: drawing.Drawing, id: []const u8) !f64 {
     _ = a;
     for (dr.items) |it| {
-        if (it != .path or !std.mem.eql(u8, it.path.src, id) or !std.mem.eql(u8, it.path.pen, "dim") or it.path.pts.len != 2) continue;
+        if (it != .path or !std.mem.eql(u8, it.path.src, id) or it.path.pen != .dim or it.path.pts.len != 2) continue;
         const p = it.path.pts;
         if (@abs(p[0].x - p[1].x) < 1e-9 and @abs(p[0].y - p[1].y) > 1e-6) return p[0].x;
     }
@@ -327,7 +327,7 @@ test "SPEC 20 outside text: a dim whose text does not fit keeps full size, is no
     try std.testing.expect(ts[0].x < 5 or ts[0].x > 7);
     // ext lines (2) + dimension line (1) + leader (1)
     var n_dim: usize = 0;
-    for (dr.items) |it| if (it == .path and std.mem.eql(u8, it.path.src, "d_small") and std.mem.eql(u8, it.path.pen, "dim")) {
+    for (dr.items) |it| if (it == .path and std.mem.eql(u8, it.path.src, "d_small") and it.path.pen == .dim) {
         n_dim += 1;
     };
     try std.testing.expectEqual(@as(usize, 4), n_dim);
@@ -347,7 +347,7 @@ test "SPEC 20 repair: a dimension whose text a leader runs into is pushed out (n
     try std.testing.expect(findDiag(dr, "W_LEADER_HIT") == null);
     var line_y: f64 = 0;
     for (dr.items) |it| {
-        if (it != .path or !std.mem.eql(u8, it.path.src, "d1") or !std.mem.eql(u8, it.path.pen, "dim") or it.path.pts.len != 2) continue;
+        if (it != .path or !std.mem.eql(u8, it.path.src, "d1") or it.path.pen != .dim or it.path.pts.len != 2) continue;
         const p = it.path.pts;
         if (@abs(p[0].y - p[1].y) < 1e-9 and @abs(p[0].x - p[1].x) > 1e-6) line_y = p[0].y;
     }

@@ -484,7 +484,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
             if (emb_override) |e| q.embedded = e;
             if (dashed) {
                 q.kind = .ghost;
-                q.pen = "hidden";
+                q.pen = .hidden;
                 q.dashed = true;
             }
             try world.append(a, q);

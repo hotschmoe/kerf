@@ -551,7 +551,7 @@ fn buildCmu(ctx: *Ctx) BuildError!?Built {
         if (grouted) {
             try prisms.append(a, .{ .part = "grout", .material = "grout", .loops = cell, .cmu_unit = true, .course = @intCast(k) });
         } else {
-            try prisms.append(a, .{ .part = part, .material = "cmu", .loops = cell, .kind = .ghost, .pen = "beyond" });
+            try prisms.append(a, .{ .part = part, .material = "cmu", .loops = cell, .kind = .ghost, .pen = .beyond });
         }
         if (k < n or top_joint) {
             try prisms.append(a, .{ .part = try std.fmt.allocPrint(a, "joint_{d}", .{k}), .material = "mortar", .loops = try model.oneLoop(a, try model.rectLoop(a, 0, y1, w, y1 + 0.375)) });
@@ -1330,7 +1330,7 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
     if (plate) {
         const py1 = @max(db + 0.5, y_low0 + 0.5);
         const pl = try model.rectLoop(a, 0.25, 0.25, 5.25, py1);
-        try prisms.append(a, .{ .part = "plate", .material = "steel", .loops = try model.oneLoop(a, pl), .kind = .ghost, .pen = "hidden", .embedded = true });
+        try prisms.append(a, .{ .part = "plate", .material = "steel", .loops = try model.oneLoop(a, pl), .kind = .ghost, .pen = .hidden, .embedded = true });
         try zones.append(a, try zoneRect(a, "plate", 0.25, 0.25, 5.25, py1));
     }
     // tail zone: the part of the top chord outside the bearing

@@ -7,6 +7,7 @@ const clip = @import("clip.zig");
 const model = @import("model.zig");
 const scene_mod = @import("scene.zig");
 const style_mod = @import("style.zig");
+const Pen = @import("pen.zig").Pen;
 const view_mod = @import("view.zig");
 const hatch_mod = @import("hatch.zig");
 const pathclip = @import("pathclip.zig");
@@ -25,7 +26,7 @@ pub const Class = enum { cut, beyond, drop };
 pub const Stroke = struct {
     pts: []const Pt,
     closed: bool,
-    pen: []const u8,
+    pen: Pen,
     src: []const u8,
     /// Paint rank: lighter first, embedded last.
     rank: f64,
@@ -89,30 +90,30 @@ pub const Section = struct {
         return f;
     }
 
-    fn penFor(self: *const Section, name: []const u8) []const u8 {
-        return if (self.style.pen(name) != null) name else "beyond";
+    /// `which` if the style still defines that pen (a user style can delete one), else the beyond pen.
+    fn penFor(self: *const Section, which: Pen) Pen {
+        return if (self.style.pen(which) != null) which else .beyond;
     }
 
-    fn layerFor(self: *const Section, pen: []const u8) []const u8 {
+    /// Fill materials draw with the pen of the same name (steel, rebar); every other fill material draws in the beyond pen.
+    fn penForMaterial(self: *const Section, mat: []const u8) Pen {
+        return if (std.meta.stringToEnum(Pen, mat)) |p| self.penFor(p) else .beyond;
+    }
+
+    fn layerFor(self: *const Section, pen: Pen) []const u8 {
         return self.style.layerForPen(pen);
     }
 
-    fn addStroke(self: *Section, list: *std.ArrayList(Stroke), pts: []const Pt, closed: bool, pen: []const u8, src: []const u8, embedded: bool) Allocator.Error!void {
+    fn addStroke(self: *Section, list: *std.ArrayList(Stroke), pts: []const Pt, closed: bool, pen: Pen, src: []const u8, embedded: bool) Allocator.Error!void {
         const w = self.style.penWidthMm(pen);
         self.seq += 1;
         try list.append(self.a, .{ .pts = pts, .closed = closed, .pen = pen, .src = src, .rank = w + (if (embedded) @as(f64, 10) else 0), .seq = self.seq });
     }
 
     /// Clip a path to the crop and add the pieces as strokes.
-    fn addClipped(self: *Section, list: *std.ArrayList(Stroke), pts: []const Pt, closed: bool, pen: []const u8, src: []const u8, embedded: bool) Allocator.Error!void {
+    fn addClipped(self: *Section, list: *std.ArrayList(Stroke), pts: []const Pt, closed: bool, pen: Pen, src: []const u8, embedded: bool) Allocator.Error!void {
         const pieces = try pathclip.clipPath(self.a, pts, closed, self.spec.crop);
         for (pieces) |pc| try self.addStroke(list, pc.pts, pc.closed, pen, src, embedded);
-    }
-
-    fn materialPenName(self: *const Section, mat: []const u8) []const u8 {
-        // fill materials draw with the pen of the same name (rebar, steel)
-        if (self.style.material(mat)) |m| if (m.fill) return self.penFor(mat);
-        return "cut";
     }
 
     pub fn build(self: *Section) Allocator.Error!void {
@@ -150,17 +151,17 @@ pub const Section = struct {
             if (self.cls[i] == .drop) continue;
             switch (p.kind) {
                 .ghost => {
-                    const pen = self.penFor(p.pen orelse "hidden");
+                    const pen = self.penFor(p.pen orelse .hidden);
                     for (p.loops) |l| try self.addClipped(&self.ghosts, l, true, pen, self.srcName(p), true);
                 },
                 .line => {
                     if (p.line_pts.len >= 2) {
-                        const pen = self.penFor(if (self.style.material(p.material)) |m| (m.pen orelse "membrane") else "membrane");
+                        const pen = self.penFor(if (self.style.material(p.material)) |m| (m.pen orelse .membrane) else .membrane);
                         try self.addClipped(&self.strokes, try self.linePoints(p), false, pen, self.srcName(p), p.embedded);
                     }
                 },
                 .batt => {
-                    if (p.line_pts.len >= 2) try self.addClipped(&self.strokes, p.line_pts, false, "profile", self.srcName(p), false);
+                    if (p.line_pts.len >= 2) try self.addClipped(&self.strokes, p.line_pts, false, .profile, self.srcName(p), false);
                 },
                 .body => {},
             }
@@ -225,12 +226,12 @@ pub const Section = struct {
         const fully_inside = bx.x0 >= crop.x0 - 1e-9 and bx.x1 <= crop.x1 + 1e-9 and bx.y0 >= crop.y0 - 1e-9 and bx.y1 <= crop.y1 + 1e-9;
         // ----- region for hatch/fill (crop clipped, holes for embedded items) -----
         // Thin cut regions (paper thickness < 2x the cut pen) render as a solid fill plus an outline.
-        const cut_in = self.style.penWidthMm("cut") / 25.4;
+        const cut_in = self.style.penWidthMm(.cut) / 25.4;
         var perim: f64 = 0;
         for (flat[0], 0..) |v, vi| perim += v.dist(flat[0][(vi + 1) % flat[0].len]);
         const thick_model = if (perim > 0) 2.0 * @abs(geom.signedAreaV(flat[0])) / perim else 1e9;
         const is_thin = p.outline == .full and isMetal(p.material) and !is_fill_mat and thick_model / self.spec.scale < 2.0 * cut_in;
-        const pen_out: []const u8 = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penFor(p.material) else if (is_thin) "steel" else "cut";
+        const pen_out: Pen = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penForMaterial(p.material) else if (is_thin) .steel else .cut;
         var region: []const []const V2 = flat;
         var region_exact: bool = fully_inside;
         if (!fully_inside) {
@@ -264,8 +265,8 @@ pub const Section = struct {
                             const res = try hatch_mod.generate(self.a, g.flat, pat, self.spec.scale * hs.scale, hs.angle);
                             if (res.truncated) self.truncated_hatch = true;
                             try self.hatches.append(self.a, .{
-                                .layer = self.layerFor("hatch"),
-                                .pen = "hatch",
+                                .layer = self.layerFor(.hatch),
+                                .pen = .hatch,
                                 .src = src,
                                 .pattern = hs.pattern,
                                 .scale = hs.scale,
@@ -289,8 +290,8 @@ pub const Section = struct {
                     if (res.truncated) self.truncated_hatch = true;
                     if (res.lines.len == 0) continue;
                     try self.hatches.append(self.a, .{
-                        .layer = self.layerFor("hatch"),
-                        .pen = "hatch",
+                        .layer = self.layerFor(.hatch),
+                        .pen = .hatch,
                         .src = src,
                         .pattern = gs.pattern,
                         .scale = gs.scale,
@@ -304,7 +305,7 @@ pub const Section = struct {
         // ----- outline -----
         if (path_bar) {
             // SPEC 20: a path-mode bar is one centerline in the rebar pen (bends stay true arcs); the ribbon only clears hatch.
-            try self.addClipped(&self.strokes, p.centerline, false, self.penFor("rebar"), src, true);
+            try self.addClipped(&self.strokes, p.centerline, false, self.penFor(.rebar), src, true);
         } else switch (p.outline) {
             .none => {},
             .full => for (p.loops) |l| try self.addClipped(&self.strokes, l, true, pen_out, src, p.embedded),
@@ -316,11 +317,11 @@ pub const Section = struct {
             if (mark != .none) {
                 for (p.quads) |q| {
                     if (pathclip.clipSeg(q[0], q[2], crop)) |s| {
-                        try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, "beyond", src, false);
+                        try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, .beyond, src, false);
                     }
                     if (mark == .x) {
                         if (pathclip.clipSeg(q[1], q[3], crop)) |s| {
-                            try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, "beyond", src, false);
+                            try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, .beyond, src, false);
                         }
                     }
                 }
@@ -328,7 +329,7 @@ pub const Section = struct {
         }
         for (p.ply_lines) |pl| {
             if (pathclip.clipSeg(pl[0], pl[1], crop)) |s| {
-                try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, "beyond", src, false);
+                try self.addStroke(&self.strokes, try self.a.dupe(Pt, &.{ Pt.at(s[0], 0), Pt.at(s[1], 0) }), false, .beyond, src, false);
             }
         }
     }
@@ -368,7 +369,7 @@ pub const Section = struct {
         const crop = self.spec.crop;
         const src = self.srcName(p);
         const S = self.spec.scale;
-        const pen = self.penFor("steel");
+        const pen = self.penFor(.steel);
         for (p.loops) |l| try self.addClipped(&self.strokes, l, true, pen, src, true);
         if (p.centerline.len < 2) return;
         const flat = try geom.flattenPolyline(self.a, p.centerline, false, flat_tol);
@@ -407,7 +408,7 @@ pub const Section = struct {
     }
 
     /// Stroke only the edges whose outward normal points up (grade lines). Loops are CCW.
-    fn topEdges(self: *Section, loop: []const Pt, pen: []const u8, src: []const u8) Allocator.Error!void {
+    fn topEdges(self: *Section, loop: []const Pt, pen: Pen, src: []const u8) Allocator.Error!void {
         const ccw = geom.signedArea(loop) >= 0;
         var cur: std.ArrayList(Pt) = .empty;
         const n = loop.len;
@@ -457,9 +458,9 @@ pub const Section = struct {
         const f = try self.flatOf(i);
         if (!clip.loopsBox(f).overlaps(crop, 1e-6)) return;
         const src = self.srcName(p);
-        if (isPathBar(p)) return self.addClipped(&self.strokes, p.centerline, false, self.penFor("rebar"), src, true);
+        if (isPathBar(p)) return self.addClipped(&self.strokes, p.centerline, false, self.penFor(.rebar), src, true);
         const mat = self.style.material(p.material);
-        const pen: []const u8 = if (mat != null and mat.?.fill) self.penFor(p.material) else "beyond";
+        const pen: Pen = if (mat != null and mat.?.fill) self.penForMaterial(p.material) else .beyond;
         // occluders
         var occ: std.ArrayList(*const Occ) = .empty;
         if (!p.embedded) {
@@ -549,7 +550,7 @@ pub const Section = struct {
             }
             for (merged.items) |m| {
                 const pts = try self.breakPolyline(e, m.a, m.b);
-                try self.breaks.append(self.a, .{ .layer = self.layerFor("break"), .pen = "break", .src = "crop", .closed = false, .pts = pts });
+                try self.breaks.append(self.a, .{ .layer = self.layerFor(.@"break"), .pen = .@"break", .src = "crop", .closed = false, .pts = pts });
             }
         }
     }
@@ -912,7 +913,7 @@ pub fn dedupe(a: Allocator, strokes: []const Stroke, style: *const style_mod.Sty
                 const t2b = p_hi.sub(s2.a).dot(d2) / (l2 * l2);
                 try subtractInterval(a, &s1.keep, lo, hi);
                 try subtractInterval(a, &s2.keep, @max(0.0, @min(t2a, t2b)), @min(1.0, @max(t2a, t2b)));
-                try extras.append(a, .{ .pts = try a.dupe(Pt, &.{ Pt.at(p_lo, 0), Pt.at(p_hi, 0) }), .closed = false, .pen = "beyond", .src = strokes[s1.stroke].src, .rank = style.penWidthMm("beyond"), .seq = strokes[s1.stroke].seq });
+                try extras.append(a, .{ .pts = try a.dupe(Pt, &.{ Pt.at(p_lo, 0), Pt.at(p_hi, 0) }), .closed = false, .pen = .beyond, .src = strokes[s1.stroke].src, .rank = style.penWidthMm(.beyond), .seq = strokes[s1.stroke].seq });
                 continue;
             }
             // the lighter (or later on ties) loses the overlap
@@ -998,7 +999,7 @@ pub fn chainStrokes(a: Allocator, in: []Stroke) Allocator.Error![]Stroke {
             while (j < list.items.len) : (j += 1) {
                 const si = list.items[i];
                 const sj = list.items[j];
-                if (sj.closed or !std.mem.eql(u8, si.pen, sj.pen) or !std.mem.eql(u8, si.src, sj.src)) continue;
+                if (sj.closed or si.pen != sj.pen or !std.mem.eql(u8, si.src, sj.src)) continue;
                 const i_end = si.pts[si.pts.len - 1].v();
                 const i_start = si.pts[0].v();
                 const j_start = sj.pts[0].v();
@@ -1075,7 +1076,7 @@ test "path rebar is one open centerline polyline in the rebar pen with true arcs
         .path => |p| if (std.mem.eql(u8, p.src, "dowel")) {
             paths += 1;
             try std.testing.expect(!p.closed);
-            try std.testing.expectEqualStrings("rebar", p.pen);
+            try std.testing.expectEqual(Pen.rebar, p.pen);
             try std.testing.expectEqualStrings("S-DETL-REBR", p.layer);
             for (p.pts[0 .. p.pts.len - 1]) |q| if (q.b != 0) {
                 arcs += 1;
@@ -1101,7 +1102,7 @@ test "a face-on tie is outlined in the steel pen with nail dots at 1 inch pitch"
         },
         .path => |p| if (std.mem.eql(u8, p.src, "hurricane_tie")) {
             outline += 1;
-            try std.testing.expectEqualStrings("steel", p.pen);
+            try std.testing.expectEqual(Pen.steel, p.pen);
         },
         else => {},
     };
@@ -1153,7 +1154,7 @@ test "all member linework in every reference section view stays inside the crop"
     }
 }
 
-fn isMemberPen(pen: []const u8) bool {
-    for ([_][]const u8{ "cut", "beyond", "hidden", "steel", "rebar", "membrane", "vapor" }) |n| if (std.mem.eql(u8, pen, n)) return true;
+fn isMemberPen(pen: Pen) bool {
+    for ([_]Pen{ .cut, .beyond, .hidden, .steel, .rebar, .membrane, .vapor }) |n| if (pen == n) return true;
     return false;
 }

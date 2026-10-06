@@ -8,6 +8,8 @@ const clip = @import("clip.zig");
 const model = @import("model.zig");
 const scene_mod = @import("scene.zig");
 const style_mod = @import("style.zig");
+const pen_mod = @import("pen.zig");
+const Pen = pen_mod.Pen;
 const font_mod = @import("font.zig");
 const view_mod = @import("view.zig");
 const section = @import("section.zig");
@@ -94,11 +96,11 @@ pub fn asciiFold(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
     return asciiFoldFlag(a, s, null);
 }
 
-fn layerName(env: *const Env, key: []const u8) []const u8 {
-    return if (env.style.layerByKey(key)) |l| l.name else "0";
+fn layerName(env: *const Env, key: pen_mod.LayerKey) []const u8 {
+    return env.style.layerName(key);
 }
 
-fn textItem(env: *Env, layer_key: []const u8, pen: []const u8, src: []const u8, s: []const u8, x: f64, y: f64, h: f64, rot: f64, al: drawing.Align, va: drawing.VAlign) Allocator.Error!Item {
+fn textItem(env: *Env, layer_key: pen_mod.LayerKey, pen: Pen, src: []const u8, s: []const u8, x: f64, y: f64, h: f64, rot: f64, al: drawing.Align, va: drawing.VAlign) Allocator.Error!Item {
     return .{ .text = .{
         .layer = layerName(env, layer_key),
         .pen = pen,
@@ -113,7 +115,7 @@ fn textItem(env: *Env, layer_key: []const u8, pen: []const u8, src: []const u8, 
     } };
 }
 
-fn pathItem(env: *Env, pen: []const u8, src: []const u8, pts: []const V2, closed: bool) Allocator.Error!Item {
+fn pathItem(env: *Env, pen: Pen, src: []const u8, pts: []const V2, closed: bool) Allocator.Error!Item {
     const p = try env.a.alloc(Pt, pts.len);
     for (pts, 0..) |q, i| p[i] = Pt.at(q, 0);
     return .{ .path = .{ .layer = env.style.layerForPen(pen), .pen = pen, .src = src, .closed = closed, .pts = p } };
@@ -714,8 +716,8 @@ fn emitNotes(env: *Env, notes: []const NoteIn, prep: NotePrep, r: route.Layout, 
                 const ang = std.math.pi / 6.0 + @as(f64, @floatFromInt(k)) * std.math.pi / 3.0;
                 hex[k] = V2.init(cx + tag_r * @cos(ang), cy + tag_r * @sin(ang));
             }
-            try out[i].append(a, try pathItem(env, "anno", n.id, &hex, true));
-            try out[i].append(a, try textItem(env, "notes", "anno", n.id, lines[0], cx, cy, h, 0, .center, .middle));
+            try out[i].append(a, try pathItem(env, .anno, n.id, &hex, true));
+            try out[i].append(a, try textItem(env, .notes, .anno, n.id, lines[0], cx, cy, h, 0, .center, .middle));
         } else {
             // SPEC 20: a designer-placed note that sits left of its arrow is right-aligned to place.x + width
             const right_aligned = n.place != null and r.left[i];
@@ -723,9 +725,9 @@ fn emitNotes(env: *Env, notes: []const NoteIn, prep: NotePrep, r: route.Layout, 
             for (lines, 0..) |line, j| {
                 const ty = ptop - h - @as(f64, @floatFromInt(j)) * g.pitch;
                 if (right_aligned) {
-                    try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, px + bw, ty, h, 0, .right, .baseline));
+                    try out[i].append(a, try textItem(env, .notes, .anno, n.id, line, px + bw, ty, h, 0, .right, .baseline));
                 } else {
-                    try out[i].append(a, try textItem(env, "notes", "anno", n.id, line, px, ty, h, 0, .left, .baseline));
+                    try out[i].append(a, try textItem(env, .notes, .anno, n.id, line, px, ty, h, 0, .left, .baseline));
                 }
             }
         }
@@ -736,11 +738,11 @@ fn emitNotes(env: *Env, notes: []const NoteIn, prep: NotePrep, r: route.Layout, 
         const aw = st.arrow_width_in * S;
         const base = land.sub(d.scale(alen));
         const perp = d.perp();
-        try out[i].append(a, try pathItem(env, "anno", n.id, &.{ l[0], l[1], base }, false));
+        try out[i].append(a, try pathItem(env, .anno, n.id, &.{ l[0], l[1], base }, false));
         const tri = try a.dupe(Pt, &.{ Pt.at(land, 0), Pt.at(base.add(perp.scale(aw)), 0), Pt.at(base.sub(perp.scale(aw)), 0) });
         const loops = try a.alloc([]const Pt, 1);
         loops[0] = tri;
-        try out[i].append(a, .{ .fill = .{ .layer = layerName(env, "notes"), .src = n.id, .loops = loops } });
+        try out[i].append(a, .{ .fill = .{ .layer = layerName(env, .notes), .src = n.id, .loops = loops } });
     }
 }
 
@@ -757,14 +759,14 @@ fn legendItems(env: *Env, notes: []const NoteIn, result: *std.ArrayList(Item)) A
     const wrap_n: usize = cast.toIntClamped(usize, st.wrap_chars * 1.25, 5, 250);
     const x0 = box.x1 + 0.35 * S;
     var y = top;
-    try result.append(a, try textItem(env, "notes", "anno", "legend", "KEYNOTES", x0, y - h, h, 0, .left, .baseline));
+    try result.append(a, try textItem(env, .notes, .anno, "legend", "KEYNOTES", x0, y - h, h, 0, .left, .baseline));
     y -= pitch * 1.4;
     for (notes, 0..) |n, i| {
         const lines = try wrap(a, n.text, wrap_n);
         const num = try std.fmt.allocPrint(a, "{d}", .{i + 1});
-        try result.append(a, try textItem(env, "notes", "anno", "legend", num, x0, y - h, h, 0, .left, .baseline));
+        try result.append(a, try textItem(env, .notes, .anno, "legend", num, x0, y - h, h, 0, .left, .baseline));
         for (lines, 0..) |line, j| {
-            try result.append(a, try textItem(env, "notes", "anno", "legend", line, x0 + 0.35 * S, y - h - @as(f64, @floatFromInt(j)) * pitch, h, 0, .left, .baseline));
+            try result.append(a, try textItem(env, .notes, .anno, "legend", line, x0 + 0.35 * S, y - h - @as(f64, @floatFromInt(j)) * pitch, h, 0, .left, .baseline));
         }
         y -= pitch * @as(f64, @floatFromInt(lines.len)) + 0.25 * pitch;
     }
@@ -895,7 +897,7 @@ fn dimBuild(env: *Env, d: DimSpec, offset: f64, variant: usize, out: *std.ArrayL
         const dn = dv.norm();
         const e0 = pq[0].add(dn.scale(gap));
         const e1 = pq[1].add(dn.scale(over));
-        try out.append(a, try pathItem(env, "dim", d.id, &.{ e0, e1 }, false));
+        try out.append(a, try pathItem(env, .dim, d.id, &.{ e0, e1 }, false));
         sh.add(e0, e1);
     }
     const dist = d.span();
@@ -905,13 +907,13 @@ fn dimBuild(env: *Env, d: DimSpec, offset: f64, variant: usize, out: *std.ArrayL
     const fits = tw + 2.0 * tgap <= lb.sub(la).len() - tick;
     sh.fits = fits;
     sh.line = .{ la, lb };
-    try out.append(a, try pathItem(env, "dim", d.id, &.{ la, lb }, false));
+    try out.append(a, try pathItem(env, .dim, d.id, &.{ la, lb }, false));
     sh.add(la, lb);
     const tdir = u.add(nrm).norm();
     for ([2]V2{ la, lb }) |p| {
         const t0 = p.sub(tdir.scale(tick * 0.5));
         const t1 = p.add(tdir.scale(tick * 0.5));
-        try out.append(a, try pathItem(env, "profile", d.id, &.{ t0, t1 }, false));
+        try out.append(a, try pathItem(env, .profile, d.id, &.{ t0, t1 }, false));
         sh.add(t0, t1);
     }
     var ang = std.math.radiansToDegrees(std.math.atan2(u.y, u.x));
@@ -935,11 +937,11 @@ fn dimBuild(env: *Env, d: DimSpec, offset: f64, variant: usize, out: *std.ArrayL
             else => 0,
         };
         const q = e.add(u.scale(s * 2.0 * tick)).add(outward.scale(lift));
-        try out.append(a, try pathItem(env, "dim", d.id, &.{ e, q }, false));
+        try out.append(a, try pathItem(env, .dim, d.id, &.{ e, q }, false));
         sh.add(e, q);
         center = q.add(u.scale(s * (tgap + tw * 0.5)));
     }
-    const ti = try textItem(env, "dims", "dim", d.id, label, center.x, center.y, th, ang, .center, valign);
+    const ti = try textItem(env, .dims, .dim, d.id, label, center.x, center.y, th, ang, .center, valign);
     try out.append(a, ti);
     sh.text = textPoly(env.font, ti.text, 0.015 * S);
     return sh;
@@ -947,7 +949,7 @@ fn dimBuild(env: *Env, d: DimSpec, offset: f64, variant: usize, out: *std.ArrayL
 
 fn labelItems(env: *Env, id: []const u8, text: []const u8, at: V2, out: *std.ArrayList(Item)) Allocator.Error!void {
     const t = try upperIf(env, text);
-    try out.append(env.a, try textItem(env, "notes", "anno", id, t, at.x, at.y, env.style.label_height_in * env.S, 0, .center, .middle));
+    try out.append(env.a, try textItem(env, .notes, .anno, id, t, at.x, at.y, env.style.label_height_in * env.S, 0, .center, .middle));
 }
 
 // ---- dimension conflicts (stacking) --------------------------------------------------------------------------------
@@ -1175,7 +1177,7 @@ fn renderDimLabels(env: *Env, dl: DimLab, per_in: []const std.ArrayList(Item), m
                     .off = m.off,
                     .off2 = m.off2,
                 });
-            } else if (it == .path and m.kind == .dim and std.mem.eql(u8, it.path.pen, "dim") and it.path.pts.len == 2) {
+            } else if (it == .path and m.kind == .dim and it.path.pen == .dim and it.path.pts.len == 2) {
                 try soft.append(a, .{ it.path.pts[0].v(), it.path.pts[1].v() });
             }
         }
@@ -1546,30 +1548,30 @@ pub fn titleItems(env: *Env, info: SheetInfo, tcrop: Box, out: *std.ArrayList(It
     const cy = tcrop.y0 - top_gap - r;
     const src = try std.fmt.allocPrint(a, "title:{s}", .{env.spec.id});
     const bubble = try a.dupe(Pt, &.{ .{ .x = cx - r, .y = cy, .b = 1 }, .{ .x = cx + r, .y = cy, .b = 1 } });
-    try out.append(a, .{ .path = .{ .layer = layerName(env, "title"), .pen = "title", .src = src, .closed = true, .pts = bubble } });
+    try out.append(a, .{ .path = .{ .layer = layerName(env, .title), .pen = .title, .src = src, .closed = true, .pts = bubble } });
     const th = st.title_height_in * S;
     const nh = st.text_height_in * S;
     if (info.sheet.len == 0) {
-        try out.append(a, try textItem(env, "title", "title", src, info.number, cx, cy, th, 0, .center, .middle));
+        try out.append(a, try textItem(env, .title, .title, src, info.number, cx, cy, th, 0, .center, .middle));
     } else {
-        try out.append(a, try pathItem(env, "anno", src, &.{ V2.init(cx - r, cy), V2.init(cx + r, cy) }, false));
-        try out.append(a, try textItem(env, "title", "title", src, info.number, cx, cy + r * 0.5, th, 0, .center, .middle));
-        try out.append(a, try textItem(env, "title", "anno", src, info.sheet, cx, cy - r * 0.5, st.label_height_in * 0.9 * S, 0, .center, .middle));
+        try out.append(a, try pathItem(env, .anno, src, &.{ V2.init(cx - r, cy), V2.init(cx + r, cy) }, false));
+        try out.append(a, try textItem(env, .title, .title, src, info.number, cx, cy + r * 0.5, th, 0, .center, .middle));
+        try out.append(a, try textItem(env, .title, .anno, src, info.sheet, cx, cy - r * 0.5, st.label_height_in * 0.9 * S, 0, .center, .middle));
     }
     const tx = cx + r + 0.15 * S;
     const title = try upperIf(env, info.title);
     const ty = cy + 0.02 * S;
-    try out.append(a, try textItem(env, "title", "title", src, title, tx, ty, th, 0, .left, .baseline));
+    try out.append(a, try textItem(env, .title, .title, src, title, tx, ty, th, 0, .left, .baseline));
     const tw = env.font.width(try asciiFold(a, title), th);
     const uy = ty - 0.07 * S;
-    try out.append(a, try pathItem(env, "title", src, &.{ V2.init(tx, uy), V2.init(tx + tw, uy) }, false));
+    try out.append(a, try pathItem(env, .title, src, &.{ V2.init(tx, uy), V2.init(tx + tw, uy) }, false));
     const scale_line = try std.fmt.allocPrint(a, "SCALE: {s}", .{info.scale_text});
     const sy = uy - 0.06 * S - nh;
-    try out.append(a, try textItem(env, "title", "anno", src, scale_line, tx, sy, nh, 0, .left, .baseline));
+    try out.append(a, try textItem(env, .title, .anno, src, scale_line, tx, sy, nh, 0, .left, .baseline));
     var low = @min(cy - r, sy - 0.02 * S);
     if (info.unverified) {
         const fy = low - 0.1 * S - nh;
-        try out.append(a, try textItem(env, "title", "anno", "footnote", st.cite_footnote, tcrop.x0, fy, nh * 0.85, 0, .left, .baseline));
+        try out.append(a, try textItem(env, .title, .anno, "footnote", st.cite_footnote, tcrop.x0, fy, nh * 0.85, 0, .left, .baseline));
         low = fy - 0.02 * S;
     }
     return low;

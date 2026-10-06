@@ -7,6 +7,7 @@ const json = @import("json.zig");
 const geom = @import("geom.zig");
 const drawing = @import("drawing.zig");
 const style_mod = @import("style.zig");
+const Pen = @import("pen.zig").Pen;
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -71,8 +72,8 @@ fn linetypeName(a: Allocator, pen: []const u8) Allocator.Error![]const u8 {
     return out;
 }
 
-fn penLt(a: Allocator, st: *const style_mod.Style, pen: []const u8) Allocator.Error!?[]const u8 {
-    if (st.pen(pen)) |p| if (p.dash_mm != null) return try linetypeName(a, pen);
+fn penLt(a: Allocator, st: *const style_mod.Style, pen: Pen) Allocator.Error!?[]const u8 {
+    if (st.pen(pen)) |p| if (p.dash_mm != null) return try linetypeName(a, @tagName(pen));
     return null;
 }
 
@@ -147,7 +148,7 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
                 ext.addBox(geom.pointsBox(p.pts));
             },
             .fill => |f| {
-                try hatchHeader(&w, f.layer, lineweightFor(st.penWidthMm("cut")), "SOLID", true);
+                try hatchHeader(&w, f.layer, lineweightFor(st.penWidthMm(.cut)), "SOLID", true);
                 try hatchBoundary(&w, f.loops);
                 try w.i(75, 0);
                 try w.i(76, 1);
@@ -300,11 +301,11 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
     try o.s(0, "ENDTAB");
 
     // LTYPE
-    var lts: std.ArrayList(struct { name: []const u8, pen: style_mod.Pen }) = .empty;
+    var lts: std.ArrayList(struct { name: []const u8, pen: style_mod.PenDef }) = .empty;
     for (st.pens) |p| if (p.dash_mm != null) {
         // only linetypes actually used
         var used = false;
-        for (d.items) |it| if (it == .path and std.mem.eql(u8, it.path.pen, p.name)) {
+        for (d.items) |it| if (it == .path and std.mem.eql(u8, @tagName(it.path.pen), p.name)) {
             used = true;
             break;
         };

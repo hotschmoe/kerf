@@ -6,6 +6,8 @@ const geom = @import("geom.zig");
 const model = @import("model.zig");
 const style_mod = @import("style.zig");
 const view_mod = @import("view.zig");
+const pen_mod = @import("pen.zig");
+pub const Pen = pen_mod.Pen;
 const Allocator = std.mem.Allocator;
 const Pt = geom.Pt;
 const V2 = geom.V2;
@@ -17,7 +19,7 @@ pub const VAlign = enum { baseline, middle, top };
 
 pub const PathItem = struct {
     layer: []const u8,
-    pen: []const u8,
+    pen: Pen,
     src: []const u8,
     closed: bool,
     pts: []const Pt,
@@ -31,7 +33,7 @@ pub const FillItem = struct {
 
 pub const HatchItem = struct {
     layer: []const u8,
-    pen: []const u8,
+    pen: Pen,
     src: []const u8,
     pattern: []const u8,
     scale: f64,
@@ -42,7 +44,7 @@ pub const HatchItem = struct {
 
 pub const TextItem = struct {
     layer: []const u8,
-    pen: []const u8,
+    pen: Pen,
     src: []const u8,
     s: []const u8,
     x: f64,
@@ -206,7 +208,7 @@ pub fn toJson(a: Allocator, d: *const Drawing) Allocator.Error![]u8 {
                 try out.appendSlice(a, "{\"t\":\"path\",\"layer\":");
                 try str(&out, a, p.layer);
                 try out.appendSlice(a, ",\"pen\":");
-                try str(&out, a, p.pen);
+                try str(&out, a, @tagName(p.pen));
                 try out.appendSlice(a, ",\"src\":");
                 try str(&out, a, p.src);
                 try out.appendSlice(a, if (p.closed) ",\"closed\":true,\"pts\":" else ",\"closed\":false,\"pts\":");
@@ -226,7 +228,7 @@ pub fn toJson(a: Allocator, d: *const Drawing) Allocator.Error![]u8 {
                 try out.appendSlice(a, "{\"t\":\"hatch\",\"layer\":");
                 try str(&out, a, h.layer);
                 try out.appendSlice(a, ",\"pen\":");
-                try str(&out, a, h.pen);
+                try str(&out, a, @tagName(h.pen));
                 try out.appendSlice(a, ",\"src\":");
                 try str(&out, a, h.src);
                 try out.appendSlice(a, ",\"pattern\":");
@@ -262,7 +264,7 @@ pub fn toJson(a: Allocator, d: *const Drawing) Allocator.Error![]u8 {
                 try out.appendSlice(a, "{\"t\":\"text\",\"layer\":");
                 try str(&out, a, t.layer);
                 try out.appendSlice(a, ",\"pen\":");
-                try str(&out, a, t.pen);
+                try str(&out, a, @tagName(t.pen));
                 try out.appendSlice(a, ",\"src\":");
                 try str(&out, a, t.src);
                 try out.appendSlice(a, ",\"s\":");

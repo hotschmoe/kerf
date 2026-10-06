@@ -16,6 +16,7 @@ const drawing = @import("drawing.zig");
 const font_mod = @import("font.zig");
 const textgeom = @import("textgeom.zig");
 const style_mod = @import("style.zig");
+const Pen = @import("pen.zig").Pen;
 const svg = @import("svg.zig");
 const png = @import("png.zig");
 const Allocator = std.mem.Allocator;
@@ -291,12 +292,12 @@ const Canvas = struct {
     }
 };
 
-fn penWidthPx(st: *const style_mod.Style, pen: []const u8, ppi: f64) f64 {
+fn penWidthPx(st: *const style_mod.Style, pen: Pen, ppi: f64) f64 {
     const w_mm = if (st.pen(pen)) |p| p.width_mm else 0.25;
     return @max(w_mm / 25.4 * ppi, 1.0);
 }
 
-fn penDashPx(a: Allocator, st: *const style_mod.Style, pen: []const u8, ppi: f64) Allocator.Error!?[]const f64 {
+fn penDashPx(a: Allocator, st: *const style_mod.Style, pen: Pen, ppi: f64) Allocator.Error!?[]const f64 {
     const p = st.pen(pen) orelse return null;
     const dm = p.dash_mm orelse return null;
     const out = try a.alloc(f64, dm.len);

@@ -5,11 +5,15 @@
 const std = @import("std");
 const json = @import("json.zig");
 const cast = @import("num.zig");
+const pen_mod = @import("pen.zig");
+pub const Pen = pen_mod.Pen;
+pub const LayerKey = pen_mod.LayerKey;
 const Allocator = std.mem.Allocator;
 
 pub const default_json = @embedFile("kerf_style_json");
 
-pub const Pen = struct {
+/// A pen as the style defines it: name, width and dash pattern. The engine reaches pens through `pen.Pen`.
+pub const PenDef = struct {
     name: []const u8,
     width_mm: f64,
     dash_mm: ?[]const f64 = null,
@@ -39,7 +43,7 @@ pub const Material = struct {
     cut_mark: CutMark = .none,
     fill: bool = false,
     batt: bool = false,
-    pen: ?[]const u8 = null,
+    pen: ?Pen = null,
     color3d: []const u8 = "#A0A0A0",
     layer: ?[]const u8 = null,
 };
@@ -67,7 +71,7 @@ pub const Layer = struct {
 
 pub const Style = struct {
     id: []const u8,
-    pens: []const Pen,
+    pens: []const PenDef,
     materials: []const Material,
     patterns: []const Pattern,
     layers: []const Layer,
@@ -130,12 +134,12 @@ pub const Style = struct {
         return cast.toIntClamped(usize, self.wrap_chars, 4, 200);
     }
 
-    pub fn pen(self: *const Style, name: []const u8) ?Pen {
-        for (self.pens) |p| if (std.mem.eql(u8, p.name, name)) return p;
+    pub fn pen(self: *const Style, which: Pen) ?PenDef {
+        for (self.pens) |p| if (std.mem.eql(u8, p.name, @tagName(which))) return p;
         return null;
     }
-    pub fn penWidthMm(self: *const Style, name: []const u8) f64 {
-        return if (self.pen(name)) |p| p.width_mm else 0.25;
+    pub fn penWidthMm(self: *const Style, which: Pen) f64 {
+        return if (self.pen(which)) |p| p.width_mm else 0.25;
     }
     pub fn material(self: *const Style, name: []const u8) ?*const Material {
         for (self.materials) |*m| if (std.mem.eql(u8, m.name, name)) return m;
@@ -145,35 +149,23 @@ pub const Style = struct {
         for (self.patterns) |*p| if (std.mem.eql(u8, p.name, name)) return p;
         return null;
     }
-    pub fn layerByKey(self: *const Style, key: []const u8) ?Layer {
-        for (self.layers) |l| if (std.mem.eql(u8, l.key, key)) return l;
+    pub fn layerByKey(self: *const Style, key: LayerKey) ?Layer {
+        for (self.layers) |l| if (std.mem.eql(u8, l.key, @tagName(key))) return l;
         return null;
     }
-    /// Layer name for a pen (see `layerKeyForPen`).
-    pub fn layerForPen(self: *const Style, pen_name: []const u8) []const u8 {
-        const key = layerKeyForPen(pen_name);
+    /// Name of a layer in this style ("0" when the style does not define it).
+    pub fn layerName(self: *const Style, key: LayerKey) []const u8 {
+        return if (self.layerByKey(key)) |l| l.name else "0";
+    }
+    /// Layer name for a pen (`Pen.layer`).
+    pub fn layerForPen(self: *const Style, which: Pen) []const u8 {
+        const key = which.layer();
         if (self.layerByKey(key)) |l| return l.name;
         // a user style without a `rebar` layer keeps rebar on the steel layer
-        if (std.mem.eql(u8, key, "rebar")) if (self.layerByKey("steel")) |l| return l.name;
+        if (key == .rebar) if (self.layerByKey(.steel)) |l| return l.name;
         return "0";
     }
 };
-
-/// Which style layer an item drawn with `pen` belongs to.
-pub fn layerKeyForPen(pen_name: []const u8) []const u8 {
-    const eq = std.mem.eql;
-    if (eq(u8, pen_name, "cut") or eq(u8, pen_name, "profile") or eq(u8, pen_name, "membrane") or eq(u8, pen_name, "vapor")) return "cut";
-    if (eq(u8, pen_name, "beyond")) return "beyond";
-    if (eq(u8, pen_name, "hidden")) return "hidden";
-    if (eq(u8, pen_name, "hatch")) return "hatch";
-    if (eq(u8, pen_name, "rebar")) return "rebar";
-    if (eq(u8, pen_name, "steel")) return "steel";
-    if (eq(u8, pen_name, "anno")) return "notes";
-    if (eq(u8, pen_name, "dim")) return "dims";
-    if (eq(u8, pen_name, "break")) return "break";
-    if (eq(u8, pen_name, "title") or eq(u8, pen_name, "frame")) return "title";
-    return "cut";
-}
 
 fn numOr(v: ?json.Value, d: f64) f64 {
     if (v) |x| if (x.num()) |n| return n;
@@ -345,11 +337,22 @@ fn validatePens(c: *Check, root: json.Value) Allocator.Error!void {
     }
 }
 
+const pen_names = blk: {
+    var list: []const u8 = "";
+    for (std.meta.fieldNames(Pen), 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
+    break :blk list;
+};
+
 fn validateMaterials(c: *Check, root: json.Value) Allocator.Error!void {
     const mv = root.get("materials") orelse return;
     if (mv != .object) return;
     for (mv.object) |m| {
         if (m.value != .object) continue;
+        if (m.value.get("pen")) |pv| if (pv != .null) {
+            if (pv.str()) |t| {
+                if (std.meta.stringToEnum(Pen, t) == null) try c.bad("style key 'materials.{s}.pen' must be one of the engine's pens ({s}) (got \"{s}\")", .{ m.key, pen_names, t[0..@min(t.len, 24)] });
+            } else try c.bad("style key 'materials.{s}.pen' must be a pen name string (got {s})", .{ m.key, pv.kindName() });
+        };
         if (m.value.get("hatch")) |h| if (h == .array) {
             for (h.array, 0..) |x, i| {
                 const base = try std.fmt.allocPrint(c.a, "materials.{s}.hatch[{d}]", .{ m.key, i });
@@ -400,7 +403,7 @@ pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {
     {
         const pv = root.get("pens") orelse return error.BadStyle;
         if (pv != .object) return error.BadStyle;
-        const out = try a.alloc(Pen, pv.object.len);
+        const out = try a.alloc(PenDef, pv.object.len);
         for (pv.object, 0..) |m, i| {
             var dash: ?[]const f64 = null;
             if (m.value.get("dash_mm")) |d| if (d == .array and d.array.len > 0) {
@@ -445,7 +448,9 @@ pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {
             if (m.value.get("batt")) |f| if (f == .bool) {
                 mat.batt = f.bool;
             };
-            if (m.value.get("pen")) |p| mat.pen = p.str();
+            if (m.value.get("pen")) |p| if (p.str()) |t| {
+                mat.pen = std.meta.stringToEnum(Pen, t);
+            };
             if (m.value.get("color3d")) |c| mat.color3d = c.str() orelse mat.color3d;
             if (m.value.get("layer")) |c| mat.layer = c.str();
             out[i] = mat;
@@ -570,10 +575,10 @@ test "default style loads" {
     defer arena.deinit();
     const s = try load(arena.allocator(), null);
     try std.testing.expectEqualStrings("kerf-standard", s.id);
-    try std.testing.expectEqual(@as(f64, 0.5), s.penWidthMm("cut"));
-    try std.testing.expect(s.pen("hidden").?.dash_mm.?.len == 2);
+    try std.testing.expectEqual(@as(f64, 0.5), s.penWidthMm(.cut));
+    try std.testing.expect(s.pen(.hidden).?.dash_mm.?.len == 2);
     try std.testing.expectEqual(CutMark.x, s.material("wood").?.cut_mark);
-    try std.testing.expectEqualStrings("S-DETL-CUT", s.layerForPen("cut"));
+    try std.testing.expectEqualStrings("S-DETL-CUT", s.layerForPen(.cut));
     try std.testing.expect(s.pattern("KERF-CONC").?.families.len == 5);
     try std.testing.expectEqual(@as(f64, 28), s.wrap_chars);
 }
@@ -586,6 +591,20 @@ test "partial user style merges" {
     const u = (try json.parse(a, "{\"notes\":{\"wrap_chars\":20},\"pens\":{\"cut\":{\"width_mm\":0.7}}}", &err)).?;
     const s = try load(a, u);
     try std.testing.expectEqual(@as(f64, 20), s.wrap_chars);
-    try std.testing.expectEqual(@as(f64, 0.7), s.penWidthMm("cut"));
-    try std.testing.expectEqual(@as(f64, 0.35), s.penWidthMm("profile"));
+    try std.testing.expectEqual(@as(f64, 0.7), s.penWidthMm(.cut));
+    try std.testing.expectEqual(@as(f64, 0.35), s.penWidthMm(.profile));
+}
+
+test "a material pen must be one of the engine's pens" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var err: json.ParseError = undefined;
+    const u = (try json.parse(a, "{\"materials\":{\"membrane\":{\"pen\":\"vapor\"},\"wrb\":{\"pen\":\"sketchy\"}}}", &err)).?;
+    var why: []const u8 = "";
+    try std.testing.expectError(error.BadStyle, loadWhy(a, u, &why));
+    try std.testing.expect(std.mem.indexOf(u8, why, "materials.wrb.pen") != null);
+    const ok = (try json.parse(a, "{\"materials\":{\"wrb\":{\"pen\":\"vapor\"}}}", &err)).?;
+    const s = try load(a, ok);
+    try std.testing.expectEqual(Pen.vapor, s.material("wrb").?.pen.?);
 }

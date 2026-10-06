@@ -12,6 +12,7 @@ pub const oom = @import("oom.zig");
 pub const geom = @import("geom.zig");
 pub const clip = @import("clip.zig");
 pub const font = @import("font.zig");
+pub const pen = @import("pen.zig");
 pub const style = @import("style.zig");
 pub const model = @import("model.zig");
 pub const catalog = @import("catalog.zig");
