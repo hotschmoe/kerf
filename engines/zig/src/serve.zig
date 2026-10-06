@@ -359,9 +359,10 @@ fn serveConn(s: *Server, stream: net.Stream) void {
             }
             return;
         };
-        http.readBody(a, &sr.interface, w, &req) catch |e| {
+        http.readBody(a, &sr.interface, w, &req, http.max_body) catch |e| {
             switch (e) {
                 error.TooLarge => http.sendError(a, w, 413, false, "", "E_TOO_LARGE", "request body over 64 MiB") catch {},
+                error.BadChunk, error.ShortBody => http.sendError(a, w, 400, false, "", "E_HTTP", "malformed request body") catch {},
                 else => {},
             }
             return;

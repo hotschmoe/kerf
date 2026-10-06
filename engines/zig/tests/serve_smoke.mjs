@@ -10,6 +10,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -64,6 +65,21 @@ function rawReq(port, method, p, { headers = {}, body } = {}) {
     r.on('error', reject);
     if (data !== null) r.write(data);
     r.end();
+  });
+}
+// Raw TCP: send `data` (string/Buffer or array of pieces with delays), collect the response until close or `ms`.
+function rawSocket(port, pieces, { ms = 1500, host = '127.0.0.1' } = {}) {
+  return new Promise((resolve) => {
+    const sock = net.connect(port, host);
+    const chunks = [];
+    let closed = false;
+    const done = () => { if (!closed) { closed = true; sock.destroy(); resolve({ text: Buffer.concat(chunks).toString('utf8'), status: +(/^HTTP\/1\.1 (\d+)/.exec(Buffer.concat(chunks).toString('utf8').slice(0, 20)) ?? [0, 0])[1], closed: sock.destroyed }); } };
+    sock.on('data', (d) => chunks.push(d));
+    sock.on('error', () => {});
+    sock.on('close', done);
+    const t = setTimeout(done, ms);
+    sock.on('close', () => clearTimeout(t));
+    (async () => { for (const p of [].concat(pieces)) { if (typeof p === 'number') await sleep(p); else sock.write(p); } })();
   });
 }
 async function api(port, method, p, opts) {
@@ -400,6 +416,28 @@ async function main() {
   const dead = await api(port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: 'http://127.0.0.1:1', path: '/x', body: {} } });
   check('proxy: unreachable upstream -> 502 E_UPSTREAM', dead.status === 502 && dead.json.error.code === 'E_UPSTREAM', dead.text);
   upstream.close();
+
+  section('V-1 / V-9: HTTP parsing hardening (raw sockets)');
+  // V-1: a 1-byte chunk, then a chunk size of ffffffffffffffff, killed the whole process before any auth check.
+  const v1 = await rawSocket(port, 'POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\nffffffffffffffff\r\n');
+  check('V-1: chunk size ffffffffffffffff after a 1-byte chunk -> 4xx, not a crash', v1.status >= 400 && v1.status < 500, v1.text.slice(0, 80));
+  const v1b = await rawSocket(port, 'POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\nffffffff\r\n');
+  check('V-1: huge single chunk size -> 4xx', v1b.status >= 400 && v1b.status < 500, v1b.text.slice(0, 80));
+  check('V-1: the server is still alive afterwards', (await api(port, 'GET', '/api/info')).status === 200);
+  const bare = [
+    ['Content-Length : 5 (space before the colon)', 'POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length : 5\r\n\r\nhello'],
+    ['duplicate Content-Length', 'POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\nhello'],
+    ['conflicting Content-Length', 'POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 5\r\nContent-Length: 50\r\n\r\nhello'],
+    ['Transfer-Encoding + Content-Length', 'POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n0\r\n\r\n'],
+    ['space in the request target', 'GET /api/info x HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n'],
+    ['bare LF in the head', 'GET /api/info HTTP/1.1\nHost: 127.0.0.1\r\n\r\n'],
+    ['obs-fold continuation line', 'GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n X: y\r\n\r\n'],
+  ];
+  for (const [name, raw] of bare) {
+    const rr = await rawSocket(port, raw, { ms: 800 });
+    check('V-9: rejected with 400: ' + name, rr.status === 400, rr.text.slice(0, 60));
+  }
+  check('V-9: nothing was created by the rejected POSTs', fs.readdirSync(dir).every((f) => !/^hello/.test(f)));
 
   section('security: Host / Origin checks on localhost');
   const evilHost = await rawReq(port, 'GET', '/api/docs', { headers: { host: 'evil.example.com' } });

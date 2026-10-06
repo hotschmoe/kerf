@@ -8,6 +8,7 @@ const Allocator = std.mem.Allocator;
 
 pub const max_head = 16 * 1024;
 pub const max_body: usize = 64 << 20;
+pub const max_headers = 100;
 
 pub const Request = struct {
     method: []const u8,
@@ -64,16 +65,31 @@ pub fn readHead(a: Allocator, r: *Io.Reader) HeadError!Request {
     return parseHead(head);
 }
 
+/// RFC 9110 `tchar`: the characters allowed in a method or header name.
+fn isTokenChar(c: u8) bool {
+    return switch (c) {
+        'a'...'z', 'A'...'Z', '0'...'9', '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~' => true,
+        else => false,
+    };
+}
+
+/// Strictly parse a request head (request line + header lines, no blank line). Rejects what proxies and
+/// servers disagree about (request smuggling shapes): bare CR/LF, control bytes, obsolete line folding,
+/// whitespace in header names or before the colon, spaces in the target, duplicate or conflicting
+/// `Content-Length` / `Transfer-Encoding`, and non-decimal lengths.
 pub fn parseHead(head: []const u8) HeadError!Request {
-    const line_end = std.mem.indexOf(u8, head, "\r\n") orelse head.len;
-    const line = head[0..line_end];
+    for (head) |c| if ((c < 0x20 and c != '\r' and c != '\n' and c != '\t') or c == 0x7f) return error.Malformed;
+    var lines = std.mem.splitSequence(u8, head, "\r\n");
+    const line = lines.next() orelse return error.Malformed;
+    if (std.mem.indexOfAny(u8, line, "\r\n") != null) return error.Malformed;
     const sp1 = std.mem.indexOfScalar(u8, line, ' ') orelse return error.Malformed;
-    const sp2 = std.mem.lastIndexOfScalar(u8, line, ' ') orelse return error.Malformed;
-    if (sp2 <= sp1) return error.Malformed;
+    const sp2 = std.mem.indexOfScalarPos(u8, line, sp1 + 1, ' ') orelse return error.Malformed;
     const method = line[0..sp1];
     const target = line[sp1 + 1 .. sp2];
     const version = line[sp2 + 1 ..];
-    if (method.len == 0 or target.len == 0 or target[0] != '/') return error.Malformed;
+    if (method.len == 0 or method.len > 16 or target.len == 0 or target[0] != '/') return error.Malformed;
+    for (method) |c| if (!isTokenChar(c)) return error.Malformed;
+    if (std.mem.indexOfScalar(u8, target, ' ') != null) return error.Malformed; // (sp2 is the first space after the target; the version may not contain one)
     const http11 = std.mem.eql(u8, version, "HTTP/1.1");
     if (!http11 and !std.mem.eql(u8, version, "HTTP/1.0")) return error.Malformed;
     const q = std.mem.indexOfScalar(u8, target, '?');
@@ -87,71 +103,134 @@ pub fn parseHead(head: []const u8) HeadError!Request {
         .keep_alive = http11,
         .expect_continue = false,
     };
-    if (req.header("transfer-encoding")) |te| {
-        if (std.ascii.eqlIgnoreCase(te, "chunked")) {
-            req.chunked = true;
-        } else if (!std.ascii.eqlIgnoreCase(te, "identity")) return error.Unsupported;
+    var n_headers: usize = 0;
+    var seen_cl = false;
+    var seen_te = false;
+    var seen_host = false;
+    var seen_conn = false;
+    var seen_expect = false;
+    while (lines.next()) |l| {
+        if (l.len == 0) return error.Malformed;
+        if (std.mem.indexOfAny(u8, l, "\r\n") != null) return error.Malformed; // bare CR or LF
+        if (l[0] == ' ' or l[0] == '\t') return error.Malformed; // obsolete line folding
+        const colon = std.mem.indexOfScalar(u8, l, ':') orelse return error.Malformed;
+        const name = l[0..colon];
+        if (name.len == 0) return error.Malformed;
+        for (name) |c| if (!isTokenChar(c)) return error.Malformed; // also rejects "Content-Length : 5"
+        n_headers += 1;
+        if (n_headers > max_headers) return error.HeadTooLarge;
+        const value = std.mem.trim(u8, l[colon + 1 ..], " \t");
+        if (std.ascii.eqlIgnoreCase(name, "content-length")) {
+            if (seen_cl) return error.Malformed;
+            seen_cl = true;
+            req.content_length = parseLength(value) orelse return error.Malformed;
+        } else if (std.ascii.eqlIgnoreCase(name, "transfer-encoding")) {
+            if (seen_te) return error.Malformed;
+            seen_te = true;
+            if (std.ascii.eqlIgnoreCase(value, "chunked")) req.chunked = true else return error.Unsupported;
+        } else if (std.ascii.eqlIgnoreCase(name, "host")) {
+            if (seen_host) return error.Malformed;
+            seen_host = true;
+        } else if (std.ascii.eqlIgnoreCase(name, "connection")) {
+            if (seen_conn) return error.Malformed;
+            seen_conn = true;
+            if (std.ascii.findIgnoreCase(value, "close") != null) req.keep_alive = false;
+            if (!http11 and std.ascii.findIgnoreCase(value, "keep-alive") != null) req.keep_alive = true;
+        } else if (std.ascii.eqlIgnoreCase(name, "expect")) {
+            if (seen_expect) return error.Malformed;
+            seen_expect = true;
+            req.expect_continue = std.ascii.findIgnoreCase(value, "100-continue") != null;
+        }
     }
-    if (req.header("content-length")) |cl| {
-        req.content_length = std.fmt.parseInt(usize, cl, 10) catch return error.Malformed;
-    }
-    if (req.header("connection")) |c| {
-        if (std.ascii.findIgnoreCase(c, "close") != null) req.keep_alive = false;
-        if (!http11 and std.ascii.findIgnoreCase(c, "keep-alive") != null) req.keep_alive = true;
-    }
-    if (req.header("expect")) |e| req.expect_continue = std.ascii.findIgnoreCase(e, "100-continue") != null;
+    if (seen_cl and seen_te) return error.Malformed; // request smuggling shape
     return req;
 }
 
-pub const BodyError = error{ TooLarge, ReadFailed, ShortBody, OutOfMemory, WriteFailed };
+/// Decimal digits only (no sign, no underscore, no list), at most 18 of them.
+fn parseLength(v: []const u8) ?usize {
+    if (v.len == 0 or v.len > 18) return null;
+    var n: usize = 0;
+    for (v) |c| {
+        if (c < '0' or c > '9') return null;
+        n = n * 10 + (c - '0');
+    }
+    return n;
+}
 
-/// Read `req.content_length` body bytes (sending `100 Continue` first when asked).
-pub fn readBody(a: Allocator, r: *Io.Reader, w: *Io.Writer, req: *Request) BodyError!void {
+pub const BodyError = error{ TooLarge, ReadFailed, ShortBody, BadChunk, OutOfMemory, WriteFailed };
+
+/// Read the request body (sending `100 Continue` first when asked), at most `max` bytes. The declared
+/// length is checked against `max` before anything is allocated, and the buffer grows as data arrives.
+pub fn readBody(a: Allocator, r: *Io.Reader, w: *Io.Writer, req: *Request, max: usize) BodyError!void {
     if (req.chunked) {
         if (req.expect_continue) {
             try w.writeAll("HTTP/1.1 100 Continue\r\n\r\n");
             try w.flush();
         }
-        return readChunked(a, r, req);
+        return readChunked(a, r, req, max);
     }
     if (req.content_length == 0) return;
-    if (req.content_length > max_body) return error.TooLarge;
+    if (req.content_length > max) return error.TooLarge;
     if (req.expect_continue) {
         try w.writeAll("HTTP/1.1 100 Continue\r\n\r\n");
         try w.flush();
     }
-    req.body = r.readAlloc(a, req.content_length) catch |e| switch (e) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.EndOfStream => return error.ShortBody,
-        error.ReadFailed => return error.ReadFailed,
-    };
+    var body: std.ArrayList(u8) = .empty;
+    try readInto(a, r, &body, req.content_length);
+    req.body = body.items;
 }
 
-fn readChunked(a: Allocator, r: *Io.Reader, req: *Request) BodyError!void {
+/// Append exactly `n` bytes from `r` to `body`, growing in steps so a lying length costs nothing.
+fn readInto(a: Allocator, r: *Io.Reader, body: *std.ArrayList(u8), n: usize) BodyError!void {
+    var left = n;
+    while (left > 0) {
+        const step = @min(left, 64 * 1024);
+        const dest = try body.addManyAsSlice(a, step);
+        r.readSliceAll(dest) catch |e| switch (e) {
+            error.EndOfStream => return error.ShortBody,
+            error.ReadFailed => return error.ReadFailed,
+        };
+        left -= step;
+    }
+}
+
+const max_trailer_lines = 32;
+
+fn readChunked(a: Allocator, r: *Io.Reader, req: *Request, max: usize) BodyError!void {
     var body: std.ArrayList(u8) = .empty;
     while (true) {
         const line = r.takeDelimiterInclusive('\n') catch |e| switch (e) {
             error.EndOfStream => return error.ShortBody,
             error.ReadFailed => return error.ReadFailed,
-            error.StreamTooLong => return error.ShortBody,
+            error.StreamTooLong => return error.BadChunk,
         };
-        var t = std.mem.trim(u8, line, " \t\r\n");
-        if (std.mem.indexOfScalar(u8, t, ';')) |semi| t = t[0..semi];
-        const size = std.fmt.parseInt(usize, t, 16) catch return error.ShortBody;
+        if (line.len < 3 or line[line.len - 2] != '\r') return error.BadChunk;
+        var t = line[0 .. line.len - 2];
+        if (std.mem.indexOfScalar(u8, t, ';')) |semi| t = t[0..semi]; // chunk extensions are ignored
+        // At most 8 hex digits (a u32): the value can never wrap `usize`, and nothing is added before the compare.
+        if (t.len == 0 or t.len > 8) return error.BadChunk;
+        for (t) |c| if (!std.ascii.isHex(c)) return error.BadChunk; // parseInt would accept a leading '+'
+        const size = std.fmt.parseInt(u32, t, 16) catch return error.BadChunk;
         if (size == 0) break;
-        if (body.items.len + size > max_body) return error.TooLarge;
-        const chunk = r.readAlloc(a, size) catch |e| switch (e) {
-            error.OutOfMemory => return error.OutOfMemory,
+        if (size > max - body.items.len) return error.TooLarge;
+        try readInto(a, r, &body, size);
+        const crlf = r.take(2) catch |e| switch (e) {
             error.EndOfStream => return error.ShortBody,
             error.ReadFailed => return error.ReadFailed,
         };
-        try body.appendSlice(a, chunk);
-        r.discardAll(2) catch return error.ShortBody; // the CRLF after the chunk
+        if (!std.mem.eql(u8, crlf, "\r\n")) return error.BadChunk;
     }
-    // trailers until the blank line
+    // Trailers until the blank line: bounded, and ignored.
+    var lines: usize = 0;
     while (true) {
-        const line = r.takeDelimiterInclusive('\n') catch return error.ShortBody;
+        const line = r.takeDelimiterInclusive('\n') catch |e| switch (e) {
+            error.EndOfStream => return error.ShortBody,
+            error.ReadFailed => return error.ReadFailed,
+            error.StreamTooLong => return error.BadChunk,
+        };
         if (std.mem.trim(u8, line, " \t\r\n").len == 0) break;
+        lines += 1;
+        if (lines > max_trailer_lines) return error.BadChunk;
     }
     req.body = body.items;
     req.content_length = body.items.len;
@@ -363,7 +442,96 @@ test "readChunked" {
     var r = Io.Reader.fixed("5\r\nhello\r\n6;ext=1\r\n world\r\n0\r\nX-T: 1\r\n\r\nNEXT");
     var req = try parseHead("POST /x HTTP/1.1\r\nTransfer-Encoding: chunked");
     try std.testing.expect(req.chunked);
-    try readChunked(a, &r, &req);
+    try readChunked(a, &r, &req, max_body);
     try std.testing.expectEqualStrings("hello world", req.body);
     try std.testing.expectEqualStrings("NEXT", r.buffered());
+}
+
+fn chunkedErr(input: []const u8, max: usize) anyerror!void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var r = Io.Reader.fixed(input);
+    var req = try parseHead("POST /x HTTP/1.1\r\nTransfer-Encoding: chunked");
+    return readChunked(arena.allocator(), &r, &req, max);
+}
+
+test "V-1: a huge chunk size is an error, never an overflow (regression: panicked in readChunked)" {
+    // one 1-byte chunk, then ffffffffffffffff: 17 hex digits worth of wrap used to kill the process
+    try std.testing.expectError(error.BadChunk, chunkedErr("1\r\nx\r\nffffffffffffffff\r\n", max_body));
+    // 8 digits is the most accepted; a size over the cap is TooLarge, also after earlier chunks
+    try std.testing.expectError(error.TooLarge, chunkedErr("1\r\nx\r\nffffffff\r\n", max_body));
+    try std.testing.expectError(error.TooLarge, chunkedErr("ffffffff\r\n", max_body));
+    try std.testing.expectError(error.TooLarge, chunkedErr("3\r\nabc\r\n3\r\nabc\r\n0\r\n\r\n", 5));
+    try std.testing.expectError(error.BadChunk, chunkedErr("+5\r\nhello\r\n0\r\n\r\n", max_body));
+    try std.testing.expectError(error.BadChunk, chunkedErr("5\nhello\r\n0\r\n\r\n", max_body)); // bare LF
+    try std.testing.expectError(error.BadChunk, chunkedErr("5\r\nhelloXX0\r\n\r\n", max_body)); // missing CRLF after data
+    try std.testing.expectError(error.ShortBody, chunkedErr("5\r\nhel", max_body));
+    // unbounded trailers
+    var tr: std.ArrayList(u8) = .empty;
+    defer tr.deinit(std.testing.allocator);
+    try tr.appendSlice(std.testing.allocator, "0\r\n");
+    for (0..40) |_| try tr.appendSlice(std.testing.allocator, "X: 1\r\n");
+    try tr.appendSlice(std.testing.allocator, "\r\n");
+    try std.testing.expectError(error.BadChunk, chunkedErr(tr.items, max_body));
+}
+
+test "content-length body: declared length is checked first, then read incrementally" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var out: [64]u8 = undefined;
+    var w = Io.Writer.fixed(&out);
+    var r = Io.Reader.fixed("hello world");
+    var req = try parseHead("POST /x HTTP/1.1\r\nContent-Length: 11");
+    try readBody(a, &r, &w, &req, 100);
+    try std.testing.expectEqualStrings("hello world", req.body);
+    var r2 = Io.Reader.fixed("hello");
+    var req2 = try parseHead("POST /x HTTP/1.1\r\nContent-Length: 11");
+    try std.testing.expectError(error.ShortBody, readBody(a, &r2, &w, &req2, 100)); // lies: only 5 bytes arrive
+    var r3 = Io.Reader.fixed("");
+    var req3 = try parseHead("POST /x HTTP/1.1\r\nContent-Length: 11");
+    try std.testing.expectError(error.TooLarge, readBody(a, &r3, &w, &req3, 10));
+}
+
+test "V-9: strict head parsing rejects the request-smuggling shapes" {
+    const bad = [_][]const u8{
+        "POST /x HTTP/1.1\r\nContent-Length : 5", // space before the colon
+        "POST /x HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 5", // duplicate, even when equal
+        "POST /x HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 6", // conflicting
+        "POST /x HTTP/1.1\r\nContent-Length: 5\r\nTransfer-Encoding: chunked", // CL + TE
+        "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 5",
+        "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: chunked",
+        "POST /x HTTP/1.1\r\nContent-Length: +5",
+        "POST /x HTTP/1.1\r\nContent-Length: 5, 5",
+        "POST /x HTTP/1.1\r\nContent-Length: 0x5",
+        "POST /x HTTP/1.1\r\nContent-Length: 5_0",
+        "POST /x HTTP/1.1\r\nContent-Length: ",
+        "POST /x HTTP/1.1\r\nContent-Length: 99999999999999999999",
+        "GET /a b HTTP/1.1", // space in the target
+        "GET  /a HTTP/1.1",
+        "GET /a  HTTP/1.1",
+        "GET /a HTTP/1.1 ",
+        "GET /a HTTP/1.1\r\n X: folded", // obsolete line folding
+        "GET /a HTTP/1.1\r\nX Y: z", // whitespace in a header name
+        "GET /a HTTP/1.1\r\n: nameless",
+        "GET /a HTTP/1.1\r\nNoColon",
+        "GET /a HTTP/1.1\nHost: x", // bare LF
+        "GET /a HTTP/1.1\r\nHost: x\nX: y",
+        "GET /a HTTP/1.1\r\nHost: x\rX: y", // bare CR
+        "GET /a HTTP/1.1\r\nX: a\x00b", // NUL
+        "GET /a HTTP/1.1\r\nHost: a\r\nHost: b", // two Hosts
+        "G(T /a HTTP/1.1",
+    };
+    for (bad) |h| {
+        if (parseHead(h)) |_| {
+            std.debug.print("accepted: {any}\n", .{h});
+            return error.TestExpectedError;
+        } else |_| {}
+    }
+    try std.testing.expectError(error.Unsupported, parseHead("POST /x HTTP/1.1\r\nTransfer-Encoding: chunked, gzip"));
+    // still fine
+    const ok = try parseHead("POST /x?a=b HTTP/1.1\r\nHost: h\r\ncontent-length:   42  \r\nX-A: b:c");
+    try std.testing.expectEqual(@as(usize, 42), ok.content_length);
+    const many = "GET /x HTTP/1.1" ++ "\r\nX: 1" ** (max_headers + 1);
+    try std.testing.expectError(error.HeadTooLarge, parseHead(many));
 }
