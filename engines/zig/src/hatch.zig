@@ -75,13 +75,13 @@ pub fn generate(
         var period: f64 = 0;
         for (fam.dashes) |d| period += @abs(d) * k;
         var i = i_lo;
+        var ts: std.ArrayList(f64) = .empty; // reused for every line of the family
         while (i <= i_hi) : (i += 1) {
             const fi: f64 = @floatFromInt(i);
             const s = s0 + fi * dy;
             const t_base = o.dot(dir) + fi * dx;
             // crossings
-            var ts: std.ArrayList(f64) = .empty;
-            defer ts.deinit(a);
+            ts.clearRetainingCapacity();
             for (loops) |l| {
                 for (l, 0..) |p, vi| {
                     const q = l[(vi + 1) % l.len];

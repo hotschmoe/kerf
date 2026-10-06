@@ -471,7 +471,6 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
                     zr = .{ zbase[0] + kf * arr_spacing, zbase[1] + kf * arr_spacing };
                 },
             }
-            if (arr_count == 1) {} // no shift
             xfs[inst] = xf;
             zs[inst] = zr;
             inst += 1;

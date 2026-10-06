@@ -241,7 +241,7 @@ pub fn parseScaleAny(text: []const u8) ?Scale {
 }
 
 /// Scale text for the title block: `1 1/2" = 1'-0"` (architectural), `1:N`, or `NTS`.
-pub fn scaleLabel(a: Allocator, text: []const u8, factor: f64) Allocator.Error![]u8 {
+pub fn scaleLabel(a: Allocator, factor: f64) Allocator.Error![]u8 {
     if (factor == 0) return a.dupe(u8, "NTS");
     // Architectural scales: paper inches per foot = 12 / factor.
     const per_foot = 12.0 / factor;
@@ -266,7 +266,6 @@ pub fn scaleLabel(a: Allocator, text: []const u8, factor: f64) Allocator.Error![
         try out.appendSlice(a, "\" = 1'-0\"");
         return out.items;
     }
-    _ = text;
     var b: [40]u8 = undefined;
     return std.fmt.allocPrint(a, "1:{s}", .{json.fmtNumber(&b, factor)});
 }
@@ -358,7 +357,7 @@ test "scales" {
     try std.testing.expect(parseScale("bogus") == null);
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const l = try scaleLabel(arena.allocator(), "", 8);
+    const l = try scaleLabel(arena.allocator(), 8);
     try std.testing.expectEqualStrings("1 1/2\" = 1'-0\"", l);
 }
 

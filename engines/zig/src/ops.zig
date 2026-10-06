@@ -109,7 +109,7 @@ fn referencesComp(v: Value, id: []const u8) bool {
             var head = if (at) |p| s[0..p] else s;
             if (std.mem.indexOfScalar(u8, head, '.')) |d| head = head[0..d];
             if (std.mem.indexOfScalar(u8, head, '#')) |h| head = head[0..h];
-            return std.mem.eql(u8, head, id) and (at != null or true);
+            return std.mem.eql(u8, head, id);
         },
         .object => if (v.get("ref")) |r| return referencesComp(r, id),
         else => {},

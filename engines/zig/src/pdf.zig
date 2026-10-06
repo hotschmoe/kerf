@@ -72,9 +72,7 @@ const Cs = struct {
                     const a1 = a0 + step;
                     const c0 = V2.init(@cos(a0), @sin(a0));
                     const c1 = V2.init(@cos(a1), @sin(a1));
-                    const e0 = arc.c.add(c0.scale(arc.r));
                     const e1 = arc.c.add(c1.scale(arc.r));
-                    _ = e0;
                     const cp1 = arc.c.add(c0.add(c0.perp().scale(k)).scale(arc.r));
                     const cp2 = arc.c.add(c1.sub(c1.perp().scale(k)).scale(arc.r));
                     try self.curve(cp1, cp2, e1);

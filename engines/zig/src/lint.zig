@@ -18,7 +18,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
     try unknownKeys(a, doc, diags);
     try noteStyle(a, doc, diags);
     try dimZero(a, scene, doc, diags);
-    try ackShape(a, scene, doc, diags);
+    try ackShape(a, doc, diags);
     try requestedMissing(a, doc, diags);
 }
 
@@ -276,8 +276,6 @@ pub fn checkNoteText(a: Allocator, text: []const u8) Allocator.Error!NoteStyle {
     if (x_sep) try addIssue(a, &issues, "\" x \" as a size separator (use \" X \")");
     if (hasDashFraction(text)) try addIssue(a, &issues, "dashed fraction like 1-1/2\" (house style is 1 1/2\")");
     // spelled-out words
-    var fixed: std.ArrayList(u8) = .empty;
-    try fixed.appendSlice(a, text);
     for (spelled_out) |sp| {
         if (findWord(text, sp.word, 0) != null) {
             try addIssue(a, &issues, try std.fmt.allocPrint(a, "\"{s}\" spelled out (use \"{s}\")", .{ sp.word, sp.abbr }));
@@ -544,8 +542,7 @@ fn isAckable(code: []const u8) bool {
 }
 
 /// Shape errors of `acknowledge` (array of {code, reason}; codes must be warning codes).
-fn ackShape(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Allocator.Error!void {
-    _ = scene;
+fn ackShape(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error!void {
     const cs = (doc.get("components") orelse return).arr() orelse return;
     for (cs) |c| {
         const ak = c.get("acknowledge") orelse continue;

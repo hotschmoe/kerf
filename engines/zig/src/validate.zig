@@ -87,13 +87,13 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
         if (c.state != .ok) continue;
         for (c.world) |p| {
             if (p.kind == .ghost) continue;
-            const f = try @import("clip.zig").fromRegion(a, p.loops, flat_tol);
+            const f = try clip.fromRegion(a, p.loops, flat_tol);
             try items.append(a, .{ .prism = p, .flat = f, .box = clip.loopsBox(f), .comp = c });
         }
     }
     try overlaps(a, items.items, diags);
-    try floating(a, scene, items.items, diags);
-    try untreated(a, items.items, diags);
+    try floating(scene, items.items, diags);
+    try untreated(items.items, diags);
     try cover(a, scene, diags);
     try nearMiss(a, scene, diags);
     try shortSlope(a, scene, items.items, doc, diags);
@@ -137,8 +137,7 @@ fn overlaps(a: Allocator, items: []const Pf, diags: *model.Diags) Allocator.Erro
     }
 }
 
-fn floating(a: Allocator, scene: *Scene, items: []const Pf, diags: *model.Diags) Allocator.Error!void {
-    _ = a;
+fn floating(scene: *Scene, items: []const Pf, diags: *model.Diags) Allocator.Error!void {
     const gap = 1.0 / 32.0;
     var n_comps: usize = 0;
     for (scene.comps) |c| if (c.state == .ok and !c.dashed) {
@@ -166,8 +165,7 @@ fn floating(a: Allocator, scene: *Scene, items: []const Pf, diags: *model.Diags)
     }
 }
 
-fn untreated(a: Allocator, items: []const Pf, diags: *model.Diags) Allocator.Error!void {
-    _ = a;
+fn untreated(items: []const Pf, diags: *model.Diags) Allocator.Error!void {
     var reported: std.ArrayList([2]u32) = .empty;
     const gap = 1.0 / 32.0;
     for (items) |p| {
@@ -494,9 +492,7 @@ fn nearMiss(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!vo
                             other = A;
                         }
                         const grow_len = if (grow.c == A.c) a_len else b_len;
-                        const other_lo = if (grow.c == A.c) b0 else a0;
                         const grow_below_other = if (grow.c == A.c) a1 <= b0 else b1 <= a0; // grow member sits at lower coordinates
-                        _ = other_lo;
                         const edge_name: []const u8 = if (on_x) (if (grow_below_other) "left" else "right") else (if (grow_below_other) "bottom" else "top");
                         const anchor: []const u8 = if (on_x) (if (grow_below_other) "middle_left" else "middle_right") else (if (grow_below_other) "bottom_left" else "top_left");
                         diags.addFix(.warning, "W_NEAR_MISS", grow.c.id, null, "'{s}' and '{s}' leave a {s} gap along {s} ({s}..{s}) between facing edges while overlapping along {s}; '{s}' probably should extend to the {s} edge of '{s}'", .{

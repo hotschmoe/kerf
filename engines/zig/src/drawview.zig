@@ -184,7 +184,7 @@ fn viewFit(a: Allocator, st: *const style_mod.Style, spec: *const view_mod.ViewS
         }
         const sc: f64 = pick orelse std.math.ceil((@max(crop.width() / @max(aw - extra_w, 0.5), crop.height() / @max(ah - extra_h, 0.5))));
         nfix += 1;
-        const lab = if (pick != null) try units.scaleLabel(a, "", sc) else try std.fmt.allocPrint(a, "1:{d:.0}", .{sc});
+        const lab = if (pick != null) try units.scaleLabel(a, sc) else try std.fmt.allocPrint(a, "1:{d:.0}", .{sc});
         try fixes.print(a, "{s}{d}) use a smaller scale (e.g. {s})", .{ if (nfix > 1) "; " else "", nfix, lab });
     }
     if (nfix == 0) try fixes.appendSlice(a, "shorten the notes or shrink the crop");
@@ -218,7 +218,7 @@ fn sectionPass(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Scene
     var tcrop = spec.crop;
     const ab = annot.itemsBox(font, all.items);
     if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
-    const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
+    const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
     var detail = annot.itemsBox(font, all.items);
     detail.addBox(spec.crop);
     const title_from = all.items.len;
@@ -273,7 +273,7 @@ fn resolveSection(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Sc
         const rs = try a.create(view_mod.ViewSpec);
         rs.* = rs0.*;
         rs.scale = sc;
-        rs.scale_text = try units.scaleLabel(a, "", sc);
+        rs.scale_text = try units.scaleLabel(a, sc);
         var td = model.Diags.init(a);
         const pass = try sectionPass(a, st, scene, rs, prisms, font, doc, &td, work);
         last = .{ .spec = rs, .pass = pass };
@@ -371,7 +371,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
             var tcrop = res.crop;
             const ab = annot.itemsBox(font, all.items);
             if (!ab.isEmpty() and ab.y0 < tcrop.y0) tcrop.y0 = ab.y0;
-            const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
+            const info = annot.SheetInfo{ .number = spec.number, .title = spec.title, .scale_text = try units.scaleLabel(a, if (spec.scale == 0) 0 else scale), .sheet = metaString(doc, "sheet"), .unverified = unverified };
             detail = annot.itemsBox(font, all.items);
             detail.addBox(res.crop);
             const title_from = all.items.len;
@@ -413,7 +413,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         .style = st,
         .number = spec.number,
         .title = spec.title,
-        .scale_label = try units.scaleLabel(a, spec.scale_text, if (spec.scale == 0) 0 else scale),
+        .scale_label = try units.scaleLabel(a, if (spec.scale == 0) 0 else scale),
         .sheet_no = metaString(doc, "sheet"),
         .date = metaString(doc, "date"),
         .code_basis = try codeBasis(a, doc),

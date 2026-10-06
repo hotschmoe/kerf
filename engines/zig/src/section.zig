@@ -10,6 +10,7 @@ const style_mod = @import("style.zig");
 const view_mod = @import("view.zig");
 const hatch_mod = @import("hatch.zig");
 const pathclip = @import("pathclip.zig");
+const pathgeom = @import("pathgeom.zig");
 const drawing = @import("drawing.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
@@ -176,7 +177,7 @@ pub const Section = struct {
         const off = p.line_pts[0].v().sub(c0);
         const side: f64 = if (d0.perp().dot(off) >= 0) 1 else -1;
         const gap = @max(off.len(), 0.03 * self.spec.scale);
-        return @import("pathgeom.zig").offsetOpen(self.a, p.centerline, side * gap);
+        return pathgeom.offsetOpen(self.a, p.centerline, side * gap);
     }
 
     fn shingleTicks(self: *Section, p: Prism, pen: []const u8) Allocator.Error!void {
@@ -229,7 +230,7 @@ pub const Section = struct {
         for (flat[0], 0..) |v, vi| perim += v.dist(flat[0][(vi + 1) % flat[0].len]);
         const thick_model = if (perim > 0) 2.0 * @abs(geom.signedAreaV(flat[0])) / perim else 1e9;
         const is_thin = p.outline == .full and isMetal(p.material) and !is_fill_mat and thick_model / self.spec.scale < 2.0 * cut_in;
-        const pen_out: []const u8 = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penFor(self.materialNameForPen(p.material)) else if (is_thin) "steel" else "cut";
+        const pen_out: []const u8 = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penFor(p.material) else if (is_thin) "steel" else "cut";
         var region: []const []const V2 = flat;
         var region_exact: bool = fully_inside;
         if (!fully_inside) {
@@ -342,13 +343,15 @@ pub const Section = struct {
             try occs.append(self.a, .{ .loops = f, .box = clip.loopsBox(f), .z1 = p.z1, .cut = false, .prism = i });
         }
         if (occs.items.len == 0) return;
+        const refs = try self.a.alloc(*const Occ, occs.items.len);
+        for (occs.items, 0..) |*o, i| refs[i] = o;
         var out: std.ArrayList(Stroke) = .empty;
         for (self.strokes.items) |st| {
             if (st.rank >= 10) {
                 try out.append(self.a, st);
                 continue;
             }
-            const pieces = try visibleOpen(self.a, st.pts, st.closed, occs.items);
+            const pieces = try visibleOpen(self.a, st.pts, st.closed, refs);
             for (pieces) |pc| {
                 var q = st;
                 q.pts = pc.pts;
@@ -403,11 +406,6 @@ pub const Section = struct {
         return std.mem.eql(u8, self.scene.comps[p.comp].ty.name, "lumber");
     }
 
-    fn materialNameForPen(self: *const Section, mat: []const u8) []const u8 {
-        _ = self;
-        return mat;
-    }
-
     /// Stroke only the edges whose outward normal points up (grade lines). Loops are CCW.
     fn topEdges(self: *Section, loop: []const Pt, pen: []const u8, src: []const u8) Allocator.Error!void {
         const ccw = geom.signedArea(loop) >= 0;
@@ -417,7 +415,7 @@ pub const Section = struct {
         var start: usize = 0;
         var k: usize = 0;
         while (k < n) : (k += 1) {
-            if (!self.edgeIsTop(loop, (k + n - 1) % n, ccw)) {
+            if (!edgeIsTop(loop, (k + n - 1) % n, ccw)) {
                 start = k;
                 break;
             }
@@ -426,7 +424,7 @@ pub const Section = struct {
         while (idx < n) : (idx += 1) {
             const i = (start + idx) % n;
             const q = loop[(i + 1) % n];
-            if (self.edgeIsTop(loop, i, ccw)) {
+            if (edgeIsTop(loop, i, ccw)) {
                 if (cur.items.len == 0) {
                     try cur.append(self.a, loop[i]);
                 } else cur.items[cur.items.len - 1].b = loop[i].b;
@@ -439,15 +437,11 @@ pub const Section = struct {
         if (cur.items.len > 0) try self.addClipped(&self.strokes, cur.items, false, pen, src, false);
     }
 
-    fn edgeIsTop(self: *const Section, loop: []const Pt, i: usize, ccw: bool) bool {
-        _ = self;
+    /// Whether the outward normal of edge `i` points up. Arcs use their chord: good enough for grade lines.
+    fn edgeIsTop(loop: []const Pt, i: usize, ccw: bool) bool {
         const p = loop[i];
         const q = loop[(i + 1) % loop.len];
-        var d = q.v().sub(p.v());
-        if (p.b != 0) {
-            // use the arc's mid tangent normal via the chord: good enough for grade lines
-            d = q.v().sub(p.v());
-        }
+        const d = q.v().sub(p.v());
         const l = d.len();
         if (l < 1e-12) return false;
         const n = if (ccw) V2.init(d.y / l, -d.x / l) else V2.init(-d.y / l, d.x / l);
@@ -485,7 +479,6 @@ pub const Section = struct {
         const p = self.prisms[i];
         if (self.cls[i] == .drop or (p.kind == .ghost and !p.dashed)) return &.{};
         var region: []const []const V2 = try self.flatOf(i);
-        const crop = self.spec.crop;
         region = try clip.boolean(self.a, region, &.{self.crop_loop}, .intersect);
         if (self.cls[i] == .beyond and !p.embedded and !p.dashed) {
             for (self.occs.items) |o| {
@@ -495,7 +488,6 @@ pub const Section = struct {
                 region = try clip.boolean(self.a, region, o.loops, .diff);
             }
         }
-        _ = crop;
         return region;
     }
 
@@ -597,8 +589,6 @@ pub const Section = struct {
             const inst: u32 = if (comp.arr_count > 1) p.instance / @as(u32, @intCast(comp.xfs.len / comp.arr_count)) else p.instance;
             const part: ?[]const u8 = if (p.part.len > 0) p.part else null;
             // untouched cut region inside the crop keeps its exact bulges
-            const bx = geom.Box{};
-            _ = bx;
             if (is_cut and p.kind == .body) {
                 const f = try self.flatOf(i);
                 const fb = clip.loopsBox(f);
@@ -667,10 +657,9 @@ fn thickenThinHardware(a: Allocator, prisms: []const Prism, scale: f64) Allocato
         const on_right = geom.pointInLoopEO(m.sub(d.perp().scale(probe)), flat);
         if (!on_left and !on_right) continue;
         if (out == null) out = try a.dupe(Prism, prisms);
-        const pg = @import("pathgeom.zig");
         const lt: f64 = if (on_left and on_right) min_t / 2 else if (on_left) min_t else 0;
         const rt: f64 = if (on_left and on_right) min_t / 2 else if (on_right) min_t else 0;
-        const rib = try pg.ribbon(a, p.centerline, lt, rt);
+        const rib = try pathgeom.ribbon(a, p.centerline, lt, rt);
         out.?[i].loops = try model.oneLoop(a, rib);
     }
     return out orelse prisms;
@@ -754,28 +743,33 @@ fn pushUnique(a: Allocator, ts: *std.ArrayList(f64), t: f64) Allocator.Error!voi
     if (t > 1e-9 and t < 1 - 1e-9) try ts.append(a, t);
 }
 
-/// The parts of `loop` (a closed bulge loop) not hidden inside any occluder.
+/// The parts of `loop` (a closed bulge loop) not hidden inside any occluder. A visible run that wraps through vertex 0 is
+/// returned as one piece.
 pub fn visiblePieces(a: Allocator, loop: []const Pt, occ: []const *const Occ) Allocator.Error![]const PieceOut {
+    return visibleImpl(a, loop, true, true, occ);
+}
+
+/// Like `visiblePieces` but also for open polylines (arcs allowed): the parts outside every occluder.
+/// Closed input is not re-joined across vertex 0.
+pub fn visibleOpen(a: Allocator, pts: []const Pt, closed: bool, occ: []const *const Occ) Allocator.Error![]const PieceOut {
+    return visibleImpl(a, pts, closed, false, occ);
+}
+
+fn visibleImpl(a: Allocator, pts: []const Pt, closed: bool, join_wrap: bool, occ: []const *const Occ) Allocator.Error![]const PieceOut {
     var out: std.ArrayList(PieceOut) = .empty;
-    if (occ.len == 0) {
-        try out.append(a, .{ .pts = loop, .closed = true });
-        return out.items;
-    }
-    const n = loop.len;
+    const n = pts.len;
+    const nseg = if (closed) n else n -| 1;
     var cur: std.ArrayList(Pt) = .empty;
     var any_hidden = false;
     var starts_visible_at_0 = false;
-    var segs_done: usize = 0;
-    var first_flushed: bool = false;
-    var i: usize = 0;
-    while (i < n) : (i += 1) {
-        const p0 = loop[i].v();
-        const p1 = loop[(i + 1) % n].v();
-        const bulge = loop[i].b;
+    var ts: std.ArrayList(f64) = .empty;
+    for (0..nseg) |i| {
+        const p0 = pts[i].v();
+        const p1 = pts[(i + 1) % n].v();
+        const bulge = pts[i].b;
         var sbox = Box{};
         geom.segBoxInto(&sbox, p0, p1, bulge);
-        var ts: std.ArrayList(f64) = .empty;
-        defer ts.deinit(a);
+        ts.clearRetainingCapacity();
         for (occ) |o| {
             if (!o.box.overlaps(sbox, 1e-7)) continue;
             for (o.loops) |ol| {
@@ -783,18 +777,12 @@ pub fn visiblePieces(a: Allocator, loop: []const Pt, occ: []const *const Occ) Al
                     const q1 = ol[(k + 1) % ol.len];
                     var ta: [2]f64 = undefined;
                     var tb: [2]f64 = undefined;
-                    if (bulge == 0) {
-                        const cnt = geom.segSeg(p0, p1, q0, q1, &ta, &tb);
-                        for (0..cnt) |c| try pushUnique(a, &ts, ta[c]);
-                    } else {
-                        const cnt = geom.arcSeg(p0, p1, bulge, q0, q1, &ta, &tb);
-                        for (0..cnt) |c| try pushUnique(a, &ts, ta[c]);
-                    }
+                    const cnt = if (bulge == 0) geom.segSeg(p0, p1, q0, q1, &ta, &tb) else geom.arcSeg(p0, p1, bulge, q0, q1, &ta, &tb);
+                    for (0..cnt) |c| try pushUnique(a, &ts, ta[c]);
                 }
             }
         }
         std.mem.sort(f64, ts.items, {}, std.sort.asc(f64));
-        // sub-segments
         var t_prev: f64 = 0;
         var k: usize = 0;
         while (k <= ts.items.len) : (k += 1) {
@@ -819,92 +807,6 @@ pub fn visiblePieces(a: Allocator, loop: []const Pt, occ: []const *const Occ) Al
                     cur.items[cur.items.len - 1].b = 0;
                     try out.append(a, .{ .pts = cur.items, .closed = false });
                     cur = .empty;
-                    if (!first_flushed and segs_done == 0) first_flushed = true;
-                }
-            } else {
-                if (cur.items.len == 0) {
-                    try cur.append(a, .{ .x = sub.a.x, .y = sub.a.y, .b = sub.bulge });
-                    if (i == 0 and t_prev == 0) starts_visible_at_0 = true;
-                } else cur.items[cur.items.len - 1].b = sub.bulge;
-                try cur.append(a, .{ .x = sub.b.x, .y = sub.b.y, .b = 0 });
-            }
-            t_prev = t_next;
-            segs_done += 1;
-        }
-    }
-    if (!any_hidden) {
-        out.clearRetainingCapacity();
-        try out.append(a, .{ .pts = loop, .closed = true });
-        return out.items;
-    }
-    if (cur.items.len > 0) {
-        // join the tail to the head piece when the loop wraps through vertex 0
-        if (starts_visible_at_0 and out.items.len > 0 and out.items[0].pts.len > 0) {
-            const head = out.orderedRemove(0);
-            var joined: std.ArrayList(Pt) = .empty;
-            try joined.appendSlice(a, cur.items);
-            joined.items[joined.items.len - 1].b = head.pts[0].b;
-            try joined.appendSlice(a, head.pts[1..]);
-            try out.append(a, .{ .pts = joined.items, .closed = false });
-        } else {
-            cur.items[cur.items.len - 1].b = 0;
-            try out.append(a, .{ .pts = cur.items, .closed = false });
-        }
-    }
-    return out.items;
-}
-
-/// Like `visiblePieces` but also for open polylines (arcs allowed): the parts outside every occluder.
-pub fn visibleOpen(a: Allocator, pts: []const Pt, closed: bool, occs: []const Occ) Allocator.Error![]const PieceOut {
-    var out: std.ArrayList(PieceOut) = .empty;
-    const n = pts.len;
-    const nseg = if (closed) n else n -| 1;
-    var cur: std.ArrayList(Pt) = .empty;
-    var any_hidden = false;
-    for (0..nseg) |i| {
-        const p0 = pts[i].v();
-        const p1 = pts[(i + 1) % n].v();
-        const bulge = pts[i].b;
-        var sbox = Box{};
-        geom.segBoxInto(&sbox, p0, p1, bulge);
-        var ts: std.ArrayList(f64) = .empty;
-        for (occs) |o| {
-            if (!o.box.overlaps(sbox, 1e-7)) continue;
-            for (o.loops) |ol| {
-                for (ol, 0..) |q0, k| {
-                    const q1 = ol[(k + 1) % ol.len];
-                    var ta: [2]f64 = undefined;
-                    var tb: [2]f64 = undefined;
-                    const cnt = if (bulge == 0) geom.segSeg(p0, p1, q0, q1, &ta, &tb) else geom.arcSeg(p0, p1, bulge, q0, q1, &ta, &tb);
-                    for (0..cnt) |c| try pushUnique(a, &ts, ta[c]);
-                }
-            }
-        }
-        std.mem.sort(f64, ts.items, {}, std.sort.asc(f64));
-        var t_prev: f64 = 0;
-        var k: usize = 0;
-        while (k <= ts.items.len) : (k += 1) {
-            const t_next: f64 = if (k < ts.items.len) ts.items[k] else 1;
-            if (t_next - t_prev < 1e-10) {
-                t_prev = t_next;
-                continue;
-            }
-            const sub = geom.subSeg(p0, p1, bulge, t_prev, t_next);
-            const mid = geom.segPoint(p0, p1, bulge, (t_prev + t_next) / 2);
-            var hidden = false;
-            for (occs) |o| {
-                if (!o.box.contains(mid)) continue;
-                if (geom.locate(mid, o.loops, 1e-7) == .inside) {
-                    hidden = true;
-                    break;
-                }
-            }
-            if (hidden) {
-                any_hidden = true;
-                if (cur.items.len > 0) {
-                    cur.items[cur.items.len - 1].b = 0;
-                    try out.append(a, .{ .pts = cur.items, .closed = false });
-                    cur = .empty;
                 }
             } else {
                 const joins = cur.items.len > 0 and V2.eql(cur.items[cur.items.len - 1].v(), sub.a, 1e-9);
@@ -915,6 +817,7 @@ pub fn visibleOpen(a: Allocator, pts: []const Pt, closed: bool, occs: []const Oc
                     }
                     cur = .empty;
                     try cur.append(a, .{ .x = sub.a.x, .y = sub.a.y, .b = sub.bulge });
+                    if (i == 0 and t_prev == 0) starts_visible_at_0 = true;
                 } else cur.items[cur.items.len - 1].b = sub.bulge;
                 try cur.append(a, .{ .x = sub.b.x, .y = sub.b.y, .b = 0 });
             }
@@ -926,7 +829,19 @@ pub fn visibleOpen(a: Allocator, pts: []const Pt, closed: bool, occs: []const Oc
         try out.append(a, .{ .pts = pts, .closed = closed });
         return out.items;
     }
-    if (cur.items.len > 1) try out.append(a, .{ .pts = cur.items, .closed = false });
+    if (cur.items.len > 1) {
+        if (join_wrap and starts_visible_at_0 and out.items.len > 0 and out.items[0].pts.len > 0) {
+            // the loop wraps through vertex 0: tail + head are one run
+            const head = out.orderedRemove(0);
+            var joined: std.ArrayList(Pt) = .empty;
+            try joined.appendSlice(a, cur.items);
+            joined.items[joined.items.len - 1].b = head.pts[0].b;
+            try joined.appendSlice(a, head.pts[1..]);
+            try out.append(a, .{ .pts = joined.items, .closed = false });
+        } else {
+            try out.append(a, .{ .pts = cur.items, .closed = false });
+        }
+    }
     return out.items;
 }
 
@@ -971,7 +886,7 @@ pub fn dedupe(a: Allocator, strokes: []const Stroke, style: *const style_mod.Sty
         const w1 = style.penWidthMm(strokes[s1.stroke].pen);
         const bb1 = Box{ .x0 = @min(s1.a.x, s1.b.x), .y0 = @min(s1.a.y, s1.b.y), .x1 = @max(s1.a.x, s1.b.x), .y1 = @max(s1.a.y, s1.b.y) };
         for (items[i + 1 ..]) |*s2| {
-            if (s2.bulge != 0 or s2.stroke == s1.stroke and false) continue;
+            if (s2.bulge != 0) continue;
             const bb2 = Box{ .x0 = @min(s2.a.x, s2.b.x), .y0 = @min(s2.a.y, s2.b.y), .x1 = @max(s2.a.x, s2.b.x), .y1 = @max(s2.a.y, s2.b.y) };
             if (!bb1.overlaps(bb2, dedupe_tol)) continue;
             const d2 = s2.b.sub(s2.a);
@@ -1032,9 +947,7 @@ pub fn dedupe(a: Allocator, strokes: []const Stroke, style: *const style_mod.Sty
         }
         var cur: std.ArrayList(Pt) = .empty;
         var emitted: usize = 0;
-        const nseg = hi - lo;
-        for (items[lo..hi], 0..) |sr, k| {
-            _ = k;
+        for (items[lo..hi]) |sr| {
             for (sr.keep.items) |iv| {
                 const sub = geom.subSeg(sr.a, sr.b, sr.bulge, iv[0], iv[1]);
                 if (sub.a.dist(sub.b) < 1e-9) continue;
@@ -1050,7 +963,6 @@ pub fn dedupe(a: Allocator, strokes: []const Stroke, style: *const style_mod.Sty
                 try cur.append(a, .{ .x = sub.b.x, .y = sub.b.y, .b = 0 });
             }
         }
-        _ = nseg;
         if (cur.items.len > 1) {
             try out.append(a, .{ .pts = cur.items, .closed = false, .pen = s.pen, .src = s.src, .rank = s.rank, .seq = s.seq });
         }
