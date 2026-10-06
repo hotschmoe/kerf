@@ -1,5 +1,9 @@
-//! Annotations (SPEC 6, 16): leader notes with deterministic column layout, dimensions, labels,
-//! and the title block under a view.
+//! Annotations (SPEC 6, 16): leader notes with deterministic column layout, dimensions, labels, and the title block under a view.
+//!
+//! This file holds the layout context (`Env`) and the main entry `annotate` (parse, route, repair, assemble); the parts live in
+//! `annot/`: `text` (glyph folding, wrapping, text boxes), `notes` (landing, obstacles, routing, citations), `dims` (one
+//! dimension and the stacking of colliding ones), `repair` (the bounded repair loop), `knockout` (hatch under text) and
+//! `title` (the title bubble). `shape.zig` has the landing geometry shared with the iso view.
 
 const std = @import("std");
 const json = @import("json.zig");
@@ -28,6 +32,8 @@ const V2 = geom.V2;
 const Pt = geom.Pt;
 const Box = geom.Box;
 const Item = drawing.Item;
+// annot/text.zig.zig: text helpers
+const text_mod = @import("annot/text.zig");
 pub const asciiFold = text_mod.asciiFold;
 const layerName = text_mod.layerName;
 const textItem = text_mod.textItem;
@@ -36,18 +42,9 @@ const upperIf = text_mod.upperIf;
 pub const textPoly = text_mod.textPoly;
 pub const itemsBox = text_mod.itemsBox;
 const wrap = text_mod.wrap;
-const text_mod = @import("annot/text.zig");
-const knockHatch = knockout_mod.knockHatch;
-const knockout_mod = @import("annot/knockout.zig");
-pub const SheetInfo = title_mod.SheetInfo;
-pub const titleItems = title_mod.titleItems;
-const title_mod = @import("annot/title.zig");
-const DimSpec = dims_mod.DimSpec;
-const labelItems = dims_mod.labelItems;
-pub const polysOverlap = dims_mod.polysOverlap;
-const baseHits = dims_mod.baseHits;
-const stackDims = dims_mod.stackDims;
-const dims_mod = @import("annot/dims.zig");
+
+// annot/notes.zig.zig: leader notes
+const notes_mod = @import("annot/notes.zig");
 const textTooLong = notes_mod.textTooLong;
 const targetLanding = notes_mod.targetLanding;
 const NoteIn = notes_mod.NoteIn;
@@ -61,13 +58,31 @@ const routeNotes = notes_mod.routeNotes;
 const emitNotes = notes_mod.emitNotes;
 const legendItems = notes_mod.legendItems;
 const noteText = notes_mod.noteText;
-const notes_mod = @import("annot/notes.zig");
+
+// annot/dims.zig.zig: dimensions
+const dims_mod = @import("annot/dims.zig");
+const DimSpec = dims_mod.DimSpec;
+const labelItems = dims_mod.labelItems;
+pub const polysOverlap = dims_mod.polysOverlap;
+const baseHits = dims_mod.baseHits;
+const stackDims = dims_mod.stackDims;
+
+// annot/repair.zig.zig: layout repair
+const repair_mod = @import("annot/repair.zig");
 const DimLab = repair_mod.DimLab;
 const renderDimLabels = repair_mod.renderDimLabels;
 const repairDim = repair_mod.repairDim;
 const repairLabel = repair_mod.repairLabel;
 const Best = repair_mod.Best;
-const repair_mod = @import("annot/repair.zig");
+
+// annot/knockout.zig.zig: hatch knockout
+const knockout_mod = @import("annot/knockout.zig");
+const knockHatch = knockout_mod.knockHatch;
+
+// annot/title.zig.zig: title block
+const title_mod = @import("annot/title.zig");
+pub const SheetInfo = title_mod.SheetInfo;
+pub const titleItems = title_mod.titleItems;
 
 pub const Landing = union(enum) {
     section: *section.Section,
@@ -99,29 +114,11 @@ pub const Env = struct {
 pub const AnnKind = enum { note, dim, label };
 pub const AnnBox = struct { id: []const u8, kind: AnnKind, box: Box, offset: f64 = 0 };
 
-// ---- small helpers ------------------------------------------------------------------------------------------
-
-// ---- wrapping -------------------------------------------------------------------------------------------------
-
-// ---- note landing ---------------------------------------------------------------------------------------------------
-
-// ---- notes ------------------------------------------------------------------------------------------------------------
-
-// ---- dimensions ---------------------------------------------------------------------------------------------------------
-
 pub const DimDir = enum { h, v, aligned };
 
 pub const dim_variants: usize = 6;
 
-// ---- dimension conflicts (stacking) --------------------------------------------------------------------------------
-
-// ---- citations --------------------------------------------------------------------------------------------------------------
-
-// ---- layout repair (SPEC 20) --------------------------------------------------------------------------------------------
-
 const max_repair_passes: usize = 8;
-
-// ---- main entry ---------------------------------------------------------------------------------------------------------------
 
 /// Annotate a view. Returns the annotation items (notes interleaved after their annotation's own
 /// items, in view order). Hatch lines in `base_items` are knocked out under dimension text and labels.
@@ -344,7 +341,3 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
     if (env.style.notes_mode_keynote and notes.items.len > 0) try legendItems(env, notes.items, &result);
     return result.items;
 }
-
-// ---- hatch knockout --------------------------------------------------------------------------------------------------------
-
-// ---- title -------------------------------------------------------------------------------------------------------------------------
