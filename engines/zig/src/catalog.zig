@@ -201,12 +201,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .fill,
         .summary = "Earth, gravel, sand, compacted fill as a hatched polygon.",
-        .params = &.{
-            .{ .names = &.{"material"}, .def = "earth", .desc = "earth | gravel | sand | compacted_fill" },
-            .{ .names = &.{"points"}, .def = "required", .desc = "polygon [x,y] or Refs" },
-            .{ .names = &.{"outline"}, .def = "top", .desc = "top (stroke only edges with outward normal up: the grade line) | full | none" },
-            .{ .names = &.{"grade_label"}, .def = "null", .desc = "optional text for annotations" },
-        },
+        .params = params.rows(builders.FillParams),
         .parts = "none",
         .anchors = "9 box anchors of the polygon",
         .draws = "Hatched cut region; the hatch stops at the crop and fills never get break lines.",

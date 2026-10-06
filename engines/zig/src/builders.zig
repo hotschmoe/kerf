@@ -1632,13 +1632,25 @@ fn buildMembrane(ctx: *Ctx) BuildError!?Built {
 
 // ---- fill ------------------------------------------------------------------------------------------------------------------
 
+pub const FillParams = struct {
+    material: enum { earth, gravel, sand, compacted_fill } = .earth,
+    points: ?json.Value = null,
+    outline: enum { top, full, none } = .top,
+    grade_label: []const u8 = "",
+
+    pub const spec = .{
+        .material = .{ .desc = "earth | gravel | sand | compacted_fill" },
+        .points = .{ .def = "required", .desc = "polygon [x,y] or Refs" },
+        .outline = .{ .desc = "top (stroke only edges with outward normal up: the grade line) | full | none" },
+        .grade_label = .{ .def = "null", .desc = "optional text for annotations" },
+    };
+};
+
 fn buildFill(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const material = p.choice("material", "earth", &.{ "earth", "gravel", "sand", "compacted_fill" });
-    const outline = p.choice("outline", "top", &.{ "top", "full", "none" });
-    _ = p.str("grade_label", "");
-    const pv = p.raw("points") orelse {
+    const fp = p.parseAll(FillParams);
+    const pv = fp.points orelse {
         p.fail("points", "fill needs 'points': a polygon [[x, y], ...] or Refs", .{});
         return null;
     };
@@ -1650,13 +1662,17 @@ fn buildFill(ctx: *Ctx) BuildError!?Built {
         return null;
     }
     const loop = try orientedCcw(a, clean);
-    const om: model.OutlineMode = if (std.mem.eql(u8, outline.?, "top")) .top else if (std.mem.eql(u8, outline.?, "full")) .full else .none;
-    const prism = Prism{ .material = material.?, .loops = try model.oneLoop(a, loop), .outline = om };
+    const om: model.OutlineMode = switch (fp.outline) {
+        .top => .top,
+        .full => .full,
+        .none => .none,
+    };
+    const prism = Prism{ .material = @tagName(fp.material), .loops = try model.oneLoop(a, loop), .outline = om };
     return .{
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(loop),
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "fill {s}", .{material.?}),
+        .info = try std.fmt.allocPrint(a, "fill {s}", .{@tagName(fp.material)}),
     };
 }
 
