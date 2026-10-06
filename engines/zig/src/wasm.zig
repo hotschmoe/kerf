@@ -8,7 +8,9 @@
 const std = @import("std");
 const kerf = @import("kerf");
 
-pub const panic = std.debug.simple_panic;
+/// `no_panic` is `@trap()` on every safety failure and builds in every optimize mode; `simple_panic` pulls in the stderr
+/// machinery (`std.Io.Threaded`) that does not compile for wasm32-freestanding once safety checks are on (REVIEW SAF-2).
+pub const panic = std.debug.no_panic;
 
 const gpa = std.heap.wasm_allocator;
 
