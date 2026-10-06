@@ -586,3 +586,59 @@ tests in `src/ergo_tests.zig`, `tests/cli_ergonomics.mjs` (node, runs the real b
 - apps/web: `apps/web/public/style.json` mirrors the style; copy `spec/styles/kerf-standard.kerfstyle.json` (pen `rebar` 0.5, layer `rebar`).
 - orchestrator: SPEC 7 style example (`layers`) and 20: add `rebar: S-DETL-REBR`; pen `rebar` 0.5 mm; mention the 0.022" minimum
   paper thickness for sheet-metal hardware and the knock-out of member lines under face-on ties.
+
+## v0.1.4 layout (layout agent: SPEC 20 "Layout resolves its own collisions")
+
+Files: `src/annot.zig` (dim stacking, outside text, repair loop, `column`, place alignment), `src/route.zig` (column hint,
+hard/soft hit ranking, `light` re-route), tests in `src/layout_tests.zig`.
+
+- **Repair loop** (`annotate`): annotations are parsed into note / dim / label specs first; dims and labels are rendered from
+  them per pass. Pass 0 = stack dims, route notes (`route.route`: landing candidates, columns, DP; this is the "move the landing
+  point" and "other column" repair). While leaders still hit dimension text or labels (`W_LEADER_HIT` candidates), each pass pushes
+  every hit dim out by whole 0.25" paper steps (first step count that clears all leaders, at most 8 steps in total per dim) and
+  moves every hit label to the nearest spot (up, down, sideways, diagonals; at most 12 text heights; first without sitting on
+  drawn outlines) where no leader is within a text height and it overprints no other label/dim text, then re-routes
+  (light search). At most 8 passes; stops when clean or after 2 passes without improvement; the pass with the fewest hits wins
+  (earlier pass on ties, so a clean layout is never touched). `W_LEADER_HIT` is raised only for what is left, with the old fix texts.
+- **Router:** `hits` now also has `hard` = hits between notes (leader/leader, leader/text block); the search ranks `hard` first,
+  because dim/label hits are repaired afterwards. `Params.light` = one search with budget 20 (repair re-routes); full route = budget 60.
+  `NoteIn.column` (note `column: "left"|"right"`) fixes a note's column and disables the other-column move for it; it overrides
+  the view's `notes_side` (a `right` hint on a `left` view creates a right column). A bad value warns `W_PARAM` and is ignored.
+  Schema: `note.column` (the one minimal edit in schema.zig), so no `W_UNKNOWN_KEY`.
+- **place:** a note with `place` whose block sits left of its arrow (the existing `place.x + w/2 < landing.x` rule) draws its
+  lines right-aligned to `place.x + block width` (block bbox / top-left stay `place`, SPEC 16), leader leaves the right edge.
+  Auto-placed left-column notes keep left-aligned lines (unchanged, goldens stable).
+- **Dim stacking** (`stackDims`): dims are placed shortest first (ties by document order). A dim's candidate = authored offset
+  (+ repair push) moved out in 0.25" paper steps (k = 0..12) until it has no conflict with the dims already placed or with labels:
+  conflict = a dimension line within 0.125" paper of another one with a shared stretch (parallel), or its text box touching another dim's
+  text, line, extension line, tick or leader (either direction). If none is free the candidate with the fewest conflicts wins.
+  Dims that do not conflict keep their authored offsets exactly. Works for h, v and aligned dims (iso views have no dims).
+- **Text that does not fit** (same criterion as before, `tw + 2 tgap > len - tick`): never shrunk, never dropped. Drawn on the axis
+  beyond the end of the dimension line (`variant` 0 far end / 1 near end) with a short leader (2 tick lengths) from the dim line end
+  to the text, vertically centred on the axis; variants 2-5 lift the text one text height out of the axis (outward / inward of the
+  object) with a diagonal leader. Chosen per k: the first variant with no dim/label conflict, preferring fewer hits on drawn
+  outlines (`base_segs`). Goldens changed only where a dim text did not fit (truss `7 5/8"`, slab `1 1/2"`, PSL `3"`), looked at.
+- **Numbers** (W_LEADER_HIT, before = HEAD cb19d64 engine, after = this): replay of the alpha4 eval's op logs
+  (`~/kerf-eval/runs/2026-10-05T22-47-41-504Z/*/workspace/*.log.jsonl`, apply step by step, `kerf check` each state):
+  e01 9 -> 4, e04 1 -> 0, e05 1 -> 0, e09 1 -> 0, others 0; total 12 -> 4. The 4 left are e01 states where the agent set `place`
+  / explicit `at` on 6 notes (fixed notes cannot be moved; the other notes are re-routed around them). 6 hand-made stress docs
+  (12 notes of the truss reference squeezed into a small crop at 1"=1'-0", one or both columns, 4 dims, 2 labels on the leaders'
+  way): 25 -> 16; right-only and left-only single column cases keep note/note near-hits, and a left-only column with dims on the
+  same side keeps dim-text hits (every leader must cross the dim stack; pushing out cannot help).
+  Time (ReleaseFast native, per `drawing`): truss A 31 -> 15 ms, stress 98 -> 160 ms, 109 -> 240 ms; wasm ReleaseSmall stress 0.4-0.7 s
+  (typical views 15-20 ms). wasm 866,509 B raw.
+- Looked at: eval docs e01-e10 before/after (only e01 plate note right-aligned, e02/e06/e09 outside-text dims), e03 with
+  3 same-offset vertical dims (before: lines and texts overprinted; after: stacked 0.25" apart), e02 with the 4" HETA embed dim
+  restored (text outside with a leader), replays of e01 steps 2-5, goldens truss/slab/PSL A.
+
+### SPEC ISSUES (layout)
+- SPEC 20 "right-aligns its text block to place.x + width": implemented as lines right-aligned at `place.x + w` inside the SPEC 16
+  top-left block; a `place` far inside the drawing still overlaps it (the engine does not relocate designer-placed text).
+- "Other column" repair only when `notes_side` is `both` (a one-sided view stays one-sided); `column` is the explicit override.
+- Repair never changes the sign (side) of a dim and never drops/shrinks one; dims sliding their text along the line is not done.
+- The new `W_PARAM` (bad `column` value) is not in SPEC 9's list.
+
+### REQUESTS (layout)
+- cli-docs: `kerf schema dim` / the guide could mention that overlapping dims stack automatically and that small dims keep
+  their text outside with a leader; `kerf schema note`/guide: `column: "left"|"right"` (already in the schema field list).
+- orchestrator: SPEC 6.4 text-outside sentence and SPEC 9 (`W_PARAM`); SPEC 20 mentions "label away from the leader" (moves up to 12 text heights).
