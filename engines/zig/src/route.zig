@@ -46,6 +46,26 @@ pub const NoteIn = struct {
 pub const ObstKind = enum { dim, label };
 pub const Obst = struct { kind: ObstKind, poly: [4]V2 };
 
+/// Layout effort counter (REVIEW LAY-1): one unit per leader/leader, leader/box or leader/obstacle penalty evaluation. The search
+/// stops improving once `used >= limit` and the layout falls back to what it has (SPEC 6.3 stacking plus de-crossing, or the best
+/// state so far); the work is shared by every pass and every trial of one view build, so no document can cost more than a bounded
+/// amount of time however many notes it has.
+pub const Work = struct {
+    used: u64 = 0,
+    limit: u64 = default_work_limit,
+
+    pub fn spent(self: *const Work) bool {
+        return self.used >= self.limit;
+    }
+};
+
+/// 40 million units is about 1.5 s of ReleaseFast: 50 notes + 10 dims + 5 labels reach it, the largest reference view uses 68 thousand.
+pub const default_work_limit: u64 = 40_000_000;
+
+/// `Layout.hits` keeps every hit, but concrete fix proposals are only computed for the first `max_fix_hits` of them: the caller
+/// reports at most that many (`annot.reportHits`), and a proposal costs a full layout plus ~60 hit scans.
+pub const max_fix_hits: usize = 8;
+
 pub const Params = struct {
     geo: Geo,
     crop: Box,
@@ -55,6 +75,8 @@ pub const Params = struct {
     side: Side,
     /// Re-routes inside the caller's repair loop: one search attempt with a small budget.
     light: bool = false,
+    /// Shared effort counter; null = a fresh default budget for this call.
+    work: ?*Work = null,
 };
 
 pub const HitKind = enum { leader, note, dim, label };
@@ -84,6 +106,8 @@ pub const Layout = struct {
     hits: []Hit,
     /// Number of crossings + near hits before the search (diagnostics for tests).
     searched: bool,
+    /// The work budget ran out: the notes are placed by the basic rule (plus whatever the search had found) and hits may remain.
+    budget_exhausted: bool = false,
 };
 
 const W_CROSS: f64 = 1000;
@@ -228,6 +252,8 @@ const Ctx = struct {
     adj: []bool,
     /// Remaining column solves (bounds the work on dense views).
     budget: usize = 60,
+    /// Shared effort counter (`Work`).
+    work: *Work,
 
     fn landing(self: *const Ctx, i: usize) V2 {
         return self.notes[i].cands[self.ci[i]];
@@ -310,11 +336,13 @@ const Ctx = struct {
     }
 
     fn pairPen(self: *const Ctx, a: [3]V2, ab: BB, b: [3]V2, bb: BB) f64 {
+        self.work.used += 1;
         if (ab.apart(bb, self.p.geo.h)) return 0;
         return self.near(polyPolyDist(a, b)) orelse 0;
     }
 
     fn boxPen(self: *const Ctx, a: [3]V2, ab: BB, b: *const [4]V2, bb: BB) f64 {
+        self.work.used += 1;
         if (ab.apart(bb, self.p.geo.h)) return 0;
         return self.near(polyBoxDist(a, b)) orelse 0;
     }
@@ -432,7 +460,7 @@ const Ctx = struct {
         const ord_in = self.sortOrder(col_left);
         const n = ord_in.len;
         if (n == 0) return true;
-        if (self.budget == 0) return false;
+        if (self.budget == 0 or self.work.spent()) return false;
         self.budget -= 1;
         const ord = self.ord2[0..n];
         @memcpy(ord, ord_in);
@@ -573,10 +601,10 @@ fn improve(c: *Ctx) void {
     c.solveAll();
     var cur = c.eval();
     var rounds: usize = 0;
-    while (cur.hits > 0 and rounds < 6 and c.budget > 0) : (rounds += 1) {
+    while (cur.hits > 0 and rounds < 6 and c.budget > 0 and !c.work.spent()) : (rounds += 1) {
         var changed = false;
         var i: usize = 0;
-        while (i < n and !changed and c.budget > 0) : (i += 1) {
+        while (i < n and !changed and c.budget > 0 and !c.work.spent()) : (i += 1) {
             if (c.fixed(i) or c.hitsOf(i) == 0) continue;
             const start = c.snapshot();
             // (a) other column
@@ -602,7 +630,7 @@ fn improve(c: *Ctx) void {
                 cnt += 1;
             }
             var v: usize = 0;
-            while (v < cnt and !changed and c.budget > 0) : (v += 1) {
+            while (v < cnt and !changed and c.budget > 0 and !c.work.spent()) : (v += 1) {
                 if (v == pos) continue;
                 // rebuild keys of the column with i at position v
                 const ord = c.sortOrder(c.left[i]);
@@ -673,7 +701,9 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
     const n = notes.len;
     const obb = try a.alloc(BB, obst.len);
     for (obst, 0..) |o, i| obb[i] = BB.ofBox(o.poly);
+    var local_work = Work{};
     var c = Ctx{
+        .work = p.work orelse &local_work,
         .a = a,
         .p = p,
         .notes = notes,
@@ -742,7 +772,8 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
             if (c.near(d) != null) try hits.append(a, .{ .note = i, .kind = if (o.kind == .dim) .dim else .label, .other = j, .dist = d });
         }
     }
-    for (hits.items) |*ht| {
+    for (hits.items, 0..) |*ht, hi| {
+        if (hi >= max_fix_hits) break;
         var fa: ?V2 = null;
         var fp: ?V2 = null;
         try proposeFix(&c, ht.note, &fa, &fp);
@@ -759,7 +790,7 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
     c.layout();
     const landing = try a.alloc(V2, n);
     for (0..n) |i| landing[i] = c.landing(i);
-    return .{ .top = c.top, .x = c.x, .left = c.left, .landing = landing, .leaders = c.leaders, .hits = hits.items, .searched = searched };
+    return .{ .top = c.top, .x = c.x, .left = c.left, .landing = landing, .leaders = c.leaders, .hits = hits.items, .searched = searched, .budget_exhausted = c.work.spent() };
 }
 
 /// A concrete way to clear note i's hits: an alternative landing point (`at`) or a new text position
@@ -851,4 +882,30 @@ test "route: deterministic" {
         try std.testing.expectEqual(r1.top[i], r2.top[i]);
         try std.testing.expectEqual(r1.x[i], r2.x[i]);
     }
+}
+
+test "route: 150 crowded notes stay inside the work budget (REVIEW LAY-1)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = Geo{ .h = 1.0, .pitch = 1.6, .gap = 0.6, .shoulder = 1.3, .pad = 0.4 };
+    const p0 = Params{ .geo = g, .crop = .{ .x0 = 0, .y0 = 0, .x1 = 40, .y1 = 30 }, .xl = 0, .xr = 40, .gutter = 4, .side = .both };
+    // 150 landings packed into a 20 x 20 patch so almost every leader meets another
+    var lands: std.ArrayList(V2) = .empty;
+    for (0..150) |i| try lands.append(a, V2.init(10 + @as(f64, @floatFromInt(i % 15)) * 1.3, 5 + @as(f64, @floatFromInt(i / 15)) * 2.1));
+    const notes = try testNotes(a, lands.items);
+    var work = Work{ .limit = 1_000_000 };
+    var p = p0;
+    p.work = &work;
+    const r = try route(a, p, notes, &.{}, &.{});
+    // the search stops at the limit; the rest is the O(n^2) hit scan and the baseline layout (a few hundred thousand units)
+    try std.testing.expect(work.used < 3 * work.limit);
+    try std.testing.expect(r.budget_exhausted);
+    try std.testing.expectEqual(@as(usize, 150), r.top.len);
+    // only the first max_fix_hits hits carry proposals
+    var proposals: usize = 0;
+    for (r.hits) |h| if (h.fix_at != null or h.fix_place != null) {
+        proposals += 1;
+    };
+    try std.testing.expect(proposals <= max_fix_hits);
 }

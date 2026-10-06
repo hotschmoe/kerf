@@ -46,6 +46,8 @@ pub const Env = struct {
     labels_box: Box = .{},
     /// Per-annotation extents (model units) for the view-fit diagnostic.
     ann_boxes: std.ArrayList(AnnBox) = .empty,
+    /// Layout effort shared by every pass and trial of one view build (null: each routing call gets its own default budget).
+    work: ?*route.Work = null,
 };
 
 pub const AnnKind = enum { note, dim, label };
@@ -635,6 +637,9 @@ fn reportHits(env: *Env, notes: []const NoteIn, obsts: []const Obstacle, r: rout
         const fx = fix orelse try std.fmt.allocPrint(a, "move the note with \"place\", give it another \"at\" point, or change notes_side", .{});
         env.diags.addFix(.warning, "W_LEADER_HIT", me.id, try std.fmt.allocPrint(a, "views/{s}/annotations/{s}", .{ vid, me.id }), "view {s}: the leader (or arrowhead) of note '{s}' {s} {s}; leaders must stay at least one text height ({d:.3} in paper) clear of other leaders, notes, dimension text and labels", .{ vid, me.id, rel, what, env.style.text_height_in }, try std.fmt.allocPrint(a, "{s}", .{fx}));
     }
+    if (r.budget_exhausted) {
+        env.diags.addFix(.warning, "W_LEADER_HIT", null, try std.fmt.allocPrint(a, "views/{s}", .{vid}), "view {s}: the layout effort limit was reached ({d} notes, {d} leader hits left): the notes were placed by the basic rule (sorted by landing height, de-crossed) and some leaders may touch each other or other annotations", .{ vid, notes.len, r.hits.len }, "fewer notes per view: split the detail into two views, shorten or merge notes, or set \"place\" on the crowded ones");
+    }
     if (r.hits.len > maxn) {
         env.diags.add(.warning, "W_LEADER_HIT", null, try std.fmt.allocPrint(a, "views/{s}", .{vid}), "view {s}: {d} more leader hits not listed; fix the ones above first (dense notes: split the view, shorten notes, or set \"place\" on some)", .{ vid, r.hits.len - maxn });
     }
@@ -690,7 +695,7 @@ fn routeNotes(env: *Env, prep: NotePrep, ext: Box, obsts: []const Obstacle, soft
         .right => .right,
         .both => .both,
     };
-    return route.route(a, .{ .geo = prep.g, .crop = crop, .xl = @min(crop.x0, ext.x0), .xr = @max(crop.x1, ext.x1), .gutter = prep.gutter, .side = side, .light = light }, prep.rin, ro, soft);
+    return route.route(a, .{ .geo = prep.g, .crop = crop, .xl = @min(crop.x0, ext.x0), .xr = @max(crop.x1, ext.x1), .gutter = prep.gutter, .side = side, .light = light, .work = env.work }, prep.rin, ro, soft);
 }
 
 fn emitNotes(env: *Env, notes: []const NoteIn, prep: NotePrep, r: route.Layout, out: []std.ArrayList(Item)) Allocator.Error!void {

@@ -13,6 +13,7 @@ const drawing = @import("drawing.zig");
 const units = @import("units.zig");
 const cast = @import("num.zig");
 const annot = @import("annot.zig");
+const route = @import("route.zig");
 const font_mod = @import("font.zig");
 const Allocator = std.mem.Allocator;
 
@@ -199,14 +200,14 @@ const SecPass = struct {
     unverified: bool,
 };
 
-fn sectionPass(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms: []const model.Prism, font: *const font_mod.Font, doc: json.Value, diags: *model.Diags) Allocator.Error!SecPass {
+fn sectionPass(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms: []const model.Prism, font: *const font_mod.Font, doc: json.Value, diags: *model.Diags, work: *route.Work) Allocator.Error!SecPass {
     const scale = spec.scale;
     const sec = try a.create(section.Section);
     sec.* = try section.Section.init(a, scene, spec, prisms);
     try sec.build();
     const base_items = try a.dupe(drawing.Item, try sec.finish());
     const regions = try sec.regionItems();
-    var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = spec.crop, .diags = diags, .landing = .{ .section = sec } };
+    var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = spec.crop, .diags = diags, .landing = .{ .section = sec }, .work = work };
     const ann = try annot.annotate(&env, base_items);
     const unverified = env.unverified;
     var all: std.ArrayList(drawing.Item) = .empty;
@@ -256,11 +257,11 @@ const SecResolved = struct { spec: *const view_mod.ViewSpec, pass: SecPass };
 /// Resolve an omitted crop and/or scale (SPEC 19) and run the section pass. The scale is the first of the
 /// standard scales (largest first) at which view + notes + dimensions + title fit the sheet frame; every
 /// candidate is evaluated in order, so the result is stable. Explicit crop and scale are used as given.
-fn resolveSection(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms: []const model.Prism, font: *const font_mod.Font, doc: json.Value, diags: *model.Diags) Allocator.Error!SecResolved {
+fn resolveSection(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Scene, spec: *const view_mod.ViewSpec, prisms: []const model.Prism, font: *const font_mod.Font, doc: json.Value, diags: *model.Diags, work: *route.Work) Allocator.Error!SecResolved {
     const rs0 = try a.create(view_mod.ViewSpec);
     rs0.* = spec.*;
     if (!spec.has_crop) rs0.crop = autoCrop(prisms, spec.cut_z);
-    if (spec.has_scale) return .{ .spec = rs0, .pass = try sectionPass(a, st, scene, rs0, prisms, font, doc, diags) };
+    if (spec.has_scale) return .{ .spec = rs0, .pass = try sectionPass(a, st, scene, rs0, prisms, font, doc, diags, work) };
     const aw = st.sheet_w_in - 2.0 * st.margin_in;
     const ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
     var last: ?SecResolved = null;
@@ -274,7 +275,7 @@ fn resolveSection(a: Allocator, st: *const style_mod.Style, scene: *scene_mod.Sc
         rs.scale = sc;
         rs.scale_text = try units.scaleLabel(a, "", sc);
         var td = model.Diags.init(a);
-        const pass = try sectionPass(a, st, scene, rs, prisms, font, doc, &td);
+        const pass = try sectionPass(a, st, scene, rs, prisms, font, doc, &td, work);
         last = .{ .spec = rs, .pass = pass };
         last_diags = td;
         const pw = (pass.bounds.x1 - pass.bounds.x0) / sc;
@@ -293,7 +294,8 @@ pub fn resolveSpec(a: Allocator, doc: json.Value, st: *const style_mod.Style, sc
     const font = try a.create(font_mod.Font);
     font.* = font_mod.Font.parse(a, font_mod.embedded) catch return spec;
     var d = model.Diags.init(a);
-    return (try resolveSection(a, st, scene, spec, prisms, font, doc, &d)).spec;
+    var work = route.Work{};
+    return (try resolveSection(a, st, scene, spec, prisms, font, doc, &d, &work)).spec;
 }
 
 /// Build the Drawing for `view_id`. Returns null (with diagnostics) if the view does not exist or is invalid.
@@ -326,6 +328,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         }
     }
     const prisms = try compile_mod.viewPrisms(a, scene, spec.omit);
+    var work = route.Work{};
     var items: []const drawing.Item = &.{};
     var scale = spec.scale;
     var bounds = geom.Box{};
@@ -337,7 +340,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
     const font = try a.create(font_mod.Font);
     font.* = font_mod.Font.parse(a, font_mod.embedded) catch return null;
     if (spec.kind == .section) {
-        const rs = try resolveSection(a, st, scene, spec, prisms, font, doc, diags);
+        const rs = try resolveSection(a, st, scene, spec, prisms, font, doc, diags, &work);
         scale = rs.spec.scale;
         spec_crop_out = rs.spec.crop;
         const pass = rs.pass;
@@ -357,7 +360,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
             const res = try @import("iso.zig").build(iso, scene, spec, st, if (trial == 0) 0 else fitted + 0.5 * @as(f64, @floatFromInt(trial)));
             if (trial == 0) fitted = res.scale;
             scale = res.scale;
-            var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = res.crop, .diags = &tdiags, .landing = .{ .iso = iso } };
+            var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = res.crop, .diags = &tdiags, .landing = .{ .iso = iso }, .work = &work };
             const base_items = try a.dupe(drawing.Item, res.items);
             const ann = try annot.annotate(&env, base_items);
             unverified = env.unverified;
