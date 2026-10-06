@@ -3,7 +3,7 @@
 const std = @import("std");
 const json = @import("json.zig");
 const catalog = @import("catalog.zig");
-const schema = @import("schema.zig");
+const schema = @import("schema_fields.zig");
 const Allocator = std.mem.Allocator;
 
 const root_keys = schema.keys(&schema.doc);

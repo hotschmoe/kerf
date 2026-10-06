@@ -8,6 +8,7 @@ const clip = @import("clip.zig");
 const model = @import("model.zig");
 const scene_mod = @import("scene.zig");
 const units = @import("units.zig");
+const builders = @import("builders.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Scene = scene_mod.Scene;
@@ -318,7 +319,7 @@ fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void 
                     const edges = try hostEdges(a, host.outline, xf);
                     // zones in world
                     var zw: std.ArrayList(ZoneBox) = .empty;
-                    for (h.built.zones) |z| try zw.append(a, .{ .name = z.name, .box = @import("builders.zig").worldBox(xf, z.box) });
+                    for (h.built.zones) |z| try zw.append(a, .{ .name = z.name, .box = builders.worldBox(xf, z.box) });
                     const req = coverFor(host, zw.items, centre);
                     var min_clear = [3]f64{ std.math.inf(f64), std.math.inf(f64), std.math.inf(f64) };
                     var min_edge: [3]?Edge = .{ null, null, null };

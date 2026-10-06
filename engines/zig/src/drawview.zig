@@ -16,6 +16,7 @@ const annot = @import("annot.zig");
 const route = @import("route.zig");
 const font_mod = @import("font.zig");
 const pen_mod = @import("pen.zig");
+const iso_mod = @import("iso.zig");
 const Allocator = std.mem.Allocator;
 
 pub fn collectLayers(a: Allocator, items: []const drawing.Item, st: *const style_mod.Style) Allocator.Error![]const drawing.LayerDef {
@@ -354,9 +355,9 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
         var fitted: f64 = 0;
         while (true) : (trial += 1) {
             var tdiags = model.Diags.init(a);
-            const iso = try a.create(@import("iso.zig").Iso);
+            const iso = try a.create(iso_mod.Iso);
             iso.* = .{ .a = a };
-            const res = try @import("iso.zig").build(iso, scene, spec, st, if (trial == 0) 0 else fitted + 0.5 * @as(f64, @floatFromInt(trial)));
+            const res = try iso_mod.build(iso, scene, spec, st, if (trial == 0) 0 else fitted + 0.5 * @as(f64, @floatFromInt(trial)));
             if (trial == 0) fitted = res.scale;
             scale = res.scale;
             var env = annot.Env{ .a = a, .style = st, .font = font, .scene = scene, .spec = spec, .S = scale, .crop = res.crop, .diags = &tdiags, .landing = .{ .iso = iso }, .work = &work };

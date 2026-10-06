@@ -9,6 +9,7 @@ const compile_mod = @import("compile.zig");
 const load_mod = @import("load.zig");
 const catalog = @import("catalog.zig");
 const schema = @import("schema.zig");
+const schema_fields = @import("schema_fields.zig");
 const scene_mod = @import("scene.zig");
 const V2 = geom.V2;
 
@@ -46,12 +47,12 @@ test "the example document checks with no errors and no warnings; every catalog 
 test "schema is the single source: every field the canonical writer, lint and parsers use is a schema field" {
     // view fields the parser reads
     for ([_][]const u8{ "id", "kind", "number", "title", "scale", "cut_z", "crop", "from", "cutaway", "notes_side", "omit", "annotations" }) |k| {
-        try std.testing.expect(schema.hasField(&schema.view, k));
+        try std.testing.expect(schema_fields.hasField(&schema_fields.view, k));
     }
-    for ([_][]const u8{ "id", "type", "text", "target", "at", "place", "cite" }) |k| try std.testing.expect(schema.hasField(&schema.note, k));
-    for ([_][]const u8{ "id", "type", "from", "to", "dir", "offset", "text" }) |k| try std.testing.expect(schema.hasField(&schema.dim, k));
-    for ([_][]const u8{ "id", "type", "text", "at", "offset" }) |k| try std.testing.expect(schema.hasField(&schema.label, k));
-    for ([_][]const u8{ "code", "edition", "section", "title", "status" }) |k| try std.testing.expect(schema.hasField(&schema.cite, k));
+    for ([_][]const u8{ "id", "type", "text", "target", "at", "place", "cite" }) |k| try std.testing.expect(schema_fields.hasField(&schema_fields.note, k));
+    for ([_][]const u8{ "id", "type", "from", "to", "dir", "offset", "text" }) |k| try std.testing.expect(schema_fields.hasField(&schema_fields.dim, k));
+    for ([_][]const u8{ "id", "type", "text", "at", "offset" }) |k| try std.testing.expect(schema_fields.hasField(&schema_fields.label, k));
+    for ([_][]const u8{ "code", "edition", "section", "title", "status" }) |k| try std.testing.expect(schema_fields.hasField(&schema_fields.cite, k));
 }
 
 test "unknown keys warn with suggestions and are kept; reference docs warn about none" {

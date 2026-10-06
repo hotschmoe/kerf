@@ -12,10 +12,13 @@ const clip = @import("clip.zig");
 const model = @import("model.zig");
 const scene_mod = @import("scene.zig");
 const style_mod = @import("style.zig");
+const shape_mod = @import("shape.zig");
 const Pen = @import("pen.zig").Pen;
 const view_mod = @import("view.zig");
 const hatch_mod = @import("hatch.zig");
 const drawing = @import("drawing.zig");
+const compile_mod = @import("compile.zig");
+const mesh_mod = @import("mesh.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -73,7 +76,7 @@ pub const Vis = struct {
     comp: u32,
     part: []const u8,
     instance: u32,
-    shapes: []const @import("annot.zig").Shape,
+    shapes: []const shape_mod.Shape,
     src: []const u8 = "",
     cut: bool = false,
 };
@@ -97,14 +100,14 @@ pub const Iso = struct {
     eps: f64 = 1e-3,
 
     pub fn landing(self: *Iso, comp: *const scene_mod.Comp, inst: ?u32, part: ?[]const u8) ?V2 {
-        var shapes: std.ArrayList(@import("annot.zig").Shape) = .empty;
+        var shapes: std.ArrayList(shape_mod.Shape) = .empty;
         for (self.vis.items) |v| {
             if (v.comp != comp.index) continue;
             if (inst) |k| if (v.instance != k) continue;
             if (part) |p| if (!std.mem.eql(u8, v.part, p)) continue;
             shapes.appendSlice(self.a, v.shapes) catch return null;
         }
-        return @import("annot.zig").labelPoint(self.a, shapes.items) catch null;
+        return shape_mod.labelPoint(self.a, shapes.items) catch null;
     }
 
     /// Non-drawn picking regions: the visible face chosen per prism (cut cap first).
@@ -325,13 +328,13 @@ fn gather(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
     if (crop) |c| crop_loop = try a.dupe(V2, &.{ V2.init(c.x0, c.y0), V2.init(c.x1, c.y0), V2.init(c.x1, c.y1), V2.init(c.x0, c.y1) });
     for (scene.comps) |*c| {
         if (c.state != .ok or !c.visible) continue;
-        if (@import("compile.zig").isOmitted(spec.omit, c.id)) continue;
+        if (compile_mod.isOmitted(spec.omit, c.id)) continue;
         for (c.world) |p| {
             if (p.kind == .ghost or p.role == .void) continue;
             const fill_mat = p.role == .soil;
             if (fill_mat and !spec.cutaway) continue;
-            var segs: []const @import("mesh.zig").ZSeg = &.{.{ .z0 = p.z0, .z1 = p.z1, .mortar = false }};
-            if (p.cmu_unit and p.role != .grout) segs = try @import("mesh.zig").cmuSplit(a, p);
+            var segs: []const mesh_mod.ZSeg = &.{.{ .z0 = p.z0, .z1 = p.z1, .mortar = false }};
+            if (p.cmu_unit and p.role != .grout) segs = try mesh_mod.cmuSplit(a, p);
             for (segs) |sg| {
                 const mat_name: []const u8 = if (sg.mortar) "mortar" else p.material;
                 const z0 = sg.z0;
@@ -651,10 +654,9 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
 
     // visible shapes per prism for note landing points
     var cand: std.ArrayList(u32) = .empty;
-    const annot = @import("annot.zig");
     for (iso.prisms.items, 0..) |ip, pi| {
         if (ip.is_fill) {
-            var fs: std.ArrayList(annot.Shape) = .empty;
+            var fs: std.ArrayList(shape_mod.Shape) = .empty;
             const lp = try a.alloc(V2, ip.loops[0].len);
             for (ip.loops[0], 0..) |v, i| lp[i] = proj(sx, sz, .{ v.x, v.y, ip.z1 });
             try fs.append(a, .{ .outer = lp, .holes = &.{} });
@@ -676,11 +678,11 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
                 return @abs(geom.signedAreaV(fx.outer)) > @abs(geom.signedAreaV(fy.outer));
             }
         }.lt);
-        var shapes: std.ArrayList(annot.Shape) = .empty;
+        var shapes: std.ArrayList(shape_mod.Shape) = .empty;
         for (faces.items) |fi| {
             const f = iso.faces.items[fi];
-            const sh = annot.Shape{ .outer = f.outer, .holes = f.holes };
-            if (try annot.labelPoint(a, &.{sh})) |lp| {
+            const sh = shape_mod.Shape{ .outer = f.outer, .holes = f.holes };
+            if (try shape_mod.labelPoint(a, &.{sh})) |lp| {
                 var bb = Box{};
                 bb.addPoint(lp.x, lp.y);
                 try iso.candidates(bb.expand(1e-9), &cand);

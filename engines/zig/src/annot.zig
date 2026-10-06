@@ -13,12 +13,16 @@ const Pen = pen_mod.Pen;
 const font_mod = @import("font.zig");
 const view_mod = @import("view.zig");
 const section = @import("section.zig");
+const shape_mod = @import("shape.zig");
+pub const Shape = shape_mod.Shape;
 const drawing = @import("drawing.zig");
 const units = @import("units.zig");
 const cast = @import("num.zig");
 const limits = @import("limits.zig");
 const route = @import("route.zig");
 const thinland = @import("thinland.zig");
+const compile_mod = @import("compile.zig");
+const iso_mod = @import("iso.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -27,7 +31,7 @@ const Item = drawing.Item;
 
 pub const Landing = union(enum) {
     section: *section.Section,
-    iso: *@import("iso.zig").Iso,
+    iso: *iso_mod.Iso,
 };
 
 pub const Env = struct {
@@ -212,233 +216,13 @@ pub fn wrap(a: Allocator, text: []const u8, chars_in: usize) Allocator.Error![]c
     return lines.items;
 }
 
-// ---- label points ---------------------------------------------------------------------------------------------------
-
-pub const Shape = struct { outer: []const V2, holes: []const []const V2 };
-
-pub fn shapesOf(a: Allocator, loops: []const []const V2) Allocator.Error![]const Shape {
-    var out: std.ArrayList(Shape) = .empty;
-    for (loops) |l| {
-        if (l.len < 3 or geom.signedAreaV(l) <= 0) continue;
-        var holes: std.ArrayList([]const V2) = .empty;
-        for (loops) |h| {
-            if (h.len >= 3 and geom.signedAreaV(h) < 0 and geom.pointInLoopEO(h[0], l)) try holes.append(a, h);
-        }
-        try out.append(a, .{ .outer = l, .holes = holes.items });
-    }
-    return out.items;
-}
-
-fn shapeArea(s: Shape) f64 {
-    var a = geom.signedAreaV(s.outer);
-    for (s.holes) |h| a += geom.signedAreaV(h);
-    return a;
-}
-
-fn shapeContains(s: Shape, p: V2) bool {
-    if (!geom.pointInLoopEO(p, s.outer)) return false;
-    for (s.holes) |h| if (geom.pointInLoopEO(p, h)) return false;
-    return true;
-}
-
-/// SPEC 6.3 step 2: label point of the largest visible polygon.
-pub fn labelPoint(a: Allocator, shapes: []const Shape) Allocator.Error!?V2 {
-    var best: ?Shape = null;
-    var best_area: f64 = -1;
-    for (shapes) |s| {
-        const ar = shapeArea(s);
-        if (ar > best_area) {
-            best_area = ar;
-            best = s;
-        }
-    }
-    const b = best orelse return null;
-    const c = geom.centroidV(b.outer);
-    if (shapeContains(b, c)) return c;
-    var xs: std.ArrayList(f64) = .empty;
-    const sets = [_][]const V2{b.outer};
-    for (sets) |cont| try crossings(a, &xs, cont, c.y);
-    for (b.holes) |h| try crossings(a, &xs, h, c.y);
-    std.mem.sort(f64, xs.items, {}, std.sort.asc(f64));
-    var best_mid: ?struct { d: f64, m: f64 } = null;
-    var i: usize = 0;
-    while (i + 1 < xs.items.len) : (i += 2) {
-        const x0 = xs.items[i];
-        const x1 = xs.items[i + 1];
-        const mid = (x0 + x1) * 0.5;
-        const d: f64 = if (c.x >= x0 and c.x <= x1) 0 else @abs(c.x - mid);
-        if (best_mid == null or d < best_mid.?.d) best_mid = .{ .d = d, .m = mid };
-    }
-    if (best_mid) |m| return V2.init(m.m, c.y);
-    return c;
-}
-
-fn crossings(a: Allocator, xs: *std.ArrayList(f64), cont: []const V2, y: f64) Allocator.Error!void {
-    for (cont, 0..) |p, i| {
-        const q = cont[(i + 1) % cont.len];
-        if ((p.y > y) != (q.y > y)) try xs.append(a, p.x + (y - p.y) / (q.y - p.y) * (q.x - p.x));
-    }
-}
-
 // ---- note landing ---------------------------------------------------------------------------------------------------
-
-fn shapeDepth(s: Shape, p: V2) f64 {
-    var d = std.math.inf(f64);
-    const conts = [1][]const V2{s.outer};
-    for (conts) |c| for (c, 0..) |q, i| {
-        d = @min(d, geom.distPointSeg(p, q, c[(i + 1) % c.len]));
-    };
-    for (s.holes) |c| for (c, 0..) |q, i| {
-        d = @min(d, geom.distPointSeg(p, q, c[(i + 1) % c.len]));
-    };
-    return d;
-}
-
-fn onCropEdge(crop: Box, p: V2, q: V2) bool {
-    const e = 1e-6;
-    return (@abs(p.x - crop.x0) < e and @abs(q.x - crop.x0) < e) or (@abs(p.x - crop.x1) < e and @abs(q.x - crop.x1) < e) or
-        (@abs(p.y - crop.y0) < e and @abs(q.y - crop.y0) < e) or (@abs(p.y - crop.y1) < e and @abs(q.y - crop.y1) < e);
-}
-
-/// Distance from p to the boundary of a shape, ignoring the edges that lie on the crop (the break lines).
-fn shapeDepthNoCrop(s: Shape, p: V2, crop: Box) f64 {
-    var d = std.math.inf(f64);
-    const conts = [1][]const V2{s.outer};
-    for (conts) |c| for (c, 0..) |q, i| {
-        const r = c[(i + 1) % c.len];
-        if (!onCropEdge(crop, q, r)) d = @min(d, geom.distPointSeg(p, q, r));
-    };
-    for (s.holes) |c| for (c, 0..) |q, i| {
-        const r = c[(i + 1) % c.len];
-        if (!onCropEdge(crop, q, r)) d = @min(d, geom.distPointSeg(p, q, r));
-    };
-    return d;
-}
-
-/// SPEC 18 auto landing: the label point stays at least 2 text heights away from the crop edges (and the
-/// break lines on them). When the SPEC 6.3 label point is closer than that to a crop edge, take the point of
-/// the visible region with the best clearance, where distance to a crop edge counts only up to 2 text
-/// heights (a pole of inaccessibility of the region minus the crop band). Returns the point and the inset
-/// box that landing candidates must stay in.
-fn bandedLabelPoint(env: *Env, shapes: []const Shape) Allocator.Error!?struct { p: V2, inset: Box } {
-    const crop = env.crop;
-    const prim = (try labelPoint(env.a, shapes)) orelse return null;
-    const h = env.style.text_height_in * env.S;
-    const band = 2.0 * h;
-    const inset = crop.expand(-band);
-    if (inset.x1 <= inset.x0 or inset.y1 <= inset.y0) return .{ .p = prim, .inset = crop };
-    if (inset.contains(prim)) return .{ .p = prim, .inset = inset };
-    var bb = Box{};
-    for (shapes) |x| bb.addBox(clip.loopsBox(&.{x.outer}));
-    const step = gridStep(bb, h, 6.0) orelse return .{ .p = prim, .inset = inset };
-    var best = prim;
-    var best_score: f64 = -1;
-    var best_d: f64 = std.math.inf(f64);
-    var x = bb.x0 + step * 0.5;
-    while (x < bb.x1) : (x += step) {
-        var y = bb.y0 + step * 0.5;
-        while (y < bb.y1) : (y += step) {
-            const q = V2.init(x, y);
-            for (shapes) |sh| if (shapeContains(sh, q)) {
-                const dc = @min(@min(x - crop.x0, crop.x1 - x), @min(y - crop.y0, crop.y1 - y));
-                const score = @min(shapeDepthNoCrop(sh, q, crop), @min(dc, band));
-                const dp = q.dist(prim);
-                if (score > best_score + 1e-9 or (score > best_score - 1e-9 and dp < best_d)) {
-                    best_score = score;
-                    best_d = dp;
-                    best = q;
-                }
-                break;
-            };
-        }
-    }
-    return .{ .p = best, .inset = inset };
-}
 
 /// E_LIMIT for a note/label text over `limits.max_text_chars` (reports and returns true).
 fn textTooLong(env: *Env, what: []const u8, id: []const u8, apath: []const u8, text: []const u8) Allocator.Error!bool {
     if (text.len <= limits.max_text_chars) return false;
     env.diags.addFix(.@"error", "E_LIMIT", id, apath, "{s}", .{try limits.message(env.a, try std.fmt.allocPrint(env.a, "characters in the text of {s} '{s}'", .{ what, id }), text.len, limits.max_text_chars, "A drawing note is a short phrase, not a paragraph.")}, "shorten the text to one phrase (about 130 characters or fewer) or split it into several notes");
     return true;
-}
-
-/// Sampling step for a shape's box: about a text height (or `1/div` of the thin side), coarsened until the grid has at most ~2500
-/// cells. Null for a degenerate text height or box, so a zero/NaN style value cannot make the loops below endless (REVIEW LAY-2).
-fn gridStep(bb: Box, h: f64, div: f64) ?f64 {
-    if (!(h > 0) or !std.math.isFinite(h) or !std.math.isFinite(bb.width()) or !std.math.isFinite(bb.height())) return null;
-    var step = @max(@min(h, @min(bb.width(), bb.height()) / div), h / 8.0);
-    var guard: u32 = 0;
-    while ((bb.width() / step + 1) * (bb.height() / step + 1) > 2500 and guard < 200) : (guard += 1) step *= 1.5;
-    return step;
-}
-
-/// Landing candidates inside the visible region: the label point first, then alternatives (nearest
-/// first, then the extremes in 8 directions) that keep clear of the region boundary.
-fn candidatesFor(env: *Env, shapes: []const Shape, inset: Box, primary: V2) Allocator.Error![]const V2 {
-    const a = env.a;
-    const h = env.style.text_height_in * env.S;
-    var out: std.ArrayList(V2) = .empty;
-    try out.append(a, primary);
-    var bb = Box{};
-    for (shapes) |s| bb.addBox(clip.loopsBox(&.{s.outer}));
-    if (bb.isEmpty()) return out.items;
-    // thin members (straps, flashing) need a grid finer than a text height
-    const step = gridStep(bb, h, 3.0) orelse return out.items;
-    var pts: std.ArrayList(V2) = .empty;
-    var depth: std.ArrayList(f64) = .empty;
-    var maxd: f64 = 0;
-    var x = bb.x0 + step * 0.5;
-    while (x < bb.x1) : (x += step) {
-        var y = bb.y0 + step * 0.5;
-        while (y < bb.y1) : (y += step) {
-            const q = V2.init(x, y);
-            if (!inset.contains(q)) continue;
-            for (shapes) |s| if (shapeContains(s, q)) {
-                const d = shapeDepth(s, q);
-                try pts.append(a, q);
-                try depth.append(a, d);
-                maxd = @max(maxd, d);
-                break;
-            };
-        }
-    }
-    const thr = @min(0.5 * h, 0.6 * maxd);
-    var keep: std.ArrayList(V2) = .empty;
-    for (pts.items, depth.items) |q, d| if (d >= thr) try keep.append(a, q);
-    const farFromAll = struct {
-        fn ok(list: []const V2, q: V2, d: f64) bool {
-            for (list) |o| if (o.dist(q) < d) return false;
-            return true;
-        }
-    }.ok;
-    var picked: usize = 0;
-    while (picked < 4) : (picked += 1) {
-        var best: ?V2 = null;
-        var bd: f64 = std.math.inf(f64);
-        for (keep.items) |q| {
-            if (!farFromAll(out.items, q, h)) continue;
-            const d = q.dist(primary);
-            if (d < bd) {
-                bd = d;
-                best = q;
-            }
-        }
-        if (best) |q| try out.append(a, q) else break;
-    }
-    const dirs = [8]V2{ V2.init(-1, 0), V2.init(1, 0), V2.init(0, 1), V2.init(0, -1), V2.init(-1, 1), V2.init(1, 1), V2.init(-1, -1), V2.init(1, -1) };
-    for (dirs) |dv| {
-        var best: ?V2 = null;
-        var bp: f64 = -std.math.inf(f64);
-        for (keep.items) |q| {
-            const pr = q.dot(dv);
-            if (pr > bp + 1e-9) {
-                bp = pr;
-                best = q;
-            }
-        }
-        if (best) |q| if (farFromAll(out.items, q, 0.5 * h)) try out.append(a, q);
-    }
-    return out.items;
 }
 
 fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 {
@@ -455,7 +239,7 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 {
     }
     const comp = env.scene.find(comp_id) orelse return null;
     if (comp.state != .ok) return null;
-    if (@import("compile.zig").isOmitted(env.spec.omit, comp.id)) return null;
+    if (compile_mod.isOmitted(env.spec.omit, comp.id)) return null;
     var shapes: std.ArrayList(Shape) = .empty;
     var all_loops: std.ArrayList([]const V2) = .empty;
     switch (env.landing) {
@@ -466,7 +250,7 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 {
                 if (part) |pn| if (!std.mem.eql(u8, p.part, pn)) continue;
                 const reg = try sec.visibleRegion(i);
                 try all_loops.appendSlice(env.a, reg);
-                try shapes.appendSlice(env.a, try shapesOf(env.a, reg));
+                try shapes.appendSlice(env.a, try shape_mod.shapesOf(env.a, reg));
             }
             if (shapes.items.len == 0) if (part) |pn| {
                 if (scene_mod.Scene.partBox(comp, pn)) |lb| {
@@ -482,7 +266,7 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 {
                     clip.orientCcw(loop);
                     const reg = try clip.boolean(env.a, &.{loop}, &.{sec.crop_loop}, .intersect);
                     try all_loops.appendSlice(env.a, reg);
-                    try shapes.appendSlice(env.a, try shapesOf(env.a, reg));
+                    try shapes.appendSlice(env.a, try shape_mod.shapesOf(env.a, reg));
                 }
             };
         },
@@ -491,11 +275,11 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 {
             return try env.a.dupe(V2, &.{p});
         },
     }
-    const lp = (try bandedLabelPoint(env, shapes.items)) orelse return null;
+    const lp = (try shape_mod.bandedLabelPoint(env.a, shapes.items, env.crop, env.style.text_height_in * env.S)) orelse return null;
     if (env.landing == .section) {
         if (try thinland.candidates(env.a, env.landing.section, comp, inst, part, lp.inset, env.style.text_height_in * env.S, lp.p)) |c| return c;
     }
-    return try candidatesFor(env, shapes.items, lp.inset, lp.p);
+    return try shape_mod.candidatesFor(env.a, shapes.items, lp.inset, lp.p, env.style.text_height_in * env.S);
 }
 
 // ---- notes ------------------------------------------------------------------------------------------------------------
