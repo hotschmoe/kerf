@@ -22,6 +22,7 @@ const Prism = model.Prism;
 const Params = model.Params;
 const Box = geom.Box;
 const common = @import("builders/common.zig");
+pub const solid = @import("builders/solid.zig");
 pub const insulation = @import("builders/insulation.zig");
 pub const fill = @import("builders/fill.zig");
 pub const membrane = @import("builders/membrane.zig");
@@ -84,71 +85,6 @@ const materialOr = common.materialOr;
 // ---- insulation ----------------------------------------------------------------------------------------------------------------
 
 // ---- solid ------------------------------------------------------------------------------------------------------------------------
-
-pub const SolidParams = struct {
-    profile: ?json.Value = null,
-    material: []const u8,
-
-    pub const spec = .{
-        .profile = .{ .def = "required", .desc = "{rect:[w,h]} | {circle:d} | {points:[...]}" },
-        .material = .{ .desc = "any style material (aluminum, steel, ...)" },
-    };
-};
-
-fn buildSolid(ctx: *Ctx) BuildError!?Built {
-    const a = ctx.a;
-    const p = &ctx.p;
-    const sp = p.parseAll(SolidParams);
-    const prof = sp.profile orelse {
-        p.fail("profile", "solid needs 'profile': {{\"rect\": [w, h]}}, {{\"circle\": d}} or {{\"points\": [[x, y], ...]}}", .{});
-        return null;
-    };
-    if (!p.ok) return null;
-    if (!materialOk(ctx, "material", sp.material)) return null;
-    var loop: []const Pt = undefined;
-    var points_mode = false;
-    if (prof.get("rect")) |rv| {
-        const arr = rv.arr();
-        if (arr == null or arr.?.len != 2) {
-            p.fail("profile/rect", "profile.rect must be [width, height]", .{});
-            return null;
-        }
-        const w = units.parseLength(arr.?[0]);
-        const h = units.parseLength(arr.?[1]);
-        if (w == null or h == null or w.? <= 0 or h.? <= 0) {
-            p.fail("profile/rect", "profile.rect must be two positive lengths [width, height]", .{});
-            return null;
-        }
-        loop = try model.rectLoop(a, 0, 0, w.?, h.?);
-    } else if (prof.get("circle")) |cv| {
-        const dd = units.parseLength(cv);
-        if (dd == null or dd.? <= 0) {
-            p.fail("profile/circle", "profile.circle must be a positive diameter", .{});
-            return null;
-        }
-        loop = try model.circleLoop(a, dd.? / 2, dd.? / 2, dd.? / 2);
-    } else if (prof.get("points")) |pv| {
-        const pts = (try parsePointList(ctx, "profile/points", pv, true)) orelse return null;
-        const clean = try dropDuplicatePoints(a, pts);
-        if (clean.len < 3) {
-            p.fail("profile/points", "profile.points needs at least 3 points", .{});
-            return null;
-        }
-        loop = try orientedCcw(a, clean);
-        points_mode = true;
-    } else {
-        p.fail("profile", "profile must have one of 'rect', 'circle' or 'points'", .{});
-        return null;
-    }
-    const prism = Prism{ .material = sp.material, .loops = try model.oneLoop(a, loop) };
-    const bx = geom.loopBox(loop);
-    return .{
-        .prisms = try onePrism(a, prism),
-        .box = bx,
-        .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "solid {s} (escape hatch)", .{sp.material}),
-    };
-}
 
 // ---- flashing -----------------------------------------------------------------------------------------------------
 
@@ -360,14 +296,14 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .membrane => membrane.build(ctx),
         .fill => fill.build(ctx),
         .insulation => insulation.build(ctx),
-        .solid => buildSolid(ctx),
+        .solid => solid.build(ctx),
         .flashing => buildFlashing(ctx),
         .joint => buildJoint(ctx),
     };
 }
 
 /// The parameter struct of every component type, in `catalog.Type` order.
-pub const param_structs = .{ lumber.Params, panel.Params, cmu_wall.Params, concrete.Params, rebar.Params, anchor_bolt.Params, connector.Params, truss.Params, membrane.Params, fill.Params, insulation.Params, SolidParams, FlashingParams, JointParams };
+pub const param_structs = .{ lumber.Params, panel.Params, cmu_wall.Params, concrete.Params, rebar.Params, anchor_bolt.Params, connector.Params, truss.Params, membrane.Params, fill.Params, insulation.Params, solid.Params, FlashingParams, JointParams };
 
 comptime {
     if (param_structs.len != std.meta.tags(catalog.Type).len) @compileError("builders.param_structs must have one struct per catalog.Type tag");

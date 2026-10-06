@@ -281,7 +281,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .solid,
         .summary = "Escape hatch: any extruded profile with an explicit material (flagged I_SOLID_USED).",
-        .params = params.rows(builders.SolidParams),
+        .params = params.rows(builders.solid.Params),
         .traits = .{ .escape_hatch = true },
         .parts = "none",
         .anchors = "9 box anchors",
