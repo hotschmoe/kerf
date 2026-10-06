@@ -214,7 +214,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .connector,
         .summary = "Schematic steel hardware: straps, ties, embedded anchors, drawn as a thickened polyline.",
-        .params = params.rows(builders.ConnectorParams),
+        .params = params.rows(builders.connector.Params),
         .traits = .{ .hardware = true, .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
