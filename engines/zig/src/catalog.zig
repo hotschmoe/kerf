@@ -185,7 +185,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .concrete,
         .summary = "Cast-in-place concrete: rect/footing, free polygon, or a monolithic slab with turned-down edge.",
-        .params = params.rows(builders.ConcreteParams),
+        .params = params.rows(builders.concrete.Params),
         .parts = "footing (turndown zone), slab (slab zone), base (when base is set) for slab_edge; footing for shape footing",
         .anchors = "9 box anchors; slab_edge adds top_exterior (datum (0,0) at the exterior face), slab_top, footing_bottom_exterior, footing_bottom_interior, slab_bottom_interior, haunch_top, recess_bottom_exterior, recess_bottom_interior, recess_top_interior, base_bottom_interior and base_bottom_footing (with base)",
         .draws = "slab_edge local origin: exterior face at x=0, top of slab at y=0, footing bottom at y=-footing_depth. Cut region with the material hatch; parts are zones (rebar place.in, cover), not separate outlines.",
