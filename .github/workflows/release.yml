@@ -66,7 +66,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/release"
           build() { # <zig target> <asset name>
             rm -rf zig-out
-            zig build -Dtarget="$1" -Doptimize=ReleaseSafe -Dui="$UI_DIR"
+            zig build -Dtarget="$1" -Doptimize=ReleaseSafe -Dstrip=true -Dui="$UI_DIR"
             if [ -f zig-out/bin/kerf.exe ]; then cp zig-out/bin/kerf.exe "$GITHUB_WORKSPACE/release/$2"; else cp zig-out/bin/kerf "$GITHUB_WORKSPACE/release/$2"; fi
           }
           build x86_64-windows-gnu   kerf-x86_64-windows.exe

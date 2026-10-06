@@ -9,6 +9,8 @@ fn addSpecImports(b: *std.Build, m: *std.Build.Module) void {
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    // Debug info makes a ReleaseSafe Linux binary ~4x larger; release builds drop it unless `-Dstrip=false` (Debug keeps it).
+    const strip = b.option(bool, "strip", "Strip debug info from the CLI (default: true unless -Doptimize=Debug)") orelse (optimize != .Debug);
 
     // The importable library module (`@import("kerf")`). Style and font are embedded from src/data.
     const kerf = b.addModule("kerf", .{
@@ -25,6 +27,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .strip = strip,
             .imports = &.{.{ .name = "kerf", .module = kerf }},
         }),
     });
