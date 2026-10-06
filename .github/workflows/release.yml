@@ -25,6 +25,10 @@ jobs:
         with:
           version: 0.16.0
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       # Order matters: the web build copies engines/zig/dist/kerf.wasm, and the CLI embeds the web build.
       - name: Build kerf.wasm
         working-directory: engines/zig
@@ -42,20 +46,27 @@ jobs:
             echo "UI_DIR=../../apps/web/dist-zig" >> "$GITHUB_ENV"
           fi
 
+      # The release is gated by the same checks as CI, run against the build that ships (ReleaseSafe, REVIEW SAF-2).
       - name: Test the engine and the server
         working-directory: engines/zig
         run: |
+          pip install --quiet ezdxf pypdf pypdfium2 pillow numpy
           zig build test --summary all
+          zig build              # Debug (safety checks): what the golden gate exercises
+          bash tests/check_golden.sh
           zig build -Doptimize=ReleaseSafe -Dui="$UI_DIR"
+          node tests/cli_ergonomics.mjs
           node tests/serve_smoke.mjs
 
-      - name: Cross-compile kerf (UI embedded)
+      # ReleaseSafe, not ReleaseSmall: bounds, overflow and cast checks stay on in the shipped CLI, so a bad input is a
+      # clean error/abort instead of silent memory corruption (about +1.2 MB per target; the wasm stays ReleaseSmall).
+      - name: Cross-compile kerf (UI embedded, ReleaseSafe)
         working-directory: engines/zig
         run: |
           mkdir -p "$GITHUB_WORKSPACE/release"
           build() { # <zig target> <asset name>
             rm -rf zig-out
-            zig build -Dtarget="$1" -Doptimize=ReleaseSmall -Dui="$UI_DIR"
+            zig build -Dtarget="$1" -Doptimize=ReleaseSafe -Dui="$UI_DIR"
             if [ -f zig-out/bin/kerf.exe ]; then cp zig-out/bin/kerf.exe "$GITHUB_WORKSPACE/release/$2"; else cp zig-out/bin/kerf "$GITHUB_WORKSPACE/release/$2"; fi
           }
           build x86_64-windows-gnu   kerf-x86_64-windows.exe

@@ -16,22 +16,58 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
-      - name: zig build test
-        run: zig build test --summary all
-      - name: wasm build
-        run: zig build wasm
-      - name: cross-compile smoke (windows, macos, linux-musl)
-        run: |
-          for t in x86_64-windows-gnu aarch64-macos x86_64-linux-musl; do
-            zig build -Dtarget=$t -Doptimize=ReleaseSmall --prefix "$RUNNER_TEMP/out-$t"
-          done
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: kerf serve smoke test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: python tooling for the golden gate (DXF and PDF checkers)
+        run: pip install --quiet ezdxf pypdf pypdfium2 pillow numpy
+
+      # TODO(fmt): enable once the engine hardening agent's whitespace-only `zig fmt src` commit has landed on main
+      # (REVIEW batch 1); until then this would fail on the whole tree:
+      #   - name: zig fmt --check
+      #     run: zig fmt --check src
+
+      - name: zig build test
+        run: zig build test --summary all
+
+      # Debug = safety-checked: the build the fuzzer, the goldens, the CLI tests and the server smoke test exercise.
+      - name: build the CLI (Debug, all safety checks on)
+        run: zig build
+      - name: golden gate (svg/dxf/pdf/png/drawing byte-identical, DXF and PDF audits)
+        run: bash tests/check_golden.sh
+      - name: CLI ergonomics tests
+        run: node tests/cli_ergonomics.mjs
+      - name: kerf serve smoke test (Debug build)
+        run: node tests/serve_smoke.mjs
+      - name: 'short fuzz run (300 mutated documents, seed 1; no crash, no signal)'
+        run: python3 ../../tools/zig-engine/fuzz.py 300 1
+
+      - name: wasm build + wasm golden (24 byte-identical outputs)
         run: |
-          zig build
-          node tests/serve_smoke.mjs
+          zig build wasm
+          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+      # TODO(no_panic): enable once the engine hardening agent's `no_panic` wasm entry point has landed (REVIEW SAF-2):
+      # the module must build and pass the same golden with every safety check compiled in.
+      #   - name: wasm build with safety checks (ReleaseSafe) + golden
+      #     run: |
+      #       zig build wasm -Dwasm-optimize=ReleaseSafe
+      #       node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+
+      # What ships is ReleaseSafe (REVIEW SAF-2): run the server smoke test against exactly that, too.
+      - name: kerf serve smoke test (ReleaseSafe build, the shipped optimisation mode)
+        run: |
+          zig build -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/release-safe"
+          node tests/serve_smoke.mjs "$RUNNER_TEMP/release-safe/bin/kerf"
+          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/release-safe/bin/kerf"
+
+      - name: cross-compile smoke (windows, macos, linux-musl; the agent bridge has a Windows job-object path)
+        run: |
+          for t in x86_64-windows-gnu aarch64-windows-gnu aarch64-macos x86_64-linux-musl aarch64-linux-musl; do
+            zig build -Dtarget=$t -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/out-$t"
+          done
 
   web:
     runs-on: ubuntu-latest
@@ -60,5 +96,8 @@ jobs:
         run: |
           npm run build:serve
           cd ../../engines/zig
-          zig build -Doptimize=ReleaseSmall -Dui=../../apps/web/dist-serve
+          zig build -Doptimize=ReleaseSafe -Dui=../../apps/web/dist-serve
           ls -l zig-out/bin/kerf
+      - name: the server with the embedded UI passes the smoke test (CSP of the real index.html)
+        working-directory: engines/zig
+        run: node tests/serve_smoke.mjs
