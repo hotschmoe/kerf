@@ -285,7 +285,7 @@ pub fn writeHead(w: *Io.Writer, h: Head) Io.Writer.Error!void {
     if (h.content_type) |ct| try w.print("Content-Type: {s}\r\n", .{ct});
     if (h.content_length) |n| try w.print("Content-Length: {d}\r\n", .{n});
     if (h.no_store) try w.writeAll("Cache-Control: no-store\r\n");
-    try w.writeAll("X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nCross-Origin-Opener-Policy: same-origin\r\n");
+    try w.writeAll("X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n");
     try w.print("Content-Security-Policy: {s}\r\n", .{h.csp orelse api_csp});
     try w.print("Connection: {s}\r\n", .{if (h.keep_alive and h.content_length != null) "keep-alive" else "close"});
     try w.writeAll(h.extra);

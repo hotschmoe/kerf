@@ -315,7 +315,7 @@ Every item has a regression test in `tests/serve_smoke.mjs` (raw sockets for the
   instead of re-read every tick; `apiList` runs the engine `check` outside `scan_mu`; SSE data lines never contain CR/LF.
 - **V-6**: message <= 100,000 bytes (400 `E_INPUT`); an OS "argument too long" at spawn is 400, not 500.
 - **V-7/V-8**: token by default (see the first bullet), `randomSecure`, SHA-256-then-`timing_safe.eql` compare; every response carries
-  `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy`, and a CSP: API/exports
+  `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a CSP: API/exports
   `default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'`, the UI `default-src 'self'; script-src 'self'
   'wasm-unsafe-eval' 'sha256-<each inline script of the embedded index.html, computed at startup>'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
   blob:; connect-src 'self' data: blob:; worker-src 'self' blob:; frame-ancestors 'none'; ...`.

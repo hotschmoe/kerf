@@ -33,8 +33,8 @@ const providers = [_]struct { id: []const u8, base: ?[]const u8 }{
 };
 
 const blocked_headers = [_][]const u8{
-    "host",            "content-length", "connection",    "transfer-encoding", "accept-encoding", "upgrade",
-    "te",              "trailer",        "expect",        "keep-alive",        "proxy-authorization", "proxy-connection",
+    "host",            "content-length", "connection",       "transfer-encoding", "accept-encoding",     "upgrade",
+    "te",              "trailer",        "expect",           "keep-alive",        "proxy-authorization", "proxy-connection",
     "x-forwarded-for", "forwarded",      "content-encoding",
 };
 
