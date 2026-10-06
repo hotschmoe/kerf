@@ -300,7 +300,7 @@ fn renderCommon(a: Allocator) Allocator.Error![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(a, "common: fields every component accepts (plus the type's own params: `kerf schema <type>`).\n\n");
     for (catalog.common) |p| {
-        try out.print(a, "- {s}: ", .{p.name});
+        try out.print(a, "- {s}: ", .{try p.nameText(a)});
         if (std.mem.eql(u8, p.def, "required")) try out.appendSlice(a, "required") else try out.print(a, "default {s}", .{p.def});
         try out.print(a, ". {s}\n", .{p.desc});
     }
@@ -318,14 +318,14 @@ fn renderComponent(a: Allocator, e: *const catalog.Entry) Allocator.Error![]cons
     try out.print(a, "{s}: {s}\n\n", .{ e.name(), e.summary });
     for (e.params) |p| {
         const req = std.mem.startsWith(u8, p.def, "required") or std.mem.endsWith(u8, p.def, ": required");
-        try out.print(a, "- {s}: ", .{p.name});
+        try out.print(a, "- {s}: ", .{try p.nameText(a)});
         if (req) try out.print(a, "{s}", .{p.def}) else try out.print(a, "default {s}", .{p.def});
         try out.print(a, ". {s}\n", .{p.desc});
     }
     try out.print(a, "\nCommon fields (every type): ", .{});
     for (catalog.common, 0..) |p, i| {
         if (i > 0) try out.appendSlice(a, ", ");
-        try out.appendSlice(a, p.name);
+        try out.appendSlice(a, p.names[0]);
     }
     try out.appendSlice(a, " (`kerf schema common`).\n");
     try out.print(a, "Parts: {s}\nAnchors: {s}\nDraws: {s}\n", .{ e.parts, e.anchors, e.draws });

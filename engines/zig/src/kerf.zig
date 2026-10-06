@@ -15,6 +15,7 @@ pub const font = @import("font.zig");
 pub const pen = @import("pen.zig");
 pub const style = @import("style.zig");
 pub const model = @import("model.zig");
+pub const params = @import("params.zig");
 pub const catalog = @import("catalog.zig");
 pub const scene = @import("scene.zig");
 pub const pathgeom = @import("pathgeom.zig");

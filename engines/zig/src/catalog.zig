@@ -5,10 +5,23 @@ const std = @import("std");
 const json = @import("json.zig");
 const Allocator = std.mem.Allocator;
 
+/// One row of a parameter table: the key names that share it (the first is canonical; `width, height` share a row), the
+/// default as text and a description.
 pub const Param = struct {
-    name: []const u8,
+    names: []const []const u8,
     def: []const u8,
     desc: []const u8,
+
+    /// The names joined as the tables print them: `width, height`.
+    pub fn nameText(self: Param, a: Allocator) Allocator.Error![]const u8 {
+        if (self.names.len == 1) return self.names[0];
+        var out: std.ArrayList(u8) = .empty;
+        for (self.names, 0..) |n, i| {
+            if (i > 0) try out.appendSlice(a, ", ");
+            try out.appendSlice(a, n);
+        }
+        return out.items;
+    }
 };
 
 /// The component types, in catalog order. The tag name is the type's name in documents (`"type": "lumber"`).
@@ -100,19 +113,19 @@ pub fn hardwareLine(a: Allocator, h: Hardware) Allocator.Error![]const u8 {
 }
 
 pub const common: []const Param = &.{
-    .{ .name = "id", .def = "required", .desc = "unique slug [a-z][a-z0-9_]*; annotations and refs name it" },
-    .{ .name = "type", .def = "required", .desc = "one of the catalog types" },
-    .{ .name = "label", .def = "null", .desc = "short human label for summaries" },
-    .{ .name = "at", .def = "origin", .desc = "{anchor (default bottom_left), to: Ref | {ref, offset} | [x,y], offset: [dx,dy]}: translates the part so its anchor lands on `to`+offset. Point-list types (connector, membrane, fill, rebar path, concrete polygon, solid points) ignore `anchor`: literal [x,y] entries are relative to `to`+offset, Refs are absolute" },
-    .{ .name = "rotate", .def = "0", .desc = "degrees CCW about the placement point" },
-    .{ .name = "slope", .def = "null", .desc = "\"4:12\" rise:run, degrees, or \"@<component>\" (e.g. \"@truss\": inherit that member's slope, so pitch lives in ONE place; a truss with exterior right slopes the other way). Rotation about the placement point; adds to rotate" },
-    .{ .name = "mirror", .def = "false", .desc = "mirror the profile about its vertical centerline before placement" },
-    .{ .name = "z", .def = "null", .desc = "[z0,z1] absolute, or a number = centered there with the member's natural z thickness. Default: spans doc `run` (members along Z); members with a natural z thickness (lumber run x/y, truss, connector, path rebar, anchor_bolt) are centered on the first section view's `cut_z` (when it sets one, so they are cut, not hidden), else on the middle of `run`" },
-    .{ .name = "array", .def = "null", .desc = "{axis: x|y|z, count, spacing}: instance k offset by k*spacing; instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k" },
-    .{ .name = "embedded", .def = "type default", .desc = "drawn over cut solids and never occluded (rebar, anchor bolts)" },
-    .{ .name = "visible", .def = "true", .desc = "false hides the component from views and mesh" },
-    .{ .name = "shown", .def = "solid", .desc = "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)" },
-    .{ .name = "acknowledge", .def = "null", .desc = "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged; I_* codes are accepted and ignored (`kerf schema acknowledge`)" },
+    .{ .names = &.{"id"}, .def = "required", .desc = "unique slug [a-z][a-z0-9_]*; annotations and refs name it" },
+    .{ .names = &.{"type"}, .def = "required", .desc = "one of the catalog types" },
+    .{ .names = &.{"label"}, .def = "null", .desc = "short human label for summaries" },
+    .{ .names = &.{"at"}, .def = "origin", .desc = "{anchor (default bottom_left), to: Ref | {ref, offset} | [x,y], offset: [dx,dy]}: translates the part so its anchor lands on `to`+offset. Point-list types (connector, membrane, fill, rebar path, concrete polygon, solid points) ignore `anchor`: literal [x,y] entries are relative to `to`+offset, Refs are absolute" },
+    .{ .names = &.{"rotate"}, .def = "0", .desc = "degrees CCW about the placement point" },
+    .{ .names = &.{"slope"}, .def = "null", .desc = "\"4:12\" rise:run, degrees, or \"@<component>\" (e.g. \"@truss\": inherit that member's slope, so pitch lives in ONE place; a truss with exterior right slopes the other way). Rotation about the placement point; adds to rotate" },
+    .{ .names = &.{"mirror"}, .def = "false", .desc = "mirror the profile about its vertical centerline before placement" },
+    .{ .names = &.{"z"}, .def = "null", .desc = "[z0,z1] absolute, or a number = centered there with the member's natural z thickness. Default: spans doc `run` (members along Z); members with a natural z thickness (lumber run x/y, truss, connector, path rebar, anchor_bolt) are centered on the first section view's `cut_z` (when it sets one, so they are cut, not hidden), else on the middle of `run`" },
+    .{ .names = &.{"array"}, .def = "null", .desc = "{axis: x|y|z, count, spacing}: instance k offset by k*spacing; instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k" },
+    .{ .names = &.{"embedded"}, .def = "type default", .desc = "drawn over cut solids and never occluded (rebar, anchor bolts)" },
+    .{ .names = &.{"visible"}, .def = "true", .desc = "false hides the component from views and mesh" },
+    .{ .names = &.{"shown"}, .def = "solid", .desc = "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)" },
+    .{ .names = &.{"acknowledge"}, .def = "null", .desc = "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged; I_* codes are accepted and ignored (`kerf schema acknowledge`)" },
 };
 
 pub const box_anchors = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
@@ -122,18 +135,18 @@ pub const entries: []const Entry = &.{
         .type = .lumber,
         .summary = "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
         .params = &.{
-            .{ .name = "size", .def = "required", .desc = "sawn nominal \"2x4\"..\"2x12\", \"4x4\"..\"4x12\", \"6x6\"..\"6x12\" (also 1x4..1x12); or actual \"1.75x11.875\" (thickness x depth) for lvl/psl/lsl/glulam" },
-            .{ .name = "product", .def = "sawn", .desc = "sawn | lvl | psl | lsl | glulam" },
-            .{ .name = "run", .def = "z", .desc = "axis the length runs along: z (seen end-on in section), x or y" },
-            .{ .name = "orient", .def = "upright", .desc = "run z only: upright (depth vertical) or flat (depth horizontal)" },
-            .{ .name = "face", .def = "wide", .desc = "run x/y only: face seen by the viewer: wide (depth in-plane) or narrow (thickness in-plane)" },
-            .{ .name = "length", .def = "required for run x/y", .desc = "member length (inches or ft-in string); alternative: `until`" },
-            .{ .name = "until", .def = "null", .desc = "run x/y alternative to length: a Ref (or {ref, offset}); the member grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate on that axis (anchor *_left grows right, *_right left, top_* down, bottom_* up; center anchors are an error; length and until together are E_PARAM). Example jack stud: \"at\": {\"anchor\": \"top_left\", \"to\": \"beam@bottom_left\"}, \"until\": \"bottom_plate@top_left\"" },
-            .{ .name = "plies", .def = "1", .desc = "built-up members; plies stack along X for run z, along Z otherwise; draws ply lines" },
-            .{ .name = "treated", .def = "false", .desc = "preservative treated (material wood_treated; W_UNTREATED_CONTACT checks)" },
-            .{ .name = "blocking", .def = "false", .desc = "discontinuous member: section mark is one diagonal instead of an X" },
-            .{ .name = "grade", .def = "null", .desc = "free text e.g. \"#2 DF-L\" for notes" },
-            .{ .name = "barrier", .def = "null", .desc = "sill_seal | membrane: draws a 1/8\" sealer strip under the member (part `barrier`, material sill_seal) and the member sits on top of it, so bottom_* anchors are the strip underside and the member top is 1/8\" higher than without. Clears W_UNTREATED_CONTACT for untreated wood on concrete/CMU (put it on the wood member that bears on the masonry; add a note, e.g. `SILL SEALER`)" },
+            .{ .names = &.{"size"}, .def = "required", .desc = "sawn nominal \"2x4\"..\"2x12\", \"4x4\"..\"4x12\", \"6x6\"..\"6x12\" (also 1x4..1x12); or actual \"1.75x11.875\" (thickness x depth) for lvl/psl/lsl/glulam" },
+            .{ .names = &.{"product"}, .def = "sawn", .desc = "sawn | lvl | psl | lsl | glulam" },
+            .{ .names = &.{"run"}, .def = "z", .desc = "axis the length runs along: z (seen end-on in section), x or y" },
+            .{ .names = &.{"orient"}, .def = "upright", .desc = "run z only: upright (depth vertical) or flat (depth horizontal)" },
+            .{ .names = &.{"face"}, .def = "wide", .desc = "run x/y only: face seen by the viewer: wide (depth in-plane) or narrow (thickness in-plane)" },
+            .{ .names = &.{"length"}, .def = "required for run x/y", .desc = "member length (inches or ft-in string); alternative: `until`" },
+            .{ .names = &.{"until"}, .def = "null", .desc = "run x/y alternative to length: a Ref (or {ref, offset}); the member grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate on that axis (anchor *_left grows right, *_right left, top_* down, bottom_* up; center anchors are an error; length and until together are E_PARAM). Example jack stud: \"at\": {\"anchor\": \"top_left\", \"to\": \"beam@bottom_left\"}, \"until\": \"bottom_plate@top_left\"" },
+            .{ .names = &.{"plies"}, .def = "1", .desc = "built-up members; plies stack along X for run z, along Z otherwise; draws ply lines" },
+            .{ .names = &.{"treated"}, .def = "false", .desc = "preservative treated (material wood_treated; W_UNTREATED_CONTACT checks)" },
+            .{ .names = &.{"blocking"}, .def = "false", .desc = "discontinuous member: section mark is one diagonal instead of an X" },
+            .{ .names = &.{"grade"}, .def = "null", .desc = "free text e.g. \"#2 DF-L\" for notes" },
+            .{ .names = &.{"barrier"}, .def = "null", .desc = "sill_seal | membrane: draws a 1/8\" sealer strip under the member (part `barrier`, material sill_seal) and the member sits on top of it, so bottom_* anchors are the strip underside and the member top is 1/8\" higher than without. Clears W_UNTREATED_CONTACT for untreated wood on concrete/CMU (put it on the wood member that bears on the masonry; add a note, e.g. `SILL SEALER`)" },
         },
         .parts = "barrier (when set)",
         .anchors = "the 9 box anchors",
@@ -144,11 +157,11 @@ pub const entries: []const Entry = &.{
         .type = .panel,
         .summary = "Sheathing, boards, gypsum, soffit, fascia/trim boards as a thin rectangle.",
         .params = &.{
-            .{ .name = "material", .def = "osb", .desc = "osb | plywood | gypsum | fiber_cement | wood_board" },
-            .{ .name = "thickness", .def = "required", .desc = "e.g. 0.4375 (7/16\"), 0.46875 (15/32), 0.5, 0.625, 0.75" },
-            .{ .name = "length", .def = "required", .desc = "in-plane extent; alternative: `until` (same rule as lumber)" },
-            .{ .name = "until", .def = "null", .desc = "alternative to length: a Ref; the panel grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate. On a sloped panel (`slope`, e.g. \"@truss\") the run axis is the rotated one: the end is cut square where the Ref projects onto the slope. Roof sheathing: \"slope\": \"@truss\", \"until\": \"truss@top_chord_end\" (no literal length or pitch to keep in sync)" },
-            .{ .name = "run", .def = "x", .desc = "in-plane direction of length before rotation: x (length x thickness) or y (thickness x length)" },
+            .{ .names = &.{"material"}, .def = "osb", .desc = "osb | plywood | gypsum | fiber_cement | wood_board" },
+            .{ .names = &.{"thickness"}, .def = "required", .desc = "e.g. 0.4375 (7/16\"), 0.46875 (15/32), 0.5, 0.625, 0.75" },
+            .{ .names = &.{"length"}, .def = "required", .desc = "in-plane extent; alternative: `until` (same rule as lumber)" },
+            .{ .names = &.{"until"}, .def = "null", .desc = "alternative to length: a Ref; the panel grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate. On a sloped panel (`slope`, e.g. \"@truss\") the run axis is the rotated one: the end is cut square where the Ref projects onto the slope. Roof sheathing: \"slope\": \"@truss\", \"until\": \"truss@top_chord_end\" (no literal length or pitch to keep in sync)" },
+            .{ .names = &.{"run"}, .def = "x", .desc = "in-plane direction of length before rotation: x (length x thickness) or y (thickness x length)" },
         },
         .parts = "none",
         .anchors = "the 9 box anchors",
@@ -159,13 +172,13 @@ pub const entries: []const Entry = &.{
         .type = .cmu_wall,
         .summary = "Concrete masonry wall in section: face shells, grouted cells, mortar joints, bond beam.",
         .params = &.{
-            .{ .name = "width", .def = "8", .desc = "nominal 6, 8, 10, 12 => actual 5.625, 7.625, 9.625, 11.625" },
-            .{ .name = "courses", .def = "required", .desc = "number of 8\" courses (7.625 unit + 0.375 mortar joint)" },
-            .{ .name = "bond_beam_courses", .def = "0", .desc = "top N courses are bond-beam units (always grouted)" },
-            .{ .name = "grout", .def = "reinforced", .desc = "solid | reinforced (bond beams + the cut cell) | none" },
-            .{ .name = "face_shell", .def = "1.25", .desc = "face shell thickness drawn in section" },
-            .{ .name = "top_joint", .def = "false", .desc = "mortar joint above the top course" },
-            .{ .name = "cover", .def = "{sides:1.5, top:1.5, bottom:0.5}", .desc = "required clear cover for rebar (W_COVER); supports cover.parts.<part> overrides" },
+            .{ .names = &.{"width"}, .def = "8", .desc = "nominal 6, 8, 10, 12 => actual 5.625, 7.625, 9.625, 11.625" },
+            .{ .names = &.{"courses"}, .def = "required", .desc = "number of 8\" courses (7.625 unit + 0.375 mortar joint)" },
+            .{ .names = &.{"bond_beam_courses"}, .def = "0", .desc = "top N courses are bond-beam units (always grouted)" },
+            .{ .names = &.{"grout"}, .def = "reinforced", .desc = "solid | reinforced (bond beams + the cut cell) | none" },
+            .{ .names = &.{"face_shell"}, .def = "1.25", .desc = "face shell thickness drawn in section" },
+            .{ .names = &.{"top_joint"}, .def = "false", .desc = "mortar joint above the top course" },
+            .{ .names = &.{"cover"}, .def = "{sides:1.5, top:1.5, bottom:0.5}", .desc = "required clear cover for rebar (W_COVER); supports cover.parts.<part> overrides" },
         },
         .parts = "course_1..course_n (1 = bottom), bond_beam, grout",
         .anchors = "9 box anchors + bond_beam_center, top_center, cell_center_top",
@@ -176,20 +189,20 @@ pub const entries: []const Entry = &.{
         .type = .concrete,
         .summary = "Cast-in-place concrete: rect/footing, free polygon, or a monolithic slab with turned-down edge.",
         .params = &.{
-            .{ .name = "shape", .def = "required", .desc = "rect | footing | polygon | slab_edge" },
-            .{ .name = "material", .def = "concrete", .desc = "any style material" },
-            .{ .name = "cover", .def = "{bottom:3, sides:3, top:1.5}", .desc = "REQUIRED clear cover for bars in this host (W_COVER); cover.parts.<part> overrides per part zone, e.g. {\"parts\":{\"slab\":{\"bottom\":0.75}}}" },
-            .{ .name = "width, height", .def = "rect/footing: required", .desc = "box size" },
-            .{ .name = "points", .def = "polygon: required", .desc = "polyline [x,y(,bulge)] relative to the placement point, or absolute Refs" },
-            .{ .name = "exterior", .def = "left", .desc = "slab_edge: which side is the exterior edge (right mirrors)" },
-            .{ .name = "slab_thickness", .def = "4", .desc = "slab_edge" },
-            .{ .name = "slab_length", .def = "48", .desc = "slab_edge: slab drawn from exterior face inward" },
-            .{ .name = "footing_width", .def = "12", .desc = "slab_edge: bottom width of the turndown" },
-            .{ .name = "footing_depth", .def = "18", .desc = "slab_edge: top of slab to bottom of footing" },
-            .{ .name = "haunch", .def = "45", .desc = "slab_edge: inner face slope from horizontal in degrees; 90 = vertical" },
-            .{ .name = "recess", .def = "null", .desc = "slab_edge: {width, depth, from_edge} depression at the top exterior edge (door sill); from_edge 0 = at the exterior face" },
-            .{ .name = "recess_slope", .def = "0", .desc = "slab_edge: recess floor falls this many inches toward the exterior over its width" },
-            .{ .name = "base", .def = "null", .desc = "slab_edge: {material: gravel|sand|compacted_fill, thickness} uniform base course under the slab soffit and along the haunch (soil side), stopping at the footing bottom; part `base` with the fill hatch. Replaces hand-drawn fill polygons under the slab" },
+            .{ .names = &.{"shape"}, .def = "required", .desc = "rect | footing | polygon | slab_edge" },
+            .{ .names = &.{"material"}, .def = "concrete", .desc = "any style material" },
+            .{ .names = &.{"cover"}, .def = "{bottom:3, sides:3, top:1.5}", .desc = "REQUIRED clear cover for bars in this host (W_COVER); cover.parts.<part> overrides per part zone, e.g. {\"parts\":{\"slab\":{\"bottom\":0.75}}}" },
+            .{ .names = &.{ "width", "height" }, .def = "rect/footing: required", .desc = "box size" },
+            .{ .names = &.{"points"}, .def = "polygon: required", .desc = "polyline [x,y(,bulge)] relative to the placement point, or absolute Refs" },
+            .{ .names = &.{"exterior"}, .def = "left", .desc = "slab_edge: which side is the exterior edge (right mirrors)" },
+            .{ .names = &.{"slab_thickness"}, .def = "4", .desc = "slab_edge" },
+            .{ .names = &.{"slab_length"}, .def = "48", .desc = "slab_edge: slab drawn from exterior face inward" },
+            .{ .names = &.{"footing_width"}, .def = "12", .desc = "slab_edge: bottom width of the turndown" },
+            .{ .names = &.{"footing_depth"}, .def = "18", .desc = "slab_edge: top of slab to bottom of footing" },
+            .{ .names = &.{"haunch"}, .def = "45", .desc = "slab_edge: inner face slope from horizontal in degrees; 90 = vertical" },
+            .{ .names = &.{"recess"}, .def = "null", .desc = "slab_edge: {width, depth, from_edge} depression at the top exterior edge (door sill); from_edge 0 = at the exterior face" },
+            .{ .names = &.{"recess_slope"}, .def = "0", .desc = "slab_edge: recess floor falls this many inches toward the exterior over its width" },
+            .{ .names = &.{"base"}, .def = "null", .desc = "slab_edge: {material: gravel|sand|compacted_fill, thickness} uniform base course under the slab soffit and along the haunch (soil side), stopping at the footing bottom; part `base` with the fill hatch. Replaces hand-drawn fill polygons under the slab" },
         },
         .parts = "footing (turndown zone), slab (slab zone), base (when base is set) for slab_edge; footing for shape footing",
         .anchors = "9 box anchors; slab_edge adds top_exterior (datum (0,0) at the exterior face), slab_top, footing_bottom_exterior, footing_bottom_interior, slab_bottom_interior, haunch_top, recess_bottom_exterior, recess_bottom_interior, recess_top_interior, base_bottom_interior and base_bottom_footing (with base)",
@@ -200,12 +213,12 @@ pub const entries: []const Entry = &.{
         .type = .rebar,
         .summary = "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
         .params = &.{
-            .{ .name = "size", .def = "#4", .desc = "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
-            .{ .name = "mode", .def = "along_z", .desc = "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
-            .{ .name = "place", .def = "null", .desc = "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face, spread evenly between the zone's adjacent faces at `side_cover` (count 1 centers). center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position)" },
-            .{ .name = "points", .def = "path: required", .desc = "polyline [x,y] or Refs; bends get radius bend_radius, drawn as fillets" },
-            .{ .name = "bend_radius", .def = "3*d_b", .desc = "inside bend radius for path bars" },
-            .{ .name = "spacing_note", .def = "null", .desc = "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
+            .{ .names = &.{"size"}, .def = "#4", .desc = "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
+            .{ .names = &.{"mode"}, .def = "along_z", .desc = "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
+            .{ .names = &.{"place"}, .def = "null", .desc = "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face, spread evenly between the zone's adjacent faces at `side_cover` (count 1 centers). center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position)" },
+            .{ .names = &.{"points"}, .def = "path: required", .desc = "polyline [x,y] or Refs; bends get radius bend_radius, drawn as fillets" },
+            .{ .names = &.{"bend_radius"}, .def = "3*d_b", .desc = "inside bend radius for path bars" },
+            .{ .names = &.{"spacing_note"}, .def = "null", .desc = "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
         },
         .parts = "none",
         .anchors = "9 box anchors of the bar (center = bar center for along_z)",
@@ -216,12 +229,12 @@ pub const entries: []const Entry = &.{
         .type = .anchor_bolt,
         .summary = "Anchor bolt in the XY plane at a given z (shank, hook, nut and washer).",
         .params = &.{
-            .{ .name = "diameter", .def = "0.5", .desc = "0.5 or 0.625 typical" },
-            .{ .name = "embed", .def = "7 (4 for wedge/screw)", .desc = "length below the placement point (top of concrete); effective embedment for wedge/screw" },
-            .{ .name = "projection", .def = "2.5", .desc = "length above the placement point" },
-            .{ .name = "hook", .def = "J", .desc = "J: 180 degree bend toward +x, inside radius 1.5*d, returning up hook_len from the lowest point; L: 90 degree bend toward +x, horizontal leg ends hook_len from the shaft centerline; headed: square head 2*d wide, 0.5*d thick; none; wedge: post-installed expansion anchor (straight shaft, expansion clip 1.15*d wide x 0.6*embed long at the embedded end, nut+washer); screw: Titen HD style concrete screw (thread ticks along the embedment, hex washer head at the top, no nut)" },
-            .{ .name = "hook_len", .def = "J 2, L 3", .desc = "hook leg length in inches (see hook)" },
-            .{ .name = "nut_washer", .def = "true", .desc = "draw nut (1.5*d wide, 0.875*d tall, top at projection - 0.25*d) and washer (2.25*d wide, 0.125 thick) under it" },
+            .{ .names = &.{"diameter"}, .def = "0.5", .desc = "0.5 or 0.625 typical" },
+            .{ .names = &.{"embed"}, .def = "7 (4 for wedge/screw)", .desc = "length below the placement point (top of concrete); effective embedment for wedge/screw" },
+            .{ .names = &.{"projection"}, .def = "2.5", .desc = "length above the placement point" },
+            .{ .names = &.{"hook"}, .def = "J", .desc = "J: 180 degree bend toward +x, inside radius 1.5*d, returning up hook_len from the lowest point; L: 90 degree bend toward +x, horizontal leg ends hook_len from the shaft centerline; headed: square head 2*d wide, 0.5*d thick; none; wedge: post-installed expansion anchor (straight shaft, expansion clip 1.15*d wide x 0.6*embed long at the embedded end, nut+washer); screw: Titen HD style concrete screw (thread ticks along the embedment, hex washer head at the top, no nut)" },
+            .{ .names = &.{"hook_len"}, .def = "J 2, L 3", .desc = "hook leg length in inches (see hook)" },
+            .{ .names = &.{"nut_washer"}, .def = "true", .desc = "draw nut (1.5*d wide, 0.875*d tall, top at projection - 0.25*d) and washer (2.25*d wide, 0.125 thick) under it" },
         },
         .parts = "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut)",
         .anchors = "9 box anchors + top_of_concrete (where the bolt meets the host top surface, local (0,0))",
@@ -232,13 +245,13 @@ pub const entries: []const Entry = &.{
         .type = .connector,
         .summary = "Schematic steel hardware: straps, ties, embedded anchors, drawn as a thickened polyline.",
         .params = &.{
-            .{ .name = "model", .def = "null", .desc = "e.g. MSTA36, H2.5A, HETA20, CS16, CS14: fills width/gauge from the hardware table" },
-            .{ .name = "points", .def = "required", .desc = "polyline [x,y] or Refs of the bearing face (lay edge) or centerline (lay face)" },
-            .{ .name = "lay", .def = "edge", .desc = "edge: seen edge-on, gauge in-plane growing to `side`, width along Z; face: seen face-on, `width` in-plane centered on the polyline, gauge along Z" },
-            .{ .name = "side", .def = "left", .desc = "lay edge: left of the polyline direction (left of a left-to-right line = up) or right" },
-            .{ .name = "gauge", .def = "18", .desc = "12 .1046, 14 .0747, 16 .0598, 18 .0478, 20 .0359" },
-            .{ .name = "width", .def = "1.25", .desc = "extent along Z (lay edge) or in-plane (lay face)" },
-            .{ .name = "fasteners", .def = "null", .desc = "text for notes, e.g. \"(10) 10d EA. END\"" },
+            .{ .names = &.{"model"}, .def = "null", .desc = "e.g. MSTA36, H2.5A, HETA20, CS16, CS14: fills width/gauge from the hardware table" },
+            .{ .names = &.{"points"}, .def = "required", .desc = "polyline [x,y] or Refs of the bearing face (lay edge) or centerline (lay face)" },
+            .{ .names = &.{"lay"}, .def = "edge", .desc = "edge: seen edge-on, gauge in-plane growing to `side`, width along Z; face: seen face-on, `width` in-plane centered on the polyline, gauge along Z" },
+            .{ .names = &.{"side"}, .def = "left", .desc = "lay edge: left of the polyline direction (left of a left-to-right line = up) or right" },
+            .{ .names = &.{"gauge"}, .def = "18", .desc = "12 .1046, 14 .0747, 16 .0598, 18 .0478, 20 .0359" },
+            .{ .names = &.{"width"}, .def = "1.25", .desc = "extent along Z (lay edge) or in-plane (lay face)" },
+            .{ .names = &.{"fasteners"}, .def = "null", .desc = "text for notes, e.g. \"(10) 10d EA. END\"" },
         },
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
@@ -249,17 +262,17 @@ pub const entries: []const Entry = &.{
         .type = .truss,
         .summary = "Prefab wood truss heel and tail in side view.",
         .params = &.{
-            .{ .name = "exterior", .def = "left", .desc = "side of the heel/overhang (right mirrors)" },
-            .{ .name = "pitch", .def = "4:12", .desc = "rise:run" },
-            .{ .name = "top_chord", .def = "2x4", .desc = "sawn nominal size, depth in-plane" },
-            .{ .name = "bottom_chord", .def = "2x4", .desc = "sawn nominal size, depth in-plane" },
-            .{ .name = "heel", .def = "standard", .desc = "standard | raised" },
-            .{ .name = "heel_height", .def = "null", .desc = "raised heel: vertical height at the bearing outer edge from top of bottom chord to top of top chord" },
-            .{ .name = "bearing_width", .def = "3.5", .desc = "width of the support under the heel" },
-            .{ .name = "overhang", .def = "12", .desc = "horizontal distance from outer face of bearing to the tail end" },
-            .{ .name = "tail", .def = "plumb", .desc = "plumb | square cut" },
-            .{ .name = "span_shown", .def = "48", .desc = "how far into the building to draw (crop/break at the end)" },
-            .{ .name = "plate", .def = "true", .desc = "draw the heel truss plate outline (dashed hidden pen)" },
+            .{ .names = &.{"exterior"}, .def = "left", .desc = "side of the heel/overhang (right mirrors)" },
+            .{ .names = &.{"pitch"}, .def = "4:12", .desc = "rise:run" },
+            .{ .names = &.{"top_chord"}, .def = "2x4", .desc = "sawn nominal size, depth in-plane" },
+            .{ .names = &.{"bottom_chord"}, .def = "2x4", .desc = "sawn nominal size, depth in-plane" },
+            .{ .names = &.{"heel"}, .def = "standard", .desc = "standard | raised" },
+            .{ .names = &.{"heel_height"}, .def = "null", .desc = "raised heel: vertical height at the bearing outer edge from top of bottom chord to top of top chord" },
+            .{ .names = &.{"bearing_width"}, .def = "3.5", .desc = "width of the support under the heel" },
+            .{ .names = &.{"overhang"}, .def = "12", .desc = "horizontal distance from outer face of bearing to the tail end" },
+            .{ .names = &.{"tail"}, .def = "plumb", .desc = "plumb | square cut" },
+            .{ .names = &.{"span_shown"}, .def = "48", .desc = "how far into the building to draw (crop/break at the end)" },
+            .{ .names = &.{"plate"}, .def = "true", .desc = "draw the heel truss plate outline (dashed hidden pen)" },
         },
         .parts = "top_chord, bottom_chord, heel_web (raised only), plate, tail",
         .anchors = "9 box anchors + bearing_outer (local origin: outer edge of bearing at bottom of bottom chord), bearing_inner, tail_bottom, tail_top, top_chord_at_bearing, top_chord_bottom_at_bearing (lower edge of the top chord at the bearing plane), heel_outer (middle of the heel's outer vertical face, between the bottom chord's top and the top chord's top at the bearing: where ties and straps land), top_chord_end, bottom_chord_top_inner",
@@ -270,11 +283,11 @@ pub const entries: []const Entry = &.{
         .type = .membrane,
         .summary = "Thin layers: underlayment, vapor retarder, WRB, roofing, flashing.",
         .params = &.{
-            .{ .name = "material", .def = "membrane", .desc = "underlayment | vapor_retarder | wrb | shingles | flashing_membrane | membrane" },
-            .{ .name = "points", .def = "required", .desc = "polyline [x,y] or Refs" },
-            .{ .name = "thickness", .def = "per material", .desc = "draw thickness (vapor retarder 0.04, shingles 0.25 typical)" },
-            .{ .name = "side", .def = "left", .desc = "which side of the polyline direction the thickness grows: left of dx,dy is (-dy,dx)" },
-            .{ .name = "until", .def = "null", .desc = "a Ref (or {ref, offset}): the LAST segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction. With `slope`: \"@truss\" and points [[0,0],[12,0]] a roofing layer follows the roof and stops at e.g. \"truss@top_chord_end\"" },
+            .{ .names = &.{"material"}, .def = "membrane", .desc = "underlayment | vapor_retarder | wrb | shingles | flashing_membrane | membrane" },
+            .{ .names = &.{"points"}, .def = "required", .desc = "polyline [x,y] or Refs" },
+            .{ .names = &.{"thickness"}, .def = "per material", .desc = "draw thickness (vapor retarder 0.04, shingles 0.25 typical)" },
+            .{ .names = &.{"side"}, .def = "left", .desc = "which side of the polyline direction the thickness grows: left of dx,dy is (-dy,dx)" },
+            .{ .names = &.{"until"}, .def = "null", .desc = "a Ref (or {ref, offset}): the LAST segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction. With `slope`: \"@truss\" and points [[0,0],[12,0]] a roofing layer follows the roof and stops at e.g. \"truss@top_chord_end\"" },
         },
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
@@ -285,10 +298,10 @@ pub const entries: []const Entry = &.{
         .type = .fill,
         .summary = "Earth, gravel, sand, compacted fill as a hatched polygon.",
         .params = &.{
-            .{ .name = "material", .def = "earth", .desc = "earth | gravel | sand | compacted_fill" },
-            .{ .name = "points", .def = "required", .desc = "polygon [x,y] or Refs" },
-            .{ .name = "outline", .def = "top", .desc = "top (stroke only edges with outward normal up: the grade line) | full | none" },
-            .{ .name = "grade_label", .def = "null", .desc = "optional text for annotations" },
+            .{ .names = &.{"material"}, .def = "earth", .desc = "earth | gravel | sand | compacted_fill" },
+            .{ .names = &.{"points"}, .def = "required", .desc = "polygon [x,y] or Refs" },
+            .{ .names = &.{"outline"}, .def = "top", .desc = "top (stroke only edges with outward normal up: the grade line) | full | none" },
+            .{ .names = &.{"grade_label"}, .def = "null", .desc = "optional text for annotations" },
         },
         .parts = "none",
         .anchors = "9 box anchors of the polygon",
@@ -299,9 +312,9 @@ pub const entries: []const Entry = &.{
         .type = .insulation,
         .summary = "Rigid (hatched) or batt (loop symbol) insulation.",
         .params = &.{
-            .{ .name = "form", .def = "rigid", .desc = "rigid | batt" },
-            .{ .name = "width, height", .def = "rect: required unless points", .desc = "box size" },
-            .{ .name = "points", .def = "null", .desc = "polygon alternative to width/height" },
+            .{ .names = &.{"form"}, .def = "rigid", .desc = "rigid | batt" },
+            .{ .names = &.{ "width", "height" }, .def = "rect: required unless points", .desc = "box size" },
+            .{ .names = &.{"points"}, .def = "null", .desc = "polygon alternative to width/height" },
         },
         .parts = "none",
         .anchors = "9 box anchors",
@@ -312,14 +325,14 @@ pub const entries: []const Entry = &.{
         .type = .flashing,
         .summary = "Sheet-metal flashing in section: Z, L, drip edge, weep screed or free polyline.",
         .params = &.{
-            .{ .name = "profile", .def = "z", .desc = "z: back flange up the wall, horizontal leg out, drop at the nose; l: flange + horizontal leg; drip: flange on the deck, drop, outward kick; weep_screed: nailing flange up the wall, ledge, small drip drop; points: free centerline polyline" },
-            .{ .name = "flange", .def = "2 (weep_screed 3.5)", .desc = "vertical back/nailing flange length (drip: horizontal flange on the deck)" },
-            .{ .name = "leg", .def = "1 (l 2)", .desc = "horizontal leg length toward the exterior" },
-            .{ .name = "drop", .def = "2 (drip 1.5, weep_screed 0.5)", .desc = "downturned leg at the nose" },
-            .{ .name = "kick", .def = "0.5", .desc = "drip only: outward kick at the bottom of the drop" },
-            .{ .name = "gauge", .def = "26", .desc = "20 .0359, 22 .0299, 24 .0239, 26 .0179, 28 .0149" },
-            .{ .name = "exterior", .def = "left", .desc = "side the nose faces (right mirrors); presets only" },
-            .{ .name = "points", .def = "profile points: required", .desc = "centerline polyline [x,y] relative to the placement point, or Refs" },
+            .{ .names = &.{"profile"}, .def = "z", .desc = "z: back flange up the wall, horizontal leg out, drop at the nose; l: flange + horizontal leg; drip: flange on the deck, drop, outward kick; weep_screed: nailing flange up the wall, ledge, small drip drop; points: free centerline polyline" },
+            .{ .names = &.{"flange"}, .def = "2 (weep_screed 3.5)", .desc = "vertical back/nailing flange length (drip: horizontal flange on the deck)" },
+            .{ .names = &.{"leg"}, .def = "1 (l 2)", .desc = "horizontal leg length toward the exterior" },
+            .{ .names = &.{"drop"}, .def = "2 (drip 1.5, weep_screed 0.5)", .desc = "downturned leg at the nose" },
+            .{ .names = &.{"kick"}, .def = "0.5", .desc = "drip only: outward kick at the bottom of the drop" },
+            .{ .names = &.{"gauge"}, .def = "26", .desc = "20 .0359, 22 .0299, 24 .0239, 26 .0179, 28 .0149" },
+            .{ .names = &.{"exterior"}, .def = "left", .desc = "side the nose faces (right mirrors); presets only" },
+            .{ .names = &.{"points"}, .def = "profile points: required", .desc = "centerline polyline [x,y] relative to the placement point, or Refs" },
         },
         .parts = "none",
         .anchors = "9 box anchors + corner (first bend, local (0,0) for presets), start, end",
@@ -330,14 +343,14 @@ pub const entries: []const Entry = &.{
         .type = .joint,
         .summary = "Concrete joints: expansion filler strip, control (saw-cut) notch, tooled edge radius, sealant bead on backer rod.",
         .params = &.{
-            .{ .name = "kind", .def = "required", .desc = "expansion | control | tooled_edge | sealant" },
-            .{ .name = "width", .def = "0.5 (control 0.25)", .desc = "expansion: filler thickness; control: notch width at the top; sealant: joint gap width" },
-            .{ .name = "depth", .def = "expansion 4, control 1, sealant 0.25", .desc = "expansion: filler depth below the top (set to the slab thickness, or give `in`); control: notch depth (default 1/4 of the `in` zone height); sealant: bead depth" },
-            .{ .name = "in", .def = "null", .desc = "optional host zone \"comp[.part]\" whose height sets the default depth (expansion: full height; control: 1/4)" },
-            .{ .name = "cap", .def = "0", .desc = "expansion: depth of a sealant cap at the top of the filler (part `sealant`)" },
-            .{ .name = "radius", .def = "0.25", .desc = "tooled_edge: radius of the rounded corner" },
-            .{ .name = "corner", .def = "top_right", .desc = "tooled_edge: which corner of the concrete the point is: top_right (concrete lies left and below), top_left, bottom_right, bottom_left" },
-            .{ .name = "backer_rod", .def = "true", .desc = "sealant: draw the backer rod circle (diameter 1.25*width) below the bead" },
+            .{ .names = &.{"kind"}, .def = "required", .desc = "expansion | control | tooled_edge | sealant" },
+            .{ .names = &.{"width"}, .def = "0.5 (control 0.25)", .desc = "expansion: filler thickness; control: notch width at the top; sealant: joint gap width" },
+            .{ .names = &.{"depth"}, .def = "expansion 4, control 1, sealant 0.25", .desc = "expansion: filler depth below the top (set to the slab thickness, or give `in`); control: notch depth (default 1/4 of the `in` zone height); sealant: bead depth" },
+            .{ .names = &.{"in"}, .def = "null", .desc = "optional host zone \"comp[.part]\" whose height sets the default depth (expansion: full height; control: 1/4)" },
+            .{ .names = &.{"cap"}, .def = "0", .desc = "expansion: depth of a sealant cap at the top of the filler (part `sealant`)" },
+            .{ .names = &.{"radius"}, .def = "0.25", .desc = "tooled_edge: radius of the rounded corner" },
+            .{ .names = &.{"corner"}, .def = "top_right", .desc = "tooled_edge: which corner of the concrete the point is: top_right (concrete lies left and below), top_left, bottom_right, bottom_left" },
+            .{ .names = &.{"backer_rod"}, .def = "true", .desc = "sealant: draw the backer rod circle (diameter 1.25*width) below the bead" },
         },
         .parts = "expansion: filler (+ sealant with cap); control: notch; tooled_edge: radius; sealant: bead, rod",
         .anchors = "9 box anchors + joint_top (local (0,0): top surface at the joint centerline); tooled_edge adds corner",
@@ -348,8 +361,8 @@ pub const entries: []const Entry = &.{
         .type = .solid,
         .summary = "Escape hatch: any extruded profile with an explicit material (flagged I_SOLID_USED).",
         .params = &.{
-            .{ .name = "profile", .def = "required", .desc = "{rect:[w,h]} | {circle:d} | {points:[...]}" },
-            .{ .name = "material", .def = "required", .desc = "any style material (aluminum, steel, ...)" },
+            .{ .names = &.{"profile"}, .def = "required", .desc = "{rect:[w,h]} | {circle:d} | {points:[...]}" },
+            .{ .names = &.{"material"}, .def = "required", .desc = "any style material (aluminum, steel, ...)" },
         },
         .parts = "none",
         .anchors = "9 box anchors",
@@ -381,23 +394,16 @@ pub fn typeNames(a: Allocator) Allocator.Error![]const []const u8 {
 
 /// Is `key` an accepted top-level key of a component of type `ty`?
 pub fn allowedKey(ty: *const Entry, key: []const u8) bool {
-    for (common) |c| if (std.mem.eql(u8, c.name, key)) return true;
-    for (ty.params) |p| {
-        // "width, height" style entries list several names.
-        var it = std.mem.splitSequence(u8, p.name, ", ");
-        while (it.next()) |n| if (std.mem.eql(u8, n, key)) return true;
-    }
+    for (common) |c| for (c.names) |n| if (std.mem.eql(u8, n, key)) return true;
+    for (ty.params) |p| for (p.names) |n| if (std.mem.eql(u8, n, key)) return true;
     return false;
 }
 
 /// Every accepted top-level key of a component of type `ty` (type params, then common fields).
 pub fn allowedKeyNames(a: Allocator, ty: *const Entry) Allocator.Error![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
-    for (ty.params) |p| {
-        var it = std.mem.splitSequence(u8, p.name, ", ");
-        while (it.next()) |n| try out.append(a, n);
-    }
-    for (common) |c| try out.append(a, c.name);
+    for (ty.params) |p| try out.appendSlice(a, p.names);
+    for (common) |c| try out.appendSlice(a, c.names);
     return out.items;
 }
 
@@ -405,8 +411,7 @@ pub fn allowedKeysText(a: Allocator, ty: *const Entry) Allocator.Error![]const u
     var out: std.ArrayList(u8) = .empty;
     var first = true;
     for (ty.params) |p| {
-        var it = std.mem.splitSequence(u8, p.name, ", ");
-        while (it.next()) |n| {
+        for (p.names) |n| {
             if (!first) try out.appendSlice(a, ", ");
             first = false;
             try out.appendSlice(a, n);
@@ -415,7 +420,7 @@ pub fn allowedKeysText(a: Allocator, ty: *const Entry) Allocator.Error![]const u
     try out.appendSlice(a, ", + common: ");
     for (common, 0..) |c, i| {
         if (i > 0) try out.appendSlice(a, ", ");
-        try out.appendSlice(a, c.name);
+        try out.appendSlice(a, c.names[0]);
     }
     return out.items;
 }
@@ -424,7 +429,7 @@ pub fn allowedKeysText(a: Allocator, ty: *const Entry) Allocator.Error![]const u
 
 fn paramJson(a: Allocator, p: Param) Allocator.Error!json.Value {
     return json.obj(a, &.{
-        .{ .key = "name", .value = .{ .string = p.name } },
+        .{ .key = "name", .value = .{ .string = try p.nameText(a) } },
         .{ .key = "default", .value = .{ .string = p.def } },
         .{ .key = "desc", .value = .{ .string = p.desc } },
     });
@@ -472,7 +477,7 @@ pub fn catalogJson(a: Allocator) Allocator.Error!json.Value {
 pub fn appendEntryMarkdown(out: *std.ArrayList(u8), a: Allocator, e: *const Entry) Allocator.Error!void {
     try out.print(a, "### `{s}`: {s}\n\n", .{ e.name(), e.summary });
     try out.appendSlice(a, "| param | default | notes |\n|---|---|---|\n");
-    for (e.params) |p| try out.print(a, "| `{s}` | {s} | {s} |\n", .{ p.name, p.def, p.desc });
+    for (e.params) |p| try out.print(a, "| `{s}` | {s} | {s} |\n", .{ try p.nameText(a), p.def, p.desc });
     if (e.type == .connector) {
         try out.appendSlice(a, "\nHardware models (auto-fill width and gauge):\n");
         for (hardware) |h| try out.print(a, "- {s}\n", .{try hardwareLine(a, h)});
@@ -485,7 +490,7 @@ pub fn catalogMarkdown(a: Allocator) Allocator.Error![]const u8 {
     try out.appendSlice(a, "# Kerf component catalog\n\n");
     try out.appendSlice(a, "Coordinates are inches, X right, Y up, Z toward the viewer; sections look along -Z. Lengths accept numbers or strings (\"7 5/8\", \"3'-4\\\"\").\n\n");
     try out.appendSlice(a, "## Common fields\n\n| field | default | notes |\n|---|---|---|\n");
-    for (common) |p| try out.print(a, "| `{s}` | {s} | {s} |\n", .{ p.name, p.def, p.desc });
+    for (common) |p| try out.print(a, "| `{s}` | {s} | {s} |\n", .{ try p.nameText(a), p.def, p.desc });
     try out.print(a, "\nBox anchors: {s}.\n\n## Types\n\n", .{box_anchors});
     for (entries) |*e| try appendEntryMarkdown(&out, a, e);
     return out.items;

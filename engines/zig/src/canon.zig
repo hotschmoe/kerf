@@ -40,10 +40,7 @@ fn componentKeys(ctx: *const json.KeyCtx) Allocator.Error![]const []const u8 {
     var keys: std.ArrayList([]const u8) = .empty;
     try keys.appendSlice(ctx.a, &common_keys);
     if (catalog.find(ty)) |e| {
-        for (e.params) |p| {
-            var it = std.mem.splitSequence(u8, p.name, ", ");
-            while (it.next()) |nm| try keys.append(ctx.a, nm);
-        }
+        for (e.params) |p| try keys.appendSlice(ctx.a, p.names);
     }
     return keys.items;
 }
@@ -108,7 +105,7 @@ pub fn write(a: Allocator, doc: json.Value) Allocator.Error![]u8 {
 test "canonical common key order covers every catalog common field (no drift)" {
     for (catalog.common) |c| {
         var found = false;
-        for (common_keys) |k| if (std.mem.eql(u8, k, c.name)) {
+        for (common_keys) |k| if (std.mem.eql(u8, k, c.names[0])) {
             found = true;
         };
         try std.testing.expect(found);
