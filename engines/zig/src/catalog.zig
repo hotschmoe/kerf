@@ -262,7 +262,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .flashing,
         .summary = "Sheet-metal flashing in section: Z, L, drip edge, weep screed or free polyline.",
-        .params = params.rows(builders.FlashingParams),
+        .params = params.rows(builders.flashing.Params),
         .traits = .{ .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors + corner (first bend, local (0,0) for presets), start, end",
