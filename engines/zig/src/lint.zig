@@ -9,6 +9,7 @@ const model = @import("model.zig");
 const schema = @import("schema.zig");
 const scene_mod = @import("scene.zig");
 const units = @import("units.zig");
+const coverage = @import("coverage.zig");
 const Allocator = std.mem.Allocator;
 const Scene = scene_mod.Scene;
 
@@ -18,6 +19,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
     try noteStyle(a, doc, diags);
     try dimZero(a, scene, doc, diags);
     try ackShape(a, scene, doc, diags);
+    try requestedMissing(a, doc, diags);
 }
 
 // ---- W_UNKNOWN_KEY --------------------------------------------------------------------------------------------------
@@ -297,6 +299,32 @@ fn noteStyle(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error
             if (st.issues.len == 0) continue;
             diags.addFix(.warning, "W_NOTE_STYLE", aid, try std.fmt.allocPrint(a, "views/{s}/annotations/{s}/text", .{ vid, aid }), "note '{s}' in view {s} breaks the house note style: {s}. Text: \"{s}\"", .{ aid, vid, st.issues, text }, try std.fmt.allocPrint(a, "set text to \"{s}\"", .{st.fixed}));
         }
+    }
+}
+
+// ---- meta.requested -> W_REQUESTED_MISSING ----------------------------------------------------------------------------------
+
+/// `meta.requested` must be an array of non-empty strings; every item that matches nothing in the document warns.
+fn requestedMissing(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error!void {
+    const meta = doc.get("meta") orelse return;
+    const rv = meta.get("requested") orelse return;
+    const shape_fix = "e.g. \"meta\": {\"requested\": [\"cmu wall\", \"bond beam\", \"H2.5A ties\"]} (the designer's asks, one short phrase each)";
+    const items = rv.arr() orelse {
+        if (!rv.isNull()) diags.addFix(.@"error", "E_PARAM", null, "meta/requested", "'meta.requested' must be an array of strings, got a {s}", .{rv.kindName()}, shape_fix);
+        return;
+    };
+    var bad = false;
+    for (items, 0..) |it, i| {
+        const s = std.mem.trim(u8, it.str() orelse "", " \t\r\n");
+        if (s.len == 0) {
+            bad = true;
+            diags.addFix(.@"error", "E_PARAM", null, try std.fmt.allocPrint(a, "meta/requested/{d}", .{i}), "'meta.requested' entry {d} must be a non-empty string", .{i}, shape_fix);
+        }
+    }
+    if (bad) return;
+    for (try coverage.compute(a, doc), 0..) |item, i| {
+        if (item.found.len > 0) continue;
+        diags.addFix(.warning, "W_REQUESTED_MISSING", null, try std.fmt.allocPrint(a, "meta/requested/{d}", .{i}), "requested element \"{s}\" (meta.requested) matches no component id, type, label, model or note text", .{item.text}, try std.fmt.allocPrint(a, "build it (name the component after it, or add a note whose text says \"{s}\"), or remove it from meta.requested if the designer dropped it", .{item.text}));
     }
 }
 

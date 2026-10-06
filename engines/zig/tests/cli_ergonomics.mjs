@@ -281,7 +281,7 @@ section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_*
 }
 
 // ---------------------------------------------------------------------------------------------------
-section('4. v0.1.5 (SPEC 21): lenient ops input');
+section('7. v0.1.5 (SPEC 21): lenient ops input');
 {
   kerf(['new', 'l.kerf.json', '--template', 'section']);
   const one = { op: 'update', path: 'components/stud', value: { length: 100 } };
@@ -299,6 +299,34 @@ section('4. v0.1.5 (SPEC 21): lenient ops input');
   check('anything else: E_PARAM naming the three shapes and what was received', r.code === 1 && /^ERROR E_PARAM ops: .*array of op objects.*single op object.*"ops":\[\.\.\.\].*got an object with keys path, value/m.test(r.err) && /nothing written/.test(r.err), r.err);
   r = kerf(['new', 'l2.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/x', value: {} })]);
   check('new --ops takes a single op too (fails here on the unknown component, not on the shape)', r.code === 1 && /^ERROR E_REF_UNKNOWN/m.test(r.err), r.err);
+}
+
+// ---------------------------------------------------------------------------------------------------
+section('8. v0.1.5 (SPEC 21): meta.requested coverage');
+{
+  let r = kerf(['guide']);
+  check('guide tells agents to fill meta.requested, check COVERAGE and finish only at full coverage; 12 KB, ASCII', /meta\.requested/.test(r.out) && /COVERAGE/.test(r.out) && /full coverage/.test(r.out) && Buffer.byteLength(r.out) <= 12288 && !/[^\x00-\x7f]/.test(r.out), Buffer.byteLength(r.out));
+  check('guide mentions W_REQUESTED_MISSING and W_CROP_STALE', /W_REQUESTED_MISSING/.test(r.out) && /W_CROP_STALE/.test(r.out));
+  r = kerf(['schema', 'doc']);
+  check('schema doc documents meta.requested and the COVERAGE block', /requested\[\]/.test(r.out) && /COVERAGE/.test(r.out) && /W_REQUESTED_MISSING/.test(r.out), r.out.slice(0, 300));
+  kerf(['new', 'c.kerf.json', '--template', 'section']);
+  write('req.json', { ops: [{ op: 'update', path: 'meta', value: { requested: ['stud wall', 'bond beam', 'H2.5A ties', 'sill'] } }], why: 'record the request' });
+  r = kerf(['apply', 'c.kerf.json', 'req.json', '-w']);
+  check('apply prints the COVERAGE block: ok with component ids, MISSING for the rest', r.code === 0 && /^COVERAGE  \d\/4 requested elements covered/m.test(r.out) && /^ MISSING  bond beam$/m.test(r.out) && /^ ok       sill\s+sill/m.test(r.out), r.out);
+  check('one W_REQUESTED_MISSING per missing item, with a fix', (r.out.match(/^WARN W_REQUESTED_MISSING/gm) || []).length >= 2 && /requested element "bond beam" \(meta\.requested\) matches no component id, type, label, model or note text.* Fix: build it/.test(r.out), r.out);
+  const chk = kerf(['check', 'c.kerf.json']);
+  check('check prints the same COVERAGE block', /^COVERAGE  /m.test(chk.out) && /^ MISSING  H2\.5A ties$/m.test(chk.out) && chk.code === 0, chk.out);
+  write('req2.json', [{ op: 'add', path: 'components', value: { id: 'bond_beam', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'sill@top_left' } } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'n_ht', type: 'note', text: 'SIMPSON H2.5A HURRICANE TIE @ EA. STUD', target: 'stud' } },
+    { op: 'update', path: 'meta', value: { requested: ['bond beam', 'H2.5A ties', 'sill'] } }]);
+  r = kerf(['apply', 'c.kerf.json', 'req2.json', '-w', '--why', 'cover the request']);
+  check('after building them: full coverage, no W_REQUESTED_MISSING', r.code === 0 && /^COVERAGE  3\/3 requested elements covered$/m.test(r.out) && !/W_REQUESTED_MISSING/.test(r.out) && /^ ok       H2\.5A ties\s+stud/m.test(r.out), r.out);
+  r = kerf(['apply', 'c.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'meta', value: { requested: 'bond beam' } }), '--dry-run']);
+  check('meta.requested as a string is an E_PARAM with an example', r.code === 1 && /^ERROR E_PARAM meta\/requested: .*array of strings.*Fix: e\.g\./m.test(r.err), r.err);
+  for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-strap']) {
+    const o = kerf(['check', path.join(DETAILS, d + '.kerf.json')]);
+    check(`reference ${d}: no meta.requested, so no COVERAGE block and 0 warnings`, !/COVERAGE/.test(o.out) && /0 errors  0 warnings/.test(o.out), o.out.split('\n')[0]);
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

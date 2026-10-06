@@ -42,12 +42,15 @@ pub const doc: Object = .{
         .{ .name = "kerf", .ty = "string", .required = true, .desc = "schema version, always \"0.1\"" },
         .{ .name = "id", .ty = "string", .required = true, .desc = "slug of the detail, e.g. \"truss-bearing-cmu\"" },
         .{ .name = "title", .ty = "string", .def = "\"\"", .desc = "sheet title in UPPERCASE" },
-        .{ .name = "meta", .ty = "object", .desc = "free-form, known keys: author, discipline, classification {uniformat, masterformat[]}, jurisdiction {code, edition} (default citation basis, e.g. {\"code\":\"IRC\",\"edition\":2021}), tags[], sheet, date, forked_from" },
+        .{ .name = "meta", .ty = "object", .desc = "free-form, known keys: requested[] (the designer's asks; see below), author, discipline, classification {uniformat, masterformat[]}, jurisdiction {code, edition} (default citation basis, e.g. {\"code\":\"IRC\",\"edition\":2021}), tags[], sheet, date, forked_from" },
         .{ .name = "run", .ty = "[z0, z1]", .def = "[-24, 24]", .desc = "default z extent (inches) of members that span the depth; members with a natural z thickness are centered on the section cut (or the middle of run)" },
         .{ .name = "components", .ty = "[component]", .def = "[]", .desc = "the construction; order = draw order (see `kerf schema <type>` and `kerf catalog`)" },
         .{ .name = "views", .ty = "[view]", .def = "[]", .desc = "drawings of the components (see `kerf schema view`)" },
     },
-    .notes = "First build: one op {\"op\":\"set\",\"path\":\"doc\",\"value\":<whole document>}. Then small add/update/remove ops (`kerf schema ops`).",
+    .notes = "First build: one op {\"op\":\"set\",\"path\":\"doc\",\"value\":<whole document>}. Then small add/update/remove ops (`kerf schema ops`).\n" ++
+        "meta.requested: [\"cmu wall\", \"bond beam\", \"H2.5A ties\"]: the designer's asks, one short phrase each, written on the first build. `kerf check` and `kerf apply` print a COVERAGE block " ++
+        "(`ok <component ids>` or `MISSING` per item) and W_REQUESTED_MISSING for each missing item. An item is covered when all its words (case-insensitive, plural s ignored) appear in one component's " ++
+        "id/type/label/model/size or in one note/label text, so name components and write notes with the designer's words. Finish only at full coverage; remove an item only if the designer dropped it.",
 };
 
 pub const view: Object = .{

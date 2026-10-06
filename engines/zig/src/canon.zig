@@ -7,7 +7,7 @@ const schema = @import("schema.zig");
 const Allocator = std.mem.Allocator;
 
 const root_keys = schema.keys(&schema.doc);
-const meta_keys = [_][]const u8{ "author", "discipline", "classification", "jurisdiction", "tags", "forked_from", "sheet", "date" };
+const meta_keys = [_][]const u8{ "author", "discipline", "classification", "jurisdiction", "requested", "tags", "forked_from", "sheet", "date" };
 const class_keys = [_][]const u8{ "uniformat", "masterformat" };
 const juris_keys = [_][]const u8{ "code", "edition" };
 const common_keys = [_][]const u8{ "id", "type", "label", "material", "at", "rotate", "slope", "mirror", "z", "array", "embedded", "visible", "shown", "acknowledge" };

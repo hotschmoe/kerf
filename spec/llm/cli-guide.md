@@ -15,13 +15,17 @@ with typed components (lumber, cmu_wall, concrete, rebar, truss, ...); the engin
    stud wall, truss vs rafter, embedded anchor vs plate, what bears on what). Otherwise build with conventional
    choices and report your assumptions AND the main alternative reading. "Give me a footing detail" with no
    structure named is ambiguous: ask which footing (continuous wall, isolated pad, turned-down slab edge).
-2. Write `ops.json` with the Write tool. First build = one op `{"op":"set","path":"doc","value":{...whole document...}}`.
+2. Write `ops.json` with the Write tool. First build = one op `{"op":"set","path":"doc","value":{...whole document...}}`
+   (a single op object or `{"ops":[...],"why":"..."}` is accepted too). Put the designer's asks in `meta.requested`, one short
+   phrase each, in their words: `"meta":{"requested":["cmu wall","bond beam","H2.5A ties","#5 rebar","vapor retarder"]}`.
 3. Create and apply in one command (nothing is written if an op fails):
 ```sh
 kerf new truss-cmu.kerf.json --ops ops.json --title "PREFAB TRUSS BEARING AT CMU WALL" --why "Build initial detail"
 ```
-4. Read the summary (every component with resolved x/y extents) and the diagnostics. Fix every ERROR; fix or
-   justify every WARN. Then LOOK at it:
+4. Read the summary (every component with resolved x/y extents), the `COVERAGE` block and the diagnostics. Fix every ERROR;
+   fix or justify every WARN. Every `meta.requested` item must read `ok` (build the `MISSING` ones, or drop an item only if the
+   designer dropped it): do not finish before full coverage, a clean check is not a finished detail. An item is covered when
+   its words appear in one component's id/type/label/model or in one note, so name components and write notes in the designer's words. Then LOOK at it:
 ```sh
 kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png
 ```
@@ -50,7 +54,9 @@ kerf guide --full
 ## Diagnostics you will meet (each prints its own fix)
 W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
 W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
-W_NOTE_STYLE (house style), W_UNKNOWN_KEY (misspelled field), I_* (info only).
+W_NOTE_STYLE (house style and commentary: no sentences, `?`, `NOTE:`, `W/` or `AND` at the end), W_UNKNOWN_KEY (misspelled field),
+W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit left a member outside an explicit
+`crop`: remove `crop` to auto-fit), I_* (info only).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.

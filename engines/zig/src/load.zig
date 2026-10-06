@@ -15,6 +15,7 @@ const catalog = @import("catalog.zig");
 const units = @import("units.zig");
 const builders = @import("builders.zig");
 const lint = @import("lint.zig");
+const coverage = @import("coverage.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 
@@ -101,6 +102,36 @@ pub fn diagLine(a: Allocator, d: model.Diag) Allocator.Error![]const u8 {
     return out.items;
 }
 
+/// The `COVERAGE` block (SPEC 21): one line per `meta.requested` item, `ok <component ids>` or `MISSING`.
+fn coverageBlock(a: Allocator, out: *std.ArrayList(u8), doc: json.Value) Allocator.Error!void {
+    const items = try coverage.compute(a, doc);
+    if (items.len == 0) return;
+    var covered: usize = 0;
+    for (items) |it| {
+        if (it.found.len > 0) covered += 1;
+    }
+    try out.print(a, "COVERAGE  {d}/{d} requested elements covered{s}\n", .{ covered, items.len, if (covered == items.len) "" else "  (finish only at full coverage)" });
+    for (items) |it| {
+        try out.append(a, ' ');
+        try padTo(out, a, if (it.found.len > 0) "ok" else "MISSING", 9);
+        if (it.found.len == 0) {
+            try out.appendSlice(a, it.text);
+            try out.append(a, '\n');
+            continue;
+        }
+        try padTo(out, a, it.text, 26);
+        for (it.found, 0..) |id, i| {
+            if (i == 6) {
+                try out.print(a, ", +{d} more", .{it.found.len - 6});
+                break;
+            }
+            if (i > 0) try out.appendSlice(a, ", ");
+            try out.appendSlice(a, id);
+        }
+        try out.append(a, '\n');
+    }
+}
+
 pub fn summary(l: *const Loaded) Allocator.Error![]const u8 {
     const a = l.a;
     var out: std.ArrayList(u8) = .empty;
@@ -150,6 +181,7 @@ pub fn summary(l: *const Loaded) Allocator.Error![]const u8 {
         try units.appendFtIn(&out, a, b.y1);
         try out.append(a, '\n');
     }
+    if (l.doc == .object) try coverageBlock(a, &out, l.doc);
     for (l.diags.list.items) |d| {
         if (d.level == .info and !(std.mem.eql(u8, d.code, "I_SOLID_USED") or std.mem.eql(u8, d.code, "I_UNVERIFIED_CITE") or std.mem.eql(u8, d.code, "I_CITE_DOWNGRADED") or std.mem.eql(u8, d.code, "I_ACK"))) continue;
         try out.appendSlice(a, try diagLine(a, d));
