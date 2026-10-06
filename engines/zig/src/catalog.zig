@@ -244,7 +244,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .fill,
         .summary = "Earth, gravel, sand, compacted fill as a hatched polygon.",
-        .params = params.rows(builders.FillParams),
+        .params = params.rows(builders.fill.Params),
         .parts = "none",
         .anchors = "9 box anchors of the polygon",
         .draws = "Hatched cut region; the hatch stops at the crop and fills never get break lines.",

@@ -22,6 +22,7 @@ const Prism = model.Prism;
 const Params = model.Params;
 const Box = geom.Box;
 const common = @import("builders/common.zig");
+pub const fill = @import("builders/fill.zig");
 pub const membrane = @import("builders/membrane.zig");
 pub const truss = @import("builders/truss.zig");
 pub const connector = @import("builders/connector.zig");
@@ -78,50 +79,6 @@ const materialOr = common.materialOr;
 // ---- membrane -----------------------------------------------------------------------------------------------------------
 
 // ---- fill ------------------------------------------------------------------------------------------------------------------
-
-pub const FillParams = struct {
-    material: enum { earth, gravel, sand, compacted_fill } = .earth,
-    points: ?json.Value = null,
-    outline: enum { top, full, none } = .top,
-    grade_label: []const u8 = "",
-
-    pub const spec = .{
-        .material = .{ .desc = "earth | gravel | sand | compacted_fill" },
-        .points = .{ .def = "required", .desc = "polygon [x,y] or Refs" },
-        .outline = .{ .desc = "top (stroke only edges with outward normal up: the grade line) | full | none" },
-        .grade_label = .{ .def = "null", .desc = "optional text for annotations" },
-    };
-};
-
-fn buildFill(ctx: *Ctx) BuildError!?Built {
-    const a = ctx.a;
-    const p = &ctx.p;
-    const fp = p.parseAll(FillParams);
-    const pv = fp.points orelse {
-        p.fail("points", "fill needs 'points': a polygon [[x, y], ...] or Refs", .{});
-        return null;
-    };
-    if (!p.ok) return null;
-    const pts = (try parsePointList(ctx, "points", pv, true)) orelse return null;
-    const clean = try dropDuplicatePoints(a, pts);
-    if (clean.len < 3) {
-        p.fail("points", "a fill polygon needs at least 3 distinct points (got {d})", .{clean.len});
-        return null;
-    }
-    const loop = try orientedCcw(a, clean);
-    const om: model.OutlineMode = switch (fp.outline) {
-        .top => .top,
-        .full => .full,
-        .none => .none,
-    };
-    const prism = Prism{ .material = @tagName(fp.material), .loops = try model.oneLoop(a, loop), .outline = om };
-    return .{
-        .prisms = try onePrism(a, prism),
-        .box = geom.loopBox(loop),
-        .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "fill {s}", .{@tagName(fp.material)}),
-    };
-}
 
 // ---- insulation ----------------------------------------------------------------------------------------------------------------
 
@@ -487,7 +444,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .connector => connector.build(ctx),
         .truss => truss.build(ctx),
         .membrane => membrane.build(ctx),
-        .fill => buildFill(ctx),
+        .fill => fill.build(ctx),
         .insulation => buildInsulation(ctx),
         .solid => buildSolid(ctx),
         .flashing => buildFlashing(ctx),
@@ -496,7 +453,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
 }
 
 /// The parameter struct of every component type, in `catalog.Type` order.
-pub const param_structs = .{ lumber.Params, panel.Params, cmu_wall.Params, concrete.Params, rebar.Params, anchor_bolt.Params, connector.Params, truss.Params, membrane.Params, FillParams, InsulationParams, SolidParams, FlashingParams, JointParams };
+pub const param_structs = .{ lumber.Params, panel.Params, cmu_wall.Params, concrete.Params, rebar.Params, anchor_bolt.Params, connector.Params, truss.Params, membrane.Params, fill.Params, InsulationParams, SolidParams, FlashingParams, JointParams };
 
 comptime {
     if (param_structs.len != std.meta.tags(catalog.Type).len) @compileError("builders.param_structs must have one struct per catalog.Type tag");
