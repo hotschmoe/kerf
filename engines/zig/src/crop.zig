@@ -65,11 +65,6 @@ fn fmtIn(a: Allocator, x: f64) []const u8 {
     return units.fmtFtIn(a, x) catch "?";
 }
 
-fn fmtNum(a: Allocator, x: f64) Allocator.Error![]const u8 {
-    var buf: [40]u8 = undefined;
-    return a.dupe(u8, json.fmtNumber(&buf, x));
-}
-
 /// True when some view of the document shows `c`: an iso view, a section view without a crop (auto-fit), or a section
 /// view whose explicit crop leaves at most `max_outside` (a fraction) of it outside.
 fn shownSomewhere(a: Allocator, c: *const scene_mod.Comp, vs: []const json.Value, max_outside: f64) Allocator.Error!bool {
@@ -132,7 +127,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, before: ?Before, diags:
             reported[c.index] = true;
             var need = spec.crop;
             need.addBox(ext);
-            const fit = try std.fmt.allocPrint(a, "{{\"x\":[{s},{s}],\"y\":[{s},{s}]}}", .{ try fmtNum(a, @floor(need.x0)), try fmtNum(a, @ceil(need.x1)), try fmtNum(a, @floor(need.y0)), try fmtNum(a, @ceil(need.y1)) });
+            const fit = try std.fmt.allocPrint(a, "{{\"x\":[{s},{s}],\"y\":[{s},{s}]}}", .{ try json.fmtNumberAlloc(a, @floor(need.x0)), try json.fmtNumberAlloc(a, @ceil(need.x1)), try json.fmtNumberAlloc(a, @floor(need.y0)), try json.fmtNumberAlloc(a, @ceil(need.y1)) });
             diags.addFix(.warning, "W_CROP_STALE", c.id, try std.fmt.allocPrint(a, "views/{s}/crop", .{spec.id}), "{s}'{s}' has {d:.0}% of its extent outside the crop of view {s}: it spans x {s}..{s}, y {s}..{s}, the crop is x {s}..{s}, y {s}..{s}", .{
                 if (before != null) "after this edit, " else "",
                 c.id,

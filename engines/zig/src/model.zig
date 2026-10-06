@@ -364,10 +364,7 @@ pub fn joinQuoted(a: Allocator, items: []const []const u8) []const u8 {
 pub fn numText(a: Allocator, x: f64) []const u8 {
     if (!std.math.isFinite(x)) return "a non-finite number";
     const m = @abs(x);
-    const s = if (m != 0 and (m >= 1e9 or m < 1e-4)) std.fmt.allocPrint(a, "{e}", .{x}) else blk: {
-        var b: [40]u8 = undefined;
-        break :blk a.dupe(u8, json.fmtNumber(&b, x));
-    };
+    const s = if (m != 0 and (m >= 1e9 or m < 1e-4)) std.fmt.allocPrint(a, "{e}", .{x}) else json.fmtNumberAlloc(a, x);
     return s catch "?";
 }
 

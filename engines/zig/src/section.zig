@@ -18,7 +18,7 @@ const Pt = geom.Pt;
 const Box = geom.Box;
 const Prism = model.Prism;
 
-pub const flat_tol: f64 = 0.005;
+pub const flat_tol = geom.flat_tol;
 
 pub const Class = enum { cut, beyond, drop };
 

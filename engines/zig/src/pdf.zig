@@ -8,6 +8,7 @@ const drawing = @import("drawing.zig");
 const style_mod = @import("style.zig");
 const font_mod = @import("font.zig");
 const textgeom = @import("textgeom.zig");
+const json = @import("json.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -15,9 +16,8 @@ const Pt = geom.Pt;
 const pt_per_in: f64 = 72.0;
 
 fn num(out: *std.ArrayList(u8), a: Allocator, x: f64) Allocator.Error!void {
-    var v = @round(x * 1000.0) / 1000.0;
-    if (v == 0) v = 0;
-    try out.print(a, "{d}", .{v});
+    var b: [40]u8 = undefined;
+    try out.appendSlice(a, json.fmtFixed(&b, x, 3));
 }
 
 const Cs = struct {

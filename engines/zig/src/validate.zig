@@ -12,7 +12,7 @@ const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Scene = scene_mod.Scene;
 
-const flat_tol: f64 = 0.005;
+const flat_tol = geom.flat_tol;
 
 const Pf = struct {
     prism: model.Prism,
@@ -21,9 +21,7 @@ const Pf = struct {
     comp: *const scene_mod.Comp,
 };
 
-fn ftin(a: Allocator, x: f64) []const u8 {
-    return units.fmtFtIn(a, x) catch "?";
-}
+const ftin = units.ftin;
 
 fn boxText(a: Allocator, b: geom.Box) []const u8 {
     return std.fmt.allocPrint(a, "x {s}..{s}, y {s}..{s}", .{ ftin(a, b.x0), ftin(a, b.x1), ftin(a, b.y0), ftin(a, b.y1) }) catch "?";

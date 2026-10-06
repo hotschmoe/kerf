@@ -455,11 +455,7 @@ fn dimZero(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
             const aid = strOf(an, "id");
             const dx = @abs(to.x - from.x);
             const dy = @abs(to.y - from.y);
-            const fmt = struct {
-                fn f(al: Allocator, x: f64) []const u8 {
-                    return units.fmtFtIn(al, x) catch "?";
-                }
-            }.f;
+            const fmt = units.ftin;
             const path = try std.fmt.allocPrint(a, "views/{s}/annotations/{s}", .{ vid, aid });
             if (dx < 1.0 / 16.0 and dy < 1.0 / 16.0) {
                 diags.addFix(.warning, "W_DIM_ZERO", aid, path, "dim '{s}' in view {s} measures {s}: 'from' and 'to' are the same point", .{ aid, vid, fmt(a, m) }, "point `from` and `to` at two different anchors, e.g. two corners of the member");

@@ -137,9 +137,8 @@ fn writePts(out: *std.ArrayList(u8), a: Allocator, pts: []const Pt) Allocator.Er
         if (p.b != 0) {
             try out.append(a, ',');
             // bulges keep extra precision
-            var buf: [48]u8 = undefined;
-            const t = std.fmt.bufPrint(&buf, "{d}", .{@round(p.b * 1e6) / 1e6}) catch "0";
-            try out.appendSlice(a, t);
+            var buf: [40]u8 = undefined;
+            try out.appendSlice(a, json.fmtFixed(&buf, p.b, 6));
         }
         try out.append(a, ']');
     }

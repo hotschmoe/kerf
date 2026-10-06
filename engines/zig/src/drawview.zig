@@ -96,9 +96,9 @@ fn sideExt(b: geom.Box, crop: geom.Box, side: u8) f64 {
     };
 }
 
+/// A paper/model number in a fix hint, rounded to 0.1.
 fn fmtNum(a: Allocator, n: f64) Allocator.Error![]const u8 {
-    var buf: [40]u8 = undefined;
-    return a.dupe(u8, json.fmtNumber(&buf, @round(n * 10) / 10));
+    return json.fmtNumberAlloc(a, @round(n * 10) / 10);
 }
 
 /// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.

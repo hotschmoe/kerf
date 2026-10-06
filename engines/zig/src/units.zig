@@ -157,6 +157,11 @@ pub fn fmtFtIn(a: Allocator, x: f64) Allocator.Error![]u8 {
     return out.items;
 }
 
+/// `fmtFtIn` for messages: "?" instead of an error when out of memory.
+pub fn ftin(a: Allocator, x: f64) []const u8 {
+    return fmtFtIn(a, x) catch "?";
+}
+
 pub fn appendFtIn(out: *std.ArrayList(u8), a: Allocator, x: f64) Allocator.Error!void {
     const neg = x < 0;
     const sixteenths: i64 = cast.toInt(i64, @round(@abs(x) * 16.0)) orelse return out.appendSlice(a, "(out of range)");

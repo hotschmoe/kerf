@@ -55,13 +55,10 @@ fn onePrism(a: Allocator, prism: Prism) Allocator.Error![]Prism {
     return out;
 }
 
-fn ftin(a: Allocator, x: f64) []const u8 {
-    return units.fmtFtIn(a, x) catch "?";
-}
+const ftin = units.ftin;
 
 fn fmtNum(a: Allocator, x: f64) []const u8 {
-    var b: [40]u8 = undefined;
-    return a.dupe(u8, json.fmtNumber(&b, x)) catch "?";
+    return json.fmtNumberAlloc(a, x) catch "?";
 }
 
 /// Rect quads for cut marks. Corners CCW from bottom-left.

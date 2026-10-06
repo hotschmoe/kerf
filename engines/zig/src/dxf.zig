@@ -31,7 +31,7 @@ const Writer = struct {
         try self.out.print(self.a, "{d}\n{d}\n", .{ c, v });
     }
     fn f(self: *Writer, c: u32, v: f64) Allocator.Error!void {
-        var b: [48]u8 = undefined;
+        var b: [40]u8 = undefined;
         try self.out.print(self.a, "{d}\n{s}\n", .{ c, fmtF(&b, v) });
     }
     fn handle(self: *Writer) Allocator.Error!u32 {
@@ -42,11 +42,9 @@ const Writer = struct {
     }
 };
 
-/// Shortest decimal of the value rounded to 1e-6 (deterministic, no exponent).
-pub fn fmtF(buf: *[48]u8, x: f64) []const u8 {
-    var v = @round(x * 1.0e6) / 1.0e6;
-    if (v == 0) v = 0;
-    return std.fmt.bufPrint(buf, "{d}", .{v}) catch "0";
+/// Shortest decimal of the value rounded to 1e-6 (deterministic, no exponent, never overflows).
+pub fn fmtF(buf: *[40]u8, x: f64) []const u8 {
+    return json.fmtFixed(buf, x, 6);
 }
 
 const std_lineweights = [_]i32{ 0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211 };

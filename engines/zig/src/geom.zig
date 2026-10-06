@@ -240,6 +240,9 @@ pub fn flattenSegInto(list: *std.ArrayList(V2), a: Allocator, p0: V2, p1: V2, bu
 /// Upper bound on the segments of one flattened arc (a full circle at 0.004" tolerance needs about 200 up to a 10 ft radius).
 pub const max_arc_steps: usize = 4096;
 
+/// Flattening tolerance of arcs for 2D section geometry and validation, model inches.
+pub const flat_tol: f64 = 0.005;
+
 /// Segments for an arc of `sweep` radians when one segment may span at most `step` radians; clamped to [2, max_arc_steps]
 /// (NaN and a zero `step` can not reach the integer conversion).
 pub fn stepsForSweep(sweep: f64, step: f64) usize {

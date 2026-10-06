@@ -36,10 +36,8 @@ pub const Map = struct {
 
 fn num(out: *std.ArrayList(u8), a: Allocator, x: f64) Allocator.Error!void {
     // SVG coordinates: 3 decimals of a px.
-    const r = @round(x * 1000.0) / 1000.0;
     var b: [40]u8 = undefined;
-    const t = std.fmt.bufPrint(&b, "{d}", .{if (r == 0) 0 else r}) catch "0";
-    try out.appendSlice(a, t);
+    try out.appendSlice(a, json.fmtFixed(&b, x, 3));
 }
 
 fn pathData(out: *std.ArrayList(u8), a: Allocator, m: Map, pts: []const Pt, closed: bool, start_move: bool) Allocator.Error!void {

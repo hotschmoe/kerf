@@ -544,13 +544,8 @@ const LabelSpec = struct {
     off: V2,
 };
 
-fn fmtNum(a: Allocator, n: f64) Allocator.Error![]const u8 {
-    var b: [40]u8 = undefined;
-    return a.dupe(u8, json.fmtNumber(&b, n));
-}
-
 fn fmtPt(a: Allocator, p: V2) Allocator.Error![]const u8 {
-    return std.fmt.allocPrint(a, "[{s}, {s}]", .{ try fmtNum(a, @round(p.x * 100) / 100), try fmtNum(a, @round(p.y * 100) / 100) });
+    return std.fmt.allocPrint(a, "[{s}, {s}]", .{ try json.fmtNumberAlloc(a, @round(p.x * 100) / 100), try json.fmtNumberAlloc(a, @round(p.y * 100) / 100) });
 }
 
 fn clearOfLeaders(leaders: []const [3]V2, poly: [4]V2, shift: V2, h: f64) bool {
@@ -572,7 +567,7 @@ fn obstacleFix(a: Allocator, o: Obstacle, leaders: []const [3]V2, h: f64) Alloca
                     const no = o.off + sgn * dirn * delta;
                     if (dirn < 0 and @abs(no) < 2 * h) continue;
                     if (clearOfLeaders(leaders, o.poly, o.axis.scale(sgn * dirn * delta), h)) {
-                        return try std.fmt.allocPrint(a, "set dim '{s}' \"offset\": {s} (now {s})", .{ o.id, try fmtNum(a, no), try fmtNum(a, o.off) });
+                        return try std.fmt.allocPrint(a, "set dim '{s}' \"offset\": {s} (now {s})", .{ o.id, try json.fmtNumberAlloc(a, no), try json.fmtNumberAlloc(a, o.off) });
                     }
                 }
             }
@@ -584,7 +579,7 @@ fn obstacleFix(a: Allocator, o: Obstacle, leaders: []const [3]V2, h: f64) Alloca
                 for (dirs) |dv| {
                     const dn = dv.norm().scale(delta);
                     if (clearOfLeaders(leaders, o.poly, dn, h)) {
-                        return try std.fmt.allocPrint(a, "set label '{s}' \"offset\": [{s}, {s}] (now [{s}, {s}])", .{ o.id, try fmtNum(a, @round((o.off + dn.x) * 100) / 100), try fmtNum(a, @round((o.off2 + dn.y) * 100) / 100), try fmtNum(a, o.off), try fmtNum(a, o.off2) });
+                        return try std.fmt.allocPrint(a, "set label '{s}' \"offset\": [{s}, {s}] (now [{s}, {s}])", .{ o.id, try json.fmtNumberAlloc(a, @round((o.off + dn.x) * 100) / 100), try json.fmtNumberAlloc(a, @round((o.off2 + dn.y) * 100) / 100), try json.fmtNumberAlloc(a, o.off), try json.fmtNumberAlloc(a, o.off2) });
                     }
                 }
             }

@@ -359,23 +359,39 @@ pub fn parse(alloc: Allocator, src: []const u8, err: *ParseError) Allocator.Erro
 
 /// Kerf number format: round to 1e-4, shortest decimal, no exponent, `-0` -> `0`.
 pub fn fmtNumber(buf: *[40]u8, x: f64) []const u8 {
+    return fmtFixed(buf, x, 4);
+}
+
+/// `fmtNumber` into `a`'s memory.
+pub fn fmtNumberAlloc(a: Allocator, x: f64) Allocator.Error![]const u8 {
+    var b: [40]u8 = undefined;
+    return a.dupe(u8, fmtNumber(&b, x));
+}
+
+/// The one number formatter of the engine (REVIEW EXP-2): `x` rounded to `decimals` places (at most 9), printed as the shortest decimal
+/// with no exponent, `-0` -> `0`, NaN/inf -> `0`. Integer arithmetic only, so it is identical on every target, never allocates and can not
+/// overflow its buffer: beyond 9e15 / 10^decimals the fraction no longer fits a double and the rounded integer is printed, saturating at 1e18.
+/// For finite values below that bound it prints exactly what `std.fmt` `{d}` prints for the rounded double.
+pub fn fmtFixed(buf: *[40]u8, x: f64, comptime decimals: u8) []const u8 {
     if (!std.math.isFinite(x)) return "0";
+    const scale: u64 = comptime std.math.pow(u64, 10, decimals);
+    const scale_f: f64 = @floatFromInt(scale);
     const neg = x < 0;
-    // Beyond 9e11 inches the 1e-4 digits no longer fit a double exactly; such values are not meaningful lengths, so print the
+    // Past the bound the fraction digits no longer fit a double exactly and such values are not meaningful lengths, so print the
     // rounded integer, saturating at 1e18 (never `std.fmt`, whose float printer is also dead weight in the wasm).
     var ip: u64 = 0;
     var frac: u64 = 0;
-    if (@abs(x) >= 9.0e11) {
+    if (@abs(x) >= 9.0e15 / scale_f) {
         ip = cast.toIntClamped(u64, @min(@round(@abs(x)), 1.0e18), 0, std.math.maxInt(u64));
     } else {
-        const n = cast.toIntClamped(u64, @round(@abs(x) * 10000.0), 0, std.math.maxInt(u64));
+        const n = cast.toIntClamped(u64, @round(@abs(x) * scale_f), 0, std.math.maxInt(u64));
         if (n == 0) return "0";
-        ip = n / 10000;
-        frac = n % 10000;
+        ip = n / scale;
+        frac = n % scale;
     }
     var i: usize = buf.len;
     if (frac != 0) {
-        var digits: usize = 4;
+        var digits: usize = decimals;
         while (frac % 10 == 0) : (digits -= 1) frac /= 10;
         var d: usize = 0;
         while (d < digits) : (d += 1) {
@@ -782,4 +798,24 @@ test "fmtNumber: huge values print as integers, never via std.fmt" {
     try std.testing.expectEqualStrings("1000000000000000000", fmtNumber(&b, 1e300));
     try std.testing.expectEqualStrings("7.625", fmtNumber(&b, 7.625));
     try std.testing.expectEqualStrings("0", fmtNumber(&b, -0.00001));
+}
+
+test "fmtFixed prints exactly what {d} prints for the rounded double (svg/pdf 3 dp, dxf/bulge 6 dp, json 4 dp)" {
+    var prng = std.Random.DefaultPrng.init(0x4b455246);
+    const rnd = prng.random();
+    var b: [40]u8 = undefined;
+    var ref: [64]u8 = undefined;
+    inline for (.{ 3, 4, 6 }) |dec| {
+        const sc: f64 = comptime std.math.pow(f64, 10, dec);
+        var k: usize = 0;
+        while (k < 20000) : (k += 1) {
+            // mixture of magnitudes, ties, negatives and tiny values
+            const mag = std.math.pow(f64, 10, rnd.float(f64) * 9.0 - 4.0);
+            var x = (rnd.float(f64) * 2.0 - 1.0) * mag;
+            if (k % 7 == 0) x = @round(x * 2.0) / 2.0 + 0.5 / sc; // exact ties at the last digit
+            const r = @round(x * sc) / sc;
+            const want = std.fmt.bufPrint(&ref, "{d}", .{if (r == 0) 0 else r}) catch unreachable;
+            try std.testing.expectEqualStrings(want, fmtFixed(&b, x, dec));
+        }
+    }
 }
