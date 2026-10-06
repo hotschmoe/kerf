@@ -242,6 +242,46 @@ pub fn oneLoop(a: Allocator, l: []const Pt) Allocator.Error![]const []const Pt {
     return out;
 }
 
+/// `[dx, dy]`: two lengths in inches. Reports E_PARAM (path = where it was written) and returns null on any other shape, so a
+/// typo like ["1/2x", 3] is an error with a fix hint instead of an offset of 0.
+pub fn offsetPairOrDiag(a: Allocator, diags: *Diags, id: ?[]const u8, path: []const u8, what: []const u8, v: json.Value) ?V2 {
+    const fix = std.fmt.allocPrint(a, "write {s} as [x, y], two lengths in inches (numbers or strings such as \"1 1/2\"), e.g. [1.5, -2]", .{what}) catch "write it as [x, y], two lengths in inches";
+    const arr = v.arr() orelse {
+        diags.addFix(.@"error", "E_PARAM", id, path, "{s} must be an array [x, y] (got {s})", .{ what, kindOrText(a, v) }, fix);
+        return null;
+    };
+    if (arr.len != 2) {
+        diags.addFix(.@"error", "E_PARAM", id, path, "{s} must have exactly 2 values [x, y] (got {d})", .{ what, arr.len }, fix);
+        return null;
+    }
+    var out: [2]f64 = undefined;
+    for (arr, 0..) |e, i| {
+        out[i] = units.parseLength(e) orelse {
+            if (units.parseLengthAny(e)) |x| {
+                diags.addFix(.@"error", "E_PARAM", id, path, "{s}[{d}] is out of range: a length must be within +-{d} inches (got {s}, which is {s} inches)", .{ what, i, limits.max_coord_in, kindOrText(a, e), numText(a, x) }, fix);
+            } else {
+                diags.addFix(.@"error", "E_PARAM", id, path, "{s}[{d}] must be a length (got {s}); lengths are {s}", .{ what, i, kindOrText(a, e), units.length_forms }, fix);
+            }
+            return null;
+        };
+    }
+    return V2.init(out[0], out[1]);
+}
+
+/// A scalar length member (`offset` of a dim) with the same reporting; absent or null gives `default`.
+pub fn lengthOrDiag(a: Allocator, diags: *Diags, id: ?[]const u8, path: []const u8, v: ?json.Value, what: []const u8, default: f64) ?f64 {
+    const x = v orelse return default;
+    if (x == .null) return default;
+    if (units.parseLength(x)) |n| return n;
+    const fix = "write it as a number of inches or a length string such as \"1 1/2\"";
+    if (units.parseLengthAny(x)) |n| {
+        diags.addFix(.@"error", "E_PARAM", id, path, "{s} is out of range: a length must be within +-{d} inches (got {s}, which is {s} inches)", .{ what, limits.max_coord_in, kindOrText(a, x), numText(a, n) }, fix);
+    } else {
+        diags.addFix(.@"error", "E_PARAM", id, path, "{s} must be a length (got {s}); lengths are {s}", .{ what, kindOrText(a, x), units.length_forms }, fix);
+    }
+    return null;
+}
+
 // ---- param extraction -------------------------------------------------------------------------------
 
 /// Typed access to a component's (or annotation's) JSON params with E_PARAM diagnostics.
@@ -319,6 +359,51 @@ pub const Params = struct {
             return null;
         }
         return cast.toInt(i64, x);
+    }
+
+    // ---- members of object-valued params (place.cover, array.count, recess.from_edge ...) -------------------------------
+    // Absent or null gives the default; anything else must have the right type and range, else E_PARAM at `<key>/<field>`
+    // and null is returned. Formerly these read `... orelse default`, so a typo such as "cover": "1 1/2x" silently became 1.5.
+
+    fn fieldPath(self: *Params, key: []const u8, field: []const u8) []const u8 {
+        return std.fmt.allocPrint(self.a, "{s}/{s}", .{ key, field }) catch key;
+    }
+
+    pub fn fieldLen(self: *Params, key: []const u8, obj: json.Value, field: []const u8, default: f64) ?f64 {
+        const v = obj.get(field) orelse return default;
+        if (v == .null) return default;
+        if (units.parseLength(v)) |x| return x;
+        const path = self.fieldPath(key, field);
+        if (units.parseLengthAny(v)) |x| {
+            self.failCode("E_PARAM", path, "{s}.{s} is out of range: a length must be within +-{d} inches (got {s}, which is {s} inches)", .{ key, field, limits.max_coord_in, kindOrText(self.a, v), numText(self.a, x) });
+        } else {
+            self.failCode("E_PARAM", path, "{s}.{s} must be a length: {s} (got {s})", .{ key, field, units.length_forms, kindOrText(self.a, v) });
+        }
+        return null;
+    }
+
+    pub fn fieldInt(self: *Params, key: []const u8, obj: json.Value, field: []const u8, default: i64, min: i64, max: i64) ?i64 {
+        const v = obj.get(field) orelse return default;
+        if (v == .null) return default;
+        if (v == .number and v.number == @round(v.number)) if (cast.toInt(i64, v.number)) |n| if (n >= min and n <= max) return n;
+        self.failCode("E_PARAM", self.fieldPath(key, field), "{s}.{s} must be an integer from {d} to {d} (got {s})", .{ key, field, min, max, kindOrText(self.a, v) });
+        return null;
+    }
+
+    /// A string member that must be one of `choices` (the first is the default).
+    pub fn fieldChoice(self: *Params, key: []const u8, obj: json.Value, field: []const u8, choices: []const []const u8) ?[]const u8 {
+        const v = obj.get(field) orelse return choices[0];
+        if (v == .null) return choices[0];
+        if (v == .string) for (choices) |c| if (std.mem.eql(u8, v.string, c)) return c;
+        self.failCode("E_PARAM", self.fieldPath(key, field), "{s}.{s} must be one of {s} (got {s})", .{ key, field, joinQuoted(self.a, choices), kindOrText(self.a, v) });
+        return null;
+    }
+
+    /// An `[dx, dy]` pair of lengths (offset of a Ref) at param `key`; any other shape is E_PARAM, never "0".
+    pub fn offsetPair(self: *Params, key: []const u8, v: json.Value) ?V2 {
+        const r = offsetPairOrDiag(self.a, self.diags, self.id, std.fmt.allocPrint(self.a, "{s}/{s}/{s}", .{ self.base, self.id, key }) catch key, "offset", v);
+        if (r == null) self.ok = false;
+        return r;
     }
 
     pub fn boolean(self: *Params, key: []const u8, default: bool) bool {

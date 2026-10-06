@@ -290,8 +290,8 @@ fn parseAt(a: Allocator, scene: *Scene, comp: *Comp, p: *model.Params) Allocator
                     p.ok = false;
                     return null;
                 };
-                if (to.get("offset")) |off| if (off.arr()) |oa| if (oa.len >= 2) {
-                    pt = pt.add(V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0));
+                if (to.get("offset")) |off| if (off != .null) {
+                    pt = pt.add(p.offsetPair("at/to/offset", off) orelse return null);
                 };
                 spec.to = pt;
             },
@@ -409,18 +409,9 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
             p.fail("array", "param 'array' must be {{\"axis\": \"x|y|z\", \"count\": n, \"spacing\": s}}", .{});
             return;
         }
-        const ax = (if (av.get("axis")) |x| x.str() else null) orelse "x";
-        if (ax.len != 1 or (ax[0] != 'x' and ax[0] != 'y' and ax[0] != 'z')) {
-            p.fail("array/axis", "array.axis must be \"x\", \"y\" or \"z\" (got \"{s}\")", .{ax});
-            return;
-        }
+        const ax = p.fieldChoice("array", av, "axis", &.{ "x", "y", "z" }) orelse return;
         arr_axis = ax[0];
-        const cnt = (if (av.get("count")) |x| x.num() else null) orelse 1;
-        if (cnt < 1 or cnt != @round(cnt) or cnt > 500) {
-            p.fail("array/count", "array.count must be an integer from 1 to 500", .{});
-            return;
-        }
-        arr_count = cast.toIntClamped(usize, cnt, 1, 500);
+        arr_count = cast.toIntClamped(usize, @floatFromInt(p.fieldInt("array", av, "count", 1, 1, 500) orelse return), 1, 500);
         arr_spacing = (if (av.get("spacing")) |x| units.parseLength(x) else null) orelse {
             p.fail("array/spacing", "array.spacing must be a length (inches between instances; may be negative)", .{});
             return;

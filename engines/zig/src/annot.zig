@@ -1314,10 +1314,8 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 landing = try targetLanding(env, target);
             }
             var place: ?V2 = null;
-            if (an.get("place")) |pv| if (pv.arr()) |pa| if (pa.len >= 2) {
-                if (units.parseLength(pa[0])) |x| if (units.parseLength(pa[1])) |y| {
-                    place = V2.init(x, y);
-                };
+            if (an.get("place")) |pv| if (pv != .null) {
+                place = model.offsetPairOrDiag(a, env.diags, id, try std.fmt.allocPrint(a, "{s}/place", .{apath}), "place", pv) orelse continue;
             };
             var column: ?route.Side = null;
             if (an.get("column")) |cv| if (cv != .null) {
@@ -1351,7 +1349,7 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 env.diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/dir", .{apath}), "dim dir must be \"h\", \"v\" or \"aligned\" (got \"{s}\")", .{dir_s});
                 continue;
             };
-            const off = if (an.get("offset")) |x| (units.parseLength(x) orelse 0) else 0;
+            const off = model.lengthOrDiag(a, env.diags, id, try std.fmt.allocPrint(a, "{s}/offset", .{apath}), an.get("offset"), "dim offset", 0) orelse continue;
             const text: ?[]const u8 = if (an.get("text")) |x| x.str() else null;
             const ds = DimSpec{ .k = k, .id = id, .from = from, .to = to, .dir = dir, .off0 = off, .text = text };
             cur_meta = .{ .id = id, .kind = .dim, .axis = ds.axis(), .off = off, .owner = dspecs.items.len };
@@ -1368,8 +1366,8 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             };
             var p = env.scene.point(atv, id, try std.fmt.allocPrint(a, "{s}/at", .{apath})) orelse continue;
             var loff = V2.init(0, 0);
-            if (an.get("offset")) |ov| if (ov.arr()) |oa| if (oa.len >= 2) {
-                loff = V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0);
+            if (an.get("offset")) |ov| if (ov != .null) {
+                loff = model.offsetPairOrDiag(a, env.diags, id, try std.fmt.allocPrint(a, "{s}/offset", .{apath}), "label offset", ov) orelse continue;
                 p = p.add(loff);
             };
             cur_meta = .{ .id = id, .kind = .label, .off = loff.x, .off2 = loff.y, .owner = lspecs.items.len };

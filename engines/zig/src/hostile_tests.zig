@@ -182,3 +182,55 @@ test "out of memory is reported, never swallowed (SAF-6)" {
         }
     }
 }
+
+// ---- SAF-4: silent defaults are errors with a precise message ---------------------------------------------------------
+
+const conc = "{\"id\":\"c\",\"type\":\"concrete\",\"shape\":\"rect\",\"width\":12,\"height\":12,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}";
+
+const DiagCase = struct {
+    name: []const u8,
+    /// components array body after the concrete `c`
+    comps: []const u8,
+    /// annotations array body of view A (may be empty)
+    anns: []const u8 = "",
+    /// every one of these must occur in the check output
+    expect: []const []const u8,
+};
+
+const diag_cases = [_]DiagCase{
+    .{ .name = "at.to offset typo", .comps = "{\"id\":\"a\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{\"to\":{\"ref\":\"c@top_left\",\"offset\":[\"1/2x\",3]}}}", .expect = &.{ "E_PARAM", "components/a/at/to/offset", "offset[0] must be a length", "\\\"1/2x\\\"", "write offset as [x, y]" } },
+    .{ .name = "at.to offset not an array", .comps = "{\"id\":\"a\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{\"to\":{\"ref\":\"c@top_left\",\"offset\":5}}}", .expect = &.{ "E_PARAM", "offset must be an array [x, y] (got 5)" } },
+    .{ .name = "at.to offset with three values", .comps = "{\"id\":\"a\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{\"to\":{\"ref\":\"c@top_left\",\"offset\":[1,2,3]}}}", .expect = &.{ "E_PARAM", "exactly 2 values [x, y] (got 3)" } },
+    .{ .name = "at.to offset beyond the range", .comps = "{\"id\":\"a\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{\"to\":{\"ref\":\"c@top_left\",\"offset\":[\"99999999\",0]}}}", .expect = &.{ "E_PARAM", "out of range" } },
+    .{ .name = "point offset typo in a connector", .comps = "{\"id\":\"s\",\"type\":\"connector\",\"model\":\"H2.5A\",\"lay\":\"face\",\"points\":[{\"ref\":\"c@top_left\",\"offset\":[\"x\",0]},{\"ref\":\"c@bottom_left\",\"offset\":[1,1]}]}", .expect = &.{ "E_PARAM", "components/s/points/0/offset", "offset[0] must be a length" } },
+    .{ .name = "polygon bulge as text", .comps = "{\"id\":\"p\",\"type\":\"concrete\",\"shape\":\"polygon\",\"points\":[[0,0],[10,0,\"big\"],[0,10]],\"at\":{\"to\":[30,0]}}", .expect = &.{ "E_PARAM", "must be a number", "bulge" } },
+    .{ .name = "place.cover typo", .comps = "{\"id\":\"r\",\"type\":\"rebar\",\"size\":\"#4\",\"mode\":\"along_z\",\"place\":{\"in\":\"c\",\"face\":\"bottom\",\"cover\":\"1 1/2x\",\"count\":2}}", .expect = &.{ "E_PARAM", "components/r/place/cover", "place.cover must be a length", "\\\"1 1/2x\\\"" } },
+    .{ .name = "place.side_cover typo", .comps = "{\"id\":\"r\",\"type\":\"rebar\",\"size\":\"#4\",\"mode\":\"along_z\",\"place\":{\"in\":\"c\",\"face\":\"bottom\",\"side_cover\":true,\"count\":2}}", .expect = &.{ "E_PARAM", "place.side_cover must be a length" } },
+    .{ .name = "place.count as text", .comps = "{\"id\":\"r\",\"type\":\"rebar\",\"size\":\"#4\",\"mode\":\"along_z\",\"place\":{\"in\":\"c\",\"face\":\"bottom\",\"count\":\"3\"}}", .expect = &.{ "E_PARAM", "place.count must be an integer from 1 to 200 (got \\\"3\\\")" } },
+    .{ .name = "array.count as text", .comps = "{\"id\":\"a\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{\"to\":[20,0]},\"array\":{\"axis\":\"z\",\"count\":\"3\",\"spacing\":2}}", .expect = &.{ "E_PARAM", "array.count must be an integer from 1 to 500 (got \\\"3\\\")" } },
+    .{ .name = "array.axis not a string", .comps = "{\"id\":\"a\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{\"to\":[20,0]},\"array\":{\"axis\":5,\"count\":3,\"spacing\":2}}", .expect = &.{ "E_PARAM", "array.axis must be one of" } },
+    .{ .name = "cover bottom typo", .comps = "{\"id\":\"w\",\"type\":\"concrete\",\"shape\":\"rect\",\"width\":8,\"height\":8,\"cover\":{\"bottom\":\"deep\"},\"at\":{\"to\":[30,0]}}", .expect = &.{ "E_PARAM", "cover.bottom must be a length" } },
+    .{ .name = "cover.parts value typo", .comps = "{\"id\":\"w\",\"type\":\"concrete\",\"shape\":\"slab_edge\",\"cover\":{\"parts\":{\"slab\":{\"bottom\":\"x\"}}},\"at\":{\"anchor\":\"top_exterior\",\"to\":[30,0]}}", .expect = &.{ "E_PARAM", "cover/parts/slab/bottom", "must be a length" } },
+    .{ .name = "recess.from_edge typo", .comps = "{\"id\":\"w\",\"type\":\"concrete\",\"shape\":\"slab_edge\",\"recess\":{\"width\":8,\"depth\":1,\"from_edge\":\"far\"},\"at\":{\"anchor\":\"top_exterior\",\"to\":[30,0]}}", .expect = &.{ "E_PARAM", "recess.from_edge must be a length" } },
+    .{ .name = "dim offset typo", .comps = "", .anns = "{\"id\":\"d1\",\"type\":\"dim\",\"from\":\"c@bottom_left\",\"to\":\"c@bottom_right\",\"dir\":\"h\",\"offset\":\"abc\"}", .expect = &.{ "E_PARAM", "views/A/annotations/d1/offset", "dim offset must be a length", "write it as a number of inches" } },
+    .{ .name = "label offset typo", .comps = "", .anns = "{\"id\":\"l1\",\"type\":\"label\",\"text\":\"EXT\",\"at\":\"c@center\",\"offset\":[\"a\",1]}", .expect = &.{ "E_PARAM", "views/A/annotations/l1/offset", "label offset[0] must be a length" } },
+    .{ .name = "note place typo", .comps = "", .anns = "{\"id\":\"n1\",\"type\":\"note\",\"text\":\"CONC. BLOCK\",\"target\":\"c\",\"place\":[1]}", .expect = &.{ "E_PARAM", "views/A/annotations/n1/place", "place must have exactly 2 values" } },
+};
+
+test "silent defaults are now E_PARAM errors naming the key and giving a fix (SAF-4)" {
+    for (diag_cases) |c| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const comps = if (c.comps.len > 0) try std.fmt.allocPrint(a, "{s},{s}", .{ conc, c.comps }) else conc;
+        const input = try std.fmt.allocPrint(a, "{{\"doc\":{{\"kerf\":\"0.1\",\"id\":\"d\",\"run\":[-12,12],\"components\":[{s}],\"views\":[{{\"id\":\"A\",\"kind\":\"section\",\"scale\":\"1\\\"=1'-0\\\"\",\"crop\":{{\"x\":[-4,60],\"y\":[-4,16]}},\"annotations\":[{s}]}}]}}}}", .{ comps, c.anns });
+        const r = try api.call(std.testing.allocator, "check", input);
+        defer std.testing.allocator.free(r.bytes);
+        for (c.expect) |want| {
+            if (std.mem.indexOf(u8, r.bytes, want) == null) {
+                std.debug.print("case '{s}': expected \"{s}\" in:\n{s}\n", .{ c.name, want, r.bytes[0..@min(r.bytes.len, 2500)] });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }
+}

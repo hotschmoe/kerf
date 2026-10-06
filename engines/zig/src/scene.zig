@@ -220,8 +220,9 @@ pub fn pointFromValue(self: *Scene, v: json.Value, from_id: []const u8, path: []
         .object => {
             if (v.get("ref")) |r| if (r.str()) |rs| {
                 var pt = self.resolveRefStr(rs, from_id, path) orelse return null;
-                if (v.get("offset")) |off| if (off.arr()) |oa| if (oa.len >= 2) {
-                    pt = pt.add(V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0));
+                if (v.get("offset")) |off| if (off != .null) {
+                    const opath = std.fmt.allocPrint(self.a, "{s}/offset", .{path}) catch path;
+                    pt = pt.add(model.offsetPairOrDiag(self.a, self.diags, from_id, opath, "offset", off) orelse return null);
                 };
                 return pt;
             };

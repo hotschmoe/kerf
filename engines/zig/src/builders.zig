@@ -198,8 +198,11 @@ pub fn parsePointList(ctx: *Ctx, key: []const u8, v: json.Value, local: bool) Bu
                 };
                 if (ctx.scene.resolveRefStr(rstr, ctx.p.id, fpath)) |w| {
                     var q = w;
-                    if (e.get("offset")) |off| if (off.arr()) |oa| if (oa.len >= 2) {
-                        q = q.add(V2.init(units.parseLength(oa[0]) orelse 0, units.parseLength(oa[1]) orelse 0));
+                    if (e.get("offset")) |off| if (off != .null) {
+                        q = q.add(ctx.p.offsetPair(try std.fmt.allocPrint(ctx.a, "{s}/offset", .{path}), off) orelse {
+                            ok = false;
+                            continue;
+                        });
                     };
                     if (local) q = q.sub(ctx.origin);
                     try out.append(ctx.a, .{ .x = q.x, .y = q.y });
@@ -477,21 +480,19 @@ fn parseCover(ctx: *Ctx, key: []const u8, base: model.Cover) ?struct { cover: mo
     }
     var c = base;
     inline for (.{ "bottom", "sides", "top" }) |k| {
-        if (v.get(k)) |x| {
-            if (units.parseLength(x)) |n| @field(c, k) = n else {
-                ctx.p.fail(key, "{s}.{s} must be a length", .{ key, k });
-                return null;
-            }
-        }
+        @field(c, k) = ctx.p.fieldLen(key, v, k, @field(c, k)) orelse return null;
     }
     var parts: std.ArrayList(model.PartCover) = .empty;
     if (v.get("parts")) |pv| if (pv == .object) {
         for (pv.object) |m| {
             var pc = c;
+            if (m.value != .object) {
+                ctx.p.fail(key, "{s}.parts.{s} must be an object like {{\"bottom\": 0.75}} (got {s})", .{ key, m.key, model.kindOrText(ctx.a, m.value) });
+                return null;
+            }
+            const part_key = std.fmt.allocPrint(ctx.a, "{s}/parts/{s}", .{ key, m.key }) catch return null;
             inline for (.{ "bottom", "sides", "top" }) |k| {
-                if (m.value.get(k)) |x| if (units.parseLength(x)) |n| {
-                    @field(pc, k) = n;
-                };
+                @field(pc, k) = ctx.p.fieldLen(part_key, m.value, k, @field(pc, k)) orelse return null;
             }
             parts.append(ctx.a, .{ .part = m.key, .cover = pc }) catch return null;
         }
@@ -694,7 +695,7 @@ fn buildConcrete(ctx: *Ctx) BuildError!?Built {
                 p.fail("recess/depth", "recess needs a numeric 'depth'", .{});
                 break :blk 0;
             };
-            re = (if (rv.get("from_edge")) |x| units.parseLength(x) else null) orelse 0;
+            re = p.fieldLen("recess", rv, "from_edge", 0) orelse 0;
         }
     }
     const rslope = p.len("recess_slope", 0, "");
@@ -944,14 +945,10 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
         return null;
     };
     const face = (if (pl.get("face")) |x| x.str() else null) orelse "bottom";
-    const cover = (if (pl.get("cover")) |x| units.parseLength(x) else null) orelse 1.5;
-    const side_cover = (if (pl.get("side_cover")) |x| units.parseLength(x) else null) orelse cover;
-    const count_f = (if (pl.get("count")) |x| x.num() else null) orelse 1;
-    if (count_f < 1 or count_f != @round(count_f) or count_f > 200) {
-        p.fail("place/count", "place.count must be an integer from 1 to 200 (got {s})", .{fmtNum(a, count_f)});
-        return null;
-    }
-    const count: usize = cast.toIntClamped(usize, count_f, 1, 200);
+    const cover = p.fieldLen("place", pl, "cover", 1.5) orelse return null;
+    const side_cover = p.fieldLen("place", pl, "side_cover", cover) orelse return null;
+    const count_i = p.fieldInt("place", pl, "count", 1, 1, 200) orelse return null;
+    const count: usize = cast.toIntClamped(usize, @floatFromInt(count_i), 1, 200);
     const axis = (if (pl.get("axis")) |x| x.str() else null) orelse "x";
     if (!std.mem.eql(u8, axis, "x") and !std.mem.eql(u8, axis, "y")) {
         p.fail("place/axis", "place.axis must be \"x\" or \"y\" (got \"{s}\"): the direction a multi-bar row spreads for face \"center\"", .{axis});
