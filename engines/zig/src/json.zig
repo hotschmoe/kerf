@@ -452,8 +452,10 @@ pub fn writeNumber(out: *std.ArrayList(u8), a: Allocator, x: f64) Allocator.Erro
 
 /// Order-fixing hook for the canonical writer: given the path of keys from the root to an object
 /// (e.g. ["components", "*"]) return the schema key order for that object, or null.
-pub const KeyOrderFn = *const fn (ctx: *const KeyCtx) []const []const u8;
+pub const KeyOrderFn = *const fn (ctx: *const KeyCtx) Allocator.Error![]const []const u8;
 pub const KeyCtx = struct {
+    /// Where an order that has to be built (not a constant table) may allocate its key list: the writer's allocator.
+    a: Allocator,
     /// Path of object-valued containers from the root; array elements show as "[]".
     path: []const []const u8,
     /// The object being written.
@@ -529,8 +531,8 @@ pub const Pretty = struct {
 
     fn orderMembers(self: *Pretty, members: []const Member) Allocator.Error![]const Member {
         const f = self.order orelse return members;
-        const ctx = KeyCtx{ .path = self.path.items, .obj = members };
-        const schema = f(&ctx);
+        const ctx = KeyCtx{ .a = self.a, .path = self.path.items, .obj = members };
+        const schema = try f(&ctx);
         const out = try self.a.alloc(Member, members.len);
         const used = try self.a.alloc(bool, members.len);
         @memset(used, false);

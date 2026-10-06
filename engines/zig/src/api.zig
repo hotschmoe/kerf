@@ -21,6 +21,7 @@ const ops_mod = @import("ops.zig");
 const lint = @import("lint.zig");
 pub const schema = @import("schema.zig");
 const limits = @import("limits.zig");
+const oom = @import("oom.zig");
 const Allocator = std.mem.Allocator;
 
 pub const version = "0.1.0";
@@ -105,10 +106,14 @@ fn schemaFn(a: Allocator, inp: json.Value) ApiError!Out {
 
 /// Run API function `name` on `input` (UTF-8 JSON). Output is allocated from `gpa`.
 pub fn call(gpa: Allocator, name: []const u8, input: []const u8) ApiError!Result {
-    var arena = std.heap.ArenaAllocator.init(gpa);
+    // The sensor notices an allocation that was refused anywhere below, including sites that swallow the error to build a
+    // message (`Diags.add` ...): such a call must fail with OutOfMemory instead of returning a result with a diagnostic missing.
+    var sensor = oom.Sensor.init(gpa);
+    var arena = std.heap.ArenaAllocator.init(sensor.allocator());
     defer arena.deinit();
     const a = arena.allocator();
     const r = try dispatch(a, name, input);
+    if (sensor.failed) return error.OutOfMemory;
     return .{ .ok = r.ok, .bytes = try gpa.dupe(u8, r.bytes) };
 }
 

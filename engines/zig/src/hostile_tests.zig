@@ -147,3 +147,38 @@ test "benign base document is clean" {
     defer std.testing.allocator.free(d.bytes);
     try std.testing.expect(d.ok);
 }
+
+test "out of memory is reported, never swallowed (SAF-6)" {
+    // For every allocation index of a call: either error.OutOfMemory or exactly the result of the unconstrained call.
+    // (Before, `Diags.add` and ~60 more sites ate the error and returned a result with a diagnostic missing.)
+    const testdocs = @import("testdocs.zig");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const doc_input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"view\":\"A\",\"format\":\"svg\"}}", .{testdocs.beam});
+    const apply_input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"ops\":[{{\"op\":\"update\",\"path\":\"components/strap\",\"value\":{{\"z\":0}}}}]}}", .{testdocs.beam});
+    for ([_]struct { f: []const u8, input: []const u8 }{
+        .{ .f = "check", .input = doc_input },
+        .{ .f = "drawing", .input = doc_input },
+        .{ .f = "apply", .input = apply_input },
+    }) |c| {
+        const base = try api.call(std.testing.allocator, c.f, c.input);
+        defer std.testing.allocator.free(base.bytes);
+        var counter = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const r0 = try api.call(counter.allocator(), c.f, c.input);
+        std.testing.allocator.free(r0.bytes);
+        const total = counter.alloc_index;
+        try std.testing.expect(total > 0);
+        var idx: usize = 0;
+        while (idx <= total) : (idx += 1) {
+            var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = idx });
+            const r = api.call(fa.allocator(), c.f, c.input) catch |e| {
+                try std.testing.expectEqual(error.OutOfMemory, e);
+                continue;
+            };
+            defer std.testing.allocator.free(r.bytes);
+            try std.testing.expectEqual(base.ok, r.ok);
+            try std.testing.expectEqualStrings(base.bytes, r.bytes);
+        }
+    }
+}

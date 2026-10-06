@@ -26,37 +26,29 @@ const note_keys = schema.keys(&schema.note);
 const dim_keys = schema.keys(&schema.dim);
 const label_keys = schema.keys(&schema.label);
 
-var type_scratch: [64][]const u8 = undefined;
-
 fn eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-fn componentKeys(ctx: *const json.KeyCtx) []const []const u8 {
+/// Canonical key order of a component: the common keys, then the type's own parameters (a name list built per call from
+/// the writer's allocator: no shared scratch, no length limit).
+fn componentKeys(ctx: *const json.KeyCtx) Allocator.Error![]const []const u8 {
     var ty: []const u8 = "";
     for (ctx.obj) |m| if (eql(m.key, "type")) {
         if (m.value == .string) ty = m.value.string;
     };
-    var n: usize = 0;
-    for (common_keys) |k| {
-        type_scratch[n] = k;
-        n += 1;
-    }
+    var keys: std.ArrayList([]const u8) = .empty;
+    try keys.appendSlice(ctx.a, &common_keys);
     if (catalog.find(ty)) |e| {
         for (e.params) |p| {
             var it = std.mem.splitSequence(u8, p.name, ", ");
-            while (it.next()) |nm| {
-                if (n < type_scratch.len) {
-                    type_scratch[n] = nm;
-                    n += 1;
-                }
-            }
+            while (it.next()) |nm| try keys.append(ctx.a, nm);
         }
     }
-    return type_scratch[0..n];
+    return keys.items;
 }
 
-pub fn order(ctx: *const json.KeyCtx) []const []const u8 {
+pub fn order(ctx: *const json.KeyCtx) Allocator.Error![]const []const u8 {
     const p = ctx.path;
     if (p.len == 0) return &root_keys;
     const last = p[p.len - 1];
@@ -68,7 +60,7 @@ pub fn order(ctx: *const json.KeyCtx) []const []const u8 {
         if (eql(last, "classification")) return &class_keys;
         if (eql(last, "jurisdiction")) return &juris_keys;
     }
-    if (p.len == 2 and eql(p[0], "components") and eql(last, "[]")) return componentKeys(ctx);
+    if (p.len == 2 and eql(p[0], "components") and eql(last, "[]")) return try componentKeys(ctx);
     if (p.len == 2 and eql(p[0], "views") and eql(last, "[]")) return &view_keys;
     if (p.len == 3 and eql(p[0], "components")) {
         if (eql(last, "at")) return &at_keys;
@@ -121,4 +113,35 @@ test "canonical common key order covers every catalog common field (no drift)" {
         };
         try std.testing.expect(found);
     }
+}
+
+fn fmtWorker(src: []const u8, want: []const u8, failures: *std.atomic.Value(u32)) void {
+    var i: usize = 0;
+    while (i < 40) : (i += 1) {
+        const input = std.fmt.allocPrint(std.heap.page_allocator, "{{\"doc\":{s}}}", .{src}) catch return;
+        defer std.heap.page_allocator.free(input);
+        const r = @import("api.zig").call(std.heap.page_allocator, "fmt", input) catch {
+            _ = failures.fetchAdd(1, .monotonic);
+            return;
+        };
+        defer std.heap.page_allocator.free(r.bytes);
+        if (!std.mem.eql(u8, r.bytes, want)) _ = failures.fetchAdd(1, .monotonic);
+    }
+}
+
+test "fmt is safe to call from several threads at once (no shared key scratch, REVIEW SAF-7)" {
+    const testdocs = @import("testdocs.zig");
+    var wants: [3][]u8 = undefined;
+    for (testdocs.all, 0..) |src, i| {
+        const input = try std.fmt.allocPrint(std.testing.allocator, "{{\"doc\":{s}}}", .{src});
+        defer std.testing.allocator.free(input);
+        const r = try @import("api.zig").call(std.testing.allocator, "fmt", input);
+        wants[i] = r.bytes;
+    }
+    defer for (wants) |w| std.testing.allocator.free(w);
+    var failures = std.atomic.Value(u32).init(0);
+    var threads: [6]std.Thread = undefined;
+    for (&threads, 0..) |*t, i| t.* = try std.Thread.spawn(.{}, fmtWorker, .{ testdocs.all[i % 3], wants[i % 3], &failures });
+    for (threads) |t| t.join();
+    try std.testing.expectEqual(@as(u32, 0), failures.load(.monotonic));
 }

@@ -8,6 +8,7 @@ pub const json = @import("json.zig");
 pub const units = @import("units.zig");
 pub const num = @import("num.zig");
 pub const limits = @import("limits.zig");
+pub const oom = @import("oom.zig");
 pub const geom = @import("geom.zig");
 pub const clip = @import("clip.zig");
 pub const font = @import("font.zig");
