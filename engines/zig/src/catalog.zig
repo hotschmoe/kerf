@@ -165,14 +165,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .anchor_bolt,
         .summary = "Anchor bolt in the XY plane at a given z (shank, hook, nut and washer).",
-        .params = &.{
-            .{ .names = &.{"diameter"}, .def = "0.5", .desc = "0.5 or 0.625 typical" },
-            .{ .names = &.{"embed"}, .def = "7 (4 for wedge/screw)", .desc = "length below the placement point (top of concrete); effective embedment for wedge/screw" },
-            .{ .names = &.{"projection"}, .def = "2.5", .desc = "length above the placement point" },
-            .{ .names = &.{"hook"}, .def = "J", .desc = "J: 180 degree bend toward +x, inside radius 1.5*d, returning up hook_len from the lowest point; L: 90 degree bend toward +x, horizontal leg ends hook_len from the shaft centerline; headed: square head 2*d wide, 0.5*d thick; none; wedge: post-installed expansion anchor (straight shaft, expansion clip 1.15*d wide x 0.6*embed long at the embedded end, nut+washer); screw: Titen HD style concrete screw (thread ticks along the embedment, hex washer head at the top, no nut)" },
-            .{ .names = &.{"hook_len"}, .def = "J 2, L 3", .desc = "hook leg length in inches (see hook)" },
-            .{ .names = &.{"nut_washer"}, .def = "true", .desc = "draw nut (1.5*d wide, 0.875*d tall, top at projection - 0.25*d) and washer (2.25*d wide, 0.125 thick) under it" },
-        },
+        .params = params.rows(builders.AnchorBoltParams),
         .parts = "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut)",
         .anchors = "9 box anchors + top_of_concrete (where the bolt meets the host top surface, local (0,0))",
         .draws = "Embedded steel, natural z thickness = diameter. The placement anchor DEFAULTS to top_of_concrete, so `\"at\": {\"to\": \"cmu@top_center\"}` seats the bolt in the top surface, projection up (you do not set `anchor`). z defaults to the first section view's cut_z, so the bolt is cut, not hidden; set `z` only to move it. `array` {axis z, count, spacing} draws bolts @ spacing in iso/3D (one is cut in section).",
