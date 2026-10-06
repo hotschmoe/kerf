@@ -227,7 +227,7 @@ const Ctx = struct {
     ord2: []usize,
     adj: []bool,
     /// Remaining column solves (bounds the work on dense views).
-    budget: usize = 100,
+    budget: usize = 60,
 
     fn landing(self: *const Ctx, i: usize) V2 {
         return self.notes[i].cands[self.ci[i]];
@@ -560,7 +560,7 @@ fn better(a: Cost, b: Cost) bool {
     return betterMode(a, b, true);
 }
 
-/// Lexicographic (hard hits if `hard_first`, all hits, cost).
+/// Lexicographic: hits between notes (if `hard_first`), all hits, cost.
 fn betterMode(a: Cost, b: Cost, hard_first: bool) bool {
     if (hard_first and a.hard != b.hard) return a.hard < b.hard;
     return a.hits < b.hits or (a.hits == b.hits and a.total < b.total - 1e-9);
@@ -568,7 +568,7 @@ fn betterMode(a: Cost, b: Cost, hard_first: bool) bool {
 
 /// Hit-driven improvement: DP re-solve, then single discrete changes (column flip, neighbour swap,
 /// re-insertion) re-solved one at a time; the first change that lowers (hits, cost) is kept.
-fn improve(c: *Ctx, scratch: bool, hard_first: bool) void {
+fn improve(c: *Ctx) void {
     const n = c.notes.len;
     c.solveAll();
     var cur = c.eval();
@@ -585,29 +585,13 @@ fn improve(c: *Ctx, scratch: bool, hard_first: bool) void {
                 c.key[i] = -c.landing(i).y;
                 c.solveAll();
                 const r = c.eval();
-                if (betterMode(r, cur, hard_first)) {
+                if (better(r, cur)) {
                     cur = r;
                     changed = true;
                     continue;
                 }
                 c.restore(start);
                 _ = c.eval();
-                // (a') the same column change solved from scratch (the other notes re-derive their order and landings)
-                if (!scratch) {
-                    // skipped in the first attempt; see route()
-                } else {
-                    c.left[i] = !c.left[i];
-                    resetKeepColumns(c);
-                    c.solveAll();
-                    const r2 = c.eval();
-                    if (betterMode(r2, cur, hard_first)) {
-                        cur = r2;
-                        changed = true;
-                        continue;
-                    }
-                    c.restore(start);
-                    _ = c.eval();
-                }
             }
             // (b) re-insert at every other position of its column
             var cnt: usize = 0;
@@ -642,7 +626,7 @@ fn improve(c: *Ctx, scratch: bool, hard_first: bool) void {
                 }
                 c.solveAll();
                 const r = c.eval();
-                if (betterMode(r, cur, hard_first)) {
+                if (better(r, cur)) {
                     cur = r;
                     changed = true;
                     break;
@@ -681,18 +665,6 @@ fn decross(c: *Ctx) void {
         const ord = c.sortOrder(col_left);
         for (ord, 0..) |i, k| c.key[i] = @floatFromInt(k);
     }
-}
-
-/// Forget the column solver's choices (landing candidates, vertical positions, order) but keep the column of
-/// every note: the starting point of a from-scratch solve after a column change.
-fn resetKeepColumns(c: *Ctx) void {
-    for (c.notes, 0..) |nt, i| {
-        c.ci[i] = 0;
-        c.ov[i] = std.math.nan(f64);
-        c.key[i] = -nt.cands[0].y;
-    }
-    c.layout();
-    decross(c);
 }
 
 // ---- entry point ---------------------------------------------------------------------------------------------------
@@ -742,18 +714,13 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
         searched = true;
         const start = c.snapshot();
         var best = start;
-        // a small portfolio of searches from the same start; more attempts only while hits between notes remain
-        // (hits on dimension text and labels are the caller's to repair)
-        const attempts = [_][2]bool{ .{ false, false }, .{ true, false }, .{ false, true }, .{ true, true } };
-        for (attempts) |at| {
-            c.restore(start);
-            c.budget = if (p.light) 30 else 100;
-            _ = c.eval();
-            improve(&c, at[0], at[1]);
-            const r = c.snapshot();
-            if (betterMode(.{ .total = r.total, .hits = r.hits, .hard = r.hard }, .{ .total = best.total, .hits = best.hits, .hard = best.hard }, false)) best = r;
-            if (best.hard == 0 or p.light) break;
-        }
+        // one bounded search (a few column solves per hit note); hits on dimension text and labels are the
+        // caller's to repair (annot.zig), so the search ranks hits between notes first
+        c.budget = if (p.light) 20 else 60;
+        _ = c.eval();
+        improve(&c);
+        const r = c.snapshot();
+        if (betterMode(.{ .total = r.total, .hits = r.hits, .hard = r.hard }, .{ .total = best.total, .hits = best.hits, .hard = best.hard }, true)) best = r;
         c.restore(best);
         _ = c.eval();
     }
