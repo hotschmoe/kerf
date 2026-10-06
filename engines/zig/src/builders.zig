@@ -1923,20 +1923,36 @@ fn buildFlashing(ctx: *Ctx) BuildError!?Built {
 
 // ---- joint --------------------------------------------------------------------------------------------------------
 
+pub const JointParams = struct {
+    kind: enum { expansion, control, tooled_edge, sealant },
+    width: ?f64 = null,
+    depth: ?f64 = null,
+    in: ?json.Value = null,
+    cap: f64 = 0,
+    radius: f64 = 0.25,
+    corner: enum { top_right, top_left, bottom_right, bottom_left } = .top_right,
+    backer_rod: bool = true,
+
+    pub const spec = .{
+        .kind = .{ .desc = "expansion | control | tooled_edge | sealant" },
+        .width = .{ .len = .pos, .def = "0.5 (control 0.25)", .desc = "expansion: filler thickness; control: notch width at the top; sealant: joint gap width" },
+        .depth = .{ .len = .pos, .def = "expansion 4, control 1, sealant 0.25", .desc = "expansion: filler depth below the top (set to the slab thickness, or give `in`); control: notch depth (default 1/4 of the `in` zone height); sealant: bead depth" },
+        .in = .{ .desc = "optional host zone \"comp[.part]\" whose height sets the default depth (expansion: full height; control: 1/4)" },
+        .cap = .{ .len = .any, .desc = "expansion: depth of a sealant cap at the top of the filler (part `sealant`)" },
+        .radius = .{ .len = .pos, .desc = "tooled_edge: radius of the rounded corner" },
+        .corner = .{ .desc = "tooled_edge: which corner of the concrete the point is: top_right (concrete lies left and below), top_left, bottom_right, bottom_left" },
+        .backer_rod = .{ .desc = "sealant: draw the backer rod circle (diameter 1.25*width) below the bead" },
+    };
+};
+
 fn buildJoint(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const kind = p.choice("kind", null, &.{ "expansion", "control", "tooled_edge", "sealant" });
-    if (!p.ok) return null;
-    const k = kind.?;
-    const is = struct {
-        fn f(x: []const u8, y: []const u8) bool {
-            return std.mem.eql(u8, x, y);
-        }
-    }.f;
+    const jp = p.parse(JointParams) orelse return null;
+    const k = jp.kind;
     // optional host zone: default depth = slab thickness (expansion) or a quarter of it (control)
     var host_h: f64 = 0;
-    if (p.raw("in")) |iv| {
+    if (jp.in) |iv| {
         const in_s = iv.str() orelse {
             p.fail("in", "param 'in' must be \"<component>[.<part>]\", the concrete zone the joint cuts (its height sets the default depth)", .{});
             return null;
@@ -1962,20 +1978,21 @@ fn buildJoint(ctx: *Ctx) BuildError!?Built {
         }) else host.built.box;
         host_h = bx.height();
     }
-    const width_def: f64 = if (is(k, "control")) 0.25 else 0.5;
-    const width = p.lenPos("width", width_def, "") orelse return null;
-    const depth_def: f64 = if (is(k, "control")) (if (host_h > 0) host_h / 4.0 else 1.0) else if (is(k, "sealant")) @max(0.25, 0.5 * width) else if (host_h > 0) host_h else 4.0;
-    const depth = p.lenPos("depth", depth_def, "") orelse return null;
-    const radius = p.lenPos("radius", 0.25, "") orelse return null;
-    const cap = p.len("cap", 0, "") orelse return null;
-    const rod = p.boolean("backer_rod", true);
-    const corner = p.choice("corner", "top_right", &.{ "top_right", "top_left", "bottom_right", "bottom_left" });
-    if (!p.ok) return null;
+    const width: f64 = jp.width orelse if (k == .control) 0.25 else 0.5;
+    const depth_def: f64 = switch (k) {
+        .control => if (host_h > 0) host_h / 4.0 else 1.0,
+        .sealant => @max(0.25, 0.5 * width),
+        else => if (host_h > 0) host_h else 4.0,
+    };
+    const depth: f64 = jp.depth orelse depth_def;
+    const radius = jp.radius;
+    const cap = jp.cap;
+    const rod = jp.backer_rod;
     var prisms: std.ArrayList(Prism) = .empty;
     var anchors: std.ArrayList(model.NamedAnchor) = .empty;
     try anchors.append(a, .{ .name = "joint_top", .p = V2.init(0, 0) });
     const void_mat = materialOr(ctx, "void", "generic");
-    if (is(k, "expansion")) {
+    if (k == .expansion) {
         if (cap < 0 or cap >= depth) {
             p.fail("cap", "cap (sealant depth at the top of the joint) must be from 0 to less than depth {s} (got {s})", .{ fmtNum(a, depth), fmtNum(a, cap) });
             return null;
@@ -1983,16 +2000,16 @@ fn buildJoint(ctx: *Ctx) BuildError!?Built {
         const hw = width / 2;
         try prisms.append(a, .{ .part = "filler", .material = materialOr(ctx, "joint_filler", "generic"), .loops = try model.oneLoop(a, try model.rectLoop(a, -hw, -depth, hw, -cap)) });
         if (cap > 0) try prisms.append(a, .{ .part = "sealant", .material = materialOr(ctx, "sealant", "steel"), .loops = try model.oneLoop(a, try model.rectLoop(a, -hw, -cap, hw, 0)) });
-    } else if (is(k, "control")) {
+    } else if (k == .control) {
         const tri = [_]Pt{ .{ .x = -width / 2, .y = 0 }, .{ .x = 0, .y = -depth }, .{ .x = width / 2, .y = 0 } };
         try prisms.append(a, .{ .part = "notch", .material = void_mat, .loops = try model.oneLoop(a, try orientedCcw(a, &tri)), .embedded = true });
-    } else if (is(k, "tooled_edge")) {
+    } else if (k == .tooled_edge) {
         // the sliver between the sharp corner and the radius, drawn for the top-right corner then flipped into place
         const r = radius;
         const loop0 = [_]Pt{ .{ .x = 0, .y = 0 }, .{ .x = -r, .y = 0, .b = geom.bulgeFromSweep(-std.math.pi / 2.0) }, .{ .x = 0, .y = -r } };
-        const c = corner.?;
-        const sx: f64 = if (is(c, "top_left") or is(c, "bottom_left")) -1 else 1;
-        const sy: f64 = if (is(c, "bottom_left") or is(c, "bottom_right")) -1 else 1;
+        const c = jp.corner;
+        const sx: f64 = if (c == .top_left or c == .bottom_left) -1 else 1;
+        const sy: f64 = if (c == .bottom_left or c == .bottom_right) -1 else 1;
         const xf = geom.Xf.scaling(sx, sy);
         const loop = try orientedCcw(a, try xf.applyLoop(a, &loop0));
         try prisms.append(a, .{ .part = "radius", .material = void_mat, .loops = try model.oneLoop(a, loop), .embedded = true });
@@ -2011,7 +2028,7 @@ fn buildJoint(ctx: *Ctx) BuildError!?Built {
         .prisms = prisms.items,
         .anchors = anchors.items,
         .box = boxOfPrisms(prisms.items),
-        .info = try std.fmt.allocPrint(a, "joint {s} {s} wide x {s} deep", .{ k, ftin(a, width), ftin(a, depth) }),
+        .info = try std.fmt.allocPrint(a, "joint {s} {s} wide x {s} deep", .{ @tagName(k), ftin(a, width), ftin(a, depth) }),
     };
 }
 

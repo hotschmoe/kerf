@@ -228,16 +228,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .joint,
         .summary = "Concrete joints: expansion filler strip, control (saw-cut) notch, tooled edge radius, sealant bead on backer rod.",
-        .params = &.{
-            .{ .names = &.{"kind"}, .def = "required", .desc = "expansion | control | tooled_edge | sealant" },
-            .{ .names = &.{"width"}, .def = "0.5 (control 0.25)", .desc = "expansion: filler thickness; control: notch width at the top; sealant: joint gap width" },
-            .{ .names = &.{"depth"}, .def = "expansion 4, control 1, sealant 0.25", .desc = "expansion: filler depth below the top (set to the slab thickness, or give `in`); control: notch depth (default 1/4 of the `in` zone height); sealant: bead depth" },
-            .{ .names = &.{"in"}, .def = "null", .desc = "optional host zone \"comp[.part]\" whose height sets the default depth (expansion: full height; control: 1/4)" },
-            .{ .names = &.{"cap"}, .def = "0", .desc = "expansion: depth of a sealant cap at the top of the filler (part `sealant`)" },
-            .{ .names = &.{"radius"}, .def = "0.25", .desc = "tooled_edge: radius of the rounded corner" },
-            .{ .names = &.{"corner"}, .def = "top_right", .desc = "tooled_edge: which corner of the concrete the point is: top_right (concrete lies left and below), top_left, bottom_right, bottom_left" },
-            .{ .names = &.{"backer_rod"}, .def = "true", .desc = "sealant: draw the backer rod circle (diameter 1.25*width) below the bead" },
-        },
+        .params = params.rows(builders.JointParams),
         .parts = "expansion: filler (+ sealant with cap); control: notch; tooled_edge: radius; sealant: bead, rod",
         .anchors = "9 box anchors + joint_top (local (0,0): top surface at the joint centerline); tooled_edge adds corner",
         .draws = "Local origin: top surface, joint centerline (tooled_edge: the sharp corner). Expansion: filler strip width x depth with the joint_filler hatch (place it in the gap between two concrete pieces). Control and tooled_edge are void shapes (embedded: they cut a hole in the host hatch; not in 3D/iso). Sealant: bead (filled) over a backer rod circle. Spans the document run along Z.",
