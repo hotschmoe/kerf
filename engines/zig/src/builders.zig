@@ -537,19 +537,34 @@ fn parseCover(ctx: *Ctx, key: []const u8, base: model.Cover) ?struct { cover: mo
 
 // ---- cmu_wall -----------------------------------------------------------------------------------------------
 
+pub const CmuParams = struct {
+    width: f64 = 8,
+    courses: u8,
+    bond_beam_courses: u8 = 0,
+    grout: enum { solid, reinforced, none } = .reinforced,
+    face_shell: f64 = 1.25,
+    top_joint: bool = false,
+    cover: ?json.Value = null,
+
+    pub const spec = .{
+        .width = .{ .desc = "nominal 6, 8, 10, 12 => actual 5.625, 7.625, 9.625, 11.625" },
+        .courses = .{ .min = 1, .max = 200, .desc = "number of 8\" courses (7.625 unit + 0.375 mortar joint)" },
+        .bond_beam_courses = .{ .min = 0, .max = 200, .desc = "top N courses are bond-beam units (always grouted)" },
+        .grout = .{ .desc = "solid | reinforced (bond beams + the cut cell) | none" },
+        .face_shell = .{ .len = .pos, .desc = "face shell thickness drawn in section" },
+        .top_joint = .{ .desc = "mortar joint above the top course" },
+        .cover = .{ .def = "{sides:1.5, top:1.5, bottom:0.5}", .desc = "required clear cover for rebar (W_COVER); supports cover.parts.<part> overrides" },
+    };
+};
+
 fn buildCmu(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const wv = p.num("width", 8);
-    const courses = p.int("courses", null, 1, 200);
-    const bb_n = p.int("bond_beam_courses", 0, 0, 200);
-    const grout = p.choice("grout", "reinforced", &.{ "solid", "reinforced", "none" });
-    const fs = p.lenPos("face_shell", 1.25, "");
-    const top_joint = p.boolean("top_joint", false);
+    const cp = p.parseAll(CmuParams);
     const cov = parseCover(ctx, "cover", .{ .bottom = 0.5, .sides = 1.5, .top = 1.5 });
     if (!p.ok) return null;
     const w: f64 = blk: {
-        const x = wv.?;
+        const x = cp.width;
         if (x == 6) break :blk 5.625;
         if (x == 8) break :blk 7.625;
         if (x == 10) break :blk 9.625;
@@ -558,19 +573,19 @@ fn buildCmu(ctx: *Ctx) BuildError!?Built {
         p.fail("width", "param 'width' must be a nominal 6, 8, 10 or 12 (actual 5.625, 7.625, 9.625, 11.625) (got {s})", .{fmtNum(a, x)});
         return null;
     };
-    const n: usize = @intCast(courses.?);
-    const nbb: usize = @intCast(bb_n.?);
+    const n: usize = cp.courses;
+    const nbb: usize = cp.bond_beam_courses;
     if (nbb > n) {
         p.fail("bond_beam_courses", "param 'bond_beam_courses' ({d}) cannot exceed 'courses' ({d})", .{ nbb, n });
         return null;
     }
-    if (fs.? * 2 >= w) {
-        p.fail("face_shell", "face_shell {s} leaves no cell in a {s} wide wall", .{ fmtNum(a, fs.?), fmtNum(a, w) });
+    if (cp.face_shell * 2 >= w) {
+        p.fail("face_shell", "face_shell {s} leaves no cell in a {s} wide wall", .{ fmtNum(a, cp.face_shell), fmtNum(a, w) });
         return null;
     }
     const nf: f64 = @floatFromInt(n);
-    const total_h = nf * 8.0 - 0.375 + (if (top_joint) @as(f64, 0.375) else 0);
-    const g = grout.?;
+    const total_h = nf * 8.0 - 0.375 + (if (cp.top_joint) @as(f64, 0.375) else 0);
+    const fs = cp.face_shell;
     var prisms: std.ArrayList(Prism) = .empty;
     var zones: std.ArrayList(model.Zone) = .empty;
     var k: usize = 1;
@@ -579,16 +594,16 @@ fn buildCmu(ctx: *Ctx) BuildError!?Built {
         const y1 = y0 + 7.625;
         const is_bb = k > n - nbb;
         const part = try std.fmt.allocPrint(a, "course_{d}", .{k});
-        try prisms.append(a, .{ .part = part, .material = "cmu", .loops = try model.oneLoop(a, try model.rectLoop(a, 0, y0, fs.?, y1)), .cmu_unit = true, .course = @intCast(k) });
-        try prisms.append(a, .{ .part = part, .material = "cmu", .loops = try model.oneLoop(a, try model.rectLoop(a, w - fs.?, y0, w, y1)), .cmu_unit = true, .course = @intCast(k) });
-        const grouted = !std.mem.eql(u8, g, "none") and (is_bb or std.mem.eql(u8, g, "solid") or std.mem.eql(u8, g, "reinforced"));
-        const cell = try model.oneLoop(a, try model.rectLoop(a, fs.?, y0, w - fs.?, y1));
+        try prisms.append(a, .{ .part = part, .material = "cmu", .loops = try model.oneLoop(a, try model.rectLoop(a, 0, y0, fs, y1)), .cmu_unit = true, .course = @intCast(k) });
+        try prisms.append(a, .{ .part = part, .material = "cmu", .loops = try model.oneLoop(a, try model.rectLoop(a, w - fs, y0, w, y1)), .cmu_unit = true, .course = @intCast(k) });
+        const grouted = cp.grout != .none and (is_bb or cp.grout == .solid or cp.grout == .reinforced);
+        const cell = try model.oneLoop(a, try model.rectLoop(a, fs, y0, w - fs, y1));
         if (grouted) {
             try prisms.append(a, .{ .part = "grout", .material = "grout", .loops = cell, .cmu_unit = true, .course = @intCast(k) });
         } else {
             try prisms.append(a, .{ .part = part, .material = "cmu", .loops = cell, .kind = .ghost, .pen = .beyond });
         }
-        if (k < n or top_joint) {
+        if (k < n or cp.top_joint) {
             try prisms.append(a, .{ .part = try std.fmt.allocPrint(a, "joint_{d}", .{k}), .material = "mortar", .loops = try model.oneLoop(a, try model.rectLoop(a, 0, y1, w, y1 + 0.375)) });
         }
         try zones.append(a, try zoneRect(a, part, 0, y0, w, y1));
@@ -610,7 +625,7 @@ fn buildCmu(ctx: *Ctx) BuildError!?Built {
             gy0 = @min(gy0, bx.y0);
             gy1 = @max(gy1, bx.y1);
         };
-        if (gy0 < gy1) try zones.append(a, try zoneRect(a, "grout", fs.?, gy0, w - fs.?, gy1));
+        if (gy0 < gy1) try zones.append(a, try zoneRect(a, "grout", fs, gy0, w - fs, gy1));
     }
     const anchors = try a.dupe(model.NamedAnchor, &.{
         .{ .name = "bond_beam_center", .p = bb_center },

@@ -138,15 +138,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .cmu_wall,
         .summary = "Concrete masonry wall in section: face shells, grouted cells, mortar joints, bond beam.",
-        .params = &.{
-            .{ .names = &.{"width"}, .def = "8", .desc = "nominal 6, 8, 10, 12 => actual 5.625, 7.625, 9.625, 11.625" },
-            .{ .names = &.{"courses"}, .def = "required", .desc = "number of 8\" courses (7.625 unit + 0.375 mortar joint)" },
-            .{ .names = &.{"bond_beam_courses"}, .def = "0", .desc = "top N courses are bond-beam units (always grouted)" },
-            .{ .names = &.{"grout"}, .def = "reinforced", .desc = "solid | reinforced (bond beams + the cut cell) | none" },
-            .{ .names = &.{"face_shell"}, .def = "1.25", .desc = "face shell thickness drawn in section" },
-            .{ .names = &.{"top_joint"}, .def = "false", .desc = "mortar joint above the top course" },
-            .{ .names = &.{"cover"}, .def = "{sides:1.5, top:1.5, bottom:0.5}", .desc = "required clear cover for rebar (W_COVER); supports cover.parts.<part> overrides" },
-        },
+        .params = params.rows(builders.CmuParams),
         .parts = "course_1..course_n (1 = bottom), bond_beam, grout",
         .anchors = "9 box anchors + bond_beam_center, top_center, cell_center_top",
         .draws = "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. 3D: 15.625\" units with 0.375\" head joints, running bond.",
