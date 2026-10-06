@@ -100,7 +100,7 @@ const agents = {
       const h = os.homedir();
       return {
         cmd: "bwrap",
-        argv: ["--dev-bind", "/", "/", "--tmpfs", path.join(h, "github"), "--tmpfs", path.join(h, "kerf-eval/runs"),
+        argv: ["--die-with-parent", "--dev-bind", "/", "/", "--tmpfs", path.join(h, "github"), "--tmpfs", path.join(h, "kerf-eval/runs"),
           "--tmpfs", "/tmp/claude-1001", "--bind", ctx.outDir, ctx.outDir, "--ro-bind", path.join(ctx.runDir, "bin"), path.join(ctx.runDir, "bin"),
           "--chdir", ws, ...inner],
       };
@@ -294,7 +294,7 @@ function runAgent(spec, dir, env) {
     const t0 = Date.now();
     const child = spawn(spec.cmd, spec.argv, { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] });
     let out = "", err = "", timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill("SIGTERM"); }, timeoutMs);
+    const timer = setTimeout(() => { timedOut = true; child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 10000); }, timeoutMs);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
     child.on("close", (code) => { clearTimeout(timer); resolve({ out, err, code, timedOut, wallMs: Date.now() - t0 }); });

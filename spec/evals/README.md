@@ -87,3 +87,11 @@ node spec/evals/run-cli.mjs --agent claude [--kerf ~/kerf-eval/bin/kerf-baseline
   on r2: it flags minor leader/dimension clashes). Per-case correlation is only 0.4-0.5 because the cases cluster at 6-8:
   use the judge for run-to-run and engine-to-engine comparison, not to rank two cases within a run. The prompt was tuned on
   these same 19 cases (3 iterations), so expect slightly worse agreement on new ones.
+
+### `--agent pi` (text-only local model)
+
+`run-cli.mjs --agent pi` drives `pi -p --mode json --no-session` (the owner's self-hosted Qwen by default, text-only, so the prompt
+says it cannot view images; e09 is skipped unless named with `--only e09`; use `--timeout 1200`). pi has unrestricted file access and
+will search the disk for the repo's reference details, so the adapter runs it under `bwrap` that hides `~/github`, earlier runs and
+`/tmp` scratch (`--no-sandbox` disables this; never do that for scored runs). Timeouts are SIGTERM then SIGKILL after 10 s and are
+recorded as `failed`/`timed_out`. Results: `results/2026-10-06-pi-qwen-alpha4.md`.
