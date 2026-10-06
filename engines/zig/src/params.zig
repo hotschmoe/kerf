@@ -248,6 +248,7 @@ fn rowCount(comptime T: type) usize {
 /// The catalog rows of `T`, in field order (comptime; the result is a constant slice).
 pub fn rows(comptime T: type) []const Row {
     return comptime blk: {
+        @setEvalBranchQuota(200_000); // number formatting for the default texts
         checkSpec(T);
         var out: [rowCount(T)]Row = undefined;
         var i: usize = 0;

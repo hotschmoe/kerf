@@ -327,11 +327,16 @@ pub const Params = struct {
         return self.raw(key) != null;
     }
 
+    /// Report a required param that is absent (the builder decided it is required, e.g. width for a rect).
+    pub fn missing(self: *Params, key: []const u8, hint: []const u8) void {
+        self.fail(key, "param '{s}' is required for type {s}{s}{s}", .{ key, self.ty, if (hint.len > 0) ": " else "", hint });
+    }
+
     /// Length in inches; `default == null` means required.
     pub fn len(self: *Params, key: []const u8, default: ?f64, hint: []const u8) ?f64 {
         const v = self.raw(key) orelse {
             if (default) |d| return d;
-            self.fail(key, "param '{s}' is required for type {s}{s}{s}", .{ key, self.ty, if (hint.len > 0) ": " else "", hint });
+            self.missing(key, hint);
             return null;
         };
         if (units.parseLength(v)) |x| return x;
