@@ -224,7 +224,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .truss,
         .summary = "Prefab wood truss heel and tail in side view.",
-        .params = params.rows(builders.TrussParams),
+        .params = params.rows(builders.truss.Params),
         .traits = .{ .has_pitch = true, .slope_host = .{ .part = "top_chord", .end_anchor = "top_chord_end" } },
         .parts = "top_chord, bottom_chord, heel_web (raised only), plate, tail",
         .anchors = "9 box anchors + bearing_outer (local origin: outer edge of bearing at bottom of bottom chord), bearing_inner, tail_bottom, tail_top, top_chord_at_bearing, top_chord_bottom_at_bearing (lower edge of the top chord at the bearing plane), heel_outer (middle of the heel's outer vertical face, between the bottom chord's top and the top chord's top at the bearing: where ties and straps land), top_chord_end, bottom_chord_top_inner",
