@@ -1695,6 +1695,35 @@ fn testServer(gpa: Allocator, io: Io, tok: ?[]const u8, loopback: bool) Server {
     };
 }
 
+fn routeFor(head: []const u8) !Route {
+    const req = try http.parseHead(head);
+    return routeOf(req, req.path);
+}
+
+test "V-5: routes are decided before any body is read, and only body routes have a body cap" {
+    try std.testing.expectEqual(Kind.info, (try routeFor("GET /api/info HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.docs_create, (try routeFor("POST /api/docs HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.method_not_allowed, (try routeFor("DELETE /api/docs HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.options, (try routeFor("OPTIONS /api/docs HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.not_found, (try routeFor("POST /api/nope HTTP/1.1")).kind);
+    const ap = try routeFor("POST /api/docs/a.kerf.json/apply HTTP/1.1");
+    try std.testing.expectEqual(Kind.doc_apply, ap.kind);
+    try std.testing.expectEqualStrings("a.kerf.json", ap.file);
+    try std.testing.expectEqual(Kind.bad_file, (try routeFor("POST /api/docs/CON.kerf.json/apply HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.not_found, (try routeFor("GET /api/docs/a.kerf.json/apply/x HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.static, (try routeFor("GET /assets/x.js HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.static, (try routeFor("HEAD / HTTP/1.1")).kind);
+    try std.testing.expectEqual(Kind.method_not_allowed, (try routeFor("POST /index.html HTTP/1.1")).kind);
+    // caps: GET routes take no body; mutating routes have bounded caps
+    try std.testing.expectEqual(@as(usize, 0), bodyCap(.docs_list));
+    try std.testing.expectEqual(@as(usize, 0), bodyCap(.doc_get));
+    try std.testing.expectEqual(@as(usize, 0), bodyCap(.events));
+    try std.testing.expect(bodyCap(.agent_stop) <= 4096);
+    try std.testing.expect(bodyCap(.docs_create) <= 1 << 20);
+    try std.testing.expect(bodyCap(.doc_apply) <= 16 << 20);
+    try std.testing.expect(bodyCap(.llm) <= 64 << 20 and bodyCap(.agent_run) <= 64 << 20);
+}
+
 test "access: token, host, origin" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

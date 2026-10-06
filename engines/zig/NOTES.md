@@ -18,7 +18,7 @@ zig build                    # CLI -> zig-out/bin/kerf
 zig build test --summary all # unit + reference-document + leak tests (std.testing.allocator)
 zig build wasm               # -> dist/kerf.wasm (wasm32-freestanding, ReleaseSmall, zero imports)
 zig build -Dui=../../apps/web/dist-serve -Doptimize=ReleaseSmall   # CLI with the web UI embedded (needs `npm run build:serve` in apps/web first)
-node tests/serve_smoke.mjs   # integration test of `kerf serve` (129 checks; starts the built zig-out/bin/kerf on temp folders)
+node tests/serve_smoke.mjs   # integration test of `kerf serve` (215 checks; starts the built zig-out/bin/kerf on temp folders)
 zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseSmall   # cross-compiles (also aarch64-windows-gnu, *-linux-musl, *-macos)
 zig build wasm -Dwasm-optimize=ReleaseFast   # speed comparison
 zig build wasm -Dwasm-strip=false            # keeps names for `twiggy top dist/kerf.wasm`
@@ -199,6 +199,14 @@ Re-run after the Rust agent lands its parity commit: build `engines/rust` releas
 
 ## REQUESTS
 
+- (engine agent, `main.zig`, V-11/V-16) `kerf apply -w`: wrap read -> apply -> `writeFileAtomic` -> log append in `workspace.DocLock.acquire(io, dir, logPath)` ... `lk.appendLine(io, line)`
+  (an advisory lock shared with `kerf serve`) and add `--if-match <etag>` (compare with `"<mtime_ms>-<size>-<wyhash64 hex16 of the bytes>"`, the server's format: see
+  `Server.etagOf`; or just the content hash) so 40 parallel writers cannot lose edits; `kerf fmt -w` should use `writeFileAtomic` and log; escape `--view`
+  and other raw `{s}` interpolations into engine JSON with `json.writeString`; mention `--trust-agents`, `--token-file`, `KERF_TOKEN` in the `kerf serve` usage text.
+- (orchestrator, `spec/SERVE.md`, `README.md`, `spec/llm/cli-guide.md`) a token is now the default on loopback too (`--no-token` opts out; first banner line carries `?token=`);
+  `ETag` is `"<mtime_ms>-<size>-<hash>"` (opaque to clients) and list rows have `etag`; `.kerf/agents.json` agents need `--trust-agents` or an interactive yes;
+  per-route body caps (413), 429/503 on caps, new flags `--trust-agents --token-file --agent-timeout --llm-timeout`, env `KERF_TOKEN`; the exit event can carry `timeout:true`;
+  `/api/info` agents carry `source` and `untrusted`; the server sends CSP/X-Frame-Options/Referrer-Policy.
 - (orchestrator, `spec/llm/cli-guide.md`) wording for the log: add under the workflow block
   "`kerf apply ... -w --why "one line: what and why"` records your edit in the folder's op log (`<file>.log.jsonl`); the designer sees it in the
   web UI as a LOCAL AGENT card with your reason. Always pass `--why`, written for the designer (for example `--why "Add HETA20 anchors at 16in o.c."`)."
@@ -224,11 +232,13 @@ on the safety-checked debug CLI: 2,300+ mutations x 3 calls, 0 crashes.
 ## kerf serve (spec/SERVE.md)
 
 ```sh
-kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no-token] [--allow-origin URL]
+kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --token-file F | --no-token] [--allow-origin URL]
+           [--trust-agents] [--agent-timeout S] [--llm-timeout S] [--timeouts-ms IDLE,HEAD,WRITE]     # `kerf serve --help` has the text
 ```
-- First stdout line is `kerf serve: http://127.0.0.1:<port>/  (dir <abs>)` (scripts parse it; `--port 0` picks a free port).
-  `--host 0.0.0.0` prints `LAN:  http://<lan-ip>:7700/?token=<32 hex>` (token auto-generated from `io.random`; `--token T` fixes it;
-  `--no-token` opts out and says so in the banner). The LAN IP comes from a connected UDP socket toward 192.0.2.1 (nothing is sent).
+- First stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0` picks a free port).
+  A token is the DEFAULT, also on loopback (V-7; generated with `io.randomSecure`, fail closed); `--token-file F` / `KERF_TOKEN` fix it without
+  showing it in `ps`, `--token T` still works (with a stderr note), `--no-token` opts out (banner says so on a LAN bind; on loopback the
+  Host/Origin checks then apply as before). `--host 0.0.0.0` also prints `LAN:  http://<lan-ip>:7700/?token=<32 hex>`. The LAN IP comes from a connected UDP socket toward 192.0.2.1 (nothing is sent).
 - Exit 1 with a hint when the port is busy (std sets SO_REUSEPORT with SO_REUSEADDR, which would let a second server share the port
   silently, so it probes with a connect first) or `--dir` cannot be opened.
 - Everything in SERVE.md is implemented: `/api/info docs docs/:file apply log export events llm agent/run agent/stop`.
@@ -238,8 +248,8 @@ kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no
   `GET .../export` also takes `inline=1` (Content-Disposition inline).
 - Concurrency: `std.Io.Threaded` (the default `init.io`); every connection is a `Group.concurrent` task (one OS thread, 16 MB
   virtual stack), so SSE streams never block other requests. The poller, agent supervisors and agent output pumps are tasks too.
-  Request bodies: Content-Length or chunked, `Expect: 100-continue`, max 64 MiB. Keep-alive on; no idle timeout (std has no read
-  timeout), so an idle keep-alive socket holds a thread.
+  Request bodies: Content-Length or chunked, `Expect: 100-continue`; per-route caps (see "Server hardening"). Keep-alive on, with idle,
+  head, body and write deadlines enforced by a watchdog task that `shutdown()`s sockets past their deadline (std has no read timeout).
 - Folder scan (`serve.zig scan`): 500 ms poller, and every `GET /api/docs` scans first. Per `*.kerf.json` it tracks (mtime, size);
   per `<file>.log.jsonl` the byte offset already reported. Emits `doc_added/doc_changed/doc_removed` and one `log` event per new
   complete valid-JSON line (a torn last line waits for its newline). `doc_changed.who` = `who` of the newest log line seen in the same
@@ -266,18 +276,61 @@ kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no
   chunk 0.4 s before the end) and the connection closes at the end. Upstream failure before any byte: 502 `E_UPSTREAM`.
   Not covered: a public DNS name that resolves to a private address. Keys are never stored or logged (tested: they appear nowhere in SSE).
   TLS is `std.http.Client` (std.crypto.tls, system cert bundle scanned on first https use); only the http path is exercised in tests (no network).
-- Agent bridge (`agents.zig`): templates (built-in + `<dir>/.kerf/agents.json`, same id replaces) with `{message} {session_id} {dir}
+- Agent bridge (`agents.zig`): templates (built-in + `<dir>/.kerf/agents.json`, which is executed only when trusted: `--trust-agents` or a yes
+  at the interactive prompt; otherwise listed `untrusted` and never detected or started; a trusted entry with a built-in id replaces it) with `{message} {session_id} {dir}
   {file}` and a `{resume}` element; spawn with `std.process.spawn`, cwd = `--dir`, stdin ignored, stdout/stderr piped, env = server env
   with the server binary's directory prepended to PATH (so `kerf` resolves even when it is not installed) and `KERF_ACTOR=agent`.
   stdout lines -> SSE `agent {run_id, event}`: JSON object lines verbatim, anything else `{type:"text", text}`; stderr lines ->
   `{type:"stderr", text}`; over-long (>1 MiB) lines -> `{type:"truncated"}`. `session_id` = latest top-level `session_id` / `sessionId` /
   `thread_id` string seen in any JSON line. At the end: the folder is scanned once (so the agent's `doc_changed`/`log` events come BEFORE
-  `exit`), then `{type:"exit", code, session_id?, stopped?}`. Stop = SIGTERM / TerminateProcess, the supervisor reaps. One run at a
-  time (409 `E_BUSY`). Detection (`<cmd> --version`, 8 s timeout, cached 30 s, prefetched at start) fills `available/version/reason`.
+  `exit`), then `{type:"exit", code, session_id?, stopped?, timeout?}`. The agent runs in its own process group (Windows: a job object with
+  KILL_ON_JOB_CLOSE); stop / timeout / server shutdown send SIGTERM to the whole group, SIGKILL after 3 s; the supervisor reaps the agent
+  while the pumps still read (no zombies, no wedge when a grandchild keeps the pipe). One run at a time (409 `E_BUSY`), reserved atomically
+  under a mutex before the process is created; the slot is released before the `exit` event is published. Detection (`<cmd> --version`, 8 s timeout, cached 30 s, prefetched at start) fills `available/version/reason`.
   The events race the HTTP response of `/api/agent/run` (first events can arrive before the client has the run_id): buffer by run_id.
-- Windows: everything is std (Io.Threaded netListen/netAccept on AFD, Child via CreateProcess, NtTerminateProcess for stop). It compiles for
-  x86_64/aarch64-windows-gnu but could NOT be run here (wine32 missing, aarch64 host). `claude.cmd`-style shims are not resolved by
+- Windows: everything is std (Io.Threaded netListen/netAccept on AFD, Child via CreateProcess) plus five `kernel32` job-object calls declared in
+  `agents.zig` (spawn suspended -> assign to a KILL_ON_JOB_CLOSE job -> resume; stop = TerminateJobObject; if the job cannot be created the run
+  degrades to NtTerminateProcess of the agent alone, grandchildren may survive). There is no SIGTERM stage on Windows (stop is a hard kill), no
+  advisory lock on the op log (`DocLock` is a no-op there; the server still serialises its own writes), no directory fsync. It compiles for
+  x86_64/aarch64-windows-gnu (CI cross-compiles it) but could NOT be run here (wine32 missing, aarch64 host). `claude.cmd`-style shims are not resolved by
   CreateProcess; the official `claude.exe`/`grok.exe`/`codex.exe` work, others can be wrapped via `.kerf/agents.json` (`cmd /c ...`).
+
+### Server hardening (REVIEW section 7 / refactor batch 3: V-1..V-16)
+
+Every item has a regression test in `tests/serve_smoke.mjs` (raw sockets for the HTTP ones; each marked `V-n:`) and/or a unit test.
+- **V-1/V-9 (`http.zig`)**: chunk sizes are at most 8 hex digits and compared to the remaining cap before any addition; bad chunks, unbounded trailers
+  and short bodies are 400. `parseHead` rejects bare CR/LF, control bytes, obs-fold, whitespace in names or before the colon, spaces in the target,
+  duplicate/conflicting `Content-Length`/`Transfer-Encoding`/`Host`, CL+TE, non-decimal lengths, > 100 headers.
+- **V-2**: see "Agent bridge". `GET /api/info` lists workspace agents with `source:"workspace"`, `untrusted:true`, `available:false` and the reason;
+  running one is 409 `E_UNTRUSTED`. Built-in detection is `<binary> --version` for claude/grok/codex/pi only (unit-tested), run with the server's cwd
+  (not the served folder). There is no per-folder remembered allow-list (yet): the interactive prompt asks every start.
+- **V-3**: slot reserved under `mu`; process group / job object; watchdog (`--agent-timeout`, default 1800 s, 0 = none; timeout = TERM, KILL after 3 s,
+  `exit` event gets `timeout:true`); SIGINT/SIGTERM/SIGHUP stop the active run and exit (POSIX; a SIGKILLed server still orphans the agent on POSIX,
+  Windows kills it via the job). Detection is single-flight and no longer leaks. `KERF_TOKEN` is removed from the agent's environment.
+- **V-4/V-5/V-13 (`serve.zig`)**: at most 256 connections (503 beyond), 32 SSE streams, 8 concurrent LLM calls (429), 1000 requests per connection;
+  watchdog deadlines: idle 30 s, request head 10 s (from the first byte), body 3x head + 1 s per 512 KiB declared, handler 120 s, SSE write 20 s
+  (`--timeouts-ms IDLE,HEAD,WRITE` for tuning/tests). The body buffer grows as data arrives. `handleRequest` routes (`routeOf`, pure and unit-tested),
+  authenticates, then reads the body with a per-route cap: stop 4 KiB, create 64 KiB, apply 16 MiB, llm 32 MiB, agent/run 64 MiB, GET routes 0 (a body
+  is 400). Everything answered before the body was read closes the connection and never sends `100 Continue`. A log line over 4 MiB is skipped
+  instead of re-read every tick; `apiList` runs the engine `check` outside `scan_mu`; SSE data lines never contain CR/LF.
+- **V-6**: message <= 100,000 bytes (400 `E_INPUT`); an OS "argument too long" at spawn is 400, not 500.
+- **V-7/V-8**: token by default (see the first bullet), `randomSecure`, SHA-256-then-`timing_safe.eql` compare; every response carries
+  `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy`, and a CSP: API/exports
+  `default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'`, the UI `default-src 'self'; script-src 'self'
+  'wasm-unsafe-eval' 'sha256-<each inline script of the embedded index.html, computed at startup>'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
+  blob:; connect-src 'self' data: blob:; worker-src 'self' blob:; frame-ancestors 'none'; ...`.
+- **V-10**: symlinks are never served, listed or written through: scan and `readDoc` use no-follow; the op log, `.kerf/agents.json`, `.kerf/attachments`
+  refuse symlinks (attachments are created exclusively; `.kerf` and `.kerf/attachments` must be real directories).
+- **V-11 (`workspace.zig`)**: `writeFileAtomic` fsyncs the data and the directory; `appendLine` and `DocLock` take an exclusive `flock` on the log
+  file (POSIX) and fsync; the server holds `DocLock` across read-modify-write of `apply`. ETag = `"<mtime_ms>-<size>-<wyhash of the bytes>"` (GET, list
+  rows carry the same `etag`). `if_match` of a non-string is 400. Still open (CLI, engine agent's files): `kerf apply -w --if-match` and taking
+  `DocLock` around the CLI's read-modify-write (the 40 parallel appliers now leave intact log lines but only one edit survives), `kerf fmt -w` non-atomic.
+- **V-12**: LLM calls run in a task watched by the handler: `--llm-timeout S` (first byte and gaps; default 300 s / 120 s), 30 min total, 256 MiB;
+  stalls are cancelled (502 `E_UPSTREAM` before the head, a cut stream after). `custom` still reaches any host by design (token-gated).
+- **V-14/V-15/V-16**: `px` printed as the parsed integer; attachments older than 24 h are removed (at start and on each save); the pump drops a line on OOM
+  instead of truncating; `cors()` reports OOM; Windows device names (`CON`, `NUL`, `COM1`...) and stems ending in dot/space are not document names;
+  HEAD answers with the real Content-Length. Not done: error logging for `publish`/`scanLocked` OOM (still best effort), `serveConn`'s silent close on
+  read errors, `main.zig` option parsing and JSON injection through `--view` (engine agent's file), a comptime route table for the handlers.
 
 ### Op log
 `<file>.log.jsonl` next to the document, one JSON object per line: `{ts, who, tool, why, ops, changed, summary_head}` (spec/SERVE.md).
@@ -305,9 +358,12 @@ Codex runs in the `workspace-write` sandbox (writes confined to the folder; it c
 the template in `<dir>/.kerf/agents.json`.
 
 ### Release CI (`.github/workflows/`)
-`ci.yml` (push/PR): `zig build test`, `zig build wasm`, cross-compile smoke (windows-gnu, macos, linux-musl), `serve_smoke.mjs`, and a web job
-(wasm -> `npm ci` -> typecheck -> `test:unit` -> `build:serve` -> `zig build -Dui`). `release.yml` (tag `v*`): wasm -> web `build:serve`
-(falls back to `build:zig`) -> tests + smoke -> `zig build -Dtarget=<t> -Doptimize=ReleaseSmall -Dui=../../apps/web/dist-serve` for
+`ci.yml` (push/PR): `zig build test`, Debug build -> `tests/check_golden.sh` -> `cli_ergonomics.mjs` -> `serve_smoke.mjs` -> `fuzz.py 300 1`, `zig build wasm`
++ `wasm_golden.mjs`, a ReleaseSafe build (what ships) re-running `serve_smoke.mjs` and `cli_ergonomics.mjs`, cross-compile smoke (windows x86_64/aarch64,
+macos, linux-musl x86_64/aarch64, ReleaseSafe), and a web job (wasm -> `npm ci` -> typecheck -> `test:unit` -> `build:serve` -> `zig build -Dui` ->
+`serve_smoke.mjs` against the embedded UI). TODO comments in `ci.yml`: `zig fmt --check src` (after the whitespace-only fmt commit) and
+`zig build wasm -Dwasm-optimize=ReleaseSafe` + golden (after `no_panic`). `release.yml` (tag `v*`): wasm -> web `build:serve`
+(falls back to `build:zig`) -> tests + golden + smoke on the ReleaseSafe build -> `zig build -Dtarget=<t> -Doptimize=ReleaseSafe -Dui=../../apps/web/dist-serve` for
 x86_64/aarch64 x windows-gnu/linux-musl/macos -> assets `kerf-<arch>-<os>[.exe]` (what install.sh/install.ps1 download) + `SHA256SUMS`
 -> `gh release create/upload` with `GITHUB_TOKEN`. Not run here (no GitHub); every command in it was run locally except the gh calls.
 
@@ -321,8 +377,8 @@ x86_64/aarch64 x windows-gnu/linux-musl/macos -> assets `kerf-<arch>-<os>[.exe]`
   UI index 0.5 ms, SVG export (section view, no sheet) 13 ms, PNG sheet export 118 ms. Smoke test, ReleaseSmall: `/api/docs` p50 1.5 ms / p95 3.3 ms with
   4 SSE streams open, 24 parallel `/api/info` requests fine.
 - Poller: a CLI edit shows up as `doc_changed` within 500 ms (tested with a 3 s allowance); agent edits show up before the run's `exit` event.
-- Tests: `zig build test` = 61 engine tests + 20 serve tests (HTTP parsing/chunked, access rules, proxy URL rules, agent templates, op-log entry
-  shape, folder scan events, SSE hub); `tests/serve_smoke.mjs` 129 checks; the web agent's `node test/e2e-serve.mjs --real` (puppeteer) passes against
+- Tests: `zig build test` = engine tests + serve tests (strict head parsing, chunked overflow regression, routing and body caps, access rules, proxy URL
+  rules, agent templates and the untrusted-agent guarantee, op-log entry shape and locking, folder scan events, SSE hub); `tests/serve_smoke.mjs` 215 checks; the web agent's `node test/e2e-serve.mjs --real` (puppeteer) passes against
   this binary (KERF_SERVE_BIN=... with a CURRENT dist-serve embedded; a stale embedded UI makes it fail on newer UI features).
 
 ## Known gaps

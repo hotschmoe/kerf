@@ -784,6 +784,8 @@ sockets and fake agents. The real `claude`/`grok`/`codex` binaries were never st
 
 ### V-1 - critical - One unauthenticated chunked request kills the server (wraps silently in release)
 
+**Status: Fixed (harden(serve), batch 3 + V-1). Chunk sizes are at most 8 hex digits and compared against the remaining cap before adding; unit test `V-1: a huge chunk size...` plus a raw-socket regression in `serve_smoke.mjs` (it kills the pre-fix Debug server).**
+
 `http.zig:142`: `if (body.items.len + size > max_body)`. `size` comes from `parseInt(usize, hex, 16)`, so
 `ffffffffffffffff` is accepted and any earlier chunk makes the sum overflow. `serveConn` reads the body (`serve.zig:362`)
 *before* `dispatch`/`checkAccess`, so no token, Host or Origin is needed.
@@ -802,6 +804,8 @@ Parse the chunk size as `u32`/bounded first; add a `readChunked` unit test with 
 
 ### V-2 - major - Opening a folder runs arbitrary commands from `.kerf/agents.json`
 
+**Status: Fixed. `.kerf/agents.json` entries are executed only with `kerf serve --trust-agents` or an interactive yes on a TTY; otherwise listed `untrusted`/`available:false`, never detected or started, and they cannot replace built-in ids. Built-in detection is `<binary> --version` only (unit test). Regression: `V-2:` checks (marker files never created). Not done: a per-folder remembered allow-list.**
+
 `agents.zig:82` (`loadTemplates` reads `<dir>/.kerf/agents.json`) and `:158` (`detect` spawns `t.detect`);
 `serve.zig:1068/1236` (`prefetchAgents`) does it at startup, and `/api/info` re-detects every 30 s. Reproduced: a folder
 with `{"id":"evil","detect":["touch","/tmp/pwned"],"argv":["true"]}` creates `/tmp/pwned` as soon as `kerf serve --dir
@@ -810,6 +814,8 @@ code. **Fix:** run only built-in templates until the user opts in (`--trust-work
 allow-list under `~/.config/kerf/`); list workspace agents as `available:false, reason:"untrusted"`.
 
 ### V-3 - major - "One agent run at a time" is a TOCTOU race; stop/timeout/reaping are unreliable
+
+**Status: Fixed. Slot reserved atomically before spawn (6 concurrent starts -> one 200, five 409), own process group (Windows: job object, degraded to the agent alone if the job cannot be made), SIGTERM then SIGKILL after 3 s for the whole group, `--agent-timeout`, reaping concurrent with the pumps, SIGINT/SIGTERM/SIGHUP stop the run. Regressions: `V-3:` checks (race, tree kill, orphaned grandchild, SIGTERM-ignoring agent, timeout, server SIGTERM). A SIGKILLed server still orphans the agent on POSIX (documented).**
 
 * Race (`agents.zig:274-325`): the busy check, `detectCached` (up to 8 s cold) and `m.active = run` are separate critical
   sections. Reproduced: 6 concurrent `POST /api/agent/run` -> 5x `200`, 1x `409`, five child processes alive, only the
@@ -825,6 +831,8 @@ allow-list under `~/.config/kerf/`); list workspace agents as `available:false, 
 
 ### V-4 - major - No connection, header, body or idle limits (slowloris, memory)
 
+**Status: Fixed. 256-connection cap (503), watchdog deadlines (idle, head, body, handler, SSE write), request cap per connection, body buffer grows as data arrives. Regressions: `V-4:` checks (trickled head, idle socket, stalled body, 270 sockets, 40 x 60 MiB declared bodies < 60 MB RSS).**
+
 `acceptLoop` (`serve.zig:1048-1066`) creates one OS thread per connection (`group.concurrent`; the default
 `Io.Threaded` limit is unlimited) with no read/write/idle timeout (`NOTES.md` admits it). Reproduced (Debug):
 2000 half-open connections -> 2002 threads, 33 GB VmSize, 1.18 GB RSS, and the thread pool never shrinks; 1000 on
@@ -836,17 +844,23 @@ data arrives.
 
 ### V-5 - major - Bodies are read before auth/routing, with a single 64 MiB cap
 
+**Status: Fixed. Route -> authenticate -> read body with per-route caps (stop 4 KiB, create 64 KiB, apply 16 MiB, llm 32 MiB, agent/run 64 MiB, GET 0); no `100 Continue` and a closed connection for anything refused before its body; trailers bounded. Regressions: `V-5:` checks, unit test `routes are decided before any body is read`.**
+
 `serve.zig:362` vs `:369`; `100 Continue` is sent (`http.zig:112,119`) before any access check; chunked trailers
 (`http.zig:152-155`) loop without a bound. Split `serveConn` into parse-head -> `checkAccess`/route -> read-body with a
 per-route cap (apply/create/stop 1-8 MiB, `/api/llm` a few MiB, `/api/agent/run` up to the image budget).
 
 ### V-6 - major - Agent `message` limit exceeds the OS per-argument limit
 
+**Status: Fixed. Message <= 100,000 bytes (400 `E_INPUT`), OS "argument too long" at spawn is 400. Regression: `V-6:` checks.**
+
 `serve.zig:876` allows 200,000 characters; the message is one argv element and Linux `MAX_ARG_STRLEN` is 131,072.
 Reproduced: 150,000 chars -> `500 E_SPAWN`, 100,000 works. Cap at ~100 kB with a `400`, or pass long text via a temp file
 or stdin (templates currently set `.stdin = .ignore`); map spawn errors to `4xx`.
 
 ### V-7 - major - Default no-token loopback mode plus permissive agent templates
+
+**Status: Fixed. A token is generated by default, also on loopback (`--no-token` opts out), printed in the banner URL; `KERF_TOKEN` is not passed on to agents. Regression: `V-8: a token is generated by default...`.**
 
 `agents.zig:33-71`: `grok` uses `--always-approve`, `claude` allows `Write`/`Edit` under `acceptEdits`. With the default
 no-token loopback server any local process or user can `POST /api/agent/run` and drive an autonomous agent as the
@@ -856,12 +870,16 @@ on loopback.
 
 ### V-8 - minor - Token handling
 
+**Status: Fixed. `randomSecure` (fail closed), `KERF_TOKEN` and `--token-file` (and a `ps` note for `--token`), `Referrer-Policy: no-referrer`, SHA-256 + `timing_safe.eql`, CSP incl. `frame-ancestors none` (UI: script hashes of the embedded inline scripts) and `X-Frame-Options`. Regressions: `V-8:` checks.**
+
 `io.random` (`serve.zig:1155`) is documented as possibly falling back to a weaker source: use `io.randomSecure` and fail
 closed; `--token T` is visible in `ps` (observed on this machine: the owner's running `kerf serve --token ...` shows its token to every local user; accept `KERF_TOKEN` or a token file); `?token=` leaks into logs/Referer (add
 `Referrer-Policy: no-referrer`); `secretEql` (`http.zig:281`) is fine but prefer `std.crypto.timing_safe.eql`; add
 `Content-Security-Policy`/`frame-ancestors 'none'` (same-origin XHR from an iframe passes the Origin check).
 
 ### V-9 - minor - Lax HTTP parsing (matters behind a proxy)
+
+**Status: Fixed together with V-1: strict `parseHead` (unit test `V-9: strict head parsing...`, raw-socket checks in `serve_smoke.mjs`).**
 
 `http.zig:29-37,90-102`: `Content-Length : 5` (space before the colon) is ignored and the body parsed as the next request;
 duplicate `Content-Length` takes the first; `Transfer-Encoding: chunked` + `Content-Length` resolves to chunked; spaces in the
@@ -870,11 +888,15 @@ request target are accepted. Reject all four, header names with whitespace, and 
 
 ### V-10 - minor - Symlinks in the served folder are followed
 
+**Status: Fixed. Symlinks are not listed, read, exported or written through (documents, op log, `agents.json`, `.kerf/attachments`, which must be a real directory and is written with exclusive creates). Regressions: `V-10:` checks.**
+
 `scanLocked` (`serve.zig:107`) accepts `.sym_link`; `readDoc`/`statFile` follow it. Reproduced: `ln -s /etc/hostname
 w1/evil.kerf.json` then `GET /api/docs/evil.kerf.json` returns the target. A prompt-injected agent can create such a link.
 Open with `.follow_symlinks = false` / `O_NOFOLLOW`, skip symlinks in the scan, check `.kerf/attachments` too (`:939`).
 
 ### V-11 - minor - Durability and lost updates
+
+**Status: Mostly fixed. fsync of data and directory, `flock` + fsync on log appends (`DocLock`, held across the server's read-modify-write), content-hash ETag, `if_match` of a non-string is 400. Open (CLI, `main.zig`, engine agent): `kerf apply -w --if-match` / `DocLock` in the CLI and a non-atomic `kerf fmt -w`; requested in NOTES. Regressions: `V-11:` checks.**
 
 * `workspace.writeFileAtomic` (`workspace.zig:55-60`) does not `fsync` the file or the directory around the rename.
 * `appendLine` (`workspace.zig:69-81`) reads the length then `pwrite`s, not `O_APPEND`/`flock`: the "concurrent appenders
@@ -887,11 +909,15 @@ Open with `.follow_symlinks = false` / `O_NOFOLLOW`, skip symlinks in the scan, 
 
 ### V-12 - minor - `/api/llm` proxy
 
+**Status: Fixed for the stall/concurrency parts: `--llm-timeout`, 30 min total and 256 MiB caps, at most 8 calls in flight (429), stalled upstreams are cancelled. `custom` still reaches any host by design. Regressions: `V-12:` checks.**
+
 By design `provider:"custom"` can reach any host (including `169.254.169.254` and loopback) with a chosen body and
 headers; token-gated, but in no-token mode any local process can use it. No upstream timeout, no cap on concurrent proxy calls
 or streamed bytes (a slow upstream pins a thread). The URL rules, CRLF/header-name checks and blocked-header list are good.
 
 ### V-13 - minor - SSE hub and poller
+
+**Status: Fixed. SSE writes have a deadline (watchdog), CR/LF cannot split a frame (agent events are re-serialised, `Hub.publish` neutralises the rest), an oversized log line is skipped, `apiList` runs `check` outside `scan_mu`. Regressions: `V-13:` checks and a hub unit test.**
 
 `apiEvents` blocks in `w.writeAll` without a send timeout (a client that stops reading wedges its thread);
 `emitLine`/`publishLog` forward JSON text as raw SSE `data:` so a lone `\r` splits the frame (normalise through the
@@ -899,6 +925,8 @@ writer); `readNewLog` (`serve.zig:221`) re-reads 4 MiB every 500 ms forever when
 `scan_mu` while running the engine `check` on every changed doc (`:575`).
 
 ### V-14 - minor - Allocator and error discipline in the server
+
+**Status: Mostly fixed. `detectCached` is single-flight and leak-free, attachments older than 24 h are removed, `px` is printed as the parsed number, the pump drops a line on OOM instead of truncating, `cors()` reports OOM. Open: error logging for `publish`/`scanLocked` OOM and `serveConn`'s silent close on read errors.**
 
 Per-request arena is good. Swallowed errors in network paths: `catch {}`/`catch return` on `publish`, `scanLocked` OOM,
 the pump's `line.appendSlice(...) catch {}` (silent truncation), `serveConn`'s `else => {}` on read errors, `cors()` returning
@@ -908,10 +936,14 @@ the pump's `line.appendSlice(...) catch {}` (silent truncation), `serveConn`'s `
 
 ### V-15 - minor - Windows names
 
+**Status: Fixed. Device names (`CON PRN AUX NUL COM1-9 LPT1-9`, also with an extension) and stems ending in a dot or space are rejected (unit test, `V-15:` checks).**
+
 `workspace.validDocFile` (`:38`) blocks separators, `:` (ADS), leading `.`, non-ASCII, NUL: good. It accepts `CON.kerf.json`
 (device name on Windows); reject `CON PRN AUX NUL COM1-9 LPT1-9` stems and trailing dot/space.
 
 ### V-16 - nit - Structure
+
+**Status: Partly fixed (server side): HEAD reports the real Content-Length, routing is a pure, unit-tested `routeOf` + `bodyCap`. Open: handler JSON assembly, a comptime route table, and the `main.zig` items (engine agent).**
 
 `main.run` is a 368-line if-chain with an 800-character one-line option parser (`main.zig:179`) and builds engine input by
 raw `{s}` interpolation (`:535,542`): `--view 'A","sheet":true'` injects JSON keys (escape with `json.writeString`);
@@ -1042,6 +1074,11 @@ agent) including review; "risk to goldens" is the chance that a batch changes ou
 | 8 | **Performance and size** | PRF-1 table (id index, `clip` edge-set sort, hatch active-edge table, `dedupe` sweep, `chainStrokes` index), SIZ-1 (single stable sort instantiation, `dxf` tables, `parseFloat`, `allocPrint` helper, optional `wasm-opt`), EXP-1 (dash clipping), EXP-5 | 3-4 days | medium for `clip`/`dedupe` (ordering of equal elements) | keep stable ordering by `(key, original index)`; the existing goldens and `layout_tests.zig` catch any reordering |
 | 9 | **Exporter tidy** | EXP-1, EXP-3 (DXF sanitising/handles), EXP-4 (`toOwnedSlice`), EXP-5, EXP-6, EXP-7 | 1.5 days | low (DXF handle renumbering changes bytes: regenerate DXF goldens once, review with `dxf_check.py`; this is the only batch allowed to touch goldens, do it alone) | n/a: explicit golden regeneration |
 | 10 | **Tests and tooling** | TST-1 (`Fixture`), TST-2 (in-tree `std.testing.fuzz`), message snapshot tests, `SIZES.txt` in CI, `.preferred_optimize_mode = .ReleaseSafe` | 1.5 days | none | tests only |
+
+**Status of batch 3 (server hardening) and V-1:** landed in the `harden(serve):` commits (V-1 first, with its regression test); V-2..V-16 are fixed or mostly fixed as
+recorded under each finding in section 7. What is left sits in `main.zig` (engine agent): CLI `--if-match` / `DocLock`, `kerf fmt -w`, `--view` JSON injection, serve usage text.
+CI (`.github/workflows/`): golden gate, CLI ergonomics, serve smoke (Debug and ReleaseSafe), fuzz, wasm golden, cross-compiles and a ReleaseSafe release CLI are in; the
+`zig fmt --check` and ReleaseSafe-wasm steps are TODO comments until the engine agent's fmt and `no_panic` commits land.
 
 Total: roughly 22-28 working days of focused work; batches 0-2 (5-6 days) remove essentially all of the crash, hang and DoS
 risk and should land before the next feature wave. Batches 4-6 are the ones that most improve readability for future LLM maintainers
