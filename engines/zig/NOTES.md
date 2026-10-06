@@ -642,3 +642,56 @@ hard/soft hit ranking, `light` re-route), tests in `src/layout_tests.zig`.
 - cli-docs: `kerf schema dim` / the guide could mention that overlapping dims stack automatically and that small dims keep
   their text outside with a leader; `kerf schema note`/guide: `column: "left"|"right"` (already in the schema field list).
 - orchestrator: SPEC 6.4 text-outside sentence and SPEC 9 (`W_PARAM`); SPEC 20 mentions "label away from the leader" (moves up to 12 text heights).
+
+## v0.1.5 (SPEC 21: lenient ops, requested-elements coverage, W_CROP_STALE, thin-layer landing, note lint)
+
+Gate at the last commit: `zig build test` (139 tests), `zig build wasm` (902,131 B raw / 337,058 gzip / 266,769 brotli; wasm == native goldens 24/24),
+`tests/check_golden.sh`, `node tests/cli_ergonomics.mjs` (136 checks), `node tests/serve_smoke.mjs` (134 checks). New Zig tests: `src/v015_tests.zig`
+(ops shapes, coverage, `meta.requested` shape, W_CROP_STALE), `src/layout_tests.zig` (thin landing), `src/lint.zig` (note lint).
+
+- **Lenient ops** (`ops.zig: normalize`): array, single op object (has `"op"`), `{"ops":[...]}` or `{"ops":[...],"why":"..."}` (also `"ops":<single op>`).
+  `ops.apply` normalizes itself, so `api.apply`, `kerf apply`, `kerf new --ops` and `POST /api/docs/<f>/apply` all accept every shape
+  (serve also takes a bare array / single op as the whole body). Anything else is `E_PARAM ops: the ops input must be an array of op
+  objects [...], a single op object {...}, or {"ops":[...], "why":"..."}; got an object with keys a, b  Fix: ...` (CLI prints it as an
+  `ERROR` line, nothing written). The CLI (`main.zig: prepareOps`) writes the normalized array to the op log; the envelope `why` is used
+  when `--why` is absent (serve: when the body has no `why`). A non-op element is `E_OP ... got a <type>`.
+- **Coverage** (`coverage.zig`, shown by `load.zig: coverageBlock`, warned by `lint.zig: requestedMissing`): `meta.requested` (array of
+  non-empty strings, else `E_PARAM`; key order `requested` after `jurisdiction` in `canon.zig`). An item is covered when all its words
+  (lowercase alphanumeric tokens, trailing plural `s` dropped, stop words `w with and at of the a an to for in on per` ignored) occur in ONE
+  candidate: a component's `id type label model size`, or one note/label annotation's text. The `ok` line lists the component ids (a note
+  contributes its target component, else `note <id>`). The block sits after the component lines and before the diagnostics, only when the
+  document has `meta.requested`; `W_REQUESTED_MISSING` (path `meta/requested/<i>`) per missing item. The three reference details and
+  `tests/docs/*` have no `meta.requested`, so nothing changes for them. Guide (`spec/llm/cli-guide.md`, now 11.6 KB of 12 KB) and
+  `spec/llm/system.md` tell agents to fill it on the first build and finish only at full coverage; `kerf schema doc` documents it.
+- **W_CROP_STALE** (`crop.zig`, called from `load.zig: loadAfterEdit`; `api.apply` loads the pre-edit document first). Per explicit-crop
+  section view and non-fill component (visible prisms at `cut_z`, bounding box) with more than 25% of the box outside the crop:
+  with history: warn when the component was mostly inside the same crop before (or the view auto-fitted), stay quiet when it was already
+  mostly outside (deliberate cut), and for a NEW component warn unless some view shows at least 75% of it; without history (`kerf check`,
+  new view): warn only when NO view shows any of it. The fix suggests removing `crop` (and `scale`, if set, else `W_VIEW_FIT` follows)
+  or the widened crop `{"x":[..],"y":[..]}`. Acknowledgeable on the component. Effect on the e07 recipe: after the pitch change the
+  clipped roof now warns (`cli_ergonomics.mjs` section 6/9).
+- **Thin-layer landing** (`thinland.zig`, called from `annot.zig: targetLanding`; `section.zig: linePoints` is the drawn polyline of a
+  membrane, shared with the stroke drawing). Targets: membrane / flashing / connector / path rebar prisms (own `centerline`; membranes
+  use the drawn stroke, vapor retarders are drawn 0.03" paper off their ribbon, which is why the old landing sat beside the line) and
+  panels thinner than 1/2" (midline of the quad). The regular label point is kept when it is on that line, at least one text height from
+  every neighbor edge that crosses the line and (for exposed members) not inside a neighbor body. Otherwise the candidates are samples
+  along the line (step half a text height) that are shown (crop band, visible region), not inside a neighbor body, ranked by clearance
+  from crossing neighbor edges (cap two text heights), then distance to the old label point; up to 6 are passed to the router.
+  Goldens regenerated; I looked at all five changed `A.png`s: the vapor retarder arrow is on the dashed line mid-slope instead of at the
+  gravel junction, the CS16 strap arrow sits on the strap instead of beside it, roofing/sheathing and the weep screed land on their lines.
+  Known cosmetic side effect: in flush-beam-strap the router now puts the LVL beam arrow at the beam's lower-left corner (an existing
+  "extreme" candidate chosen to avoid the new strap leader).
+- **Note lint** (`lint.zig: checkNoteText`, `noteStyle`): `W_NOTE_STYLE` also flags commentary (`?`, `NOTE:`, `PLEASE`, `SHOULD BE`, whole
+  words `WE` and `I` followed by a space/apostrophe), a text ending on `W/ AND OR TO @ & PER WITH FOR OF`, notes longer than 130
+  characters, and a note whose text equals an earlier note of the same view (case, whitespace and trailing period ignored). Problems that
+  need a rewrite get a "rewrite it as <SIZE/QTY> ..." fix instead of `set text to`.
+
+### SPEC ISSUES (v0.1.5)
+- W_CROP_STALE "for `kerf check` without history, fire when > 25% outside regardless" would flag every reference detail (they cut studs and
+  slabs on purpose and crop one model several ways: 10 warnings on palmer-sd1-like alone) and the task requires them to stay at 0 warnings.
+  Chose: without history it fires only for a component that no view shows at all (all explicit crops miss it entirely, no iso/auto view);
+  the 25% rule applies with history (`apply`). SPEC 21 should say so.
+- Note length limit is 130, not 120: the reference flush-beam strap note is 121 characters.
+- The connector-word list is longer than SPEC 21's (adds `&`, `PER`, `WITH`, `FOR`, `OF`).
+- Coverage matching also uses a component's `size` (so "2x6 sill" matches the lumber) and label-annotation text; both beyond SPEC 21's list.
+- `{"ops": <single op>}` and a bare array/op as the serve body are accepted too (superset of SPEC 21).
