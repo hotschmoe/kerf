@@ -658,7 +658,7 @@ fn prepNotes(env: *Env, notes: []const NoteIn) Allocator.Error!NotePrep {
     return .{ .g = g, .gutter = st.gutter_in * S, .tag_r = tag_r, .lines_of = lines_of, .rin = rin };
 }
 
-fn routeNotes(env: *Env, prep: NotePrep, ext: Box, obsts: []const Obstacle, soft: []const [2]V2) Allocator.Error!route.Layout {
+fn routeNotes(env: *Env, prep: NotePrep, ext: Box, obsts: []const Obstacle, soft: []const [2]V2, light: bool) Allocator.Error!route.Layout {
     const a = env.a;
     const crop = env.crop;
     const ro = try a.alloc(route.Obst, obsts.len);
@@ -668,7 +668,7 @@ fn routeNotes(env: *Env, prep: NotePrep, ext: Box, obsts: []const Obstacle, soft
         .right => .right,
         .both => .both,
     };
-    return route.route(a, .{ .geo = prep.g, .crop = crop, .xl = @min(crop.x0, ext.x0), .xr = @max(crop.x1, ext.x1), .gutter = prep.gutter, .side = side }, prep.rin, ro, soft);
+    return route.route(a, .{ .geo = prep.g, .crop = crop, .xl = @min(crop.x0, ext.x0), .xr = @max(crop.x1, ext.x1), .gutter = prep.gutter, .side = side, .light = light }, prep.rin, ro, soft);
 }
 
 fn emitNotes(env: *Env, notes: []const NoteIn, prep: NotePrep, r: route.Layout, out: []std.ArrayList(Item)) Allocator.Error!void {
@@ -936,7 +936,7 @@ fn polyHitsSeg(poly: *const [4]V2, a: V2, b: V2) bool {
     return false;
 }
 
-fn polysOverlap(p: *const [4]V2, q: *const [4]V2) bool {
+pub fn polysOverlap(p: *const [4]V2, q: *const [4]V2) bool {
     for (0..4) |i| if (polyHitsSeg(q, p[i], p[(i + 1) % 4])) return true;
     for (0..4) |i| if (geom.pointInLoopEO(q[i], p)) return true;
     return false;
@@ -991,7 +991,7 @@ const DimPlaced = struct { offset: f64, shape: DimShape, items: std.ArrayList(It
 /// one, or whose text would overprint another dimension's text or lines, moves out in steps of 0.25 paper
 /// inch (outside text first tries the other places before the dimension line moves). `pushes` is the extra
 /// outward distance chosen by the layout repair. Returns the effective offsets and fills `items`.
-fn stackDims(env: *Env, specs: []const DimSpec, pushes: []const f64, base_segs: []const [2]V2, items: []std.ArrayList(Item), eff: []f64) Allocator.Error!void {
+fn stackDims(env: *Env, specs: []const DimSpec, pushes: []const f64, base_segs: []const [2]V2, label_polys: []const [4]V2, items: []std.ArrayList(Item), eff: []f64) Allocator.Error!void {
     const a = env.a;
     const S = env.S;
     const step = 0.25 * S;
@@ -1023,6 +1023,13 @@ fn stackDims(env: *Env, specs: []const DimSpec, pushes: []const f64, base_segs: 
                 const sh = try dimBuild(env, d, off, v, &its);
                 var c: usize = 0;
                 for (placed.items) |*o| c += dimConflicts(&sh, o, 0.5 * step);
+                for (label_polys) |*lp| {
+                    if (polysOverlap(&sh.text, lp)) c += 1;
+                    for (sh.segs[0..sh.n]) |sg| if (polyHitsSeg(lp, sg[0], sg[1])) {
+                        c += 1;
+                        break;
+                    };
+                }
                 const bh: usize = if (sh.fits) 0 else baseHits(base_segs, &sh.text);
                 if (c < kbest_c or (c == kbest_c and bh < kbest_hits)) {
                     kbest_c = c;
@@ -1112,17 +1119,19 @@ fn renderDimLabels(env: *Env, dl: DimLab, per_in: []const std.ArrayList(Item), m
     const meta = try a.dupe(Meta, meta_in);
     const eff = try a.alloc(f64, dl.dspecs.len);
     const ditems = try a.alloc(std.ArrayList(Item), dl.dspecs.len);
-    try stackDims(env, dl.dspecs, dpush, dl.base_segs, ditems, eff);
-    for (dl.dspecs, 0..) |d, i| {
-        per[d.k] = ditems[i];
-        meta[d.k].off = eff[i];
-    }
+    var label_polys: std.ArrayList([4]V2) = .empty;
     for (dl.lspecs, 0..) |l, i| {
         var its: std.ArrayList(Item) = .empty;
         if (l.base) |p| try labelItems(env, l.id, l.text, p.add(lpush[i]), &its);
         per[l.k] = its;
         meta[l.k].off = l.off.x + lpush[i].x;
         meta[l.k].off2 = l.off.y + lpush[i].y;
+        for (its.items) |it| if (it == .text) try label_polys.append(a, textPoly(env.font, it.text, 0.02 * env.S));
+    }
+    try stackDims(env, dl.dspecs, dpush, dl.base_segs, label_polys.items, ditems, eff);
+    for (dl.dspecs, 0..) |d, i| {
+        per[d.k] = ditems[i];
+        meta[d.k].off = eff[i];
     }
     var ext = env.crop;
     var obstacles: std.ArrayList(Obstacle) = .empty;
@@ -1175,7 +1184,7 @@ fn repairDim(env: *Env, o: Obstacle, leaders: []const [3]V2, h: f64, dpush: []f6
 /// and it overprints no other label or dimension text; prefers a spot that does not sit on drawn outlines.
 fn repairLabel(o: Obstacle, obsts: []const Obstacle, leaders: []const [3]V2, h: f64, lpush: []V2, base_segs: []const [2]V2) bool {
     const dirs = [8]V2{ V2.init(0, 1), V2.init(0, -1), V2.init(1, 0), V2.init(-1, 0), V2.init(1, 1), V2.init(-1, 1), V2.init(1, -1), V2.init(-1, -1) };
-    const cap = 8.0 * h;
+    const cap = 12.0 * h;
     var relax: usize = 0;
     while (relax < 2) : (relax += 1) {
         var k: f64 = 1;
@@ -1367,12 +1376,19 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
 
     // route, then repair what hits dimension text or labels (bounded, deterministic)
     var best: ?Best = null;
+    var stale: usize = 0;
     var pass: usize = 0;
     while (pass < max_repair_passes) : (pass += 1) {
         const rd = try renderDimLabels(env, dl, per.items, meta.items, dpush, lpush);
-        const r = try routeNotes(env, prep, rd.ext, rd.obstacles, rd.soft);
-        if (best == null or r.hits.len < best.?.r.hits.len) best = .{ .r = r, .rd = rd };
-        if (r.hits.len == 0) break;
+        const r = try routeNotes(env, prep, rd.ext, rd.obstacles, rd.soft, pass > 0);
+        if (best == null or r.hits.len < best.?.r.hits.len) {
+            best = .{ .r = r, .rd = rd };
+            stale = 0;
+        } else {
+            stale += 1;
+        }
+        // stop when clean, or when two passes in a row did not get better
+        if (r.hits.len == 0 or stale >= 2) break;
         const touched_d = try a.alloc(bool, dspecs.items.len);
         const touched_l = try a.alloc(bool, lspecs.items.len);
         @memset(touched_d, false);

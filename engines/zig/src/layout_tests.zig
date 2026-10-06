@@ -235,3 +235,206 @@ test "auto landing keeps the arrow away from the crop edge (break line)" {
     try std.testing.expect(t.x >= 1.5 and dr.crop.x1 - t.x >= 1.5);
     _ = band;
 }
+
+// ---- SPEC 20: repair loop, column hint, place alignment, dimension stacking, outside text -----------------------------------
+
+fn replaceAnn(a: std.mem.Allocator, src: []const u8, anns: []const u8) ![]u8 {
+    // swap the annotations of `two_posts_free` (a view with two notes) for `anns`
+    const old =
+        \\ {"id":"n1","type":"note","text":"ONE","target":"a"},
+        \\ {"id":"n2","type":"note","text":"TWO","target":"b"}
+    ;
+    return std.mem.replaceOwned(u8, a, src, old, anns);
+}
+
+fn textsOf(a: std.mem.Allocator, dr: drawing.Drawing, src: []const u8) ![]drawing.TextItem {
+    var out: std.ArrayList(drawing.TextItem) = .empty;
+    for (dr.items) |it| if (it == .text and std.mem.eql(u8, it.text.src, src)) try out.append(a, it.text);
+    return out.items;
+}
+
+/// x of every vertical dimension line (2-point `dim` path with equal x) of dimension `id`.
+fn vdimLineX(a: std.mem.Allocator, dr: drawing.Drawing, id: []const u8) !f64 {
+    _ = a;
+    for (dr.items) |it| {
+        if (it != .path or !std.mem.eql(u8, it.path.src, id) or !std.mem.eql(u8, it.path.pen, "dim") or it.path.pts.len != 2) continue;
+        const p = it.path.pts;
+        if (@abs(p[0].x - p[1].x) < 1e-9 and @abs(p[0].y - p[1].y) > 1e-6) return p[0].x;
+    }
+    return error.TestUnexpectedResult;
+}
+
+test "SPEC 20 stacking: vertical dims with the same offset are stacked 0.25 paper inch apart, shortest nearest" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src = try replaceAnn(a, two_posts_free,
+        \\ {"id":"d_long","type":"dim","from":[0,0],"to":[0,40],"dir":"v","offset":-6},
+        \\ {"id":"d_mid","type":"dim","from":[0,0],"to":[0,24],"dir":"v","offset":-6},
+        \\ {"id":"d_short","type":"dim","from":[0,8],"to":[0,16],"dir":"v","offset":-6}
+    );
+    const dr = try build(a, src, "A");
+    try std.testing.expect(findDiag(dr, "W_LEADER_HIT") == null);
+    const xs = [3]f64{ try vdimLineX(a, dr, "d_short"), try vdimLineX(a, dr, "d_mid"), try vdimLineX(a, dr, "d_long") };
+    // all dims are left of the post (x = 0); the authored -6 stays for the shortest, longer ones move out by whole 0.25" steps
+    try std.testing.expectApproxEqAbs(@as(f64, -6), xs[0], 1e-6);
+    const step = 0.25 * dr.scale;
+    try std.testing.expect(xs[1] <= xs[0] - step + 1e-6);
+    try std.testing.expect(xs[2] <= xs[1] - step + 1e-6);
+    // no two dimension texts overprint each other
+    const ids = [3][]const u8{ "d_short", "d_mid", "d_long" };
+    const st = try style_mod.load(a, null);
+    var polys: [3][4]V2 = undefined;
+    for (ids, 0..) |id, i| {
+        const ts = try textsOf(a, dr, id);
+        try std.testing.expectEqual(@as(usize, 1), ts.len);
+        polys[i] = @import("annot.zig").textPoly(&(try @import("font.zig").Font.parse(a, @import("font.zig").embedded)), ts[0], 0);
+        _ = st;
+    }
+    for (0..3) |i| for (i + 1..3) |j| {
+        try std.testing.expect(!@import("annot.zig").polysOverlap(&polys[i], &polys[j]));
+    };
+}
+
+test "SPEC 20 stacking is deterministic and keeps the authored offsets of dims that do not conflict" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src = try replaceAnn(a, two_posts_free,
+        \\ {"id":"d1","type":"dim","from":[0,0],"to":[0,40],"dir":"v","offset":-6},
+        \\ {"id":"d2","type":"dim","from":[0,0],"to":[0,24],"dir":"v","offset":-14}
+    );
+    const d1 = try build(a, src, "A");
+    const d2 = try build(a, src, "A");
+    try std.testing.expectApproxEqAbs(@as(f64, -6), try vdimLineX(a, d1, "d1"), 1e-9);
+    try std.testing.expectApproxEqAbs(@as(f64, -14), try vdimLineX(a, d1, "d2"), 1e-9);
+    try std.testing.expectEqual(try vdimLineX(a, d1, "d2"), try vdimLineX(a, d2, "d2"));
+}
+
+test "SPEC 20 outside text: a dim whose text does not fit keeps full size, is not dropped, and gets a short leader" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src = try replaceAnn(a, two_posts_free,
+        \\ {"id":"d_small","type":"dim","from":[5,-3],"to":[7,-3],"dir":"h","offset":-4}
+    );
+    const dr = try build(a, src, "A");
+    const st = try style_mod.load(a, null);
+    const ts = try textsOf(a, dr, "d_small");
+    try std.testing.expectEqual(@as(usize, 1), ts.len);
+    try std.testing.expectApproxEqAbs(st.text_height_in * dr.scale, ts[0].h, 1e-9);
+    // outside the span between the extension lines (x 5..7)
+    try std.testing.expect(ts[0].x < 5 or ts[0].x > 7);
+    // ext lines (2) + dimension line (1) + leader (1)
+    var n_dim: usize = 0;
+    for (dr.items) |it| if (it == .path and std.mem.eql(u8, it.path.src, "d_small") and std.mem.eql(u8, it.path.pen, "dim")) {
+        n_dim += 1;
+    };
+    try std.testing.expectEqual(@as(usize, 4), n_dim);
+}
+
+test "SPEC 20 repair: a dimension whose text a leader runs into is pushed out (no W_LEADER_HIT)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // n1's leader runs from (40,0) to post a, passing the text of the dimension above y = 10
+    const src = try std.mem.replaceOwned(u8, a, two_posts,
+        \\{"id":"n2","type":"note","text":"TWO","target":"b","place":[40,40]}
+    ,
+        \\{"id":"d1","type":"dim","from":[5,10],"to":[15,10],"dir":"h","offset":5}
+    );
+    const dr = try build(a, src, "A");
+    try std.testing.expect(findDiag(dr, "W_LEADER_HIT") == null);
+    var line_y: f64 = 0;
+    for (dr.items) |it| {
+        if (it != .path or !std.mem.eql(u8, it.path.src, "d1") or !std.mem.eql(u8, it.path.pen, "dim") or it.path.pts.len != 2) continue;
+        const p = it.path.pts;
+        if (@abs(p[0].y - p[1].y) < 1e-9 and @abs(p[0].x - p[1].x) > 1e-6) line_y = p[0].y;
+    }
+    try std.testing.expect(line_y > 15.0 + 1e-6);
+    // pushed by whole 0.25" steps
+    const k = (line_y - 15.0) / (0.25 * dr.scale);
+    try std.testing.expectApproxEqAbs(@round(k), k, 1e-6);
+}
+
+test "note column hint puts the note in that column; a bad value warns" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src = try replaceAnn(a, two_posts_free,
+        \\ {"id":"n1","type":"note","text":"ONE","target":"a","column":"left"},
+        \\ {"id":"n2","type":"note","text":"TWO","target":"b"}
+    );
+    const dr = try build(a, src, "A");
+    const t1 = try textsOf(a, dr, "n1");
+    const t2 = try textsOf(a, dr, "n2");
+    try std.testing.expect(t1[0].x + 5 < dr.crop.x0); // n1 left of the crop although notes_side is right
+    try std.testing.expect(t2[0].x > dr.crop.x1);
+    try std.testing.expect(findDiag(dr, "W_LEADER_HIT") == null);
+    const bad = try replaceAnn(a, two_posts_free,
+        \\ {"id":"n1","type":"note","text":"ONE","target":"a","column":"middle"},
+        \\ {"id":"n2","type":"note","text":"TWO","target":"b"}
+    );
+    const dr2 = try build(a, bad, "A");
+    const d = findDiag(dr2, "W_PARAM") orelse return error.TestUnexpectedResult;
+    try std.testing.expect(std.mem.indexOf(u8, d.message, "column") != null);
+}
+
+test "a designer-placed note left of its arrow right-aligns its text block to place.x + width" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src = try replaceAnn(a, two_posts_free,
+        \\ {"id":"n1","type":"note","text":"SHORT LINE AND A LONGER SECOND LINE OF TEXT HERE","target":"a","place":[-40,20]},
+        \\ {"id":"n2","type":"note","text":"TWO","target":"b"}
+    );
+    const dr = try build(a, src, "A");
+    const ts = try textsOf(a, dr, "n1");
+    try std.testing.expect(ts.len >= 2);
+    const x0 = ts[0].x;
+    for (ts) |t| {
+        try std.testing.expect(t.align_ == .right);
+        try std.testing.expectApproxEqAbs(x0, t.x, 1e-9);
+    }
+    // the block's top-left is `place`: the right edge is place.x + the widest line
+    const font = try @import("font.zig").Font.parse(a, @import("font.zig").embedded);
+    var w: f64 = 0;
+    for (ts) |t| w = @max(w, font.width(t.s, t.h));
+    try std.testing.expectApproxEqAbs(@as(f64, -40) + w, x0, 1e-6);
+}
+
+test "dense small detail: repair never makes it worse and is deterministic" {
+    const gpa = std.testing.allocator;
+    const api = @import("api.zig");
+    // the truss reference squeezed into one column with extra dims and labels on the leaders' way
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var src = try std.mem.replaceOwned(u8, a, testdocs.truss, "\"notes_side\": \"both\"", "\"notes_side\": \"right\"");
+    src = try std.mem.replaceOwned(u8, a, src, "\"annotations\": [",
+        \\"annotations": [
+        \\ {"id":"x1","type":"dim","from":"cmu@bottom_left","to":"cmu@bottom_center","dir":"h","offset":-3},
+        \\ {"id":"x2","type":"dim","from":"cmu@top_left","to":"cmu@middle_left","dir":"v","offset":-4},
+        \\ {"id":"x3","type":"label","text":"INTERIOR","at":"cmu@middle_right","offset":[5,5]},
+    );
+    const dr1 = try build(a, src, "A");
+    const dr2 = try build(a, src, "A");
+    try std.testing.expectEqual(dr1.items.len, dr2.items.len);
+    for (dr1.items, dr2.items) |x, y| {
+        if (x == .text) {
+            try std.testing.expectEqual(x.text.x, y.text.x);
+            try std.testing.expectEqual(x.text.y, y.text.y);
+        }
+    }
+    // dimension and label texts never overprint each other
+    const font = try @import("font.zig").Font.parse(a, @import("font.zig").embedded);
+    var polys: std.ArrayList([4]V2) = .empty;
+    for (dr1.items) |it| if (it == .text and (std.mem.eql(u8, it.text.src, "x1") or std.mem.eql(u8, it.text.src, "x2") or std.mem.eql(u8, it.text.src, "x3") or std.mem.eql(u8, it.text.src, "d_wall") or std.mem.eql(u8, it.text.src, "d_ovh") or std.mem.eql(u8, it.text.src, "l_ext") or std.mem.eql(u8, it.text.src, "l_int"))) {
+        try polys.append(a, @import("annot.zig").textPoly(&font, it.text, 0));
+    };
+    try std.testing.expect(polys.items.len >= 7);
+    for (polys.items, 0..) |p, i| for (polys.items[i + 1 ..]) |q| {
+        try std.testing.expect(!@import("annot.zig").polysOverlap(&p, &q));
+    };
+    _ = api;
+}

@@ -154,8 +154,9 @@
 <g data-src="d_recess">
 <path d="M517.143 263.45L549.143 263.45" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 <path d="M517.143 251.45L549.143 251.45" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
-<path d="M543.143 263.45L543.143 184.593" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
-<path d="M531.357 233.879L530.929 233.021L529.643 231.736L538.643 231.736M531.357 218.45L530.929 217.593L529.643 216.307L538.643 216.307M527.929 203.879L541.643 211.593M531.786 201.307L531.357 201.307L530.5 200.879L530.071 200.45L529.643 199.593L529.643 197.879L530.071 197.021L530.5 196.593L531.357 196.164L532.214 196.164L533.071 196.593L534.357 197.45L538.643 201.736L538.643 195.736M529.643 192.736L532.643 192.736M529.643 189.307L532.643 189.307" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M543.143 263.45L543.143 251.45" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M543.143 251.45L543.143 239.45" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M540.357 232.379L539.929 231.521L538.643 230.236L547.643 230.236M540.357 216.95L539.929 216.093L538.643 214.807L547.643 214.807M536.929 202.379L550.643 210.093M540.786 199.807L540.357 199.807L539.5 199.379L539.071 198.95L538.643 198.093L538.643 196.379L539.071 195.521L539.5 195.093L540.357 194.664L541.214 194.664L542.071 195.093L543.357 195.95L547.643 200.236L547.643 194.236M538.643 191.236L541.643 191.236M538.643 187.807L541.643 187.807" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 </g>
 </g>
 <g id="S-ANNO-TTLB" inkscape:groupmode="layer" inkscape:label="S-ANNO-TTLB">

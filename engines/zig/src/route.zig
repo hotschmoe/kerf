@@ -53,6 +53,8 @@ pub const Params = struct {
     xr: f64,
     gutter: f64,
     side: Side,
+    /// Re-routes inside the caller's repair loop: one search attempt with a small budget.
+    light: bool = false,
 };
 
 pub const HitKind = enum { leader, note, dim, label };
@@ -740,16 +742,17 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
         searched = true;
         const start = c.snapshot();
         var best = start;
-        // a small portfolio of searches from the same start (the first one that clears every hit wins)
+        // a small portfolio of searches from the same start; more attempts only while hits between notes remain
+        // (hits on dimension text and labels are the caller's to repair)
         const attempts = [_][2]bool{ .{ false, false }, .{ true, false }, .{ false, true }, .{ true, true } };
         for (attempts) |at| {
             c.restore(start);
-            c.budget = 100;
+            c.budget = if (p.light) 30 else 100;
             _ = c.eval();
             improve(&c, at[0], at[1]);
             const r = c.snapshot();
             if (betterMode(.{ .total = r.total, .hits = r.hits, .hard = r.hard }, .{ .total = best.total, .hits = best.hits, .hard = best.hard }, false)) best = r;
-            if (best.hits == 0) break;
+            if (best.hard == 0 or p.light) break;
         }
         c.restore(best);
         _ = c.eval();
