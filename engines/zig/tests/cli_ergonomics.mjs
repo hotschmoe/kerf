@@ -280,5 +280,26 @@ section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_*
   check('acknowledge of an E_ code is still an error', r.code === 1 && /cannot be acknowledged/.test(r.err), r.err);
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('4. v0.1.5 (SPEC 21): lenient ops input');
+{
+  kerf(['new', 'l.kerf.json', '--template', 'section']);
+  const one = { op: 'update', path: 'components/stud', value: { length: 100 } };
+  let r = kerf(['apply', 'l.kerf.json', '--ops', JSON.stringify(one), '-w', '--why', 'flag why']);
+  check('a single op object is accepted', r.code === 0 && readJson('l.kerf.json').components.find((c) => c.id === 'stud').length === 100, r);
+  r = kerf(['apply', 'l.kerf.json', '-', '-w'], { input: JSON.stringify({ ops: [{ op: 'update', path: 'components/stud', value: { length: 96 } }], why: 'envelope why' }) });
+  check('{"ops":[...],"why":"..."} on stdin is accepted', r.code === 0 && readJson('l.kerf.json').components.find((c) => c.id === 'stud').length === 96, r);
+  let lines = fs.readFileSync(path.join(tmp, 'l.kerf.json.log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  check('log: single op is logged as an array; --why from the flag, else from the envelope', lines[1].ops.length === 1 && lines[1].why === 'flag why' && lines[2].why === 'envelope why', lines.slice(1));
+  write('flagwins.json', { ops: [{ op: 'update', path: 'components/stud', value: { length: 97 } }], why: 'envelope' });
+  r = kerf(['apply', 'l.kerf.json', 'flagwins.json', '-w', '--why', 'flag']);
+  lines = fs.readFileSync(path.join(tmp, 'l.kerf.json.log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  check('--why wins over the envelope why', r.code === 0 && lines[3].why === 'flag', lines[3]);
+  r = kerf(['apply', 'l.kerf.json', '--ops', JSON.stringify({ path: 'components/stud', value: 1 })]);
+  check('anything else: E_PARAM naming the three shapes and what was received', r.code === 1 && /^ERROR E_PARAM ops: .*array of op objects.*single op object.*"ops":\[\.\.\.\].*got an object with keys path, value/m.test(r.err) && /nothing written/.test(r.err), r.err);
+  r = kerf(['new', 'l2.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/x', value: {} })]);
+  check('new --ops takes a single op too (fails here on the unknown component, not on the shape)', r.code === 1 && /^ERROR E_REF_UNKNOWN/m.test(r.err), r.err);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

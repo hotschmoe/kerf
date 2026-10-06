@@ -288,10 +288,7 @@ fn applyFn(a: Allocator, inp: json.Value) ApiError!Out {
         .style => |x| x,
         .err => |e| return e,
     };
-    var ops = inp.get("ops") orelse return fail(a, "E_INPUT", "missing \"ops\": an array of ops (see SPEC 14)", .{});
-    if (ops == .object) if (ops.get("ops")) |inner| {
-        ops = inner;
-    };
+    const ops = inp.get("ops") orelse return fail(a, "E_INPUT", "missing \"ops\": an array of ops (see SPEC 14)", .{});
     const actor: ops_mod.Actor = if (inp.get("actor")) |x| (if (x.str()) |s| (if (std.mem.eql(u8, s, "designer")) .designer else .llm) else .llm) else .llm;
     var op_diags = model.Diags.init(a);
     const applied = try ops_mod.apply(a, d, ops, actor, &op_diags);

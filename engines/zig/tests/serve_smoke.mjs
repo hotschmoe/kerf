@@ -237,6 +237,19 @@ async function main() {
   const lg3 = await api(port, 'GET', '/api/docs/a.kerf.json/log?since=99');
   check('GET log?since beyond the end -> empty, next=3', lg3.json.entries.length === 0 && lg3.json.next === 3);
 
+  // SPEC 21: lenient ops (single op object, {ops, why} envelope, bare array body)
+  const lenient1 = await api(port, 'POST', '/api/docs/a.kerf.json/apply', { body: { ops: addOp('len1')[0], why: 'single op', actor: 'designer' } });
+  check('apply: "ops" may be a single op object', lenient1.status === 200 && lenient1.json.ok === true && lenient1.json.changed.includes('len1'), lenient1.text.slice(0, 300));
+  const lenient2 = await api(port, 'POST', '/api/docs/a.kerf.json/apply', { body: { ops: { ops: addOp('len2'), why: 'inner why' }, actor: 'designer' } });
+  check('apply: {"ops":{"ops":[...],"why":...}} supplies the why', lenient2.status === 200 && lenient2.json.ok === true && lenient2.json.changed.includes('len2'), lenient2.text.slice(0, 300));
+  const lenient3 = await api(port, 'POST', '/api/docs/a.kerf.json/apply', { body: addOp('len3'), });
+  check('apply: the body itself may be the ops array', lenient3.status === 200 && lenient3.json.ok === true && lenient3.json.changed.includes('len3'), lenient3.text.slice(0, 300));
+  const lenLog = await api(port, 'GET', '/api/docs/a.kerf.json/log');
+  const lenWhys = lenLog.json.entries.slice(-3).map((e) => e.why);
+  check('apply: the envelope why reaches the op log', lenWhys[0] === 'single op' && lenWhys[1] === 'inner why', lenWhys);
+  const lenBad = await api(port, 'POST', '/api/docs/a.kerf.json/apply', { body: { ops: { foo: 1 } } });
+  check('apply: a bad ops shape is a 400 E_PARAM that names the shapes', lenBad.status === 400 && lenBad.json.error.code === 'E_PARAM' && /single op object/.test(lenBad.json.error.message), lenBad.text.slice(0, 300));
+
   section('export');
   fs.copyFileSync(REF, path.join(dir, 'beam.kerf.json'));
   await sleep(700);

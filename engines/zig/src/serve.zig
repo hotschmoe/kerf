@@ -656,9 +656,16 @@ fn apiCreate(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: 
 fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8, file: []const u8) !bool {
     const ka = req.keep_alive;
     const body = parseBody(a, req) orelse return badRequest(a, req, w, extra, "E_JSON", "body must be JSON: { ops, why, actor, if_match? }");
-    if (body != .object) return badRequest(a, req, w, extra, "E_INPUT", "body must be a JSON object");
-    const ops_v = body.get("ops") orelse return badRequest(a, req, w, extra, "E_INPUT", "missing \"ops\": an array of ops (see SPEC 14)");
-    const why = if (body.get("why")) |v| (v.str() orelse "") else "";
+    // lenient (SPEC 21): the body may itself be the ops array or a single op; otherwise it is { ops, why, actor, if_match? }
+    const bare_ops = body == .array or (body == .object and body.get("ops") == null and body.get("op") != null);
+    if (body != .object and body != .array) return badRequest(a, req, w, extra, "E_INPUT", "body must be a JSON object");
+    const ops_v = if (bare_ops) body else (body.get("ops") orelse return badRequest(a, req, w, extra, "E_INPUT", "missing \"ops\": an array of ops (see SPEC 14)"));
+    var ops_diags = kerf.model.Diags.init(a);
+    const norm = (try kerf.ops.normalize(a, ops_v, &ops_diags)) orelse {
+        const d = ops_diags.list.items[0];
+        return badRequest(a, req, w, extra, d.code, d.message);
+    };
+    const why = if (body.get("why")) |v| (v.str() orelse "") else norm.why orelse "";
     var who: []const u8 = "designer";
     if (body.get("actor")) |v| if (v.str()) |ac| {
         var ok = ac.len > 0 and ac.len <= 32;
@@ -696,7 +703,7 @@ fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: [
         }
     }
     var ops_text: std.ArrayList(u8) = .empty;
-    try kerf.json.writeCompact(&ops_text, a, ops_v);
+    try kerf.json.writeCompact(&ops_text, a, norm.ops);
     // The engine only distinguishes designer edits (verified citations stay verified) from model edits.
     const engine_actor = if (std.mem.eql(u8, who, "designer")) "designer" else "llm";
     const input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"ops\":{s},\"actor\":\"{s}\"}}", .{ std.mem.trim(u8, rd.bytes, " \t\r\n"), ops_text.items, engine_actor });

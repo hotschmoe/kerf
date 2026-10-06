@@ -14,6 +14,7 @@ const usage =
     \\      --ops creates the file and applies the ops in one command (nothing is written if an op fails; both steps are logged)
     \\  kerf apply <doc> <ops.json|-> [-w] [--why "REASON"] [-o out]   apply ops (file or stdin); -w writes back to <doc>
     \\  kerf apply <doc> --ops '<json>' [-w] [--why "REASON"] [--dry-run]
+    \\      ops: an array, a single op object, or {"ops":[...],"why":"..."} (the why is used when --why is absent)
     \\      a failed apply prints "ERROR <code> <path>: <message>  Fix: <fix>" per error on stderr, then "nothing written" (exit 1)
     \\      -w also appends one line to <doc>.log.jsonl (who = $KERF_ACTOR or "agent"; --why = the reason, shown to the designer)
     \\  kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no-token]
@@ -283,6 +284,32 @@ fn printDiagError(err: *std.Io.Writer, d: kerf.json.Value) !void {
     try err.writeAll("\n");
 }
 
+const PreparedOps = struct {
+    /// Compact JSON array of ops (what the engine and the op log get).
+    text: []const u8,
+    /// The `why` of an `{"ops":[...],"why":"..."}` envelope.
+    why: ?[]const u8,
+};
+
+/// Parse the ops text and normalize it to an ops array (SPEC 21: array, single op, or `{"ops":[...],"why":"..."}`).
+/// On failure prints the error (`nothing written`) and returns null.
+fn prepareOps(a: std.mem.Allocator, err: *std.Io.Writer, raw: []const u8) !?PreparedOps {
+    var vperr: kerf.json.ParseError = undefined;
+    const parsed = (try kerf.json.parse(a, std.mem.trim(u8, raw, " \t\r\n"), &vperr)) orelse {
+        try err.print("ERROR E_JSON ops: the ops are not valid JSON: {s} (line {d}, column {d})  Fix: pass a JSON array of ops, e.g. [{{\"op\":\"update\",\"path\":\"components/x\",\"value\":{{...}}}}]; on PowerShell write the ops to a file\nnothing written\n", .{ vperr.msg, vperr.line, vperr.col });
+        return null;
+    };
+    var diags = kerf.model.Diags.init(a);
+    const norm = (try kerf.ops.normalize(a, parsed, &diags)) orelse {
+        for (diags.list.items) |d| try printDiagError(err, try kerf.model.diagToJson(a, d));
+        try err.writeAll("nothing written\n");
+        return null;
+    };
+    var out: std.ArrayList(u8) = .empty;
+    try kerf.json.writeCompact(&out, a, norm.ops);
+    return .{ .text = out.items, .why = norm.why };
+}
+
 /// Print an engine failure `{"error": {code, message}}` as `ERROR <code>: <message>`; falls back to the raw bytes.
 fn printApiError(a: std.mem.Allocator, err: *std.Io.Writer, bytes: []const u8) !void {
     var perr: kerf.json.ParseError = undefined;
@@ -451,6 +478,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         } else try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
         var final_text: []const u8 = text;
         var ops_text: ?[]const u8 = null;
+        var why: []const u8 = "";
         var apply_changed: std.ArrayList([]const u8) = .empty;
         var apply_summary: []const u8 = "";
         if (o.ops) |oa| {
@@ -459,12 +487,10 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
                 try err.print("kerf new: cannot read ops '{s}' (--ops takes a file path, or inline JSON starting with [)\n", .{oa});
                 return 2;
             };
-            ops_text = std.mem.trim(u8, raw, " \t\r\n");
+            const prep = (try prepareOps(a, err, raw)) orelse return 1;
+            ops_text = prep.text;
+            why = o.why orelse prep.why orelse "";
             var vperr: kerf.json.ParseError = undefined;
-            if ((try kerf.json.parse(a, ops_text.?, &vperr)) == null) {
-                try err.print("ERROR E_JSON ops: the ops are not valid JSON: {s} (line {d}, column {d})  Fix: pass a JSON array of ops\nnothing written\n", .{ vperr.msg, vperr.line, vperr.col });
-                return 1;
-            }
             const input = try buildInputText(a, text, o.style, io, try std.fmt.allocPrint(a, "\"ops\":{s}", .{ops_text.?}));
             const r = try kerf.call(gpa, "apply", input);
             defer gpa.free(r.bytes);
@@ -490,7 +516,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, final_text);
         var logged = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
         if (ops_text) |ot| {
-            const l2 = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse "" }, ot, apply_changed.items, apply_summary);
+            const l2 = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = why }, ot, apply_changed.items, apply_summary);
             logged = logged and l2;
         }
         try writeOut(io, null, "created ");
@@ -527,6 +553,8 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
     var ops_text_for_log: []const u8 = "[]";
     var ops_keep: ?[]u8 = null; // the ops text outlives the branch that read it (the op log is written later)
     defer if (ops_keep) |b| gpa.free(b);
+    var why_keep: ?[]u8 = null; // the `why` of an {"ops":[...],"why":"..."} envelope (used when --why is absent)
+    defer if (why_keep) |b| gpa.free(b);
     if (std.mem.eql(u8, cmd, "drawing")) {
         const v = o.view orelse {
             try err.writeAll("kerf drawing: --view <id> is required\n");
@@ -571,18 +599,16 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             return 2;
         }
         {
-            var vperr: kerf.json.ParseError = undefined;
             var varena = std.heap.ArenaAllocator.init(gpa);
             defer varena.deinit();
-            const parsed = try kerf.json.parse(varena.allocator(), std.mem.trim(u8, ops, " \t\r\n"), &vperr);
-            if (parsed == null) {
-                try err.print("ERROR E_JSON ops: the ops are not valid JSON: {s} (line {d}, column {d})  Fix: pass a JSON array of ops, e.g. [{{\"op\":\"update\",\"path\":\"components/x\",\"value\":{{...}}}}]; on PowerShell write the ops to a file\nnothing written\n", .{ vperr.msg, vperr.line, vperr.col });
-                return 1;
-            }
+            const prep = (try prepareOps(varena.allocator(), err, ops)) orelse return 1;
+            ops_keep = try gpa.dupe(u8, prep.text);
+            if (prep.why) |w| if (o.why == null) {
+                why_keep = try gpa.dupe(u8, w);
+            };
         }
-        ops_keep = try gpa.dupe(u8, ops);
         ops_text_for_log = ops_keep.?;
-        try extra.print(gpa, "\"ops\":{s}", .{std.mem.trim(u8, ops, " \t\r\n")});
+        try extra.print(gpa, "\"ops\":{s}", .{ops_keep.?});
     } else if (!(std.mem.eql(u8, cmd, "fmt") or std.mem.eql(u8, cmd, "check") or std.mem.eql(u8, cmd, "mesh"))) {
         try err.print("kerf: unknown command '{s}'\n", .{cmd});
         try err.writeAll(usage);
@@ -645,7 +671,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
                     var changed: std.ArrayList([]const u8) = .empty;
                     if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
                     const sum = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
-                    logged = logWrite(a, io, doc_path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse "" }, std.mem.trim(u8, ops_text_for_log, " \t\r\n"), changed.items, sum);
+                    logged = logWrite(a, io, doc_path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse why_keep orelse "" }, ops_text_for_log, changed.items, sum);
                     try writeOut(io, null, "wrote ");
                     try writeOut(io, null, doc_path);
                     try writeOut(io, null, "\n");

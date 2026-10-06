@@ -160,7 +160,7 @@ fn splitPath(a: Allocator, path: []const u8) Allocator.Error![]const []const u8 
 
 fn applyOne(c: *Ctx, op: Value) Allocator.Error!void {
     const a = c.a;
-    if (op != .object) return c.fail("E_OP", "", "each op must be an object like {{\"op\": \"add\", \"path\": \"components\", \"value\": {{...}}}}", .{});
+    if (op != .object) return c.fail("E_OP", "", "each op must be an object like {{\"op\": \"add\", \"path\": \"components\", \"value\": {{...}}}}; got a {s}", .{op.kindName()});
     const kind = (if (op.get("op")) |x| x.str() else null) orelse return c.fail("E_OP", "", "op needs \"op\": add | update | remove | set", .{});
     const path = (if (op.get("path")) |x| x.str() else null) orelse return c.fail("E_OP", "", "op needs a string \"path\" such as \"components\", \"components/<id>\", \"views/<id>/annotations\"", .{});
     const value = op.get("value");
@@ -340,14 +340,54 @@ fn applyOne(c: *Ctx, op: Value) Allocator.Error!void {
     return c.fail("E_OP", path, "unknown path root \"{s}\"; use doc, meta, components, views", .{seg[0]});
 }
 
-/// Apply `ops` (a JSON array) to `doc`. Returns null when any op fails (diagnostics explain).
-pub fn apply(a: Allocator, doc: Value, ops: Value, actor: Actor, diags: *model.Diags) Allocator.Error!?Applied {
+/// The three accepted shapes of the ops input (SPEC 21), quoted in the `E_PARAM` message.
+const ops_shapes = "an array of op objects [{\"op\":...}, ...], a single op object {\"op\":...}, or {\"ops\":[...], \"why\":\"...\"}";
+
+pub const Normalized = struct {
+    /// Always an array of ops.
+    ops: Value,
+    /// The reason from the `{"ops":[...],"why":"..."}` envelope, if present.
+    why: ?[]const u8 = null,
+};
+
+/// One-line description of what an ops input was, for error messages ("an object with keys op, path, value").
+fn describeInput(a: Allocator, v: Value) Allocator.Error![]const u8 {
+    if (v != .object) return std.fmt.allocPrint(a, "a {s}", .{v.kindName()});
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "an object with keys ");
+    if (v.object.len == 0) try out.appendSlice(a, "(none)");
+    for (v.object, 0..) |m, i| {
+        if (i > 0) try out.appendSlice(a, ", ");
+        try out.appendSlice(a, m.key);
+    }
+    return out.items;
+}
+
+/// Accept an ops array, a single op object, or `{"ops":[...]}` (optionally with `"why"`); null (+ `E_PARAM`) otherwise.
+pub fn normalize(a: Allocator, input: Value, diags: *model.Diags) Allocator.Error!?Normalized {
+    switch (input) {
+        .array => return .{ .ops = input },
+        .object => {
+            if (input.get("ops")) |inner| {
+                if (inner == .array) return .{ .ops = inner, .why = if (input.get("why")) |w| w.str() else null };
+                if (inner == .object and inner.get("op") != null) return .{ .ops = .{ .array = try a.dupe(Value, &.{inner}) }, .why = if (input.get("why")) |w| w.str() else null };
+            } else if (input.get("op") != null) {
+                return .{ .ops = .{ .array = try a.dupe(Value, &.{input}) } };
+            }
+        },
+        else => {},
+    }
+    const got = try describeInput(a, input);
+    const fix: []const u8 = if (input == .object) "wrap a single op in [ ], or put the ops under an \"ops\" key" else "pass the op list as a JSON array";
+    diags.addFix(.@"error", "E_PARAM", null, "ops", "the ops input must be {s}; got {s}", .{ ops_shapes, got }, fix);
+    return null;
+}
+
+/// Apply `ops` (see `normalize` for the accepted shapes) to `doc`. Returns null when any op fails (diagnostics explain).
+pub fn apply(a: Allocator, doc: Value, ops_input: Value, actor: Actor, diags: *model.Diags) Allocator.Error!?Applied {
     var c = Ctx{ .a = a, .diags = diags, .actor = actor, .doc = doc };
-    const arr = ops.arr() orelse {
-        diags.add(.@"error", "E_OP", null, "ops", "\"ops\" must be an array of op objects", .{});
-        return null;
-    };
-    for (arr, 0..) |op, i| {
+    const norm = (try normalize(a, ops_input, diags)) orelse return null;
+    for (norm.ops.array, 0..) |op, i| {
         c.op_index = i;
         try applyOne(&c, op);
         if (!c.ok) return null;

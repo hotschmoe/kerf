@@ -155,7 +155,7 @@ pub const op: Object = .{
     \\          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)
     \\  set    doc                              value = the whole document (first build)
     \\  set    components/<id>                  replace the whole component
-    \\Input forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; a wrapper {"ops":[...]} is accepted. Add `-w --why "..."` to write and log.
+    \\Input forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {"ops":[...],"why":"..."} (the why is used when --why is absent). Add `-w --why "..."` to write and log.
     ,
     .example = "[{\"op\":\"add\",\"path\":\"components\",\"value\":{\"id\":\"sill\",\"type\":\"lumber\",\"size\":\"2x6\",\"orient\":\"flat\",\"treated\":true}},{\"op\":\"update\",\"path\":\"views/A/annotations/n_sill\",\"value\":{\"text\":\"2X6 PT SILL PLATE W/ SEALER\"}},{\"op\":\"remove\",\"path\":\"components/old\"}]",
 };
