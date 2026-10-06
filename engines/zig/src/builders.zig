@@ -22,6 +22,7 @@ const Prism = model.Prism;
 const Params = model.Params;
 const Box = geom.Box;
 const common = @import("builders/common.zig");
+pub const insulation = @import("builders/insulation.zig");
 pub const fill = @import("builders/fill.zig");
 pub const membrane = @import("builders/membrane.zig");
 pub const truss = @import("builders/truss.zig");
@@ -81,93 +82,6 @@ const materialOr = common.materialOr;
 // ---- fill ------------------------------------------------------------------------------------------------------------------
 
 // ---- insulation ----------------------------------------------------------------------------------------------------------------
-
-pub const InsulationParams = struct {
-    form: enum { rigid, batt } = .rigid,
-    width: ?f64 = null,
-    height: ?f64 = null,
-    points: ?json.Value = null,
-
-    pub const spec = .{
-        .form = .{ .desc = "rigid | batt" },
-        .width = .{ .len = .pos, .hint = "give width and height, or points", .also = &.{"height"}, .def = "rect: required unless points", .desc = "box size" },
-        .height = .{ .len = .pos, .hint = "give width and height, or points", .row = false, .desc = "box size" },
-        .points = .{ .desc = "polygon alternative to width/height" },
-    };
-};
-
-fn buildInsulation(ctx: *Ctx) BuildError!?Built {
-    const a = ctx.a;
-    const p = &ctx.p;
-    const ip = p.parse(InsulationParams) orelse return null;
-    var loop: []const Pt = undefined;
-    var points_mode = false;
-    if (ip.points) |pv| {
-        const pts = (try parsePointList(ctx, "points", pv, true)) orelse return null;
-        const clean = try dropDuplicatePoints(a, pts);
-        if (clean.len < 3) {
-            p.fail("points", "insulation polygon needs at least 3 points", .{});
-            return null;
-        }
-        loop = try orientedCcw(a, clean);
-        points_mode = true;
-    } else {
-        const hint = "give width and height, or points";
-        const w = ip.width orelse {
-            p.missing("width", hint);
-            return null;
-        };
-        const h = ip.height orelse {
-            p.missing("height", hint);
-            return null;
-        };
-        loop = try model.rectLoop(a, 0, 0, w, h);
-    }
-    const batt = ip.form == .batt;
-    var prism = Prism{
-        .material = if (batt) "insulation_batt" else "insulation_rigid",
-        .loops = try model.oneLoop(a, loop),
-    };
-    const bx = geom.loopBox(loop);
-    if (batt) {
-        prism.kind = .batt;
-        prism.line_pts = try battSymbol(a, bx);
-    }
-    return .{
-        .prisms = try onePrism(a, prism),
-        .box = bx,
-        .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "insulation {s}", .{@tagName(ip.form)}),
-    };
-}
-
-/// Sinusoidal loop line fitted to the box (batt insulation symbol).
-fn battSymbol(a: Allocator, bx: Box) Allocator.Error![]const Pt {
-    const horizontal = bx.width() >= bx.height();
-    const long = if (horizontal) bx.width() else bx.height();
-    const short = if (horizontal) bx.height() else bx.width();
-    const loops: f64 = @min(@max(2, @round(long / (short * 0.9))), 2000);
-    const pad = short * 0.2;
-    const pitch = (long - 2 * pad) / loops;
-    const loop_w = 1.7 * pitch / (2.0 * std.math.pi);
-    const amp = 0.42 * short;
-    const steps_per = 20;
-    const total: usize = cast.toIntClamped(usize, loops, 2, 2000) * steps_per;
-    var out: std.ArrayList(Pt) = .empty;
-    var i: usize = 0;
-    while (i <= total) : (i += 1) {
-        const t = 2.0 * std.math.pi * loops * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(total));
-        const u = pad + (long - 2 * pad) * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(total)) - loop_w * @sin(t);
-        const v = amp * @cos(t);
-        const along = u;
-        if (horizontal) {
-            try out.append(a, .{ .x = bx.x0 + along, .y = (bx.y0 + bx.y1) / 2 + v });
-        } else {
-            try out.append(a, .{ .x = (bx.x0 + bx.x1) / 2 + v, .y = bx.y0 + along });
-        }
-    }
-    return out.items;
-}
 
 // ---- solid ------------------------------------------------------------------------------------------------------------------------
 
@@ -445,7 +359,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .truss => truss.build(ctx),
         .membrane => membrane.build(ctx),
         .fill => fill.build(ctx),
-        .insulation => buildInsulation(ctx),
+        .insulation => insulation.build(ctx),
         .solid => buildSolid(ctx),
         .flashing => buildFlashing(ctx),
         .joint => buildJoint(ctx),
@@ -453,7 +367,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
 }
 
 /// The parameter struct of every component type, in `catalog.Type` order.
-pub const param_structs = .{ lumber.Params, panel.Params, cmu_wall.Params, concrete.Params, rebar.Params, anchor_bolt.Params, connector.Params, truss.Params, membrane.Params, fill.Params, InsulationParams, SolidParams, FlashingParams, JointParams };
+pub const param_structs = .{ lumber.Params, panel.Params, cmu_wall.Params, concrete.Params, rebar.Params, anchor_bolt.Params, connector.Params, truss.Params, membrane.Params, fill.Params, insulation.Params, SolidParams, FlashingParams, JointParams };
 
 comptime {
     if (param_structs.len != std.meta.tags(catalog.Type).len) @compileError("builders.param_structs must have one struct per catalog.Type tag");

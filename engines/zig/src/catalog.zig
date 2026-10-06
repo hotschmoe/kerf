@@ -253,7 +253,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .insulation,
         .summary = "Rigid (hatched) or batt (loop symbol) insulation.",
-        .params = params.rows(builders.InsulationParams),
+        .params = params.rows(builders.insulation.Params),
         .parts = "none",
         .anchors = "9 box anchors",
         .draws = "Rigid: hatched region. Batt: sinusoidal loop line fitted to the rectangle.",
