@@ -266,7 +266,9 @@ section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_*
   // the recipe from the guide fixes it in one ops file
   write('pitch.json', [{ op: 'update', path: 'components/roof_sheathing', value: { slope: '@truss', until: 'truss@top_chord_end', length: null } }]);
   r = kerf(['apply', 'e07.kerf.json', 'pitch.json', '-w', '--why', 'sheathing follows the truss']);
-  check('the guide recipe (update with until, length null) clears it', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /until truss@top_chord_end/.test(r.out), r.out);
+  check('the guide recipe (update with until, length null) clears W_SHORT_SLOPE; the explicit crop now clips the longer roof: W_CROP_STALE (the e07 gap)', r.code === 0 && !/W_SHORT_SLOPE/.test(r.out) && /^WARN W_CROP_STALE roof_sheathing: after this edit/m.test(r.out) && /until truss@top_chord_end/.test(r.out), r.out);
+  r = kerf(['apply', 'e07.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'views/A', value: { crop: null, scale: null } }), '-w', '--why', 'auto-fit the roof']);
+  check('removing the crop and scale (the warning\'s fix) leaves 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
   // steeper pitch on the reference with the recipe: still 0 warnings, sheathing follows
   write('pitch8.json', [{ op: 'update', path: 'components/truss', value: { pitch: '8:12' } }]);
   r = kerf(['apply', 'e07.kerf.json', 'pitch8.json', '-w', '--why', 'steeper']);
@@ -327,6 +329,25 @@ section('8. v0.1.5 (SPEC 21): meta.requested coverage');
     const o = kerf(['check', path.join(DETAILS, d + '.kerf.json')]);
     check(`reference ${d}: no meta.requested, so no COVERAGE block and 0 warnings`, !/COVERAGE/.test(o.out) && /0 errors  0 warnings/.test(o.out), o.out.split('\n')[0]);
   }
+}
+
+// ---------------------------------------------------------------------------------------------------
+section('9. v0.1.5 (SPEC 21): W_CROP_STALE');
+{
+  write('crop.kerf.json', { kerf: '0.1', id: 'crop', components: [{ id: 'stud', type: 'lumber', size: '2x4', run: 'y', length: 30 }, { id: 'sill', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'top_left', to: 'stud@bottom_left' } }],
+    views: [{ id: 'A', crop: { x: [-10, 40], y: [-12, 40] }, annotations: [] }] });
+  let r = kerf(['check', 'crop.kerf.json']);
+  check('a member inside its crop: no W_CROP_STALE', !/W_CROP_STALE/.test(r.out), r.out);
+  r = kerf(['apply', 'crop.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/stud', value: { length: 90 } }), '-w', '--why', 'taller stud']);
+  check('apply: the edit that pushes the stud out of the crop warns, naming the crop that holds it and "remove crop"', r.code === 0 && /^WARN W_CROP_STALE stud: after this edit, 'stud' has 56% of its extent outside the crop of view A.*Fix: remove "crop" \(and "scale", if you set one\) from view A.*"y":\[-12,90\]/m.test(r.out), r.out);
+  r = kerf(['check', 'crop.kerf.json']);
+  check('check without history: the stud is still partly in the crop (a deliberate cut), so quiet', !/W_CROP_STALE/.test(r.out), r.out);
+  r = kerf(['apply', 'crop.kerf.json', '--ops', JSON.stringify({ op: 'add', path: 'components', value: { id: 'far', type: 'lumber', size: '2x4', run: 'y', length: 30, at: { anchor: 'bottom_left', to: [500, 0] } } }), '-w', '--why', 'far member']);
+  check('apply: a new member outside the crop warns', /^WARN W_CROP_STALE far: after this edit/m.test(r.out), r.out);
+  r = kerf(['check', 'crop.kerf.json']);
+  check('check without history: a member entirely outside the crop (no view shows it) warns, "outside the crop"', /^WARN W_CROP_STALE far: 'far' has 100% of its extent outside the crop of view A/m.test(r.out), r.out);
+  r = kerf(['apply', 'crop.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'views/A', value: { crop: null } }), '-w', '--why', 'auto-fit']);
+  check('removing the crop (auto-fit) clears it', r.code === 0 && !/W_CROP_STALE/.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

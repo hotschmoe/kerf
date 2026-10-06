@@ -298,7 +298,8 @@ fn applyFn(a: Allocator, inp: json.Value) ApiError!Out {
     var all: std.ArrayList(model.Diag) = .empty;
     var summary_text: []const u8 = "";
     if (applied) |ap| {
-        const l = try load_mod.load(a, ap.doc, &st, true);
+        const prior = try load_mod.load(a, d, &st, false);
+        const l = try load_mod.loadAfterEdit(a, ap.doc, &st, true, &prior);
         try all.appendSlice(a, op_diags.list.items);
         try all.appendSlice(a, l.diags.list.items);
         var errs: usize = 0;
@@ -313,8 +314,7 @@ fn applyFn(a: Allocator, inp: json.Value) ApiError!Out {
             dg.* = .{ .a = a, .list = all };
             summary_text = try load_mod.summary(&.{ .a = a, .doc = l.doc, .style = l.style, .scene = l.scene, .diags = dg, .nviews = l.nviews });
         } else {
-            const before = try load_mod.load(a, d, &st, false);
-            summary_text = try load_mod.summary(&before);
+            summary_text = try load_mod.summary(&prior);
         }
     } else {
         try all.appendSlice(a, op_diags.list.items);

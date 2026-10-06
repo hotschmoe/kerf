@@ -16,6 +16,7 @@ const units = @import("units.zig");
 const builders = @import("builders.zig");
 const lint = @import("lint.zig");
 const coverage = @import("coverage.zig");
+const crop_mod = @import("crop.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 
@@ -30,11 +31,18 @@ pub const Loaded = struct {
 
 /// Compile + validate (+ every view's annotation diagnostics when `with_views`).
 pub fn load(a: Allocator, doc: json.Value, st: *const style_mod.Style, with_views: bool) Allocator.Error!Loaded {
+    return loadAfterEdit(a, doc, st, with_views, null);
+}
+
+/// Like `load` for a document that an edit just produced: `before` (the document before the edit, loaded without views)
+/// lets the lints tell what the edit changed (W_CROP_STALE).
+pub fn loadAfterEdit(a: Allocator, doc: json.Value, st: *const style_mod.Style, with_views: bool, before: ?*const Loaded) Allocator.Error!Loaded {
     const diags = try a.create(model.Diags);
     diags.* = model.Diags.init(a);
     const scene = try compile_mod.compile(a, doc, st, diags);
     if (doc == .object) try validate.run(a, scene, doc, diags);
     if (doc == .object) try lint.run(a, scene, doc, diags);
+    if (doc == .object) try crop_mod.run(a, scene, doc, if (before) |b| .{ .scene = b.scene, .doc = b.doc } else null, diags);
     var nviews: usize = 0;
     // dims without `dir` get the dominant-axis default for drawing (the stored document is never changed)
     const vdoc = if (with_views and doc == .object) try lint.withDimDirs(a, scene, doc) else doc;
