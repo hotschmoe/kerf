@@ -5,10 +5,13 @@ const json = @import("json.zig");
 const geom = @import("geom.zig");
 const model = @import("model.zig");
 const style_mod = @import("style.zig");
+const view_mod = @import("view.zig");
 const Allocator = std.mem.Allocator;
 const Pt = geom.Pt;
 const V2 = geom.V2;
 
+/// Which kind of view a drawing came from.
+pub const Kind = view_mod.Kind;
 pub const Align = enum { left, center, right };
 pub const VAlign = enum { baseline, middle, top };
 
@@ -88,7 +91,7 @@ pub const LayerDef = struct {
 pub const Drawing = struct {
     doc: []const u8,
     view: []const u8,
-    kind: []const u8,
+    kind: Kind,
     scale: f64,
     bounds: [4]f64,
     items: []const Item,
@@ -161,7 +164,7 @@ pub fn toJson(a: Allocator, d: *const Drawing) Allocator.Error![]u8 {
     try out.appendSlice(a, ",\"view\":");
     try str(&out, a, d.view);
     try out.appendSlice(a, ",\"kind\":");
-    try str(&out, a, d.kind);
+    try str(&out, a, @tagName(d.kind));
     try out.appendSlice(a, ",\"scale\":");
     try num(&out, a, d.scale);
     try out.appendSlice(a, ",\"bounds\":[");

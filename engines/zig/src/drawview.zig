@@ -404,7 +404,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
     return .{
         .doc = if (doc.get("id")) |x| (x.str() orelse "") else "",
         .view = spec.id,
-        .kind = @tagName(spec.kind),
+        .kind = spec.kind,
         .scale = scale,
         .bounds = .{ bounds.x0, bounds.y0, bounds.x1, bounds.y1 },
         .items = items,

@@ -8,6 +8,7 @@ const units = @import("units.zig");
 const limits = @import("limits.zig");
 const Allocator = std.mem.Allocator;
 
+/// Section view or isometric view; also the `kind` of the `Drawing` a view produces.
 pub const Kind = enum { section, iso };
 pub const From = enum { front_right, front_left, back_right, back_left };
 pub const NotesSide = enum { right, left, both };
