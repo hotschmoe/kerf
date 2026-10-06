@@ -194,7 +194,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .rebar,
         .summary = "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
-        .params = params.rows(builders.RebarParams),
+        .params = params.rows(builders.rebar.Params),
         .traits = .{ .reinforcement = true, .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors of the bar (center = bar center for along_z)",
