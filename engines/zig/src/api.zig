@@ -117,6 +117,16 @@ pub fn call(gpa: Allocator, name: []const u8, input: []const u8) ApiError!Result
     return .{ .ok = r.ok, .bytes = try gpa.dupe(u8, r.bytes) };
 }
 
+/// The API functions callable through `call`; the name is the wire name. Adding a member without a `switch` arm in `dispatch`
+/// is a compile error, and the "Functions: ..." list of the E_FN message is generated from the tags.
+pub const Fn = enum { version, help, catalog, schema, fmt, check, apply, inspect, drawing, mesh, @"export" };
+
+const fn_list = blk: {
+    var list: []const u8 = "";
+    for (std.meta.fieldNames(Fn), 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
+    break :blk list;
+};
+
 fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
     if (input.len > limits.max_json_bytes) return fail(a, "E_LIMIT", "{s}", .{try limits.message(a, "input too large (bytes)", input.len, limits.max_json_bytes, "Split the detail into several documents (one sheet per document) or drop unused components and views.")});
     var perr: json.ParseError = undefined;
@@ -125,18 +135,21 @@ fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
         return fail(a, "E_JSON", "input is not valid JSON: {s} (line {d}, column {d})", .{ perr.msg, perr.line, perr.col });
     if (inp != .object) return fail(a, "E_INPUT", "input must be a JSON object", .{});
 
-    if (std.mem.eql(u8, name, "version")) return versionFn(a);
-    if (std.mem.eql(u8, name, "help")) return helpFn(a);
-    if (std.mem.eql(u8, name, "schema")) return schemaFn(a, inp);
-    if (std.mem.eql(u8, name, "catalog")) return catalogFn(a, inp);
-    if (std.mem.eql(u8, name, "fmt")) return fmtFn(a, inp);
-    if (std.mem.eql(u8, name, "mesh")) return meshFn(a, inp);
-    if (std.mem.eql(u8, name, "check")) return checkFn(a, inp);
-    if (std.mem.eql(u8, name, "apply")) return applyFn(a, inp);
-    if (std.mem.eql(u8, name, "inspect")) return inspectFn(a, inp);
-    if (std.mem.eql(u8, name, "drawing")) return drawingFn(a, inp);
-    if (std.mem.eql(u8, name, "export")) return exportFn(a, inp);
-    return fail(a, "E_FN", "unknown function '{s}'. Functions: version, help, catalog, schema, fmt, check, apply, inspect, drawing, mesh, export (`kerf call help` lists their input shapes)", .{name});
+    const f = std.meta.stringToEnum(Fn, name) orelse
+        return fail(a, "E_FN", "unknown function '{s}'. Functions: " ++ fn_list ++ " (`kerf call help` lists their input shapes)", .{name});
+    return switch (f) {
+        .version => versionFn(a),
+        .help => helpFn(a),
+        .catalog => catalogFn(a, inp),
+        .schema => schemaFn(a, inp),
+        .fmt => fmtFn(a, inp),
+        .check => checkFn(a, inp),
+        .apply => applyFn(a, inp),
+        .inspect => inspectFn(a, inp),
+        .drawing => drawingFn(a, inp),
+        .mesh => meshFn(a, inp),
+        .@"export" => exportFn(a, inp),
+    };
 }
 
 fn versionFn(a: Allocator) ApiError!Out {
