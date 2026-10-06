@@ -29,7 +29,7 @@ pub const Before = struct {
 fn visibleExtent(c: *const scene_mod.Comp, cut_z: f64) geom.Box {
     var b = geom.Box{};
     for (c.world) |p| {
-        if (section.isFillMaterial(p.material)) continue;
+        if (p.role == .soil) continue;
         const is_cut = p.z0 < cut_z - 1e-9 and p.z1 > cut_z + 1e-9;
         if (!is_cut and p.z1 > cut_z + 1e-9) continue; // above the cut plane: dropped
         for (p.loops) |l| b.addBox(geom.pointsBox(l));

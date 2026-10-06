@@ -7,6 +7,7 @@ const geom = @import("geom.zig");
 const units = @import("units.zig");
 const limits = @import("limits.zig");
 const Pen = @import("pen.zig").Pen;
+const Role = @import("style.zig").Role;
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -113,6 +114,8 @@ pub const Prism = struct {
     outline: OutlineMode = .full,
     /// Pen used for the outline when cut/beyond logic does not decide (ghost, line).
     pen: ?Pen = null,
+    /// What the material is (style.Role): set from the style when the component is placed (compile.placeComponent).
+    role: Role = .generic,
     /// Cross-section marks (one quad per ply, corners CCW from bottom-left) for members seen
     /// end-on (lumber run z, panels). Drawn per the material's `cut_mark`.
     quads: []const [4]V2 = &.{},

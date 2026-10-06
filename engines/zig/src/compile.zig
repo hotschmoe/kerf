@@ -473,6 +473,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
         for (built.prisms) |pr| {
             var q = try pr.transform(a, xfs[ii]);
             q.comp = comp.index;
+            q.role = scene.style.roleOf(q.material);
             q.instance = @intCast(ii);
             q.z0 = zs[ii][0];
             q.z1 = zs[ii][1];

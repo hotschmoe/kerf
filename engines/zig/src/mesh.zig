@@ -283,8 +283,8 @@ pub fn build(a: Allocator, scene: *const scene_mod.Scene, include_fills: bool) A
     for (scene.comps) |*c| {
         if (c.state != .ok or !c.visible) continue;
         for (c.world) |pr| {
-            if ((pr.kind == .ghost and !pr.dashed) or std.mem.eql(u8, pr.material, "void")) continue; // void = negative space (joint notches)
-            if (!include_fills and @import("section.zig").isFillMaterial(pr.material)) continue;
+            if ((pr.kind == .ghost and !pr.dashed) or pr.role == .void) continue; // void = negative space (joint notches)
+            if (!include_fills and pr.role == .soil) continue;
             var part = Part{
                 .src = c.id,
                 .part = if (pr.part.len > 0) pr.part else null,
@@ -303,7 +303,7 @@ pub fn build(a: Allocator, scene: *const scene_mod.Scene, include_fills: bool) A
                 }
             }
             const loop = try flattenForMesh(a, pr.loops[0]);
-            if (pr.cmu_unit and !std.mem.eql(u8, pr.material, "grout")) {
+            if (pr.cmu_unit and pr.role != .grout) {
                 // split along z into 15 5/8" units with 3/8" head joints, running bond
                 const offset: f64 = if (pr.course % 2 == 0) 8.0 else 0.0;
                 var z = pr.z0 - offset;

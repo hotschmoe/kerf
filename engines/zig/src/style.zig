@@ -36,6 +36,54 @@ pub const GrainSpec = struct {
 
 pub const CutMark = enum { none, x, diagonal };
 
+/// What a material is, for the rules the engine applies by kind (REVIEW ARC-1). A style sets it with `"role": "steel"` on a
+/// material; without the key the role follows from the material name (`defaultRole`: what the embedded style's materials
+/// are), so a custom style that renames or adds materials keeps working and can opt a new material into a rule.
+pub const Role = enum {
+    generic,
+    /// Loose fill (earth, gravel, sand, compacted fill): not part of the view's auto-fit, never break-lined, drawn only in cutaway iso.
+    soil,
+    /// Wood that W_UNTREATED_CONTACT checks against masonry.
+    wood,
+    /// Concrete, CMU and mortar.
+    masonry,
+    /// Grout: masonry that is not split into units in 3D.
+    grout,
+    /// Structural steel and hardware: steel pen, thin sections are thickened.
+    steel,
+    /// Reinforcing bar: drawn along its centerline when it is a path bar.
+    rebar,
+    /// Thin sheet metal (aluminum, flashing membrane): thin sections render as a solid fill plus outline.
+    sheet_metal,
+    /// Vapor retarder: its dashed line keeps a minimum gap from the host edge it follows.
+    vapor_retarder,
+    /// Negative space (joint notches): not drawn as a body, not in 3D.
+    void,
+
+    pub fn isMetal(self: Role) bool {
+        return self == .steel or self == .sheet_metal;
+    }
+
+    pub fn isMasonry(self: Role) bool {
+        return self == .masonry or self == .grout;
+    }
+};
+
+/// The role a material name has when the style does not say (the embedded style's materials).
+pub fn defaultRole(name: []const u8) Role {
+    const eq = std.mem.eql;
+    if (eq(u8, name, "earth") or eq(u8, name, "gravel") or eq(u8, name, "sand") or eq(u8, name, "compacted_fill")) return .soil;
+    if (eq(u8, name, "wood") or eq(u8, name, "wood_engineered") or eq(u8, name, "wood_board")) return .wood;
+    if (eq(u8, name, "concrete") or eq(u8, name, "cmu") or eq(u8, name, "mortar")) return .masonry;
+    if (eq(u8, name, "grout")) return .grout;
+    if (eq(u8, name, "steel")) return .steel;
+    if (eq(u8, name, "rebar")) return .rebar;
+    if (eq(u8, name, "aluminum") or eq(u8, name, "flashing_membrane")) return .sheet_metal;
+    if (eq(u8, name, "vapor_retarder")) return .vapor_retarder;
+    if (eq(u8, name, "void")) return .void;
+    return .generic;
+}
+
 pub const Material = struct {
     name: []const u8,
     hatch: []const HatchSpec = &.{},
@@ -44,6 +92,7 @@ pub const Material = struct {
     fill: bool = false,
     batt: bool = false,
     pen: ?Pen = null,
+    role: Role = .generic,
     color3d: []const u8 = "#A0A0A0",
     layer: ?[]const u8 = null,
 };
@@ -140,6 +189,11 @@ pub const Style = struct {
     }
     pub fn penWidthMm(self: *const Style, which: Pen) f64 {
         return if (self.pen(which)) |p| p.width_mm else 0.25;
+    }
+    /// The role of a material by name: the style's `role` when it defines the material, else the name's default.
+    pub fn roleOf(self: *const Style, name: []const u8) Role {
+        if (self.material(name)) |m| return m.role;
+        return defaultRole(name);
     }
     pub fn material(self: *const Style, name: []const u8) ?*const Material {
         for (self.materials) |*m| if (std.mem.eql(u8, m.name, name)) return m;
@@ -343,6 +397,12 @@ const pen_names = blk: {
     break :blk list;
 };
 
+const role_names = blk: {
+    var list: []const u8 = "";
+    for (std.meta.fieldNames(Role), 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
+    break :blk list;
+};
+
 fn validateMaterials(c: *Check, root: json.Value) Allocator.Error!void {
     const mv = root.get("materials") orelse return;
     if (mv != .object) return;
@@ -352,6 +412,11 @@ fn validateMaterials(c: *Check, root: json.Value) Allocator.Error!void {
             if (pv.str()) |t| {
                 if (std.meta.stringToEnum(Pen, t) == null) try c.bad("style key 'materials.{s}.pen' must be one of the engine's pens ({s}) (got \"{s}\")", .{ m.key, pen_names, t[0..@min(t.len, 24)] });
             } else try c.bad("style key 'materials.{s}.pen' must be a pen name string (got {s})", .{ m.key, pv.kindName() });
+        };
+        if (m.value.get("role")) |rv| if (rv != .null) {
+            if (rv.str()) |t| {
+                if (std.meta.stringToEnum(Role, t) == null) try c.bad("style key 'materials.{s}.role' must be one of {s} (got \"{s}\")", .{ m.key, role_names, t[0..@min(t.len, 24)] });
+            } else try c.bad("style key 'materials.{s}.role' must be a role name string (got {s})", .{ m.key, rv.kindName() });
         };
         if (m.value.get("hatch")) |h| if (h == .array) {
             for (h.array, 0..) |x, i| {
@@ -421,7 +486,7 @@ pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {
         if (mv != .object) return error.BadStyle;
         const out = try a.alloc(Material, mv.object.len);
         for (mv.object, 0..) |m, i| {
-            var mat = Material{ .name = m.key };
+            var mat = Material{ .name = m.key, .role = defaultRole(m.key) };
             if (m.value.get("hatch")) |h| if (h == .array) {
                 const hs = try a.alloc(HatchSpec, h.array.len);
                 for (h.array, 0..) |x, k| hs[k] = .{
@@ -450,6 +515,9 @@ pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {
             };
             if (m.value.get("pen")) |p| if (p.str()) |t| {
                 mat.pen = std.meta.stringToEnum(Pen, t);
+            };
+            if (m.value.get("role")) |r| if (r.str()) |t| {
+                if (std.meta.stringToEnum(Role, t)) |role| mat.role = role;
             };
             if (m.value.get("color3d")) |c| mat.color3d = c.str() orelse mat.color3d;
             if (m.value.get("layer")) |c| mat.layer = c.str();
@@ -607,4 +675,60 @@ test "a material pen must be one of the engine's pens" {
     const ok = (try json.parse(a, "{\"materials\":{\"wrb\":{\"pen\":\"vapor\"}}}", &err)).?;
     const s = try load(a, ok);
     try std.testing.expectEqual(Pen.vapor, s.material("wrb").?.pen.?);
+}
+
+// The name lists the engine used before roles existed (section.isFillMaterial/isMetal, validate.isMasonry/isUntreatedWood and the
+// literal comparisons in the renderers). Kept here only to prove the role table reproduces them for every embedded material.
+fn oldIsSoil(m: []const u8) bool {
+    const eq = std.mem.eql;
+    return eq(u8, m, "earth") or eq(u8, m, "gravel") or eq(u8, m, "sand") or eq(u8, m, "compacted_fill");
+}
+fn oldIsMetal(m: []const u8) bool {
+    const eq = std.mem.eql;
+    return eq(u8, m, "steel") or eq(u8, m, "aluminum") or eq(u8, m, "flashing_membrane");
+}
+fn oldIsMasonry(m: []const u8) bool {
+    const eq = std.mem.eql;
+    return eq(u8, m, "concrete") or eq(u8, m, "grout") or eq(u8, m, "cmu") or eq(u8, m, "mortar");
+}
+fn oldIsUntreatedWood(m: []const u8) bool {
+    const eq = std.mem.eql;
+    return eq(u8, m, "wood") or eq(u8, m, "wood_engineered") or eq(u8, m, "wood_board");
+}
+
+test "the role table equals the old name predicates for every embedded material" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const s = try load(arena.allocator(), null);
+    try std.testing.expect(s.materials.len > 20);
+    for (s.materials) |m| {
+        const eq = std.mem.eql;
+        try std.testing.expectEqual(oldIsSoil(m.name), m.role == .soil);
+        try std.testing.expectEqual(oldIsMetal(m.name), m.role.isMetal());
+        try std.testing.expectEqual(oldIsMasonry(m.name), m.role.isMasonry());
+        try std.testing.expectEqual(oldIsUntreatedWood(m.name), m.role == .wood);
+        try std.testing.expectEqual(eq(u8, m.name, "vapor_retarder"), m.role == .vapor_retarder);
+        try std.testing.expectEqual(eq(u8, m.name, "void"), m.role == .void);
+        try std.testing.expectEqual(eq(u8, m.name, "grout"), m.role == .grout);
+        try std.testing.expectEqual(eq(u8, m.name, "steel"), m.role == .steel);
+        try std.testing.expectEqual(eq(u8, m.name, "rebar"), m.role == .rebar);
+        // a material absent from the style falls back to the same table
+        try std.testing.expectEqual(m.role, s.roleOf(m.name));
+    }
+    try std.testing.expectEqual(Role.generic, s.roleOf("no_such_material"));
+}
+
+test "a style can give a material a role" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var err: json.ParseError = undefined;
+    const u = (try json.parse(a, "{\"materials\":{\"stainless\":{\"role\":\"steel\"},\"fines\":{\"role\":\"soil\"}}}", &err)).?;
+    const s = try load(a, u);
+    try std.testing.expectEqual(Role.steel, s.roleOf("stainless"));
+    try std.testing.expectEqual(Role.soil, s.roleOf("fines"));
+    const bad = (try json.parse(a, "{\"materials\":{\"x\":{\"role\":\"plastic\"}}}", &err)).?;
+    var why: []const u8 = "";
+    try std.testing.expectError(error.BadStyle, loadWhy(a, bad, &why));
+    try std.testing.expect(std.mem.indexOf(u8, why, "materials.x.role") != null);
 }

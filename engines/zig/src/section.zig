@@ -95,9 +95,13 @@ pub const Section = struct {
         return if (self.style.pen(which) != null) which else .beyond;
     }
 
-    /// Fill materials draw with the pen of the same name (steel, rebar); every other fill material draws in the beyond pen.
-    fn penForMaterial(self: *const Section, mat: []const u8) Pen {
-        return if (std.meta.stringToEnum(Pen, mat)) |p| self.penFor(p) else .beyond;
+    /// Fill materials draw with the pen of their kind (steel, rebar); every other fill material draws in the beyond pen.
+    fn penForRole(self: *const Section, role: style_mod.Role) Pen {
+        return switch (role) {
+            .steel => self.penFor(.steel),
+            .rebar => self.penFor(.rebar),
+            else => .beyond,
+        };
     }
 
     fn layerFor(self: *const Section, pen: Pen) []const u8 {
@@ -172,7 +176,7 @@ pub const Section = struct {
     /// The polyline a `line` prism (membrane) is drawn along. A vapor retarder keeps its dashed line visibly separate
     /// from the host edge it follows (0.03 paper inch at least).
     pub fn linePoints(self: *const Section, p: Prism) Allocator.Error![]const Pt {
-        if (!(std.mem.eql(u8, p.material, "vapor_retarder") and p.centerline.len >= 2)) return p.line_pts;
+        if (!(p.role == .vapor_retarder and p.centerline.len >= 2)) return p.line_pts;
         const c0 = p.centerline[0].v();
         const d0 = p.centerline[1].v().sub(c0).norm();
         const off = p.line_pts[0].v().sub(c0);
@@ -230,8 +234,8 @@ pub const Section = struct {
         var perim: f64 = 0;
         for (flat[0], 0..) |v, vi| perim += v.dist(flat[0][(vi + 1) % flat[0].len]);
         const thick_model = if (perim > 0) 2.0 * @abs(geom.signedAreaV(flat[0])) / perim else 1e9;
-        const is_thin = p.outline == .full and isMetal(p.material) and !is_fill_mat and thick_model / self.spec.scale < 2.0 * cut_in;
-        const pen_out: Pen = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penForMaterial(p.material) else if (is_thin) .steel else .cut;
+        const is_thin = p.outline == .full and p.role.isMetal() and !is_fill_mat and thick_model / self.spec.scale < 2.0 * cut_in;
+        const pen_out: Pen = if (p.pen) |pp| self.penFor(pp) else if (is_fill_mat) self.penForRole(p.role) else if (is_thin) .steel else .cut;
         var region: []const []const V2 = flat;
         var region_exact: bool = fully_inside;
         if (!fully_inside) {
@@ -460,7 +464,7 @@ pub const Section = struct {
         const src = self.srcName(p);
         if (isPathBar(p)) return self.addClipped(&self.strokes, p.centerline, false, self.penFor(.rebar), src, true);
         const mat = self.style.material(p.material);
-        const pen: Pen = if (mat != null and mat.?.fill) self.penForMaterial(p.material) else .beyond;
+        const pen: Pen = if (mat != null and mat.?.fill) self.penForRole(p.role) else .beyond;
         // occluders
         var occ: std.ArrayList(*const Occ) = .empty;
         if (!p.embedded) {
@@ -509,9 +513,7 @@ pub const Section = struct {
             var ivs: std.ArrayList(Iv) = .empty;
             for (self.prisms, 0..) |p, i| {
                 if (self.cls[i] != .cut or p.kind != .body or p.embedded) continue;
-                if (self.style.material(p.material)) |m| {
-                    if (isFillMaterial(p.material) or m.fill) continue;
-                } else if (isFillMaterial(p.material)) continue;
+                if (p.role == .soil or (if (self.style.material(p.material)) |m| m.fill else false)) continue;
                 const f = try self.flatOf(i);
                 const bx = clip.loopsBox(f);
                 if (e.vertical) {
@@ -642,7 +644,7 @@ fn thickenThinHardware(a: Allocator, prisms: []const Prism, scale: f64) Allocato
     const min_t = min_metal_paper_in * scale;
     for (prisms, 0..) |p, i| {
         if (p.kind != .body or p.face_tie or p.sweep_r > 0 or p.centerline.len < 2 or p.loops.len != 1) continue;
-        if (!isMetal(p.material) or p.embedded and !std.mem.eql(u8, p.material, "steel")) continue;
+        if (!p.role.isMetal() or p.embedded and p.role != .steel) continue;
         const flat = try geom.flattenPolyline(a, p.loops[0], true, flat_tol);
         var len: f64 = 0;
         const cl = try geom.flattenPolyline(a, p.centerline, false, flat_tol);
@@ -668,7 +670,7 @@ fn thickenThinHardware(a: Allocator, prisms: []const Prism, scale: f64) Allocato
 
 /// A rebar bar in `path` mode (a swept centerline), as opposed to `along_z` dots.
 pub fn isPathBar(p: Prism) bool {
-    return p.kind == .body and p.centerline.len >= 2 and std.mem.eql(u8, p.material, "rebar");
+    return p.kind == .body and p.centerline.len >= 2 and p.role == .rebar;
 }
 
 /// Direction (degrees, 0..180) of the longest edge of a member outline: the way its grain runs.
@@ -689,11 +691,6 @@ fn memberAngleDeg(loop: []const Pt) f64 {
     if (ang < 1e-6 or ang > 180.0 - 1e-6) return 0;
     if (@abs(ang - 90.0) < 1e-6) return 90;
     return ang;
-}
-
-pub fn isFillMaterial(name: []const u8) bool {
-    const eq = std.mem.eql;
-    return eq(u8, name, "earth") or eq(u8, name, "gravel") or eq(u8, name, "sand") or eq(u8, name, "compacted_fill");
 }
 
 // ---- region grouping ----------------------------------------------------------------------------------------
@@ -1043,12 +1040,6 @@ pub fn chainStrokes(a: Allocator, in: []Stroke) Allocator.Error![]Stroke {
 fn baseId(src: []const u8) []const u8 {
     if (std.mem.indexOfScalar(u8, src, '#')) |h| return src[0..h];
     return src;
-}
-
-/// Materials the thin-region rule applies to (SPEC 16 parity decisions).
-pub fn isMetal(name: []const u8) bool {
-    const eq = std.mem.eql;
-    return eq(u8, name, "steel") or eq(u8, name, "aluminum") or eq(u8, name, "flashing_membrane");
 }
 
 // ---- SPEC 20 drawing conventions ----------------------------------------------------------------------------------

@@ -65,20 +65,6 @@ fn zGap(a: model.Prism, b: model.Prism) f64 {
     return @max(0, @max(a.z0, b.z0) - @min(a.z1, b.z1));
 }
 
-fn isMasonry(m: []const u8) bool {
-    const eq = std.mem.eql;
-    return eq(u8, m, "concrete") or eq(u8, m, "grout") or eq(u8, m, "cmu") or eq(u8, m, "mortar");
-}
-
-fn isUntreatedWood(m: []const u8) bool {
-    return std.mem.eql(u8, m, "wood") or std.mem.eql(u8, m, "wood_engineered") or std.mem.eql(u8, m, "wood_board");
-}
-
-fn isFill(m: []const u8) bool {
-    const eq = std.mem.eql;
-    return eq(u8, m, "earth") or eq(u8, m, "gravel") or eq(u8, m, "sand") or eq(u8, m, "compacted_fill");
-}
-
 pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Allocator.Error!void {
     var items: std.ArrayList(Pf) = .empty;
     for (scene.comps) |*c| {
@@ -167,9 +153,9 @@ fn untreated(items: []const Pf, diags: *model.Diags) Allocator.Error!void {
     var reported: std.ArrayList([2]u32) = .empty;
     const gap = 1.0 / 32.0;
     for (items) |p| {
-        if (!isUntreatedWood(p.prism.material)) continue;
+        if (p.prism.role != .wood) continue;
         for (items) |q| {
-            if (!isMasonry(q.prism.material)) continue;
+            if (!q.prism.role.isMasonry()) continue;
             if (zGap(p.prism, q.prism) > gap) continue;
             if (!p.box.expand(gap).overlaps(q.box, 0)) continue;
             if (regionDist(p.flat, q.flat, gap) > gap) continue;
@@ -632,10 +618,6 @@ fn shortSlope(a: Allocator, scene: *Scene, items: []const Pf, doc: json.Value, d
         const what = if (by_crop) std.fmt.allocPrint(a, "the view crop (where '{s}' continues)", .{h.id}) catch "the crop" else std.fmt.allocPrint(a, "the end of '{s}'", .{h.id}) catch "the member";
         diags.addFix(.warning, "W_SHORT_SLOPE", c.id, null, "'{s}' rests on the sloped '{s}' (same slope) but its upper end stops {s} short of {s}", .{ c.id, h.id, ftin(a, short), what }, std.fmt.allocPrint(a, "replace the literal length of '{s}' (it does not follow the pitch) with \"until\": \"{s}@{s}\" (grows along the slope to the member's end; pair it with \"slope\": \"@{s}\"), or lengthen it by {s}; acknowledge W_SHORT_SLOPE if it should stop there", .{ c.id, h.id, anchor, h.id, ftin(a, short) }) catch "");
     }
-}
-
-fn isMember(c: *const scene_mod.Comp) bool {
-    return c.ty.type == .lumber or c.ty.type == .panel;
 }
 
 /// Only boxy members (every prism an axis-aligned rectangle, none embedded) take part in near-miss checks.

@@ -243,7 +243,7 @@ pub fn autoCrop(prisms: []const model.Prism, cut_z: f64) geom.Box {
         b.addBox(geom.pointsBox(p.centerline));
         if (b.isEmpty()) continue;
         any.addBox(b);
-        if (!section.isFillMaterial(p.material)) solid.addBox(b);
+        if (p.role != .soil) solid.addBox(b);
     }
     var b = if (solid.isEmpty()) any else solid;
     if (b.isEmpty()) b = .{ .x0 = -6, .y0 = -6, .x1 = 6, .y1 = 6 };

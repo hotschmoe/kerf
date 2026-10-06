@@ -327,11 +327,11 @@ fn gather(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         if (c.state != .ok or !c.visible) continue;
         if (@import("compile.zig").isOmitted(spec.omit, c.id)) continue;
         for (c.world) |p| {
-            if (p.kind == .ghost or std.mem.eql(u8, p.material, "void")) continue;
-            const fill_mat = @import("section.zig").isFillMaterial(p.material);
+            if (p.kind == .ghost or p.role == .void) continue;
+            const fill_mat = p.role == .soil;
             if (fill_mat and !spec.cutaway) continue;
             var segs: []const @import("mesh.zig").ZSeg = &.{.{ .z0 = p.z0, .z1 = p.z1, .mortar = false }};
-            if (p.cmu_unit and !std.mem.eql(u8, p.material, "grout")) segs = try @import("mesh.zig").cmuSplit(a, p);
+            if (p.cmu_unit and p.role != .grout) segs = try @import("mesh.zig").cmuSplit(a, p);
             for (segs) |sg| {
                 const mat_name: []const u8 = if (sg.mortar) "mortar" else p.material;
                 const z0 = sg.z0;
