@@ -68,7 +68,7 @@ iterated until it was 0 (that loop is failure pattern 2 below).
 - **e04 monopour plain, 8/8.** The anchor bolt is now centred in the 2x6 sill, correct 6" above-grade dim, studs read as a wall panel, `6'-0" O.C. MAX., (2) MIN. PER PLATE, 12" MAX. FROM ENDS` cites R403.1.6 correctly.
 - **e05 flush beam, 8/8.** Same end-on elevation as before, now with LVL grain, a working vertical `9 1/4"` dimension, and a real Simpson part (ST6224 strap with a nailing note, R602.6.1).
 - **e06 flush beam 2x6 PSL, 8/8.** Different, arguably more standard reading than before: the PSL runs along the wall as a flush header, plates butt to it, 2x6 king + (2) jack studs at its end, CMST14 centred on the joint with dimensions, 0 warnings, citations actually rendered (R602.3.2, R602.7). Note that e05 and e06 now draw the "flush beam" prompt two different ways (see pattern 5).
-- **e07 edit, 6/8.** The agent now sets `roof_sheathing.slope: "@truss"` (pitch single-sourced, as the guide intended) and used `--dry-run`. But the drawing is unchanged from baseline in its defects: the sheathing keeps its fixed 66" length and ends short of the truss at the crop, and the heel/bird-block zone is cluttered. The `until`-along-slope feature was not used. R1 1, R2 1.
+- **e07 edit, 6/8.** The agent now sets `roof_sheathing.slope: "@truss"` (pitch single-sourced, as the guide intended) and used `--dry-run`. The drawing still has the baseline's visible defect, but it was misdiagnosed in the first report: the sheathing is not short (the later `geom.mjs` check measures it reaching the crop top at 6:12); the view crop (y up to 20") cuts the steeper roof raggedly at the top, so the sheathing/roofing end at a break line while the truss's lower chord edge continues further right. The heel/bird-block zone is also cluttered. The agent itself reported "roof cut off at the top". R1 1, R2 1 (crop too small for 6:12; no automatic recrop).
 - **e08 edit, 8/8.** 3 kerf calls, 22 s. Fiber note, slab bars removed, footing steel kept, leaders clean.
 - **e09 screenshot, 8/8.** Matches the reference in geometry and wording, citations identical, leaders no longer cross over the footing. The slab bar is still a heavy black bar rather than the reference's light one.
 - **e10 ambiguous, 8/8 (built).** Behaviour changed: baseline asked one question and built nothing; alpha4 built a continuous footing under an 8" stem wall with crawlspace (20"x10" footing, #4 dowels hooked into it, J-bolt, sill sealer) and stated the assumption plus the alternatives. The detail is clean and plausible; the `question/assumptions` check passes either way.
@@ -84,11 +84,10 @@ iterated until it was 0 (that loop is failure pattern 2 below).
    reference's light line), straps are a hairline, the H2.5A tie is not legible (e01), vertical dims stack with overprinted
    text (e03), and a small embed dim becomes illegible so the agent drops it (e02). Improve: lighter pen for rebar paths,
    dim stacking with automatic offsets, dim text moved outside when it does not fit, a minimum drawn gauge for hardware.
-3. **Dependent edits are only half-solved.** `slope: "@truss"` was adopted, but panel `length` is still a literal 66"
-   (e07 sheathing/roofing end short of the truss at the crop; the same visible defect as the baseline), and the new
-   `until` along the slope was not discovered. Improve: make `schema panel` and the guide example show
-   `slope: "@truss", until: "truss@top_chord_end"`, or add a `roof` assembly; emit a warning when a sloped panel ends short of the
-   member it is attached to.
+3. **Dependent edits need a re-fit step.** `slope: "@truss"` was adopted, but changing the pitch left the view crop unchanged, so the steeper
+   roof is cut raggedly at the top (e07; same visible defect as the baseline, which the first report misread as "sheathing ends short").
+   Improve: when an edit changes extents, `kerf apply` should say the crop clips members that were previously whole (or auto-grow an
+   auto-fit crop), and `schema panel`/the example should show `until: "truss@top_chord_end"`.
 4. **Sandbox friction is 19 of 24 tool errors, and the pattern is compound commands**: `kerf new ... && cat > ops.json <<'EOF'`,
    `ls && kerf apply`, and `kerf schema a; kerf schema b` (e02 lost the doc creation: "The doc wasn't created by the blocked
    command"). The guide's own examples do this. Improve: show one-command-per-line recipes (write ops with the Write tool, then

@@ -1,5 +1,5 @@
 {
- "_note": "Hand scores (author's strict review of each final PNG), used only to calibrate judge.mjs. baseline = run 2026-10-05T21-30-33-782Z (kerf-baseline), alpha4 = run 2026-10-05T22-47-41-504Z (kerf-alpha4).",
+ "_note": "Hand scores (author's strict review of each final PNG), used only to calibrate judge.mjs. baseline = run 2026-10-05T21-30-33-782Z (kerf-baseline), alpha4 = run 2026-10-05T22-47-41-504Z (kerf-alpha4). alpha5 = run 2026-10-06T00-26-40-314Z (kerf-alpha5, Claude Code); scored as a spot-check after the judge (e02 R2 lowered after the judge found the HETA20 drawn at ~11 in).",
  "baseline": {
   "e01-truss-cmu": {
    "r1": 2,
@@ -112,6 +112,62 @@
    "r4": 2
   },
   "e10-ambiguous": {
+   "r1": 2,
+   "r2": 2,
+   "r3": 2,
+   "r4": 2
+  }
+ },
+ "alpha5": {
+  "e01-truss-cmu": {
+   "r1": 2,
+   "r2": 2,
+   "r3": 2,
+   "r4": 2
+  },
+  "e02-truss-heta": {
+   "r1": 2,
+   "r2": 1,
+   "r3": 1,
+   "r4": 1
+  },
+  "e03-monopour-recess": {
+   "r1": 2,
+   "r2": 2,
+   "r3": 2,
+   "r4": 2
+  },
+  "e04-monopour-plain": {
+   "r1": 2,
+   "r2": 2,
+   "r3": 2,
+   "r4": 2
+  },
+  "e05-flush-beam": {
+   "r1": 2,
+   "r2": 2,
+   "r3": 2,
+   "r4": 2
+  },
+  "e06-flush-beam-2x6": {
+   "r1": 2,
+   "r2": 2,
+   "r3": 2,
+   "r4": 2
+  },
+  "e07-edit-notes": {
+   "r1": 1,
+   "r2": 1,
+   "r3": 2,
+   "r4": 2
+  },
+  "e08-edit-remove": {
+   "r1": 2,
+   "r2": 2,
+   "r3": 2,
+   "r4": 2
+  },
+  "e09-screenshot": {
    "r1": 2,
    "r2": 2,
    "r3": 2,

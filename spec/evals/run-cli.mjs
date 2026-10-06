@@ -88,6 +88,58 @@ const agents = {
       };
     },
   },
+  // pi (https://github.com/badlogic/pi): `pi -p --mode json` prints one JSON event per line. Its default model
+  // here is the owner's self-hosted text-only vLLM, so the prompt says images cannot be viewed.
+  pi: {
+    // pi has unrestricted filesystem access and (first attempt, 2026-10-06) went looking for the repo's reference details
+    // (`find / -path '*spec/details*'`) and copied them. So it runs in a bubblewrap mount namespace that hides ~/github,
+    // every earlier run, and /tmp scratch; only this case's folder and the kerf shim stay visible.
+    build: (msg, ws, ctx) => {
+      const inner = ["pi", "-p", "--mode", "json", "--no-session", msg, ...(model ? ["--model", model] : [])];
+      if (!ctx || args["no-sandbox"]) return { cmd: inner[0], argv: inner.slice(1) };
+      const h = os.homedir();
+      return {
+        cmd: "bwrap",
+        argv: ["--dev-bind", "/", "/", "--tmpfs", path.join(h, "github"), "--tmpfs", path.join(h, "kerf-eval/runs"),
+          "--tmpfs", "/tmp/claude-1001", "--bind", ctx.outDir, ctx.outDir, "--ro-bind", path.join(ctx.runDir, "bin"), path.join(ctx.runDir, "bin"),
+          "--chdir", ws, ...inner],
+      };
+    },
+    extraPrompt: " You cannot view images; verify your work with `kerf check` summaries and diagnostics instead of PNGs.",
+    skipCases: ["e09-screenshot"], // the attachment cannot be seen by a text-only model (run with --only e09 to force)
+    keepLine: (ev) => ev.type !== "message_update" && ev.type !== "tool_execution_update", // drop per-token deltas
+    parse(events) {
+      const tools = [];
+      const byId = new Map();
+      let finalText = "", turns = 0, mdl = null;
+      const usage = { input_tokens: 0, output_tokens: 0 };
+      for (const ev of events) {
+        if (ev.type !== "message_end") continue;
+        const m = ev.message;
+        if (m.role === "assistant") {
+          turns++;
+          mdl = m.model ?? mdl;
+          usage.input_tokens += m.usage?.input ?? 0;
+          usage.output_tokens += m.usage?.output ?? 0;
+          const text = (m.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
+          if (text) finalText = text;
+          for (const b of m.content ?? []) {
+            if (b.type !== "toolCall") continue;
+            const name = b.name === "bash" ? "Bash" : b.name;
+            const t = { name, command: b.name === "bash" ? b.arguments?.command : JSON.stringify(b.arguments ?? {}), output: "", isError: false };
+            byId.set(b.id, t);
+            tools.push(t);
+          }
+        } else if (m.role === "toolResult" && byId.has(m.toolCallId)) {
+          const t = byId.get(m.toolCallId);
+          t.output = (m.content ?? []).map((x) => x.text ?? `[${x.type}]`).join("\n");
+          t.isError = !!m.isError;
+        }
+      }
+      const stop = events.filter((e) => e.type === "message_end" && e.message.role === "assistant").at(-1)?.message?.stopReason;
+      return { finalText, usage, cost: 0, turns, agentDurationMs: null, isError: stop === "error", stopReason: stop, model: mdl, tools };
+    },
+  },
   // Templates: implemented but not yet run in anger. Event shapes are parsed best-effort.
   grok: {
     build: (msg, dir) => ({ cmd: "grok", argv: ["-p", msg, "--output-format", "streaming-json", "--always-approve", "--cwd", dir] }),
@@ -133,7 +185,7 @@ const stable = (v) =>
 // the engine, so a typo like "citations" for "cite" looks fine in `kerf check`. Reported as info.
 const KNOWN = {
   view: ["id", "kind", "number", "title", "scale", "cut_z", "crop", "from", "cutaway", "notes_side", "omit", "annotations"],
-  note: ["id", "type", "text", "target", "at", "place", "cite"],
+  note: ["id", "type", "text", "target", "at", "place", "column", "cite"],
   dim: ["id", "type", "from", "to", "dir", "offset", "text"],
   label: ["id", "type", "text", "at", "offset"],
 };
@@ -279,15 +331,15 @@ async function runCase(c, runDir, agent) {
     if (!recovering) fs.copyFileSync(path.join(root, c.attach), path.join(ws, name));
     msg += ` The screenshot is ./${name} (read it).`;
   }
-  msg += APPEND(c);
+  msg += APPEND(c) + (agent.extraPrompt ?? "");
 
   const logFile = path.join(outDir, "kerf-calls.log");
   const env = { ...process.env, PATH: `${path.join(runDir, "bin")}:${process.env.PATH}`, KERF_EVAL_LOG: logFile };
   const run = recovering
     ? { out: fs.readFileSync(path.join(outDir, "transcript.jsonl"), "utf8"), err: "", code: null, timedOut: false, wallMs: null }
-    : await runAgent(agent.build(msg, ws), ws, env);
+    : await runAgent(agent.build(msg, ws, { runDir, outDir }), ws, env);
   const events = run.out.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return { type: "raw", text: l }; } });
-  fs.writeFileSync(path.join(outDir, "transcript.jsonl"), run.out);
+  if (!recovering) fs.writeFileSync(path.join(outDir, "transcript.jsonl"), agent.keepLine ? events.filter(agent.keepLine).map((e) => JSON.stringify(e)).join("\n") + "\n" : run.out);
   if (run.err) fs.writeFileSync(path.join(outDir, "stderr.txt"), run.err);
   const parsed = agent.parse(events);
   const prior = recovering && fs.existsSync(path.join(outDir, "score.json")) ? JSON.parse(fs.readFileSync(path.join(outDir, "score.json"), "utf8")) : null;
@@ -350,6 +402,7 @@ async function runCase(c, runDir, agent) {
     }
   }
   result.final_message = parsed.finalText?.slice(0, 2000);
+  result.failed = !!run.timedOut || (parsed.isError && !finalPath); // timeouts and hard agent errors count as failures
   // --judge: one visual LLM-judge call (claude -p, Read only) on the final PNG; see judge.mjs.
   if (args.judge && result.png && finalPath) {
     try {
@@ -399,7 +452,8 @@ if (args.recover) {
 }
 if (!agent) { console.error(`unknown --agent ${agentName} (claude|grok|codex)`); process.exit(2); }
 const cases = fs.readFileSync(path.join(here, "prompts.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
-  .filter((c) => !only || only.has(c.id.split("-")[0]) || only.has(c.id));
+  .filter((c) => !only || only.has(c.id.split("-")[0]) || only.has(c.id))
+  .filter((c) => only || !(agent.skipCases ?? []).includes(c.id));
 const runDir = path.join(outRoot, new Date().toISOString().replace(/[:.]/g, "-"));
 fs.mkdirSync(path.join(runDir, "bin"), { recursive: true });
 // `kerf` shim first on PATH: pins the engine under test and logs every invocation for counting.
