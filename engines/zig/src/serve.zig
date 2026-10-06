@@ -30,6 +30,10 @@ pub const Config = struct {
     /// One extra browser origin allowed to call the API (for `vite dev` against a running server).
     allow_origin: ?[]const u8 = null,
     open: bool = false,
+    /// Run agents defined in `<dir>/.kerf/agents.json` (they execute commands from the folder; V-2).
+    trust_agents: bool = false,
+    /// Wall-clock limit of one agent run, seconds (0 = none).
+    agent_timeout_s: u32 = agents.default_max_run_s,
 };
 
 const DocInfo = struct {
@@ -531,15 +535,16 @@ fn apiInfo(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []
     try out.print(a, "{{\"version\":\"{s}\",\"dir\":", .{kerf.version});
     try http.jsonString(&out, a, s.dir_abs);
     try out.print(a, ",\"token_required\":{s},\"authenticated\":true,\"proxy\":true,\"agents\":[", .{if (s.cfg.token != null) "true" else "false"});
-    const templates = try agents.loadTemplates(a, s.io, s.dir);
+    const templates = try agents.loadTemplates(a, s.io, s.dir, s.cfg.trust_agents);
     for (templates, 0..) |t, i| {
         if (i > 0) try out.append(a, ',');
-        const d = s.agent_mgr.detectCached(s.io, t);
+        const d = s.agent_mgr.detectCached(s.io, a, t);
         try out.appendSlice(a, "{\"id\":");
         try http.jsonString(&out, a, t.id);
         try out.appendSlice(a, ",\"name\":");
         try http.jsonString(&out, a, t.name);
-        try out.print(a, ",\"available\":{s}", .{if (d.available) "true" else "false"});
+        try out.print(a, ",\"available\":{s},\"source\":\"{s}\"", .{ if (d.available) "true" else "false", if (t.from_workspace) "workspace" else "builtin" });
+        if (t.untrusted) try out.appendSlice(a, ",\"untrusted\":true");
         if (d.version) |v| {
             try out.appendSlice(a, ",\"version\":");
             try http.jsonString(&out, a, v);
@@ -876,12 +881,16 @@ fn apiLlm(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []c
 
 // ---- agents ----
 
+/// The message is one argv element; Linux caps a single argument at 131072 bytes (`MAX_ARG_STRLEN`) and the server adds
+/// a fixed prefix and the attachment paths, so stay well under it (V-6).
+const max_message_bytes = 100_000;
+
 fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8) !bool {
     const ka = req.keep_alive;
     const body = parseBody(a, req) orelse return badRequest(a, req, w, extra, "E_JSON", "body must be JSON: { agent, message, session_id?, file? }");
     const agent_id = (if (body.get("agent")) |v| v.str() else null) orelse return badRequest(a, req, w, extra, "E_INPUT", "missing \"agent\" (claude, grok, codex, or an id from .kerf/agents.json)");
     const message = (if (body.get("message")) |v| v.str() else null) orelse return badRequest(a, req, w, extra, "E_INPUT", "missing \"message\"");
-    if (std.mem.trim(u8, message, " \t\r\n").len == 0 or message.len > 200_000) return badRequest(a, req, w, extra, "E_INPUT", "\"message\" must be 1..200000 characters");
+    if (std.mem.trim(u8, message, " \t\r\n").len == 0 or message.len > max_message_bytes) return badRequest(a, req, w, extra, "E_INPUT", "\"message\" must be 1..100000 bytes (it is one command-line argument; the OS limit is 128 KiB)");
     var session: ?[]const u8 = null;
     if (body.get("session_id")) |v| if (v.str()) |sid| if (sid.len > 0) {
         var ok = sid.len <= 200 and sid[0] != '-';
@@ -910,7 +919,7 @@ fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
             message_full = m.items;
         }
     };
-    const templates = try agents.loadTemplates(a, s.io, s.dir);
+    const templates = try agents.loadTemplates(a, s.io, s.dir, s.cfg.trust_agents);
     var tmpl: ?agents.Template = null;
     for (templates) |t| if (std.mem.eql(u8, t.id, agent_id)) {
         tmpl = t;
@@ -931,7 +940,8 @@ fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
         .failed => |f| switch (f) {
             .busy => |id| try http.sendError(a, w, 409, ka, extra, "E_BUSY", try std.fmt.allocPrint(a, "run {s} is still active (one run at a time); stop it first", .{id})),
             .unknown_agent => try http.sendError(a, w, 404, ka, extra, "E_AGENT", "unknown agent"),
-            .unavailable => |why| try http.sendError(a, w, 409, ka, extra, "E_UNAVAILABLE", try std.fmt.allocPrint(a, "agent '{s}' is not available: {s}", .{ agent_id, why })),
+            .too_long => |why| try http.sendError(a, w, 400, ka, extra, "E_INPUT", why),
+            .unavailable => |why| try http.sendError(a, w, 409, ka, extra, if (t.untrusted) "E_UNTRUSTED" else "E_UNAVAILABLE", try std.fmt.allocPrint(a, "agent '{s}' is not available: {s}", .{ agent_id, why })),
             .spawn_failed => |why| try http.sendError(a, w, 500, ka, extra, "E_SPAWN", why),
         },
     }
@@ -1043,10 +1053,29 @@ fn scanForAgent(ctx: *anyopaque) void {
     s.scan(true);
 }
 
+/// Set by the SIGINT/SIGTERM/SIGHUP handler; the poller notices it, ends the active agent run (and its process tree)
+/// and exits, so no agent is reparented to init when the server is stopped.
+var shutdown_signal = std.atomic.Value(u8).init(0);
+
+fn onSignal(sig: std.posix.SIG) callconv(.c) void {
+    shutdown_signal.store(@intCast(@intFromEnum(sig)), .release);
+}
+
+fn installSignalHandlers() void {
+    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return; // Windows: the agent's job object dies with the server
+    const act: std.posix.Sigaction = .{ .handler = .{ .handler = onSignal }, .mask = std.posix.sigemptyset(), .flags = 0 };
+    for ([_]std.posix.SIG{ .INT, .TERM, .HUP }) |sg| std.posix.sigaction(sg, &act, null);
+}
+
 fn pollerTask(s: *Server) void {
     var tick: u32 = 0;
     while (true) {
         s.io.sleep(Io.Duration.fromMilliseconds(poll_ms), .awake) catch return;
+        const sig = shutdown_signal.load(.acquire);
+        if (sig != 0) {
+            s.agent_mgr.shutdown(s.io);
+            std.process.exit(128 +| sig);
+        }
         s.scan(true);
         tick += 1;
         if (tick % 30 == 0) s.hub.publish(s.io, "ping", "{}");
@@ -1076,8 +1105,8 @@ fn acceptLoop(s: *Server, server: *net.Server) void {
 fn prefetchAgents(s: *Server) void {
     var arena = std.heap.ArenaAllocator.init(s.gpa);
     defer arena.deinit();
-    const templates = agents.loadTemplates(arena.allocator(), s.io, s.dir) catch return;
-    for (templates) |t| _ = s.agent_mgr.detectCached(s.io, t);
+    const templates = agents.loadTemplates(arena.allocator(), s.io, s.dir, s.cfg.trust_agents) catch return;
+    for (templates) |t| _ = s.agent_mgr.detectCached(s.io, arena.allocator(), t); // untrusted workspace entries are skipped inside
 }
 
 fn openBrowser(s: *Server, url: []const u8) void {
@@ -1124,8 +1153,44 @@ const serve_usage =
     \\  --token T         require this token (Authorization: Bearer T, or ?token=T)
     \\  --no-token        no token even when not on localhost (trusted network only)
     \\  --allow-origin U  also accept browser requests from origin U (dev server, e.g. http://localhost:5173)
+    \\  --trust-agents    run agents defined in <dir>/.kerf/agents.json (they execute commands from the folder; without
+    \\                    this flag, or a yes at the interactive prompt, they are listed as untrusted and never started)
+    \\  --agent-timeout S wall-clock limit of one agent run in seconds (default 1800, 0 = none)
     \\
 ;
+
+/// V-2: `<dir>/.kerf/agents.json` makes the server run commands from the folder. Without `--trust-agents` that needs an
+/// explicit yes on a terminal; anywhere else the entries stay untrusted (listed, never executed).
+fn confirmWorkspaceAgents(gpa: Allocator, io: Io, dir: Io.Dir, dir_abs: []const u8, err: *Io.Writer) bool {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const templates = agents.loadTemplates(a, io, dir, false) catch return false;
+    var n: usize = 0;
+    for (templates) |t| {
+        if (!t.from_workspace) continue;
+        if (n == 0) err.print("kerf serve: {s}/.kerf/agents.json defines custom agents; starting or detecting them runs commands from this folder:\n", .{dir_abs}) catch {};
+        n += 1;
+        err.print("  - {s}: detect `{s}`, run `{s}`\n", .{ t.id, t.detect[0], t.argv[0] }) catch {};
+    }
+    if (n == 0) return false;
+    const tty = (Io.File.stdin().isTty(io) catch false) and (Io.File.stderr().isTty(io) catch false);
+    if (!tty) {
+        err.writeAll("  not trusted (no terminal to ask): they are listed as untrusted and never started. Pass --trust-agents if you wrote this file.\n") catch {};
+        err.flush() catch {};
+        return false;
+    }
+    err.writeAll("Trust these agents? [y/N] ") catch {};
+    err.flush() catch {};
+    var rb: [256]u8 = undefined;
+    var fr = Io.File.stdin().reader(io, &rb);
+    const line = fr.interface.takeDelimiterExclusive('\n') catch return false;
+    const ans = std.mem.trim(u8, line, " \t\r");
+    const yes = std.ascii.eqlIgnoreCase(ans, "y") or std.ascii.eqlIgnoreCase(ans, "yes");
+    if (!yes) err.writeAll("  not trusted: they stay listed as untrusted and never start.\n") catch {};
+    err.flush() catch {};
+    return yes;
+}
 
 pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer, environ: *const std.process.Environ.Map) !u8 {
     var cfg: Config = .{};
@@ -1133,7 +1198,7 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const a = args[i];
-        const takes_value = std.mem.eql(u8, a, "--dir") or std.mem.eql(u8, a, "--host") or std.mem.eql(u8, a, "--port") or std.mem.eql(u8, a, "--token") or std.mem.eql(u8, a, "--allow-origin");
+        const takes_value = std.mem.eql(u8, a, "--dir") or std.mem.eql(u8, a, "--host") or std.mem.eql(u8, a, "--port") or std.mem.eql(u8, a, "--token") or std.mem.eql(u8, a, "--allow-origin") or std.mem.eql(u8, a, "--agent-timeout");
         if (takes_value) {
             if (i + 1 >= args.len) {
                 try err.print("kerf serve: {s} needs a value\n{s}", .{ a, serve_usage });
@@ -1141,11 +1206,16 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
             }
             i += 1;
             const v = args[i];
-            if (std.mem.eql(u8, a, "--dir")) cfg.dir_path = v else if (std.mem.eql(u8, a, "--host")) cfg.host = v else if (std.mem.eql(u8, a, "--token")) cfg.token = v else if (std.mem.eql(u8, a, "--allow-origin")) cfg.allow_origin = v else cfg.port = std.fmt.parseInt(u16, v, 10) catch {
+            if (std.mem.eql(u8, a, "--agent-timeout")) {
+                cfg.agent_timeout_s = std.fmt.parseInt(u32, v, 10) catch {
+                    try err.print("kerf serve: --agent-timeout must be a number of seconds, got '{s}'\n", .{v});
+                    return 2;
+                };
+            } else if (std.mem.eql(u8, a, "--dir")) cfg.dir_path = v else if (std.mem.eql(u8, a, "--host")) cfg.host = v else if (std.mem.eql(u8, a, "--token")) cfg.token = v else if (std.mem.eql(u8, a, "--allow-origin")) cfg.allow_origin = v else cfg.port = std.fmt.parseInt(u16, v, 10) catch {
                 try err.print("kerf serve: --port must be 0..65535, got '{s}'\n", .{v});
                 return 2;
             };
-        } else if (std.mem.eql(u8, a, "--open")) cfg.open = true else if (std.mem.eql(u8, a, "--no-token")) no_token = true else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) {
+        } else if (std.mem.eql(u8, a, "--open")) cfg.open = true else if (std.mem.eql(u8, a, "--no-token")) no_token = true else if (std.mem.eql(u8, a, "--trust-agents")) cfg.trust_agents = true else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) {
             try err.writeAll(serve_usage);
             return 0;
         } else {
@@ -1177,6 +1247,8 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
     const abs_len = dir.realPath(io, &abs_buf) catch 0;
     const dir_abs = try gpa.dupe(u8, if (abs_len > 0) abs_buf[0..abs_len] else cfg.dir_path);
     defer gpa.free(dir_abs);
+
+    if (!cfg.trust_agents) cfg.trust_agents = confirmWorkspaceAgents(gpa, io, dir, dir_abs, err);
 
     const bind_host = if (std.ascii.eqlIgnoreCase(cfg.host, "localhost")) "127.0.0.1" else cfg.host;
     var addr = net.IpAddress.parse(bind_host, cfg.port) catch {
@@ -1217,12 +1289,13 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
         .started_ns = Io.Timestamp.now(io, .awake).nanoseconds,
     };
     server.cfg.port = port;
-    server.agent_mgr = .{ .gpa = gpa, .hub = &server.hub, .dir = dir, .dir_abs = dir_abs, .environ = environ, .exe_dir = exe_dir, .before_exit_ctx = &server, .before_exit = scanForAgent };
+    server.agent_mgr = .{ .gpa = gpa, .hub = &server.hub, .dir = dir, .dir_abs = dir_abs, .environ = environ, .exe_dir = exe_dir, .before_exit_ctx = &server, .before_exit = scanForAgent, .trust_agents = cfg.trust_agents, .max_run_s = cfg.agent_timeout_s };
     defer server.client.deinit();
     defer server.hub.deinit();
     defer server.agent_mgr.deinit();
 
     server.scan(false);
+    installSignalHandlers();
 
     // Banner (stdout; scripts parse the first line).
     var out_buf: [2048]u8 = undefined;

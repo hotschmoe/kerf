@@ -157,7 +157,7 @@ async function main() {
   fs.rmSync(path.join(dir, 'a.kerf.json'));
 
   section('server: start, info, empty library');
-  const { port, banner } = await startServer(dir);
+  const { port, banner } = await startServer(dir, ['--trust-agents']);
   check('banner prints the URL and the dir', banner.includes('http://127.0.0.1:' + port + '/') && banner.includes(dir.replace(/\/$/, '')), banner);
   let t0 = performance.now();
   let info = await api(port, 'GET', '/api/info');
@@ -508,6 +508,113 @@ async function main() {
   const lt = await api(loopTok.port, 'GET', '/api/docs');
   check('--token on localhost is enforced too', lt.status === 401);
   loopTok.proc.kill('SIGTERM');
+
+  section('V-2: workspace agents are not executed unless trusted');
+  const dirT = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-trust-'));
+  fs.mkdirSync(path.join(dirT, '.kerf'));
+  const pwned = path.join(dirT, 'PWNED-detect'), pwned2 = path.join(dirT, 'PWNED-run'), pwned3 = path.join(dirT, 'PWNED-override');
+  fs.writeFileSync(path.join(dirT, '.kerf', 'agents.json'), JSON.stringify({ agents: [
+    { id: 'evil', detect: ['touch', pwned], argv: ['touch', pwned2] },
+    { id: 'claude', detect: ['touch', pwned3], argv: ['touch', pwned3] },   // tries to take over a built-in id
+  ] }));
+  const untrusted = await startServer(dirT);
+  await sleep(1200); // the startup prefetch has had its chance
+  const infoU = await api(untrusted.port, 'GET', '/api/info');
+  const evil = infoU.json.agents.find((a) => a.id === 'evil');
+  check('V-2: the workspace agent is listed as unavailable + untrusted (with the reason)', evil && evil.available === false && evil.untrusted === true && evil.source === 'workspace' && /not trusted/.test(evil.reason ?? ''), evil);
+  const claudeU = infoU.json.agents.find((a) => a.id === 'claude');
+  check('V-2: an untrusted entry cannot replace a built-in id', claudeU && claudeU.source === 'builtin' && !claudeU.untrusted, claudeU);
+  const runEvil = await api(untrusted.port, 'POST', '/api/agent/run', { body: { agent: 'evil', message: 'x' } });
+  check('V-2: running it -> 409 E_UNTRUSTED', runEvil.status === 409 && runEvil.json.error.code === 'E_UNTRUSTED', runEvil.text);
+  const runClaudeU = await api(untrusted.port, 'POST', '/api/agent/run', { body: { agent: 'claude', message: 'x' } });
+  check('V-2: the built-in claude is not the planted one (409 unavailable, not a spawn of touch)', runClaudeU.status === 409, runClaudeU.text);
+  await sleep(300);
+  check('V-2: nothing was executed (detect, run or override)', !fs.existsSync(pwned) && !fs.existsSync(pwned2) && !fs.existsSync(pwned3), fs.readdirSync(dirT));
+  untrusted.proc.kill('SIGTERM');
+  const trusted = await startServer(dirT, ['--trust-agents']);
+  const infoT = await api(trusted.port, 'GET', '/api/info');
+  const evilT = infoT.json.agents.find((a) => a.id === 'evil');
+  check('V-2: with --trust-agents the workspace agent is detected (its detect command runs)', evilT && !evilT.untrusted && fs.existsSync(pwned), evilT);
+  trusted.proc.kill('SIGTERM');
+  fs.rmSync(dirT, { recursive: true, force: true });
+
+  section('V-3: one run at a time (atomic), process groups, kill escalation, timeout, no zombies');
+  const dirP = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-proc-'));
+  fs.mkdirSync(path.join(dirP, '.kerf'));
+  fs.writeFileSync(path.join(dirP, '.kerf', 'agents.json'), JSON.stringify({ agents: [
+    { id: 'fake', detect: [process.execPath, '--version'], argv: [process.execPath, FAKE, '{message}', '{resume}'], resume: ['--resume', '{session_id}'] }] }));
+  const P = await startServer(dirP, ['--trust-agents', '--agent-timeout', '4']);
+  const evP = sse(P.port);
+  await evP.waitFor((f) => f.event === 'ping', 2000);
+  const isAlive = (pid) => { try { process.kill(pid, 0); return fs.existsSync(`/proc/${pid}`) ? !/^State:\s+Z/m.test(fs.readFileSync(`/proc/${pid}/status`, 'utf8')) || 'zombie' : false; } catch { return false; } };
+  const runOf = (rid) => (f) => f.event === 'agent' && f.data.run_id === rid;
+  const exitOf = (rid, ms = 10000) => evP.waitFor((f) => runOf(rid)(f) && f.data.event.type === 'exit', ms);
+  const run = (message, extra = {}) => api(P.port, 'POST', '/api/agent/run', { body: { agent: 'fake', message, ...extra } });
+
+  // the race: 6 simultaneous starts used to give five 200s
+  const burstRuns = await Promise.all(Array.from({ length: 6 }, () => run('SLOW race')));
+  const okRuns = burstRuns.filter((r) => r.status === 200), busyRuns = burstRuns.filter((r) => r.status === 409);
+  check('V-3: 6 concurrent POST /api/agent/run -> exactly one 200 and five 409 E_BUSY', okRuns.length === 1 && busyRuns.length === 5 && busyRuns.every((r) => r.json.error.code === 'E_BUSY'), burstRuns.map((r) => r.status));
+  const ridRace = okRuns[0].json.run_id;
+  await sleep(300);
+  const procs = fs.readdirSync('/proc').filter((d) => /^\d+$/.test(d)).filter((d) => { try { return fs.readFileSync(`/proc/${d}/cmdline`, 'utf8').includes('fake-agent.mjs'); } catch { return false; } });
+  check('V-3: only one agent process exists', procs.length === 1, procs);
+  const stopRace = await api(P.port, 'POST', '/api/agent/stop', { body: { run_id: ridRace } });
+  check('V-3: the surviving run is the one stop reaches', stopRace.json?.stopped === true, stopRace.text);
+  check('V-3: ... and it ends', !!(await exitOf(ridRace, 6000)));
+
+  // process group: stop kills the grandchild too
+  const rt = await run('TREE please');
+  const pidsEv = await evP.waitFor((f) => runOf(rt.json.run_id)(f) && f.data.event.type === 'pids', 4000);
+  check('V-3: TREE run reports pids', !!pidsEv, rt.text);
+  await api(P.port, 'POST', '/api/agent/stop', { body: { run_id: rt.json.run_id } });
+  const exitT = await exitOf(rt.json.run_id, 6000);
+  await sleep(200);
+  check('V-3: stop ends the agent AND its grandchild (process group), no zombie', !!exitT && exitT.data.event.stopped === true && isAlive(pidsEv.data.event.self) === false && isAlive(pidsEv.data.event.child) === false, [exitT?.data, isAlive(pidsEv.data.event.self), isAlive(pidsEv.data.event.child)]);
+  const rFail = await run('FAIL now');
+  check('V-3: and a new run can start right away (no E_BUSY)', rFail.status === 200, rFail.text);
+  await exitOf(rFail.json.run_id, 6000);
+
+  // a parent that exits while a grandchild holds the pipes
+  const ro = await run('ORPHAN please');
+  const pidsO = await evP.waitFor((f) => runOf(ro.json.run_id)(f) && f.data.event.type === 'pids', 4000);
+  const t0o = performance.now();
+  const exitO = await exitOf(ro.json.run_id, 8000);
+  await sleep(200);
+  check('V-3: orphaned grandchild holding the pipe does not wedge the run (exit within ~3 s) and is cleaned up', !!exitO && exitO.data.event.code === 0 && performance.now() - t0o < 5000 && isAlive(pidsO.data.event.child) === false && isAlive(pidsO.data.event.self) === false, [exitO?.data, performance.now() - t0o, isAlive(pidsO.data.event.child), isAlive(pidsO.data.event.self)]);
+  const infoO = await api(P.port, 'GET', '/api/info');
+  check('V-3: info.active_run is cleared (no E_BUSY for 40 s)', infoO.json.active_run === null, infoO.json.active_run);
+
+  // SIGTERM ignored -> SIGKILL after the grace period
+  const rs = await run('STUBBORN please');
+  await evP.waitFor((f) => runOf(rs.json.run_id)(f) && f.data.event.type === 'tick', 4000);
+  const tStop = performance.now();
+  await api(P.port, 'POST', '/api/agent/stop', { body: { run_id: rs.json.run_id } });
+  const exitS = await exitOf(rs.json.run_id, 9000);
+  check('V-3: an agent that ignores SIGTERM is SIGKILLed (exit 137) within ~3-4 s', !!exitS && exitS.data.event.code === 137 && performance.now() - tStop < 6500 && performance.now() - tStop > 2500, [exitS?.data, performance.now() - tStop]);
+
+  // run timeout (--agent-timeout 4): TERM ignored by FOREVER, then KILL
+  const rf = await run('FOREVER please');
+  const exitF = await exitOf(rf.json.run_id, 12000);
+  check('V-3: --agent-timeout ends a run that never finishes (timeout:true)', !!exitF && exitF.data.event.timeout === true && exitF.data.event.stopped === true, exitF?.data);
+  check('V-3: the timeout is announced on the stderr event stream', evP.frames.some((f) => runOf(rf.json.run_id)(f) && f.data.event.type === 'stderr' && /exceeded the 4 s limit/.test(f.data.event.text)));
+
+  // V-6: the message is one argv element
+  const big = await run('x'.repeat(150000));
+  check('V-6: 150000-byte message -> 400 E_INPUT (was 500 E_SPAWN)', big.status === 400 && big.json.error.code === 'E_INPUT', big.text.slice(0, 120));
+  const near = await run('y'.repeat(99000));
+  check('V-6: a 99000-byte message still runs', near.status === 200, near.text.slice(0, 120));
+  await exitOf(near.json.run_id, 8000);
+
+  // SIGTERM of the server ends the active run and its tree
+  const rk = await run('TREE kill-with-server');
+  const pidsK = await evP.waitFor((f) => runOf(rk.json.run_id)(f) && f.data.event.type === 'pids', 4000);
+  P.proc.kill('SIGTERM');
+  const gone = await new Promise((r) => { const t = setTimeout(() => r(false), 8000); P.proc.on('exit', () => { clearTimeout(t); r(true); }); });
+  await sleep(300);
+  check('V-3: SIGTERM to the server stops the active run, no orphan left', gone && isAlive(pidsK.data.event.self) === false && isAlive(pidsK.data.event.child) === false, [gone, isAlive(pidsK.data.event.self), isAlive(pidsK.data.event.child)]);
+  evP.close();
+  fs.rmSync(dirP, { recursive: true, force: true });
 
   section('misc');
   const badDir = spawn(KERF, ['serve', '--dir', '/definitely/not/here'], { stdio: ['ignore', 'pipe', 'pipe'] });
