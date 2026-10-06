@@ -1678,14 +1678,27 @@ fn buildFill(ctx: *Ctx) BuildError!?Built {
 
 // ---- insulation ----------------------------------------------------------------------------------------------------------------
 
+pub const InsulationParams = struct {
+    form: enum { rigid, batt } = .rigid,
+    width: ?f64 = null,
+    height: ?f64 = null,
+    points: ?json.Value = null,
+
+    pub const spec = .{
+        .form = .{ .desc = "rigid | batt" },
+        .width = .{ .len = .pos, .hint = "give width and height, or points", .also = &.{"height"}, .def = "rect: required unless points", .desc = "box size" },
+        .height = .{ .len = .pos, .hint = "give width and height, or points", .row = false, .desc = "box size" },
+        .points = .{ .desc = "polygon alternative to width/height" },
+    };
+};
+
 fn buildInsulation(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const form = p.choice("form", "rigid", &.{ "rigid", "batt" });
-    if (!p.ok) return null;
+    const ip = p.parse(InsulationParams) orelse return null;
     var loop: []const Pt = undefined;
     var points_mode = false;
-    if (p.raw("points")) |pv| {
+    if (ip.points) |pv| {
         const pts = (try parsePointList(ctx, "points", pv, true)) orelse return null;
         const clean = try dropDuplicatePoints(a, pts);
         if (clean.len < 3) {
@@ -1695,11 +1708,18 @@ fn buildInsulation(ctx: *Ctx) BuildError!?Built {
         loop = try orientedCcw(a, clean);
         points_mode = true;
     } else {
-        const w = p.lenPos("width", null, "give width and height, or points") orelse return null;
-        const h = p.lenPos("height", null, "give width and height, or points") orelse return null;
+        const hint = "give width and height, or points";
+        const w = ip.width orelse {
+            p.missing("width", hint);
+            return null;
+        };
+        const h = ip.height orelse {
+            p.missing("height", hint);
+            return null;
+        };
         loop = try model.rectLoop(a, 0, 0, w, h);
     }
-    const batt = std.mem.eql(u8, form.?, "batt");
+    const batt = ip.form == .batt;
     var prism = Prism{
         .material = if (batt) "insulation_batt" else "insulation_rigid",
         .loops = try model.oneLoop(a, loop),
@@ -1713,7 +1733,7 @@ fn buildInsulation(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = bx,
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "insulation {s}", .{form.?}),
+        .info = try std.fmt.allocPrint(a, "insulation {s}", .{@tagName(ip.form)}),
     };
 }
 
