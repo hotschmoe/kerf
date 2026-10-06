@@ -1381,46 +1381,65 @@ fn buildConnector(ctx: *Ctx) BuildError!?Built {
 
 // ---- truss -----------------------------------------------------------------------------------------------------------
 
+pub const TrussParams = struct {
+    exterior: enum { left, right } = .left,
+    pitch: json.Value = .{ .string = "4:12" },
+    top_chord: []const u8 = "2x4",
+    bottom_chord: []const u8 = "2x4",
+    heel: enum { standard, raised } = .standard,
+    heel_height: ?f64 = null,
+    bearing_width: f64 = 3.5,
+    overhang: f64 = 12,
+    tail: enum { plumb, square } = .plumb,
+    span_shown: f64 = 48,
+    plate: bool = true,
+
+    pub const spec = .{
+        .exterior = .{ .desc = "side of the heel/overhang (right mirrors)" },
+        .pitch = .{ .def = "4:12", .desc = "rise:run" },
+        .top_chord = .{ .desc = "sawn nominal size, depth in-plane" },
+        .bottom_chord = .{ .desc = "sawn nominal size, depth in-plane" },
+        .heel = .{ .desc = "standard | raised" },
+        .heel_height = .{ .len = .pos, .desc = "raised heel: vertical height at the bearing outer edge from top of bottom chord to top of top chord" },
+        .bearing_width = .{ .len = .pos, .desc = "width of the support under the heel" },
+        .overhang = .{ .len = .any, .desc = "horizontal distance from outer face of bearing to the tail end" },
+        .tail = .{ .desc = "plumb | square cut" },
+        .span_shown = .{ .len = .pos, .desc = "how far into the building to draw (crop/break at the end)" },
+        .plate = .{ .desc = "draw the heel truss plate outline (dashed hidden pen)" },
+    };
+};
+
 fn buildTruss(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const exterior = p.choice("exterior", "left", &.{ "left", "right" });
-    const pitch_v = p.raw("pitch") orelse json.Value{ .string = "4:12" };
-    const top = p.str("top_chord", "2x4");
-    const bot = p.str("bottom_chord", "2x4");
-    const heel = p.choice("heel", "standard", &.{ "standard", "raised" });
-    const heel_h = if (p.has("heel_height")) p.lenPos("heel_height", null, "") else null;
-    const bw = p.lenPos("bearing_width", 3.5, "");
-    const ov = p.len("overhang", 12, "");
-    const tail = p.choice("tail", "plumb", &.{ "plumb", "square" });
-    const span = p.lenPos("span_shown", 48, "");
-    const plate = p.boolean("plate", true);
-    if (!p.ok) return null;
-    const theta = units.parseSlope(pitch_v) orelse {
-        p.fail("pitch", "param 'pitch' must be rise:run like \"4:12\" or degrees (got {s})", .{model.kindOrText(a, pitch_v)});
+    const tp = p.parse(TrussParams) orelse return null;
+    const top = tp.top_chord;
+    const bot = tp.bottom_chord;
+    const theta = units.parseSlope(tp.pitch) orelse {
+        p.fail("pitch", "param 'pitch' must be rise:run like \"4:12\" or degrees (got {s})", .{model.kindOrText(a, tp.pitch)});
         return null;
     };
     if (theta <= 0 or theta >= std.math.pi / 2.0) {
         p.fail("pitch", "pitch must slope up (between 0 and 90 degrees)", .{});
         return null;
     }
-    const tsz = parseSawn(top.?) orelse {
-        p.fail("top_chord", "top_chord \"{s}\" is not a sawn nominal size like \"2x4\", \"2x6\"", .{top.?});
+    const tsz = parseSawn(top) orelse {
+        p.fail("top_chord", "top_chord \"{s}\" is not a sawn nominal size like \"2x4\", \"2x6\"", .{top});
         return null;
     };
-    const bsz = parseSawn(bot.?) orelse {
-        p.fail("bottom_chord", "bottom_chord \"{s}\" is not a sawn nominal size like \"2x4\", \"2x6\"", .{bot.?});
+    const bsz = parseSawn(bot) orelse {
+        p.fail("bottom_chord", "bottom_chord \"{s}\" is not a sawn nominal size like \"2x4\", \"2x6\"", .{bot});
         return null;
     };
     const dt = tsz.d;
     const db = bsz.d;
     const s = @tan(theta);
     const c = @cos(theta);
-    const raised = std.mem.eql(u8, heel.?, "raised");
+    const raised = tp.heel == .raised;
     const v_thick = dt / c; // vertical thickness of the top chord
     var y_low0 = db; // lower edge of the top chord at x = 0
     if (raised) {
-        const hh = heel_h orelse {
+        const hh = tp.heel_height orelse {
             p.fail("heel_height", "heel 'raised' needs 'heel_height' (vertical height at the bearing outer edge from top of bottom chord to top of top chord)", .{});
             return null;
         };
@@ -1430,8 +1449,8 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
         }
         y_low0 = db + hh - v_thick;
     }
-    const x_tail = -ov.?;
-    const xe = span.?;
+    const x_tail = -tp.overhang;
+    const xe = tp.span_shown;
     const lower = struct {
         fn f(x: f64, y0: f64, sl: f64) f64 {
             return y0 + sl * x;
@@ -1440,7 +1459,7 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
     const tail_bottom = V2.init(x_tail, lower(x_tail, y_low0, s));
     var tail_top = V2.init(x_tail, tail_bottom.y + v_thick);
     var tail_bottom_pt = tail_bottom;
-    if (std.mem.eql(u8, tail.?, "square")) {
+    if (tp.tail == .square) {
         // end cut perpendicular to the chord, hanging through the plumb-cut lower point
         tail_bottom_pt = tail_bottom;
         tail_top = tail_bottom.add(V2.init(-@sin(theta), @cos(theta)).scale(dt));
@@ -1469,7 +1488,7 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
         try prisms.append(a, .{ .part = "heel_web", .material = "wood", .loops = try model.oneLoop(a, web) });
         try zones.append(a, .{ .name = "heel_web", .loops = try model.oneLoop(a, web), .box = geom.loopBox(web) });
     }
-    if (plate) {
+    if (tp.plate) {
         const py1 = @max(db + 0.5, y_low0 + 0.5);
         const pl = try model.rectLoop(a, 0.25, 0.25, 5.25, py1);
         try prisms.append(a, .{ .part = "plate", .material = "steel", .loops = try model.oneLoop(a, pl), .kind = .ghost, .pen = .hidden, .embedded = true });
@@ -1486,7 +1505,7 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
     }
     var anchors: std.ArrayList(model.NamedAnchor) = .empty;
     try anchors.append(a, .{ .name = "bearing_outer", .p = V2.init(0, 0) });
-    try anchors.append(a, .{ .name = "bearing_inner", .p = V2.init(bw.?, 0) });
+    try anchors.append(a, .{ .name = "bearing_inner", .p = V2.init(tp.bearing_width, 0) });
     try anchors.append(a, .{ .name = "tail_bottom", .p = tail_bottom_pt });
     try anchors.append(a, .{ .name = "tail_top", .p = tail_top });
     try anchors.append(a, .{ .name = "top_chord_at_bearing", .p = V2.init(0, lower(0, y_low0, s) + v_thick) });
@@ -1505,9 +1524,9 @@ fn buildTruss(ctx: *Ctx) BuildError!?Built {
         .zones = zones.items,
         .box = box,
         .nat_z = tsz.t,
-        .info = try std.fmt.allocPrint(a, "truss {s}:12 {s} heel, {s}+{s} chords, ovh {s}", .{ fmtNum(a, @tan(theta) * 12.0), heel.?, top.?, bot.?, ftin(a, ov.?) }),
+        .info = try std.fmt.allocPrint(a, "truss {s}:12 {s} heel, {s}+{s} chords, ovh {s}", .{ fmtNum(a, @tan(theta) * 12.0), @tagName(tp.heel), top, bot, ftin(a, tp.overhang) }),
     };
-    if (std.mem.eql(u8, exterior.?, "right")) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
+    if (tp.exterior == .right) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
     return built;
 }
 
