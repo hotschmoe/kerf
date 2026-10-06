@@ -219,16 +219,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .flashing,
         .summary = "Sheet-metal flashing in section: Z, L, drip edge, weep screed or free polyline.",
-        .params = &.{
-            .{ .names = &.{"profile"}, .def = "z", .desc = "z: back flange up the wall, horizontal leg out, drop at the nose; l: flange + horizontal leg; drip: flange on the deck, drop, outward kick; weep_screed: nailing flange up the wall, ledge, small drip drop; points: free centerline polyline" },
-            .{ .names = &.{"flange"}, .def = "2 (weep_screed 3.5)", .desc = "vertical back/nailing flange length (drip: horizontal flange on the deck)" },
-            .{ .names = &.{"leg"}, .def = "1 (l 2)", .desc = "horizontal leg length toward the exterior" },
-            .{ .names = &.{"drop"}, .def = "2 (drip 1.5, weep_screed 0.5)", .desc = "downturned leg at the nose" },
-            .{ .names = &.{"kick"}, .def = "0.5", .desc = "drip only: outward kick at the bottom of the drop" },
-            .{ .names = &.{"gauge"}, .def = "26", .desc = "20 .0359, 22 .0299, 24 .0239, 26 .0179, 28 .0149" },
-            .{ .names = &.{"exterior"}, .def = "left", .desc = "side the nose faces (right mirrors); presets only" },
-            .{ .names = &.{"points"}, .def = "profile points: required", .desc = "centerline polyline [x,y] relative to the placement point, or Refs" },
-        },
+        .params = params.rows(builders.FlashingParams),
         .parts = "none",
         .anchors = "9 box anchors + corner (first bend, local (0,0) for presets), start, end",
         .draws = "Presets: corner at (0,0), wall surface x=0, exterior -x. Spans the document run along Z. Thin metal: solid fill + steel outline (SPEC 16). Embedded: drawn over hatch, exempt from W_OVERLAP. Place with at.anchor \"corner\".",

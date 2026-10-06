@@ -1839,42 +1839,57 @@ fn materialOr(ctx: *const Ctx, name: []const u8, fallback: []const u8) []const u
     return if (ctx.style.material(name) != null) name else fallback;
 }
 
+pub const FlashingParams = struct {
+    profile: enum { z, l, drip, weep_screed, points } = .z,
+    flange: ?f64 = null,
+    leg: ?f64 = null,
+    drop: ?f64 = null,
+    kick: f64 = 0.5,
+    gauge: f64 = 26,
+    exterior: enum { left, right } = .left,
+    points: ?json.Value = null,
+
+    pub const spec = .{
+        .profile = .{ .desc = "z: back flange up the wall, horizontal leg out, drop at the nose; l: flange + horizontal leg; drip: flange on the deck, drop, outward kick; weep_screed: nailing flange up the wall, ledge, small drip drop; points: free centerline polyline" },
+        .flange = .{ .len = .pos, .def = "2 (weep_screed 3.5)", .desc = "vertical back/nailing flange length (drip: horizontal flange on the deck)" },
+        .leg = .{ .len = .pos, .def = "1 (l 2)", .desc = "horizontal leg length toward the exterior" },
+        .drop = .{ .len = .pos, .def = "2 (drip 1.5, weep_screed 0.5)", .desc = "downturned leg at the nose" },
+        .kick = .{ .len = .pos, .desc = "drip only: outward kick at the bottom of the drop" },
+        .gauge = .{ .desc = "20 .0359, 22 .0299, 24 .0239, 26 .0179, 28 .0149" },
+        .exterior = .{ .desc = "side the nose faces (right mirrors); presets only" },
+        .points = .{ .def = "profile points: required", .desc = "centerline polyline [x,y] relative to the placement point, or Refs" },
+    };
+};
+
 fn buildFlashing(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const prof = p.choice("profile", "z", &.{ "z", "l", "drip", "weep_screed", "points" });
-    const exterior = p.choice("exterior", "left", &.{ "left", "right" });
-    const gauge_n = p.num("gauge", 26);
-    if (!p.ok) return null;
-    const pr = prof.?;
-    const is = struct {
-        fn f(x: []const u8, y: []const u8) bool {
-            return std.mem.eql(u8, x, y);
-        }
-    }.f;
-    const flange_def: f64 = if (is(pr, "weep_screed")) 3.5 else 2;
-    const leg_def: f64 = if (is(pr, "l")) 2 else 1;
-    const drop_def: f64 = if (is(pr, "drip")) 1.5 else if (is(pr, "weep_screed")) 0.5 else 2;
-    const flange = p.lenPos("flange", flange_def, "") orelse return null;
-    const leg = p.lenPos("leg", leg_def, "") orelse return null;
-    const drop = p.lenPos("drop", drop_def, "") orelse return null;
-    const kick = p.lenPos("kick", 0.5, "") orelse return null;
-    const gauge_i: u32 = cast.toInt(u32, @round(gauge_n.?)) orelse 0;
+    const fp = p.parse(FlashingParams) orelse return null;
+    const pr = fp.profile;
+    const flange: f64 = fp.flange orelse if (pr == .weep_screed) 3.5 else 2;
+    const leg: f64 = fp.leg orelse if (pr == .l) 2 else 1;
+    const drop: f64 = fp.drop orelse switch (pr) {
+        .drip => 1.5,
+        .weep_screed => 0.5,
+        else => 2,
+    };
+    const kick = fp.kick;
+    const gauge_i: u32 = cast.toInt(u32, @round(fp.gauge)) orelse 0;
     const thickness = gaugeThickness(gauge_i) orelse {
-        p.fail("gauge", "gauge {s} is not in the table; use 20, 22, 24, 26 (default, 0.0179\") or 28", .{fmtNum(a, gauge_n.?)});
+        p.fail("gauge", "gauge {s} is not in the table; use 20, 22, 24, 26 (default, 0.0179\") or 28", .{fmtNum(a, fp.gauge)});
         return null;
     };
     var pts: std.ArrayList(Pt) = .empty;
     var points_mode = false;
     // local frame: corner (the first bend) at (0,0); the wall surface is x = 0 and the exterior is -x
-    if (is(pr, "z") or is(pr, "weep_screed")) {
+    if (pr == .z or pr == .weep_screed) {
         try pts.appendSlice(a, &.{ .{ .x = 0, .y = flange }, .{ .x = 0, .y = 0 }, .{ .x = -leg, .y = 0 }, .{ .x = -leg, .y = -drop } });
-    } else if (is(pr, "l")) {
+    } else if (pr == .l) {
         try pts.appendSlice(a, &.{ .{ .x = 0, .y = flange }, .{ .x = 0, .y = 0 }, .{ .x = -leg, .y = 0 } });
-    } else if (is(pr, "drip")) {
+    } else if (pr == .drip) {
         try pts.appendSlice(a, &.{ .{ .x = flange, .y = 0 }, .{ .x = 0, .y = 0 }, .{ .x = 0, .y = -drop }, .{ .x = -kick, .y = -drop - 0.5 * kick } });
     } else {
-        const pv = p.raw("points") orelse {
+        const pv = fp.points orelse {
             p.fail("points", "profile \"points\" needs 'points': the sheet-metal centerline polyline, e.g. [[0,2],[0,0],[-1,0],[-1,-2]] (or Refs)", .{});
             return null;
         };
@@ -1900,9 +1915,9 @@ fn buildFlashing(ctx: *Ctx) BuildError!?Built {
         .anchors = anchors,
         .box = geom.loopBox(rib),
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "flashing {s} {d} ga ({s}\" thick)", .{ pr, gauge_i, fmtNum(a, thickness) }),
+        .info = try std.fmt.allocPrint(a, "flashing {s} {d} ga ({s}\" thick)", .{ @tagName(pr), gauge_i, fmtNum(a, thickness) }),
     };
-    if (!points_mode and std.mem.eql(u8, exterior.?, "right")) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
+    if (!points_mode and fp.exterior == .right) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
     return built;
 }
 
