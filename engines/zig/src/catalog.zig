@@ -174,15 +174,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .connector,
         .summary = "Schematic steel hardware: straps, ties, embedded anchors, drawn as a thickened polyline.",
-        .params = &.{
-            .{ .names = &.{"model"}, .def = "null", .desc = "e.g. MSTA36, H2.5A, HETA20, CS16, CS14: fills width/gauge from the hardware table" },
-            .{ .names = &.{"points"}, .def = "required", .desc = "polyline [x,y] or Refs of the bearing face (lay edge) or centerline (lay face)" },
-            .{ .names = &.{"lay"}, .def = "edge", .desc = "edge: seen edge-on, gauge in-plane growing to `side`, width along Z; face: seen face-on, `width` in-plane centered on the polyline, gauge along Z" },
-            .{ .names = &.{"side"}, .def = "left", .desc = "lay edge: left of the polyline direction (left of a left-to-right line = up) or right" },
-            .{ .names = &.{"gauge"}, .def = "18", .desc = "12 .1046, 14 .0747, 16 .0598, 18 .0478, 20 .0359" },
-            .{ .names = &.{"width"}, .def = "1.25", .desc = "extent along Z (lay edge) or in-plane (lay face)" },
-            .{ .names = &.{"fasteners"}, .def = "null", .desc = "text for notes, e.g. \"(10) 10d EA. END\"" },
-        },
+        .params = params.rows(builders.ConnectorParams),
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
         .draws = "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets.",
