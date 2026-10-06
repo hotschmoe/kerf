@@ -14,6 +14,7 @@ const section = @import("section.zig");
 const drawing = @import("drawing.zig");
 const units = @import("units.zig");
 const route = @import("route.zig");
+const thinland = @import("thinland.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -469,6 +470,9 @@ fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 {
         },
     }
     const lp = (try bandedLabelPoint(env, shapes.items)) orelse return null;
+    if (env.landing == .section) {
+        if (try thinland.candidates(env.a, env.landing.section, comp, inst, part, lp.inset, env.style.text_height_in * env.S, lp.p)) |c| return c;
+    }
     return try candidatesFor(env, shapes.items, lp.inset, lp.p);
 }
 

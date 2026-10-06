@@ -154,17 +154,7 @@ pub const Section = struct {
                 .line => {
                     if (p.line_pts.len >= 2) {
                         const pen = self.penFor(if (self.style.material(p.material)) |m| (m.pen orelse "membrane") else "membrane");
-                        var lp = p.line_pts;
-                        if (std.mem.eql(u8, p.material, "vapor_retarder") and p.centerline.len >= 2) {
-                            // keep the dashed line visibly separate from the host edge it follows
-                            const c0 = p.centerline[0].v();
-                            const d0 = p.centerline[1].v().sub(c0).norm();
-                            const off = p.line_pts[0].v().sub(c0);
-                            const side: f64 = if (d0.perp().dot(off) >= 0) 1 else -1;
-                            const gap = @max(off.len(), 0.03 * self.spec.scale);
-                            lp = try @import("pathgeom.zig").offsetOpen(self.a, p.centerline, side * gap);
-                        }
-                        try self.addClipped(&self.strokes, lp, false, pen, self.srcName(p), p.embedded);
+                        try self.addClipped(&self.strokes, try self.linePoints(p), false, pen, self.srcName(p), p.embedded);
                     }
                 },
                 .batt => {
@@ -174,6 +164,18 @@ pub const Section = struct {
             }
         }
         try self.breakLines();
+    }
+
+    /// The polyline a `line` prism (membrane) is drawn along. A vapor retarder keeps its dashed line visibly separate
+    /// from the host edge it follows (0.03 paper inch at least).
+    pub fn linePoints(self: *const Section, p: Prism) Allocator.Error![]const Pt {
+        if (!(std.mem.eql(u8, p.material, "vapor_retarder") and p.centerline.len >= 2)) return p.line_pts;
+        const c0 = p.centerline[0].v();
+        const d0 = p.centerline[1].v().sub(c0).norm();
+        const off = p.line_pts[0].v().sub(c0);
+        const side: f64 = if (d0.perp().dot(off) >= 0) 1 else -1;
+        const gap = @max(off.len(), 0.03 * self.spec.scale);
+        return @import("pathgeom.zig").offsetOpen(self.a, p.centerline, side * gap);
     }
 
     fn shingleTicks(self: *Section, p: Prism, pen: []const u8) Allocator.Error!void {

@@ -438,3 +438,76 @@ test "dense small detail: repair never makes it worse and is deterministic" {
     };
     _ = api;
 }
+
+// ---- thin-layer landing (SPEC 21) ------------------------------------------------------------------------------------
+
+/// Where a note's arrow points: the apex of its arrowhead (the vertex farthest from the leader's last point).
+fn arrowTip(dr: drawing.Drawing, note: []const u8) ?V2 {
+    var base: ?V2 = null;
+    for (dr.items) |it| {
+        if (it != .path or !std.mem.eql(u8, it.path.src, note) or it.path.closed or it.path.pts.len != 3) continue;
+        base = it.path.pts[2].v();
+    }
+    const b = base orelse return null;
+    for (dr.items) |it| {
+        if (it != .fill or !std.mem.eql(u8, it.fill.src, note) or it.fill.loops.len == 0) continue;
+        var tip: ?V2 = null;
+        var far: f64 = -1;
+        for (it.fill.loops[0]) |q| if (q.v().dist(b) > far) {
+            far = q.v().dist(b);
+            tip = q.v();
+        };
+        return tip;
+    }
+    return null;
+}
+
+/// Distance from `p` to the strokes (paths) and outlines (fills) drawn for component `src`.
+fn distToSrc(dr: drawing.Drawing, src: []const u8, p: V2) f64 {
+    var d = std.math.inf(f64);
+    for (dr.items) |it| {
+        if (it == .path and std.mem.eql(u8, it.path.src, src)) {
+            const pts = it.path.pts;
+            for (pts[1..], 0..) |q, i| d = @min(d, geom.distPointSeg(p, pts[i].v(), q.v()));
+        } else if (it == .fill and std.mem.eql(u8, it.fill.src, src)) {
+            for (it.fill.loops) |l| for (l, 0..) |q, i| {
+                d = @min(d, geom.distPointSeg(p, q.v(), l[(i + 1) % l.len].v()));
+            };
+        }
+    }
+    return d;
+}
+
+test "thin layers: the vapor retarder note lands on the membrane itself, away from the junction with the gravel" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const dr = try build(a, testdocs.slab, "A");
+    const tip = arrowTip(dr, "n_vr").?;
+    try std.testing.expect(distToSrc(dr, "vapor_retarder", tip) < 0.1);
+    // the gravel base's lower edge (y = -8") meets the sloped membrane: the arrow stays more than a text height away from it
+    try std.testing.expect(@abs(tip.y - (-8.0)) > 1.0);
+    // the strap note of the flush-beam detail points at the strap, not at the plates it lies over
+    const bd = try build(a, testdocs.beam, "A");
+    const st = arrowTip(bd, "n_strap").?;
+    try std.testing.expect(distToSrc(bd, "strap", st) < 0.15);
+}
+
+test "thin layers: a membrane that runs through a neighbor is not landed on inside that neighbor" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const src =
+        \\{"kerf":"0.1","id":"t","run":[-3.5,0],"components":[
+        \\ {"id":"post","type":"lumber","size":"4x4","run":"y","face":"narrow","length":24,"at":{"anchor":"bottom_left","to":[18,-12]}},
+        \\ {"id":"vapor","type":"membrane","material":"vapor_retarder","points":[[0,0],[19.75,0],[40,0]]}],
+        \\"views":[{"id":"A","kind":"section","number":"1","title":"T","scale":"1\"=1'-0\"","cut_z":0,
+        \\ "crop":{"x":[-5,45],"y":[-15,15]},"notes_side":"right","annotations":[
+        \\ {"id":"n_v","type":"note","text":"10 MIL VAPOR RETARDER","target":"vapor"}]}]}
+    ;
+    const dr = try build(a, src, "A");
+    const tip = arrowTip(dr, "n_v").?;
+    try std.testing.expect(distToSrc(dr, "vapor", tip) < 0.1);
+    // the post spans x 18..21.5 (4x4 narrow face = 3.5"): the tip is outside it
+    try std.testing.expect(tip.x < 17.9 or tip.x > 21.6);
+}
