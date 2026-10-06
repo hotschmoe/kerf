@@ -156,7 +156,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .lumber,
         .summary = "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
-        .params = params.rows(builders.LumberParams),
+        .params = params.rows(builders.lumber.Params),
         .traits = .{ .lengthwise_grain = true, .near_miss = true, .slope_host = .{} },
         .parts = "barrier (when set)",
         .anchors = "the 9 box anchors",
