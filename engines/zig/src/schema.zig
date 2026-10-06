@@ -329,7 +329,7 @@ fn renderComponent(a: Allocator, e: *const catalog.Entry) Allocator.Error![]cons
     }
     try out.appendSlice(a, " (`kerf schema common`).\n");
     try out.print(a, "Parts: {s}\nAnchors: {s}\nDraws: {s}\n", .{ e.parts, e.anchors, e.draws });
-    if (e.type == .connector) {
+    if (e.traits.hardware) {
         try out.appendSlice(a, "Hardware models: ");
         for (catalog.hardware, 0..) |h, i| {
             if (i > 0) try out.appendSlice(a, ", ");

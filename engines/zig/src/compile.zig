@@ -248,9 +248,9 @@ const AtSpec = struct {
     has_to: bool = false,
 };
 
-/// Placement anchor when `at.anchor` is omitted: the bolt's datum for anchor bolts, else the box's bottom_left.
+/// Placement anchor when `at.anchor` is omitted: the type's datum (the bolt's top_of_concrete), else the box's bottom_left.
 fn defaultAnchor(comp: *const Comp) []const u8 {
-    return if (comp.ty.type == .anchor_bolt) "top_of_concrete" else "bottom_left";
+    return comp.ty.traits.default_anchor;
 }
 
 fn parseAt(a: Allocator, scene: *Scene, comp: *Comp, p: *model.Params) Allocator.Error!?AtSpec {
@@ -492,7 +492,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
         }
     }
     comp.angle = angle;
-    if (comp.ty.type == .truss) {
+    if (comp.ty.traits.has_pitch) {
         const pv = comp.node.get("pitch") orelse json.Value{ .string = "4:12" };
         const th = units.parseSlope(pv) orelse 0;
         const right = if (comp.node.get("exterior")) |ev| (if (ev.str()) |es| std.mem.eql(u8, es, "right") else false) else false;

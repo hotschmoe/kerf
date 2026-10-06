@@ -10,6 +10,40 @@ const Allocator = std.mem.Allocator;
 /// One row of a parameter table (see params.zig).
 pub const Param = params.Row;
 
+/// What the engine asks of a component type besides building it (REVIEW ARC-1): code that needs "the type with a pitch" or
+/// "hardware" reads a flag here instead of comparing type names, so a new type opts in by setting a flag.
+pub const Traits = struct {
+    /// Anchor a placement uses when `at` does not name one.
+    default_anchor: []const u8 = "bottom_left",
+    /// Has a roof pitch that `slope: "@id"` follows (truss).
+    has_pitch: bool = false,
+    /// Schematic steel hardware with a hardware table (connector): exempt from overlap checks, lists its models in the catalog.
+    hardware: bool = false,
+    /// Reinforcement checked for cover against its host (rebar).
+    reinforcement: bool = false,
+    /// Escape hatch reported as I_SOLID_USED (solid).
+    escape_hatch: bool = false,
+    /// Line-like member (membrane, flashing, connector, rebar): notes land on its own line, not inside a region.
+    line_like: bool = false,
+    /// Lumber cut along its length is drawn with wood grain.
+    lengthwise_grain: bool = false,
+    /// Takes part in near-miss checks (framing lumber).
+    near_miss: bool = false,
+    /// A sheet (panel, membrane) that, when sloped and resting on a sloped member, must reach that member's end (W_SHORT_SLOPE).
+    sheet: bool = false,
+    /// A rigid sheet (panel): thin ones land notes on their midline, and a panel does not rest on another panel.
+    rigid_sheet: bool = false,
+    /// Can carry a sloped sheet (lumber, panel, truss).
+    slope_host: ?SlopeHost = null,
+};
+
+pub const SlopeHost = struct {
+    /// The part a sheet rests on ("" = any part).
+    part: []const u8 = "",
+    /// The anchor at the member's far end that `until` should name ("" = top_right / top_left by direction).
+    end_anchor: []const u8 = "",
+};
+
 /// The component types, in catalog order. The tag name is the type's name in documents (`"type": "lumber"`).
 /// Adding a type: add the tag here, an entry to `entries` (same position) and a `build` arm in builders.zig
 /// (that switch is exhaustive, so a type without a builder does not compile).
@@ -24,6 +58,8 @@ pub const Entry = struct {
     draws: []const u8,
     /// One complete component object (valid on its own); `kerf schema <type>` prints it.
     example: []const u8 = "",
+    /// Behaviour the compiler, validators and renderers ask of the type (instead of naming it).
+    traits: Traits = .{},
 
     pub fn name(self: *const Entry) []const u8 {
         return @tagName(self.type);
@@ -121,6 +157,7 @@ pub const entries: []const Entry = &.{
         .type = .lumber,
         .summary = "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
         .params = params.rows(builders.LumberParams),
+        .traits = .{ .lengthwise_grain = true, .near_miss = true, .slope_host = .{} },
         .parts = "barrier (when set)",
         .anchors = "the 9 box anchors",
         .draws = "Section: run z cut => outline + wood X mark per ply (blocking: one diagonal); run x/y cut lengthwise => outline only; beyond => outline. Actual sizes: 2x 1.5 thick; 4x 3.5; 6x 5.5; depths x4 3.5, x6 5.5, x8 7.25, x10 9.25, x12 11.25 (6x8 7.5, 6x10 9.5, 6x12 11.5). Natural z thickness for run x/y.",
@@ -130,6 +167,7 @@ pub const entries: []const Entry = &.{
         .type = .panel,
         .summary = "Sheathing, boards, gypsum, soffit, fascia/trim boards as a thin rectangle.",
         .params = params.rows(builders.PanelParams),
+        .traits = .{ .sheet = true, .rigid_sheet = true, .slope_host = .{} },
         .parts = "none",
         .anchors = "the 9 box anchors",
         .draws = "Cut rectangle with the material's hatch / cut mark (wood_board: one diagonal). Spans the document run along Z. Use `slope` for roof sheathing (rotates about the placement anchor).",
@@ -157,6 +195,7 @@ pub const entries: []const Entry = &.{
         .type = .rebar,
         .summary = "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
         .params = params.rows(builders.RebarParams),
+        .traits = .{ .reinforcement = true, .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors of the bar (center = bar center for along_z)",
         .draws = "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu.",
@@ -166,6 +205,7 @@ pub const entries: []const Entry = &.{
         .type = .anchor_bolt,
         .summary = "Anchor bolt in the XY plane at a given z (shank, hook, nut and washer).",
         .params = params.rows(builders.AnchorBoltParams),
+        .traits = .{ .default_anchor = "top_of_concrete" },
         .parts = "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut)",
         .anchors = "9 box anchors + top_of_concrete (where the bolt meets the host top surface, local (0,0))",
         .draws = "Embedded steel, natural z thickness = diameter. The placement anchor DEFAULTS to top_of_concrete, so `\"at\": {\"to\": \"cmu@top_center\"}` seats the bolt in the top surface, projection up (you do not set `anchor`). z defaults to the first section view's cut_z, so the bolt is cut, not hidden; set `z` only to move it. `array` {axis z, count, spacing} draws bolts @ spacing in iso/3D (one is cut in section).",
@@ -175,6 +215,7 @@ pub const entries: []const Entry = &.{
         .type = .connector,
         .summary = "Schematic steel hardware: straps, ties, embedded anchors, drawn as a thickened polyline.",
         .params = params.rows(builders.ConnectorParams),
+        .traits = .{ .hardware = true, .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
         .draws = "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets.",
@@ -184,6 +225,7 @@ pub const entries: []const Entry = &.{
         .type = .truss,
         .summary = "Prefab wood truss heel and tail in side view.",
         .params = params.rows(builders.TrussParams),
+        .traits = .{ .has_pitch = true, .slope_host = .{ .part = "top_chord", .end_anchor = "top_chord_end" } },
         .parts = "top_chord, bottom_chord, heel_web (raised only), plate, tail",
         .anchors = "9 box anchors + bearing_outer (local origin: outer edge of bearing at bottom of bottom chord), bearing_inner, tail_bottom, tail_top, top_chord_at_bearing, top_chord_bottom_at_bearing (lower edge of the top chord at the bearing plane), heel_outer (middle of the heel's outer vertical face, between the bottom chord's top and the top chord's top at the bearing: where ties and straps land), top_chord_end, bottom_chord_top_inner",
         .draws = "Standard heel: bottom chord from the bearing outer edge inward; top chord lower edge passes through (bearing_outer.x, top of bottom chord) at the pitch and extends to the plumb tail at x=-overhang. Members are in-plane, z thickness 1.5: set `z` and `array` for spacing.",
@@ -193,6 +235,7 @@ pub const entries: []const Entry = &.{
         .type = .membrane,
         .summary = "Thin layers: underlayment, vapor retarder, WRB, roofing, flashing.",
         .params = params.rows(builders.MembraneParams),
+        .traits = .{ .sheet = true, .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
         .draws = "Drawn as a line per the material pen (vapor retarder: dashed heavy; shingles: heavy line with tick marks). Never occludes or hatches.",
@@ -220,6 +263,7 @@ pub const entries: []const Entry = &.{
         .type = .flashing,
         .summary = "Sheet-metal flashing in section: Z, L, drip edge, weep screed or free polyline.",
         .params = params.rows(builders.FlashingParams),
+        .traits = .{ .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors + corner (first bend, local (0,0) for presets), start, end",
         .draws = "Presets: corner at (0,0), wall surface x=0, exterior -x. Spans the document run along Z. Thin metal: solid fill + steel outline (SPEC 16). Embedded: drawn over hatch, exempt from W_OVERLAP. Place with at.anchor \"corner\".",
@@ -238,6 +282,7 @@ pub const entries: []const Entry = &.{
         .type = .solid,
         .summary = "Escape hatch: any extruded profile with an explicit material (flagged I_SOLID_USED).",
         .params = params.rows(builders.SolidParams),
+        .traits = .{ .escape_hatch = true },
         .parts = "none",
         .anchors = "9 box anchors",
         .draws = "Use only when no typed component fits.",
@@ -312,7 +357,7 @@ fn paramJson(a: Allocator, p: Param) Allocator.Error!json.Value {
 pub fn entryJson(a: Allocator, e: *const Entry) Allocator.Error!json.Value {
     const ps = try a.alloc(json.Value, e.params.len);
     for (e.params, 0..) |p, i| ps[i] = try paramJson(a, p);
-    if (e.type == .connector) {
+    if (e.traits.hardware) {
         const ms = try a.alloc(json.Value, hardware.len);
         for (hardware, 0..) |h, i| ms[i] = .{ .string = try hardwareLine(a, h) };
         return json.obj(a, &.{
@@ -352,7 +397,7 @@ pub fn appendEntryMarkdown(out: *std.ArrayList(u8), a: Allocator, e: *const Entr
     try out.print(a, "### `{s}`: {s}\n\n", .{ e.name(), e.summary });
     try out.appendSlice(a, "| param | default | notes |\n|---|---|---|\n");
     for (e.params) |p| try out.print(a, "| `{s}` | {s} | {s} |\n", .{ try p.nameText(a), p.def, p.desc });
-    if (e.type == .connector) {
+    if (e.traits.hardware) {
         try out.appendSlice(a, "\nHardware models (auto-fill width and gauge):\n");
         for (hardware) |h| try out.print(a, "- {s}\n", .{try hardwareLine(a, h)});
     }
@@ -381,4 +426,16 @@ test "catalog renders" {
     try std.testing.expect(allowedKey(find("lumber").?, "plies"));
     try std.testing.expect(allowedKey(find("insulation").?, "height"));
     try std.testing.expect(!allowedKey(find("lumber").?, "bogus"));
+}
+
+test "traits name anchors and parts the entry documents" {
+    for (entries) |e| {
+        const t = e.traits;
+        if (!std.mem.eql(u8, t.default_anchor, "bottom_left")) try std.testing.expect(std.mem.indexOf(u8, e.anchors, t.default_anchor) != null);
+        if (t.slope_host) |h| {
+            if (h.end_anchor.len > 0) try std.testing.expect(std.mem.indexOf(u8, e.anchors, h.end_anchor) != null);
+            if (h.part.len > 0) try std.testing.expect(std.mem.indexOf(u8, e.parts, h.part) != null);
+        }
+        if (t.has_pitch) try std.testing.expect(t.slope_host != null);
+    }
 }
