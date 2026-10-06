@@ -33,6 +33,12 @@ pub const Hub = struct {
     /// Publish `event: <name>\ndata: <data_json>\n\n`. `data_json` must be one line.
     pub fn publish(h: *Hub, io: Io, name: []const u8, data_json: []const u8) void {
         const frame = std.fmt.allocPrint(h.gpa, "event: {s}\ndata: {s}\n\n", .{ name, data_json }) catch return;
+        // A CR or LF inside the data would split the SSE frame (a lone CR is a line end for EventSource): the data is one
+        // line by contract, so whatever slipped through becomes a space. Inside JSON strings valid text has no raw ones.
+        const data_start = "event: ".len + name.len + "\ndata: ".len;
+        for (frame[data_start .. frame.len - 2]) |*c| if (c.* == '\n' or c.* == '\r') {
+            c.* = ' ';
+        };
         h.mu.lockUncancelable(io);
         defer h.mu.unlock(io);
         h.seq += 1;
@@ -92,6 +98,15 @@ test "hub publish and read" {
     try std.testing.expect(hub.wait(io, &last, &out, std.testing.allocator));
     try std.testing.expectEqualStrings("event: ping\ndata: {}\n\nevent: doc_added\ndata: {\"file\":\"a\"}\n\n", out.items);
     try std.testing.expectEqual(@as(u64, 2), last);
+}
+
+test "V-13: CR/LF in published data cannot split the frame" {
+    var threaded: Io.Threaded = .init_single_threaded;
+    const io = threaded.io();
+    var hub = Hub.init(std.testing.allocator);
+    defer hub.deinit();
+    hub.publish(io, "log", "{\"a\":\"x\ry\nz\"}");
+    try std.testing.expectEqualStrings("event: log\ndata: {\"a\":\"x y z\"}\n\n", hub.frames.items[0].bytes);
 }
 
 test "hub ring is bounded" {

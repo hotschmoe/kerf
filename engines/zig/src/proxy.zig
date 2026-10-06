@@ -196,6 +196,66 @@ pub const ForwardError = error{ Upstream, HeadSent, OutOfMemory };
 /// connection is closed at the end). Errors before the response head was written come back as
 /// `error.Upstream` with `detail` set; after that failures only end the stream.
 pub fn forward(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, detail: *[]const u8) ForwardError!void {
+    return forwardInner(a, client, p, w, detail, null, undefined);
+}
+
+/// Stall and size limits of one proxied call (V-12). `first_byte_ms` covers connecting plus the provider's thinking
+/// time before the response head; `idle_ms` is the longest pause between two chunks (also: a client that stopped
+/// reading); `total_ms` and `max_bytes` bound the whole call.
+pub const Limits = struct {
+    first_byte_ms: u64 = 5 * 60_000,
+    idle_ms: u64 = 2 * 60_000,
+    total_ms: u64 = 30 * 60_000,
+    max_bytes: usize = 256 << 20,
+};
+
+/// Progress shared between the forwarding task and the watching handler.
+const Progress = struct {
+    last_ns: std.atomic.Value(i64),
+    bytes: std.atomic.Value(usize) = .init(0),
+    head_sent: std.atomic.Value(bool) = .init(false),
+    done: std.atomic.Value(bool) = .init(false),
+    io: Io,
+    max_bytes: usize,
+
+    fn touch(pr: *Progress) void {
+        pr.last_ns.store(@intCast(Io.Timestamp.now(pr.io, .awake).nanoseconds), .release);
+    }
+};
+
+fn forwardTask(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, detail: *[]const u8, res: *ForwardError!void, pr: *Progress) void {
+    res.* = forwardInner(a, client, p, w, detail, pr, pr.io);
+    pr.done.store(true, .release);
+}
+
+/// `forward` with timeouts: the call runs in its own task, the caller watches progress and cancels the task when the
+/// upstream (or the downstream client) stalls past `lim`.
+pub fn forwardLimited(io: Io, a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, detail: *[]const u8, lim: Limits) ForwardError!void {
+    var pr: Progress = .{ .last_ns = .init(@intCast(Io.Timestamp.now(io, .awake).nanoseconds)), .io = io, .max_bytes = lim.max_bytes };
+    const start_ns: i64 = pr.last_ns.load(.acquire);
+    var res: ForwardError!void = {};
+    var g: Io.Group = .init;
+    g.concurrent(io, forwardTask, .{ a, client, p, w, detail, &res, &pr }) catch return forwardInner(a, client, p, w, detail, null, io);
+    var timed_out = false;
+    while (!pr.done.load(.acquire)) {
+        io.sleep(Io.Duration.fromMilliseconds(50), .awake) catch {};
+        const now: i64 = @intCast(Io.Timestamp.now(io, .awake).nanoseconds);
+        const idle_limit = if (pr.head_sent.load(.acquire)) lim.idle_ms else lim.first_byte_ms;
+        if (now - pr.last_ns.load(.acquire) > @as(i64, @intCast(idle_limit)) * std.time.ns_per_ms or now - start_ns > @as(i64, @intCast(lim.total_ms)) * std.time.ns_per_ms) {
+            timed_out = true;
+            break;
+        }
+    }
+    if (timed_out) g.cancel(io) else g.await(io) catch {};
+    if (timed_out and !pr.head_sent.load(.acquire)) {
+        detail.* = "the upstream did not answer in time";
+        return error.Upstream;
+    }
+    return res;
+}
+
+fn forwardInner(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, detail: *[]const u8, pr: ?*Progress, io: Io) ForwardError!void {
+    _ = io;
     const uri = std.Uri.parse(p.url) catch {
         detail.* = "invalid URL";
         return error.Upstream;
@@ -241,6 +301,10 @@ pub fn forward(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, d
     try extra.appendSlice(a, "X-Accel-Buffering: no\r\n");
     http.writeHead(w, .{ .status = status, .content_type = null, .content_length = null, .keep_alive = false, .extra = extra.items }) catch return error.HeadSent;
     w.flush() catch return error.HeadSent;
+    if (pr) |x| {
+        x.head_sent.store(true, .release);
+        x.touch();
+    }
 
     var transfer: [8192]u8 = undefined;
     const rd = resp.reader(&transfer);
@@ -249,6 +313,10 @@ pub fn forward(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, d
         w.writeAll(chunk) catch break;
         rd.toss(chunk.len);
         w.flush() catch break;
+        if (pr) |x| {
+            x.touch();
+            if (x.bytes.fetchAdd(chunk.len, .acq_rel) + chunk.len > x.max_bytes) break; // runaway upstream
+        }
     }
 }
 

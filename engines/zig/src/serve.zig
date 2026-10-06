@@ -32,6 +32,9 @@ pub const Config = struct {
     open: bool = false,
     /// Run agents defined in `<dir>/.kerf/agents.json` (they execute commands from the folder; V-2).
     trust_agents: bool = false,
+    timeouts: Timeouts = .{},
+    /// Stall limits of proxied LLM calls.
+    llm_limits: proxy.Limits = .{},
     /// Wall-clock limit of one agent run, seconds (0 = none).
     agent_timeout_s: u32 = agents.default_max_run_s,
 };
@@ -43,6 +46,8 @@ const DocInfo = struct {
     views: usize,
     errors: usize,
     warnings: usize,
+    /// Wyhash of the document bytes: the content part of its ETag.
+    hash: u64 = 0,
 };
 
 const FileState = struct {
@@ -69,6 +74,14 @@ pub const Server = struct {
     group: Io.Group = .init,
     loopback_only: bool,
     started_ns: i96,
+    /// Open connections (the watchdog shuts down the ones past their deadline) and the caps (V-4).
+    conns_mu: Io.Mutex = .init,
+    conns: std.ArrayList(*Conn) = .empty,
+    active_conns: std.atomic.Value(u32) = .init(0),
+    sse_active: std.atomic.Value(u32) = .init(0),
+    proxy_active: std.atomic.Value(u32) = .init(0),
+    /// `Content-Security-Policy` of the embedded UI (script hashes of its inline scripts are added at startup).
+    ui_csp: []const u8 = default_ui_csp,
 
     fn freeInfo(s: *Server, info: DocInfo) void {
         s.gpa.free(info.id);
@@ -80,11 +93,11 @@ pub const Server = struct {
         return null;
     }
 
-    fn cors(s: *Server, a: Allocator, req: http.Request) []const u8 {
+    fn cors(s: *Server, a: Allocator, req: http.Request) Allocator.Error![]const u8 {
         const ao = s.cfg.allow_origin orelse return "";
         const origin = req.header("origin") orelse return "";
         if (!std.mem.eql(u8, origin, ao)) return "";
-        return std.fmt.allocPrint(a, "Access-Control-Allow-Origin: {s}\r\nVary: Origin\r\nAccess-Control-Allow-Headers: authorization, content-type, if-match\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Expose-Headers: etag\r\n", .{origin}) catch "";
+        return std.fmt.allocPrint(a, "Access-Control-Allow-Origin: {s}\r\nVary: Origin\r\nAccess-Control-Allow-Headers: authorization, content-type, if-match\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Expose-Headers: etag\r\n", .{origin});
     }
 
     // ---- folder scan: the 500 ms poller and every listing call share this ----
@@ -108,7 +121,7 @@ pub const Server = struct {
         var names: std.ArrayList([]const u8) = .empty;
         var it = s.dir.iterate();
         while (it.next(io) catch null) |e| {
-            if (e.kind != .file and e.kind != .sym_link) continue;
+            if (e.kind != .file and e.kind != .unknown) continue; // a symlink is never served (V-10)
             if (!ws.validDocFile(e.name)) continue;
             names.append(a, a.dupe(u8, e.name) catch continue) catch continue;
         }
@@ -117,7 +130,8 @@ pub const Server = struct {
         var added: std.ArrayList([]const u8) = .empty;
         var changed: std.ArrayList([]const u8) = .empty;
         for (names.items) |name| {
-            const st = s.dir.statFile(io, name, .{}) catch continue;
+            const st = s.dir.statFile(io, name, .{ .follow_symlinks = false }) catch continue;
+            if (st.kind != .file) continue;
             if (s.findState(name)) |f| {
                 if (f.mtime_ns != st.mtime.nanoseconds or f.size != st.size) {
                     f.mtime_ns = st.mtime.nanoseconds;
@@ -217,29 +231,34 @@ pub const Server = struct {
 
     fn logSize(s: *Server, a: Allocator, name: []const u8) u64 {
         const lp = ws.logPath(a, name) catch return 0;
-        const st = s.dir.statFile(s.io, lp, .{}) catch return 0;
+        const st = s.dir.statFile(s.io, lp, .{ .follow_symlinks = false }) catch return 0;
         return st.size;
     }
 
     /// Complete, valid-JSON lines appended to the log since `f.log_size`; advances `f.log_size`.
     fn readNewLog(s: *Server, a: Allocator, f: *FileState) ![]const []const u8 {
         const lp = try ws.logPath(a, f.name);
-        const st = s.dir.statFile(s.io, lp, .{}) catch {
+        const st = s.dir.statFile(s.io, lp, .{ .follow_symlinks = false }) catch {
             f.log_size = 0;
             return &.{};
         };
+        if (st.kind != .file) return &.{};
         if (st.size < f.log_size) {
             f.log_size = st.size;
             return &.{};
         }
         if (st.size == f.log_size) return &.{};
         const want: usize = @intCast(@min(st.size - f.log_size, 4 << 20));
-        var file = try s.dir.openFile(s.io, lp, .{});
+        var file = try s.dir.openFile(s.io, lp, .{ .follow_symlinks = false });
         defer file.close(s.io);
         const buf = try a.alloc(u8, want);
         const got = try file.readPositionalAll(s.io, buf, f.log_size);
         const data = buf[0..got];
-        const last_nl = std.mem.lastIndexOfScalar(u8, data, '\n') orelse return &.{};
+        const last_nl = std.mem.lastIndexOfScalar(u8, data, '\n') orelse {
+            // A line longer than the read window would otherwise be re-read every tick forever: skip it.
+            if (got >= 4 << 20) f.log_size += got;
+            return &.{};
+        };
         f.log_size += last_nl + 1;
         var out: std.ArrayList([]const u8) = .empty;
         var lines = std.mem.splitScalar(u8, data[0..last_nl], '\n');
@@ -255,12 +274,21 @@ pub const Server = struct {
         return out.items;
     }
 
-    fn ensureInfo(s: *Server, a: Allocator, f: *FileState) ?DocInfo {
-        if (f.info) |i| return i;
-        const rd = s.readDoc(a, f.name) catch return null;
-        const info = computeInfo(s.gpa, a, rd.bytes) catch return null;
-        f.info = info;
-        return info;
+    /// Remember `info` for `name` when the document is still the version it was computed from.
+    fn storeInfo(s: *Server, name: []const u8, mtime_ns: i96, size: u64, info: DocInfo) void {
+        s.scan_mu.lockUncancelable(s.io);
+        defer s.scan_mu.unlock(s.io);
+        const f = s.findState(name) orelse return;
+        if (f.info != null or f.mtime_ns != mtime_ns or f.size != size) return;
+        const id = s.gpa.dupe(u8, info.id) catch return;
+        const title = s.gpa.dupe(u8, info.title) catch {
+            s.gpa.free(id);
+            return;
+        };
+        var copy = info;
+        copy.id = id;
+        copy.title = title;
+        f.info = copy;
     }
 
     // ---- documents ----
@@ -268,25 +296,33 @@ pub const Server = struct {
     const DocRead = struct { bytes: []u8, mtime_ns: i96, size: u64 };
 
     fn readDoc(s: *Server, a: Allocator, name: []const u8) !DocRead {
-        var f = try s.dir.openFile(s.io, name, .{});
+        // O_NOFOLLOW: a symlink planted in the folder (an agent can create one) is not a document (V-10).
+        var f = try s.dir.openFile(s.io, name, .{ .follow_symlinks = false });
         defer f.close(s.io);
         const st = try f.stat(s.io);
+        if (st.kind != .file) return error.NotRegular;
         var rb: [8192]u8 = undefined;
         var fr = f.reader(s.io, &rb);
         const bytes = try fr.interface.allocRemaining(a, .limited(256 << 20));
         return .{ .bytes = bytes, .mtime_ns = st.mtime.nanoseconds, .size = st.size };
     }
 
+    fn isMissing(e: anyerror) bool {
+        return e == error.FileNotFound or e == error.SymLinkLoop or e == error.NotRegular or e == error.IsDir or e == error.NotDir;
+    }
+
     /// After the server itself wrote `name` (document and optionally one log line): refresh the scan
     /// state and publish the events with `who`. Must be called with `scan_mu` held.
     /// Append one op-log line; a failure is reported on stderr (the document write already succeeded).
     fn appendLogOrWarn(s: *Server, lp: []const u8, line: []const u8) void {
-        ws.appendLine(s.io, s.dir, lp, line) catch |e| {
-            var b: [512]u8 = undefined;
-            var w = Io.File.stderr().writer(s.io, &b);
-            w.interface.print("kerf serve: warning: could not append to op log {s}: {s} (the document was written)\n", .{ lp, @errorName(e) }) catch {};
-            w.interface.flush() catch {};
-        };
+        ws.appendLine(s.io, s.dir, lp, line) catch |e| s.warnLog(lp, e);
+    }
+
+    fn warnLog(s: *Server, lp: []const u8, e: anyerror) void {
+        var b: [512]u8 = undefined;
+        var w = Io.File.stderr().writer(s.io, &b);
+        w.interface.print("kerf serve: warning: could not append to op log {s}: {s} (the document was written)\n", .{ lp, @errorName(e) }) catch {};
+        w.interface.flush() catch {};
     }
 
     fn noteWriteLocked(s: *Server, a: Allocator, name: []const u8, is_new: bool, who: []const u8, log_line: ?[]const u8) void {
@@ -312,12 +348,19 @@ pub const Server = struct {
         if (log_line) |line| s.publishLog(a, name, line);
     }
 
-    fn etagOf(a: Allocator, mtime_ns: i96, size: u64) ![]u8 {
-        return std.fmt.allocPrint(a, "\"{d}-{d}\"", .{ @divTrunc(mtime_ns, std.time.ns_per_ms), size });
+    /// `"<mtime_ms>-<size>-<hash of the bytes>"`: two same-size edits within one millisecond no longer collide.
+    fn etagOf(a: Allocator, mtime_ns: i96, size: u64, bytes: []const u8) ![]u8 {
+        return std.fmt.allocPrint(a, "\"{d}-{d}-{x:0>16}\"", .{ @divTrunc(mtime_ns, std.time.ns_per_ms), size, std.hash.Wyhash.hash(0, bytes) });
     }
 };
 
 fn computeInfo(gpa: Allocator, a: Allocator, text: []const u8) !DocInfo {
+    var info = try computeInfoNoHash(gpa, a, text);
+    info.hash = std.hash.Wyhash.hash(0, text);
+    return info;
+}
+
+fn computeInfoNoHash(gpa: Allocator, a: Allocator, text: []const u8) !DocInfo {
     var pe: kerf.json.ParseError = undefined;
     const parsed = (try kerf.json.parse(a, text, &pe)) orelse
         return .{ .id = try gpa.dupe(u8, ""), .title = try gpa.dupe(u8, "(invalid JSON)"), .components = 0, .views = 0, .errors = 1, .warnings = 0 };
@@ -342,18 +385,103 @@ fn computeInfo(gpa: Allocator, a: Allocator, text: []const u8) !DocInfo {
 // HTTP: connection loop and routing
 // ---------------------------------------------------------------------------------------------
 
+// ---- connection limits and deadlines (V-4, V-13) ----
+
+const max_conns: u32 = 256;
+const max_sse_streams: u32 = 32;
+const max_proxy_calls: u32 = 8;
+const max_requests_per_conn: u32 = 1000;
+const busy_ms: u32 = 120_000; // one handler, apart from SSE and the LLM proxy
+
+pub const Timeouts = struct {
+    /// Keep-alive wait for the next request.
+    idle_ms: u32 = 30_000,
+    /// From the first byte of a request to the end of its head (the body gets three times this, plus 1 s per 512 KiB declared).
+    head_ms: u32 = 10_000,
+    /// One blocking write to a streaming (SSE) client.
+    write_ms: u32 = 20_000,
+};
+
+/// One open connection. `deadline_ns` (awake clock, 0 = none) is armed around every blocking socket operation; the
+/// watchdog task shuts the socket down when it passes, which unblocks the reader or writer (a thread-per-connection
+/// server needs this, there are no read timeouts to lean on).
+const Conn = struct {
+    stream: net.Stream,
+    deadline_ns: std.atomic.Value(i64) = .init(0),
+    expired: bool = false,
+};
+
+threadlocal var tl_conn: ?*Conn = null;
+threadlocal var tl_io: ?Io = null;
+
+fn nowNs(io: Io) i64 {
+    return @intCast(Io.Timestamp.now(io, .awake).nanoseconds);
+}
+
+/// Arm the current connection's deadline `ms` from now (0 = disarm).
+fn arm(ms: u64) void {
+    const c = tl_conn orelse return;
+    const io = tl_io orelse return;
+    c.deadline_ns.store(if (ms == 0) 0 else nowNs(io) + @as(i64, @intCast(ms)) * std.time.ns_per_ms, .release);
+}
+
+fn connWatchdog(s: *Server) void {
+    while (true) {
+        s.io.sleep(Io.Duration.fromMilliseconds(500), .awake) catch return;
+        const now = nowNs(s.io);
+        s.conns_mu.lockUncancelable(s.io);
+        for (s.conns.items) |c| {
+            const d = c.deadline_ns.load(.acquire);
+            if (d != 0 and now > d and !c.expired) {
+                c.expired = true;
+                c.stream.shutdown(s.io, .both) catch {};
+            }
+        }
+        s.conns_mu.unlock(s.io);
+    }
+}
+
 fn serveConn(s: *Server, stream: net.Stream) void {
     const io = s.io;
-    defer stream.close(io);
+    defer {
+        stream.close(io);
+        _ = s.active_conns.fetchSub(1, .acq_rel);
+    }
+    var conn: Conn = .{ .stream = stream };
+    s.conns_mu.lockUncancelable(io);
+    s.conns.append(s.gpa, &conn) catch {
+        s.conns_mu.unlock(io);
+        return;
+    };
+    s.conns_mu.unlock(io);
+    defer {
+        s.conns_mu.lockUncancelable(io);
+        for (s.conns.items, 0..) |c, i| if (c == &conn) {
+            _ = s.conns.swapRemove(i);
+            break;
+        };
+        s.conns_mu.unlock(io);
+    }
+    tl_conn = &conn;
+    tl_io = io;
+    defer {
+        tl_conn = null;
+        tl_io = null;
+    }
+
     var rbuf: [http.max_head]u8 = undefined;
     var wbuf: [16 * 1024]u8 = undefined;
     var sr = stream.reader(io, &rbuf);
     var sw = stream.writer(io, &wbuf);
     const w = &sw.interface;
-    while (true) {
+    var served: u32 = 0;
+    while (served < max_requests_per_conn) : (served += 1) {
         var arena = std.heap.ArenaAllocator.init(s.gpa);
         defer arena.deinit();
         const a = arena.allocator();
+        arm(s.cfg.timeouts.idle_ms);
+        _ = sr.interface.peek(1) catch return; // closed, or idle too long
+        arm(s.cfg.timeouts.head_ms);
         var req = http.readHead(a, &sr.interface) catch |e| {
             switch (e) {
                 error.HeadTooLarge => http.sendError(a, w, 431, false, "", "E_HEAD", "request headers too large") catch {},
@@ -363,18 +491,12 @@ fn serveConn(s: *Server, stream: net.Stream) void {
             }
             return;
         };
-        http.readBody(a, &sr.interface, w, &req, http.max_body) catch |e| {
-            switch (e) {
-                error.TooLarge => http.sendError(a, w, 413, false, "", "E_TOO_LARGE", "request body over 64 MiB") catch {},
-                error.BadChunk, error.ShortBody => http.sendError(a, w, 400, false, "", "E_HTTP", "malformed request body") catch {},
-                else => {},
-            }
-            return;
-        };
-        const keep = dispatch(s, a, req, w) catch |e| blk: {
+        arm(busy_ms);
+        const keep = handleRequest(s, a, &req, &sr.interface, w) catch |e| blk: {
             http.sendError(a, w, 500, false, "", "E_INTERNAL", @errorName(e)) catch {};
             break :blk false;
         };
+        arm(s.cfg.timeouts.write_ms);
         w.flush() catch return;
         if (!keep or !req.keep_alive) return;
     }
@@ -420,102 +542,130 @@ fn checkAccess(s: *Server, a: Allocator, req: http.Request) ?Reject {
     return null;
 }
 
-fn dispatch(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer) !bool {
-    const path = try http.percentDecode(a, req.path, false);
-    if (std.mem.eql(u8, path, "/api") or std.mem.startsWith(u8, path, "/api/")) return api(s, a, req, w, path);
-    if (std.mem.eql(u8, req.method, "GET") or std.mem.eql(u8, req.method, "HEAD")) return static(s, a, req, w, path);
-    try http.sendError(a, w, 405, req.keep_alive, "", "E_METHOD", "method not allowed");
-    return req.keep_alive;
-}
+const Kind = enum { options, info, docs_list, docs_create, doc_get, doc_apply, doc_log, doc_export, events, llm, agent_run, agent_stop, bad_file, method_not_allowed, not_found, static };
 
-fn api(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, path: []const u8) !bool {
-    const extra = s.cors(a, req);
-    const ka = req.keep_alive;
-    if (std.mem.eql(u8, req.method, "OPTIONS")) {
-        try http.send(w, .{ .status = 204, .keep_alive = ka, .extra = extra }, "");
-        return ka;
-    }
-    const is_info = std.mem.eql(u8, path, "/api/info");
-    if (checkAccess(s, a, req)) |rej| {
-        if (is_info and rej.status == 401) {
-            // Let the UI discover that a token is needed.
-            const body = try std.fmt.allocPrint(a, "{{\"version\":\"{s}\",\"token_required\":true,\"authenticated\":false}}\n", .{kerf.version});
-            try http.sendJson(w, 200, ka, extra, body);
-            return ka;
-        }
-        try http.sendError(a, w, rej.status, ka, extra, rej.code, rej.message);
-        return ka;
-    }
+const Route = struct { kind: Kind, file: []const u8 = "", api: bool = false };
+
+/// Which handler a request is for. Pure: no I/O, so it runs before any body byte is read.
+fn routeOf(req: http.Request, path: []const u8) Route {
     const is_get = std.mem.eql(u8, req.method, "GET");
     const is_post = std.mem.eql(u8, req.method, "POST");
+    if (!(std.mem.eql(u8, path, "/api") or std.mem.startsWith(u8, path, "/api/"))) {
+        return .{ .kind = if (is_get or std.mem.eql(u8, req.method, "HEAD")) .static else .method_not_allowed };
+    }
+    if (std.mem.eql(u8, req.method, "OPTIONS")) return .{ .kind = .options, .api = true };
     const rest = path["/api".len..]; // "" or "/..."
-
-    if (is_info) {
-        if (!is_get) return methodNotAllowed(s, a, req, w, extra);
-        return apiInfo(s, a, req, w, extra);
-    }
-    if (std.mem.eql(u8, rest, "/docs")) {
-        if (is_get) return apiList(s, a, req, w, extra);
-        if (is_post) return apiCreate(s, a, req, w, extra);
-        return methodNotAllowed(s, a, req, w, extra);
-    }
+    const mna: Route = .{ .kind = .method_not_allowed, .api = true };
+    if (std.mem.eql(u8, rest, "/info")) return if (is_get) .{ .kind = .info, .api = true } else mna;
+    if (std.mem.eql(u8, rest, "/docs")) return if (is_get) .{ .kind = .docs_list, .api = true } else if (is_post) .{ .kind = .docs_create, .api = true } else mna;
     if (std.mem.startsWith(u8, rest, "/docs/")) {
         const tail = rest["/docs/".len..];
         var parts = std.mem.splitScalar(u8, tail, '/');
         const file = parts.next().?;
         const action = parts.next();
-        if (parts.next() != null) return notFound(s, a, req, w, extra);
-        if (!ws.validDocFile(file)) {
-            try http.sendError(a, w, 400, ka, extra, "E_FILE", "file must be a plain NAME.kerf.json (no directories)");
+        if (parts.next() != null) return .{ .kind = .not_found, .api = true };
+        if (!ws.validDocFile(file)) return .{ .kind = .bad_file, .api = true };
+        if (action == null) return if (is_get) .{ .kind = .doc_get, .file = file, .api = true } else mna;
+        const act = action.?;
+        if (std.mem.eql(u8, act, "apply")) return if (is_post) .{ .kind = .doc_apply, .file = file, .api = true } else mna;
+        if (std.mem.eql(u8, act, "log")) return if (is_get) .{ .kind = .doc_log, .file = file, .api = true } else mna;
+        if (std.mem.eql(u8, act, "export")) return if (is_get) .{ .kind = .doc_export, .file = file, .api = true } else mna;
+        return .{ .kind = .not_found, .api = true };
+    }
+    if (std.mem.eql(u8, rest, "/events")) return if (is_get) .{ .kind = .events, .api = true } else mna;
+    if (std.mem.eql(u8, rest, "/llm")) return if (is_post) .{ .kind = .llm, .api = true } else mna;
+    if (std.mem.eql(u8, rest, "/agent/run")) return if (is_post) .{ .kind = .agent_run, .api = true } else mna;
+    if (std.mem.eql(u8, rest, "/agent/stop")) return if (is_post) .{ .kind = .agent_stop, .api = true } else mna;
+    return .{ .kind = .not_found, .api = true };
+}
+
+/// Per-route request body cap (V-5). Routes that take no body have 0.
+fn bodyCap(kind: Kind) usize {
+    return switch (kind) {
+        .agent_stop => 4 << 10,
+        .docs_create => 64 << 10,
+        .doc_apply => 16 << 20,
+        .llm => 32 << 20,
+        .agent_run => 64 << 20, // images: up to 8 x 12 MB decoded, base64
+        else => 0,
+    };
+}
+
+/// Route first, then read the body, then handle: nothing is read from an unauthenticated or unroutable request.
+/// Every answer given before the body was read closes the connection (the unread body would otherwise be parsed as the
+/// next request).
+fn handleRequest(s: *Server, a: Allocator, req: *http.Request, r: *Io.Reader, w: *Io.Writer) !bool {
+    const path = try http.percentDecode(a, req.path, false);
+    const route = routeOf(req.*, path);
+    const body_pending = req.chunked or req.content_length != 0;
+    const ka = req.keep_alive and !body_pending; // for answers sent before the body is read
+    const extra = if (route.api) try s.cors(a, req.*) else "";
+
+    if (route.kind == .options) {
+        try http.send(w, .{ .status = 204, .keep_alive = ka, .extra = extra }, "");
+        return ka;
+    }
+    if (route.api) {
+        if (checkAccess(s, a, req.*)) |rej| {
+            if (route.kind == .info and rej.status == 401) {
+                // Let the UI discover that a token is needed.
+                const body = try std.fmt.allocPrint(a, "{{\"version\":\"{s}\",\"token_required\":true,\"authenticated\":false}}\n", .{kerf.version});
+                try http.sendJson(w, 200, ka, extra, body);
+                return ka;
+            }
+            try http.sendError(a, w, rej.status, ka, extra, rej.code, rej.message);
             return ka;
         }
-        if (action == null) {
-            if (!is_get) return methodNotAllowed(s, a, req, w, extra);
-            return apiGetDoc(s, a, req, w, extra, file);
+    }
+    switch (route.kind) {
+        .method_not_allowed => {
+            try http.sendError(a, w, 405, ka, extra, "E_METHOD", if (route.api) "method not allowed for this path" else "method not allowed");
+            return ka;
+        },
+        .not_found => {
+            try http.sendError(a, w, 404, ka, extra, "E_NOT_FOUND", "no such endpoint");
+            return ka;
+        },
+        .bad_file => {
+            try http.sendError(a, w, 400, ka, extra, "E_FILE", "file must be a plain NAME.kerf.json (no directories)");
+            return ka;
+        },
+        else => {},
+    }
+    // Body.
+    const cap = bodyCap(route.kind);
+    if (body_pending) {
+        if (cap == 0) {
+            try http.sendError(a, w, 400, false, extra, "E_BODY", "this endpoint takes no request body");
+            return false;
         }
-        if (std.mem.eql(u8, action.?, "apply")) {
-            if (!is_post) return methodNotAllowed(s, a, req, w, extra);
-            return apiApply(s, a, req, w, extra, file);
-        }
-        if (std.mem.eql(u8, action.?, "log")) {
-            if (!is_get) return methodNotAllowed(s, a, req, w, extra);
-            return apiLog(s, a, req, w, extra, file);
-        }
-        if (std.mem.eql(u8, action.?, "export")) {
-            if (!is_get) return methodNotAllowed(s, a, req, w, extra);
-            return apiExport(s, a, req, w, extra, file);
-        }
-        return notFound(s, a, req, w, extra);
+        arm(@as(u64, s.cfg.timeouts.head_ms) * 3 + @as(u64, @min(req.content_length, 256 << 20) / (512 << 10)) * 1000);
+        http.readBody(a, r, w, req, cap) catch |e| {
+            switch (e) {
+                error.TooLarge => http.sendError(a, w, 413, false, extra, "E_TOO_LARGE", try std.fmt.allocPrint(a, "request body over {d} bytes for this endpoint", .{cap})) catch {},
+                error.BadChunk, error.ShortBody => http.sendError(a, w, 400, false, extra, "E_HTTP", "malformed request body") catch {},
+                else => {},
+            }
+            return false;
+        };
+        arm(busy_ms);
     }
-    if (std.mem.eql(u8, rest, "/events")) {
-        if (!is_get) return methodNotAllowed(s, a, req, w, extra);
-        return apiEvents(s, a, w, extra);
-    }
-    if (std.mem.eql(u8, rest, "/llm")) {
-        if (!is_post) return methodNotAllowed(s, a, req, w, extra);
-        return apiLlm(s, a, req, w, extra);
-    }
-    if (std.mem.eql(u8, rest, "/agent/run")) {
-        if (!is_post) return methodNotAllowed(s, a, req, w, extra);
-        return apiAgentRun(s, a, req, w, extra);
-    }
-    if (std.mem.eql(u8, rest, "/agent/stop")) {
-        if (!is_post) return methodNotAllowed(s, a, req, w, extra);
-        return apiAgentStop(s, a, req, w, extra);
-    }
-    return notFound(s, a, req, w, extra);
-}
-
-fn methodNotAllowed(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8) !bool {
-    _ = s;
-    try http.sendError(a, w, 405, req.keep_alive, extra, "E_METHOD", "method not allowed for this path");
-    return req.keep_alive;
-}
-
-fn notFound(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8) !bool {
-    _ = s;
-    try http.sendError(a, w, 404, req.keep_alive, extra, "E_NOT_FOUND", "no such endpoint");
-    return req.keep_alive;
+    const rq = req.*;
+    return switch (route.kind) {
+        .info => apiInfo(s, a, rq, w, extra),
+        .docs_list => apiList(s, a, rq, w, extra),
+        .docs_create => apiCreate(s, a, rq, w, extra),
+        .doc_get => apiGetDoc(s, a, rq, w, extra, route.file),
+        .doc_apply => apiApply(s, a, rq, w, extra, route.file),
+        .doc_log => apiLog(s, a, rq, w, extra, route.file),
+        .doc_export => apiExport(s, a, rq, w, extra, route.file),
+        .events => apiEvents(s, a, w, extra),
+        .llm => apiLlm(s, a, rq, w, extra),
+        .agent_run => apiAgentRun(s, a, rq, w, extra),
+        .agent_stop => apiAgentStop(s, a, rq, w, extra),
+        .static => static(s, a, rq, w, path),
+        else => unreachable,
+    };
 }
 
 fn badRequest(a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8, code: []const u8, msg: []const u8) !bool {
@@ -571,24 +721,48 @@ fn apiInfo(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []
 // ---- documents ----
 
 fn apiList(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8) !bool {
-    s.scan_mu.lockUncancelable(s.io);
-    defer s.scan_mu.unlock(s.io);
-    s.scanLocked(true);
+    const Row = struct { name: []const u8, mtime_ns: i96, size: u64, info: ?DocInfo, bytes_hash: u64 = 0 };
+    var rows: std.ArrayList(Row) = .empty;
+    {
+        // Snapshot under the lock; the engine `check` below runs outside it (it can take seconds on a big folder).
+        s.scan_mu.lockUncancelable(s.io);
+        defer s.scan_mu.unlock(s.io);
+        s.scanLocked(true);
+        for (s.files.items) |f| {
+            var info: ?DocInfo = null;
+            if (f.info) |i| {
+                var c = i;
+                c.id = try a.dupe(u8, i.id);
+                c.title = try a.dupe(u8, i.title);
+                info = c;
+            }
+            try rows.append(a, .{ .name = try a.dupe(u8, f.name), .mtime_ns = f.mtime_ns, .size = f.size, .info = info });
+        }
+    }
     var out: std.ArrayList(u8) = .empty;
     try out.append(a, '[');
     var first = true;
-    for (s.files.items) |*f| {
-        const info = s.ensureInfo(a, f) orelse continue;
+    for (rows.items) |*r| {
+        if (r.info == null) {
+            const rd = s.readDoc(a, r.name) catch continue;
+            var info = computeInfo(a, a, rd.bytes) catch continue;
+            info.hash = std.hash.Wyhash.hash(0, rd.bytes);
+            r.mtime_ns = rd.mtime_ns;
+            r.size = rd.size;
+            r.info = info;
+            s.storeInfo(r.name, rd.mtime_ns, rd.size, info);
+        }
+        const info = r.info.?;
         if (!first) try out.append(a, ',');
         first = false;
         try out.appendSlice(a, "{\"file\":");
-        try http.jsonString(&out, a, f.name);
+        try http.jsonString(&out, a, r.name);
         try out.appendSlice(a, ",\"id\":");
         try http.jsonString(&out, a, info.id);
         try out.appendSlice(a, ",\"title\":");
         try http.jsonString(&out, a, info.title);
-        try out.print(a, ",\"mtime_ms\":{d},\"size\":{d},\"components\":{d},\"views\":{d},\"errors\":{d},\"warnings\":{d}}}", .{
-            @divTrunc(f.mtime_ns, std.time.ns_per_ms), f.size, info.components, info.views, info.errors, info.warnings,
+        try out.print(a, ",\"mtime_ms\":{d},\"size\":{d},\"etag\":\"\\\"{d}-{d}-{x:0>16}\\\"\",\"components\":{d},\"views\":{d},\"errors\":{d},\"warnings\":{d}}}", .{
+            @divTrunc(r.mtime_ns, std.time.ns_per_ms), r.size, @divTrunc(r.mtime_ns, std.time.ns_per_ms), r.size, info.hash, info.components, info.views, info.errors, info.warnings,
         });
     }
     try out.appendSlice(a, "]\n");
@@ -597,14 +771,14 @@ fn apiList(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []
 }
 
 fn apiGetDoc(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8, file: []const u8) !bool {
-    const rd = s.readDoc(a, file) catch |e| switch (e) {
-        error.FileNotFound => {
+    const rd = s.readDoc(a, file) catch |e| {
+        if (Server.isMissing(e)) {
             try http.sendError(a, w, 404, req.keep_alive, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
             return req.keep_alive;
-        },
-        else => return e,
+        }
+        return e;
     };
-    const etag = try Server.etagOf(a, rd.mtime_ns, rd.size);
+    const etag = try Server.etagOf(a, rd.mtime_ns, rd.size, rd.bytes);
     const hdr = try std.fmt.allocPrint(a, "ETag: {s}\r\n{s}", .{ etag, extra });
     if (req.header("if-none-match")) |inm| if (std.mem.eql(u8, inm, etag)) {
         try http.send(w, .{ .status = 304, .keep_alive = req.keep_alive, .extra = hdr }, "");
@@ -644,8 +818,8 @@ fn apiCreate(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: 
     const lp = try ws.logPath(a, file);
     s.appendLogOrWarn(lp, line);
     s.noteWriteLocked(a, file, true, "designer", line);
-    const st = s.dir.statFile(s.io, file, .{}) catch return error.StatFailed;
-    const etag = try Server.etagOf(a, st.mtime.nanoseconds, st.size);
+    const st = s.dir.statFile(s.io, file, .{ .follow_symlinks = false }) catch return error.StatFailed;
+    const etag = try Server.etagOf(a, st.mtime.nanoseconds, st.size, text);
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(a, "{\"file\":");
     try http.jsonString(&out, a, file);
@@ -680,18 +854,29 @@ fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: [
         };
         if (ok) who = ac;
     };
-    const if_match: ?[]const u8 = if (body.get("if_match")) |v| v.str() else null;
+    // `if_match` must be a string (or null/absent): anything else used to be treated as absent, i.e. an unconditional write.
+    var if_match: ?[]const u8 = null;
+    if (body.get("if_match")) |v| {
+        if (v.str()) |im| if_match = im else if (!v.isNull()) return badRequest(a, req, w, extra, "E_INPUT", "\"if_match\" must be the ETag string of the version the ops were made against (or omitted)");
+    }
 
     s.write_mu.lockUncancelable(s.io);
     defer s.write_mu.unlock(s.io);
-    const rd = s.readDoc(a, file) catch |e| switch (e) {
-        error.FileNotFound => {
+    // The same advisory lock `kerf apply -w` takes: no other process can interleave a read-modify-write with ours.
+    const lp = try ws.logPath(a, file);
+    const doc_lock = ws.DocLock.acquire(s.io, s.dir, lp) catch |e| {
+        try http.sendError(a, w, 500, ka, extra, "E_WRITE", try std.fmt.allocPrint(a, "cannot open or lock the op log {s}: {s}", .{ lp, @errorName(e) }));
+        return ka;
+    };
+    defer doc_lock.release(s.io);
+    const rd = s.readDoc(a, file) catch |e| {
+        if (Server.isMissing(e)) {
             try http.sendError(a, w, 404, ka, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
             return ka;
-        },
-        else => return e,
+        }
+        return e;
     };
-    const etag = try Server.etagOf(a, rd.mtime_ns, rd.size);
+    const etag = try Server.etagOf(a, rd.mtime_ns, rd.size, rd.bytes);
     if (if_match) |im| {
         const want = std.mem.trim(u8, im, " ");
         const cur = std.mem.trim(u8, etag, "\"");
@@ -729,16 +914,15 @@ fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: [
         if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
         const summary = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
         const line = try ws.buildEntry(a, s.io, .{ .who = who, .tool = "kerf-serve", .why = why }, ops_text.items, changed.items, summary);
-        const lp = try ws.logPath(a, file);
         s.scan_mu.lockUncancelable(s.io);
         defer s.scan_mu.unlock(s.io);
         ws.writeFileAtomic(s.io, s.dir, file, text) catch |e| {
             try http.sendError(a, w, 500, ka, extra, "E_WRITE", try std.fmt.allocPrint(a, "could not write {s}: {s}", .{ file, @errorName(e) }));
             return ka;
         };
-        s.appendLogOrWarn(lp, line);
+        doc_lock.appendLine(s.io, line) catch |e| s.warnLog(lp, e);
         s.noteWriteLocked(a, file, false, who, line);
-        if (s.dir.statFile(s.io, file, .{})) |st| final_etag = try Server.etagOf(a, st.mtime.nanoseconds, st.size) else |_| {}
+        if (s.dir.statFile(s.io, file, .{ .follow_symlinks = false })) |st| final_etag = try Server.etagOf(a, st.mtime.nanoseconds, st.size, text) else |_| {}
     }
     // engine output + the new etag (the engine JSON object ends with "}\n")
     const trimmed = std.mem.trimEnd(u8, r.bytes, " \r\n");
@@ -752,14 +936,26 @@ fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: [
     return ka;
 }
 
+/// Whole file at `path` (a regular file only: a symlink is "missing"), at most `limit` bytes.
+fn readNoFollow(s: *Server, a: Allocator, path: []const u8, limit: usize) ?[]u8 {
+    var f = s.dir.openFile(s.io, path, .{ .follow_symlinks = false }) catch return null;
+    defer f.close(s.io);
+    const st = f.stat(s.io) catch return null;
+    if (st.kind != .file) return null;
+    var rb: [8192]u8 = undefined;
+    var fr = f.reader(s.io, &rb);
+    return fr.interface.allocRemaining(a, .limited(limit)) catch null;
+}
+
 fn apiLog(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8, file: []const u8) !bool {
     const since: usize = if (try req.param(a, "since")) |sv| (std.fmt.parseInt(usize, sv, 10) catch return badRequest(a, req, w, extra, "E_INPUT", "since must be a line index (integer)")) else 0;
-    if (s.dir.statFile(s.io, file, .{})) |_| {} else |_| {
+    const dst = s.dir.statFile(s.io, file, .{ .follow_symlinks = false }) catch null;
+    if (dst == null or dst.?.kind != .file) {
         try http.sendError(a, w, 404, req.keep_alive, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
         return req.keep_alive;
     }
     const lp = try ws.logPath(a, file);
-    const data: []u8 = s.dir.readFileAlloc(s.io, lp, a, .limited(64 << 20)) catch &.{};
+    const data: []u8 = readNoFollow(s, a, lp, 64 << 20) orelse &.{};
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(a, "{\"entries\":[");
     var idx: usize = 0;
@@ -805,12 +1001,12 @@ fn apiExport(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: 
     const sheet_p = try req.param(a, "sheet");
     const sheet = if (sheet_p) |v| (std.mem.eql(u8, v, "1") or std.mem.eql(u8, v, "true")) else false;
     var input: std.ArrayList(u8) = .empty;
-    const rd = s.readDoc(a, file) catch |e| switch (e) {
-        error.FileNotFound => {
+    const rd = s.readDoc(a, file) catch |e| {
+        if (Server.isMissing(e)) {
             try http.sendError(a, w, 404, ka, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
             return ka;
-        },
-        else => return e,
+        }
+        return e;
     };
     try input.appendSlice(a, "{\"doc\":");
     try input.appendSlice(a, std.mem.trim(u8, rd.bytes, " \t\r\n"));
@@ -818,8 +1014,8 @@ fn apiExport(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: 
     try http.jsonString(&input, a, view);
     try input.print(a, ",\"format\":\"{s}\",\"sheet\":{s}", .{ f.name, if (sheet) "true" else "false" });
     if (try req.param(a, "px")) |px| {
-        _ = std.fmt.parseInt(u32, px, 10) catch return badRequest(a, req, w, extra, "E_INPUT", "px must be an integer (output width in pixels)");
-        try input.print(a, ",\"px\":{s}", .{px});
+        const px_n = std.fmt.parseInt(u32, px, 10) catch return badRequest(a, req, w, extra, "E_INPUT", "px must be an integer (output width in pixels)");
+        try input.print(a, ",\"px\":{d}", .{px_n}); // the parsed number, never the raw text ("+5" made invalid JSON)
     }
     try input.append(a, '}');
     const r = try kerf.call(a, "export", input.items);
@@ -839,7 +1035,14 @@ fn apiExport(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: 
 // ---- SSE ----
 
 fn apiEvents(s: *Server, a: Allocator, w: *Io.Writer, extra: []const u8) !bool {
+    if (s.sse_active.fetchAdd(1, .acq_rel) >= max_sse_streams) {
+        _ = s.sse_active.fetchSub(1, .acq_rel);
+        try http.sendError(a, w, 503, false, extra, "E_BUSY", "too many open event streams");
+        return false;
+    }
+    defer _ = s.sse_active.fetchSub(1, .acq_rel);
     const hdr = try std.fmt.allocPrint(a, "X-Accel-Buffering: no\r\n{s}", .{extra});
+    arm(s.cfg.timeouts.write_ms);
     try http.writeHead(w, .{ .status = 200, .content_type = "text/event-stream; charset=utf-8", .content_length = null, .keep_alive = false, .extra = hdr });
     try w.writeAll("retry: 2000\n\nevent: ping\ndata: {}\n\n");
     try w.flush();
@@ -847,8 +1050,10 @@ fn apiEvents(s: *Server, a: Allocator, w: *Io.Writer, extra: []const u8) !bool {
     var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(s.gpa);
     while (true) {
+        arm(0); // waiting for events: no deadline
         buf.clearRetainingCapacity();
         if (!s.hub.wait(s.io, &last, &buf, s.gpa)) return false;
+        arm(s.cfg.timeouts.write_ms); // a client that stopped reading is cut off instead of wedging this thread
         w.writeAll(buf.items) catch return false;
         w.flush() catch return false;
     }
@@ -865,8 +1070,15 @@ fn apiLlm(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []c
             return req.keep_alive;
         },
         .ok => |p| {
+            if (s.proxy_active.fetchAdd(1, .acq_rel) >= max_proxy_calls) {
+                _ = s.proxy_active.fetchSub(1, .acq_rel);
+                try http.sendError(a, w, 429, false, extra, "E_BUSY", "too many LLM calls in flight; retry in a moment");
+                return false;
+            }
+            defer _ = s.proxy_active.fetchSub(1, .acq_rel);
+            arm(0); // the proxy enforces its own stall limits
             var detail: []const u8 = "upstream error";
-            proxy.forward(a, &s.client, p, w, &detail) catch |e| switch (e) {
+            proxy.forwardLimited(s.io, a, &s.client, p, w, &detail, s.cfg.llm_limits) catch |e| switch (e) {
                 error.Upstream => {
                     try http.sendError(a, w, 502, false, extra, "E_UPSTREAM", detail);
                     return false;
@@ -948,13 +1160,41 @@ fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
     return ka;
 }
 
+/// `path` (relative to the served folder) exists as a real directory: created when missing, refused when it is a
+/// symlink (an agent could have pointed `.kerf/attachments` somewhere else).
+fn ensureRealDir(s: *Server, path: []const u8) !void {
+    s.dir.createDir(s.io, path, .default_dir) catch |e| switch (e) {
+        error.PathAlreadyExists => {},
+        else => return e,
+    };
+    const st = try s.dir.statFile(s.io, path, .{ .follow_symlinks = false });
+    if (st.kind != .directory) return error.BadImages;
+}
+
+const attachment_ttl_s = 24 * 3600;
+
+/// Attached images are only needed while their run lasts (at most `--agent-timeout`); drop anything older than a day.
+fn cleanupAttachments(s: *Server) void {
+    var d = s.dir.openDir(s.io, ".kerf/attachments", .{ .iterate = true, .follow_symlinks = false }) catch return;
+    defer d.close(s.io);
+    const now_ns = Io.Timestamp.now(s.io, .real).nanoseconds;
+    var it = d.iterate();
+    while (it.next(s.io) catch null) |e| {
+        if (e.kind != .file) continue;
+        const st = d.statFile(s.io, e.name, .{ .follow_symlinks = false }) catch continue;
+        if (now_ns - st.mtime.nanoseconds > @as(i96, attachment_ttl_s) * std.time.ns_per_s) d.deleteFile(s.io, e.name) catch {};
+    }
+}
+
 /// Save `[{name, data_base64}]` under `<dir>/.kerf/attachments/` and return the absolute paths.
 fn saveImages(s: *Server, a: Allocator, iv: kerf.json.Value) ![]const []const u8 {
     const items = iv.arr() orelse return error.BadImages;
     if (items.len > 8) return error.BadImages;
     var out: std.ArrayList([]const u8) = .empty;
     if (items.len == 0) return out.items;
-    try s.dir.createDirPath(s.io, ".kerf/attachments");
+    try ensureRealDir(s, ".kerf");
+    try ensureRealDir(s, ".kerf/attachments");
+    cleanupAttachments(s);
     for (items) |it| {
         const name_in = (if (it.get("name")) |v| v.str() else null) orelse return error.BadImages;
         var data = (if (it.get("data_base64")) |v| v.str() else null) orelse return error.BadImages;
@@ -980,7 +1220,10 @@ fn saveImages(s: *Server, a: Allocator, iv: kerf.json.Value) ![]const []const u8
         var rnd: [4]u8 = undefined;
         s.io.random(&rnd);
         const rel = try std.fmt.allocPrint(a, ".kerf/attachments/{x}-{s}", .{ &rnd, safe.items });
-        try s.dir.writeFile(s.io, .{ .sub_path = rel, .data = bytes });
+        // exclusive create: never write through a name an agent pre-planted (symlink)
+        var af = try s.dir.createFile(s.io, rel, .{ .exclusive = true });
+        defer af.close(s.io);
+        try af.writeStreamingAll(s.io, bytes);
         try out.append(a, try std.fs.path.join(a, &.{ s.dir_abs, rel }));
     }
     return out.items;
@@ -1005,7 +1248,6 @@ fn apiAgentStop(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extr
 // ---- static UI ----
 
 fn static(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, path: []const u8) !bool {
-    _ = s;
     const ka = req.keep_alive;
     const head_only = std.mem.eql(u8, req.method, "HEAD");
     var rel = std.mem.trimStart(u8, path, "/");
@@ -1016,15 +1258,50 @@ fn static(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, path: []co
     }
     for (ui_assets.files) |f| {
         if (!std.mem.eql(u8, f.path, rel)) continue;
-        try http.send(w, .{ .status = 200, .content_type = http.mimeFor(f.path), .keep_alive = ka, .no_store = false, .extra = "Cache-Control: no-cache\r\n" }, if (head_only) "" else f.data);
+        const h: http.Head = .{ .status = 200, .content_type = http.mimeFor(f.path), .keep_alive = ka, .no_store = false, .extra = "Cache-Control: no-cache\r\n", .csp = s.ui_csp };
+        if (head_only) try http.sendHeadOnly(w, h, f.data.len) else try http.send(w, h, f.data);
         return ka;
     }
     if (ui_assets.files.len == 0 and std.mem.eql(u8, rel, "index.html")) {
-        try http.send(w, .{ .status = 200, .content_type = "text/html; charset=utf-8", .keep_alive = ka }, no_ui_page);
+        const h: http.Head = .{ .status = 200, .content_type = "text/html; charset=utf-8", .keep_alive = ka };
+        if (head_only) try http.sendHeadOnly(w, h, no_ui_page.len) else try http.send(w, h, no_ui_page);
         return ka;
     }
     try http.sendError(a, w, 404, ka, "", "E_NOT_FOUND", "not found");
     return ka;
+}
+
+/// The UI is same-origin only: scripts from this server (plus the hashes of the inline bootstrap scripts of the
+/// embedded index.html, computed at startup), wasm compilation, no framing, no plugins, no form posts.
+const ui_csp_prefix = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'";
+const ui_csp_suffix = "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+const default_ui_csp = ui_csp_prefix ++ ui_csp_suffix;
+
+/// `default_ui_csp` plus `'sha256-...'` for every inline `<script>` of the embedded index.html.
+fn buildUiCsp(gpa: Allocator) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(gpa);
+    try out.appendSlice(gpa, ui_csp_prefix);
+    for (ui_assets.files) |f| {
+        if (!std.mem.eql(u8, f.path, "index.html")) continue;
+        var rest: []const u8 = f.data;
+        while (std.mem.indexOf(u8, rest, "<script")) |i| {
+            rest = rest[i + "<script".len ..];
+            const tag_end = std.mem.indexOfScalar(u8, rest, '>') orelse break;
+            const attrs = rest[0..tag_end];
+            const close = std.mem.indexOf(u8, rest[tag_end + 1 ..], "</script>") orelse break;
+            const body = rest[tag_end + 1 ..][0..close];
+            rest = rest[tag_end + 1 + close ..];
+            if (std.mem.indexOf(u8, attrs, "src=") != null or body.len == 0) continue;
+            var digest: [32]u8 = undefined;
+            std.crypto.hash.sha2.Sha256.hash(body, &digest, .{});
+            var b64: [44]u8 = undefined;
+            _ = std.base64.standard.Encoder.encode(&b64, &digest);
+            try out.print(gpa, " 'sha256-{s}'", .{&b64});
+        }
+    }
+    try out.appendSlice(gpa, ui_csp_suffix);
+    return out.toOwnedSlice(gpa);
 }
 
 const no_ui_page =
@@ -1091,15 +1368,27 @@ fn acceptLoop(s: *Server, server: *net.Server) void {
                 continue;
             },
         };
+        if (s.active_conns.fetchAdd(1, .acq_rel) >= max_conns) {
+            _ = s.active_conns.fetchSub(1, .acq_rel);
+            refuse(s, stream);
+            continue;
+        }
         s.group.concurrent(s.io, serveConn, .{ s, stream }) catch {
-            const msg = "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
-            var b: [128]u8 = undefined;
-            var sw = stream.writer(s.io, &b);
-            sw.interface.writeAll(msg) catch {};
-            sw.interface.flush() catch {};
-            stream.close(s.io);
+            _ = s.active_conns.fetchSub(1, .acq_rel);
+            refuse(s, stream);
         };
     }
+}
+
+/// Over the connection cap (or no thread to spare): a tiny 503, then close. The reply is far smaller than a socket
+/// buffer, so this cannot block the accept loop.
+fn refuse(s: *Server, stream: net.Stream) void {
+    const msg = "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nRetry-After: 2\r\nContent-Length: 0\r\n\r\n";
+    var b: [128]u8 = undefined;
+    var sw = stream.writer(s.io, &b);
+    sw.interface.writeAll(msg) catch {};
+    sw.interface.flush() catch {};
+    stream.close(s.io);
 }
 
 fn prefetchAgents(s: *Server) void {
@@ -1150,8 +1439,11 @@ const serve_usage =
     \\  --host HOST       bind address; 0.0.0.0 serves the LAN and then requires a token
     \\  --port N          default 7700 (0 = pick a free port)
     \\  --open            open the UI in the default browser
-    \\  --token T         require this token (Authorization: Bearer T, or ?token=T)
-    \\  --no-token        no token even when not on localhost (trusted network only)
+    \\  --token T         require this token (Authorization: Bearer T, or ?token=T); visible in `ps`, prefer:
+    \\  --token-file F    read the token from file F (or set KERF_TOKEN); the default is a random token, printed in the URL
+    \\  --no-token        no token at all (trusted machine and network only; localhost then also checks Host/Origin)
+    \\  --llm-timeout S   longest pause of a proxied LLM call (first byte and between chunks; default 300 s / 120 s)
+    \\  --timeouts-ms I,H,W  tuning/testing: keep-alive idle, request head and streaming write deadlines (30000,10000,20000)
     \\  --allow-origin U  also accept browser requests from origin U (dev server, e.g. http://localhost:5173)
     \\  --trust-agents    run agents defined in <dir>/.kerf/agents.json (they execute commands from the folder; without
     \\                    this flag, or a yes at the interactive prompt, they are listed as untrusted and never started)
@@ -1195,10 +1487,11 @@ fn confirmWorkspaceAgents(gpa: Allocator, io: Io, dir: Io.Dir, dir_abs: []const 
 pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer, environ: *const std.process.Environ.Map) !u8 {
     var cfg: Config = .{};
     var no_token = false;
+    var token_file: ?[]const u8 = null;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const a = args[i];
-        const takes_value = std.mem.eql(u8, a, "--dir") or std.mem.eql(u8, a, "--host") or std.mem.eql(u8, a, "--port") or std.mem.eql(u8, a, "--token") or std.mem.eql(u8, a, "--allow-origin") or std.mem.eql(u8, a, "--agent-timeout");
+        const takes_value = std.mem.eql(u8, a, "--dir") or std.mem.eql(u8, a, "--host") or std.mem.eql(u8, a, "--port") or std.mem.eql(u8, a, "--token") or std.mem.eql(u8, a, "--allow-origin") or std.mem.eql(u8, a, "--agent-timeout") or std.mem.eql(u8, a, "--token-file") or std.mem.eql(u8, a, "--llm-timeout") or std.mem.eql(u8, a, "--timeouts-ms");
         if (takes_value) {
             if (i + 1 >= args.len) {
                 try err.print("kerf serve: {s} needs a value\n{s}", .{ a, serve_usage });
@@ -1206,7 +1499,26 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
             }
             i += 1;
             const v = args[i];
-            if (std.mem.eql(u8, a, "--agent-timeout")) {
+            if (std.mem.eql(u8, a, "--timeouts-ms")) {
+                var it = std.mem.splitScalar(u8, v, ',');
+                const t_idle = std.fmt.parseInt(u32, it.next() orelse "", 10) catch 0;
+                const t_head = std.fmt.parseInt(u32, it.next() orelse "", 10) catch 0;
+                const t_write = std.fmt.parseInt(u32, it.next() orelse "", 10) catch 0;
+                if (t_idle == 0 or t_head == 0 or t_write == 0) {
+                    try err.print("kerf serve: --timeouts-ms wants IDLE,HEAD,WRITE in milliseconds, got '{s}'\n", .{v});
+                    return 2;
+                }
+                cfg.timeouts = .{ .idle_ms = t_idle, .head_ms = t_head, .write_ms = t_write };
+            } else if (std.mem.eql(u8, a, "--llm-timeout")) {
+                const secs = std.fmt.parseInt(u32, v, 10) catch {
+                    try err.print("kerf serve: --llm-timeout must be a number of seconds, got '{s}'\n", .{v});
+                    return 2;
+                };
+                cfg.llm_limits.idle_ms = @as(u64, secs) * 1000;
+                cfg.llm_limits.first_byte_ms = cfg.llm_limits.idle_ms;
+            } else if (std.mem.eql(u8, a, "--token-file")) {
+                token_file = v;
+            } else if (std.mem.eql(u8, a, "--agent-timeout")) {
                 cfg.agent_timeout_s = std.fmt.parseInt(u32, v, 10) catch {
                     try err.print("kerf serve: --agent-timeout must be a number of seconds, got '{s}'\n", .{v});
                     return 2;
@@ -1223,20 +1535,46 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
             return 2;
         }
     }
+    // Token sources, strongest first: --token-file, KERF_TOKEN, --token (visible in `ps`), else a fresh random one.
+    // A token is the default everywhere, also on loopback: the Host/Origin checks stop browsers, not other local users
+    // or processes, and the agent bridge can run an autonomous coding agent (V-7). `--no-token` opts out.
+    if (token_file) |tf| {
+        var f = std.Io.Dir.cwd().openFile(io, tf, .{}) catch |e| {
+            try err.print("kerf serve: cannot read --token-file '{s}': {s}\n", .{ tf, @errorName(e) });
+            return 1;
+        };
+        defer f.close(io);
+        var fb: [512]u8 = undefined;
+        var fr = f.reader(io, &fb);
+        const raw = fr.interface.allocRemaining(gpa, .limited(4096)) catch {
+            try err.print("kerf serve: cannot read --token-file '{s}'\n", .{tf});
+            return 1;
+        };
+        cfg.token = std.mem.trim(u8, raw, " \t\r\n");
+    } else if (cfg.token == null) {
+        if (environ.get("KERF_TOKEN")) |t| if (t.len > 0) {
+            cfg.token = t;
+        };
+    } else {
+        try err.writeAll("kerf serve: note: --token is visible to other users in `ps`; prefer KERF_TOKEN or --token-file\n");
+    }
     if (no_token and cfg.token != null) {
-        try err.writeAll("kerf serve: use either --token or --no-token\n");
+        try err.writeAll("kerf serve: use either a token (--token, --token-file, KERF_TOKEN) or --no-token\n");
         return 2;
     }
-    const loopback = isLoopbackHost(cfg.host);
-    if (!loopback and !no_token and cfg.token == null) {
+    if (!no_token and cfg.token == null) {
         var raw: [16]u8 = undefined;
-        io.random(&raw);
+        io.randomSecure(&raw) catch {
+            try err.writeAll("kerf serve: no secure random source for the access token; pass --token-file, or --no-token on a trusted machine\n");
+            return 1;
+        };
         cfg.token = try std.fmt.allocPrint(gpa, "{x}", .{&raw});
     }
     if (cfg.token) |t| if (t.len == 0) {
-        try err.writeAll("kerf serve: --token must not be empty\n");
+        try err.writeAll("kerf serve: the token must not be empty\n");
         return 2;
     };
+    const loopback = isLoopbackHost(cfg.host);
 
     var dir = std.Io.Dir.cwd().openDir(io, cfg.dir_path, .{ .iterate = true }) catch |e| {
         try err.print("kerf serve: cannot open --dir '{s}': {s}\n", .{ cfg.dir_path, @errorName(e) });
@@ -1295,6 +1633,7 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
     defer server.agent_mgr.deinit();
 
     server.scan(false);
+    cleanupAttachments(&server);
     installSignalHandlers();
 
     // Banner (stdout; scripts parse the first line).
@@ -1302,7 +1641,7 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
     var fw = Io.File.stdout().writer(io, &out_buf);
     const o = &fw.interface;
     const local_host = if (loopback) bind_host else "127.0.0.1";
-    try o.print("kerf serve: http://{s}:{d}/  (dir {s})\n", .{ local_host, port, dir_abs });
+    if (cfg.token) |t| try o.print("kerf serve: http://{s}:{d}/?token={s}  (dir {s})\n", .{ local_host, port, t, dir_abs }) else try o.print("kerf serve: http://{s}:{d}/  (dir {s})\n", .{ local_host, port, dir_abs });
     if (!loopback) {
         const any = std.mem.eql(u8, bind_host, "0.0.0.0") or std.mem.eql(u8, bind_host, "::");
         var lan_buf: [32]u8 = undefined;
@@ -1313,7 +1652,9 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
     if (ui_assets.files.len == 0) try o.writeAll("note: this binary has no embedded web UI (build with -Dui=<dist dir>); the API is available.\n");
     try o.flush();
 
+    server.ui_csp = buildUiCsp(gpa) catch default_ui_csp;
     server.group.concurrent(io, pollerTask, .{&server}) catch {};
+    server.group.concurrent(io, connWatchdog, .{&server}) catch {};
     server.group.concurrent(io, prefetchAgents, .{&server}) catch {};
     if (cfg.open) {
         const url = if (cfg.token) |t| try std.fmt.allocPrint(gpa, "http://{s}:{d}/?token={s}", .{ local_host, port, t }) else try std.fmt.allocPrint(gpa, "http://{s}:{d}/", .{ local_host, port });

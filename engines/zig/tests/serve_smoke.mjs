@@ -35,9 +35,13 @@ process.on('SIGINT', () => { cleanup(); process.exit(130); });
 const bareEnv = { ...process.env, PATH: path.dirname(process.execPath) + ':/usr/bin:/bin', KERF_ACTOR: '' };
 delete bareEnv.KERF_ACTOR;
 
+// A token is the default (V-7); tests that are not about tokens pass --no-token implicitly. 'auto-token' keeps the default.
 function startServer(dir, extraArgs = []) {
+  const auto = extraArgs.includes('auto-token');
+  const args = extraArgs.filter((a) => a !== 'auto-token');
+  if (!auto && !args.some((a) => ['--token', '--no-token', '--token-file'].includes(a))) args.push('--no-token');
   return new Promise((resolve, reject) => {
-    const p = spawn(KERF, ['serve', '--dir', dir, '--port', '0', ...extraArgs], { env: bareEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(KERF, ['serve', '--dir', dir, '--port', '0', ...args], { env: bareEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     children.push(p);
     let out = '', err = '';
     const t = setTimeout(() => reject(new Error('server did not start: ' + out + err)), 8000);
@@ -196,8 +200,8 @@ async function main() {
   check('list has the doc with counts', docs.json.length === 1 && docs.json[0].file === 'a.kerf.json' && docs.json[0].id === 'a' && docs.json[0].title === 'SMOKE A' && docs.json[0].components === 1 && docs.json[0].errors === 0 && typeof docs.json[0].mtime_ms === 'number' && docs.json[0].size > 100, docs.text);
   let g = await api(port, 'GET', '/api/docs/a.kerf.json');
   const etag1 = g.headers['etag'];
-  check('GET doc returns JSON + ETag "<mtime_ms>-<size>"', g.status === 200 && g.json.id === 'a' && /^"\d+-\d+"$/.test(etag1), etag1);
-  check('ETag matches the list entry', etag1 === `"${docs.json[0].mtime_ms}-${docs.json[0].size}"`, [etag1, docs.json[0]]);
+  check('GET doc returns JSON + ETag "<mtime_ms>-<size>-<hash>"', g.status === 200 && g.json.id === 'a' && /^"\d+-\d+-[0-9a-f]{16}"$/.test(etag1), etag1);
+  check('ETag matches the list entry', etag1 === docs.json[0].etag && etag1.startsWith(`"${docs.json[0].mtime_ms}-${docs.json[0].size}-`), [etag1, docs.json[0]]);
   let g304 = await rawReq(port, 'GET', '/api/docs/a.kerf.json', { headers: { 'if-none-match': etag1 } });
   check('If-None-Match -> 304', g304.status === 304);
   let g404 = await api(port, 'GET', '/api/docs/zzz.kerf.json');
@@ -466,7 +470,7 @@ async function main() {
   section('token: --host 0.0.0.0 requires one');
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke2-'));
   cli(dir2, ['new', 't.kerf.json']);
-  const lan = await startServer(dir2, ['--host', '0.0.0.0']);
+  const lan = await startServer(dir2, ['--host', '0.0.0.0', 'auto-token']);
   const m = /\?token=([0-9a-f]{32})/.exec(lan.banner);
   check('banner prints a LAN URL with an auto token', /LAN:\s+http:\/\/[\d.<>a-z-]+:\d+\/\?token=[0-9a-f]{32}/.test(lan.banner), lan.banner);
   const tok = m && m[1];
@@ -615,6 +619,211 @@ async function main() {
   check('V-3: SIGTERM to the server stops the active run, no orphan left', gone && isAlive(pidsK.data.event.self) === false && isAlive(pidsK.data.event.child) === false, [gone, isAlive(pidsK.data.event.self), isAlive(pidsK.data.event.child)]);
   evP.close();
   fs.rmSync(dirP, { recursive: true, force: true });
+
+  section('V-4 / V-5 / V-13: connection limits, deadlines, route-first bodies, SSE framing');
+  const dirQ = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-lim-'));
+  fs.mkdirSync(path.join(dirQ, '.kerf'));
+  fs.writeFileSync(path.join(dirQ, '.kerf', 'agents.json'), JSON.stringify({ agents: [
+    { id: 'fake', detect: [process.execPath, '--version'], argv: [process.execPath, FAKE, '{message}', '{resume}'], resume: ['--resume', '{session_id}'] }] }));
+  cli(dirQ, ['new', 'q.kerf.json']);
+  const Q = await startServer(dirQ, ['--trust-agents', '--timeouts-ms', '1500,1500,1500', '--llm-timeout', '2']);
+  const tClose = async (pieces, ms = 6000) => { const t = performance.now(); const r = await rawSocket(Q.port, pieces, { ms }); return { ...r, took: performance.now() - t }; };
+  // slowloris: a head that never ends is cut at the head deadline, however slowly the bytes trickle in
+  const slow = await tClose(['GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\nX-A: ', 700, 'b', 700, 'c', 700, 'd', 700, 'e', 700, 'f']);
+  check('V-4: a trickled request head is cut at the head deadline (~1.5 s), not held open', slow.took < 4500, slow.took);
+  const idleC = await tClose([]);
+  check('V-4: an idle connection that never sends a byte is closed (~1.5 s)', idleC.took < 4000, idleC.took);
+  const bodyStall = await tClose('POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"file":');
+  check('V-4: a body that stops arriving is cut after the body deadline', bodyStall.took < 7000, bodyStall.took);
+  const early413 = await tClose('POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 70000\r\n\r\n', 3000);
+  check('V-5: a declared body over the route cap (64 KiB for create) -> 413 before any body byte is read', early413.status === 413 && early413.took < 1000, [early413.status, early413.took]);
+  const noBodyRoute = await tClose('POST /api/nope HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 5\r\n\r\nhello', 2000);
+  check('V-5: unknown route with a body -> 404 and the connection is closed (the body is not parsed as the next request)', noBodyRoute.status === 404 && /connection: close/i.test(noBodyRoute.text), noBodyRoute.text.slice(0, 120));
+  const getBody = await tClose('GET /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4\r\n\r\nabcd', 2000);
+  check('V-5: a GET with a body is refused (400)', getBody.status === 400, getBody.text.slice(0, 80));
+  // memory: 40 connections declaring 60 MiB each used to allocate 60 MiB each up front
+  const rssOf = (pid) => +fs.readFileSync(`/proc/${pid}/status`, 'utf8').match(/VmRSS:\s+(\d+)/)[1] / 1024;
+  const rss0 = rssOf(Q.proc.pid);
+  const declared = Array.from({ length: 40 }, () => rawSocket(Q.port, 'POST /api/agent/run HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 62914560\r\n\r\n{', { ms: 900 }));
+  await sleep(500);
+  const rss1 = rssOf(Q.proc.pid);
+  await Promise.all(declared);
+  check('V-4: 40 connections that declare a 60 MiB body and send nothing cost < 60 MB of RSS (was 2.4 GB)', rss1 - rss0 < 60, [rss0, rss1]);
+  check('V-4: the server answers normally meanwhile', (await api(Q.port, 'GET', '/api/info')).status === 200);
+  // SSE framing: a raw CR/LS in an agent text line must not split the frame
+  const rawEvents = await new Promise((resolve) => {
+    let got = ''; const sock = net.connect(Q.port, '127.0.0.1');
+    sock.write('GET /api/events HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n');
+    sock.on('data', (d) => { got += d.toString('latin1'); });
+    setTimeout(async () => {
+      const r = await api(Q.port, 'POST', '/api/agent/run', { body: { agent: 'fake', message: 'CRLINE x' } });
+      setTimeout(() => { sock.destroy(); resolve({ got, run: r }); }, 2500);
+    }, 400);
+  });
+  const dataLines = rawEvents.got.split('\n').filter((l) => l.startsWith('data: '));
+  check('V-13: the agent line with CR is published, and no SSE data line contains a CR', rawEvents.run.status === 200 && dataLines.some((l) => /"type":"(cr|text)"/.test(l)) && !dataLines.some((l) => l.includes('\r')), rawEvents.got.slice(-300));
+  // V-13: a log line longer than the 4 MiB read window used to be re-read every tick forever
+  const evQ = sse(Q.port);
+  await evQ.waitFor((f) => f.event === 'ping', 2000);
+  fs.writeFileSync(path.join(dirQ, 'q.kerf.json.log.jsonl'), fs.readFileSync(path.join(dirQ, 'q.kerf.json.log.jsonl'), 'utf8') + 'a'.repeat(5 << 20));
+  await sleep(1800);
+  fs.appendFileSync(path.join(dirQ, 'q.kerf.json.log.jsonl'), '\n' + JSON.stringify({ ts: '2026-01-01T00:00:00Z', who: 'tester', tool: 'test', why: 'after the huge line', ops: [], changed: [], summary_head: 'x' }) + '\n');
+  const afterHuge = await evQ.waitFor((f) => f.event === 'log' && f.data.entry?.why === 'after the huge line', 4000);
+  check('V-13: a >4 MiB log line is skipped and later entries still arrive', !!afterHuge);
+  evQ.close();
+
+  section('V-12: LLM proxy stall limits and concurrency cap');
+  const slowUp = http.createServer((req, res) => {
+    req.resume();
+    if (req.url === '/silent') return; // never answers
+    res.writeHead(200, { 'content-type': 'text/event-stream' }); res.write('data: first\n\n'); // then stalls
+  });
+  await new Promise((r) => slowUp.listen(0, '127.0.0.1', r));
+  const slowBase = `http://127.0.0.1:${slowUp.address().port}`;
+  const tS0 = performance.now();
+  const silent = await api(Q.port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: slowBase, path: '/silent', body: {} } });
+  check('V-12: an upstream that never answers -> 502 E_UPSTREAM after the first-byte limit (--llm-timeout 2)', silent.status === 502 && silent.json?.error?.code === 'E_UPSTREAM' && performance.now() - tS0 < 6000, [silent.status, performance.now() - tS0, silent.text.slice(0, 100)]);
+  const tS1 = performance.now();
+  const stalled = await api(Q.port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: slowBase, path: '/stall', body: {} } });
+  check('V-12: an upstream that stalls mid-stream is cut at the idle limit; what arrived was forwarded', stalled.status === 200 && /first/.test(stalled.text) && performance.now() - tS1 < 6000, [stalled.status, performance.now() - tS1]);
+  const many = await Promise.all(Array.from({ length: 12 }, () => api(Q.port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: slowBase, path: '/silent', body: {} } })));
+  check('V-12: at most 8 proxy calls in flight; the rest get 429', many.filter((r) => r.status === 429).length >= 3 && many.every((r) => [429, 502].includes(r.status)), many.map((r) => r.status));
+  slowUp.close(); slowUp.closeAllConnections?.();
+
+  Q.proc.kill('SIGTERM');
+
+  section('V-8: default token, headers, KERF_TOKEN, --token-file');
+  const dirK = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-tok-'));
+  cli(dirK, ['new', 't.kerf.json']);
+  const K = await startServer(dirK, ['auto-token']);
+  const mk = /\?token=([0-9a-f]{32})/.exec(K.banner);
+  check('V-8: a token is generated by default, also on loopback, and printed in the URL', !!mk && /^kerf serve: http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]{32}\s/.test(K.banner), K.banner);
+  check('V-8: no token -> 401 on loopback', (await api(K.port, 'GET', '/api/docs')).status === 401);
+  check('V-8: with the token -> 200', (await api(K.port, 'GET', '/api/docs', { headers: { authorization: 'Bearer ' + mk[1] } })).status === 200);
+  const hdrApi = await api(K.port, 'GET', '/api/docs', { headers: { authorization: 'Bearer ' + mk[1] } });
+  check('V-8: security headers on API responses', hdrApi.headers['x-content-type-options'] === 'nosniff' && hdrApi.headers['referrer-policy'] === 'no-referrer' && hdrApi.headers['x-frame-options'] === 'DENY' && /frame-ancestors 'none'/.test(hdrApi.headers['content-security-policy']) && /default-src 'none'/.test(hdrApi.headers['content-security-policy']), hdrApi.headers);
+  const hdrUi = await api(K.port, 'GET', '/');
+  const uiCsp = hdrUi.headers['content-security-policy'] ?? '';
+  const embedded = /<script/.test(hdrUi.text) && !/without the web UI/.test(hdrUi.text);
+  check('V-8: CSP, frame-ancestors none and no-referrer on the served page' + (embedded ? ' (embedded UI: script-src self + hashes of the inline scripts)' : ' (stub page)'), /frame-ancestors 'none'/.test(uiCsp) && hdrUi.headers['referrer-policy'] === 'no-referrer' && hdrUi.headers['x-frame-options'] === 'DENY' && (!embedded || (/script-src 'self' 'wasm-unsafe-eval'/.test(uiCsp) && /'sha256-/.test(uiCsp))), hdrUi.headers);
+  const headReq = await rawSocket(K.port, 'HEAD / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n', { ms: 1000 });
+  const hl = /content-length: (\d+)/i.exec(headReq.text);
+  check('V-16: HEAD on the UI page reports the real Content-Length, no body', headReq.status === 200 && hl && +hl[1] > 100 && headReq.text.split('\r\n\r\n')[1] === '', headReq.text.slice(0, 200));
+  K.proc.kill('SIGTERM');
+  const envTok = await new Promise((resolve, reject) => {
+    const p = spawn(KERF, ['serve', '--dir', dirK, '--port', '0'], { env: { ...bareEnv, KERF_TOKEN: 'env-token-123' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    children.push(p); let out = '';
+    p.stdout.on('data', (d) => { out += d; const m = /http:\/\/[\d.]+:(\d+)\//.exec(out); if (m && out.includes('\n')) resolve({ proc: p, port: +m[1], banner: out }); });
+    setTimeout(() => reject(new Error('no banner')), 5000);
+  });
+  check('V-8: KERF_TOKEN is honoured (and echoed in the URL)', (await api(envTok.port, 'GET', '/api/docs', { headers: { authorization: 'Bearer env-token-123' } })).status === 200 && envTok.banner.includes('token=env-token-123'));
+  envTok.proc.kill('SIGTERM');
+  const tokFile = path.join(dirK, 'token.txt'); fs.writeFileSync(tokFile, 'file-token-456\n');
+  const TF = await startServer(dirK, ['--token-file', tokFile]);
+  check('V-8: --token-file is honoured', (await api(TF.port, 'GET', '/api/docs', { headers: { authorization: 'Bearer file-token-456' } })).status === 200 && (await api(TF.port, 'GET', '/api/docs')).status === 401);
+  TF.proc.kill('SIGTERM');
+  fs.rmSync(dirK, { recursive: true, force: true });
+  // connection cap (default timeouts, so idle sockets stay open)
+  const R = await startServer(dirQ);
+  const socks = [];
+  for (let i = 0; i < 270; i++) { const s2 = net.connect(R.port, '127.0.0.1'); s2.on('error', () => {}); socks.push(s2); }
+  for (let i = 0; i < 40; i++) { if (+fs.readFileSync(`/proc/${R.proc.pid}/status`, 'utf8').match(/Threads:\s+(\d+)/)[1] >= 256) break; await sleep(100); }
+  await sleep(200);
+  const threads = +fs.readFileSync(`/proc/${R.proc.pid}/status`, 'utf8').match(/Threads:\s+(\d+)/)[1];
+  const refused = await rawSocket(R.port, 'GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n', { ms: 800 });
+  check('V-4: over 256 open connections the next one gets 503 (and the thread count is bounded)', refused.status === 503 && threads < 330, [refused.status, threads]);
+  socks.forEach((s2) => s2.destroy());
+  await sleep(500);
+  check('V-4: the server recovers when they close', (await api(R.port, 'GET', '/api/info')).status === 200);
+  R.proc.kill('SIGTERM');
+  fs.rmSync(dirQ, { recursive: true, force: true });
+
+  section('V-10 / V-11 / V-14 / V-15: symlinks, durability, ETag, if_match, names, attachments');
+  const dirS = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-sym-'));
+  fs.mkdirSync(path.join(dirS, '.kerf'));
+  fs.writeFileSync(path.join(dirS, '.kerf', 'agents.json'), JSON.stringify({ agents: [
+    { id: 'fake', detect: [process.execPath, '--version'], argv: [process.execPath, FAKE, '{message}', '{resume}'], resume: ['--resume', '{session_id}'] }] }));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-outside-'));
+  fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOP SECRET');
+  fs.copyFileSync(REF, path.join(outside, 'real.kerf.json'));
+  cli(dirS, ['new', 'ok.kerf.json']);
+  fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(dirS, 'evil.kerf.json'));
+  fs.symlinkSync(path.join(outside, 'real.kerf.json'), path.join(dirS, 'link.kerf.json'));
+  const S = await startServer(dirS, ['--trust-agents']);
+  const symDocs = await api(S.port, 'GET', '/api/docs');
+  check('V-10: symlinked *.kerf.json files are not listed', symDocs.json.length === 1 && symDocs.json[0].file === 'ok.kerf.json', symDocs.text.slice(0, 200));
+  const symGet = await api(S.port, 'GET', '/api/docs/evil.kerf.json');
+  check('V-10: GET of a symlink to /etc-style data -> 404, content not returned', symGet.status === 404 && !symGet.text.includes('TOP SECRET'), [symGet.status, symGet.text.slice(0, 100)]);
+  const symGet2 = await api(S.port, 'GET', '/api/docs/link.kerf.json');
+  check('V-10: GET of a symlink to a real document outside the folder -> 404', symGet2.status === 404);
+  const symApply = await api(S.port, 'POST', '/api/docs/link.kerf.json/apply', { body: { ops: addOp('x1') } });
+  check('V-10: apply through a symlink -> 404, the target is untouched', symApply.status === 404 && !fs.readFileSync(path.join(outside, 'real.kerf.json'), 'utf8').includes('"x1"'), symApply.status);
+  const symExp = await api(S.port, 'GET', '/api/docs/link.kerf.json/export?view=A&format=svg');
+  check('V-10: export through a symlink -> 404', symExp.status === 404);
+  fs.writeFileSync(path.join(outside, 'log-target.txt'), 'untouched\n');
+  fs.rmSync(path.join(dirS, 'ok.kerf.json.log.jsonl'));
+  fs.symlinkSync(path.join(outside, 'log-target.txt'), path.join(dirS, 'ok.kerf.json.log.jsonl'));
+  const symLogGet = await api(S.port, 'GET', '/api/docs/ok.kerf.json/log');
+  check('V-10: the op-log endpoint does not read through a symlinked log', symLogGet.status === 200 && symLogGet.json.entries.length === 0 && !symLogGet.text.includes('untouched'), symLogGet.text.slice(0, 120));
+  const symLogApply = await api(S.port, 'POST', '/api/docs/ok.kerf.json/apply', { body: { ops: addOp('x2') } });
+  check('V-10: apply refuses to append through a symlinked log (500 E_WRITE) and writes nothing', symLogApply.status === 500 && fs.readFileSync(path.join(outside, 'log-target.txt'), 'utf8') === 'untouched\n' && !fs.readFileSync(path.join(dirS, 'ok.kerf.json'), 'utf8').includes('"x2"'), [symLogApply.status, symLogApply.text.slice(0, 160)]);
+  fs.rmSync(path.join(dirS, 'ok.kerf.json.log.jsonl'));
+  // attachments directory pointing elsewhere
+  fs.rmSync(path.join(dirS, '.kerf', 'attachments'), { recursive: true, force: true });
+  fs.symlinkSync(outside, path.join(dirS, '.kerf', 'attachments'));
+  const png1x1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64').toString('base64');
+  const imgSym = await api(S.port, 'POST', '/api/agent/run', { body: { agent: 'fake', message: 'x', images: [{ name: 'a.png', data_base64: png1x1 }] } });
+  check('V-10: .kerf/attachments as a symlink is refused (400) and nothing is written outside', imgSym.status === 400 && fs.readdirSync(outside).every((f) => !/a\.png$/.test(f)), [imgSym.status, fs.readdirSync(outside)]);
+  fs.rmSync(path.join(dirS, '.kerf', 'attachments'));
+  // V-14: old attachments are removed, and px is echoed as the parsed number
+  fs.mkdirSync(path.join(dirS, '.kerf', 'attachments'));
+  const oldAtt = path.join(dirS, '.kerf', 'attachments', 'deadbeef-old.png'); fs.writeFileSync(oldAtt, 'x');
+  const past = new Date(Date.now() - 3 * 86400e3); fs.utimesSync(oldAtt, past, past);
+  const imgOk = await api(S.port, 'POST', '/api/agent/run', { body: { agent: 'fake', message: 'attach', images: [{ name: 'b.png', data_base64: png1x1 }] } });
+  check('V-14: saving a new attachment removes attachments older than a day', imgOk.status === 200 && !fs.existsSync(oldAtt) && fs.readdirSync(path.join(dirS, '.kerf', 'attachments')).length === 1, [imgOk.status, fs.readdirSync(path.join(dirS, '.kerf', 'attachments'))]);
+  await sleep(1500);
+  fs.copyFileSync(REF, path.join(dirS, 'beam.kerf.json')); await sleep(700);
+  const pxPlus = await api(S.port, 'GET', '/api/docs/beam.kerf.json/export?view=A&format=png&px=%2B900');
+  check('V-14: px=+900 is printed as the parsed number 900 (the raw "+900" made the engine input invalid JSON)', pxPlus.status === 200 && pxPlus.body.readUInt32BE(16) === 900, [pxPlus.status, pxPlus.text.slice(0, 100)]);
+  const pxBad = await api(S.port, 'GET', '/api/docs/beam.kerf.json/export?view=A&format=png&px=9%2C%22x%22');
+  check('V-14: a non-numeric px -> 400', pxBad.status === 400, pxBad.status);
+  // V-15
+  for (const n of ['CON', 'nul', 'COM1', 'LPT9', 'aux', 'PRN']) {
+    const rr = await api(S.port, 'POST', '/api/docs', { body: { file: n + '.kerf.json' } });
+    check('V-15: ' + n + '.kerf.json is not a document name (400)', rr.status === 400, rr.text.slice(0, 80));
+  }
+  const dotName = await api(S.port, 'POST', '/api/docs', { body: { file: 'trail..kerf.json' } });
+  check('V-15: a stem ending in a dot is refused', dotName.status === 400);
+  // V-11: ETag covers the bytes; if_match types; parallel appenders
+  const eA = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-etag-'));
+  const body1 = fs.readFileSync(path.join(dirS, 'ok.kerf.json'), 'utf8');
+  const sameLen = body1.replace('"id": "ok"', '"id": "zz"');
+  fs.writeFileSync(path.join(dirS, 'e1.kerf.json'), body1); fs.writeFileSync(path.join(dirS, 'e2.kerf.json'), sameLen);
+  const fixedT = new Date('2026-01-01T00:00:00Z'); fs.utimesSync(path.join(dirS, 'e1.kerf.json'), fixedT, fixedT); fs.utimesSync(path.join(dirS, 'e2.kerf.json'), fixedT, fixedT);
+  await sleep(700);
+  const g1 = await api(S.port, 'GET', '/api/docs/e1.kerf.json'), g2 = await api(S.port, 'GET', '/api/docs/e2.kerf.json');
+  check('V-11: same size + same mtime + different bytes -> different ETags (content hash)', body1.length === sameLen.length && body1 !== sameLen && g1.headers.etag !== g2.headers.etag && /^"\d+-\d+-[0-9a-f]{16}"$/.test(g1.headers.etag), [g1.headers.etag, g2.headers.etag]);
+  const lst = await api(S.port, 'GET', '/api/docs');
+  check('V-11: the list row carries the same etag as GET', lst.json.find((d) => d.file === 'e1.kerf.json')?.etag === g1.headers.etag, lst.json.find((d) => d.file === 'e1.kerf.json'));
+  for (const bad of [5, true, ['x'], { a: 1 }]) {
+    const rr = await api(S.port, 'POST', '/api/docs/ok.kerf.json/apply', { body: { ops: addOp('imx'), if_match: bad } });
+    check('V-11: if_match of type ' + (Array.isArray(bad) ? 'array' : typeof bad) + ' -> 400, not an unconditional write', rr.status === 400 && rr.json.error.code === 'E_INPUT' && !fs.readFileSync(path.join(dirS, 'ok.kerf.json'), 'utf8').includes('"imx"'), [rr.status, rr.text.slice(0, 120)]);
+  }
+  const nullIm = await api(S.port, 'POST', '/api/docs/ok.kerf.json/apply', { body: { ops: addOp('imn'), if_match: null } });
+  check('V-11: if_match null is the same as absent', nullIm.status === 200 && nullIm.json.ok === true, nullIm.text.slice(0, 120));
+  // 40 parallel appenders (CLI -w): every log line intact, one per apply
+  fs.rmSync(eA, { recursive: true, force: true });
+  const parDoc = path.join(dirS, 'par.kerf.json');
+  cli(dirS, ['new', 'par.kerf.json']);
+  await Promise.all(Array.from({ length: 40 }, (_, i) => new Promise((res) => {
+    const c = spawn(KERF, ['apply', 'par.kerf.json', '--ops', JSON.stringify(addOp('n' + i)), '-w', '--why', 'par ' + i], { cwd: dirS, stdio: 'ignore' }); c.on('exit', res);
+  })));
+  const parLog = fs.readFileSync(path.join(dirS, 'par.kerf.json.log.jsonl'), 'utf8').trim().split('\n');
+  let parOk = true; for (const l of parLog) { try { JSON.parse(l); } catch { parOk = false; } }
+  check('V-11: 40 parallel `kerf apply -w` leave only whole, parseable log lines (1 create + 40 applies)', parOk && parLog.length === 41, [parOk, parLog.length]);
+  S.proc.kill('SIGTERM');
+  fs.rmSync(dirS, { recursive: true, force: true });
+  fs.rmSync(outside, { recursive: true, force: true });
 
   section('misc');
   const badDir = spawn(KERF, ['serve', '--dir', '/definitely/not/here'], { stdio: ['ignore', 'pipe', 'pipe'] });

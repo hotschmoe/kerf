@@ -19,7 +19,7 @@ const out = (o) => process.stdout.write(JSON.stringify(o) + '\n');
 if (message.includes('STUBBORN') || message.includes('FOREVER')) process.on('SIGTERM', () => { process.stderr.write('fake-agent: ignoring SIGTERM\n'); });
 else process.on('SIGTERM', () => { process.stderr.write('fake-agent: SIGTERM\n'); process.exit(143); });
 
-out({ type: 'system', subtype: 'init', session_id: sid, cwd: process.cwd(), actor: process.env.KERF_ACTOR ?? null });
+out({ type: 'system', subtype: 'init', session_id: sid, cwd: process.cwd(), actor: process.env.KERF_ACTOR ?? null, kerf_token: process.env.KERF_TOKEN ?? null });
 if (resume) process.stdout.write(`resumed ${resume}\n`);
 process.stdout.write('hello from the fake agent (plain text line)\n');
 process.stderr.write('fake-agent: a line on stderr\n');
@@ -45,5 +45,6 @@ if (/SLOW|TREE|STUBBORN|FOREVER/.test(message)) {
     await new Promise((r) => setTimeout(r, 200));
   }
 }
+if (message.includes('CRLINE')) process.stdout.write('{"type":"cr","text":"a\rb\u2028c"}\n');
 if (message.includes('FAIL')) { process.stderr.write('fake-agent: failing on request\n'); process.exit(3); }
 out({ type: 'result', subtype: 'success', is_error: false, session_id: sid, result: 'done' });

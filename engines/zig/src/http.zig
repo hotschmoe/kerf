@@ -272,17 +272,32 @@ pub const Head = struct {
     extra: []const u8 = "",
     /// API/SSE responses are never cached.
     no_store: bool = true,
+    /// `Content-Security-Policy` value; null = the locked-down default for API responses.
+    csp: ?[]const u8 = null,
 };
+
+/// CSP of every non-UI response: nothing may load or run from a JSON/error/export response, and no page may frame it.
+/// (SVG exports keep inline styles and data: images, so a directly opened export still renders.)
+pub const api_csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 pub fn writeHead(w: *Io.Writer, h: Head) Io.Writer.Error!void {
     try w.print("HTTP/1.1 {d} {s}\r\n", .{ h.status, reason(h.status) });
     if (h.content_type) |ct| try w.print("Content-Type: {s}\r\n", .{ct});
     if (h.content_length) |n| try w.print("Content-Length: {d}\r\n", .{n});
     if (h.no_store) try w.writeAll("Cache-Control: no-store\r\n");
-    try w.writeAll("X-Content-Type-Options: nosniff\r\n");
+    try w.writeAll("X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nCross-Origin-Opener-Policy: same-origin\r\n");
+    try w.print("Content-Security-Policy: {s}\r\n", .{h.csp orelse api_csp});
     try w.print("Connection: {s}\r\n", .{if (h.keep_alive and h.content_length != null) "keep-alive" else "close"});
     try w.writeAll(h.extra);
     try w.writeAll("\r\n");
+}
+
+/// Head only, with the `Content-Length` of the body that a GET would carry (the answer to HEAD).
+pub fn sendHeadOnly(w: *Io.Writer, h: Head, body_len: usize) Io.Writer.Error!void {
+    var hh = h;
+    hh.content_length = body_len;
+    try writeHead(w, hh);
+    try w.flush();
 }
 
 /// Head + body in one go, flushed.
@@ -356,12 +371,13 @@ pub fn queryParam(a: Allocator, query: []const u8, name: []const u8) Allocator.E
     return null;
 }
 
-/// Constant-time equality for secrets.
+/// Constant-time equality for secrets: both sides are hashed first, so neither the content nor the length leaks.
 pub fn secretEql(a: []const u8, b: []const u8) bool {
-    var diff: usize = a.len ^ b.len;
-    const n = @min(a.len, b.len);
-    for (0..n) |i| diff |= a[i] ^ b[i];
-    return diff == 0;
+    var ha: [32]u8 = undefined;
+    var hb: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(a, &ha, .{});
+    std.crypto.hash.sha2.Sha256.hash(b, &hb, .{});
+    return std.crypto.timing_safe.eql([32]u8, ha, hb);
 }
 
 pub fn mimeFor(path: []const u8) []const u8 {
