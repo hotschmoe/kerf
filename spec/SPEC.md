@@ -928,3 +928,25 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Render specifics (as implemented):** the `rebar` pen is 0.50 mm, and path bars go on DXF layer
   `S-DETL-REBR` (LWPOLYLINE with bulges). Edge-on straps draw at least 0.022" paper thick. Face-on
   ties draw on top of everything with linework beneath them knocked out, and nail dots at 1" pitch.
+
+## 21. v0.1.5 (from the alpha.5 evals: Claude Code + pi/Qwen)
+
+- **Lenient ops input:** `kerf apply` (CLI, API, serve) accepts an ops array, a single op object, or
+  `{"ops":[...]}` (also `{"ops":[...],"why":"..."}`, which supplies `--why` when the flag is absent).
+  Anything else ⇒ `E_PARAM` with the three accepted shapes in the message.
+- **Requested-elements coverage:** documents may carry `meta.requested: ["cmu wall", "bond beam", "H2.5A", ...]`.
+  The agent writes the designer's asks there on the first build. `kerf check` prints a `COVERAGE` block,
+  one line per item, `ok <component ids>` or `MISSING`, matched against component ids, types, labels,
+  `model`s and note text (case-insensitive word match). `W_REQUESTED_MISSING` warns for each missing item.
+  The guide tells agents to fill `meta.requested` from the request and to finish only at full coverage.
+- **Re-fit after edits:** when a view has an explicit `crop` and an edit leaves a non-fill component
+  with more than 25% of its extent outside the crop (and the component was mostly inside before, or was
+  just added), warn `W_CROP_STALE` naming the component and the crop that would contain it, and suggest
+  removing `crop` to auto-fit.
+- **Thin-layer landing:** when a note targets a thin component (membrane, panel < 1/2", connector,
+  path rebar), the landing point lies on that component's own geometry, never inside a neighbor. If the
+  label point would fall inside another component's region, slide along the thin component to the nearest
+  visible stretch.
+- **Note text lint (extends `W_NOTE_STYLE`):** flags commentary or dangling text: notes over 120 chars,
+  first-person or conversational words (`I `, `WE `, `NOTE:`, `PLEASE`, `SHOULD BE`, `?`), text ending in
+  a connector word (`W/`, `AND`, `OR`, `TO`, `@`), and notes whose text repeats another note in the same view.
