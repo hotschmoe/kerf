@@ -5,6 +5,10 @@
 //!
 //! Threads: `std.Io.Threaded` (the default `init.io`); every connection is a `Group.concurrent` task, so
 //! long-lived SSE streams never block other requests.
+//!
+//! This file holds the `Server` (the folder scan, the edit log, the ETag rules) and its `Config`. The rest is in `serve/`:
+//! `cli` (arguments, bind, startup), `conn` (limits, deadlines, access rules), `routes` (the route table, body caps and the
+//! request dispatcher), the handlers `docs`, `agent` and `stream`, and `ui` (static files and the CSP).
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -23,32 +27,15 @@ pub const default_port: u16 = 7700;
 pub const poll_ms = 500;
 const static = ui_mod.static;
 const default_ui_csp = ui_mod.default_ui_csp;
-const buildUiCsp = ui_mod.buildUiCsp;
 const ui_mod = @import("serve/ui.zig");
-const apiAgentRun = agent_mod.apiAgentRun;
-const cleanupAttachments = agent_mod.cleanupAttachments;
-const apiAgentStop = agent_mod.apiAgentStop;
 const agent_mod = @import("serve/agent.zig");
-const apiEvents = stream_mod.apiEvents;
-const apiLlm = stream_mod.apiLlm;
 const stream_mod = @import("serve/stream.zig");
-const apiInfo = docs_mod.apiInfo;
-const apiList = docs_mod.apiList;
-const apiGetDoc = docs_mod.apiGetDoc;
-const apiCreate = docs_mod.apiCreate;
-const apiApply = docs_mod.apiApply;
-const apiLog = docs_mod.apiLog;
-const apiExport = docs_mod.apiExport;
 const docs_mod = @import("serve/docs.zig");
-const max_conns = conn_mod.max_conns;
 pub const max_sse_streams = conn_mod.max_sse_streams;
 pub const max_proxy_calls = conn_mod.max_proxy_calls;
-const busy_ms = conn_mod.busy_ms;
 const Timeouts = conn_mod.Timeouts;
 const Conn = conn_mod.Conn;
 pub const arm = conn_mod.arm;
-const connWatchdog = conn_mod.connWatchdog;
-const serveConn = conn_mod.serveConn;
 const hostIsLoopbackName = conn_mod.hostIsLoopbackName;
 const originMatchesHost = conn_mod.originMatchesHost;
 const checkAccess = conn_mod.checkAccess;
@@ -423,29 +410,7 @@ fn computeInfoNoHash(gpa: Allocator, a: Allocator, text: []const u8) !DocInfo {
     return .{ .id = try gpa.dupe(u8, id), .title = try gpa.dupe(u8, title), .components = comps, .views = views, .errors = errors, .warnings = warnings };
 }
 
-// ---------------------------------------------------------------------------------------------
-// HTTP: connection loop and routing
-// ---------------------------------------------------------------------------------------------
-
-// ---- connection limits and deadlines (V-4, V-13) ----
-
-// ---- /api/info ----
-
-// ---- documents ----
-
-// ---- SSE ----
-
-// ---- /api/llm ----
-
-// ---- agents ----
-
 pub const attachment_ttl_s = 24 * 3600;
-
-// ---- static UI ----
-
-// ---------------------------------------------------------------------------------------------
-// Startup
-// ---------------------------------------------------------------------------------------------
 
 pub const serve_usage =
     \\usage: kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no-token] [--allow-origin URL]
@@ -464,10 +429,6 @@ pub const serve_usage =
     \\  --agent-timeout S wall-clock limit of one agent run in seconds (default 1800, 0 = none)
     \\
 ;
-
-// ---------------------------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------------------------
 
 test "hostIsLoopbackName / originMatchesHost" {
     try std.testing.expect(hostIsLoopbackName("localhost:7700"));
