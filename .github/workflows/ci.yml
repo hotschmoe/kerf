@@ -25,10 +25,8 @@ jobs:
       - name: python tooling for the golden gate (DXF and PDF checkers)
         run: pip install --quiet ezdxf pypdf pypdfium2 pillow numpy
 
-      # TODO(fmt): enable once the engine hardening agent's whitespace-only `zig fmt src` commit has landed on main
-      # (REVIEW batch 1); until then this would fail on the whole tree:
-      #   - name: zig fmt --check
-      #     run: zig fmt --check src
+      - name: zig fmt --check
+        run: zig fmt --check src
 
       - name: zig build test
         run: zig build test --summary all
@@ -49,12 +47,11 @@ jobs:
         run: |
           zig build wasm
           node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
-      # TODO(no_panic): enable once the engine hardening agent's `no_panic` wasm entry point has landed (REVIEW SAF-2):
-      # the module must build and pass the same golden with every safety check compiled in.
-      #   - name: wasm build with safety checks (ReleaseSafe) + golden
-      #     run: |
-      #       zig build wasm -Dwasm-optimize=ReleaseSafe
-      #       node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+      # the module must build and pass the same golden with every safety check compiled in (REVIEW SAF-2, `no_panic` handler)
+      - name: wasm build with safety checks (ReleaseSafe) + golden
+        run: |
+          zig build wasm -Dwasm-optimize=ReleaseSafe
+          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
 
       # What ships is ReleaseSafe (REVIEW SAF-2): run the server smoke test against exactly that, too.
       - name: kerf serve smoke test (ReleaseSafe build, the shipped optimisation mode)

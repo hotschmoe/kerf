@@ -12,13 +12,18 @@ const usage =
     \\  kerf schema [topic ...]          field reference: doc view note dim label cite ops <component type> (several topics at once; none: list)
     \\  kerf new <file> [--id ID] [--title "TITLE"] [--template section] [--ops ops.json] [--why "REASON"]
     \\      --ops creates the file and applies the ops in one command (nothing is written if an op fails; both steps are logged)
-    \\  kerf apply <doc> <ops.json|-> [-w] [--why "REASON"] [-o out]   apply ops (file or stdin); -w writes back to <doc>
+    \\  kerf apply <doc> <ops.json|-> [-w] [--why "REASON"] [--if-match ETAG] [-o out]   apply ops (file or stdin); -w writes back to <doc>
     \\  kerf apply <doc> --ops '<json>' [-w] [--why "REASON"] [--dry-run]
     \\      ops: an array, a single op object, or {"ops":[...],"why":"..."} (the why is used when --why is absent)
     \\      a failed apply prints "ERROR <code> <path>: <message>  Fix: <fix>" per error on stderr, then "nothing written" (exit 1)
     \\      -w also appends one line to <doc>.log.jsonl (who = $KERF_ACTOR or "agent"; --why = the reason, shown to the designer)
-    \\  kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no-token]
-    \\      local workspace server: web UI + /api over the folder of *.kerf.json (see spec/SERVE.md)
+    \\      -w holds the same advisory lock as `kerf serve` (parallel writers queue instead of losing edits) and writes atomically;
+    \\      --if-match ETAG refuses the write when <doc> changed since you read it (ETAG is the server's "<mtime_ms>-<size>-<hash>" or just the hash)
+    \\  kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --token-file F | --no-token]
+    \\             [--trust-agents] [--agent-timeout SEC] [--allow-origin URL]
+    \\      local workspace server: web UI + /api over the folder of *.kerf.json (see spec/SERVE.md). A random access token is the
+    \\      default even on loopback (printed in the first banner line as ?token=); also KERF_TOKEN; --no-token opts out.
+    \\      Agents from <dir>/.kerf/agents.json run only with --trust-agents (or an interactive yes).
     \\  kerf check <doc>                 summary + diagnostics (exit 1 on errors)
     \\  kerf export <doc> --view A --format png|svg|dxf|pdf [--px 1600] [--sheet] -o <file>
     \\  kerf catalog [--markdown]
@@ -157,6 +162,7 @@ const Opts = struct {
     px: ?[]const u8 = null,
     why: ?[]const u8 = null,
     dry_run: bool = false,
+    if_match: ?[]const u8 = null,
     template: ?[]const u8 = null,
     pos: [16][]const u8 = undefined,
     npos: usize = 0,
@@ -177,7 +183,7 @@ fn parseOpts(args: []const []const u8, err: *std.Io.Writer) !Opts {
                 return all[idx.*];
             }
         }.get;
-        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "--full")) o.full = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--why")) o.why = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--dry-run")) o.dry_run = true else if (std.mem.eql(u8, a, "--template")) o.template = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
+        if (std.mem.eql(u8, a, "--view")) o.view = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--format")) o.format = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--style")) o.style = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-o")) o.out = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--sheet")) o.sheet = true else if (std.mem.eql(u8, a, "--markdown")) o.markdown = true else if (std.mem.eql(u8, a, "--full")) o.full = true else if (std.mem.eql(u8, a, "-w")) o.write = true else if (std.mem.eql(u8, a, "--ops")) o.ops = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--id")) o.id = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--title")) o.title = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--px")) o.px = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--why")) o.why = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--dry-run")) o.dry_run = true else if (std.mem.eql(u8, a, "--if-match")) o.if_match = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "--template")) o.template = try next(args, &i, err, a) else if (std.mem.eql(u8, a, "-h") or std.mem.eql(u8, a, "--help")) return error.Usage else if (a.len > 1 and a[0] == '-') {
             try err.print("kerf: unknown option {s}\n", .{a});
             return error.Usage;
         } else {
@@ -244,10 +250,33 @@ fn appendJsonString(a: std.mem.Allocator, out: *std.ArrayList(u8), str: []const 
 /// Appends the op-log line. The document is already written (atomically), so a failure here is reported on stderr
 /// (what failed, that the document is fine) and the caller exits 3. Returns true when the log line was appended.
 fn logWrite(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, meta: workspace.LogMeta, ops_text: []const u8, changed: []const []const u8, summary: []const u8) bool {
+    return logWriteLocked(a, io, doc_path, null, meta, ops_text, changed, summary);
+}
+
+/// `logWrite` through an already held `DocLock` (taking the lock again from the same process would block on itself).
+fn logWriteLocked(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, lock: ?workspace.DocLock, meta: workspace.LogMeta, ops_text: []const u8, changed: []const []const u8, summary: []const u8) bool {
     const lp = workspace.logPath(a, doc_path) catch return logFail(io, doc_path, "out of memory");
     const line = workspace.buildEntry(a, io, meta, ops_text, changed, summary) catch return logFail(io, lp, "could not build the log entry");
-    workspace.appendLine(io, std.Io.Dir.cwd(), lp, line) catch |e| return logFail(io, lp, @errorName(e));
+    if (lock) |lk| {
+        lk.appendLine(io, line) catch |e| return logFail(io, lp, @errorName(e));
+    } else workspace.appendLine(io, std.Io.Dir.cwd(), lp, line) catch |e| return logFail(io, lp, @errorName(e));
     return true;
+}
+
+/// The server's ETag of a document: `"<mtime_ms>-<size>-<wyhash64 hex16 of the bytes>"` (see `Server.etagOf`).
+fn etagOf(a: std.mem.Allocator, mtime_ns: i96, size: u64, bytes: []const u8) ![]u8 {
+    return std.fmt.allocPrint(a, "\"{d}-{d}-{x:0>16}\"", .{ @divTrunc(mtime_ns, std.time.ns_per_ms), size, std.hash.Wyhash.hash(0, bytes) });
+}
+
+/// Does `want` (an ETag with or without quotes, or just the 16-hex content hash) name the current content of `doc_path`?
+fn ifMatchOk(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, want: []const u8) !bool {
+    const bytes = try readFile(a, io, doc_path);
+    const st = try std.Io.Dir.cwd().statFile(io, doc_path, .{});
+    const have = try etagOf(a, st.mtime.nanoseconds, st.size, bytes);
+    const w = std.mem.trim(u8, want, "\" ");
+    if (std.mem.eql(u8, w, std.mem.trim(u8, have, "\""))) return true;
+    const hash_hex = try std.fmt.allocPrint(a, "{x:0>16}", .{std.hash.Wyhash.hash(0, bytes)});
+    return std.mem.eql(u8, w, hash_hex);
 }
 
 fn logFail(io: std.Io, lp: []const u8, what: []const u8) bool {
@@ -560,15 +589,28 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             try err.writeAll("kerf drawing: --view <id> is required\n");
             return 2;
         };
-        try extra.print(gpa, "\"view\":\"{s}\"", .{v});
+        try extra.appendSlice(gpa, "\"view\":");
+        try appendJsonString(gpa, &extra, v);
     } else if (std.mem.eql(u8, cmd, "export")) {
         const v = o.view orelse {
             try err.writeAll("kerf export: --view <id> is required\n");
             return 2;
         };
         const f = o.format orelse "svg";
-        try extra.print(gpa, "\"view\":\"{s}\",\"format\":\"{s}\",\"sheet\":{s}", .{ v, f, if (o.sheet) "true" else "false" });
-        if (o.px) |px| try extra.print(gpa, ",\"px\":{s}", .{px});
+        // every user string goes through the JSON escaper: a `--view 'A","x":1'` must stay one string
+        try extra.appendSlice(gpa, "\"view\":");
+        try appendJsonString(gpa, &extra, v);
+        try extra.appendSlice(gpa, ",\"format\":");
+        try appendJsonString(gpa, &extra, f);
+        try extra.print(gpa, ",\"sheet\":{s}", .{if (o.sheet) "true" else "false"});
+        if (o.px) |px| {
+            const pxn = kerf.units.parseFinite(px) orelse {
+                try err.print("kerf export: --px must be a number (got \"{s}\")\n", .{px});
+                return 2;
+            };
+            var pb: [40]u8 = undefined;
+            try extra.print(gpa, ",\"px\":{s}", .{kerf.json.fmtNumber(&pb, pxn)});
+        }
         if (o.out == null) {
             try err.writeAll("kerf export: -o <file> is required\n");
             return 2;
@@ -615,6 +657,34 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         return 2;
     }
     fname = cmd;
+    // `apply -w` / `fmt -w` do read -> edit -> write under the advisory lock `kerf serve` uses for the same document, so parallel
+    // writers queue instead of silently losing each other's edits; --if-match makes a stale writer fail instead of overwriting.
+    const is_apply_w = std.mem.eql(u8, cmd, "apply") and o.write and !o.dry_run;
+    var lock: ?workspace.DocLock = null;
+    defer if (lock) |l| l.release(io);
+    if (o.if_match != null and !is_apply_w) {
+        try err.writeAll("kerf: --if-match only applies to `kerf apply <doc> ... -w`\n");
+        return 2;
+    }
+    if (is_apply_w or (std.mem.eql(u8, cmd, "fmt") and o.write)) {
+        var larena = std.heap.ArenaAllocator.init(gpa);
+        defer larena.deinit();
+        const lp = try workspace.logPath(larena.allocator(), doc_path);
+        lock = workspace.DocLock.acquire(io, std.Io.Dir.cwd(), lp) catch |e| {
+            try err.print("kerf {s}: cannot lock {s} for writing: {s}\n", .{ cmd, lp, @errorName(e) });
+            return 1;
+        };
+        if (o.if_match) |want| {
+            const same = ifMatchOk(larena.allocator(), io, doc_path, want) catch |e| {
+                try err.print("kerf apply: cannot read {s} to check --if-match: {s}\n", .{ doc_path, @errorName(e) });
+                return 1;
+            };
+            if (!same) {
+                try err.print("ERROR E_STALE {s}: --if-match {s} does not match the document as it is now (it changed since you read it)  Fix: read {s} again (kerf check / cat), rebuild your ops against the current content and retry\nnothing written\n", .{ doc_path, want, doc_path });
+                return 1;
+            }
+        }
+    }
     const input = try buildInput(gpa, io, doc_path, o.style, extra.items);
     defer gpa.free(input);
     const r = try kerf.call(gpa, fname, input);
@@ -637,7 +707,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         defer text.deinit(gpa);
         try text.appendSlice(gpa, canon_text);
         if (o.write) {
-            try writeOut(io, doc_path, text.items);
+            try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), doc_path, text.items);
         } else try writeOut(io, o.out, text.items);
         return 0;
     }
@@ -671,7 +741,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
                     var changed: std.ArrayList([]const u8) = .empty;
                     if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
                     const sum = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
-                    logged = logWrite(a, io, doc_path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse why_keep orelse "" }, ops_text_for_log, changed.items, sum);
+                    logged = logWriteLocked(a, io, doc_path, lock, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse why_keep orelse "" }, ops_text_for_log, changed.items, sum);
                     try writeOut(io, null, "wrote ");
                     try writeOut(io, null, doc_path);
                     try writeOut(io, null, "\n");

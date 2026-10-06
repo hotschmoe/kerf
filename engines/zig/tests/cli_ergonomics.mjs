@@ -372,5 +372,39 @@ section('10. v0.1.5 (SPEC 21): note lint extensions');
   }
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('11. writers: parallel apply -w loses no edit, --if-match, atomic fmt -w, hostile --view');
+{
+  const { spawn } = await import('node:child_process');
+  const run = (args) => new Promise((resolve) => {
+    const c = spawn(KERF, args, { cwd: tmp, env: { ...process.env, KERF_ACTOR: 'test' } });
+    let out = '', err = '';
+    c.stdout.on('data', (d) => out += d); c.stderr.on('data', (d) => err += d);
+    c.on('close', (code) => resolve({ code, out, err }));
+  });
+  kerf(['new', 'par.kerf.json', '--template', 'section']);
+  const N = 12;
+  const rs = await Promise.all(Array.from({ length: N }, (_, i) => run(['apply', 'par.kerf.json', '--ops',
+    JSON.stringify([{ op: 'add', path: 'components', value: { id: 'blk' + i, type: 'lumber', size: '2x4', orient: 'flat', at: { to: [i * 6, -20] } } }]), '-w', '--why', 'parallel ' + i])));
+  check(`${N} parallel apply -w all succeed`, rs.every((r) => r.code === 0), rs.map((r) => r.err).join('|'));
+  const doc = JSON.parse(fs.readFileSync(path.join(tmp, 'par.kerf.json'), 'utf8'));
+  const ids = new Set(doc.components.map((c) => c.id));
+  check(`no edit lost: all ${N} blocks are in the document`, Array.from({ length: N }, (_, i) => ids.has('blk' + i)).every(Boolean), [...ids]);
+  const log = fs.readFileSync(path.join(tmp, 'par.kerf.json.log.jsonl'), 'utf8').trim().split('\n');
+  check('one valid log line per write', log.length >= N && log.every((l) => { try { JSON.parse(l); return true; } catch { return false; } }), log.length);
+  // --if-match
+  let r = kerf(['apply', 'par.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'meta', value: { author: 'x' } }]), '-w', '--if-match', '"1-2-0000000000000000"']);
+  check('stale --if-match is refused (E_STALE, nothing written)', r.code === 1 && /E_STALE/.test(r.err) && /nothing written/.test(r.err), r);
+  check('--if-match without -w is a usage error', kerf(['apply', 'par.kerf.json', '--ops', '[]', '--if-match', 'x']).code === 2);
+  r = kerf(['fmt', 'par.kerf.json', '-w']);
+  check('fmt -w succeeds', r.code === 0, r);
+  check('fmt -w leaves no temp files behind', fs.readdirSync(tmp).every((n) => !/\.tmp|^\./.test(n) || n === '.'), fs.readdirSync(tmp));
+  // hostile --view must stay one JSON string
+  r = kerf(['drawing', 'par.kerf.json', '--view', 'A","style":{"notes":{"wrap_chars":-5}},"x":"']);
+  check('--view with quotes is an unknown view, not JSON injection', r.code === 1 && /unknown view|not found|no view/i.test(r.err + r.out) && !/E_STYLE/.test(r.err + r.out), r);
+  r = kerf(['export', 'par.kerf.json', '--view', 'A', '--format', 'svg', '--px', '1600,"x":1', '-o', 'x.svg']);
+  check('--px must be a number', r.code === 2 && /--px must be a number/.test(r.err), r);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
