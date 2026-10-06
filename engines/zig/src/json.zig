@@ -3,6 +3,7 @@
 //! Everything allocates from the caller's (arena) allocator and never frees individually.
 
 const std = @import("std");
+const cast = @import("num.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Member = struct { key: []const u8, value: Value };
@@ -49,6 +50,10 @@ pub const Value = union(enum) {
         };
     }
 };
+
+/// Largest magnitude the parser accepts (2^53 is the largest range where doubles are exact integers). `1e999` used to parse to
+/// infinity and print as `0`; anything beyond this is "number out of range" with a line and column.
+pub const max_abs_number: f64 = 9.0e15;
 
 pub const ParseError = struct {
     line: u32,
@@ -125,8 +130,10 @@ pub const Parser = struct {
         const start = self.pos;
         if (self.src[self.pos] == '-') self.pos += 1;
         var digits: usize = 0;
+        const first_digit = self.pos;
         while (self.pos < self.src.len and std.ascii.isDigit(self.src[self.pos])) : (self.pos += 1) digits += 1;
         if (digits == 0) return self.fail("invalid number");
+        if (digits > 1 and self.src[first_digit] == '0') return self.fail("invalid number: leading zeros are not allowed (write 7, not 07)");
         if (self.pos < self.src.len and self.src[self.pos] == '.') {
             self.pos += 1;
             var fd: usize = 0;
@@ -141,6 +148,7 @@ pub const Parser = struct {
             if (ed == 0) return self.fail("invalid number exponent");
         }
         const f = std.fmt.parseFloat(f64, self.src[start..self.pos]) catch return self.fail("invalid number");
+        if (!(@abs(f) <= max_abs_number)) return self.fail("number out of range: a Kerf number must be finite and at most 9e15 in magnitude");
         return .{ .number = f };
     }
 
@@ -169,6 +177,7 @@ pub const Parser = struct {
             const c = self.src[self.pos];
             if (c == '"') {
                 const s = self.src[start..self.pos];
+                if (!std.unicode.utf8ValidateSlice(s)) return self.fail("string is not valid UTF-8");
                 self.pos += 1;
                 return s;
             }
@@ -181,6 +190,7 @@ pub const Parser = struct {
         while (self.pos < self.src.len) {
             const c = self.src[self.pos];
             if (c == '"') {
+                if (!std.unicode.utf8ValidateSlice(buf.items)) return self.fail("string is not valid UTF-8");
                 self.pos += 1;
                 return buf.items;
             }
@@ -251,6 +261,51 @@ pub const Parser = struct {
         }
     }
 
+    fn keyLess(items: []const Member, x: u32, y: u32) bool {
+        return switch (std.mem.order(u8, items[x].key, items[y].key)) {
+            .lt => true,
+            .gt => false,
+            .eq => x < y,
+        };
+    }
+
+    /// Last duplicate key wins, in the position of the first occurrence. Linear for small objects; otherwise a stable sort of
+    /// member indices by key finds the duplicates in O(n log n) (the old per-key scan was O(n^2): 100,000 keys = 16 s).
+    fn dedupe(self: *Parser, items: []Member) Allocator.Error![]Member {
+        if (items.len < 2) return items;
+        var has_dup = false;
+        if (items.len <= 16) {
+            outer: for (items, 0..) |m, i| for (items[0..i]) |p| if (std.mem.eql(u8, m.key, p.key)) {
+                has_dup = true;
+                break :outer;
+            };
+            if (!has_dup) return items;
+        }
+        const idx = try self.alloc.alloc(u32, items.len);
+        for (idx, 0..) |*x, i| x.* = @intCast(i);
+        std.mem.sort(u32, idx, @as([]const Member, items), keyLess);
+        const drop = try self.alloc.alloc(bool, items.len);
+        @memset(drop, false);
+        var g: usize = 0;
+        while (g < idx.len) {
+            var e = g + 1;
+            while (e < idx.len and std.mem.eql(u8, items[idx[e]].key, items[idx[g]].key)) e += 1;
+            if (e - g > 1) {
+                has_dup = true;
+                items[idx[g]].value = items[idx[e - 1]].value;
+                for (idx[g + 1 .. e]) |x| drop[x] = true;
+            }
+            g = e;
+        }
+        if (!has_dup) return items;
+        var w: usize = 0;
+        for (items, 0..) |m, i| if (!drop[i]) {
+            items[w] = m;
+            w += 1;
+        };
+        return items[0..w];
+    }
+
     fn object(self: *Parser) Error!Value {
         self.depth += 1;
         defer self.depth -= 1;
@@ -271,21 +326,14 @@ pub const Parser = struct {
             self.pos += 1;
             self.ws();
             const v = try self.value();
-            // Last duplicate key wins (replace in place to keep order stable).
-            var dup = false;
-            for (items.items) |*m| if (std.mem.eql(u8, m.key, k)) {
-                m.value = v;
-                dup = true;
-                break;
-            };
-            if (!dup) try items.append(self.alloc, .{ .key = k, .value = v });
+            try items.append(self.alloc, .{ .key = k, .value = v });
             self.ws();
             if (self.pos >= self.src.len) return self.fail("unterminated object");
             switch (self.src[self.pos]) {
                 ',' => self.pos += 1,
                 '}' => {
                     self.pos += 1;
-                    return .{ .object = items.items };
+                    return .{ .object = try self.dedupe(items.items) };
                 },
                 else => return self.fail("expected ',' or '}' in object"),
             }
@@ -313,16 +361,19 @@ pub fn parse(alloc: Allocator, src: []const u8, err: *ParseError) Allocator.Erro
 pub fn fmtNumber(buf: *[40]u8, x: f64) []const u8 {
     if (!std.math.isFinite(x)) return "0";
     const neg = x < 0;
-    const scaled = @round(@abs(x) * 10000.0);
-    if (scaled >= 9.0e15) {
-        // Out of the exactly-representable range; fall back to the standard shortest form.
-        return std.fmt.bufPrint(buf, "{d}", .{x}) catch "0";
+    // Beyond 9e11 inches the 1e-4 digits no longer fit a double exactly; such values are not meaningful lengths, so print the
+    // rounded integer, saturating at 1e18 (never `std.fmt`, whose float printer is also dead weight in the wasm).
+    var ip: u64 = 0;
+    var frac: u64 = 0;
+    if (@abs(x) >= 9.0e11) {
+        ip = cast.toIntClamped(u64, @min(@round(@abs(x)), 1.0e18), 0, std.math.maxInt(u64));
+    } else {
+        const n = cast.toIntClamped(u64, @round(@abs(x) * 10000.0), 0, std.math.maxInt(u64));
+        if (n == 0) return "0";
+        ip = n / 10000;
+        frac = n % 10000;
     }
-    const n: u64 = @intFromFloat(scaled);
-    if (n == 0) return "0";
     var i: usize = buf.len;
-    var frac = n % 10000;
-    var ip = n / 10000;
     if (frac != 0) {
         var digits: usize = 4;
         while (frac % 10 == 0) : (digits -= 1) frac /= 10;
@@ -650,4 +701,85 @@ test "merge patch" {
     var out: std.ArrayList(u8) = .empty;
     try writeCompact(&out, a, r);
     try std.testing.expectEqualStrings("{\"a\":1,\"b\":{\"d\":3,\"e\":5},\"f\":[1]}", out.items);
+}
+
+// ---- hostile input (REVIEW SAF-3) ------------------------------------------------------------------------------
+
+fn parseFails(src: []const u8, want_msg: []const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var err: ParseError = undefined;
+    const v = try parse(arena.allocator(), src, &err);
+    try std.testing.expect(v == null);
+    try std.testing.expect(std.mem.indexOf(u8, err.msg, want_msg) != null);
+}
+
+test "numbers: infinity, overflow and leading zeros are rejected with a position" {
+    try parseFails("{\"a\": 1e999}", "number out of range");
+    try parseFails("[-1e999]", "number out of range");
+    try parseFails("[1e16]", "number out of range");
+    try parseFails("[01]", "leading zeros");
+    try parseFails("[-007]", "leading zeros");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var err: ParseError = undefined;
+    const v = (try parse(arena.allocator(), "[0, -0, 0.5, 1e2, 9e15, 1E-3]", &err)).?;
+    try std.testing.expectEqual(@as(usize, 6), v.array.len);
+    try std.testing.expectEqual(@as(f64, 9e15), v.array[4].number);
+}
+
+test "strings: invalid UTF-8 is rejected, valid multi-byte text passes" {
+    try parseFails("[\"\xff\xfe\"]", "not valid UTF-8");
+    try parseFails("[\"a\\n\xc3\"]", "not valid UTF-8"); // escape forces the slow path
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var err: ParseError = undefined;
+    const v = (try parse(arena.allocator(), "[\"\xc3\xa9\\u00e9 \xe2\x80\x94\"]", &err)).?;
+    try std.testing.expectEqualStrings("\xc3\xa9\xc3\xa9 \xe2\x80\x94", v.array[0].string);
+}
+
+test "duplicate keys: last value wins in the first position, small and large objects" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var err: ParseError = undefined;
+    const small = (try parse(a, "{\"a\":1,\"b\":2,\"a\":3}", &err)).?;
+    try std.testing.expectEqual(@as(usize, 2), small.object.len);
+    try std.testing.expectEqualStrings("a", small.object[0].key);
+    try std.testing.expectEqual(@as(f64, 3), small.object[0].value.number);
+    // 40 keys, key k5 and k7 repeated: order of first occurrences kept, last values win
+    var src: std.ArrayList(u8) = .empty;
+    try src.append(a, '{');
+    for (0..40) |i| try src.print(a, "\"k{d}\":{d},", .{ i, i });
+    try src.appendSlice(a, "\"k5\":100,\"k7\":200,\"k5\":300}");
+    const big = (try parse(a, src.items, &err)).?;
+    try std.testing.expectEqual(@as(usize, 40), big.object.len);
+    try std.testing.expectEqualStrings("k5", big.object[5].key);
+    try std.testing.expectEqual(@as(f64, 300), big.object[5].value.number);
+    try std.testing.expectEqual(@as(f64, 200), big.object[7].value.number);
+    try std.testing.expectEqualStrings("k39", big.object[39].key);
+}
+
+test "100,000 keys parse in linear-ish time (no quadratic duplicate scan)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var src: std.ArrayList(u8) = .empty;
+    try src.append(a, '{');
+    for (0..100_000) |i| try src.print(a, "{s}\"key{d}\":{d}", .{ if (i > 0) "," else "", i, i });
+    try src.append(a, '}');
+    var err: ParseError = undefined;
+    const v = (try parse(a, src.items, &err)).?;
+    try std.testing.expectEqual(@as(usize, 100_000), v.object.len);
+}
+
+test "fmtNumber: huge values print as integers, never via std.fmt" {
+    var b: [40]u8 = undefined;
+    try std.testing.expectEqualStrings("0", fmtNumber(&b, std.math.inf(f64)));
+    try std.testing.expectEqualStrings("0", fmtNumber(&b, std.math.nan(f64)));
+    try std.testing.expectEqualStrings("1000000000000", fmtNumber(&b, 1e12));
+    try std.testing.expectEqualStrings("-1000000000000", fmtNumber(&b, -1e12));
+    try std.testing.expectEqualStrings("1000000000000000000", fmtNumber(&b, 1e300));
+    try std.testing.expectEqualStrings("7.625", fmtNumber(&b, 7.625));
+    try std.testing.expectEqualStrings("0", fmtNumber(&b, -0.00001));
 }

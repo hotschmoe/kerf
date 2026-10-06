@@ -3,6 +3,7 @@
 //! describes the segment i -> i+1 with DXF LWPOLYLINE semantics (bulge = tan(theta/4), CCW positive).
 
 const std = @import("std");
+const cast = @import("num.zig");
 const Allocator = std.mem.Allocator;
 
 pub const V2 = struct {
@@ -236,11 +237,21 @@ pub fn flattenSegInto(list: *std.ArrayList(V2), a: Allocator, p0: V2, p1: V2, bu
     try list.append(a, p1);
 }
 
+/// Upper bound on the segments of one flattened arc (a full circle at 0.004" tolerance needs about 200 up to a 10 ft radius).
+pub const max_arc_steps: usize = 4096;
+
+/// Segments for an arc of `sweep` radians when one segment may span at most `step` radians; clamped to [2, max_arc_steps]
+/// (NaN and a zero `step` can not reach the integer conversion).
+pub fn stepsForSweep(sweep: f64, step: f64) usize {
+    return cast.toIntClamped(usize, @ceil(@abs(sweep) / step), 2, max_arc_steps);
+}
+
 pub fn arcSteps(r: f64, sweep: f64, tol: f64) usize {
-    if (r <= tol) return 2;
+    if (!(r > tol)) return 2;
     const step = 2.0 * std.math.acos(1.0 - tol / r);
-    const n = @as(usize, @intFromFloat(@ceil(@abs(sweep) / step)));
-    return @max(n, 2);
+    // a radius so large that tol/r underflows 1 - x: the arc is straight to within `tol`
+    if (!(step > 0)) return 2;
+    return stepsForSweep(sweep, step);
 }
 
 pub fn flattenLoop(a: Allocator, loop: Loop, tol: f64) Allocator.Error![]V2 {

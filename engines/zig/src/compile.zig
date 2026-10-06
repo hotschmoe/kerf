@@ -2,6 +2,8 @@
 //! (translate / rotate / mirror / arrays / z extents) and produce world-space prisms.
 
 const std = @import("std");
+const cast = @import("num.zig");
+const limits = @import("limits.zig");
 const json = @import("json.zig");
 const geom = @import("geom.zig");
 const model = @import("model.zig");
@@ -69,8 +71,11 @@ pub fn compile(a: Allocator, doc: json.Value, st: *const style_mod.Style, diags:
             const z0 = units.parseLength(arr.?[0]).?;
             const z1 = units.parseLength(arr.?[1]).?;
             if (z0 < z1) scene.run = .{ z0, z1 } else diags.add(.@"error", "E_PARAM", null, "run", "'run' must be [z0, z1] with z0 < z1 (got [{d}, {d}])", .{ z0, z1 });
-        } else diags.add(.@"error", "E_PARAM", null, "run", "'run' must be [z0, z1] in inches, e.g. [-24, 24]", .{});
+        } else diags.add(.@"error", "E_PARAM", null, "run", "'run' must be [z0, z1] in inches, each a length within +-{d} inches, e.g. [-24, 24] (got {s})", .{ limits.max_coord_in, model.kindOrText(a, rv) });
     }
+    if (doc.get("views")) |vs| if (vs.arr()) |va| if (va.len > limits.max_views) {
+        diags.addFix(.@"error", "E_LIMIT", null, "views", "{s}", .{try limits.message(a, "views in one document", va.len, limits.max_views, "No views were built.")}, "keep one view per sheet detail (usually 2 to 6), or split the document");
+    };
     if (doc.get("views")) |vs| if (vs.arr()) |va| for (va) |v| {
         const kind = if (v.get("kind")) |k| (k.str() orelse "section") else "section";
         if (std.mem.eql(u8, kind, "iso")) continue;
@@ -84,6 +89,10 @@ pub fn compile(a: Allocator, doc: json.Value, st: *const style_mod.Style, diags:
         diags.add(.@"error", "E_PARAM", null, "components", "'components' must be an array", .{});
         return scene;
     };
+    if (items.len > limits.max_components) {
+        diags.addFix(.@"error", "E_LIMIT", null, "components", "{s}", .{try limits.message(a, "components in one document", items.len, limits.max_components, "Nothing was compiled.")}, "split the detail into several documents (one sheet or one assembly each), or merge repeated members into one component with an array");
+        return scene;
+    }
 
     var comps: std.ArrayList(Comp) = .empty;
     const type_names = try catalog.typeNames(a);
@@ -411,7 +420,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
             p.fail("array/count", "array.count must be an integer from 1 to 500", .{});
             return;
         }
-        arr_count = @intFromFloat(cnt);
+        arr_count = cast.toIntClamped(usize, cnt, 1, 500);
         arr_spacing = (if (av.get("spacing")) |x| units.parseLength(x) else null) orelse {
             p.fail("array/spacing", "array.spacing must be a length (inches between instances; may be negative)", .{});
             return;
@@ -423,6 +432,11 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
     // transforms per instance
     const n_centers = if (built.centers.len > 0) built.centers.len else 1;
     const n_inst = n_centers * arr_count;
+    if (scene.instances_total + n_inst > limits.max_instances_total) {
+        scene.diags.addFix(.@"error", "E_LIMIT", comp.id, try std.fmt.allocPrint(a, "components/{s}", .{comp.id}), "{s}", .{try limits.message(a, try std.fmt.allocPrint(a, "instances after placing '{s}' ({d} already placed + {d} from this component)", .{ comp.id, scene.instances_total, n_inst }), scene.instances_total + n_inst, limits.max_instances_total, "Every array.count and place.count multiplies the cost of drawing and checking.")}, "draw one representative member and say the spacing in a note (e.g. 2X4 STUDS @ 16\" O.C.), or lower array.count / place.count");
+        return;
+    }
+    scene.instances_total += n_inst;
     const xfs = try a.alloc(geom.Xf, n_inst);
     const zs = try a.alloc([2]f64, n_inst);
     var base_xf: geom.Xf = undefined;
@@ -433,9 +447,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
             if (model.boxAnchor(built.box, at.anchor)) |v| break :blk v;
             for (built.anchors) |n| if (std.mem.eql(u8, n.name, at.anchor)) break :blk n.p;
             const names = joinAnchorNames(a, built);
-            p.fail("at/anchor", "'{s}' is not an anchor of '{s}' ({s}). Anchors: {s}", .{ at.anchor, comp.id, comp.ty.name, names });
-            // use the right code
-            scene.diags.list.items[scene.diags.list.items.len - 1].code = "E_ANCHOR_UNKNOWN";
+            p.failCode("E_ANCHOR_UNKNOWN", "at/anchor", "'{s}' is not an anchor of '{s}' ({s}). Anchors: {s}", .{ at.anchor, comp.id, comp.ty.name, names });
             return;
         };
         base_xf = geom.Xf.translate(at.to.x, at.to.y).mul(geom.Xf.rotate(angle)).mul(geom.Xf.translate(-anc.x, -anc.y));

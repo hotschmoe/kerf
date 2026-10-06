@@ -6,6 +6,8 @@
 pub const api = @import("api.zig");
 pub const json = @import("json.zig");
 pub const units = @import("units.zig");
+pub const num = @import("num.zig");
+pub const limits = @import("limits.zig");
 pub const geom = @import("geom.zig");
 pub const clip = @import("clip.zig");
 pub const font = @import("font.zig");
@@ -32,6 +34,7 @@ pub const route = @import("route.zig");
 pub const layout_tests = @import("layout_tests.zig");
 pub const views_tests = @import("views_tests.zig");
 pub const v015_tests = @import("v015_tests.zig");
+pub const hostile_tests = @import("hostile_tests.zig");
 pub const iso = @import("iso.zig");
 pub const mesh = @import("mesh.zig");
 pub const sheet = @import("sheet.zig");

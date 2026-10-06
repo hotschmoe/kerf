@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const geom = @import("geom.zig");
+const cast = @import("num.zig");
 const style_mod = @import("style.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
@@ -54,13 +55,22 @@ pub fn generate(
         // line i sits at s0 + i*dy
         const qa = (smin - s0) / dy;
         const qb = (smax - s0) / dy;
-        const i_lo: i64 = @intFromFloat(@ceil(@min(qa, qb) - 1e-9));
-        const i_hi: i64 = @intFromFloat(@floor(@max(qa, qb) + 1e-9));
-        if (i_lo > i_hi) continue;
-        if (@as(usize, @intCast(i_hi - i_lo + 1)) > max_lines) {
+        const lo_f = @ceil(@min(qa, qb) - 1e-9);
+        const hi_f = @floor(@max(qa, qb) + 1e-9);
+        if (lo_f > hi_f) continue;
+        // compare in f64 first: the line count can exceed any integer type (tiny dy), and NaN must not reach a cast
+        if (!(hi_f - lo_f + 1 <= @as(f64, @floatFromInt(max_lines)))) {
             truncated = true;
             continue;
         }
+        const i_lo = cast.toInt(i64, lo_f) orelse {
+            truncated = true;
+            continue;
+        };
+        const i_hi = cast.toInt(i64, hi_f) orelse {
+            truncated = true;
+            continue;
+        };
         // dash pattern
         var period: f64 = 0;
         for (fam.dashes) |d| period += @abs(d) * k;
@@ -123,7 +133,7 @@ fn mix(x: u64) u64 {
 
 /// 0..1 from the quantised perpendicular position of a line, so every dash of one line shares its wave.
 fn unitHash(v_paper: f64, salt: u64) f64 {
-    const q: i64 = @intFromFloat(@round(v_paper * 1000.0));
+    const q: i64 = cast.toInt(i64, @round(v_paper * 1000.0)) orelse 0;
     const h = mix(@as(u64, @bitCast(q)) ^ (salt *% 0x2545F4914F6CDD1D));
     return @as(f64, @floatFromInt(h >> 11)) / 9007199254740992.0;
 }
@@ -164,7 +174,7 @@ pub fn generateGrain(a: Allocator, loops: []const []const V2, pattern: *const st
         const wl = grain.wavelength * k * (0.75 + 0.5 * unitHash(vp, 4));
         const room = @min(v - vmin, vmax - v) - inset;
         const taper = std.math.clamp(room / (2.0 * amp), 0, 1);
-        const n: usize = @max(1, @as(usize, @intFromFloat(@ceil(@abs(t1 - t0) / step))));
+        const n: usize = cast.toIntClamped(usize, @ceil(@abs(t1 - t0) / step), 1, 100_000);
         var prev: ?V2 = null;
         var i: usize = 0;
         while (i <= n) : (i += 1) {

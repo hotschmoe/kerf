@@ -55,7 +55,7 @@ fn flattenForMesh(a: Allocator, loop: []const Pt) Allocator.Error![]V2 {
         if (p.b != 0) {
             const arc = geom.arcOf(p.v(), q.v(), p.b);
             const step = arcStepFor(arc.r);
-            const n = @max(2, @as(usize, @intFromFloat(@ceil(@abs(arc.sweep) / step))));
+            const n = geom.stepsForSweep(arc.sweep, step);
             var k: usize = 1;
             while (k < n) : (k += 1) try out.append(a, arc.at(@as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n))));
         }

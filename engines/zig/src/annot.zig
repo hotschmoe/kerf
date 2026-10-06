@@ -13,6 +13,8 @@ const view_mod = @import("view.zig");
 const section = @import("section.zig");
 const drawing = @import("drawing.zig");
 const units = @import("units.zig");
+const cast = @import("num.zig");
+const limits = @import("limits.zig");
 const route = @import("route.zig");
 const thinland = @import("thinland.zig");
 const Allocator = std.mem.Allocator;
@@ -164,7 +166,8 @@ fn cpCount(s: []const u8) usize {
 }
 
 /// Greedy word wrap at `chars` characters; words longer than a line are split.
-pub fn wrap(a: Allocator, text: []const u8, chars: usize) Allocator.Error![]const []const u8 {
+pub fn wrap(a: Allocator, text: []const u8, chars_in: usize) Allocator.Error![]const []const u8 {
+    const chars = @max(chars_in, 1); // 0 would never consume a word (REVIEW LAY-2)
     var lines: std.ArrayList([]const u8) = .empty;
     var cur: std.ArrayList(u8) = .empty;
     var it = std.mem.tokenizeAny(u8, text, " \t\r\n");
@@ -323,8 +326,7 @@ fn bandedLabelPoint(env: *Env, shapes: []const Shape) Allocator.Error!?struct { 
     if (inset.contains(prim)) return .{ .p = prim, .inset = inset };
     var bb = Box{};
     for (shapes) |x| bb.addBox(clip.loopsBox(&.{x.outer}));
-    var step = @max(@min(h, @min(bb.width(), bb.height()) / 6.0), h / 8.0);
-    while ((bb.width() / step + 1) * (bb.height() / step + 1) > 2500) step *= 1.5;
+    const step = gridStep(bb, h, 6.0) orelse return .{ .p = prim, .inset = inset };
     var best = prim;
     var best_score: f64 = -1;
     var best_d: f64 = std.math.inf(f64);
@@ -349,6 +351,23 @@ fn bandedLabelPoint(env: *Env, shapes: []const Shape) Allocator.Error!?struct { 
     return .{ .p = best, .inset = inset };
 }
 
+/// E_LIMIT for a note/label text over `limits.max_text_chars` (reports and returns true).
+fn textTooLong(env: *Env, what: []const u8, id: []const u8, apath: []const u8, text: []const u8) Allocator.Error!bool {
+    if (text.len <= limits.max_text_chars) return false;
+    env.diags.addFix(.@"error", "E_LIMIT", id, apath, "{s}", .{try limits.message(env.a, try std.fmt.allocPrint(env.a, "characters in the text of {s} '{s}'", .{ what, id }), text.len, limits.max_text_chars, "A drawing note is a short phrase, not a paragraph.")}, "shorten the text to one phrase (about 130 characters or fewer) or split it into several notes");
+    return true;
+}
+
+/// Sampling step for a shape's box: about a text height (or `1/div` of the thin side), coarsened until the grid has at most ~2500
+/// cells. Null for a degenerate text height or box, so a zero/NaN style value cannot make the loops below endless (REVIEW LAY-2).
+fn gridStep(bb: Box, h: f64, div: f64) ?f64 {
+    if (!(h > 0) or !std.math.isFinite(h) or !std.math.isFinite(bb.width()) or !std.math.isFinite(bb.height())) return null;
+    var step = @max(@min(h, @min(bb.width(), bb.height()) / div), h / 8.0);
+    var guard: u32 = 0;
+    while ((bb.width() / step + 1) * (bb.height() / step + 1) > 2500 and guard < 200) : (guard += 1) step *= 1.5;
+    return step;
+}
+
 /// Landing candidates inside the visible region: the label point first, then alternatives (nearest
 /// first, then the extremes in 8 directions) that keep clear of the region boundary.
 fn candidatesFor(env: *Env, shapes: []const Shape, inset: Box, primary: V2) Allocator.Error![]const V2 {
@@ -360,8 +379,7 @@ fn candidatesFor(env: *Env, shapes: []const Shape, inset: Box, primary: V2) Allo
     for (shapes) |s| bb.addBox(clip.loopsBox(&.{s.outer}));
     if (bb.isEmpty()) return out.items;
     // thin members (straps, flashing) need a grid finer than a text height
-    var step = @max(@min(h, @min(bb.width(), bb.height()) / 3.0), h / 8.0);
-    while ((bb.width() / step + 1) * (bb.height() / step + 1) > 2500) step *= 1.5;
+    const step = gridStep(bb, h, 3.0) orelse return out.items;
     var pts: std.ArrayList(V2) = .empty;
     var depth: std.ArrayList(f64) = .empty;
     var maxd: f64 = 0;
@@ -637,7 +655,7 @@ fn prepNotes(env: *Env, notes: []const NoteIn) Allocator.Error!NotePrep {
     const S = env.S;
     const h = st.text_height_in * S;
     const g = route.Geo{ .h = h, .pitch = h * st.line_spacing, .gap = st.note_gap_in * S, .shoulder = st.shoulder_in * S, .pad = 0.04 * S };
-    const wrap_n: usize = @intFromFloat(st.wrap_chars);
+    const wrap_n: usize = st.wrapCols();
     const keynote = st.notes_mode_keynote;
     const tag_r = 0.14 * S;
     const lines_of = try a.alloc([]const []const u8, notes.len);
@@ -736,7 +754,7 @@ fn legendItems(env: *Env, notes: []const NoteIn, result: *std.ArrayList(Item)) A
     var box = itemsBox(env.font, result.items);
     box.addBox(env.crop);
     const top = env.crop.y1;
-    const wrap_n: usize = @intFromFloat(st.wrap_chars * 1.25);
+    const wrap_n: usize = cast.toIntClamped(usize, st.wrap_chars * 1.25, 5, 250);
     const x0 = box.x1 + 0.35 * S;
     var y = top;
     try result.append(a, try textItem(env, "notes", "anno", "legend", "KEYNOTES", x0, y - h, h, 0, .left, .baseline));
@@ -1270,6 +1288,7 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "note '{s}' needs a string \"text\"", .{id});
                 continue;
             };
+            if (try textTooLong(env, "note", id, apath, text0)) continue;
             const text = try scene_mod.whereOccursText(a, env.scene, if (an.get("target")) |x| (x.str() orelse "") else "", text0);
             const cites: []const json.Value = if (an.get("cite")) |c| (c.arr() orelse &.{}) else &.{};
             const full = try noteText(env, text, cites);
@@ -1342,6 +1361,7 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "label '{s}' needs a string \"text\"", .{id});
                 continue;
             };
+            if (try textTooLong(env, "label", id, apath, text)) continue;
             const atv = an.get("at") orelse {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "label '{s}' needs \"at\": a Ref or [x, y]", .{id});
                 continue;

@@ -5,6 +5,7 @@ const json = @import("json.zig");
 const geom = @import("geom.zig");
 const model = @import("model.zig");
 const units = @import("units.zig");
+const limits = @import("limits.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Kind = enum { section, iso };
@@ -85,6 +86,9 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
             diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/scale", .{base}), "section views need a numeric scale such as \"1-1/2\\\"=1'-0\\\"\", \"1\\\"=1'-0\\\"\", \"3/4\\\"=1'-0\\\"\" or \"1:20\" (NTS is for iso views)", .{});
             ok = false;
         }
+    } else if (units.parseScaleAny(scale_text)) |s| {
+        diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/scale", .{base}), "scale \"{s}\" means {s} model inches per paper inch; the supported range is {d} to {d} (from a 10x enlargement to 1:10000). Use e.g. \"3\\\"=1'-0\\\"\" (4), \"1\\\"=1'-0\\\"\" (12) or \"1:20\"", .{ scale_text, model.numText(a, s.factor), units.min_scale_factor, units.max_scale_factor });
+        ok = false;
     } else {
         diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/scale", .{base}), "unrecognised scale \"{s}\". Use e.g. \"3\\\"=1'-0\\\"\", \"1-1/2\\\"=1'-0\\\"\", \"1\\\"=1'-0\\\"\", \"3/4\\\"=1'-0\\\"\", \"1/2\\\"=1'-0\\\"\", \"3/8\\\"=1'-0\\\"\", \"1/4\\\"=1'-0\\\"\", \"1:N\" or \"NTS\"", .{scale_text});
         ok = false;
@@ -98,7 +102,7 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
             crop = .{ .x0 = xr.?[0], .x1 = xr.?[1], .y0 = yr.?[0], .y1 = yr.?[1] };
             has_crop = true;
         } else {
-            diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/crop", .{base}), "crop must be {{\"x\": [x0, x1], \"y\": [y0, y1]}} with x0 < x1 and y0 < y1 (model inches)", .{});
+            diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/crop", .{base}), "crop must be {{\"x\": [x0, x1], \"y\": [y0, y1]}} with x0 < x1 and y0 < y1, every value a length of at most {d} inches in magnitude (got {s})", .{ limits.max_coord_in, model.kindOrText(a, cv) });
             ok = false;
         }
     };
@@ -133,6 +137,10 @@ pub fn parse(a: Allocator, node: json.Value, index: usize, diags: *model.Diags) 
         if (x.str()) |sx| try omit.append(a, sx);
     };
     const anns: []const json.Value = if (node.get("annotations")) |av| (av.arr() orelse &.{}) else &.{};
+    if (anns.len > limits.max_annotations_per_view) {
+        diags.addFix(.@"error", "E_LIMIT", id, try std.fmt.allocPrint(a, "{s}/annotations", .{base}), "{s}", .{try limits.message(a, try std.fmt.allocPrint(a, "annotations (notes, dims, labels) in view {s}", .{id}), anns.len, limits.max_annotations_per_view, "Nothing was laid out: the router cost grows with the square of the note count.")}, "keep the most important notes, or move part of the detail to a second view (a new entry in views[] with its own crop)");
+        return null;
+    }
     return .{
         .id = id,
         .kind = kind,

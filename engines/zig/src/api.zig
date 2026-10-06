@@ -20,6 +20,7 @@ const load_mod = @import("load.zig");
 const ops_mod = @import("ops.zig");
 const lint = @import("lint.zig");
 pub const schema = @import("schema.zig");
+const limits = @import("limits.zig");
 const Allocator = std.mem.Allocator;
 
 pub const version = "0.1.0";
@@ -112,6 +113,7 @@ pub fn call(gpa: Allocator, name: []const u8, input: []const u8) ApiError!Result
 }
 
 fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
+    if (input.len > limits.max_json_bytes) return fail(a, "E_LIMIT", "{s}", .{try limits.message(a, "input too large (bytes)", input.len, limits.max_json_bytes, "Split the detail into several documents (one sheet per document) or drop unused components and views.")});
     var perr: json.ParseError = undefined;
     const trimmed = std.mem.trim(u8, input, " \t\r\n");
     const inp: json.Value = if (trimmed.len == 0) .{ .object = &.{} } else (try json.parse(a, input, &perr)) orelse
@@ -157,9 +159,13 @@ fn getDoc(a: Allocator, inp: json.Value) ApiError!union(enum) { doc: json.Value,
 fn getStyle(a: Allocator, inp: json.Value) ApiError!union(enum) { style: style_mod.Style, err: Out } {
     const sv = inp.get("style");
     const user: ?json.Value = if (sv) |s| (if (s == .object) s else null) else null;
-    const st = style_mod.load(a, user) catch |e| switch (e) {
+    var why: []const u8 = "";
+    const st = style_mod.loadWhy(a, user, &why) catch |e| switch (e) {
         error.OutOfMemory => return error.OutOfMemory,
-        error.BadStyle => return .{ .err = try fail(a, "E_STYLE", "the style is not a valid kerfstyle (needs pens and materials objects)", .{}) },
+        error.BadStyle => return .{ .err = if (why.len > 0)
+            try fail(a, "E_STYLE", "the style has invalid values: {s}. Fix: remove those keys to use the defaults (shown above), or give values inside the stated ranges.", .{why})
+        else
+            try fail(a, "E_STYLE", "the style is not a valid kerfstyle (needs pens and materials objects)", .{}) },
     };
     return .{ .style = st };
 }

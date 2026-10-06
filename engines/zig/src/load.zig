@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const json = @import("json.zig");
+const limits = @import("limits.zig");
 const geom = @import("geom.zig");
 const model = @import("model.zig");
 const style_mod = @import("style.zig");
@@ -50,7 +51,7 @@ pub fn loadAfterEdit(a: Allocator, doc: json.Value, st: *const style_mod.Style, 
         if (vdoc.get("views")) |vs| if (vs.arr()) |va| {
             nviews = va.len;
             var seen: std.ArrayList([]const u8) = .empty;
-            for (va, 0..) |v, i| {
+            for (if (va.len > limits.max_views) va[0..0] else va, 0..) |v, i| { // over the limit: E_LIMIT already reported by compile
                 const vid = if (v.get("id")) |x| (x.str() orelse "") else "";
                 var dup = false;
                 for (seen.items) |s| if (std.mem.eql(u8, s, vid)) {

@@ -6,6 +6,7 @@
 //! side face per profile segment); edges are tested against front-facing faces on a uniform grid.
 
 const std = @import("std");
+const cast = @import("num.zig");
 const geom = @import("geom.zig");
 const clip = @import("clip.zig");
 const model = @import("model.zig");
@@ -130,10 +131,10 @@ pub const Iso = struct {
     }
 
     fn cellRange(self: *const Iso, b: Box) [4]usize {
-        const gn: f64 = @floatFromInt(self.gn);
+        const gn = self.gn;
         const cl = struct {
-            fn f(v: f64, o: f64, w: f64, g: f64) usize {
-                return @intFromFloat(@min(@max(@floor((v - o) / w), 0), g - 1));
+            fn f(v: f64, o: f64, w: f64, g: usize) usize {
+                return cast.toIntClamped(usize, @floor((v - o) / w), 0, g -| 1);
             }
         }.f;
         return .{ cl(b.x0, self.gx0, self.gw, gn), cl(b.x1, self.gx0, self.gw, gn), cl(b.y0, self.gy0, self.gh, gn), cl(b.y1, self.gy0, self.gh, gn) };
@@ -284,8 +285,7 @@ fn flattenSharp(a: Allocator, loop: []const Pt) Allocator.Error!FLoop {
         if (p.b != 0) {
             const arc = geom.arcOf(p.v(), q.v(), p.b);
             const by_tol = if (arc.r > 0.004) 2.0 * std.math.acos(1.0 - 0.004 / arc.r) else 1.0;
-            const step = @min(0.22, by_tol);
-            const n = @max(2, @as(usize, @intFromFloat(@ceil(@abs(arc.sweep) / step))));
+            const n = geom.stepsForSweep(arc.sweep, if (by_tol > 0) @min(0.22, by_tol) else 0.22);
             var k: usize = 1;
             while (k < n) : (k += 1) try pts.append(a, arc.at(@as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n))));
         }
@@ -504,7 +504,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
     const Key = [6]i64;
     const keyOf = struct {
         fn r(x: f64) i64 {
-            return @intFromFloat(@round(x * 2000.0));
+            return cast.toIntClamped(i64, @round(x * 2000.0), std.math.minInt(i64), std.math.maxInt(i64));
         }
         fn f(ea: [3]f64, eb: [3]f64) Key {
             const ka = [3]i64{ r(ea[0]), r(ea[1]), r(ea[2]) };

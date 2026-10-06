@@ -1,9 +1,11 @@
 //! Core model types shared by builders, the scene compiler, views and exporters.
 
 const std = @import("std");
+const cast = @import("num.zig");
 const json = @import("json.zig");
 const geom = @import("geom.zig");
 const units = @import("units.zig");
+const limits = @import("limits.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
 const Pt = geom.Pt;
@@ -254,9 +256,14 @@ pub const Params = struct {
     ok: bool = true,
 
     pub fn fail(self: *Params, key: []const u8, comptime fmt: []const u8, args: anytype) void {
+        self.failCode("E_PARAM", key, fmt, args);
+    }
+
+    /// `fail` with another diagnostic code (E_LIMIT, E_ANCHOR_UNKNOWN, ...); the code is part of the diagnostic from the start.
+    pub fn failCode(self: *Params, code: []const u8, key: []const u8, comptime fmt: []const u8, args: anytype) void {
         self.ok = false;
         const path = std.fmt.allocPrint(self.a, "{s}/{s}/{s}", .{ self.base, self.id, key }) catch return;
-        self.diags.add(.@"error", "E_PARAM", self.id, path, fmt, args);
+        self.diags.add(.@"error", code, self.id, path, fmt, args);
     }
 
     pub fn raw(self: *const Params, key: []const u8) ?json.Value {
@@ -277,6 +284,10 @@ pub const Params = struct {
             return null;
         };
         if (units.parseLength(v)) |x| return x;
+        if (units.parseLengthAny(v)) |x| {
+            self.fail(key, "param '{s}' is out of range: a length must be within +-{d} inches (got {s}, which is {s} inches)", .{ key, limits.max_coord_in, kindOrText(self.a, v), numText(self.a, x) });
+            return null;
+        }
         self.fail(key, "param '{s}' must be a length: {s} (got {s})", .{ key, units.length_forms, kindOrText(self.a, v) });
         return null;
     }
@@ -307,7 +318,7 @@ pub const Params = struct {
             self.fail(key, "param '{s}' must be an integer from {d} to {d} (got {s})", .{ key, min, max, kindOrText(self.a, .{ .number = x }) });
             return null;
         }
-        return @intFromFloat(x);
+        return cast.toInt(i64, x);
     }
 
     pub fn boolean(self: *Params, key: []const u8, default: bool) bool {
@@ -347,6 +358,17 @@ pub fn joinQuoted(a: Allocator, items: []const []const u8) []const u8 {
         out.append(a, '"') catch {};
     }
     return out.items;
+}
+
+/// A number for a message: plain up to 1e9 and down to 1e-4, scientific beyond (so 1e300 does not print 300 digits).
+pub fn numText(a: Allocator, x: f64) []const u8 {
+    if (!std.math.isFinite(x)) return "a non-finite number";
+    const m = @abs(x);
+    const s = if (m != 0 and (m >= 1e9 or m < 1e-4)) std.fmt.allocPrint(a, "{e}", .{x}) else blk: {
+        var b: [40]u8 = undefined;
+        break :blk a.dupe(u8, json.fmtNumber(&b, x));
+    };
+    return s catch "?";
 }
 
 pub fn kindOrText(a: Allocator, v: json.Value) []const u8 {

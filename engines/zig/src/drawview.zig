@@ -11,6 +11,7 @@ const view_mod = @import("view.zig");
 const section = @import("section.zig");
 const drawing = @import("drawing.zig");
 const units = @import("units.zig");
+const cast = @import("num.zig");
 const annot = @import("annot.zig");
 const font_mod = @import("font.zig");
 const Allocator = std.mem.Allocator;
@@ -51,7 +52,7 @@ pub fn codeBasis(a: Allocator, doc: json.Value) Allocator.Error![]const u8 {
     if (doc.get("meta")) |m| if (m.get("jurisdiction")) |j| {
         const code = if (j.get("code")) |c| (c.str() orelse "") else "";
         if (code.len > 0) {
-            if (j.get("edition")) |e| if (e.num()) |n| return std.fmt.allocPrint(a, "{s} {d}", .{ code, @as(i64, @intFromFloat(n)) });
+            if (j.get("edition")) |e| if (e.num()) |n| if (cast.toInt(i64, n)) |ed| return std.fmt.allocPrint(a, "{s} {d}", .{ code, ed });
             return code;
         }
     };
@@ -139,7 +140,7 @@ fn viewFit(a: Allocator, st: *const style_mod.Style, spec: *const view_mod.ViewS
         };
         if (big.kind != null and big.kind.? == .note) {
             nfix += 1;
-            try fixes.print(a, "{s}{d}) shorten the longest notes (they wrap at {d} characters)", .{ if (nfix > 1) "; " else "", nfix, @as(usize, @intFromFloat(st.wrap_chars)) });
+            try fixes.print(a, "{s}{d}) shorten the longest notes (they wrap at {d} characters)", .{ if (nfix > 1) "; " else "", nfix, st.wrapCols() });
         }
     }
     if (oh > 0) {

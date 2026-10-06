@@ -7,6 +7,8 @@ const json = @import("json.zig");
 const geom = @import("geom.zig");
 const model = @import("model.zig");
 const units = @import("units.zig");
+const cast = @import("num.zig");
+const limits = @import("limits.zig");
 const catalog = @import("catalog.zig");
 const scene_mod = @import("scene.zig");
 const style_mod = @import("style.zig");
@@ -120,9 +122,14 @@ pub fn parseActual(size: []const u8) ?SawnSize {
     if (size[xi] == 0xc3 and rest.len > 0) rest = rest[1..]; // UTF-8 multiplication sign
     const a = units.parseLengthStr(size[0..xi]) orelse return null;
     const b = units.parseLengthStr(rest) orelse return null;
-    if (a <= 0 or b <= 0) return null;
+    if (a <= 0 or b <= 0 or !units.lengthInRange(a) or !units.lengthInRange(b)) return null;
     return .{ .t = a, .d = b };
 }
+
+/// Accepted magnitude of a polygon bulge: below the minimum the arc is a straight line to within rounding (and its radius overflows
+/// the arc flattener), above the maximum it is a near-full circle with an absurd radius (REVIEW SAF-5).
+const min_bulge: f64 = 1e-6;
+const max_bulge: f64 = 1e3;
 
 fn pointsOr(ctx: *Ctx, key: []const u8, v: json.Value) BuildError!?[]Pt {
     return parsePointList(ctx, key, v, true);
@@ -135,6 +142,10 @@ pub fn parsePointList(ctx: *Ctx, key: []const u8, v: json.Value, local: bool) Bu
         ctx.p.fail(key, "param '{s}' must be an array of points: [x, y], [x, y, bulge], \"comp@anchor\" or {{\"ref\": \"comp@anchor\", \"offset\": [dx, dy]}}", .{key});
         return null;
     };
+    if (arr.len > limits.max_points) {
+        ctx.p.failCode("E_LIMIT", key, "{s}. Fix: simplify the outline (a drawing detail rarely needs more than a few dozen vertices), or split it into several components", .{try limits.message(ctx.a, try std.fmt.allocPrint(ctx.a, "points in '{s}'", .{key}), arr.len, limits.max_points, "")});
+        return null;
+    }
     var out: std.ArrayList(Pt) = .empty;
     var ok = true;
     for (arr, 0..) |e, i| {
@@ -149,11 +160,25 @@ pub fn parsePointList(ctx: *Ctx, key: []const u8, v: json.Value, local: bool) Bu
                 }
                 const x = units.parseLength(xy[0]);
                 const y = units.parseLength(xy[1]);
-                const b: f64 = if (xy.len == 3) (xy[2].num() orelse 0) else 0;
                 if (x == null or y == null) {
-                    ctx.p.fail(path, "point {d} of '{s}' has a non-numeric coordinate", .{ i, key });
+                    const bad = if (x == null) xy[0] else xy[1];
+                    ctx.p.fail(path, "point {d} of '{s}': a coordinate must be a length within +-{d} inches (got {s})", .{ i, key, limits.max_coord_in, model.kindOrText(ctx.a, bad) });
                     ok = false;
                     continue;
+                }
+                var b: f64 = 0;
+                if (xy.len == 3) {
+                    const bn = xy[2].num() orelse {
+                        ctx.p.fail(path, "point {d} of '{s}': the third value is the bulge and must be a number (got {s}); use [x, y] for a straight edge", .{ i, key, model.kindOrText(ctx.a, xy[2]) });
+                        ok = false;
+                        continue;
+                    };
+                    if (bn != 0 and !(@abs(bn) >= min_bulge and @abs(bn) <= max_bulge)) {
+                        ctx.p.fail(path, "point {d} of '{s}': bulge {s} is out of range. Use 0 (or omit it) for a straight edge, or a value with {d} <= |bulge| <= {d} (bulge = tan(sweep/4): 1 is a half circle, 0.4142 a quarter circle; the sign picks the side)", .{ i, key, model.numText(ctx.a, bn), min_bulge, max_bulge });
+                        ok = false;
+                        continue;
+                    }
+                    b = bn;
                 }
                 try out.append(ctx.a, .{ .x = x.?, .y = y.?, .b = b });
             },
@@ -929,7 +954,7 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
         p.fail("place/count", "place.count must be an integer from 1 to 200 (got {s})", .{fmtNum(a, count_f)});
         return null;
     }
-    const count: usize = @intFromFloat(count_f);
+    const count: usize = cast.toIntClamped(usize, count_f, 1, 200);
     const axis = (if (pl.get("axis")) |x| x.str() else null) orelse "x";
     if (!std.mem.eql(u8, axis, "x") and !std.mem.eql(u8, axis, "y")) {
         p.fail("place/axis", "place.axis must be \"x\" or \"y\" (got \"{s}\"): the direction a multi-bar row spreads for face \"center\"", .{axis});
@@ -1105,7 +1130,7 @@ fn buildAnchorBolt(ctx: *Ctx) BuildError!?Built {
         const td = 0.22 * d;
         const pitch = 0.5 * d;
         const n_f = @floor(embed / pitch);
-        const n: usize = @intFromFloat(@min(n_f, 80));
+        const n: usize = cast.toIntClamped(usize, n_f, 0, 80);
         if (n >= 1) {
             for ([_]f64{ -1, 1 }) |sgn| {
                 var strip: std.ArrayList(Pt) = .empty;
@@ -1185,7 +1210,8 @@ fn buildConnector(ctx: *Ctx) BuildError!?Built {
         return null;
     };
     if (!p.ok) return null;
-    const thickness = gaugeThickness(@intFromFloat(@round(gauge_n.?))) orelse {
+    const gauge_i: u32 = cast.toInt(u32, @round(gauge_n.?)) orelse 0;
+    const thickness = gaugeThickness(gauge_i) orelse {
         p.fail("gauge", "gauge {s} is not in the table; use 10, 11, 12, 14, 16, 18, 20, 22, 24, 26 or 28", .{fmtNum(a, gauge_n.?)});
         return null;
     };
@@ -1210,7 +1236,7 @@ fn buildConnector(ctx: *Ctx) BuildError!?Built {
             if (model_name != null and model_name.?.len > 0) model_name.? else "",
             if (model_name != null and model_name.?.len > 0) " " else "",
             if (hw) |h| try std.fmt.allocPrint(a, "{s} ", .{h.kind}) else "",
-            @as(i64, @intFromFloat(@round(gauge_n.?))),
+            gauge_i,
             ftin(a, width.?),
             lay.?,
         }),
@@ -1510,13 +1536,13 @@ fn battSymbol(a: Allocator, bx: Box) Allocator.Error![]const Pt {
     const horizontal = bx.width() >= bx.height();
     const long = if (horizontal) bx.width() else bx.height();
     const short = if (horizontal) bx.height() else bx.width();
-    const loops: f64 = @max(2, @round(long / (short * 0.9)));
+    const loops: f64 = @min(@max(2, @round(long / (short * 0.9))), 2000);
     const pad = short * 0.2;
     const pitch = (long - 2 * pad) / loops;
     const loop_w = 1.7 * pitch / (2.0 * std.math.pi);
     const amp = 0.42 * short;
     const steps_per = 20;
-    const total: usize = @as(usize, @intFromFloat(loops)) * steps_per;
+    const total: usize = cast.toIntClamped(usize, loops, 2, 2000) * steps_per;
     var out: std.ArrayList(Pt) = .empty;
     var i: usize = 0;
     while (i <= total) : (i += 1) {
@@ -1617,7 +1643,8 @@ fn buildFlashing(ctx: *Ctx) BuildError!?Built {
     const leg = p.lenPos("leg", leg_def, "") orelse return null;
     const drop = p.lenPos("drop", drop_def, "") orelse return null;
     const kick = p.lenPos("kick", 0.5, "") orelse return null;
-    const thickness = gaugeThickness(@intFromFloat(@round(gauge_n.?))) orelse {
+    const gauge_i: u32 = cast.toInt(u32, @round(gauge_n.?)) orelse 0;
+    const thickness = gaugeThickness(gauge_i) orelse {
         p.fail("gauge", "gauge {s} is not in the table; use 20, 22, 24, 26 (default, 0.0179\") or 28", .{fmtNum(a, gauge_n.?)});
         return null;
     };
@@ -1657,7 +1684,7 @@ fn buildFlashing(ctx: *Ctx) BuildError!?Built {
         .anchors = anchors,
         .box = geom.loopBox(rib),
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "flashing {s} {d} ga ({s}\" thick)", .{ pr, @as(i64, @intFromFloat(@round(gauge_n.?))), fmtNum(a, thickness) }),
+        .info = try std.fmt.allocPrint(a, "flashing {s} {d} ga ({s}\" thick)", .{ pr, gauge_i, fmtNum(a, thickness) }),
     };
     if (!points_mode and std.mem.eql(u8, exterior.?, "right")) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
     return built;

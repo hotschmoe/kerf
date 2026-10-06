@@ -1,6 +1,7 @@
 //! Section view (SPEC 8.1): exact 2D cut / beyond / hatch with crop, break lines and dedupe.
 
 const std = @import("std");
+const cast = @import("num.zig");
 const geom = @import("geom.zig");
 const clip = @import("clip.zig");
 const model = @import("model.zig");
@@ -375,7 +376,7 @@ pub const Section = struct {
         const r = @min(@max(0.05, 0.016 * S), 0.15 * strap_w + 0.02);
         const pitch = @ceil(@max(1.0, 0.07 * S));
         if (total < 0.5 * pitch) return;
-        const n: usize = @max(1, @as(usize, @intFromFloat(@floor(total / pitch + 1e-9))));
+        const n: usize = cast.toIntClamped(usize, @floor(total / pitch + 1e-9), 1, 5000);
         const first = (total - @as(f64, @floatFromInt(n - 1)) * pitch) / 2;
         var seg: usize = 0;
         var seg_start: f64 = 0;

@@ -6,6 +6,7 @@
 //! cross it (junctions), capped at two text heights, then by their distance from the regular label point.
 
 const std = @import("std");
+const cast = @import("num.zig");
 const geom = @import("geom.zig");
 const units = @import("units.zig");
 const scene_mod = @import("scene.zig");
@@ -127,7 +128,7 @@ pub fn candidates(
     for (skels.items) |sk| {
         const region = try sec.visibleRegion(sk.prism);
         const total = polyLen(sk.pts);
-        const n: usize = @intFromFloat(@min(400, @max(2, @ceil(total / step))));
+        const n: usize = cast.toIntClamped(usize, @ceil(total / step), 2, 400);
         var k: usize = 0;
         while (k <= n) : (k += 1) {
             const at = total * @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n));

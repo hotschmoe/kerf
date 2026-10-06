@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const json = @import("json.zig");
+const cast = @import("num.zig");
 const Allocator = std.mem.Allocator;
 
 pub const default_json = @embedFile("kerf_style_json");
@@ -124,6 +125,11 @@ pub const Style = struct {
     color_edge: []const u8 = "#1A1A1A",
     color_background: []const u8 = "#F2EFE6",
 
+    /// Characters per note line (validated to 4..200 at load; clamped again so a hand-built Style cannot reach a bad cast).
+    pub fn wrapCols(self: *const Style) usize {
+        return cast.toIntClamped(usize, self.wrap_chars, 4, 200);
+    }
+
     pub fn pen(self: *const Style, name: []const u8) ?Pen {
         for (self.pens) |p| if (std.mem.eql(u8, p.name, name)) return p;
         return null;
@@ -182,13 +188,208 @@ pub const StyleError = error{ BadStyle, OutOfMemory };
 
 /// Build a Style from the embedded default merged with `user` (may be null).
 pub fn load(a: Allocator, user: ?json.Value) StyleError!Style {
+    var why: []const u8 = "";
+    return loadWhy(a, user, &why);
+}
+
+/// Like `load`; on `error.BadStyle` `why` is a message naming every offending key and the accepted range.
+pub fn loadWhy(a: Allocator, user: ?json.Value, why: *[]const u8) StyleError!Style {
     var err: json.ParseError = undefined;
     const base = (try json.parse(a, default_json, &err)) orelse return error.BadStyle;
     var root = base;
     if (user) |u| {
         if (u == .object and u.object.len > 0) root = try json.mergePatch(a, base, u);
     }
+    if (try validate(a, root)) |msg| {
+        why.* = msg;
+        return error.BadStyle;
+    }
     return fromValue(a, root);
+}
+
+// ---- validation (REVIEW LAY-2, SAF-1, SAF-4) -----------------------------------------------------------------------------------
+// Every number that later becomes a loop step, a character count or an array size is range-checked here once, so the
+// layout and exporters can trust the Style. A wrong type or an out-of-range value is an error that names the key.
+
+const Check = struct {
+    a: Allocator,
+    msg: std.ArrayList(u8) = .empty,
+    count: usize = 0,
+
+    fn bad(self: *Check, comptime fmt: []const u8, args: anytype) Allocator.Error!void {
+        self.count += 1;
+        if (self.count > 12) return; // keep the message short: the first dozen problems are plenty
+        if (self.msg.items.len > 0) try self.msg.appendSlice(self.a, "; ");
+        try self.msg.print(self.a, fmt, args);
+    }
+
+    fn gotText(self: *Check, v: json.Value) Allocator.Error![]const u8 {
+        return switch (v) {
+            .number => |n| blk: {
+                var b: [40]u8 = undefined;
+                break :blk try self.a.dupe(u8, json.fmtNumber(&b, n));
+            },
+            .string => |s| try std.fmt.allocPrint(self.a, "\"{s}\"", .{s[0..@min(s.len, 24)]}),
+            else => v.kindName(),
+        };
+    }
+
+    /// `v` (if present and not null) must be a number in [lo, hi].
+    fn range(self: *Check, path: []const u8, v: ?json.Value, lo: f64, hi: f64, def: f64) Allocator.Error!void {
+        const x = v orelse return;
+        if (x == .null) return;
+        if (x == .number and x.number >= lo and x.number <= hi) return;
+        var b1: [40]u8 = undefined;
+        var b2: [40]u8 = undefined;
+        var b3: [40]u8 = undefined;
+        try self.bad("style key '{s}' must be a number from {s} to {s} (got {s}; default {s})", .{ path, json.fmtNumber(&b1, lo), json.fmtNumber(&b2, hi), try self.gotText(x), json.fmtNumber(&b3, def) });
+    }
+
+    fn section(self: *Check, root: json.Value, key: []const u8) Allocator.Error!?json.Value {
+        const v = root.get(key) orelse return null;
+        if (v == .null) return null;
+        if (v != .object) {
+            try self.bad("style key '{s}' must be an object (got {s})", .{ key, v.kindName() });
+            return null;
+        }
+        return v;
+    }
+};
+
+const RangeRow = struct { sec: []const u8, key: []const u8, field: []const u8, lo: f64, hi: f64 };
+const range_rows = [_]RangeRow{
+    .{ .sec = "text", .key = "height_in", .field = "text_height_in", .lo = 1.0 / 64.0, .hi = 2 },
+    .{ .sec = "text", .key = "title_height_in", .field = "title_height_in", .lo = 1.0 / 64.0, .hi = 4 },
+    .{ .sec = "text", .key = "label_height_in", .field = "label_height_in", .lo = 1.0 / 64.0, .hi = 2 },
+    .{ .sec = "text", .key = "line_spacing", .field = "line_spacing", .lo = 0.5, .hi = 4 },
+    .{ .sec = "notes", .key = "wrap_chars", .field = "wrap_chars", .lo = 4, .hi = 200 },
+    .{ .sec = "notes", .key = "gutter_in", .field = "gutter_in", .lo = 0, .hi = 10 },
+    .{ .sec = "notes", .key = "shoulder_in", .field = "shoulder_in", .lo = 0, .hi = 10 },
+    .{ .sec = "notes", .key = "note_gap_in", .field = "note_gap_in", .lo = 0, .hi = 10 },
+    .{ .sec = "notes", .key = "arrow_len_in", .field = "arrow_len_in", .lo = 0, .hi = 2 },
+    .{ .sec = "notes", .key = "arrow_width_in", .field = "arrow_width_in", .lo = 0, .hi = 2 },
+    .{ .sec = "dims", .key = "tick_len_in", .field = "tick_len_in", .lo = 0, .hi = 2 },
+    .{ .sec = "dims", .key = "ext_gap_in", .field = "ext_gap_in", .lo = 0, .hi = 2 },
+    .{ .sec = "dims", .key = "ext_over_in", .field = "ext_over_in", .lo = 0, .hi = 2 },
+    .{ .sec = "dims", .key = "text_gap_in", .field = "dim_text_gap_in", .lo = 0, .hi = 2 },
+    .{ .sec = "dims", .key = "precision", .field = "dim_precision", .lo = 1, .hi = 64 },
+    .{ .sec = "sheet", .key = "margin_in", .field = "margin_in", .lo = 0, .hi = 10 },
+    .{ .sec = "sheet", .key = "title_block_height_in", .field = "title_block_h_in", .lo = 0, .hi = 20 },
+    .{ .sec = "break_line", .key = "zig_in", .field = "break_zig_in", .lo = 0.001, .hi = 5 },
+    .{ .sec = "break_line", .key = "period_in", .field = "break_period_in", .lo = 0.01, .hi = 20 },
+    .{ .sec = "break_line", .key = "overshoot_in", .field = "break_overshoot_in", .lo = 0, .hi = 5 },
+};
+
+/// Null when `root` is acceptable, else a message listing the problems (allocated from `a`).
+fn validate(a: Allocator, root: json.Value) Allocator.Error!?[]const u8 {
+    var c = Check{ .a = a };
+    const d = Style{ .id = "", .pens = &.{}, .materials = &.{}, .patterns = &.{}, .layers = &.{} };
+    inline for (range_rows) |r| {
+        if (try c.section(root, r.sec)) |sec| {
+            const path = r.sec ++ "." ++ r.key;
+            try c.range(path, sec.get(r.key), r.lo, r.hi, @field(d, r.field));
+        }
+    }
+    if (try c.section(root, "sheet")) |sec| {
+        if (sec.get("size_in")) |sz| if (sz != .null) {
+            if (sz != .array or sz.array.len != 2) {
+                try c.bad("style key 'sheet.size_in' must be [width, height] in inches (got {s})", .{try c.gotText(sz)});
+            } else {
+                try c.range("sheet.size_in[0]", sz.array[0], 2, 200, d.sheet_w_in);
+                try c.range("sheet.size_in[1]", sz.array[1], 2, 200, d.sheet_h_in);
+            }
+        };
+    }
+    try validatePens(&c, root);
+    try validateMaterials(&c, root);
+    try validatePatterns(&c, root);
+    if (root.get("layers")) |lv| if (lv == .object) {
+        for (lv.object) |m| if (m.value == .object) {
+            const path = try std.fmt.allocPrint(a, "layers.{s}.lineweight_mm", .{m.key});
+            try c.range(path, m.value.get("lineweight_mm"), 0, 10, 0.25);
+        };
+    };
+    if (c.count == 0) {
+        // The page must keep a drawing area after margins and the title strip.
+        const sh: json.Value = root.get("sheet") orelse .null;
+        var w = d.sheet_w_in;
+        var h = d.sheet_h_in;
+        if (sh.get("size_in")) |sz| if (sz.arr()) |arr| if (arr.len == 2) {
+            w = arr[0].num() orelse w;
+            h = arr[1].num() orelse h;
+        };
+        const m = if (sh.get("margin_in")) |x| x.num() orelse d.margin_in else d.margin_in;
+        const tb = if (sh.get("title_block_height_in")) |x| x.num() orelse d.title_block_h_in else d.title_block_h_in;
+        if (w - 2 * m < 1 or h - 2 * m - tb < 1) {
+            try c.bad("style key 'sheet': margin_in {d} and title_block_height_in {d} leave no drawing area on a {d} x {d} in sheet (need at least 1 in each way)", .{ m, tb, w, h });
+        }
+    }
+    if (c.count == 0) return null;
+    if (c.count > 12) try c.msg.print(a, "; and {d} more", .{c.count - 12});
+    return c.msg.items;
+}
+
+fn validatePens(c: *Check, root: json.Value) Allocator.Error!void {
+    const pv = root.get("pens") orelse return;
+    if (pv != .object) return; // reported as BadStyle by fromValue (needs pens and materials objects)
+    for (pv.object) |m| {
+        if (m.value != .object) continue;
+        const path = try std.fmt.allocPrint(c.a, "pens.{s}.width_mm", .{m.key});
+        try c.range(path, m.value.get("width_mm"), 0, 10, 0.25);
+        if (m.value.get("dash_mm")) |dv| if (dv == .array) {
+            for (dv.array, 0..) |x, i| {
+                const dp = try std.fmt.allocPrint(c.a, "pens.{s}.dash_mm[{d}]", .{ m.key, i });
+                try c.range(dp, x, 0.01, 100, 1);
+            }
+        };
+    }
+}
+
+fn validateMaterials(c: *Check, root: json.Value) Allocator.Error!void {
+    const mv = root.get("materials") orelse return;
+    if (mv != .object) return;
+    for (mv.object) |m| {
+        if (m.value != .object) continue;
+        if (m.value.get("hatch")) |h| if (h == .array) {
+            for (h.array, 0..) |x, i| {
+                const base = try std.fmt.allocPrint(c.a, "materials.{s}.hatch[{d}]", .{ m.key, i });
+                try c.range(try std.fmt.allocPrint(c.a, "{s}.scale", .{base}), x.get("scale"), 0.01, 100, 1);
+                try c.range(try std.fmt.allocPrint(c.a, "{s}.angle", .{base}), x.get("angle"), -3600, 3600, 0);
+            }
+        };
+        if (m.value.get("grain")) |g| if (g == .object) {
+            const base = try std.fmt.allocPrint(c.a, "materials.{s}.grain", .{m.key});
+            try c.range(try std.fmt.allocPrint(c.a, "{s}.scale", .{base}), g.get("scale"), 0.01, 100, 1);
+            try c.range(try std.fmt.allocPrint(c.a, "{s}.amplitude", .{base}), g.get("amplitude"), 0, 1, 0.010);
+            try c.range(try std.fmt.allocPrint(c.a, "{s}.wavelength", .{base}), g.get("wavelength"), 0.05, 100, 1.1);
+        };
+    }
+}
+
+fn validatePatterns(c: *Check, root: json.Value) Allocator.Error!void {
+    const pv = root.get("patterns") orelse return;
+    if (pv != .object) return;
+    for (pv.object) |m| {
+        if (m.key.len > 0 and m.key[0] == '_') continue;
+        const fams = m.value.arr() orelse continue;
+        for (fams, 0..) |f, i| {
+            const arr = f.arr() orelse continue;
+            if (arr.len < 5) continue;
+            const base = try std.fmt.allocPrint(c.a, "patterns.{s}[{d}]", .{ m.key, i });
+            try c.range(try std.fmt.allocPrint(c.a, "{s} angle", .{base}), arr[0], -3600, 3600, 0);
+            try c.range(try std.fmt.allocPrint(c.a, "{s} x0", .{base}), arr[1], -1e4, 1e4, 0);
+            try c.range(try std.fmt.allocPrint(c.a, "{s} y0", .{base}), arr[2], -1e4, 1e4, 0);
+            try c.range(try std.fmt.allocPrint(c.a, "{s} dx", .{base}), arr[3], -1e4, 1e4, 0);
+            // dy is the line spacing: |dy| >= 1e-4 keeps a hatch run finite (the 150,000-line cap would otherwise truncate silently)
+            const dy = arr[4];
+            if (dy == .number and (@abs(dy.number) < 1e-4 or @abs(dy.number) > 1e4)) {
+                try c.bad("style key '{s} dy' must be a number with 0.0001 <= |dy| <= 10000 (got {s})", .{ base, try c.gotText(dy) });
+            } else if (dy != .number) {
+                try c.bad("style key '{s} dy' must be a number (got {s})", .{ base, try c.gotText(dy) });
+            }
+            for (arr[5..], 0..) |dd, k| try c.range(try std.fmt.allocPrint(c.a, "{s} dash[{d}]", .{ base, k }), dd, -1e4, 1e4, 0);
+        }
+    }
 }
 
 pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {

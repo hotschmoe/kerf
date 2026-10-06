@@ -2,6 +2,7 @@
 //! stroked paths (no fonts), deterministic object order, no timestamps.
 
 const std = @import("std");
+const cast = @import("num.zig");
 const geom = @import("geom.zig");
 const drawing = @import("drawing.zig");
 const style_mod = @import("style.zig");
@@ -63,7 +64,7 @@ const Cs = struct {
                 try self.op(q.x, q.y, "l");
             } else {
                 const arc = geom.arcOf(p.v(), q.v(), p.b);
-                const n: usize = @max(1, @as(usize, @intFromFloat(@ceil(@abs(arc.sweep) / (std.math.pi / 2.0) - 1e-9))));
+                const n: usize = cast.toIntClamped(usize, @ceil(@abs(arc.sweep) / (std.math.pi / 2.0) - 1e-9), 1, 4);
                 const step = arc.sweep / @as(f64, @floatFromInt(n));
                 const k = 4.0 / 3.0 * @tan(step / 4.0);
                 var a0 = arc.a0;
