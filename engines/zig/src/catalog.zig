@@ -204,7 +204,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .anchor_bolt,
         .summary = "Anchor bolt in the XY plane at a given z (shank, hook, nut and washer).",
-        .params = params.rows(builders.AnchorBoltParams),
+        .params = params.rows(builders.anchor_bolt.Params),
         .traits = .{ .default_anchor = "top_of_concrete" },
         .parts = "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut)",
         .anchors = "9 box anchors + top_of_concrete (where the bolt meets the host top surface, local (0,0))",
