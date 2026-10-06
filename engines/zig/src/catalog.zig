@@ -166,7 +166,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .panel,
         .summary = "Sheathing, boards, gypsum, soffit, fascia/trim boards as a thin rectangle.",
-        .params = params.rows(builders.PanelParams),
+        .params = params.rows(builders.panel.Params),
         .traits = .{ .sheet = true, .rigid_sheet = true, .slope_host = .{} },
         .parts = "none",
         .anchors = "the 9 box anchors",
