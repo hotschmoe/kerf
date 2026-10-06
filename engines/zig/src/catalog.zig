@@ -234,7 +234,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .membrane,
         .summary = "Thin layers: underlayment, vapor retarder, WRB, roofing, flashing.",
-        .params = params.rows(builders.MembraneParams),
+        .params = params.rows(builders.membrane.Params),
         .traits = .{ .sheet = true, .line_like = true },
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
