@@ -176,7 +176,7 @@ fn applyOne(c: *Ctx, op: Value) Allocator.Error!void {
 
     if (eq(u8, seg[0], "doc")) {
         if (!is_set or seg.len != 1) return c.fail("E_OP", path, "only {{\"op\": \"set\", \"path\": \"doc\", \"value\": {{whole document}}}} may target \"doc\"", .{});
-        if (value.?  != .object) return c.fail("E_OP", path, "set doc needs the whole document object as value", .{});
+        if (value.? != .object) return c.fail("E_OP", path, "set doc needs the whole document object as value", .{});
         var v = value.?;
         // LLM-authored documents cannot carry verified citations
         if (c.actor == .llm) {

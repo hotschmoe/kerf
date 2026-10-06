@@ -301,7 +301,7 @@ test "catalog markdown and json are pure ASCII (PowerShell consoles)" {
         defer a.free(r.bytes);
         try std.testing.expect(r.ok);
         for (r.bytes, 0..) |c, i| if (c >= 0x80) {
-            std.debug.print("non-ASCII byte 0x{x} at {d}: ...{s}...\n", .{ c, i, r.bytes[i -| 30 .. @min(r.bytes.len, i + 30)] });
+            std.debug.print("non-ASCII byte 0x{x} at {d}: ...{s}...\n", .{ c, i, r.bytes[i -| 30..@min(r.bytes.len, i + 30)] });
             return error.NonAsciiCatalog;
         };
     }

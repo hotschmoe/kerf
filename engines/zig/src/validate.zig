@@ -130,7 +130,7 @@ fn overlaps(a: Allocator, items: []const Pf, diags: *model.Diags) Allocator.Erro
             try reported.append(a, key);
             const b = clip.loopsBox(inter);
             diags.addFix(.warning, "W_OVERLAP", p.comp.id, null, "'{s}' and '{s}' overlap by {d:.2} sq in ({s}) within z {s}..{s}", .{
-                p.comp.id,                                  q.comp.id,                                  area,                                              boxText(a, b),
+                p.comp.id,                             q.comp.id,                             area, boxText(a, b),
                 ftin(a, @max(p.prism.z0, q.prism.z0)), ftin(a, @min(p.prism.z1, q.prism.z1)),
             }, "move or resize one of them so they only touch, or mark the inner one embedded:true if it is reinforcement or hardware");
         }
@@ -482,35 +482,35 @@ fn nearMiss(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!vo
                         }
                     }
                     if (!blocked) {
-                    // the member that should grow: the one that is longer along the gap axis than across it
-                    const a_len = a1 - a0;
-                    const b_len = b1 - b0;
-                    const a_across = o1 - o0;
-                    const b_across = q1 - q0;
-                    var grow = A;
-                    var other = B;
-                    if (b_len / @max(b_across, 1e-9) > a_len / @max(a_across, 1e-9)) {
-                        grow = B;
-                        other = A;
-                    }
-                    const grow_len = if (grow.c == A.c) a_len else b_len;
-                    const other_lo = if (grow.c == A.c) b0 else a0;
-                    const grow_below_other = if (grow.c == A.c) a1 <= b0 else b1 <= a0; // grow member sits at lower coordinates
-                    _ = other_lo;
-                    const edge_name: []const u8 = if (on_x) (if (grow_below_other) "left" else "right") else (if (grow_below_other) "bottom" else "top");
-                    const anchor: []const u8 = if (on_x) (if (grow_below_other) "middle_left" else "middle_right") else (if (grow_below_other) "bottom_left" else "top_left");
-                    diags.addFix(.warning, "W_NEAR_MISS", grow.c.id, null, "'{s}' and '{s}' leave a {s} gap along {s} ({s}..{s}) between facing edges while overlapping along {s}; '{s}' probably should extend to the {s} edge of '{s}'", .{
-                        grow.c.id,
-                        other.c.id,
-                        ftin(a, gap),
-                        if (on_x) "x" else "y",
-                        ftin(a, g0),
-                        ftin(a, g1),
-                        if (on_x) "y" else "x",
-                        grow.c.id,
-                        edge_name,
-                        other.c.id,
-                    }, std.fmt.allocPrint(a, "set the length of '{s}' to {s}, or use \"until\": \"{s}@{s}\" so it follows '{s}'; ignore this warning if the gap is intended", .{ grow.c.id, ftin(a, grow_len + gap), other.c.id, anchor, other.c.id }) catch "");
+                        // the member that should grow: the one that is longer along the gap axis than across it
+                        const a_len = a1 - a0;
+                        const b_len = b1 - b0;
+                        const a_across = o1 - o0;
+                        const b_across = q1 - q0;
+                        var grow = A;
+                        var other = B;
+                        if (b_len / @max(b_across, 1e-9) > a_len / @max(a_across, 1e-9)) {
+                            grow = B;
+                            other = A;
+                        }
+                        const grow_len = if (grow.c == A.c) a_len else b_len;
+                        const other_lo = if (grow.c == A.c) b0 else a0;
+                        const grow_below_other = if (grow.c == A.c) a1 <= b0 else b1 <= a0; // grow member sits at lower coordinates
+                        _ = other_lo;
+                        const edge_name: []const u8 = if (on_x) (if (grow_below_other) "left" else "right") else (if (grow_below_other) "bottom" else "top");
+                        const anchor: []const u8 = if (on_x) (if (grow_below_other) "middle_left" else "middle_right") else (if (grow_below_other) "bottom_left" else "top_left");
+                        diags.addFix(.warning, "W_NEAR_MISS", grow.c.id, null, "'{s}' and '{s}' leave a {s} gap along {s} ({s}..{s}) between facing edges while overlapping along {s}; '{s}' probably should extend to the {s} edge of '{s}'", .{
+                            grow.c.id,
+                            other.c.id,
+                            ftin(a, gap),
+                            if (on_x) "x" else "y",
+                            ftin(a, g0),
+                            ftin(a, g1),
+                            if (on_x) "y" else "x",
+                            grow.c.id,
+                            edge_name,
+                            other.c.id,
+                        }, std.fmt.allocPrint(a, "set the length of '{s}' to {s}, or use \"until\": \"{s}@{s}\" so it follows '{s}'; ignore this warning if the gap is intended", .{ grow.c.id, ftin(a, grow_len + gap), other.c.id, anchor, other.c.id }) catch "");
                     }
                 }
             }

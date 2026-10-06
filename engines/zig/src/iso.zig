@@ -332,45 +332,45 @@ fn gather(a: Allocator, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
             var segs: []const @import("mesh.zig").ZSeg = &.{.{ .z0 = p.z0, .z1 = p.z1, .mortar = false }};
             if (p.cmu_unit and !std.mem.eql(u8, p.material, "grout")) segs = try @import("mesh.zig").cmuSplit(a, p);
             for (segs) |sg| {
-            const fill_mat = fill_mat0;
-            const mat_name: []const u8 = if (sg.mortar) "mortar" else p.material;
-            const z0 = sg.z0;
-            var z1 = sg.z1;
-            var cap = false;
-            if (spec.cutaway) {
-                if (z0 >= spec.cut_z) continue;
-                if (z1 > spec.cut_z) {
-                    z1 = spec.cut_z;
-                    cap = true;
+                const fill_mat = fill_mat0;
+                const mat_name: []const u8 = if (sg.mortar) "mortar" else p.material;
+                const z0 = sg.z0;
+                var z1 = sg.z1;
+                var cap = false;
+                if (spec.cutaway) {
+                    if (z0 >= spec.cut_z) continue;
+                    if (z1 > spec.cut_z) {
+                        z1 = spec.cut_z;
+                        cap = true;
+                    }
                 }
-            }
-            if (z1 - z0 < 1e-9) continue;
-            if (fill_mat and !cap) continue;
-            var region = try clip.fromRegion(a, p.loops, 0.003);
-            if (crop_loop) |cl| region = try clip.boolean(a, region, &.{cl}, .intersect);
-            // group into shapes (outer + holes) and add one prism per outer loop
-            var group_outers: std.ArrayList(usize) = .empty;
-            for (region, 0..) |l, i| if (geom.signedAreaV(l) > 0) try group_outers.append(a, i);
-            for (group_outers.items) |oi| {
-                var loops: std.ArrayList([]const V2) = .empty;
-                try loops.append(a, region[oi]);
-                for (region) |h| if (geom.signedAreaV(h) < 0 and h.len > 0 and geom.pointInLoopEO(h[0], region[oi])) try loops.append(a, h);
-                try out.append(a, .{
-                    .src = try srcOf(a, c, p.instance),
-                    .instance = p.instance,
-                    .comp = c.index,
-                    .part = p.part,
-                    .loops = loops.items,
-                    .z0 = z0,
-                    .z1 = z1,
-                    .cap_cut = cap,
-                    .pen = if (p.kind == .ghost) p.pen else null,
-                    .material = mat_name,
-                    .embedded = p.embedded,
-                    .is_fill = fill_mat,
-                    .outline = p.outline,
-                });
-            }
+                if (z1 - z0 < 1e-9) continue;
+                if (fill_mat and !cap) continue;
+                var region = try clip.fromRegion(a, p.loops, 0.003);
+                if (crop_loop) |cl| region = try clip.boolean(a, region, &.{cl}, .intersect);
+                // group into shapes (outer + holes) and add one prism per outer loop
+                var group_outers: std.ArrayList(usize) = .empty;
+                for (region, 0..) |l, i| if (geom.signedAreaV(l) > 0) try group_outers.append(a, i);
+                for (group_outers.items) |oi| {
+                    var loops: std.ArrayList([]const V2) = .empty;
+                    try loops.append(a, region[oi]);
+                    for (region) |h| if (geom.signedAreaV(h) < 0 and h.len > 0 and geom.pointInLoopEO(h[0], region[oi])) try loops.append(a, h);
+                    try out.append(a, .{
+                        .src = try srcOf(a, c, p.instance),
+                        .instance = p.instance,
+                        .comp = c.index,
+                        .part = p.part,
+                        .loops = loops.items,
+                        .z0 = z0,
+                        .z1 = z1,
+                        .cap_cut = cap,
+                        .pen = if (p.kind == .ghost) p.pen else null,
+                        .material = mat_name,
+                        .embedded = p.embedded,
+                        .is_fill = fill_mat,
+                        .outline = p.outline,
+                    });
+                }
             }
         }
     }

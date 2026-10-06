@@ -356,7 +356,7 @@ test "api: every function runs on the reference documents without leaking" {
             defer gpa.free(r.bytes);
             try std.testing.expect(r.ok);
         }
-        for ([_][]const u8{ "A" }) |v| {
+        for ([_][]const u8{"A"}) |v| {
             for ([_][]const u8{ "drawing", "export" }) |fname| {
                 const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"view\":\"{s}\",\"format\":\"svg\"}}", .{ trimmed, v });
                 defer gpa.free(input);

@@ -408,8 +408,8 @@ test "fill: even-odd square with hole, exact edge coverage" {
     const a = arena.allocator();
     var c = try Canvas.init(a, 20, 20);
     const loops = [_][4]f64{
-        .{ 2, 2, 18, 2 },   .{ 18, 2, 18, 18 }, .{ 18, 18, 2, 18 }, .{ 2, 18, 2, 2 },
-        .{ 8, 8, 12, 8 },   .{ 12, 8, 12, 12 }, .{ 12, 12, 8, 12 }, .{ 8, 12, 8, 8 },
+        .{ 2, 2, 18, 2 }, .{ 18, 2, 18, 18 }, .{ 18, 18, 2, 18 }, .{ 2, 18, 2, 2 },
+        .{ 8, 8, 12, 8 }, .{ 12, 8, 12, 12 }, .{ 12, 12, 8, 12 }, .{ 8, 12, 8, 8 },
     };
     for (loops) |e| try c.edges.append(a, .{ .x0 = e[0], .y0 = e[1], .x1 = e[2], .y1 = e[3] });
     try c.fillEdges(a);
