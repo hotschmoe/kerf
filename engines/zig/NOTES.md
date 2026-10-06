@@ -22,6 +22,7 @@ node tests/serve_smoke.mjs   # integration test of `kerf serve` (215 checks; sta
 zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseSmall   # cross-compiles (also aarch64-windows-gnu, *-linux-musl, *-macos)
 zig build wasm -Dwasm-optimize=ReleaseFast   # speed comparison
 zig build wasm -Dwasm-strip=false            # keeps names for `twiggy top dist/kerf.wasm`
+zig build -Doptimize=ReleaseSafe -Dstrip=false   # CLI with debug info (default: stripped outside Debug, 2.5 MB instead of 16 MB)
 zig-out/bin/kerf export ../../spec/details/truss-bearing-cmu.kerf.json --view A --format svg --sheet -o /tmp/a.svg
 ../../tools/zig-engine/svg2png.sh /tmp/a.svg /tmp/a.png 1600      # headless chromium; Read the PNG
 node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm <doc> A out.svg   # ABI check (0 imports, exact exports) + timing
@@ -79,20 +80,92 @@ Output is JSON text for every function except `export` (raw svg/dxf/pdf bytes) a
 
 ## Architecture (src/)
 
-`kerf.zig` (module root) -> `api.zig` (dispatch) | `json.zig` (order-preserving parser/writer, Kerf number
-format) | `units.zig` (length/scale/slope, ft-in) | `geom.zig` (bulge arcs, exact `orient2d` with
-expansion fallback, segment/arc intersection) | `clip.zig` (polygon booleans: arrangement + midpoint
-classification, coincident edges handled by direction) | `pathclip.zig` | `pathgeom.zig` (fillets, offsets,
-ribbons) | `catalog.zig` (single source of truth for params/validation/markdown) | `builders.zig` (component
-builders) | `compile.zig` (placement DAG, arrays, z) | `scene.zig` (refs, anchors) | `validate.zig` |
-`ops.zig` (apply) | `load.zig` (summary, inspect) | `section.zig` | `iso.zig` | `hatch.zig` | `annot.zig`
-(notes/dims/labels/title) | `drawview.zig` | `drawing.zig` (IR) | `sheet.zig` | `svg.zig` `dxf.zig` `pdf.zig`
-| `mesh.zig` | `canon.zig` (fmt) | `main.zig` (CLI) | `wasm.zig` (ABI).
+Read this before changing the engine: it says where things live and how to extend them. (REVIEW.md has the reasoning; this is the
+map. All of it is checked by the compiler or by a test where that was possible.)
 
-CLI-only files (not in the `kerf` module, never in the wasm): `workspace.zig` (op log, atomic writes, file-name rules,
-new-doc text) | `serve.zig` (server: connections, routing, folder scan, handlers, startup) | `http.zig` (HTTP/1.1 parsing and
-responses) | `events.zig` (SSE hub) | `agents.zig` (agent bridge) | `proxy.zig` (`/api/llm` URL rules + streaming forward) |
-`ui_stub.zig` (empty `ui_assets`; `-Dui=` replaces it with a generated module of `@embedFile`s).
+### Data flow of one `kerf.call` (one arena per call, results copied out once)
+
+```
+api.call(name, json)            api.Fn enum -> one function per API function (check, apply, drawing, export, mesh, ...)
+  json.parse                    order-preserving Value; numbers finite and <= 9e15; limits.zig caps everything else
+  style.load                    embedded style (spec/styles) merged with the user's, validated once (E_STYLE)
+  compile.compile               document -> Scene: readSettings, componentItems, readComponents, placementOrder, then per component
+                                  placeComponent = parseAt, resolveAngle, builders.build (typed Params), resolveZ, resolveArray,
+                                  instanceTransforms, worldPrisms (each prism gets its material's style.Role)
+  validate.run / lint / coverage  checks on the Scene and the document (warnings and errors as diagnostics)
+  drawview.build                view -> Drawing (the IR every exporter reads): section.Section or iso.build, then annot.annotate
+  svg / dxf / pdf / raster+png / mesh   exporters over the Drawing (or the Scene for mesh)
+```
+
+### Module map
+
+- **Foundation**: `json` (parser/writer, Kerf number format) | `units` (lengths, scales, slopes, ft-in) | `num` (checked float->int) |
+  `limits` | `oom` (allocation sensor) | `geom` (exact predicates, bulge arcs) | `clip` `pathclip` `pathgeom` (polygon booleans, path
+  clipping, fillets/ribbons) | `hatch` | `font` `textgeom` | `view` (view parsing) | `model` (diagnostics, `Params`, `Prism`, `Built`).
+- **Vocabulary (enums, no strings)**: `api.Fn` (API functions) | `catalog.Type` (component types) | `pen.Pen` and `pen.LayerKey` (what the
+  drawing code draws with; `Pen.layer()` is an exhaustive switch) | `drawing.Kind` / `view.Kind` | `style.Role` (what a material is) |
+  `catalog.Traits` (what a component type is). Code asks `p.role == .soil` or `ty.traits.hardware`, never `std.mem.eql(u8, name, "gravel")`.
+- **Components**: `catalog.zig` (prose, parts/anchors/example, traits; the parameter rows are *generated*) | `params.zig` (typed
+  parameter parsing and the catalog rows from one struct) | `builders.zig` (registry) + `builders/<type>.zig` (14 files, each has `Params`
+  and `build`) + `builders/common.zig` (shared helpers) | `scene.zig` (refs, anchors) | `compile.zig`.
+- **Views**: `section.zig` (the `Section` struct: classes, strokes, regions, `build`/`finish`) + `section/{occlusion,strokes,breaks,
+  hardware,cut,beyond}.zig` (visibility, dedupe/chaining, crop break lines, thin hardware, cut regions, beyond outlines) | `iso.zig` |
+  `drawview.zig` | `crop.zig` | `thinland.zig` | `shape.zig` (visible-region shapes and label points, shared by section and iso).
+- **Annotations**: `annot.zig` (`Env`, `annotate`) + `annot/{text,notes,dims,repair,knockout,title}.zig` | `route.zig` (leader router, pure
+  geometry) | `lint.zig` (note/dim lints) | `sheet.zig` (title block).
+- **Documents**: `schema_fields.zig` (field tables of doc/view/note/dim/...) | `schema.zig` (renders `kerf schema`, the guide, the example doc) |
+  `canon.zig` (`fmt`) | `ops.zig` (apply: validate the op, then `applyDoc/Meta/Components/Views`) | `load.zig` (summary, inspect) | `validate.zig`.
+- **Exporters**: `drawing.zig` (IR) | `svg.zig` `dxf.zig` `pdf.zig` `raster.zig` `png.zig` | `mesh.zig`.
+- **Entry points**: `api.zig` | `kerf.zig` (the importable module) | `wasm.zig` (ABI) | `main.zig` (CLI: `run` parses options and dispatches to
+  `cmdVersion/Catalog/Schema/Guide/Init/New/Call/Doc`).
+
+CLI-only files (not in the `kerf` module, never in the wasm): `workspace.zig` (op log, atomic writes, file-name rules, new-doc text) |
+`serve.zig` (`Server`: folder scan, edit log, ETag) + `serve/{cli,conn,routes,docs,agent,stream,ui}.zig` (startup and arguments; limits,
+deadlines and access rules; the route table and dispatcher; document / agent / SSE+LLM handlers; static UI and CSP) | `http.zig` (HTTP/1.1) |
+`events.zig` (SSE hub) | `agents.zig` (agent bridge) | `proxy.zig` (`/api/llm`) | `ui_stub.zig` (empty `ui_assets`; `-Dui=` replaces it).
+
+Import rules: no cycles between "layers" any more (shape.zig is shared by annot and iso; schema_fields by canon, lint and schema; mesh does
+not import section). Inside a directory the split files import their parent for its main type (`const Section = @import("../section.zig").Section`)
+and the parent re-exports the moved functions as method aliases (`pub const drawCut = cut.drawCut;`), so `self.drawCut(...)` call sites did not change.
+
+### How to add a component type (the recipe)
+
+1. `catalog.zig`: add the tag to `catalog.Type` and an entry to `catalog.entries` at the same position (a comptime check names the entry
+   that is out of place). Write `summary`, `parts`, `anchors`, `draws`, `example`; set `traits` if the engine should treat it specially
+   (`default_anchor`, `has_pitch`, `hardware`, `reinforcement`, `escape_hatch`, `line_like`, `lengthwise_grain`, `near_miss`, `sheet`,
+   `rigid_sheet`, `slope_host`). Set `.params = params.rows(builders.<type>.Params)`.
+2. `builders/<type>.zig`: `pub const Params = struct { ... pub const spec = .{ ... }; };` and `pub fn build(ctx: *Ctx) BuildError!?Built`.
+   Copy the nearest existing file. Rules for `Params`:
+   - field name = JSON key, in the order the catalog and `kerf fmt` should list them;
+   - field type picks the parser: `bool`, `[]const u8`, `enum { a, b }` (the tags are the accepted strings, the "must be one of" message is generated),
+     `f64` (number; `.len = .any|.pos` in `spec` makes it a length), integers (need `.min`/`.max`), `json.Value` / `?json.Value` (raw, for
+     structured members that `build` validates: points, until, cover, place);
+   - no default = required; a default or `?T = null` = optional; defaults that depend on other params are `?T = null` and applied in `build`;
+   - every field needs a `spec` entry with `.desc` (compile error otherwise); `.def` overrides the generated default text ("required for run x/y"),
+     `.hint` extends the "is required" message of a length, `.also` + `.row = false` share one catalog row between keys (`width, height`).
+   `build` starts with `const pp = p.parse(Params) orelse return null;` (every problem reported in one pass) or `p.parseAll(Params)` when it
+   goes on to check things that do not depend on the failed fields; after that no `.?` unwrapping of parameters is needed. Use
+   `p.missing(key, hint)` for a conditionally required key. Shared helpers: `builders/common.zig` (`parsePointList`, `lengthOrUntil`,
+   `parseCover`, `materialOk`, `mirrorBuilt`, `zoneRect`, `onePrism`, ...).
+3. `builders.zig`: `pub const <type> = @import("builders/<type>.zig");`, a `.<type> => <type>.build(ctx)` arm in `build`, and the struct in `param_structs`.
+   The switch and the `param_structs` length are compile-checked against `catalog.Type`.
+4. Tests that already cover you: `builders` test (every enum choice appears in the catalog text), `catalog` test (traits name documented
+   anchors/parts), the reference documents. Add a document under `tests/docs` if the type needs geometry goldens (`tests/make_golden.sh`).
+5. If the type uses a new material, add it to the style (spec/styles) and, if the engine must treat it specially, a `style.Role` (see below).
+
+Adding a parameter to an existing type is one field plus one `spec` entry in its `Params`; the parser, `kerf catalog`, `kerf schema <type>`,
+the W_UNKNOWN_KEY list and the canonical key order all follow. Do not edit the catalog text for it.
+
+### Other recipes
+
+- **A material that behaves like steel/soil/wood/...**: give it `"role": "steel"` (any `style.Role` name) in the style JSON; without the key the role
+  comes from the name (`style.defaultRole`: what the embedded materials are). New roles go in `style.Role`; a test asserts the table equals the old
+  name predicates for every embedded material.
+- **An API function**: a tag in `api.Fn`, a `switch` arm in `api.dispatch` (exhaustive), the function; the E_FN list is generated.
+- **A pen / layer**: tags in `pen.Pen` / `pen.LayerKey` and the `Pen.layer()` switch; the style must define the pen (`style.pen(.x)`) or drawing falls back.
+- **A server route**: a row in `serve/routes.zig` (`endpoints` or `doc_actions`), a `Kind` tag, a body cap in `bodyCap`, the handler in `serve/<area>.zig`
+  and an arm in `handleRequest` (a test checks every `Kind` is reachable through the table).
+- **A CLI subcommand**: a `cmdX` function in `main.zig` and one line in `run`.
 
 Design points: a component builds *prisms* (profile region with bulges + z range + role flags) in local
 coordinates; placement transforms them (translate/rotate/mirror, arrays, z). Section view = exact
@@ -103,10 +176,12 @@ no clocks; every output is a pure function of (doc, style).
 
 ## Measured numbers
 
-wasm (`tools/size_report.sh`): ReleaseSmall **662,838 B raw / 245,562 gzip / 196,330 brotli**;
-ReleaseFast 1,427,110 raw / 422,094 gzip / 304,478 brotli. (Code is ~450 KB of the raw size; `rodata` 83 KB; the
-style + font are 23 KB of it. `twiggy top` shows no single hog: builders 59 KB, iso 36 KB, annot 36 KB,
-dispatch 35 KB, clip 29 KB.) Zero imports; exports exactly the SPEC 13.1 six.
+wasm (`tools/size_report.sh`, after refactor batches 4-7): ReleaseSmall **963,851 B raw / 355,588 gzip / 281,466 brotli** (951,291 B before
+the batches: the typed `Params` machinery and the catalog row tables cost about 12 KB, the enums saved 2 KB; per batch: 4 -> 949,372, 5 -> 964,314,
+6 -> 966,523, 7 -> 966,990, `params.readScalar` -> 963,851). `twiggy top` (`zig build wasm -Dwasm-strip=false`): `builders.build` 68 KB (all builders
+inlined into the dispatch), annot 51 KB, iso 36 KB, dispatch 36 KB, clip 29 KB, rodata 132 KB. Older figures (662,838 B) predate v0.1.2-0.1.5.
+Zero imports; exports exactly the SPEC 13.1 six. The CLI is built with `-Dstrip` by default outside Debug (ReleaseSafe Linux CLI 16.0 MB -> 2.5 MB;
+`-Dstrip=false` keeps debug info).
 
 Timings in node 22 (V8), wasm ReleaseSmall, ms per call (`tools/zig-engine/bench.mjs`):
 `check` 4-20, `mesh` 0.7-1.9, `inspect` 0.3-0.5, section `drawing` 1.4-2.4, section svg/dxf/pdf export 2-7,
@@ -223,11 +298,38 @@ Rules that now hold for every input (document, style, ops):
 - Tests: `src/hostile_tests.zig` (appendix-B table, OOM sweep over every allocation index, SAF-4 table), `tools/zig-engine/fuzz.py`
   (seeded with the hostile values and hostile styles; a hang counts as a failure).
 
-Not done (see REVIEW section 11): typed params (IDM-1), enums for pens/types, domain flags, file splits, performance/size work, exporter tidy
-(DXF handles, dash clipping), in-tree `std.testing.fuzz`, `clip.boolean` diff pass, LAY-3..10.
+Done since (refactor batches 4-7, below): typed params, enums for functions/pens/types/kinds, domain roles and traits, the file splits.
+Not done (see REVIEW section 11): performance/size work, exporter tidy (DXF handles, dash clipping), in-tree `std.testing.fuzz`,
+`clip.boolean` diff pass, LAY-3..10, the remaining long functions (`dxf.render`, `iso.build`, `style.fromValue`, `clip.boolean`).
+
+## Refactor batches 4-7 (typed vocabulary, typed params, roles, file splits; status table in REVIEW.md section 11)
+
+Every commit kept `zig build test`, `tests/check_golden.sh` (byte-identical), `wasm_golden.mjs` 24/24, `cli_ergonomics.mjs`, `serve_smoke.mjs` and `zig fmt --check`
+green; the end of each batch also ran the ReleaseSafe wasm golden and `fuzz.py 300 1` (0 crashes). Two extra safety nets were used while refactoring and are
+worth reusing: a *message corpus* (every param of every component type mutated through `kerf call check`, 5,800 diagnostics + summaries compared before/after each
+conversion) and an *ops corpus* (156 valid and invalid ops through `kerf call apply`, compared against the pre-refactor binary): both identical except for the
+deliberate changes listed here.
+
+Deliberate behaviour changes (all in error paths or documentation, none in any output of a valid document):
+- `lumber` no longer reads `material`: the key was never in the catalog, so a document using it already got an unknown-param E_PARAM and never built.
+- A material's `"pen"` in a user style must name an engine pen (`pen.Pen`); before, an unknown name was silently ignored (E_STYLE now, with the pen list).
+  A pen named after a fill material was picked up implicitly for every fill material (only `steel` and `rebar` ever were); now `style.Role` decides.
+- `Params` structs validate every declared key for every shape (`concrete` with `shape: polygon` and a malformed `slab_thickness` is now E_PARAM; before the
+  key was ignored). The catalog text of membrane `side` now names both choices (a new test found it).
+- Component params are all parsed in one pass; when a *required-by-other-param* check follows a failed field, `parseAll` keeps collecting (panel: a bad thickness
+  does not hide a bad length) but other builders stop at the first failing struct (they used to continue for a few more independent reads).
+
+Added tests: `params.zig` (parse messages, rows), `builders` (every enum choice is documented), `catalog` (traits name documented anchors/parts), `style` (role table equals
+the old predicates for every embedded material; `role` and `pen` validation), `compile` (stages: placement order, cycle report, bad ids/types), `serve/routes` (every handler
+kind reachable through the table), `pen` (every pen has a layer).
 
 ## REQUESTS
 
+- (orchestrator, `spec/SPEC.md` section 7 and `spec/styles/kerf-standard.kerfstyle.json`) materials accept an optional `"role"` (one of generic, soil, wood, masonry,
+  grout, steel, rebar, sheet_metal, vapor_retarder, void; unknown values are E_STYLE). The engine derives it from the material name when the key is absent, so the
+  embedded style works unchanged; adding `"role"` to the embedded materials (soil: earth gravel sand compacted_fill; wood: wood wood_engineered wood_board; masonry: concrete cmu mortar;
+  grout; steel; rebar; sheet_metal: aluminum flashing_membrane; vapor_retarder; void) would make the style the source of truth. A material `"pen"` must now be one of the
+  engine's pens (cut profile beyond hidden hatch rebar steel membrane vapor anno dim break title frame).
 - (DONE by the engine hardening pass: `main.zig` takes the DocLock, `--if-match`, atomic `fmt -w`, escaped `--view`, usage text) (engine agent, `main.zig`, V-11/V-16) `kerf apply -w`: wrap read -> apply -> `writeFileAtomic` -> log append in `workspace.DocLock.acquire(io, dir, logPath)` ... `lk.appendLine(io, line)`
   (an advisory lock shared with `kerf serve`) and add `--if-match <etag>` (compare with `"<mtime_ms>-<size>-<wyhash64 hex16 of the bytes>"`, the server's format: see
   `Server.etagOf`; or just the content hash) so 40 parallel writers cannot lose edits; `kerf fmt -w` should use `writeFileAtomic` and log; escape `--view`
