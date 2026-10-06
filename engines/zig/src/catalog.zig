@@ -192,13 +192,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .membrane,
         .summary = "Thin layers: underlayment, vapor retarder, WRB, roofing, flashing.",
-        .params = &.{
-            .{ .names = &.{"material"}, .def = "membrane", .desc = "underlayment | vapor_retarder | wrb | shingles | flashing_membrane | membrane" },
-            .{ .names = &.{"points"}, .def = "required", .desc = "polyline [x,y] or Refs" },
-            .{ .names = &.{"thickness"}, .def = "per material", .desc = "draw thickness (vapor retarder 0.04, shingles 0.25 typical)" },
-            .{ .names = &.{"side"}, .def = "left", .desc = "which side of the polyline direction the thickness grows: left of dx,dy is (-dy,dx)" },
-            .{ .names = &.{"until"}, .def = "null", .desc = "a Ref (or {ref, offset}): the LAST segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction. With `slope`: \"@truss\" and points [[0,0],[12,0]] a roofing layer follows the roof and stops at e.g. \"truss@top_chord_end\"" },
-        },
+        .params = params.rows(builders.MembraneParams),
         .parts = "none",
         .anchors = "9 box anchors of the resolved profile",
         .draws = "Drawn as a line per the material pen (vapor retarder: dashed heavy; shingles: heavy line with tick marks). Never occludes or hatches.",

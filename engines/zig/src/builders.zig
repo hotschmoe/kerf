@@ -1542,13 +1542,28 @@ fn membraneThickness(material: []const u8) f64 {
     return 0.05;
 }
 
+pub const MembraneParams = struct {
+    material: enum { membrane, underlayment, vapor_retarder, wrb, shingles, flashing_membrane } = .membrane,
+    points: ?json.Value = null,
+    thickness: ?f64 = null,
+    side: enum { left, right } = .left,
+    until: ?json.Value = null,
+
+    pub const spec = .{
+        .material = .{ .desc = "underlayment | vapor_retarder | wrb | shingles | flashing_membrane | membrane" },
+        .points = .{ .def = "required", .desc = "polyline [x,y] or Refs" },
+        .thickness = .{ .len = .pos, .def = "per material", .desc = "draw thickness (vapor retarder 0.04, shingles 0.25 typical)" },
+        .side = .{ .desc = "which side of the polyline direction the thickness grows: left of dx,dy is (-dy,dx)" },
+        .until = .{ .desc = "a Ref (or {ref, offset}): the LAST segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction. With `slope`: \"@truss\" and points [[0,0],[12,0]] a roofing layer follows the roof and stops at e.g. \"truss@top_chord_end\"" },
+    };
+};
+
 fn buildMembrane(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const material = p.choice("material", "membrane", &.{ "membrane", "underlayment", "vapor_retarder", "wrb", "shingles", "flashing_membrane" });
-    const side = p.choice("side", "left", &.{ "left", "right" });
-    const thick = p.lenPos("thickness", if (material) |m| membraneThickness(m) else 0.05, "");
-    const pv = p.raw("points") orelse {
+    const mp = p.parseAll(MembraneParams);
+    const material = @tagName(mp.material);
+    const pv = mp.points orelse {
         p.fail("points", "membrane needs 'points': the layer polyline, e.g. [\"roof_sheathing@top_left\", \"roof_sheathing@top_right\"]", .{});
         return null;
     };
@@ -1560,7 +1575,7 @@ fn buildMembrane(ctx: *Ctx) BuildError!?Built {
         return null;
     }
     var until_note: []const u8 = "";
-    if (p.raw("until")) |uv| {
+    if (mp.until) |uv| {
         // SPEC 19: the last segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction
         const path = try std.fmt.allocPrint(a, "{s}/{s}/until", .{ p.base, p.id });
         const target = ctx.scene.point(uv, p.id, path) orelse {
@@ -1593,25 +1608,25 @@ fn buildMembrane(ctx: *Ctx) BuildError!?Built {
         };
         until_note = try std.fmt.allocPrint(a, " (until {s})", .{ref_txt});
     }
-    const left = std.mem.eql(u8, side.?, "left");
-    const t = thick.?;
+    const left = mp.side == .left;
+    const t: f64 = mp.thickness orelse membraneThickness(material);
     const rib = try path_geom.ribbon(a, clean, if (left) t else 0, if (left) 0 else t);
     // The drawn line sits at mid-thickness; vapor retarders keep a minimum separation from the host
     // (0.03 paper inch is applied at draw time via `line_gap`, here only the mid-thickness).
     const line = try path_geom.offsetOpen(a, clean, if (left) t / 2 else -t / 2);
     const prism = Prism{
-        .material = material.?,
+        .material = material,
         .loops = try model.oneLoop(a, rib),
         .kind = .line,
         .line_pts = line,
-        .ticks = std.mem.eql(u8, material.?, "shingles"),
+        .ticks = std.mem.eql(u8, material, "shingles"),
         .centerline = clean,
     };
     return .{
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(rib),
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "membrane {s} {s} thick L={s}{s}", .{ material.?, ftin(a, t), ftin(a, pathLen(try vsOf(a, clean))), until_note }),
+        .info = try std.fmt.allocPrint(a, "membrane {s} {s} thick L={s}{s}", .{ material, ftin(a, t), ftin(a, pathLen(try vsOf(a, clean))), until_note }),
     };
 }
 
