@@ -176,7 +176,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .cmu_wall,
         .summary = "Concrete masonry wall in section: face shells, grouted cells, mortar joints, bond beam.",
-        .params = params.rows(builders.CmuParams),
+        .params = params.rows(builders.cmu_wall.Params),
         .parts = "course_1..course_n (1 = bottom), bond_beam, grout",
         .anchors = "9 box anchors + bond_beam_center, top_center, cell_center_top",
         .draws = "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. 3D: 15.625\" units with 0.375\" head joints, running bond.",
