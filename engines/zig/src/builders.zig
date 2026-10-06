@@ -1767,16 +1767,26 @@ fn battSymbol(a: Allocator, bx: Box) Allocator.Error![]const Pt {
 
 // ---- solid ------------------------------------------------------------------------------------------------------------------------
 
+pub const SolidParams = struct {
+    profile: ?json.Value = null,
+    material: []const u8,
+
+    pub const spec = .{
+        .profile = .{ .def = "required", .desc = "{rect:[w,h]} | {circle:d} | {points:[...]}" },
+        .material = .{ .desc = "any style material (aluminum, steel, ...)" },
+    };
+};
+
 fn buildSolid(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const material = p.str("material", null);
-    const prof = p.raw("profile") orelse {
+    const sp = p.parseAll(SolidParams);
+    const prof = sp.profile orelse {
         p.fail("profile", "solid needs 'profile': {{\"rect\": [w, h]}}, {{\"circle\": d}} or {{\"points\": [[x, y], ...]}}", .{});
         return null;
     };
     if (!p.ok) return null;
-    if (!materialOk(ctx, "material", material.?)) return null;
+    if (!materialOk(ctx, "material", sp.material)) return null;
     var loop: []const Pt = undefined;
     var points_mode = false;
     if (prof.get("rect")) |rv| {
@@ -1812,13 +1822,13 @@ fn buildSolid(ctx: *Ctx) BuildError!?Built {
         p.fail("profile", "profile must have one of 'rect', 'circle' or 'points'", .{});
         return null;
     }
-    const prism = Prism{ .material = material.?, .loops = try model.oneLoop(a, loop) };
+    const prism = Prism{ .material = sp.material, .loops = try model.oneLoop(a, loop) };
     const bx = geom.loopBox(loop);
     return .{
         .prisms = try onePrism(a, prism),
         .box = bx,
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "solid {s} (escape hatch)", .{material.?}),
+        .info = try std.fmt.allocPrint(a, "solid {s} (escape hatch)", .{sp.material}),
     };
 }
 

@@ -255,10 +255,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .solid,
         .summary = "Escape hatch: any extruded profile with an explicit material (flagged I_SOLID_USED).",
-        .params = &.{
-            .{ .names = &.{"profile"}, .def = "required", .desc = "{rect:[w,h]} | {circle:d} | {points:[...]}" },
-            .{ .names = &.{"material"}, .def = "required", .desc = "any style material (aluminum, steel, ...)" },
-        },
+        .params = params.rows(builders.SolidParams),
         .parts = "none",
         .anchors = "9 box anchors",
         .draws = "Use only when no typed component fits.",
