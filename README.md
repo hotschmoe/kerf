@@ -31,11 +31,12 @@ exporting and reading PNGs, and leaves `*.kerf.json` files in the folder.
 
 ```sh
 kerf serve --open                       # web workstation for this folder (live as the agent edits)
-kerf serve --host 0.0.0.0               # on your LAN (prints a URL with an access token)
+kerf serve --host 0.0.0.0               # on your LAN (prints a URL with an access token; tokens are always on)
 ```
 In the browser you see every detail in the folder update live. The agent's edits show up as LOCAL AGENT
 cards. You can edit notes, verify citations, and export DXF / PDF / SVG / PNG, or drive Claude Code,
-Grok or Codex from the web console (they run on your machine with your own login). Cloud providers
+Grok, Codex or pi from the web console (they run on your machine with your own login; custom agents in
+`.kerf/agents.json` need `kerf serve --trust-agents`). Cloud providers
 (Anthropic, OpenAI, Gemini, xAI, OpenRouter, custom/local OpenAI-compatible) work with your API key.
 
 ## Repository

@@ -33,7 +33,7 @@ async function server(opts = {}) {
   const bin = path.resolve(process.env.KERF_SERVE_BIN || path.join(repo, 'engines/zig/zig-out/bin/kerf'));
   const dir = opts.dir ?? seedDir(fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-real-')), opts.files);
   const port = 7800 + Math.floor(Math.random() * 400);
-  const args = ['serve', '--dir', dir, '--port', String(port), ...(opts.token ? ['--token', opts.token] : ['--no-token'])];
+  const args = ['serve', '--dir', dir, '--port', String(port), '--trust-agents', ...(opts.token ? ['--token', opts.token] : ['--no-token'])];
   const child = spawn(bin, args, { stdio: 'ignore' });
   for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${port}/api/info`, { headers: opts.token ? { authorization: `Bearer ${opts.token}` } : {} }); break; } catch { await new Promise((r) => setTimeout(r, 100)); } }
   const state = new Proxy({}, { get: () => [] });

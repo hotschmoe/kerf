@@ -82,3 +82,19 @@ Results go in `engines/zig/NOTES.md`. Users can add or override agents in `<dir>
   --permission-mode acceptEdits --allowedTools …`; Grok Build 1.0.41 `grok -p … --output-format streaming-json
   --always-approve --cwd <dir> [-r <id>]`; Codex 0.157.1 `codex exec --sandbox workspace-write --skip-git-repo-check
   --cd <dir> --json [resume <id>] <msg>`.
+
+## Security defaults (v0.1.5 hardening, see engines/zig/REVIEW.md §7)
+- **Token on by default, loopback included.** The banner prints `http://…/?token=<t>`. Use
+  `--token T`, `--token-file F` or `KERF_TOKEN` to pin one, and `--no-token` to opt out (localhost only;
+  not recommended).
+- **Workspace agents are untrusted by default.** `<dir>/.kerf/agents.json` is read but nothing in it
+  is executed (not even detection) unless you pass `--trust-agents` or confirm at the TTY prompt.
+  Untrusted entries appear in `/api/info` as `available:false, reason:"untrusted"`. Built-in agents
+  (claude, grok, codex, pi) are always detected by running `<bin> --version`.
+- **Agent runs:** one at a time (atomic guard; others get 409), in their own process group (a job
+  object on Windows), stopped with SIGTERM and then SIGKILL after 3 s, with an optional
+  `--agent-timeout <s>`. Runs are stopped when the server stops.
+- **ETag** is `"<mtime_ms>-<size>-<hash8>"` (content hash included). Clients must treat it as opaque.
+  `if_match` must be a string.
+- Connection, body, header and idle limits; auth before body reads; symlinks are never followed for
+  docs/exports; op-log appends are fsynced and flock-ed; CSP and security headers on all responses.
