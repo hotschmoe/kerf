@@ -3,26 +3,12 @@
 
 const std = @import("std");
 const json = @import("json.zig");
+const params = @import("params.zig");
+const builders = @import("builders.zig");
 const Allocator = std.mem.Allocator;
 
-/// One row of a parameter table: the key names that share it (the first is canonical; `width, height` share a row), the
-/// default as text and a description.
-pub const Param = struct {
-    names: []const []const u8,
-    def: []const u8,
-    desc: []const u8,
-
-    /// The names joined as the tables print them: `width, height`.
-    pub fn nameText(self: Param, a: Allocator) Allocator.Error![]const u8 {
-        if (self.names.len == 1) return self.names[0];
-        var out: std.ArrayList(u8) = .empty;
-        for (self.names, 0..) |n, i| {
-            if (i > 0) try out.appendSlice(a, ", ");
-            try out.appendSlice(a, n);
-        }
-        return out.items;
-    }
-};
+/// One row of a parameter table (see params.zig).
+pub const Param = params.Row;
 
 /// The component types, in catalog order. The tag name is the type's name in documents (`"type": "lumber"`).
 /// Adding a type: add the tag here, an entry to `entries` (same position) and a `build` arm in builders.zig
@@ -156,13 +142,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .panel,
         .summary = "Sheathing, boards, gypsum, soffit, fascia/trim boards as a thin rectangle.",
-        .params = &.{
-            .{ .names = &.{"material"}, .def = "osb", .desc = "osb | plywood | gypsum | fiber_cement | wood_board" },
-            .{ .names = &.{"thickness"}, .def = "required", .desc = "e.g. 0.4375 (7/16\"), 0.46875 (15/32), 0.5, 0.625, 0.75" },
-            .{ .names = &.{"length"}, .def = "required", .desc = "in-plane extent; alternative: `until` (same rule as lumber)" },
-            .{ .names = &.{"until"}, .def = "null", .desc = "alternative to length: a Ref; the panel grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate. On a sloped panel (`slope`, e.g. \"@truss\") the run axis is the rotated one: the end is cut square where the Ref projects onto the slope. Roof sheathing: \"slope\": \"@truss\", \"until\": \"truss@top_chord_end\" (no literal length or pitch to keep in sync)" },
-            .{ .names = &.{"run"}, .def = "x", .desc = "in-plane direction of length before rotation: x (length x thickness) or y (thickness x length)" },
-        },
+        .params = params.rows(builders.PanelParams),
         .parts = "none",
         .anchors = "the 9 box anchors",
         .draws = "Cut rectangle with the material's hatch / cut mark (wood_board: one diagonal). Spans the document run along Z. Use `slope` for roof sheathing (rotates about the placement anchor).",

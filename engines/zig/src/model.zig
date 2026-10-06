@@ -307,6 +307,16 @@ pub const Params = struct {
         self.diags.add(.@"error", code, self.id, path, fmt, args);
     }
 
+    /// Read all of `T`'s parameters at once (see params.zig); null when any was reported as E_PARAM.
+    pub fn parse(self: *Params, comptime T: type) ?T {
+        return @import("params.zig").parse(T, self);
+    }
+
+    /// `parse` that always returns a value (reported fields keep defaults) for builders that go on collecting independent problems.
+    pub fn parseAll(self: *Params, comptime T: type) T {
+        return @import("params.zig").parseAll(T, self);
+    }
+
     pub fn raw(self: *const Params, key: []const u8) ?json.Value {
         const v = self.node.get(key) orelse return null;
         if (v == .null) return null;

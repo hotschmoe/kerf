@@ -42,6 +42,17 @@ pub const Row = struct {
     names: []const []const u8,
     def: []const u8,
     desc: []const u8,
+
+    /// The names joined as the tables print them: `width, height`.
+    pub fn nameText(self: Row, a: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
+        if (self.names.len == 1) return self.names[0];
+        var out: std.ArrayList(u8) = .empty;
+        for (self.names, 0..) |n, i| {
+            if (i > 0) try out.appendSlice(a, ", ");
+            try out.appendSlice(a, n);
+        }
+        return out.items;
+    }
 };
 
 /// `s.<key>` when the spec entry has it, else `default`.
@@ -112,10 +123,34 @@ fn checkSpec(comptime T: type) void {
 
 /// Read every field of `T` from the component's JSON. Returns null when any parameter was reported as an E_PARAM.
 pub fn parse(comptime T: type, p: *Params) ?T {
+    const out = parseAll(T, p);
+    return if (p.ok) out else null;
+}
+
+/// Like `parse` but total: a field that was reported keeps its default (a required one a zero value), so the caller can go on
+/// collecting problems that do not depend on it. The result is only meaningful if `p.ok` is still true.
+pub fn parseAll(comptime T: type, p: *Params) T {
     comptime checkSpec(T);
     var out: T = undefined;
-    inline for (@typeInfo(T).@"struct".fields) |f| readField(T, f, p, &@field(out, f.name));
-    return if (p.ok) out else null;
+    inline for (@typeInfo(T).@"struct".fields) |f| {
+        @field(out, f.name) = comptime (f.defaultValue() orelse zeroOf(f.type));
+        readField(T, f, p, &@field(out, f.name));
+    }
+    return out;
+}
+
+/// A harmless value for a required field that failed to parse.
+fn zeroOf(comptime T: type) T {
+    return switch (@typeInfo(T)) {
+        .optional => null,
+        .bool => false,
+        .float => 0,
+        .int => 0,
+        .@"enum" => @enumFromInt(0),
+        .pointer => "",
+        .@"union" => if (T == json.Value) .null else @compileError("unsupported param type " ++ @typeName(T)),
+        else => @compileError("unsupported param type " ++ @typeName(T)),
+    };
 }
 
 fn readField(comptime T: type, comptime f: std.builtin.Type.StructField, p: *Params, dst: *f.type) void {
@@ -329,4 +364,17 @@ test "rows are generated from the struct" {
     try std.testing.expectEqualStrings("null", r[8].def);
     try std.testing.expectEqual(@as(usize, 2), r[9].names.len);
     try std.testing.expectEqualStrings("height", r[9].names[1]);
+}
+
+test "parseAll keeps going: reported fields keep defaults" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var diags = model.Diags.init(a);
+    var p = try testParams(a, &diags, "{\"run\":\"w\",\"length\":3}");
+    const v = parseAll(Sample, &p);
+    try std.testing.expect(!p.ok);
+    try std.testing.expectEqual(.z, v.run);
+    try std.testing.expectEqualStrings("", v.size);
+    try std.testing.expectEqual(@as(f64, 3), v.length.?);
 }
