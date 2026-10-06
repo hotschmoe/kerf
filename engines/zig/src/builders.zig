@@ -10,6 +10,7 @@ const units = @import("units.zig");
 const cast = @import("num.zig");
 const limits = @import("limits.zig");
 const catalog = @import("catalog.zig");
+const params_mod = @import("params.zig");
 const scene_mod = @import("scene.zig");
 const style_mod = @import("style.zig");
 const path_geom = @import("pathgeom.zig");
@@ -1553,7 +1554,7 @@ pub const MembraneParams = struct {
         .material = .{ .desc = "underlayment | vapor_retarder | wrb | shingles | flashing_membrane | membrane" },
         .points = .{ .def = "required", .desc = "polyline [x,y] or Refs" },
         .thickness = .{ .len = .pos, .def = "per material", .desc = "draw thickness (vapor retarder 0.04, shingles 0.25 typical)" },
-        .side = .{ .desc = "which side of the polyline direction the thickness grows: left of dx,dy is (-dy,dx)" },
+        .side = .{ .desc = "which side of the polyline direction the thickness grows: left of dx,dy is (-dy,dx), right the opposite" },
         .until = .{ .desc = "a Ref (or {ref, offset}): the LAST segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction. With `slope`: \"@truss\" and points [[0,0],[12,0]] a roofing layer follows the roof and stops at e.g. \"truss@top_chord_end\"" },
     };
 };
@@ -2057,6 +2058,39 @@ pub fn mirrorAboutCenter(a: Allocator, b: Built) Allocator.Error!Built {
     const cx = (b.box.x0 + b.box.x1) / 2;
     const xf = geom.Xf.translate(2 * cx, 0).mul(geom.Xf.scaling(-1, 1));
     return mirrorBuilt(a, b, xf, true);
+}
+
+/// The parameter struct of every component type, in `catalog.Type` order.
+pub const param_structs = .{ LumberParams, PanelParams, CmuParams, ConcreteParams, RebarParams, AnchorBoltParams, ConnectorParams, TrussParams, MembraneParams, FillParams, InsulationParams, SolidParams, FlashingParams, JointParams };
+
+comptime {
+    if (param_structs.len != std.meta.tags(catalog.Type).len) @compileError("builders.param_structs must have one struct per catalog.Type tag");
+}
+
+test "every choice of an enum parameter is mentioned in its catalog row (docs cannot drift from the parser)" {
+    inline for (param_structs) |S| {
+        const rows = params_mod.rows(S);
+        inline for (@typeInfo(S).@"struct".fields) |f| {
+            const Base = switch (@typeInfo(f.type)) {
+                .optional => |o| o.child,
+                else => f.type,
+            };
+            if (@typeInfo(Base) == .@"enum") {
+                var found_row = false;
+                for (rows) |r| {
+                    if (!std.mem.eql(u8, r.names[0], f.name)) continue;
+                    found_row = true;
+                    inline for (@typeInfo(Base).@"enum".fields) |ef| {
+                        if (std.mem.indexOf(u8, r.desc, ef.name) == null and std.mem.indexOf(u8, r.def, ef.name) == null) {
+                            std.debug.print("{s}.{s}: choice '{s}' is not in its catalog text\n", .{ @typeName(S), f.name, ef.name });
+                            return error.TestUnexpectedResult;
+                        }
+                    }
+                }
+                try std.testing.expect(found_row);
+            }
+        }
+    }
 }
 
 test "sawn sizes" {
