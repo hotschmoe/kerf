@@ -22,18 +22,18 @@ geometry code, 13 leftovers, duplicated helpers, four files of 1.2-1.8k lines).
 
 Headline results (all reproduced unless noted):
 
-| # | Finding | Evidence |
-|---|---|---|
-| 1 | Document/style/op numbers reach `@intFromFloat` unchecked: panic in safe builds (kills `kerf serve`), UB in the shipped ReleaseSmall binaries and the wasm (SAF-1) | `edition: 1e30`, `gauge: 1e20`, `wrap_chars: -5`, bulge `1e-14`, `slope: "nan"`, 19-digit length, scale `1e300:1`: nine distinct sites panic (Debug) or hang/OOM/garbage (ReleaseSmall), appendix B |
-| 2 | One unauthenticated chunked request kills the server (V-1) | `http.zig:142` integer overflow before auth |
-| 3 | Layout time is unbounded in the number of annotations (LAY-1) | 100 notes: 15 s, 200 notes: 187 s |
-| 4 | Degenerate style values hang the engine (LAY-2) | `wrap_chars: 0`, `text.height_in: 0` never return |
-| 5 | Release builds ship with safety off, the wasm cannot even be *built* with safety on, and CI runs neither goldens nor fuzzing (SAF-2, TST-2) | `zig build wasm -Dwasm-optimize=ReleaseSafe` fails in `simple_panic`; `release.yml` builds `ReleaseSmall` |
-| 6 | `json.zig`: quadratic duplicate keys, `1e999` -> `inf` -> printed as `0`, invalid UTF-8 round-trips (SAF-3) | 1.3 MB body = 16 s CPU; `kerf fmt` rewrites `1e999` to `0` |
-| 7 | Opening a folder executes commands from `.kerf/agents.json`; one-agent-at-a-time is a race; stop does not stop (V-2, V-3) | `touch /tmp/pwned` executed at startup; 5 of 6 concurrent runs accepted |
-| 8 | Hand-rolled params layer: `?T` + `.?` x211, catalog/builder/schema triple bookkeeping (IDM-1) | compile-tested typed `Params.parse` prototype in appendix A |
-| 9 | Silent defaulting where the product promises precise errors (SAF-4) | `{ref, offset:["1/2x",3]}` places the point at the anchor with no diagnostic |
-| 10 | wasm size: 14 `std.mem.sort` instantiations cost ~80-110 KB and `parseFloat` 8-25 KB of 866 KB (SIZ-1) | measured: insertion sort -13.0%, `wasm-opt -Oz` -11.8%, both -23.2% |
+| # | Finding | Evidence | Status |
+|---|---|---|---|
+| 1 | Document/style/op numbers reach `@intFromFloat` unchecked: panic in safe builds (kills `kerf serve`), UB in the shipped ReleaseSmall binaries and the wasm (SAF-1) | `edition: 1e30`, `gauge: 1e20`, `wrap_chars: -5`, bulge `1e-14`, `slope: "nan"`, 19-digit length, scale `1e300:1`: nine distinct sites panic (Debug) or hang/OOM/garbage (ReleaseSmall), appendix B | done (SAF-1: `num.zig`, checked at every site, hostile table test) |
+| 2 | One unauthenticated chunked request kills the server (V-1) | `http.zig:142` integer overflow before auth | done by the server agent (V-1) |
+| 3 | Layout time is unbounded in the number of annotations (LAY-1) | 100 notes: 15 s, 200 notes: 187 s | done (LAY-1: shared work budget + lazy fixes + `limits`; 130 annotations 14.5 s -> 1.8 s, 260 rejected with E_LIMIT) |
+| 4 | Degenerate style values hang the engine (LAY-2) | `wrap_chars: 0`, `text.height_in: 0` never return | done (LAY-2: style validation, `wrap(0)`, zero-step guards) |
+| 5 | Release builds ship with safety off, the wasm cannot even be *built* with safety on, and CI runs neither goldens nor fuzzing (SAF-2, TST-2) | `zig build wasm -Dwasm-optimize=ReleaseSafe` fails in `simple_panic`; `release.yml` builds `ReleaseSmall` | partly: `no_panic` + ReleaseSafe wasm gate + CI steps done; release.yml ReleaseSafe and CI gates done by the server agent |
+| 6 | `json.zig`: quadratic duplicate keys, `1e999` -> `inf` -> printed as `0`, invalid UTF-8 round-trips (SAF-3) | 1.3 MB body = 16 s CPU; `kerf fmt` rewrites `1e999` to `0` | done (SAF-3: sort-based duplicate index, finite and <= 9e15 numbers, UTF-8, leading zeros, no `std.fmt` in `fmtNumber`) |
+| 7 | Opening a folder executes commands from `.kerf/agents.json`; one-agent-at-a-time is a race; stop does not stop (V-2, V-3) | `touch /tmp/pwned` executed at startup; 5 of 6 concurrent runs accepted | done by the server agent (V-2, V-3) |
+| 8 | Hand-rolled params layer: `?T` + `.?` x211, catalog/builder/schema triple bookkeeping (IDM-1) | compile-tested typed `Params.parse` prototype in appendix A | deferred (batch 5, typed params: a large mechanical change; the new `Params.field*` helpers remove the worst silent defaults meanwhile) |
+| 9 | Silent defaulting where the product promises precise errors (SAF-4) | `{ref, offset:["1/2x",3]}` places the point at the anchor with no diagnostic | done (SAF-4) |
+| 10 | wasm size: 14 `std.mem.sort` instantiations cost ~80-110 KB and `parseFloat` 8-25 KB of 866 KB (SIZ-1) | measured: insertion sort -13.0%, `wasm-opt -Oz` -11.8%, both -23.2% | deferred (batch 8). Note: this hardening grew the wasm 902,131 -> 951,291 B (+5.4%) mostly in validation messages |
 
 IDs: `SAF` correctness/safety, `DET` determinism, `IDM` idioms, `TST` tests, `ARC` architecture, `LAY` layout code, `EXP`
 exporters, `V` server, `PRF`/`SIZ` performance/size. Severity: **critical** = crash/hang/security from untrusted input or
@@ -42,7 +42,7 @@ cleanup; **nit** = style/readability.
 
 Contents: 1 scope and how to read this - 2 correctness and memory safety - 3 determinism - 4 idiomatic Zig 0.16 and tests - 5
 architecture, duplication, dead code (5b layout code) - 6 exporters - 7 server - 8 performance and wasm size - 9 refactor plan -
-10 keep as is - Appendix A prototypes - Appendix B fuzz results.
+10 keep as is - 11 status after the engine hardening pass - Appendix A prototypes - Appendix B fuzz results.
 
 ## 1. Scope
 
@@ -1139,6 +1139,42 @@ files move.
   (`check_golden.sh`), `cli_ergonomics.mjs` for message text.
 * Style: unmanaged `ArrayList` everywhere with explicit allocators, `//!` module headers that cite SPEC sections, named error
   sets (no `anyerror` in the library), no `usingnamespace`, no `@cImport`, no libc, no third-party dependencies.
+
+## 11. Status after the engine hardening pass (batches 0 engine part, 1, 2)
+
+Branch `harden-engine`; every commit kept `zig build test`, `tests/check_golden.sh` (byte-identical), `wasm_golden.mjs` 24/24 (also
+against a ReleaseSafe wasm) and `tests/cli_ergonomics.mjs` green. Hostile-input regressions: `src/hostile_tests.zig` (appendix B table,
+the OOM sweep, the SAF-4 table), `json.zig`/`num.zig`/`route.zig`/`canon.zig` unit tests; `tools/zig-engine/fuzz.py` is seeded with the same values.
+
+| Finding | Status | Notes |
+|---|---|---|
+| SAF-1 | done | `src/num.zig` (`toInt`, `toIntClamped`); every `@intFromFloat` on document/style/op data replaced (raster.zig sites are clamped against NaN already and were left). Plus bounds at the boundary: JSON numbers <= 9e15, lengths <= 1e6 in, scale 0.1..10000, slope, bulge 0 or 1e-6..1e3, gauge/count ranges |
+| SAF-2 | done (engine) | `wasm.zig` uses `std.debug.no_panic`; `zig build wasm -Dwasm-optimize=ReleaseSafe` builds (2,105,215 B) and passes the golden; CI steps enabled |
+| SAF-3 | done | duplicate keys via stable index sort (1.3 MB / 100k keys: 13.7 s -> 0.04 s), non-finite / out-of-range numbers, invalid UTF-8, leading zeros rejected; `fmtNumber` never uses `std.fmt` (item 5). Differential test against `std.json` (IDM-4) not done |
+| SAF-4 | done | every `orelse 0/1.5/1` on offsets, place/array/recess/cover members, dim/label offsets, note `place`: E_PARAM with path, value, accepted forms, fix hint (`model.offsetPairOrDiag`, `Params.field*`) |
+| SAF-5 | done | `geom.arcSteps`/`stepsForSweep` clamp to [2, 4096] (one implementation for geom, iso, mesh, pdf), bulge bounds as E_PARAM |
+| SAF-5b | done | `src/limits.zig`: 8 MiB input, 2000 components, 5000 instances (20,000-instance doc: 7.0 s / 1.8 GB -> 0.8 s, E_LIMIT), 150 annotations/view (260: 118 s -> instant E_LIMIT), 64 views, 5000 points, 2000 note characters; every message names found / maximum / fix. `validate.overlaps` bucketing not done (the instance cap bounds it) |
+| SAF-5c | done | `units.parseFinite` is the one float parser for document strings; scale/slope/crop/run/length bounds with "out of range" messages |
+| SAF-6 | done | `oom.Sensor` around the call arena: any refused allocation anywhere -> `error.OutOfMemory` (stronger than a `Diags.oom` flag, covers all ~60 swallowing sites); `Params.failCode` replaces patching the last diagnostic; sweep test over every allocation index |
+| SAF-7 | done | `canon.componentKeys` allocates from the writer (`json.KeyCtx.a`), no scratch, no 64-name cap; 6-thread test |
+| SAF-8 | deferred | batch 5/6 (typed params, `Comp.built`) |
+| LAY-1 | done | `route.Work` budget shared by all passes/trials of a view (40M units ~ 1.5 s), proposals only for the 8 reported hits, aggregate W_LEADER_HIT when the budget ends: 130 annotations 14.5 s -> 1.8 s. Not done: cap of the stored hit list, per-leader BB cache (3), 10% stop rule (5): the budget bounds the cost |
+| LAY-2 | done | style validation (E_STYLE lists every bad key with range and default), `wrap(0)`, `gridStep` guards |
+| LAY-3..10 | deferred | not in this pass |
+| IDM-6 | done | all leftovers in the table removed (`_ = x`, `and false`, `or true`, empty `if`, inline `@import`s) |
+| ARC-2 | partly | done: `visiblePieces`/`visibleOpen`, `ftin`, `fmtNum` (4 copies), `flat_tol`, arc step counts, `[x, y]` offset parsing (one implementation). Not done: JSON escaper (http.zig is the server's), tolerance constants, edge-box helpers, `refCompId` |
+| EXP-2 | done | `json.fmtFixed` serves svg, pdf, dxf, drawing bulge and json; 60,000-value differential test against `{d}`; non-finite prints `0` |
+| `clip.boolean` diff pass, ARC-1/3/4/5, IDM-1..5,7, TST-1/2 (in-tree `std.testing.fuzz`), EXP-1/3..7, DET-*, PRF-1 table, SIZ-1 | deferred | batches 4-10 |
+
+Measured before / after (ReleaseFast, `kerf call`):
+
+| Case | Before | After |
+|---|---|---|
+| 100 notes + 20 dims + 10 labels (130 annotations) | 14.5 s | 1.8 s |
+| 200 notes + 40 dims + 20 labels (260) | 118 s | E_LIMIT in 0.01 s |
+| 40 x `array.count` 500 (20,000 instances), `check` | 7.0 s | E_LIMIT after 5000 instances, 0.8 s |
+| 100,000-key JSON object (1.9 MB), `check` | 13.7 s | 0.04 s |
+| wasm ReleaseSmall | 902,131 B (gzip 338,275) | 951,291 B (gzip 353,965): +5.4%, validation messages and checks; SIZ-1 reductions still open |
 
 ## Appendix A. Prototypes (compile and pass on Zig 0.16.0)
 

@@ -197,9 +197,38 @@ Re-run after the Rust agent lands its parity commit: build `engines/rust` releas
   visible`), then type params in catalog order (the reference docs are reordered by `fmt`).
 - Glyph folding: dashes -> `-`, smart quotes, x-sign, vulgar fractions, other non-ASCII -> `?` with `I_GLYPH`.
 
+## Engine hardening (REVIEW batches 0 engine part, 1, 2; status table in REVIEW.md section 11)
+
+Rules that now hold for every input (document, style, ops):
+
+- **No raw `@intFromFloat` on untrusted data**: use `num.toInt` / `num.toIntClamped`. Numbers are validated where they enter: `json.parse`
+  rejects non-finite and > 9e15 numbers, invalid UTF-8 and leading zeros; `units.parseFinite` is the one float parser for strings (no
+  `nan`/`inf`); lengths are limited to +-`limits.max_coord_in` (1e6 in), scales to 0.1..10000, polygon bulges to 0 or 1e-6..1e3; `Style`
+  is validated once in `style.loadWhy` (E_STYLE lists every bad key with its range and default).
+- **`limits.zig`** holds the global caps (input bytes, components, instances, annotations per view, views, points, note characters). Each
+  is reported as `E_LIMIT` with found / maximum / what to do. The server may quote `kerf.limits`.
+- **Layout effort is bounded**: `route.Work` (units of penalty evaluations) is shared by every pass and trial of one view build
+  (`drawview.buildFromScene`, `resolveSpec`); when it is spent the notes keep the SPEC 6.3 + de-crossing layout and one aggregate
+  W_LEADER_HIT says so. Fix proposals are computed only for the first `route.max_fix_hits` hits (the ones `reportHits` prints).
+- **Out of memory is an error**: `kerf.call` wraps its arena in `oom.Sensor`; a refused allocation anywhere becomes `error.OutOfMemory`
+  (CLI `kerf: OutOfMemory`, wasm `E_OOM`). New code may keep using `catch "?"` in message builders.
+- **No silent defaults**: malformed offsets, `place`/`array`/`recess`/`cover` members and dim/label offsets are E_PARAM with a fix hint;
+  use `model.offsetPairOrDiag`, `model.lengthOrDiag`, `Params.fieldLen/fieldInt/fieldChoice/offsetPair` for new optional members.
+- **One number formatter**: `json.fmtFixed(buf, x, decimals)` (svg/pdf 3, json 4, dxf and bulges 6); never `{d}` of a float into a fixed buffer.
+- wasm: `zig build wasm -Dwasm-optimize=ReleaseSafe` builds (`std.debug.no_panic`) and must pass `wasm_golden.mjs`; CI runs it. Size
+  after the hardening: 951,291 B raw (was 902,131; gzip 353,965).
+- CLI (`main.zig`): `apply -w` / `fmt -w` hold `workspace.DocLock` (shared with `kerf serve`) and write atomically; `apply -w --if-match
+  <etag>` refuses a stale document (E_STALE); user strings in the engine input go through the JSON escaper; `--px` must be a number.
+  The server-agent REQUESTS about these are done (the usage text lists the new `kerf serve` flags).
+- Tests: `src/hostile_tests.zig` (appendix-B table, OOM sweep over every allocation index, SAF-4 table), `tools/zig-engine/fuzz.py`
+  (seeded with the hostile values and hostile styles; a hang counts as a failure).
+
+Not done (see REVIEW section 11): typed params (IDM-1), enums for pens/types, domain flags, file splits, performance/size work, exporter tidy
+(DXF handles, dash clipping), in-tree `std.testing.fuzz`, `clip.boolean` diff pass, LAY-3..10.
+
 ## REQUESTS
 
-- (engine agent, `main.zig`, V-11/V-16) `kerf apply -w`: wrap read -> apply -> `writeFileAtomic` -> log append in `workspace.DocLock.acquire(io, dir, logPath)` ... `lk.appendLine(io, line)`
+- (DONE by the engine hardening pass: `main.zig` takes the DocLock, `--if-match`, atomic `fmt -w`, escaped `--view`, usage text) (engine agent, `main.zig`, V-11/V-16) `kerf apply -w`: wrap read -> apply -> `writeFileAtomic` -> log append in `workspace.DocLock.acquire(io, dir, logPath)` ... `lk.appendLine(io, line)`
   (an advisory lock shared with `kerf serve`) and add `--if-match <etag>` (compare with `"<mtime_ms>-<size>-<wyhash64 hex16 of the bytes>"`, the server's format: see
   `Server.etagOf`; or just the content hash) so 40 parallel writers cannot lose edits; `kerf fmt -w` should use `writeFileAtomic` and log; escape `--view`
   and other raw `{s}` interpolations into engine JSON with `json.writeString`; mention `--trust-agents`, `--token-file`, `KERF_TOKEN` in the `kerf serve` usage text.
