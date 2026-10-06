@@ -908,6 +908,7 @@ test "scan reports added, changed, removed and log lines" {
 }
 
 test {
+    _ = @import("serve/routes.zig");
     _ = ws;
     _ = http;
     _ = events;

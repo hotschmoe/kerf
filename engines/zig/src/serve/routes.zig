@@ -29,6 +29,27 @@ pub const Kind = enum { options, info, docs_list, docs_create, doc_get, doc_appl
 
 pub const Route = struct { kind: Kind, file: []const u8 = "", api: bool = false };
 
+/// The handler of each method for one path (null: the method is not allowed there).
+const Methods = struct { get: ?Kind = null, post: ?Kind = null };
+
+/// The API route table: `/api` + path. `/api/docs/<file>[/<action>]` is `doc_actions`.
+const endpoints = [_]struct { path: []const u8, methods: Methods }{
+    .{ .path = "/info", .methods = .{ .get = .info } },
+    .{ .path = "/docs", .methods = .{ .get = .docs_list, .post = .docs_create } },
+    .{ .path = "/events", .methods = .{ .get = .events } },
+    .{ .path = "/llm", .methods = .{ .post = .llm } },
+    .{ .path = "/agent/run", .methods = .{ .post = .agent_run } },
+    .{ .path = "/agent/stop", .methods = .{ .post = .agent_stop } },
+};
+
+/// Actions on one document, `/api/docs/<file>/<action>` ("" is the document itself).
+const doc_actions = [_]struct { action: []const u8, methods: Methods }{
+    .{ .action = "", .methods = .{ .get = .doc_get } },
+    .{ .action = "apply", .methods = .{ .post = .doc_apply } },
+    .{ .action = "log", .methods = .{ .get = .doc_log } },
+    .{ .action = "export", .methods = .{ .get = .doc_export } },
+};
+
 /// Which handler a request is for. Pure: no I/O, so it runs before any body byte is read.
 pub fn routeOf(req: http.Request, path: []const u8) Route {
     const is_get = std.mem.eql(u8, req.method, "GET");
@@ -39,26 +60,25 @@ pub fn routeOf(req: http.Request, path: []const u8) Route {
     if (std.mem.eql(u8, req.method, "OPTIONS")) return .{ .kind = .options, .api = true };
     const rest = path["/api".len..]; // "" or "/..."
     const mna: Route = .{ .kind = .method_not_allowed, .api = true };
-    if (std.mem.eql(u8, rest, "/info")) return if (is_get) .{ .kind = .info, .api = true } else mna;
-    if (std.mem.eql(u8, rest, "/docs")) return if (is_get) .{ .kind = .docs_list, .api = true } else if (is_post) .{ .kind = .docs_create, .api = true } else mna;
+    for (endpoints) |ep| {
+        if (!std.mem.eql(u8, rest, ep.path)) continue;
+        const kind = (if (is_get) ep.methods.get else if (is_post) ep.methods.post else null) orelse return mna;
+        return .{ .kind = kind, .api = true };
+    }
     if (std.mem.startsWith(u8, rest, "/docs/")) {
         const tail = rest["/docs/".len..];
         var parts = std.mem.splitScalar(u8, tail, '/');
         const file = parts.next().?;
-        const action = parts.next();
+        const action = parts.next() orelse "";
         if (parts.next() != null) return .{ .kind = .not_found, .api = true };
         if (!ws.validDocFile(file)) return .{ .kind = .bad_file, .api = true };
-        if (action == null) return if (is_get) .{ .kind = .doc_get, .file = file, .api = true } else mna;
-        const act = action.?;
-        if (std.mem.eql(u8, act, "apply")) return if (is_post) .{ .kind = .doc_apply, .file = file, .api = true } else mna;
-        if (std.mem.eql(u8, act, "log")) return if (is_get) .{ .kind = .doc_log, .file = file, .api = true } else mna;
-        if (std.mem.eql(u8, act, "export")) return if (is_get) .{ .kind = .doc_export, .file = file, .api = true } else mna;
+        for (doc_actions) |da| {
+            if (!std.mem.eql(u8, action, da.action)) continue;
+            const kind = (if (is_get) da.methods.get else if (is_post) da.methods.post else null) orelse return mna;
+            return .{ .kind = kind, .file = file, .api = true };
+        }
         return .{ .kind = .not_found, .api = true };
     }
-    if (std.mem.eql(u8, rest, "/events")) return if (is_get) .{ .kind = .events, .api = true } else mna;
-    if (std.mem.eql(u8, rest, "/llm")) return if (is_post) .{ .kind = .llm, .api = true } else mna;
-    if (std.mem.eql(u8, rest, "/agent/run")) return if (is_post) .{ .kind = .agent_run, .api = true } else mna;
-    if (std.mem.eql(u8, rest, "/agent/stop")) return if (is_post) .{ .kind = .agent_stop, .api = true } else mna;
     return .{ .kind = .not_found, .api = true };
 }
 
@@ -159,4 +179,26 @@ pub fn badRequest(a: Allocator, req: http.Request, w: *Io.Writer, extra: []const
 pub fn parseBody(a: Allocator, req: http.Request) ?kerf.json.Value {
     var pe: kerf.json.ParseError = undefined;
     return (kerf.json.parse(a, req.body, &pe) catch return null) orelse null;
+}
+
+test "every handler kind is reachable through the route table" {
+    inline for (std.meta.tags(Kind)) |k| {
+        switch (k) {
+            // answered without a handler of their own
+            .options, .bad_file, .method_not_allowed, .not_found, .static => {},
+            else => {
+                var found = false;
+                for (endpoints) |ep| {
+                    if (ep.methods.get == k or ep.methods.post == k) found = true;
+                }
+                for (doc_actions) |da| {
+                    if (da.methods.get == k or da.methods.post == k) found = true;
+                }
+                if (!found) {
+                    std.debug.print("route kind .{s} is not in the route table\n", .{@tagName(k)});
+                    return error.TestUnexpectedResult;
+                }
+            },
+        }
+    }
 }
