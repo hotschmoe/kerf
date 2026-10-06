@@ -963,36 +963,52 @@ fn pathLen(vs: []const V2) f64 {
     return t;
 }
 
+pub const RebarParams = struct {
+    size: []const u8 = "#4",
+    mode: enum { along_z, path } = .along_z,
+    place: ?json.Value = null,
+    points: ?json.Value = null,
+    bend_radius: ?f64 = null,
+    spacing_note: []const u8 = "",
+
+    pub const spec = .{
+        .size = .{ .desc = "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
+        .mode = .{ .desc = "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
+        .place = .{ .desc = "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face, spread evenly between the zone's adjacent faces at `side_cover` (count 1 centers). center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position)" },
+        .points = .{ .def = "path: required", .desc = "polyline [x,y] or Refs; bends get radius bend_radius, drawn as fillets" },
+        .bend_radius = .{ .len = .pos, .def = "3*d_b", .desc = "inside bend radius for path bars" },
+        .spacing_note = .{ .def = "null", .desc = "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
+    };
+};
+
 fn buildRebar(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
-    const size = p.str("size", "#4");
-    const mode = p.choice("mode", "along_z", &.{ "along_z", "path" });
-    const spacing_note = p.str("spacing_note", "") orelse "";
-    if (!p.ok) return null;
-    const d = rebarDiameter(size.?) orelse {
-        p.fail("size", "bar size '{s}' is not recognised. Use #3 (.375), #4 (.5), #5 (.625), #6 (.75), #7 (.875) or #8 (1.0)", .{size.?});
+    const rp = p.parse(RebarParams) orelse return null;
+    const size = rp.size;
+    const d = rebarDiameter(size) orelse {
+        p.fail("size", "bar size '{s}' is not recognised. Use #3 (.375), #4 (.5), #5 (.625), #6 (.75), #7 (.875) or #8 (1.0)", .{size});
         return null;
     };
     const r = d / 2.0;
-    if (std.mem.eql(u8, mode.?, "along_z")) {
+    if (rp.mode == .along_z) {
         const loop = try model.circleLoop(a, 0, 0, r);
         const prism = Prism{ .material = "rebar", .loops = try model.oneLoop(a, loop), .embedded = true, .sweep_r = r };
         var built = Built{
             .prisms = try onePrism(a, prism),
             .box = .{ .x0 = -r, .y0 = -r, .x1 = r, .y1 = r },
             .bar_d = d,
-            .info = try std.fmt.allocPrint(a, "rebar {s} along z", .{size.?}),
+            .info = try std.fmt.allocPrint(a, "rebar {s} along z", .{size}),
         };
-        if (p.raw("place")) |pl| {
+        if (rp.place) |pl| {
             built.centers = (try placeRebar(ctx, pl, d)) orelse return null;
             const face = if (pl.get("face")) |f| (f.str() orelse "bottom") else "bottom";
-            built.info = try std.fmt.allocPrint(a, "rebar ({d}) {s} along z @ {s} face", .{ built.centers.len, size.?, face });
+            built.info = try std.fmt.allocPrint(a, "rebar ({d}) {s} along z @ {s} face", .{ built.centers.len, size, face });
         }
         return built;
     }
     // path
-    const pv = p.raw("points") orelse {
+    const pv = rp.points orelse {
         p.fail("points", "mode path needs 'points': [[x, y], ...] or Refs", .{});
         return null;
     };
@@ -1002,7 +1018,7 @@ fn buildRebar(ctx: *Ctx) BuildError!?Built {
         p.fail("points", "a path bar needs at least 2 distinct points (got {d})", .{clean.len});
         return null;
     }
-    const br = p.lenPos("bend_radius", 3.0 * d, "") orelse return null;
+    const br = rp.bend_radius orelse 3.0 * d;
     const vs = try a.alloc(V2, clean.len);
     for (clean, 0..) |q, i| vs[i] = q.v();
     const center = try path_geom.fillet(a, vs, br + r);
@@ -1020,7 +1036,7 @@ fn buildRebar(ctx: *Ctx) BuildError!?Built {
         .nat_z = d,
         .points_mode = true,
         .bar_d = d,
-        .info = try std.fmt.allocPrint(a, "rebar {s} path L={s}{s}", .{ size.?, ftin(a, pathLen(vs)), if (spacing_note.len > 0) try std.fmt.allocPrint(a, " ({s})", .{spacing_note}) else "" }),
+        .info = try std.fmt.allocPrint(a, "rebar {s} path L={s}{s}", .{ size, ftin(a, pathLen(vs)), if (rp.spacing_note.len > 0) try std.fmt.allocPrint(a, " ({s})", .{rp.spacing_note}) else "" }),
     };
 }
 

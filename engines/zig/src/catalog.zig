@@ -156,14 +156,7 @@ pub const entries: []const Entry = &.{
     .{
         .type = .rebar,
         .summary = "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
-        .params = &.{
-            .{ .names = &.{"size"}, .def = "#4", .desc = "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
-            .{ .names = &.{"mode"}, .def = "along_z", .desc = "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
-            .{ .names = &.{"place"}, .def = "null", .desc = "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face, spread evenly between the zone's adjacent faces at `side_cover` (count 1 centers). center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position)" },
-            .{ .names = &.{"points"}, .def = "path: required", .desc = "polyline [x,y] or Refs; bends get radius bend_radius, drawn as fillets" },
-            .{ .names = &.{"bend_radius"}, .def = "3*d_b", .desc = "inside bend radius for path bars" },
-            .{ .names = &.{"spacing_note"}, .def = "null", .desc = "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
-        },
+        .params = params.rows(builders.RebarParams),
         .parts = "none",
         .anchors = "9 box anchors of the bar (center = bar center for along_z)",
         .draws = "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu.",
