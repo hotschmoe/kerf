@@ -942,11 +942,12 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Re-fit after edits:** when a view has an explicit `crop` and an edit leaves a non-fill component
   with more than 25% of its extent outside the crop (and the component was mostly inside before, or was
   just added), warn `W_CROP_STALE` naming the component and the crop that would contain it, and suggest
-  removing `crop` to auto-fit.
+  removing `crop` to auto-fit. In `kerf check` (no edit history), it fires only when no view shows the
+  component at all, since many details crop members on purpose with break lines.
 - **Thin-layer landing:** when a note targets a thin component (membrane, panel < 1/2", connector,
   path rebar), the landing point lies on that component's own geometry, never inside a neighbor. If the
   label point would fall inside another component's region, slide along the thin component to the nearest
   visible stretch.
-- **Note text lint (extends `W_NOTE_STYLE`):** flags commentary or dangling text: notes over 120 chars,
+- **Note text lint (extends `W_NOTE_STYLE`):** flags commentary or dangling text: notes over 130 chars,
   first-person or conversational words (`I `, `WE `, `NOTE:`, `PLEASE`, `SHOULD BE`, `?`), text ending in
   a connector word (`W/`, `AND`, `OR`, `TO`, `@`), and notes whose text repeats another note in the same view.
