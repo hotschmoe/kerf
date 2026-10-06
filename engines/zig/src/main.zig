@@ -351,246 +351,241 @@ fn printApiError(a: std.mem.Allocator, err: *std.Io.Writer, bytes: []const u8) !
     try err.writeAll(bytes);
 }
 
-fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.Io.Writer, ctx: Ctx) !u8 {
-    if (args.len == 0) {
-        try err.writeAll(usage);
-        return 2;
-    }
-    const cmd = args[0];
-    if (std.mem.eql(u8, cmd, "serve")) return serve.cliMain(gpa, io, args[1..], err, ctx.environ_map);
-    const o = parseOpts(args[1..], err) catch {
-        try err.writeAll(usage);
-        return 2;
-    };
-    if (std.mem.eql(u8, cmd, "version")) {
-        const r = try kerf.call(gpa, "version", "{}");
-        defer gpa.free(r.bytes);
-        try writeOut(io, null, r.bytes);
-        return 0;
-    }
-    if (std.mem.eql(u8, cmd, "catalog")) {
-        const r = try kerf.call(gpa, "catalog", if (o.markdown) "{\"format\":\"markdown\"}" else "{\"format\":\"json\"}");
-        defer gpa.free(r.bytes);
-        if (o.markdown and r.ok) {
-            const folded = try asciiFold(gpa, r.bytes);
-            defer gpa.free(folded);
-            try writeOut(io, o.out, folded);
-            return 0;
-        }
-        try writeOut(io, o.out, r.bytes);
-        return if (r.ok) 0 else 1;
-    }
-    if (std.mem.eql(u8, cmd, "schema")) {
-        var sarena = std.heap.ArenaAllocator.init(gpa);
-        defer sarena.deinit();
-        const sa = sarena.allocator();
-        var outtext: std.ArrayList(u8) = .empty;
-        var failed = false;
-        const ntopics = @max(o.npos, 1); // no topic: the topic list
-        for (0..ntopics) |ti| {
-            var inp: std.ArrayList(u8) = .empty;
-            try inp.appendSlice(sa, "{");
-            if (o.npos >= 1) {
-                try inp.appendSlice(sa, "\"topic\":");
-                try appendJsonString(sa, &inp, o.pos[ti]);
-            }
-            try inp.appendSlice(sa, "}");
-            const r = try kerf.call(gpa, "schema", inp.items);
-            defer gpa.free(r.bytes);
-            if (!r.ok) {
-                try printApiError(sa, err, r.bytes);
-                failed = true;
-                continue;
-            }
-            var sperr: kerf.json.ParseError = undefined;
-            const res = (try kerf.json.parse(sa, r.bytes, &sperr)) orelse return error.BadEngineOutput;
-            const text = (if (res.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
-            if (outtext.items.len > 0) try outtext.appendSlice(sa, "\n----\n\n");
-            try outtext.appendSlice(sa, text);
-        }
-        const folded = try asciiFold(gpa, outtext.items);
-        defer gpa.free(folded);
-        try writeOut(io, o.out, folded);
-        return if (failed) 1 else 0;
-    }
-    if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h")) {
-        try writeOut(io, null, usage);
-        return 0;
-    }
-    if (std.mem.eql(u8, cmd, "guide")) {
-        var text: std.ArrayList(u8) = .empty;
-        defer text.deinit(gpa);
-        var garena = std.heap.ArenaAllocator.init(gpa);
-        defer garena.deinit();
-        const ga = garena.allocator();
-        const split = guideSplit(cli_guide);
-        try text.appendSlice(gpa, split.short);
-        if (o.full) {
-            // long form: the extra notes, the full per-object schema, the drafting instructions, the component catalog
-            const r = try kerf.call(gpa, "catalog", "{\"format\":\"markdown\"}");
-            defer gpa.free(r.bytes);
-            try text.appendSlice(gpa, "\n");
-            try text.appendSlice(gpa, split.full);
-            try text.appendSlice(gpa, "\n");
-            try text.appendSlice(gpa, try kerf.api.schema.guideSection(ga));
-            try text.appendSlice(gpa, "\n# Drafting instructions\n\n");
-            try text.appendSlice(gpa, system_md);
-            try text.appendSlice(gpa, "\n# Component catalog\n\n");
-            try text.appendSlice(gpa, r.bytes);
-        } else {
-            try text.appendSlice(gpa, "\n");
-            try text.appendSlice(gpa, try kerf.api.schema.compactSection(ga));
-            try text.appendSlice(gpa, "\nMore: `kerf guide --full` (drafting rules, long-form notes, full schema and component catalog).\n");
-        }
-        const folded = try asciiFold(gpa, text.items);
+fn cmdVersion(gpa: std.mem.Allocator, io: std.Io) !u8 {
+    const r = try kerf.call(gpa, "version", "{}");
+    defer gpa.free(r.bytes);
+    try writeOut(io, null, r.bytes);
+    return 0;
+}
+
+fn cmdCatalog(gpa: std.mem.Allocator, io: std.Io, o: Opts) !u8 {
+    const r = try kerf.call(gpa, "catalog", if (o.markdown) "{\"format\":\"markdown\"}" else "{\"format\":\"json\"}");
+    defer gpa.free(r.bytes);
+    if (o.markdown and r.ok) {
+        const folded = try asciiFold(gpa, r.bytes);
         defer gpa.free(folded);
         try writeOut(io, o.out, folded);
         return 0;
     }
-    if (std.mem.eql(u8, cmd, "init")) {
-        const dir_path = if (o.npos >= 1) o.pos[0] else ".";
-        std.Io.Dir.cwd().createDirPath(io, dir_path) catch {};
-        var d = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
-        defer d.close(io);
-        const agents_md =
-            \\# Kerf details library
-            \\
-            \\This folder holds construction details as `*.kerf.json` files, built with the `kerf` CLI.
-            \\
-            \\Before creating or editing any detail, run `kerf guide` and follow it exactly. It holds the
-            \\workflow, drafting rules, note grammar, and component catalog. Edit details only via
-            \\`kerf apply <file> ... -w`, never by hand. After changes, export a PNG
-            \\(`kerf export <file> --view A --format png -o <file>-A.png`) and look at it before reporting.
-            \\Shell rules: ONE kerf command per tool call (no `&&`, `;`, pipes or heredocs); create ops files with your file-writing tool.
-            \\The designer reviews and exports in the Kerf web UI.
-            \\
-        ;
-        var wrote: usize = 0;
-        for ([_][]const u8{ "AGENTS.md", "CLAUDE.md" }) |name| {
-            if (d.access(io, name, .{})) |_| {
-                try writeOut(io, null, "kept existing ");
-                try writeOut(io, null, name);
-                try writeOut(io, null, "\n");
-            } else |_| {
-                try d.writeFile(io, .{ .sub_path = name, .data = if (std.mem.eql(u8, name, "CLAUDE.md")) "@AGENTS.md\n" else agents_md });
-                wrote += 1;
-                try writeOut(io, null, "wrote ");
-                try writeOut(io, null, name);
-                try writeOut(io, null, "\n");
-            }
+    try writeOut(io, o.out, r.bytes);
+    return if (r.ok) 0 else 1;
+}
+
+fn cmdSchema(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, o: Opts) !u8 {
+    var sarena = std.heap.ArenaAllocator.init(gpa);
+    defer sarena.deinit();
+    const sa = sarena.allocator();
+    var outtext: std.ArrayList(u8) = .empty;
+    var failed = false;
+    const ntopics = @max(o.npos, 1); // no topic: the topic list
+    for (0..ntopics) |ti| {
+        var inp: std.ArrayList(u8) = .empty;
+        try inp.appendSlice(sa, "{");
+        if (o.npos >= 1) {
+            try inp.appendSlice(sa, "\"topic\":");
+            try appendJsonString(sa, &inp, o.pos[ti]);
         }
-        try writeOut(io, null, "ready: open Claude Code / Grok in this folder and ask for a detail.\n");
-        return 0;
-    }
-    if (std.mem.eql(u8, cmd, "new")) {
-        if (o.npos < 1) {
-            try err.writeAll("kerf new: needs <file>, e.g. kerf new truss-cmu.kerf.json --title \"TRUSS BEARING\"\n");
-            return 2;
-        }
-        const path = o.pos[0];
-        if (std.Io.Dir.cwd().access(io, path, .{})) |_| {
-            try err.print("kerf new: {s} already exists (refusing to overwrite)\n", .{path});
-            return 1;
-        } else |_| {}
-        var arena = std.heap.ArenaAllocator.init(gpa);
-        defer arena.deinit();
-        const a = arena.allocator();
-        const stem = workspace.docStem(path);
-        const text = if (o.template) |tpl| blk: {
-            if (!std.mem.eql(u8, tpl, "section")) {
-                try err.print("kerf new: unknown template \"{s}\"; available: section (a section view with two members, two notes, a dim, a label)\n", .{tpl});
-                return 2;
-            }
-            var id: std.ArrayList(u8) = .empty;
-            for (o.id orelse stem) |c| try id.append(a, if (std.ascii.isAlphanumeric(c)) std.ascii.toLower(c) else '-');
-            break :blk try kerf.api.schema.templateText(a, id.items, o.title orelse "");
-        } else try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
-        var final_text: []const u8 = text;
-        var ops_text: ?[]const u8 = null;
-        var why: []const u8 = "";
-        var apply_changed: std.ArrayList([]const u8) = .empty;
-        var apply_summary: []const u8 = "";
-        if (o.ops) |oa| {
-            // create + apply in one command: the file only appears when the ops apply cleanly
-            const raw = opsFromArg(a, io, oa) catch {
-                try err.print("kerf new: cannot read ops '{s}' (--ops takes a file path, or inline JSON starting with [)\n", .{oa});
-                return 2;
-            };
-            const prep = (try prepareOps(a, err, raw)) orelse return 1;
-            ops_text = prep.text;
-            why = o.why orelse prep.why orelse "";
-            var vperr: kerf.json.ParseError = undefined;
-            const input = try buildInputText(a, text, o.style, io, try std.fmt.allocPrint(a, "\"ops\":{s}", .{ops_text.?}));
-            const r = try kerf.call(gpa, "apply", input);
-            defer gpa.free(r.bytes);
-            if (!r.ok) {
-                try printApiError(a, err, r.bytes);
-                try err.writeAll("nothing written\n");
-                return 1;
-            }
-            const res = (try kerf.json.parse(a, r.bytes, &vperr)) orelse return error.BadEngineOutput;
-            const summary = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
-            const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
-            if (!ok) {
-                const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
-                for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) try printDiagError(err, d);
-                try err.writeAll("nothing written\n");
-                return 1;
-            }
-            final_text = try kerf.canon.write(a, res.get("doc") orelse return error.BadEngineOutput);
-            if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try apply_changed.append(a, try a.dupe(u8, cs));
-            apply_summary = try a.dupe(u8, summary);
-            try writeOut(io, null, summary);
-        }
-        try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, final_text);
-        var logged = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
-        if (ops_text) |ot| {
-            const l2 = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = why }, ot, apply_changed.items, apply_summary);
-            logged = logged and l2;
-        }
-        try writeOut(io, null, "created ");
-        try writeOut(io, null, path);
-        if (ops_text != null) {
-            try writeOut(io, null, "\nnext: LOOK at it: kerf export <file> --view A --format png -o <file>-A.png\n");
-        } else try writeOut(io, null, if (o.template != null) "\nnext: edit it with kerf apply <file> ops.json -w   (see `kerf schema`, `kerf guide`)\n" else "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
-        return if (logged) 0 else 3;
-    }
-    if (std.mem.eql(u8, cmd, "call")) {
-        if (o.npos < 1) {
-            try err.writeAll(usage);
-            return 2;
-        }
-        var stdin_buf: [8192]u8 = undefined;
-        var rd = std.Io.File.stdin().reader(io, &stdin_buf);
-        // `kerf call help` needs no input: do not block on an interactive stdin
-        const input = if (std.mem.eql(u8, o.pos[0], "help")) try gpa.dupe(u8, "{}") else try rd.interface.allocRemaining(gpa, .limited(256 << 20));
-        defer gpa.free(input);
-        const r = try kerf.call(gpa, o.pos[0], input);
+        try inp.appendSlice(sa, "}");
+        const r = try kerf.call(gpa, "schema", inp.items);
         defer gpa.free(r.bytes);
-        try writeOut(io, o.out, r.bytes);
-        return if (r.ok) 0 else 1;
+        if (!r.ok) {
+            try printApiError(sa, err, r.bytes);
+            failed = true;
+            continue;
+        }
+        var sperr: kerf.json.ParseError = undefined;
+        const res = (try kerf.json.parse(sa, r.bytes, &sperr)) orelse return error.BadEngineOutput;
+        const text = (if (res.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
+        if (outtext.items.len > 0) try outtext.appendSlice(sa, "\n----\n\n");
+        try outtext.appendSlice(sa, text);
     }
+    const folded = try asciiFold(gpa, outtext.items);
+    defer gpa.free(folded);
+    try writeOut(io, o.out, folded);
+    return if (failed) 1 else 0;
+}
+
+fn cmdGuide(gpa: std.mem.Allocator, io: std.Io, o: Opts) !u8 {
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(gpa);
+    var garena = std.heap.ArenaAllocator.init(gpa);
+    defer garena.deinit();
+    const ga = garena.allocator();
+    const split = guideSplit(cli_guide);
+    try text.appendSlice(gpa, split.short);
+    if (o.full) {
+        // long form: the extra notes, the full per-object schema, the drafting instructions, the component catalog
+        const r = try kerf.call(gpa, "catalog", "{\"format\":\"markdown\"}");
+        defer gpa.free(r.bytes);
+        try text.appendSlice(gpa, "\n");
+        try text.appendSlice(gpa, split.full);
+        try text.appendSlice(gpa, "\n");
+        try text.appendSlice(gpa, try kerf.api.schema.guideSection(ga));
+        try text.appendSlice(gpa, "\n# Drafting instructions\n\n");
+        try text.appendSlice(gpa, system_md);
+        try text.appendSlice(gpa, "\n# Component catalog\n\n");
+        try text.appendSlice(gpa, r.bytes);
+    } else {
+        try text.appendSlice(gpa, "\n");
+        try text.appendSlice(gpa, try kerf.api.schema.compactSection(ga));
+        try text.appendSlice(gpa, "\nMore: `kerf guide --full` (drafting rules, long-form notes, full schema and component catalog).\n");
+    }
+    const folded = try asciiFold(gpa, text.items);
+    defer gpa.free(folded);
+    try writeOut(io, o.out, folded);
+    return 0;
+}
+
+fn cmdInit(io: std.Io, o: Opts) !u8 {
+    const dir_path = if (o.npos >= 1) o.pos[0] else ".";
+    std.Io.Dir.cwd().createDirPath(io, dir_path) catch {};
+    var d = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer d.close(io);
+    const agents_md =
+        \\# Kerf details library
+        \\
+        \\This folder holds construction details as `*.kerf.json` files, built with the `kerf` CLI.
+        \\
+        \\Before creating or editing any detail, run `kerf guide` and follow it exactly. It holds the
+        \\workflow, drafting rules, note grammar, and component catalog. Edit details only via
+        \\`kerf apply <file> ... -w`, never by hand. After changes, export a PNG
+        \\(`kerf export <file> --view A --format png -o <file>-A.png`) and look at it before reporting.
+        \\Shell rules: ONE kerf command per tool call (no `&&`, `;`, pipes or heredocs); create ops files with your file-writing tool.
+        \\The designer reviews and exports in the Kerf web UI.
+        \\
+    ;
+    var wrote: usize = 0;
+    for ([_][]const u8{ "AGENTS.md", "CLAUDE.md" }) |name| {
+        if (d.access(io, name, .{})) |_| {
+            try writeOut(io, null, "kept existing ");
+            try writeOut(io, null, name);
+            try writeOut(io, null, "\n");
+        } else |_| {
+            try d.writeFile(io, .{ .sub_path = name, .data = if (std.mem.eql(u8, name, "CLAUDE.md")) "@AGENTS.md\n" else agents_md });
+            wrote += 1;
+            try writeOut(io, null, "wrote ");
+            try writeOut(io, null, name);
+            try writeOut(io, null, "\n");
+        }
+    }
+    try writeOut(io, null, "ready: open Claude Code / Grok in this folder and ask for a detail.\n");
+    return 0;
+}
+
+fn cmdNew(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, ctx: Ctx, o: Opts) !u8 {
     if (o.npos < 1) {
-        try err.print("kerf {s}: missing <doc>\n", .{cmd});
+        try err.writeAll("kerf new: needs <file>, e.g. kerf new truss-cmu.kerf.json --title \"TRUSS BEARING\"\n");
+        return 2;
+    }
+    const path = o.pos[0];
+    if (std.Io.Dir.cwd().access(io, path, .{})) |_| {
+        try err.print("kerf new: {s} already exists (refusing to overwrite)\n", .{path});
+        return 1;
+    } else |_| {}
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const stem = workspace.docStem(path);
+    const text = if (o.template) |tpl| blk: {
+        if (!std.mem.eql(u8, tpl, "section")) {
+            try err.print("kerf new: unknown template \"{s}\"; available: section (a section view with two members, two notes, a dim, a label)\n", .{tpl});
+            return 2;
+        }
+        var id: std.ArrayList(u8) = .empty;
+        for (o.id orelse stem) |c| try id.append(a, if (std.ascii.isAlphanumeric(c)) std.ascii.toLower(c) else '-');
+        break :blk try kerf.api.schema.templateText(a, id.items, o.title orelse "");
+    } else try workspace.newDocText(a, o.id orelse stem, o.title orelse "");
+    var final_text: []const u8 = text;
+    var ops_text: ?[]const u8 = null;
+    var why: []const u8 = "";
+    var apply_changed: std.ArrayList([]const u8) = .empty;
+    var apply_summary: []const u8 = "";
+    if (o.ops) |oa| {
+        // create + apply in one command: the file only appears when the ops apply cleanly
+        const raw = opsFromArg(a, io, oa) catch {
+            try err.print("kerf new: cannot read ops '{s}' (--ops takes a file path, or inline JSON starting with [)\n", .{oa});
+            return 2;
+        };
+        const prep = (try prepareOps(a, err, raw)) orelse return 1;
+        ops_text = prep.text;
+        why = o.why orelse prep.why orelse "";
+        var vperr: kerf.json.ParseError = undefined;
+        const input = try buildInputText(a, text, o.style, io, try std.fmt.allocPrint(a, "\"ops\":{s}", .{ops_text.?}));
+        const r = try kerf.call(gpa, "apply", input);
+        defer gpa.free(r.bytes);
+        if (!r.ok) {
+            try printApiError(a, err, r.bytes);
+            try err.writeAll("nothing written\n");
+            return 1;
+        }
+        const res = (try kerf.json.parse(a, r.bytes, &vperr)) orelse return error.BadEngineOutput;
+        const summary = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
+        const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
+        if (!ok) {
+            const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
+            for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) try printDiagError(err, d);
+            try err.writeAll("nothing written\n");
+            return 1;
+        }
+        final_text = try kerf.canon.write(a, res.get("doc") orelse return error.BadEngineOutput);
+        if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try apply_changed.append(a, try a.dupe(u8, cs));
+        apply_summary = try a.dupe(u8, summary);
+        try writeOut(io, null, summary);
+    }
+    try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), path, final_text);
+    var logged = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = "create" }, try createOp(a, std.fs.path.basename(path), o.id orelse stem, o.title orelse ""), &.{}, workspace.checkSummary(a, text) catch "");
+    if (ops_text) |ot| {
+        const l2 = logWrite(a, io, path, .{ .who = ctx.actor, .tool = "kerf-cli", .why = why }, ot, apply_changed.items, apply_summary);
+        logged = logged and l2;
+    }
+    try writeOut(io, null, "created ");
+    try writeOut(io, null, path);
+    if (ops_text != null) {
+        try writeOut(io, null, "\nnext: LOOK at it: kerf export <file> --view A --format png -o <file>-A.png\n");
+    } else try writeOut(io, null, if (o.template != null) "\nnext: edit it with kerf apply <file> ops.json -w   (see `kerf schema`, `kerf guide`)\n" else "\nnext: kerf apply <file> ops.json -w   (see `kerf guide`)\n");
+    return if (logged) 0 else 3;
+}
+
+fn cmdCall(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, o: Opts) !u8 {
+    if (o.npos < 1) {
         try err.writeAll(usage);
         return 2;
     }
-    const doc_path = o.pos[0];
-    var extra: std.ArrayList(u8) = .empty;
-    defer extra.deinit(gpa);
-    var fname: []const u8 = cmd;
-    var ops_text_for_log: []const u8 = "[]";
-    var ops_keep: ?[]u8 = null; // the ops text outlives the branch that read it (the op log is written later)
-    defer if (ops_keep) |b| gpa.free(b);
-    var why_keep: ?[]u8 = null; // the `why` of an {"ops":[...],"why":"..."} envelope (used when --why is absent)
-    defer if (why_keep) |b| gpa.free(b);
+    var stdin_buf: [8192]u8 = undefined;
+    var rd = std.Io.File.stdin().reader(io, &stdin_buf);
+    // `kerf call help` needs no input: do not block on an interactive stdin
+    const input = if (std.mem.eql(u8, o.pos[0], "help")) try gpa.dupe(u8, "{}") else try rd.interface.allocRemaining(gpa, .limited(256 << 20));
+    defer gpa.free(input);
+    const r = try kerf.call(gpa, o.pos[0], input);
+    defer gpa.free(r.bytes);
+    try writeOut(io, o.out, r.bytes);
+    return if (r.ok) 0 else 1;
+}
+
+/// What a document command sends to the engine besides the document: the extra JSON members and, for apply, the ops text and
+/// the `why` of an {"ops":[...],"why":"..."} envelope (the op log needs both after the call).
+const DocCall = struct {
+    extra: std.ArrayList(u8) = .empty,
+    ops_text: []const u8 = "[]",
+    ops_owned: ?[]u8 = null,
+    why_owned: ?[]u8 = null,
+
+    fn deinit(self: *DocCall, gpa: std.mem.Allocator) void {
+        self.extra.deinit(gpa);
+        if (self.ops_owned) |b| gpa.free(b);
+        if (self.why_owned) |b| gpa.free(b);
+    }
+};
+
+/// Check the command line of a document command and fill `call`. Returns an exit code (after printing why) when it is wrong.
+fn prepareDocCall(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, cmd: []const u8, o: Opts, call: *DocCall) !?u8 {
     if (std.mem.eql(u8, cmd, "drawing")) {
         const v = o.view orelse {
             try err.writeAll("kerf drawing: --view <id> is required\n");
             return 2;
         };
-        try extra.appendSlice(gpa, "\"view\":");
-        try appendJsonString(gpa, &extra, v);
+        try call.extra.appendSlice(gpa, "\"view\":");
+        try appendJsonString(gpa, &call.extra, v);
     } else if (std.mem.eql(u8, cmd, "export")) {
         const v = o.view orelse {
             try err.writeAll("kerf export: --view <id> is required\n");
@@ -598,18 +593,18 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         };
         const f = o.format orelse "svg";
         // every user string goes through the JSON escaper: a `--view 'A","x":1'` must stay one string
-        try extra.appendSlice(gpa, "\"view\":");
-        try appendJsonString(gpa, &extra, v);
-        try extra.appendSlice(gpa, ",\"format\":");
-        try appendJsonString(gpa, &extra, f);
-        try extra.print(gpa, ",\"sheet\":{s}", .{if (o.sheet) "true" else "false"});
+        try call.extra.appendSlice(gpa, "\"view\":");
+        try appendJsonString(gpa, &call.extra, v);
+        try call.extra.appendSlice(gpa, ",\"format\":");
+        try appendJsonString(gpa, &call.extra, f);
+        try call.extra.print(gpa, ",\"sheet\":{s}", .{if (o.sheet) "true" else "false"});
         if (o.px) |px| {
             const pxn = kerf.units.parseFinite(px) orelse {
                 try err.print("kerf export: --px must be a number (got \"{s}\")\n", .{px});
                 return 2;
             };
             var pb: [40]u8 = undefined;
-            try extra.print(gpa, ",\"px\":{s}", .{kerf.json.fmtNumber(&pb, pxn)});
+            try call.extra.print(gpa, ",\"px\":{s}", .{kerf.json.fmtNumber(&pb, pxn)});
         }
         if (o.out == null) {
             try err.writeAll("kerf export: -o <file> is required\n");
@@ -644,24 +639,26 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             var varena = std.heap.ArenaAllocator.init(gpa);
             defer varena.deinit();
             const prep = (try prepareOps(varena.allocator(), err, ops)) orelse return 1;
-            ops_keep = try gpa.dupe(u8, prep.text);
+            call.ops_owned = try gpa.dupe(u8, prep.text);
             if (prep.why) |w| if (o.why == null) {
-                why_keep = try gpa.dupe(u8, w);
+                call.why_owned = try gpa.dupe(u8, w);
             };
         }
-        ops_text_for_log = ops_keep.?;
-        try extra.print(gpa, "\"ops\":{s}", .{ops_keep.?});
+        call.ops_text = call.ops_owned.?;
+        try call.extra.print(gpa, "\"ops\":{s}", .{call.ops_owned.?});
     } else if (!(std.mem.eql(u8, cmd, "fmt") or std.mem.eql(u8, cmd, "check") or std.mem.eql(u8, cmd, "mesh"))) {
         try err.print("kerf: unknown command '{s}'\n", .{cmd});
         try err.writeAll(usage);
         return 2;
     }
-    fname = cmd;
-    // `apply -w` / `fmt -w` do read -> edit -> write under the advisory lock `kerf serve` uses for the same document, so parallel
-    // writers queue instead of silently losing each other's edits; --if-match makes a stale writer fail instead of overwriting.
+    return null;
+}
+
+/// `apply -w` / `fmt -w` read, edit and write under the advisory lock `kerf serve` uses for the same document, so parallel writers queue
+/// instead of silently losing each other's edits; --if-match makes a stale writer fail instead of overwriting. Sets `lock` when taken;
+/// returns an exit code when the command must stop.
+fn lockForWrite(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, cmd: []const u8, o: Opts, doc_path: []const u8, lock: *?workspace.DocLock) !?u8 {
     const is_apply_w = std.mem.eql(u8, cmd, "apply") and o.write and !o.dry_run;
-    var lock: ?workspace.DocLock = null;
-    defer if (lock) |l| l.release(io);
     if (o.if_match != null and !is_apply_w) {
         try err.writeAll("kerf: --if-match only applies to `kerf apply <doc> ... -w`\n");
         return 2;
@@ -670,7 +667,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         var larena = std.heap.ArenaAllocator.init(gpa);
         defer larena.deinit();
         const lp = try workspace.logPath(larena.allocator(), doc_path);
-        lock = workspace.DocLock.acquire(io, std.Io.Dir.cwd(), lp) catch |e| {
+        lock.* = workspace.DocLock.acquire(io, std.Io.Dir.cwd(), lp) catch |e| {
             try err.print("kerf {s}: cannot lock {s} for writing: {s}\n", .{ cmd, lp, @errorName(e) });
             return 1;
         };
@@ -685,9 +682,90 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
             }
         }
     }
-    const input = try buildInput(gpa, io, doc_path, o.style, extra.items);
+    return null;
+}
+
+fn finishFmt(gpa: std.mem.Allocator, io: std.Io, o: Opts, doc_path: []const u8, bytes: []const u8) !u8 {
+    // bytes is {"doc": ..., "text": "<canonical text>"}: write the canonical text itself
+    var farena = std.heap.ArenaAllocator.init(gpa);
+    defer farena.deinit();
+    var fperr: kerf.json.ParseError = undefined;
+    const fres = (try kerf.json.parse(farena.allocator(), bytes, &fperr)) orelse return error.BadEngineOutput;
+    const canon_text = (if (fres.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(gpa);
+    try text.appendSlice(gpa, canon_text);
+    if (o.write) {
+        try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), doc_path, text.items);
+    } else try writeOut(io, o.out, text.items);
+    return 0;
+}
+
+/// Report the result of `apply` or `check` (summary, errors on stderr) and, for `apply -w`, write the document and its log line.
+fn finishApplyCheck(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, ctx: Ctx, cmd: []const u8, o: Opts, doc_path: []const u8, lock: ?workspace.DocLock, call: DocCall, bytes: []const u8) !u8 {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var perr: kerf.json.ParseError = undefined;
+    const res = (try kerf.json.parse(a, bytes, &perr)) orelse return error.BadEngineOutput;
+    if (res.get("summary")) |sv| if (sv.str()) |txt| try writeOut(io, null, txt);
+    if (std.mem.eql(u8, cmd, "check")) {
+        // diagnostics already appear in the summary; exit 1 on errors
+        const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
+        for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) return 1;
+        return 0;
+    }
+    const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
+    if (!ok) {
+        // SPEC 19: every error diagnostic on stderr, then `nothing written`
+        const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
+        for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) try printDiagError(err, d);
+        try err.writeAll("nothing written\n");
+        return 1;
+    }
+    var logged = true;
+    if (res.get("doc")) |dv| {
+        const text = try kerf.canon.write(a, dv);
+        if (ok) {
+            if (o.write and !o.dry_run) {
+                try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), doc_path, text);
+                var changed: std.ArrayList([]const u8) = .empty;
+                if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
+                const sum = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
+                logged = logWriteLocked(a, io, doc_path, lock, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse call.why_owned orelse "" }, call.ops_text, changed.items, sum);
+                try writeOut(io, null, "wrote ");
+                try writeOut(io, null, doc_path);
+                try writeOut(io, null, "\n");
+            } else if (o.dry_run) {
+                try writeOut(io, null, "(dry run: nothing written)\n");
+            } else if (o.out) |_| {
+                try writeOut(io, o.out, text);
+            } else {
+                try writeOut(io, null, "(dry run: add -w to write the result back to the document)\n");
+            }
+        }
+    }
+    if (ok and !logged) return 3;
+    return if (ok) 0 else 1;
+}
+
+/// The commands that take a document: drawing, export, apply, check, fmt, mesh (anything else is an unknown command).
+fn cmdDoc(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, ctx: Ctx, cmd: []const u8, o: Opts) !u8 {
+    if (o.npos < 1) {
+        try err.print("kerf {s}: missing <doc>\n", .{cmd});
+        try err.writeAll(usage);
+        return 2;
+    }
+    const doc_path = o.pos[0];
+    var call: DocCall = .{};
+    defer call.deinit(gpa);
+    if (try prepareDocCall(gpa, io, err, cmd, o, &call)) |code| return code;
+    var lock: ?workspace.DocLock = null;
+    defer if (lock) |l| l.release(io);
+    if (try lockForWrite(gpa, io, err, cmd, o, doc_path, &lock)) |code| return code;
+    const input = try buildInput(gpa, io, doc_path, o.style, call.extra.items);
     defer gpa.free(input);
-    const r = try kerf.call(gpa, fname, input);
+    const r = try kerf.call(gpa, cmd, input);
     defer gpa.free(r.bytes);
     if (!r.ok) {
         var earena = std.heap.ArenaAllocator.init(gpa);
@@ -696,67 +774,33 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         if (std.mem.eql(u8, cmd, "apply")) try err.writeAll("nothing written\n");
         return 1;
     }
-    if (std.mem.eql(u8, cmd, "fmt")) {
-        // r.bytes is {"doc": ..., "text": "<canonical text>"}: write the canonical text itself
-        var farena = std.heap.ArenaAllocator.init(gpa);
-        defer farena.deinit();
-        var fperr: kerf.json.ParseError = undefined;
-        const fres = (try kerf.json.parse(farena.allocator(), r.bytes, &fperr)) orelse return error.BadEngineOutput;
-        const canon_text = (if (fres.get("text")) |t| t.str() else null) orelse return error.BadEngineOutput;
-        var text: std.ArrayList(u8) = .empty;
-        defer text.deinit(gpa);
-        try text.appendSlice(gpa, canon_text);
-        if (o.write) {
-            try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), doc_path, text.items);
-        } else try writeOut(io, o.out, text.items);
-        return 0;
-    }
-    if (std.mem.eql(u8, cmd, "apply") or std.mem.eql(u8, cmd, "check")) {
-        var arena = std.heap.ArenaAllocator.init(gpa);
-        defer arena.deinit();
-        const a = arena.allocator();
-        var perr: kerf.json.ParseError = undefined;
-        const res = (try kerf.json.parse(a, r.bytes, &perr)) orelse return error.BadEngineOutput;
-        if (res.get("summary")) |sv| if (sv.str()) |txt| try writeOut(io, null, txt);
-        if (std.mem.eql(u8, cmd, "check")) {
-            // diagnostics already appear in the summary; exit 1 on errors
-            const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
-            for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) return 1;
-            return 0;
-        }
-        const ok = if (res.get("ok")) |v| (v == .bool and v.bool) else false;
-        if (!ok) {
-            // SPEC 19: every error diagnostic on stderr, then `nothing written`
-            const dl = (res.get("diagnostics") orelse kerf.json.Value{ .array = &.{} }).arr() orelse &.{};
-            for (dl) |d| if (d.get("level")) |lv| if (lv.str()) |ls| if (std.mem.eql(u8, ls, "error")) try printDiagError(err, d);
-            try err.writeAll("nothing written\n");
-            return 1;
-        }
-        var logged = true;
-        if (res.get("doc")) |dv| {
-            const text = try kerf.canon.write(a, dv);
-            if (ok) {
-                if (o.write and !o.dry_run) {
-                    try workspace.writeFileAtomic(io, std.Io.Dir.cwd(), doc_path, text);
-                    var changed: std.ArrayList([]const u8) = .empty;
-                    if (res.get("changed")) |cv| if (cv.arr()) |items| for (items) |it| if (it.str()) |cs| try changed.append(a, cs);
-                    const sum = if (res.get("summary")) |sv| (sv.str() orelse "") else "";
-                    logged = logWriteLocked(a, io, doc_path, lock, .{ .who = ctx.actor, .tool = "kerf-cli", .why = o.why orelse why_keep orelse "" }, ops_text_for_log, changed.items, sum);
-                    try writeOut(io, null, "wrote ");
-                    try writeOut(io, null, doc_path);
-                    try writeOut(io, null, "\n");
-                } else if (o.dry_run) {
-                    try writeOut(io, null, "(dry run: nothing written)\n");
-                } else if (o.out) |_| {
-                    try writeOut(io, o.out, text);
-                } else {
-                    try writeOut(io, null, "(dry run: add -w to write the result back to the document)\n");
-                }
-            }
-        }
-        if (ok and !logged) return 3;
-        return if (ok) 0 else 1;
-    }
+    if (std.mem.eql(u8, cmd, "fmt")) return finishFmt(gpa, io, o, doc_path, r.bytes);
+    if (std.mem.eql(u8, cmd, "apply") or std.mem.eql(u8, cmd, "check")) return finishApplyCheck(gpa, io, err, ctx, cmd, o, doc_path, lock, call, r.bytes);
     try writeOut(io, o.out, r.bytes);
     return 0;
+}
+
+fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.Io.Writer, ctx: Ctx) !u8 {
+    if (args.len == 0) {
+        try err.writeAll(usage);
+        return 2;
+    }
+    const cmd = args[0];
+    if (std.mem.eql(u8, cmd, "serve")) return serve.cliMain(gpa, io, args[1..], err, ctx.environ_map);
+    const o = parseOpts(args[1..], err) catch {
+        try err.writeAll(usage);
+        return 2;
+    };
+    if (std.mem.eql(u8, cmd, "version")) return cmdVersion(gpa, io);
+    if (std.mem.eql(u8, cmd, "catalog")) return cmdCatalog(gpa, io, o);
+    if (std.mem.eql(u8, cmd, "schema")) return cmdSchema(gpa, io, err, o);
+    if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h")) {
+        try writeOut(io, null, usage);
+        return 0;
+    }
+    if (std.mem.eql(u8, cmd, "guide")) return cmdGuide(gpa, io, o);
+    if (std.mem.eql(u8, cmd, "init")) return cmdInit(io, o);
+    if (std.mem.eql(u8, cmd, "new")) return cmdNew(gpa, io, err, ctx, o);
+    if (std.mem.eql(u8, cmd, "call")) return cmdCall(gpa, io, err, o);
+    return cmdDoc(gpa, io, err, ctx, cmd, o);
 }
