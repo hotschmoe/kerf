@@ -45,7 +45,7 @@ pub const SlopeHost = struct {
 };
 
 /// The component types, in catalog order. The tag name is the type's name in documents (`"type": "lumber"`).
-/// Adding a type: add the tag here, an entry to `entries` (same position) and a `build` arm in builders.zig
+/// Adding a type: add the tag here, an entry to `entries` (same position) and a `build` arm in builders.zig (see its header)
 /// (that switch is exhaustive, so a type without a builder does not compile).
 pub const Type = enum { lumber, panel, cmu_wall, concrete, rebar, anchor_bolt, connector, truss, membrane, fill, insulation, flashing, joint, solid };
 

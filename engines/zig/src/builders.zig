@@ -1,98 +1,41 @@
-//! Component builders (SPEC 5): turn a component's JSON params into a `Built` (prisms, anchors,
-//! zones) in local coordinates. Builders validate their params and report E_PARAM diagnostics;
-//! they return null when the component cannot be built.
+//! Component builders (SPEC 5): the registry. Every component type lives in its own file, `builders/<type>.zig`, that
+//! declares
+//!   - `Params`: a struct of the type's parameters (keys, defaults, choices, ranges and catalog text: see params.zig); the
+//!     parser, `kerf catalog` / `kerf schema <type>`, the accepted-key list and the canonical key order all come from it;
+//!   - `build(ctx)`: turn the parsed parameters into a `Built` (prisms, anchors, zones) in local coordinates, reporting problems as
+//!     E_PARAM diagnostics and returning null when the component cannot be built.
+//! Helpers shared by the builders are in `builders/common.zig`.
+//!
+//! Adding a component type: (1) a tag in `catalog.Type` and an entry in `catalog.entries` (prose, parts, anchors, example, traits)
+//! at the same position; (2) `builders/<type>.zig` with `Params` and `build`; (3) the import, the `build` arm and the
+//! `param_structs` entry below. Steps (1) and (3) are exhaustive, so the compiler names whatever is missing.
 
 const std = @import("std");
-const json = @import("json.zig");
-const geom = @import("geom.zig");
-const model = @import("model.zig");
-const units = @import("units.zig");
-const cast = @import("num.zig");
-const limits = @import("limits.zig");
 const catalog = @import("catalog.zig");
 const params_mod = @import("params.zig");
-const scene_mod = @import("scene.zig");
-const style_mod = @import("style.zig");
-const path_geom = @import("pathgeom.zig");
-const Allocator = std.mem.Allocator;
-const V2 = geom.V2;
-const Pt = geom.Pt;
-const Built = model.Built;
-const Prism = model.Prism;
-const Params = model.Params;
-const Box = geom.Box;
+const model = @import("model.zig");
 const common = @import("builders/common.zig");
-pub const joint = @import("builders/joint.zig");
-pub const flashing = @import("builders/flashing.zig");
-pub const solid = @import("builders/solid.zig");
-pub const insulation = @import("builders/insulation.zig");
-pub const fill = @import("builders/fill.zig");
-pub const membrane = @import("builders/membrane.zig");
-pub const truss = @import("builders/truss.zig");
-pub const connector = @import("builders/connector.zig");
-pub const anchor_bolt = @import("builders/anchor_bolt.zig");
-pub const rebar = @import("builders/rebar.zig");
-pub const concrete = @import("builders/concrete.zig");
-pub const cmu_wall = @import("builders/cmu_wall.zig");
-pub const panel = @import("builders/panel.zig");
+
 pub const lumber = @import("builders/lumber.zig");
+pub const panel = @import("builders/panel.zig");
+pub const cmu_wall = @import("builders/cmu_wall.zig");
+pub const concrete = @import("builders/concrete.zig");
+pub const rebar = @import("builders/rebar.zig");
+pub const anchor_bolt = @import("builders/anchor_bolt.zig");
+pub const connector = @import("builders/connector.zig");
+pub const truss = @import("builders/truss.zig");
+pub const membrane = @import("builders/membrane.zig");
+pub const fill = @import("builders/fill.zig");
+pub const insulation = @import("builders/insulation.zig");
+pub const solid = @import("builders/solid.zig");
+pub const flashing = @import("builders/flashing.zig");
+pub const joint = @import("builders/joint.zig");
+
 pub const BuildError = common.BuildError;
 pub const Ctx = common.Ctx;
+pub const Built = model.Built;
 pub const mirrorAboutCenter = common.mirrorAboutCenter;
 pub const worldBox = common.worldBox;
-const boxOfPrisms = common.boxOfPrisms;
-const zoneRect = common.zoneRect;
-const onePrism = common.onePrism;
-const ftin = common.ftin;
-const fmtNum = common.fmtNum;
-const quadOf = common.quadOf;
-const parseSawn = common.parseSawn;
-const parseActual = common.parseActual;
-const parsePointList = common.parsePointList;
-const dropDuplicatePoints = common.dropDuplicatePoints;
-const orientedCcw = common.orientedCcw;
-const materialOk = common.materialOk;
-const lengthOrUntil = common.lengthOrUntil;
-const parseCover = common.parseCover;
-const mirrorBuilt = common.mirrorBuilt;
-const gaugeThickness = common.gaugeThickness;
-const vsOf = common.vsOf;
-const pathLen = common.pathLen;
-const materialOr = common.materialOr;
-
-// ---- helpers ---------------------------------------------------------------------------------------
-
-// ---- lumber -------------------------------------------------------------------------------------------
-
-// ---- panel -----------------------------------------------------------------------------------------------
-
-// ---- cover parsing ----------------------------------------------------------------------------------------
-
-// ---- cmu_wall -----------------------------------------------------------------------------------------------
-
-// ---- concrete ---------------------------------------------------------------------------------------------------
-
-// ---- rebar --------------------------------------------------------------------------------------------------------
-
-// ---- anchor bolt ----------------------------------------------------------------------------------------------------
-
-// ---- connector ------------------------------------------------------------------------------------------------------
-
-// ---- truss -----------------------------------------------------------------------------------------------------------
-
-// ---- membrane -----------------------------------------------------------------------------------------------------------
-
-// ---- fill ------------------------------------------------------------------------------------------------------------------
-
-// ---- insulation ----------------------------------------------------------------------------------------------------------------
-
-// ---- solid ------------------------------------------------------------------------------------------------------------------------
-
-// ---- flashing -----------------------------------------------------------------------------------------------------
-
-// ---- joint --------------------------------------------------------------------------------------------------------
-
-// ---- dispatch -----------------------------------------------------------------------------------------------------------------------
 
 pub fn build(ctx: *Ctx) BuildError!?Built {
     return switch (ctx.comp.ty.type) {

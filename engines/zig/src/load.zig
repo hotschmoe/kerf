@@ -14,7 +14,6 @@ const drawview = @import("drawview.zig");
 const section = @import("section.zig");
 const catalog = @import("catalog.zig");
 const units = @import("units.zig");
-const builders = @import("builders.zig");
 const lint = @import("lint.zig");
 const coverage = @import("coverage.zig");
 const crop_mod = @import("crop.zig");
