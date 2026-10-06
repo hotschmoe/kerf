@@ -1781,23 +1781,22 @@ fn buildJoint(ctx: *Ctx) BuildError!?Built {
 // ---- dispatch -----------------------------------------------------------------------------------------------------------------------
 
 pub fn build(ctx: *Ctx) BuildError!?Built {
-    const name = ctx.comp.ty.name;
-    const eq = std.mem.eql;
-    if (eq(u8, name, "lumber")) return buildLumber(ctx);
-    if (eq(u8, name, "panel")) return buildPanel(ctx);
-    if (eq(u8, name, "cmu_wall")) return buildCmu(ctx);
-    if (eq(u8, name, "concrete")) return buildConcrete(ctx);
-    if (eq(u8, name, "rebar")) return buildRebar(ctx);
-    if (eq(u8, name, "anchor_bolt")) return buildAnchorBolt(ctx);
-    if (eq(u8, name, "connector")) return buildConnector(ctx);
-    if (eq(u8, name, "truss")) return buildTruss(ctx);
-    if (eq(u8, name, "membrane")) return buildMembrane(ctx);
-    if (eq(u8, name, "fill")) return buildFill(ctx);
-    if (eq(u8, name, "insulation")) return buildInsulation(ctx);
-    if (eq(u8, name, "solid")) return buildSolid(ctx);
-    if (eq(u8, name, "flashing")) return buildFlashing(ctx);
-    if (eq(u8, name, "joint")) return buildJoint(ctx);
-    unreachable;
+    return switch (ctx.comp.ty.type) {
+        .lumber => buildLumber(ctx),
+        .panel => buildPanel(ctx),
+        .cmu_wall => buildCmu(ctx),
+        .concrete => buildConcrete(ctx),
+        .rebar => buildRebar(ctx),
+        .anchor_bolt => buildAnchorBolt(ctx),
+        .connector => buildConnector(ctx),
+        .truss => buildTruss(ctx),
+        .membrane => buildMembrane(ctx),
+        .fill => buildFill(ctx),
+        .insulation => buildInsulation(ctx),
+        .solid => buildSolid(ctx),
+        .flashing => buildFlashing(ctx),
+        .joint => buildJoint(ctx),
+    };
 }
 
 pub fn mirrorAboutCenter(a: Allocator, b: Built) Allocator.Error!Built {

@@ -404,7 +404,7 @@ pub const Section = struct {
     fn isLengthwiseLumber(self: *const Section, p: Prism) bool {
         if (p.quads.len > 0 or p.loops.len == 0 or p.loops[0].len < 3) return false;
         if (p.comp >= self.scene.comps.len) return false;
-        return std.mem.eql(u8, self.scene.comps[p.comp].ty.name, "lumber");
+        return self.scene.comps[p.comp].ty.type == .lumber;
     }
 
     /// Stroke only the edges whose outward normal points up (grade lines). Loops are CCW.

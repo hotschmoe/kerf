@@ -92,7 +92,7 @@ fn schemaFn(a: Allocator, inp: json.Value) ApiError!Out {
     const text: []const u8 = if (topic) |tp| (try schema.render(a, tp)) orelse {
         var names: std.ArrayList([]const u8) = .empty;
         for (schema.objects) |o| try names.append(a, o.name);
-        for (catalog.entries) |e| try names.append(a, e.name);
+        for (catalog.entries) |e| try names.append(a, e.name());
         const hint = if (model.nearest(a, tp, names.items)) |n| try std.fmt.allocPrint(a, " Did you mean \"{s}\"?", .{n}) else "";
         return fail(a, "E_TOPIC", "unknown schema topic \"{s}\".{s} Topics: {s}", .{ tp, hint, schema.topics_hint });
     } else try schema.index(a);

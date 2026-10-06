@@ -162,7 +162,7 @@ pub fn summary(l: *const Loaded) Allocator.Error![]const u8 {
         try out.append(a, ' ');
         try padTo(&out, a, c.id, 14);
         if (c.state != .ok) {
-            try padTo(&out, a, c.ty.name, 44);
+            try padTo(&out, a, c.ty.name(), 44);
             try out.appendSlice(a, "(not built: see errors)\n");
             continue;
         }
@@ -290,7 +290,7 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
         const mat = if (c.world.len > 0) c.world[0].material else "";
         return try json.obj(a, &.{
             .{ .key = "id", .value = .{ .string = id } },
-            .{ .key = "type", .value = .{ .string = c.ty.name } },
+            .{ .key = "type", .value = .{ .string = c.ty.name() } },
             .{ .key = "material", .value = .{ .string = mat } },
             .{ .key = "desc", .value = .{ .string = c.built.info } },
             .{ .key = "params", .value = .{ .object = params.items } },

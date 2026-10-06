@@ -307,7 +307,7 @@ fn renderCommon(a: Allocator) Allocator.Error![]const u8 {
     try out.appendSlice(a, "\nTypes: ");
     for (catalog.entries, 0..) |e, i| {
         if (i > 0) try out.appendSlice(a, ", ");
-        try out.appendSlice(a, e.name);
+        try out.appendSlice(a, e.name());
     }
     try out.appendSlice(a, "\n");
     return out.items;
@@ -315,7 +315,7 @@ fn renderCommon(a: Allocator) Allocator.Error![]const u8 {
 
 fn renderComponent(a: Allocator, e: *const catalog.Entry) Allocator.Error![]const u8 {
     var out: std.ArrayList(u8) = .empty;
-    try out.print(a, "{s}: {s}\n\n", .{ e.name, e.summary });
+    try out.print(a, "{s}: {s}\n\n", .{ e.name(), e.summary });
     for (e.params) |p| {
         const req = std.mem.startsWith(u8, p.def, "required") or std.mem.endsWith(u8, p.def, ": required");
         try out.print(a, "- {s}: ", .{p.name});
@@ -329,7 +329,7 @@ fn renderComponent(a: Allocator, e: *const catalog.Entry) Allocator.Error![]cons
     }
     try out.appendSlice(a, " (`kerf schema common`).\n");
     try out.print(a, "Parts: {s}\nAnchors: {s}\nDraws: {s}\n", .{ e.parts, e.anchors, e.draws });
-    if (std.mem.eql(u8, e.name, "connector")) {
+    if (e.type == .connector) {
         try out.appendSlice(a, "Hardware models: ");
         for (catalog.hardware, 0..) |h, i| {
             if (i > 0) try out.appendSlice(a, ", ");
@@ -380,7 +380,7 @@ pub fn index(a: Allocator) Allocator.Error![]const u8 {
     for (objects) |o| try out.print(a, "  {s: <12} {s}\n", .{ o.name, o.brief });
     try out.print(a, "  {s: <12} {s}\n", .{ "common", "fields every component accepts" });
     try out.print(a, "  {s: <12} {s}\n", .{ "refs", "how to name points and anchors" });
-    for (catalog.entries) |e| try out.print(a, "  {s: <12} {s}\n", .{ e.name, firstSentence(e.summary) });
+    for (catalog.entries) |e| try out.print(a, "  {s: <12} {s}\n", .{ e.name(), firstSentence(e.summary) });
     return out.items;
 }
 
@@ -432,7 +432,7 @@ pub fn compactSection(a: Allocator) Allocator.Error![]const u8 {
     try out.appendSlice(a, "\n```\n\n## Topics: `kerf schema <topic> [<topic> ...]`\n");
     try out.appendSlice(a, topics_hint);
     try out.appendSlice(a, "\nComponent types (`kerf schema <type>` = params, anchors, example):\n");
-    for (catalog.entries) |e| try out.print(a, "- {s}: {s}\n", .{ e.name, firstSentence(e.summary) });
+    for (catalog.entries) |e| try out.print(a, "- {s}: {s}\n", .{ e.name(), firstSentence(e.summary) });
     return out.items;
 }
 
@@ -446,7 +446,7 @@ test "schema topics render and the example document is valid" {
         for (t) |c| try std.testing.expect(c < 0x80);
     }
     for (catalog.entries) |*e| {
-        const t = (try render(a, e.name)).?;
+        const t = (try render(a, e.name())).?;
         try std.testing.expect(std.mem.indexOf(u8, t, "Example:") != null);
     }
     try std.testing.expect((try render(a, "nope")) == null);

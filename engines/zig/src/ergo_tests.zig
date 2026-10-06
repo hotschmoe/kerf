@@ -37,7 +37,7 @@ test "the example document checks with no errors and no warnings; every catalog 
     for (catalog.entries) |e| {
         const src = try std.fmt.allocPrint(a, "{{\"kerf\":\"0.1\",\"id\":\"x\",\"components\":[{s}],\"views\":[]}}", .{e.example});
         const lx = try loadSrc(a, src, false);
-        errdefer std.debug.print("example of {s} failed: {s}\n", .{ e.name, if (lx.diags.list.items.len > 0) lx.diags.list.items[0].message else "" });
+        errdefer std.debug.print("example of {s} failed: {s}\n", .{ e.name(), if (lx.diags.list.items.len > 0) lx.diags.list.items[0].message else "" });
         try std.testing.expectEqual(@as(usize, 0), lx.diags.errCount());
         try std.testing.expect(lx.scene.comps.len == 1 and lx.scene.comps[0].state == .ok);
     }

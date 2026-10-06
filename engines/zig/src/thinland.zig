@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const cast = @import("num.zig");
+const catalog = @import("catalog.zig");
 const geom = @import("geom.zig");
 const units = @import("units.zig");
 const scene_mod = @import("scene.zig");
@@ -59,10 +60,12 @@ fn quadMidline(a: Allocator, loop: []const V2) Allocator.Error!?[]const V2 {
 }
 
 /// The skeleton of a thin prism of component type `ty`, or null when the prism is not thin (normal landing applies).
-fn skeletonOf(a: Allocator, sec: *section.Section, i: usize, ty: []const u8, panel_thickness: f64) Allocator.Error!?Skeleton {
+fn skeletonOf(a: Allocator, sec: *section.Section, i: usize, ty: catalog.Type, panel_thickness: f64) Allocator.Error!?Skeleton {
     const p = sec.prisms[i];
-    const eq = std.mem.eql;
-    const line_like = eq(u8, ty, "membrane") or eq(u8, ty, "flashing") or eq(u8, ty, "connector") or eq(u8, ty, "rebar");
+    const line_like = switch (ty) {
+        .membrane, .flashing, .connector, .rebar => true,
+        else => false,
+    };
     if (line_like) {
         if (p.centerline.len < 2) return null;
         // a membrane is drawn along its `line_pts` (offset by the draw-time gap); everything else along its centerline
@@ -72,7 +75,7 @@ fn skeletonOf(a: Allocator, sec: *section.Section, i: usize, ty: []const u8, pan
         const gap = if (p.kind == .line) nearestOnPoly(v, p.centerline[0].v()).dist else 0;
         return .{ .pts = v, .half_width = 0.5 * @max(p.sweep_r * 2, 0.0625), .gap = gap, .prism = i, .stroke = p.kind == .line, .exposed = !(p.embedded or p.face_tie) };
     }
-    if (eq(u8, ty, "panel") and panel_thickness < thin_panel) {
+    if (ty == .panel and panel_thickness < thin_panel) {
         const flat = try sec.flatOf(i);
         if (flat.len == 0) return null;
         const mid = (try quadMidline(a, flat[0])) orelse return null;
@@ -100,7 +103,7 @@ pub fn candidates(
         if (inst) |k| if (p.instance != k) continue;
         if (part) |pn| if (!std.mem.eql(u8, p.part, pn)) continue;
         if (sec.cls[i] == .drop) continue;
-        if (try skeletonOf(a, sec, i, comp.ty.name, panel_t)) |sk| try skels.append(a, sk) else return null; // every prism must be thin
+        if (try skeletonOf(a, sec, i, comp.ty.type, panel_t)) |sk| try skels.append(a, sk) else return null; // every prism must be thin
     }
     if (skels.items.len == 0) return null;
 

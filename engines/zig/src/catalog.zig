@@ -11,8 +11,13 @@ pub const Param = struct {
     desc: []const u8,
 };
 
+/// The component types, in catalog order. The tag name is the type's name in documents (`"type": "lumber"`).
+/// Adding a type: add the tag here, an entry to `entries` (same position) and a `build` arm in builders.zig
+/// (that switch is exhaustive, so a type without a builder does not compile).
+pub const Type = enum { lumber, panel, cmu_wall, concrete, rebar, anchor_bolt, connector, truss, membrane, fill, insulation, flashing, joint, solid };
+
 pub const Entry = struct {
-    name: []const u8,
+    type: Type,
     summary: []const u8,
     params: []const Param,
     parts: []const u8,
@@ -20,6 +25,10 @@ pub const Entry = struct {
     draws: []const u8,
     /// One complete component object (valid on its own); `kerf schema <type>` prints it.
     example: []const u8 = "",
+
+    pub fn name(self: *const Entry) []const u8 {
+        return @tagName(self.type);
+    }
 };
 
 pub const Hardware = struct { model: []const u8, width: f64, gauge: u32, length: f64, kind: []const u8 };
@@ -110,7 +119,7 @@ pub const box_anchors = "top_left top_center top_right middle_left center middle
 
 pub const entries: []const Entry = &.{
     .{
-        .name = "lumber",
+        .type = .lumber,
         .summary = "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
         .params = &.{
             .{ .name = "size", .def = "required", .desc = "sawn nominal \"2x4\"..\"2x12\", \"4x4\"..\"4x12\", \"6x6\"..\"6x12\" (also 1x4..1x12); or actual \"1.75x11.875\" (thickness x depth) for lvl/psl/lsl/glulam" },
@@ -132,7 +141,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"stud\",\"type\":\"lumber\",\"size\":\"2x4\",\"run\":\"y\",\"face\":\"narrow\",\"length\":92.625,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,1.5]}}",
     },
     .{
-        .name = "panel",
+        .type = .panel,
         .summary = "Sheathing, boards, gypsum, soffit, fascia/trim boards as a thin rectangle.",
         .params = &.{
             .{ .name = "material", .def = "osb", .desc = "osb | plywood | gypsum | fiber_cement | wood_board" },
@@ -147,7 +156,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"roof_sheathing\",\"type\":\"panel\",\"material\":\"osb\",\"thickness\":0.4375,\"length\":66,\"run\":\"x\",\"slope\":\"4:12\",\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
     },
     .{
-        .name = "cmu_wall",
+        .type = .cmu_wall,
         .summary = "Concrete masonry wall in section: face shells, grouted cells, mortar joints, bond beam.",
         .params = &.{
             .{ .name = "width", .def = "8", .desc = "nominal 6, 8, 10, 12 => actual 5.625, 7.625, 9.625, 11.625" },
@@ -164,7 +173,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"cmu\",\"type\":\"cmu_wall\",\"width\":8,\"courses\":3,\"bond_beam_courses\":1,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
     },
     .{
-        .name = "concrete",
+        .type = .concrete,
         .summary = "Cast-in-place concrete: rect/footing, free polygon, or a monolithic slab with turned-down edge.",
         .params = &.{
             .{ .name = "shape", .def = "required", .desc = "rect | footing | polygon | slab_edge" },
@@ -188,7 +197,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"slab\",\"type\":\"concrete\",\"shape\":\"slab_edge\",\"slab_thickness\":4,\"footing_width\":12,\"footing_depth\":18,\"at\":{\"anchor\":\"top_exterior\",\"to\":[0,0]}}",
     },
     .{
-        .name = "rebar",
+        .type = .rebar,
         .summary = "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
         .params = &.{
             .{ .name = "size", .def = "#4", .desc = "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
@@ -204,7 +213,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"top_bar\",\"type\":\"rebar\",\"size\":\"#4\",\"at\":{\"anchor\":\"center\",\"to\":[6,-2.5]}}",
     },
     .{
-        .name = "anchor_bolt",
+        .type = .anchor_bolt,
         .summary = "Anchor bolt in the XY plane at a given z (shank, hook, nut and washer).",
         .params = &.{
             .{ .name = "diameter", .def = "0.5", .desc = "0.5 or 0.625 typical" },
@@ -220,7 +229,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"anchor_bolt\",\"type\":\"anchor_bolt\",\"diameter\":0.5,\"embed\":7,\"projection\":2.75,\"hook\":\"J\",\"at\":{\"to\":[3,0]}}",
     },
     .{
-        .name = "connector",
+        .type = .connector,
         .summary = "Schematic steel hardware: straps, ties, embedded anchors, drawn as a thickened polyline.",
         .params = &.{
             .{ .name = "model", .def = "null", .desc = "e.g. MSTA36, H2.5A, HETA20, CS16, CS14: fills width/gauge from the hardware table" },
@@ -237,7 +246,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"tie\",\"type\":\"connector\",\"model\":\"H2.5A\",\"lay\":\"face\",\"points\":[[0,0],[0,6]]}",
     },
     .{
-        .name = "truss",
+        .type = .truss,
         .summary = "Prefab wood truss heel and tail in side view.",
         .params = &.{
             .{ .name = "exterior", .def = "left", .desc = "side of the heel/overhang (right mirrors)" },
@@ -258,7 +267,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"truss\",\"type\":\"truss\",\"pitch\":\"4:12\",\"top_chord\":\"2x4\",\"bottom_chord\":\"2x4\",\"bearing_width\":7.25,\"overhang\":18,\"at\":{\"anchor\":\"bearing_outer\",\"to\":[0,0]}}",
     },
     .{
-        .name = "membrane",
+        .type = .membrane,
         .summary = "Thin layers: underlayment, vapor retarder, WRB, roofing, flashing.",
         .params = &.{
             .{ .name = "material", .def = "membrane", .desc = "underlayment | vapor_retarder | wrb | shingles | flashing_membrane | membrane" },
@@ -273,7 +282,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"vapor\",\"type\":\"membrane\",\"material\":\"vapor_retarder\",\"points\":[[0,0],[48,0]]}",
     },
     .{
-        .name = "fill",
+        .type = .fill,
         .summary = "Earth, gravel, sand, compacted fill as a hatched polygon.",
         .params = &.{
             .{ .name = "material", .def = "earth", .desc = "earth | gravel | sand | compacted_fill" },
@@ -287,7 +296,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"gravel\",\"type\":\"fill\",\"material\":\"gravel\",\"points\":[[0,0],[48,0],[48,-4],[0,-4]]}",
     },
     .{
-        .name = "insulation",
+        .type = .insulation,
         .summary = "Rigid (hatched) or batt (loop symbol) insulation.",
         .params = &.{
             .{ .name = "form", .def = "rigid", .desc = "rigid | batt" },
@@ -300,7 +309,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"foam\",\"type\":\"insulation\",\"form\":\"rigid\",\"width\":2,\"height\":24}",
     },
     .{
-        .name = "flashing",
+        .type = .flashing,
         .summary = "Sheet-metal flashing in section: Z, L, drip edge, weep screed or free polyline.",
         .params = &.{
             .{ .name = "profile", .def = "z", .desc = "z: back flange up the wall, horizontal leg out, drop at the nose; l: flange + horizontal leg; drip: flange on the deck, drop, outward kick; weep_screed: nailing flange up the wall, ledge, small drip drop; points: free centerline polyline" },
@@ -318,7 +327,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"pan\",\"type\":\"flashing\",\"profile\":\"z\",\"at\":{\"anchor\":\"corner\",\"to\":[0,0]}}",
     },
     .{
-        .name = "joint",
+        .type = .joint,
         .summary = "Concrete joints: expansion filler strip, control (saw-cut) notch, tooled edge radius, sealant bead on backer rod.",
         .params = &.{
             .{ .name = "kind", .def = "required", .desc = "expansion | control | tooled_edge | sealant" },
@@ -336,7 +345,7 @@ pub const entries: []const Entry = &.{
         .example = "{\"id\":\"ej\",\"type\":\"joint\",\"kind\":\"expansion\",\"width\":0.5,\"depth\":4,\"at\":{\"anchor\":\"joint_top\",\"to\":[0,0]}}",
     },
     .{
-        .name = "solid",
+        .type = .solid,
         .summary = "Escape hatch: any extruded profile with an explicit material (flagged I_SOLID_USED).",
         .params = &.{
             .{ .name = "profile", .def = "required", .desc = "{rect:[w,h]} | {circle:d} | {points:[...]}" },
@@ -349,14 +358,24 @@ pub const entries: []const Entry = &.{
     },
 };
 
+comptime {
+    const tags = std.meta.tags(Type);
+    if (entries.len != tags.len) @compileError("catalog.entries must have exactly one entry per catalog.Type tag");
+    for (entries, tags) |e, t| if (e.type != t) @compileError("catalog.entries must list the types in catalog.Type order; out of place: " ++ @tagName(e.type));
+}
+
+/// The entry of a type.
+pub fn entry(t: Type) *const Entry {
+    return &entries[@intFromEnum(t)];
+}
+
 pub fn find(name: []const u8) ?*const Entry {
-    for (entries) |*e| if (std.mem.eql(u8, e.name, name)) return e;
-    return null;
+    return entry(std.meta.stringToEnum(Type, name) orelse return null);
 }
 
 pub fn typeNames(a: Allocator) Allocator.Error![]const []const u8 {
     const out = try a.alloc([]const u8, entries.len);
-    for (entries, 0..) |e, i| out[i] = e.name;
+    for (entries, 0..) |e, i| out[i] = e.name();
     return out;
 }
 
@@ -414,11 +433,11 @@ fn paramJson(a: Allocator, p: Param) Allocator.Error!json.Value {
 pub fn entryJson(a: Allocator, e: *const Entry) Allocator.Error!json.Value {
     const ps = try a.alloc(json.Value, e.params.len);
     for (e.params, 0..) |p, i| ps[i] = try paramJson(a, p);
-    if (std.mem.eql(u8, e.name, "connector")) {
+    if (e.type == .connector) {
         const ms = try a.alloc(json.Value, hardware.len);
         for (hardware, 0..) |h, i| ms[i] = .{ .string = try hardwareLine(a, h) };
         return json.obj(a, &.{
-            .{ .key = "type", .value = .{ .string = e.name } },
+            .{ .key = "type", .value = .{ .string = e.name() } },
             .{ .key = "summary", .value = .{ .string = e.summary } },
             .{ .key = "params", .value = .{ .array = ps } },
             .{ .key = "models", .value = .{ .array = ms } },
@@ -428,7 +447,7 @@ pub fn entryJson(a: Allocator, e: *const Entry) Allocator.Error!json.Value {
         });
     }
     return json.obj(a, &.{
-        .{ .key = "type", .value = .{ .string = e.name } },
+        .{ .key = "type", .value = .{ .string = e.name() } },
         .{ .key = "summary", .value = .{ .string = e.summary } },
         .{ .key = "params", .value = .{ .array = ps } },
         .{ .key = "parts", .value = .{ .string = e.parts } },
@@ -451,10 +470,10 @@ pub fn catalogJson(a: Allocator) Allocator.Error!json.Value {
 }
 
 pub fn appendEntryMarkdown(out: *std.ArrayList(u8), a: Allocator, e: *const Entry) Allocator.Error!void {
-    try out.print(a, "### `{s}`: {s}\n\n", .{ e.name, e.summary });
+    try out.print(a, "### `{s}`: {s}\n\n", .{ e.name(), e.summary });
     try out.appendSlice(a, "| param | default | notes |\n|---|---|---|\n");
     for (e.params) |p| try out.print(a, "| `{s}` | {s} | {s} |\n", .{ p.name, p.def, p.desc });
-    if (std.mem.eql(u8, e.name, "connector")) {
+    if (e.type == .connector) {
         try out.appendSlice(a, "\nHardware models (auto-fill width and gauge):\n");
         for (hardware) |h| try out.print(a, "- {s}\n", .{try hardwareLine(a, h)});
     }

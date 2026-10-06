@@ -136,7 +136,7 @@ pub fn compile(a: Allocator, doc: json.Value, st: *const style_mod.Style, diags:
                 const allowed = try catalog.allowedKeysText(a, ty);
                 const near = model.nearest(a, m.key, try catalog.allowedKeyNames(a, ty));
                 const hint = if (near != null and model.editDistance(a, m.key, near.?) <= 2) try std.fmt.allocPrint(a, " Did you mean '{s}'?", .{near.?}) else "";
-                diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "components/{s}/{s}", .{ id, m.key }), "unknown param '{s}' for type {s}.{s} Allowed: {s} (`kerf schema {s}`)", .{ m.key, ty.name, hint, allowed, ty.name });
+                diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "components/{s}/{s}", .{ id, m.key }), "unknown param '{s}' for type {s}.{s} Allowed: {s} (`kerf schema {s}`)", .{ m.key, ty.name(), hint, allowed, ty.name() });
             }
         }
         var label: ?[]const u8 = null;
@@ -250,7 +250,7 @@ const AtSpec = struct {
 
 /// Placement anchor when `at.anchor` is omitted: the bolt's datum for anchor bolts, else the box's bottom_left.
 fn defaultAnchor(comp: *const Comp) []const u8 {
-    return if (std.mem.eql(u8, comp.ty.name, "anchor_bolt")) "top_of_concrete" else "bottom_left";
+    return if (comp.ty.type == .anchor_bolt) "top_of_concrete" else "bottom_left";
 }
 
 fn parseAt(a: Allocator, scene: *Scene, comp: *Comp, p: *model.Params) Allocator.Error!?AtSpec {
@@ -312,7 +312,7 @@ fn parseAt(a: Allocator, scene: *Scene, comp: *Comp, p: *model.Params) Allocator
 }
 
 fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void {
-    var p = model.Params{ .a = a, .diags = scene.diags, .node = comp.node, .id = comp.id, .base = "components", .ty = comp.ty.name };
+    var p = model.Params{ .a = a, .diags = scene.diags, .node = comp.node, .id = comp.id, .base = "components", .ty = comp.ty.name() };
     comp.state = .failed;
 
     const at = (try parseAt(a, scene, comp, &p)) orelse return;
@@ -438,7 +438,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
             if (model.boxAnchor(built.box, at.anchor)) |v| break :blk v;
             for (built.anchors) |n| if (std.mem.eql(u8, n.name, at.anchor)) break :blk n.p;
             const names = joinAnchorNames(a, built);
-            p.failCode("E_ANCHOR_UNKNOWN", "at/anchor", "'{s}' is not an anchor of '{s}' ({s}). Anchors: {s}", .{ at.anchor, comp.id, comp.ty.name, names });
+            p.failCode("E_ANCHOR_UNKNOWN", "at/anchor", "'{s}' is not an anchor of '{s}' ({s}). Anchors: {s}", .{ at.anchor, comp.id, comp.ty.name(), names });
             return;
         };
         base_xf = geom.Xf.translate(at.to.x, at.to.y).mul(geom.Xf.rotate(angle)).mul(geom.Xf.translate(-anc.x, -anc.y));
@@ -491,7 +491,7 @@ fn placeComponent(a: Allocator, scene: *Scene, comp: *Comp) Allocator.Error!void
         }
     }
     comp.angle = angle;
-    if (std.mem.eql(u8, comp.ty.name, "truss")) {
+    if (comp.ty.type == .truss) {
         const pv = comp.node.get("pitch") orelse json.Value{ .string = "4:12" };
         const th = units.parseSlope(pv) orelse 0;
         const right = if (comp.node.get("exterior")) |ev| (if (ev.str()) |es| std.mem.eql(u8, es, "right") else false) else false;

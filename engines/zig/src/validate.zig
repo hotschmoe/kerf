@@ -97,7 +97,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
     try shortSlope(a, scene, items.items, doc, diags);
     // infos
     for (scene.comps) |c| {
-        if (c.state == .ok and std.mem.eql(u8, c.ty.name, "solid")) {
+        if (c.state == .ok and c.ty.type == .solid) {
             diags.add(.info, "I_SOLID_USED", c.id, null, "{s} uses the `solid` escape hatch (material {s}); a reviewer should confirm no typed component fits.", .{ c.id, if (c.world.len > 0) c.world[0].material else "?" });
         }
     }
@@ -108,10 +108,10 @@ fn overlaps(a: Allocator, items: []const Pf, diags: *model.Diags) Allocator.Erro
     var reported: std.ArrayList([2]u32) = .empty;
     for (items, 0..) |p, i| {
         if (p.prism.embedded or p.prism.kind != .body) continue;
-        if (std.mem.eql(u8, p.comp.ty.name, "connector")) continue;
+        if (p.comp.ty.type == .connector) continue;
         for (items[i + 1 ..]) |q| {
             if (q.prism.embedded or q.prism.kind != .body) continue;
-            if (std.mem.eql(u8, q.comp.ty.name, "connector")) continue;
+            if (q.comp.ty.type == .connector) continue;
             if (p.comp.index == q.comp.index and p.prism.instance == q.prism.instance) continue;
             if (zGap(p.prism, q.prism) > 0 or (@min(p.prism.z1, q.prism.z1) - @max(p.prism.z0, q.prism.z0)) < 1e-6) continue;
             if (!p.box.overlaps(q.box, 0)) continue;
@@ -279,7 +279,7 @@ fn pieceText(a: Allocator, pieces: []const Piece, k: usize) []const u8 {
 
 fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void {
     for (scene.comps) |*bar| {
-        if (bar.state != .ok or !std.mem.eql(u8, bar.ty.name, "rebar")) continue;
+        if (bar.state != .ok or bar.ty.type != .rebar) continue;
         const d = bar.built.bar_d;
         const r = d / 2;
         for (bar.world) |bp| {
@@ -428,8 +428,8 @@ fn nearMiss(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!vo
     var boxes: std.ArrayList(CompBox) = .empty;
     for (scene.comps) |*c| {
         if (c.state != .ok) continue;
-        if (std.mem.eql(u8, c.ty.name, "fill")) continue;
-        if (!axisAligned(c) or !std.mem.eql(u8, c.ty.name, "lumber")) continue;
+        if (c.ty.type == .fill) continue;
+        if (!axisAligned(c) or c.ty.type != .lumber) continue;
         var b = geom.Box{};
         var z0: f64 = std.math.inf(f64);
         var z1: f64 = -std.math.inf(f64);
@@ -536,9 +536,8 @@ fn range2(v: ?json.Value) ?[2]f64 {
 
 /// Angle of the member's long axis (radians) that a sloped panel/membrane can rest on; null when it is not a candidate host.
 fn hostAngle(h: *const scene_mod.Comp) ?f64 {
-    const eq = std.mem.eql;
-    if (eq(u8, h.ty.name, "truss")) return h.angle + h.pitch_angle;
-    if (eq(u8, h.ty.name, "lumber") or eq(u8, h.ty.name, "panel")) return h.angle;
+    if (h.ty.type == .truss) return h.angle + h.pitch_angle;
+    if (h.ty.type == .lumber or h.ty.type == .panel) return h.angle;
     return null;
 }
 
@@ -573,8 +572,8 @@ fn shortSlope(a: Allocator, scene: *Scene, items: []const Pf, doc: json.Value, d
     const slack = 0.5;
     const touch = 1.0 / 16.0;
     for (scene.comps) |*c| {
-        const is_panel = std.mem.eql(u8, c.ty.name, "panel");
-        if (c.state != .ok or c.dashed or !(is_panel or std.mem.eql(u8, c.ty.name, "membrane"))) continue;
+        const is_panel = c.ty.type == .panel;
+        if (c.state != .ok or c.dashed or !(is_panel or c.ty.type == .membrane)) continue;
         var u = V2.init(@cos(c.angle), @sin(c.angle));
         if (@abs(u.y) < @sin(std.math.degreesToRadians(0.5))) continue; // not sloped
         if (u.y < 0) u = V2.init(-u.x, -u.y);
@@ -597,10 +596,10 @@ fn shortSlope(a: Allocator, scene: *Scene, items: []const Pf, doc: json.Value, d
         var best_end: f64 = 0;
         for (scene.comps) |*h| {
             if (h == c or h.state != .ok or h.dashed) continue;
-            if (is_panel and std.mem.eql(u8, h.ty.name, "panel")) continue;
+            if (is_panel and h.ty.type == .panel) continue;
             const ha = hostAngle(h) orelse continue;
             if (!sameSlope(ha, c.angle)) continue;
-            const part: ?[]const u8 = if (std.mem.eql(u8, h.ty.name, "truss")) "top_chord" else null;
+            const part: ?[]const u8 = if (h.ty.type == .truss) "top_chord" else null;
             var touching = false;
             for (items) |sp| {
                 if (sp.comp != c or sp.prism.instance != 0) continue;
@@ -629,14 +628,14 @@ fn shortSlope(a: Allocator, scene: *Scene, items: []const Pf, doc: json.Value, d
         const short = @min(gap_host, crop_room);
         if (short <= slack) continue;
         const by_crop = crop_room < gap_host;
-        const anchor: []const u8 = if (std.mem.eql(u8, h.ty.name, "truss")) "top_chord_end" else if (u.x >= 0) "top_right" else "top_left";
+        const anchor: []const u8 = if (h.ty.type == .truss) "top_chord_end" else if (u.x >= 0) "top_right" else "top_left";
         const what = if (by_crop) std.fmt.allocPrint(a, "the view crop (where '{s}' continues)", .{h.id}) catch "the crop" else std.fmt.allocPrint(a, "the end of '{s}'", .{h.id}) catch "the member";
         diags.addFix(.warning, "W_SHORT_SLOPE", c.id, null, "'{s}' rests on the sloped '{s}' (same slope) but its upper end stops {s} short of {s}", .{ c.id, h.id, ftin(a, short), what }, std.fmt.allocPrint(a, "replace the literal length of '{s}' (it does not follow the pitch) with \"until\": \"{s}@{s}\" (grows along the slope to the member's end; pair it with \"slope\": \"@{s}\"), or lengthen it by {s}; acknowledge W_SHORT_SLOPE if it should stop there", .{ c.id, h.id, anchor, h.id, ftin(a, short) }) catch "");
     }
 }
 
 fn isMember(c: *const scene_mod.Comp) bool {
-    return std.mem.eql(u8, c.ty.name, "lumber") or std.mem.eql(u8, c.ty.name, "panel");
+    return c.ty.type == .lumber or c.ty.type == .panel;
 }
 
 /// Only boxy members (every prism an axis-aligned rectangle, none embedded) take part in near-miss checks.
