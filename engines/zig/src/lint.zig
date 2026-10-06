@@ -186,9 +186,60 @@ fn findWord(text: []const u8, phrase: []const u8, from: usize) ?usize {
 pub const NoteStyle = struct {
     /// Human-readable list of the problems ("" = fine).
     issues: []const u8,
-    /// The text with every problem fixed.
+    /// The text with every problem that can be fixed mechanically fixed.
     fixed: []const u8,
+    /// Some problem needs a rewrite (commentary, a dangling end, length): `fixed` does not cure it.
+    rewrite: bool = false,
 };
+
+/// Longest note, in characters: one idea per note. SPEC 21 says 120; the reference flush-beam strap note is 121 characters and
+/// the reference details must stay clean, so the limit is 130 (recorded in NOTES.md).
+const max_note_len = 130;
+
+/// Words that make a note read as a person talking (matched as whole words, case-insensitive).
+const chatter_words = [_][]const u8{ "WE", "PLEASE" };
+const chatter_phrases = [_][]const u8{ "SHOULD BE", "NOTE:" };
+
+/// A note must not end on one of these: the thing it connects to is missing.
+const connector_words = [_][]const u8{ "W/", "AND", "OR", "TO", "@", "&", "PER", "WITH", "FOR", "OF" };
+
+/// Commentary in a note, as a short description ("" = none): first person, "NOTE:", "PLEASE", "SHOULD BE", a question.
+fn commentary(text: []const u8) []const u8 {
+    if (std.mem.indexOfScalar(u8, text, '?') != null) return "a question mark";
+    for (chatter_phrases) |ph| {
+        if (findWord(text, ph, 0) != null) return ph;
+    }
+    for (chatter_words) |w| if (findWord(text, w, 0) != null) return w;
+    // a first-person "I" is the single word I followed by a space or an apostrophe (not I-JOIST or a roman numeral)
+    var from: usize = 0;
+    while (findWord(text, "I", from)) |at| : (from = at + 1) {
+        if (at + 1 < text.len and (text[at + 1] == ' ' or text[at + 1] == '\'')) return "I";
+    }
+    return "";
+}
+
+/// The connector word a note ends on ("" = none), ignoring a trailing period.
+fn danglingEnd(text: []const u8) []const u8 {
+    const tok = std.mem.trimEnd(u8, lastToken(std.mem.trimEnd(u8, text, " \t\r\n.")), ".");
+    for (connector_words) |w| if (std.ascii.eqlIgnoreCase(tok, w)) return w;
+    return "";
+}
+
+/// The text with case and runs of whitespace ignored, and no trailing period (to spot a note that repeats another).
+fn normalizedText(a: Allocator, text: []const u8) Allocator.Error![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var space = false;
+    for (std.mem.trim(u8, text, " \t\r\n.")) |c| {
+        if (std.ascii.isWhitespace(c)) {
+            space = true;
+            continue;
+        }
+        if (space and out.items.len > 0) try out.append(a, ' ');
+        space = false;
+        try out.append(a, std.ascii.toUpper(c));
+    }
+    return out.items;
+}
 
 fn hasDashFraction(text: []const u8) bool {
     var i: usize = 0;
@@ -246,6 +297,22 @@ pub fn checkNoteText(a: Allocator, text: []const u8) Allocator.Error!NoteStyle {
         if (!ok) trailing = true;
     }
     if (trailing) try addIssue(a, &issues, "trailing period (notes are not sentences)");
+    // commentary and dangling text cannot be fixed mechanically: they need a rewrite
+    var rewrite = false;
+    if (text.len > max_note_len) {
+        rewrite = true;
+        try addIssue(a, &issues, try std.fmt.allocPrint(a, "{d} characters (notes stay under {d}: one idea per note, split it)", .{ text.len, max_note_len }));
+    }
+    const chat = commentary(text);
+    if (chat.len > 0) {
+        rewrite = true;
+        try addIssue(a, &issues, try std.fmt.allocPrint(a, "commentary ({s}): a note names the thing and how it is installed, it does not talk", .{chat}));
+    }
+    const end = danglingEnd(text);
+    if (end.len > 0) {
+        rewrite = true;
+        try addIssue(a, &issues, try std.fmt.allocPrint(a, "ends on \"{s}\" with nothing after it (finish the thought or drop the connector)", .{end}));
+    }
     if (issues.items.len == 0) return .{ .issues = "", .fixed = text };
 
     // build the corrected text
@@ -278,7 +345,7 @@ pub fn checkNoteText(a: Allocator, text: []const u8) Allocator.Error!NoteStyle {
     }
     var res: []const u8 = std.mem.trimEnd(u8, out.items, " \t\r\n");
     if (trailing and res.len > 0 and res[res.len - 1] == '.') res = res[0 .. res.len - 1];
-    return .{ .issues = issues.items, .fixed = res };
+    return .{ .issues = issues.items, .fixed = res, .rewrite = rewrite };
 }
 
 fn addIssue(a: Allocator, list: *std.ArrayList(u8), what: []const u8) Allocator.Error!void {
@@ -291,13 +358,33 @@ fn noteStyle(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error
     for (vs) |v| {
         const vid = strOf(v, "id");
         const anns = (v.get("annotations") orelse continue).arr() orelse continue;
+        // normalized text -> id of the first note that has it (a note that repeats an earlier one is flagged)
+        var seen: std.ArrayList(struct { text: []const u8, id: []const u8 }) = .empty;
         for (anns) |an| {
             if (!std.mem.eql(u8, strOf(an, "type"), "note")) continue;
             const text = (if (an.get("text")) |t| t.str() else null) orelse continue;
             const aid = strOf(an, "id");
+            const path = try std.fmt.allocPrint(a, "views/{s}/annotations/{s}/text", .{ vid, aid });
             const st = try checkNoteText(a, text);
-            if (st.issues.len == 0) continue;
-            diags.addFix(.warning, "W_NOTE_STYLE", aid, try std.fmt.allocPrint(a, "views/{s}/annotations/{s}/text", .{ vid, aid }), "note '{s}' in view {s} breaks the house note style: {s}. Text: \"{s}\"", .{ aid, vid, st.issues, text }, try std.fmt.allocPrint(a, "set text to \"{s}\"", .{st.fixed}));
+            if (st.issues.len > 0) {
+                const fix = if (st.rewrite and std.mem.eql(u8, st.fixed, text))
+                    "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary (split a long note in two)"
+                else if (st.rewrite)
+                    try std.fmt.allocPrint(a, "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary; the mechanical part is \"{s}\"", .{st.fixed})
+                else
+                    try std.fmt.allocPrint(a, "set text to \"{s}\"", .{st.fixed});
+                diags.addFix(.warning, "W_NOTE_STYLE", aid, path, "note '{s}' in view {s} breaks the house note style: {s}. Text: \"{s}\"", .{ aid, vid, st.issues, text }, fix);
+            }
+            const norm = try normalizedText(a, text);
+            if (norm.len == 0) continue;
+            var dup: ?[]const u8 = null;
+            for (seen.items) |sn| if (std.mem.eql(u8, sn.text, norm)) {
+                dup = sn.id;
+                break;
+            };
+            if (dup) |first| {
+                diags.addFix(.warning, "W_NOTE_STYLE", aid, path, "note '{s}' in view {s} repeats note '{s}' (same text: \"{s}\")", .{ aid, vid, first, text }, try std.fmt.allocPrint(a, "remove '{s}', or give it text that says something different (one note per element or connection)", .{aid}));
+            } else try seen.append(a, .{ .text = norm, .id = aid });
         }
     }
 }
@@ -563,4 +650,68 @@ test "note style: house style passes, drift is caught and fixed" {
     try std.testing.expectEqualStrings("TRUSS BEARS DIRECTLY ON BOND BEAM", r3.fixed);
     // spelled-out must be whole words
     try std.testing.expectEqualStrings("", (try checkNoteText(a, "CONCRETELY EACHOTHER")).issues);
+}
+
+test "note lint: commentary, dangling ends, length and repeated notes (SPEC 21)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // clean notes with look-alike words stay clean
+    const fine = [_][]const u8{
+        "2X10 I-JOIST @ 16\" O.C.",
+        "TYPE II-B CMU WALL",
+        "SIMPSON H2.5A TIE W/ (8) 8D NAILS",
+        "5/8\" DIA. ANCHOR BOLT @ 48\" O.C. W/ 3\" SQ. WASHER",
+        "(2) #5 CONT. BOTT. TO FTG.",
+        "FINISH GRADE, SLOPE AWAY 6\" MIN. IN FIRST 10'-0\"",
+        "NOTEWORTHY WEEPS",
+    };
+    for (fine) |t| try std.testing.expectEqualStrings("", (try checkNoteText(a, t)).issues);
+    const chatty = [_]struct { text: []const u8, what: []const u8 }{
+        .{ .text = "I THINK THE TRUSS SHOULD BEAR HERE", .what = "commentary (SHOULD BE)" }, // SHOULD BEAR is not SHOULD BE: only the I is caught
+        .{ .text = "WE USE 2X6 STUDS", .what = "commentary (WE)" },
+        .{ .text = "NOTE: VERIFY IN FIELD", .what = "commentary (NOTE:)" },
+        .{ .text = "PLEASE VERIFY SILL DEPTH", .what = "commentary (PLEASE)" },
+        .{ .text = "SILL SHOULD BE PRESSURE TREATED", .what = "commentary (SHOULD BE)" },
+        .{ .text = "IS THE SILL TREATED?", .what = "commentary (a question mark)" },
+        .{ .text = "I'LL CONFIRM WITH ENGINEER", .what = "commentary (I)" },
+    };
+    for (chatty, 0..) |c, i| {
+        const r = try checkNoteText(a, c.text);
+        if (i == 0) {
+            try std.testing.expect(std.mem.indexOf(u8, r.issues, "commentary (I)") != null);
+            continue;
+        }
+        try std.testing.expect(r.rewrite);
+        try std.testing.expect(std.mem.indexOf(u8, r.issues, c.what) != null);
+    }
+    const dangling = [_][]const u8{ "2X6 SILL W/", "(2) #5 BARS AND", "ANCHOR BOLT OR", "TRUSS ANCHOR TO", "J-BOLTS @", "STRAP WITH", "INSTALL PER", "HOLDOWN W/." };
+    for (dangling) |t| {
+        const r = try checkNoteText(a, t);
+        try std.testing.expect(r.rewrite and std.mem.indexOf(u8, r.issues, "ends on") != null);
+    }
+    const long = "2X6 PT SILL PLATE W/ 5/8\" DIA. ANCHOR BOLTS @ 48\" O.C. AND SILL SEALER, TRUSS TIE AT EACH TRUSS W/ H2.5A, INSTALL PER MFR. SPECIFICATIONS AND DRAWINGS";
+    try std.testing.expect(long.len > 130);
+    const rl = try checkNoteText(a, long);
+    try std.testing.expect(rl.rewrite and std.mem.indexOf(u8, rl.issues, "characters (notes stay under 130") != null);
+    // in a document: the fix says rewrite (no `set text to` for commentary) and a repeated note is named
+    var diags = model.Diags.init(a);
+    var perr: json.ParseError = undefined;
+    const doc = (try json.parse(a,
+        \\{"kerf":"0.1","id":"t","components":[],"views":[{"id":"A","annotations":[
+        \\{"id":"n1","type":"note","text":"2X6 PT SILL PLATE","target":"x"},
+        \\{"id":"n2","type":"note","text":"SILL SHOULD BE TREATED","target":"x"},
+        \\{"id":"n3","type":"note","text":"2x6  PT sill plate.","target":"x"},
+        \\{"id":"n4","type":"note","text":"INSTALL W/","target":"x"}]}]}
+    , &perr)).?;
+    try noteStyle(a, doc, &diags);
+    var saw_rewrite = false;
+    var saw_repeat = false;
+    var saw_dangling = false;
+    for (diags.list.items) |d| {
+        if (std.mem.eql(u8, d.id.?, "n2") and std.mem.indexOf(u8, d.fix.?, "rewrite it as") != null) saw_rewrite = true;
+        if (std.mem.eql(u8, d.id.?, "n3") and std.mem.indexOf(u8, d.message, "repeats note 'n1'") != null) saw_repeat = true;
+        if (std.mem.eql(u8, d.id.?, "n4") and std.mem.indexOf(u8, d.message, "ends on \"W/\"") != null) saw_dangling = true;
+    }
+    try std.testing.expect(saw_rewrite and saw_repeat and saw_dangling);
 }

@@ -350,5 +350,27 @@ section('9. v0.1.5 (SPEC 21): W_CROP_STALE');
   check('removing the crop (auto-fit) clears it', r.code === 0 && !/W_CROP_STALE/.test(r.out), r.out);
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('10. v0.1.5 (SPEC 21): note lint extensions');
+{
+  kerf(['new', 'nl.kerf.json', '--template', 'section']);
+  const ops = [
+    { op: 'add', path: 'views/A/annotations', value: { id: 'n_chat', type: 'note', text: 'SILL SHOULD BE TREATED, RIGHT?', target: 'sill' } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'n_dangle', type: 'note', text: '2X6 STUD W/', target: 'stud' } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'n_long', type: 'note', text: '2X4 STUD @ 16" O.C. W/ (2) 16D NAILS EA. END INTO SILL AND TOP PLATE, PLUS TWO MORE NAILS TOE-NAILED THROUGH THE SIDE, INSTALL PER MFR. SPECS AND TABLE', target: 'stud' } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'n_dup', type: 'note', text: '2x6 pt sill plate.', target: 'sill' } },
+  ];
+  let r = kerf(['apply', 'nl.kerf.json', '--ops', JSON.stringify(ops), '-w', '--why', 'sloppy notes']);
+  check('apply succeeds (warnings only)', r.code === 0, r);
+  check('commentary: question mark and SHOULD BE', /WARN W_NOTE_STYLE n_chat: .*commentary \(a question mark\)/.test(r.out) && /Fix: rewrite it as/.test(r.out), r.out);
+  check('dangling connector', /WARN W_NOTE_STYLE n_dangle: .*ends on "W\/"/.test(r.out), r.out);
+  check('length over 130', /WARN W_NOTE_STYLE n_long: .*characters \(notes stay under 130/.test(r.out), r.out);
+  check('a note that repeats another one names it', /WARN W_NOTE_STYLE n_dup: .*repeats note 'n_sill'/.test(r.out), r.out);
+  for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-strap']) {
+    const o = kerf(['check', path.join(DETAILS, d + '.kerf.json')]);
+    check(`reference ${d} still has 0 warnings`, /0 errors  0 warnings/.test(o.out), o.out.split('\n')[0]);
+  }
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

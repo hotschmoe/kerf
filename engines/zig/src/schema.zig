@@ -81,7 +81,7 @@ pub const note: Object = .{
     .fields = &.{
         .{ .name = "id", .ty = "string", .required = true, .desc = "unique within the view, [a-z][a-z0-9_]*" },
         .{ .name = "type", .ty = "\"note\"", .required = true, .desc = "annotation type" },
-        .{ .name = "text", .ty = "string", .required = true, .desc = "house format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOTT. CONC. GYP. BD. REINF. PT (W_NOTE_STYLE lints this)" },
+        .{ .name = "text", .ty = "string", .required = true, .desc = "house format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOTT. CONC. GYP. BD. REINF. PT (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)" },
         .{ .name = "target", .ty = "string", .desc = "component id or `comp.part` (e.g. `slab.footing`); the arrow lands inside its visible region. Required unless `at` is given" },
         .{ .name = "at", .ty = "point", .desc = "exact arrow landing: \"comp@anchor\", {\"ref\":\"comp@anchor\",\"offset\":[dx,dy]} or [x, y]. Use it when the target is hidden or the label point is bad" },
         .{ .name = "place", .ty = "[x, y]", .desc = "model-inch position of the text (designer override; the note is then fixed). Not `side`/`pos`: the column side is the VIEW's `notes_side`" },
