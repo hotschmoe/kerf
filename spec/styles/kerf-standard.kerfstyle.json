@@ -76,7 +76,8 @@
         }
       ],
       "cut_mark": null,
-      "color3d": "#B9B4A8"
+      "color3d": "#B9B4A8",
+      "role": "masonry"
     },
     "grout": {
       "hatch": [
@@ -87,7 +88,8 @@
         }
       ],
       "cut_mark": null,
-      "color3d": "#A8A296"
+      "color3d": "#A8A296",
+      "role": "grout"
     },
     "cmu": {
       "hatch": [
@@ -98,12 +100,14 @@
         }
       ],
       "cut_mark": null,
-      "color3d": "#9C978C"
+      "color3d": "#9C978C",
+      "role": "masonry"
     },
     "mortar": {
       "hatch": [],
       "cut_mark": null,
-      "color3d": "#8F8A80"
+      "color3d": "#8F8A80",
+      "role": "masonry"
     },
     "earth": {
       "hatch": [
@@ -114,7 +118,8 @@
         }
       ],
       "cut_mark": null,
-      "color3d": "#7A6248"
+      "color3d": "#7A6248",
+      "role": "soil"
     },
     "gravel": {
       "hatch": [
@@ -125,7 +130,8 @@
         }
       ],
       "cut_mark": null,
-      "color3d": "#8C8478"
+      "color3d": "#8C8478",
+      "role": "soil"
     },
     "sand": {
       "hatch": [
@@ -136,7 +142,8 @@
         }
       ],
       "cut_mark": null,
-      "color3d": "#C8B88E"
+      "color3d": "#C8B88E",
+      "role": "soil"
     },
     "compacted_fill": {
       "hatch": [
@@ -152,7 +159,8 @@
         }
       ],
       "cut_mark": null,
-      "color3d": "#9A8B70"
+      "color3d": "#9A8B70",
+      "role": "soil"
     },
     "wood": {
       "hatch": [],
@@ -163,7 +171,8 @@
         "wavelength": 1.1
       },
       "cut_mark": "x",
-      "color3d": "#C9A46A"
+      "color3d": "#C9A46A",
+      "role": "wood"
     },
     "wood_treated": {
       "hatch": [],
@@ -185,7 +194,8 @@
         }
       ],
       "cut_mark": "x",
-      "color3d": "#D6B271"
+      "color3d": "#D6B271",
+      "role": "wood"
     },
     "plywood": {
       "hatch": [],
@@ -222,19 +232,22 @@
     "wood_board": {
       "hatch": [],
       "cut_mark": "diagonal",
-      "color3d": "#D0AE78"
+      "color3d": "#D0AE78",
+      "role": "wood"
     },
     "steel": {
       "hatch": [],
       "cut_mark": null,
       "fill": true,
-      "color3d": "#56636F"
+      "color3d": "#56636F",
+      "role": "steel"
     },
     "rebar": {
       "hatch": [],
       "cut_mark": null,
       "fill": true,
-      "color3d": "#7A4A33"
+      "color3d": "#7A4A33",
+      "role": "rebar"
     },
     "insulation_rigid": {
       "hatch": [
@@ -269,7 +282,8 @@
       "hatch": [],
       "cut_mark": null,
       "pen": "vapor",
-      "color3d": "#3F5F7F"
+      "color3d": "#3F5F7F",
+      "role": "vapor_retarder"
     },
     "wrb": {
       "hatch": [],
@@ -287,7 +301,8 @@
       "hatch": [],
       "cut_mark": null,
       "pen": "membrane",
-      "color3d": "#202020"
+      "color3d": "#202020",
+      "role": "sheet_metal"
     },
     "generic": {
       "hatch": [
@@ -303,7 +318,8 @@
     "aluminum": {
       "hatch": [],
       "cut_mark": null,
-      "color3d": "#B8BCC2"
+      "color3d": "#B8BCC2",
+      "role": "sheet_metal"
     },
     "joint_filler": {
       "hatch": [
@@ -336,7 +352,8 @@
     "void": {
       "hatch": [],
       "cut_mark": null,
-      "color3d": "#FFFFFF"
+      "color3d": "#FFFFFF",
+      "role": "void"
     }
   },
   "patterns": {

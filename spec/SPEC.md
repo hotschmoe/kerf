@@ -951,3 +951,11 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Note text lint (extends `W_NOTE_STYLE`):** flags commentary or dangling text: notes over 130 chars,
   first-person or conversational words (`I `, `WE `, `NOTE:`, `PLEASE`, `SHOULD BE`, `?`), text ending in
   a connector word (`W/`, `AND`, `OR`, `TO`, `@`), and notes whose text repeats another note in the same view.
+
+## 22. Material roles (v0.1.5 refactor)
+Style materials may declare `"role"`: one of `generic, soil, wood, masonry, grout, steel, rebar, sheet_metal,
+vapor_retarder, void`. The engine's special-case behavior keys off the role, not the material name. That
+covers fills in iso, wood cut marks and grain, untreated-contact checks, thin-metal rendering and cover hosts.
+Without `role`, it's derived from the name (the old predicates). `wood_treated` deliberately has no
+`wood` role, so treated members don't raise `W_UNTREATED_CONTACT`. A material's `"pen"` must name an
+engine pen (`cut profile beyond hidden hatch rebar steel membrane vapor anno dim break title frame`).
