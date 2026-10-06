@@ -169,21 +169,45 @@ fn readField(comptime T: type, comptime f: std.builtin.Type.StructField, p: *Par
     }
 }
 
+/// The scalar kinds the reader knows. One non-generic function (`readScalar`) serves every field of every struct, so the
+/// per-field code in a `parse` instantiation is a call with constants, not a copy of the checks.
+const Kind = enum { boolean, num, len, len_pos, int, str, raw };
+
+const Scalar = union { b: bool, f: f64, i: i64, s: []const u8, v: json.Value };
+
+fn readScalar(p: *Params, kind: Kind, name: []const u8, hint: []const u8, min: i64, max: i64, default: ?Scalar) ?Scalar {
+    switch (kind) {
+        .boolean => return .{ .b = p.boolean(name, default.?.b) },
+        .num => return .{ .f = p.num(name, if (default) |d| d.f else null) orelse return null },
+        .len => return .{ .f = p.len(name, if (default) |d| d.f else null, hint) orelse return null },
+        .len_pos => return .{ .f = p.lenPos(name, if (default) |d| d.f else null, hint) orelse return null },
+        .int => return .{ .i = p.int(name, if (default) |d| d.i else null, min, max) orelse return null },
+        .str => return .{ .s = p.str(name, if (default) |d| d.s else null) orelse return null },
+        .raw => {
+            if (p.raw(name)) |v| return .{ .v = v };
+            if (default) |d| return d;
+            p.fail(name, "param '{s}' is required for type {s}", .{ name, p.ty });
+            return null;
+        },
+    }
+}
+
 /// One value of type `Base`; `default == null` means required. Null result: reported (or, for json.Value, required and absent).
 fn readValue(comptime Base: type, comptime name: []const u8, comptime s: anytype, p: *Params, comptime default: ?Base) ?Base {
+    const hint = comptime opt(s, "hint", @as([]const u8, ""));
     switch (@typeInfo(Base)) {
-        .bool => return p.boolean(name, default orelse @compileError("bool param '" ++ name ++ "' needs a default")),
+        .bool => {
+            const d = default orelse @compileError("bool param '" ++ name ++ "' needs a default");
+            return (readScalar(p, .boolean, name, "", 0, 0, .{ .b = d }) orelse return null).b;
+        },
         .float => {
-            const hint = comptime opt(s, "hint", @as([]const u8, ""));
-            if (comptime @hasField(@TypeOf(s), "len")) {
-                const d: ?f64 = default;
-                return if (s.len == .pos) p.lenPos(name, d, hint) else p.len(name, d, hint);
-            }
-            return p.num(name, default);
+            const kind: Kind = comptime if (@hasField(@TypeOf(s), "len")) (if (s.len == .pos) .len_pos else .len) else .num;
+            const d: ?Scalar = if (default) |x| .{ .f = x } else null;
+            return (readScalar(p, kind, name, hint, 0, 0, d) orelse return null).f;
         },
         .int => {
-            const d: ?i64 = if (default) |x| @as(i64, x) else null;
-            const v = p.int(name, d, s.min, s.max) orelse return null;
+            const d: ?Scalar = if (default) |x| .{ .i = @as(i64, x) } else null;
+            const v = (readScalar(p, .int, name, "", s.min, s.max, d) orelse return null).i;
             return @intCast(v);
         },
         .@"enum" => {
@@ -194,14 +218,13 @@ fn readValue(comptime Base: type, comptime name: []const u8, comptime s: anytype
         },
         .pointer => {
             if (comptime !isString(Base)) @compileError("unsupported param type " ++ @typeName(Base));
-            return p.str(name, default);
+            const d: ?Scalar = if (default) |x| .{ .s = x } else null;
+            return (readScalar(p, .str, name, "", 0, 0, d) orelse return null).s;
         },
         .@"union" => {
             if (comptime Base != json.Value) @compileError("unsupported param type " ++ @typeName(Base));
-            if (p.raw(name)) |v| return v;
-            if (default) |d| return d;
-            p.fail(name, "param '{s}' is required for type {s}", .{ name, p.ty });
-            return null;
+            const d: ?Scalar = if (default) |x| .{ .v = x } else null;
+            return (readScalar(p, .raw, name, "", 0, 0, d) orelse return null).v;
         },
         else => @compileError("unsupported param type " ++ @typeName(Base)),
     }
