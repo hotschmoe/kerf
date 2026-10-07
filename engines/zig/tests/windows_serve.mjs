@@ -47,7 +47,7 @@ const run = (args, opts = {}) => spawnSync(KERF, args, { cwd: work, env, encodin
 
 console.log('# kerf init');
 let r = run(['init']);
-check('kerf init exits 0', r.status === 0, r.stdout + r.stderr);
+check('kerf init exits 0', r.status === 0, `${r.stdout}${r.stderr} status=${r.status} signal=${r.signal} error=${r.error}`);
 fs.copyFileSync(REF, path.join(work, 'beam.kerf.json'));
 r = run(['new', 'a.kerf.json', '--title', 'WIN A']);
 check('kerf new', r.status === 0, r.stdout + r.stderr);
