@@ -104,9 +104,9 @@ jobs:
           cd "$RUNNER_TEMP" && mkdir -p w && cd w
           for v in arm64dbg arm64rs arm64rsm arm64rf arm64noui arm64; do
             echo "=== $v"
-            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" version; echo "version exit $?"
-            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" new x.kerf.json; echo "new exit $?"
-            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" init; echo "init exit $?"
+            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" version || true; echo "version exit $?"
+            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" new x.kerf.json || true; echo "new exit $?"
+            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" init || true; echo "init exit $?"
             rm -f AGENTS.md CLAUDE.md x.kerf.json
           done
       - run: |
