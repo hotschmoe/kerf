@@ -13,6 +13,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
+const WIN = process.platform === 'win32';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const KERF = path.resolve(process.argv[2] ?? path.join(here, '..', 'zig-out', 'bin', process.platform === 'win32' ? 'kerf.exe' : 'kerf'));
 const REF = path.join(here, '..', '..', '..', 'spec', 'details', 'flush-beam-strap.kerf.json');
@@ -21,7 +22,6 @@ const FAKE = path.join(here, 'fake-agent.mjs');
 const TOUCH = WIN ? [process.execPath, '-e', 'require("fs").writeFileSync(process.argv[1], "")'] : ['touch'];
 if (!fs.existsSync(KERF)) { console.error('kerf binary not found: ' + KERF + ' (zig build first)'); process.exit(2); }
 
-const WIN = process.platform === 'win32';
 let passed = 0, failed = 0;
 function check(name, cond, extra) {
   if (cond) { passed++; console.log('  ok   ' + name); } else { failed++; console.log('  FAIL ' + name + (extra !== undefined ? '  -> ' + (typeof extra === 'string' ? extra : JSON.stringify(extra)) : '')); }
