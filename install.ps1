@@ -2,7 +2,8 @@
 # Installs kerf.exe to %LOCALAPPDATA%\kerf\bin and adds it to your user PATH.
 # Pin a version:  $env:KERF_VERSION = "v0.1.0-alpha.1"; irm ... | iex
 $ErrorActionPreference = 'Stop'
-$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+# arm64 Windows builds are broken on Zig 0.16 (LLVM aarch64-windows bug, fixed in Zig 0.17); use x64 under emulation for now.
+$arch = if ($env:KERF_ARCH) { $env:KERF_ARCH } else { 'x86_64' }
 $asset = "kerf-$arch-windows.exe"
 $base = if ($env:KERF_VERSION) { "https://github.com/hotschmoe/kerf/releases/download/$($env:KERF_VERSION)" } else { 'https://github.com/hotschmoe/kerf/releases/latest/download' }
 $dir = Join-Path $env:LOCALAPPDATA 'kerf\bin'
