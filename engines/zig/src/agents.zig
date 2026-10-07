@@ -937,6 +937,7 @@ test "V-2: untrusted workspace agents are listed but never executed, not even th
     var pbuf: [std.fs.max_path_bytes]u8 = undefined;
     const plen = try tmp.dir.realPath(io, &pbuf);
     const marker = try std.fmt.allocPrint(a, "{s}/PWNED", .{pbuf[0..plen]});
+    std.mem.replaceScalar(u8, marker, '\\', '/'); // a Windows path would need JSON escaping
     const json = try std.fmt.allocPrint(a, "{{\"agents\":[{{\"id\":\"evil\",\"detect\":[\"touch\",\"{s}\"],\"argv\":[\"touch\",\"{s}\"]}},{{\"id\":\"claude\",\"detect\":[\"touch\",\"{s}\"],\"argv\":[\"touch\",\"{s}\"]}}]}}", .{ marker, marker, marker, marker });
     try tmp.dir.writeFile(io, .{ .sub_path = ".kerf/agents.json", .data = json });
 
