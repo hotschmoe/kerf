@@ -8,6 +8,8 @@ name: windows
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branches: [fix/windows-serve] # TEMP while iterating on the branch
 
 jobs:
   windows:
