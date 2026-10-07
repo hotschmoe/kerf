@@ -13,6 +13,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kerf = @import("kerf");
+const fsx = @import("fsx.zig");
 const ws = @import("workspace.zig");
 const http = @import("http.zig");
 const events = @import("events.zig");
@@ -278,7 +279,7 @@ pub const Server = struct {
         }
         if (st.size == f.log_size) return &.{};
         const want: usize = @intCast(@min(st.size - f.log_size, 4 << 20));
-        var file = try s.dir.openFile(s.io, lp, .{ .follow_symlinks = false });
+        var file = try fsx.openFileNoFollow(s.io, s.dir, lp);
         defer file.close(s.io);
         const buf = try a.alloc(u8, want);
         const got = try file.readPositionalAll(s.io, buf, f.log_size);
@@ -326,7 +327,7 @@ pub const Server = struct {
 
     pub fn readDoc(s: *Server, a: Allocator, name: []const u8) !DocRead {
         // O_NOFOLLOW: a symlink planted in the folder (an agent can create one) is not a document (V-10).
-        var f = try s.dir.openFile(s.io, name, .{ .follow_symlinks = false });
+        var f = try fsx.openFileNoFollow(s.io, s.dir, name);
         defer f.close(s.io);
         const st = try f.stat(s.io);
         if (st.kind != .file) return error.NotRegular;

@@ -16,6 +16,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kerf = @import("kerf");
+const fsx = @import("fsx.zig");
 const http = @import("http.zig");
 const events = @import("events.zig");
 const Io = std.Io;
@@ -112,7 +113,7 @@ pub fn loadTemplates(a: Allocator, io: Io, dir: Io.Dir, trust: bool) Allocator.E
 /// Read a small file of the served folder without following a symlink at the last component (a prompt-injected
 /// agent can plant `.kerf/agents.json -> /somewhere`).
 fn readWorkspaceFile(a: Allocator, io: Io, dir: Io.Dir, sub: []const u8) ?[]u8 {
-    var f = dir.openFile(io, sub, .{ .follow_symlinks = false }) catch return null;
+    var f = fsx.openFileNoFollow(io, dir, sub) catch return null;
     defer f.close(io);
     var rb: [4096]u8 = undefined;
     var fr = f.reader(io, &rb);

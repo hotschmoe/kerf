@@ -64,7 +64,7 @@ const m = /http:\/\/127\.0\.0\.1:(\d+)\/\?token=(\w+)/.exec(sout);
 check('banner with URL and token', !!m, sout + serr);
 if (!m) { console.log(serr); process.exit(1); }
 const port = +m[1], token = m[2];
-const alive = (what) => check('server alive after ' + what, exited === null, { exited, stderr: serr.slice(-2000) });
+const alive = (what) => check('server alive after ' + what, exited === null, { exited, stderr: serr });
 
 function req(method, p, { body, auth = true } = {}) {
   return new Promise((resolve, reject) => {

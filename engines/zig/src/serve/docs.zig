@@ -3,6 +3,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kerf = @import("kerf");
+const fsx = @import("../fsx.zig");
 const ws = @import("../workspace.zig");
 const http = @import("../http.zig");
 const agents = @import("../agents.zig");
@@ -272,7 +273,7 @@ pub fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extr
 
 /// Whole file at `path` (a regular file only: a symlink is "missing"), at most `limit` bytes.
 pub fn readNoFollow(s: *Server, a: Allocator, path: []const u8, limit: usize) ?[]u8 {
-    var f = s.dir.openFile(s.io, path, .{ .follow_symlinks = false }) catch return null;
+    var f = fsx.openFileNoFollow(s.io, s.dir, path) catch return null;
     defer f.close(s.io);
     const st = f.stat(s.io) catch return null;
     if (st.kind != .file) return null;
