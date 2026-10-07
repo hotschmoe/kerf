@@ -2,7 +2,8 @@
 # `unreachable` inside std on the first document read), so CI runs the real thing on a Windows runner: unit tests, the full
 # serve smoke suite, a field-shaped session (init, serve --open, the UI's document-open sequence, a 30 s agent run through
 # an npm-style `grok.cmd` shim) and the CLI tests, against a Debug build (stack traces on) and against the shipped
-# ReleaseSafe+stripped build with the web UI embedded. Called from ci.yml and release.yml; also runnable by hand.
+# ReleaseSafe+stripped build with the web UI embedded. The arm64 binary is cross-compiled there and run on a Windows ARM
+# runner (the Zig 0.16 compiler itself segfaults on windows-11-arm, so nothing is built on it). Called from ci.yml and release.yml; also runnable by hand.
 name: windows
 
 on:
@@ -13,17 +14,8 @@ on:
 
 jobs:
   windows:
-    name: windows (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            required: true
-          - os: windows-11-arm
-            required: false # best effort: the arm64 runner image is newer and has had toolchain hiccups
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ !matrix.required }}
+    name: windows (windows-latest)
+    runs-on: windows-latest
     timeout-minutes: 40
     defaults:
       run:
@@ -65,3 +57,34 @@ jobs:
           node tests/windows_serve.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
           node tests/serve_smoke.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
           node tests/cli_ergonomics.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
+
+      - name: cross-compile the arm64 Windows binary for the ARM runner
+        run: zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSafe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kerf-aarch64-windows
+          path: ${{ runner.temp }}/arm64/bin/kerf.exe
+
+  windows-arm64:
+    name: windows (windows-11-arm, aarch64 binary)
+    needs: windows
+    runs-on: windows-11-arm
+    continue-on-error: true # best effort: a new runner image; the x86_64 job above is the gate
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: engines/zig
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: kerf-aarch64-windows
+          path: ${{ runner.temp }}/arm64
+      - run: |
+          node tests/windows_serve.mjs "$RUNNER_TEMP/arm64/kerf.exe"
+          node tests/serve_smoke.mjs "$RUNNER_TEMP/arm64/kerf.exe"
+          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/arm64/kerf.exe"
