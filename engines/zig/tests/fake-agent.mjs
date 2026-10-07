@@ -27,7 +27,7 @@ out({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text',
 
 let grandchild = null;
 if (/TREE|ORPHAN/.test(message)) {
-  grandchild = spawn('sleep', ['60'], { stdio: 'inherit' }); // same process group, same pipes
+  grandchild = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'inherit' }); // `sleep` does not exist on Windows // same process group, same pipes
   out({ type: 'pids', self: process.pid, child: grandchild.pid });
 }
 if (message.includes('ORPHAN')) process.exit(0);

@@ -6,6 +6,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kerf = @import("kerf");
+const fsx = @import("fsx.zig");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 
@@ -98,8 +99,8 @@ fn refuseSymlink(io: Io, dir: Io.Dir, path: []const u8) AppendError!void {
 
 /// Exclusive advisory lock (`flock`) on `<doc>.log.jsonl`, held across a whole read-modify-write of one document so
 /// that two processes (the server, several `kerf apply -w`) cannot interleave and lose each other's edit, and through
-/// which the log line is appended. Windows has no advisory lock here: the lock is skipped there (a single server
-/// still serialises its own writes with `write_mu`). Best effort when the file system has no locks.
+/// which the log line is appended. On Windows it is a byte-range lock far past the end of the file
+/// (`fsx.lockExclusive`), so readers of the log are never blocked. Best effort when the file system has no locks.
 pub const DocLock = struct {
     file: Io.File,
 
@@ -107,10 +108,7 @@ pub const DocLock = struct {
         try refuseSymlink(io, dir, log_path);
         const f = try dir.createFile(io, log_path, .{ .truncate = false, .read = true });
         errdefer f.close(io);
-        if (builtin.os.tag != .windows) f.lock(io, .exclusive) catch |e| switch (e) {
-            error.FileLocksUnsupported => {},
-            else => return e,
-        };
+        try fsx.lockExclusive(io, f);
         return .{ .file = f };
     }
 

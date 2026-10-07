@@ -10,7 +10,12 @@ permissions:
   contents: write
 
 jobs:
+  # No release unless the Windows build starts a server and survives a field-shaped session on a Windows runner.
+  windows-gate:
+    uses: ./.github/workflows/windows.yml
+
   release:
+    needs: windows-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
