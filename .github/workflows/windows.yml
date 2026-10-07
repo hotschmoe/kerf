@@ -2,15 +2,13 @@
 # `unreachable` inside std on the first document read), so CI runs the real thing on a Windows runner: unit tests, the full
 # serve smoke suite, a field-shaped session (init, serve --open, the UI's document-open sequence, a 30 s agent run through
 # an npm-style `grok.cmd` shim) and the CLI tests, against a Debug build (stack traces on) and against the shipped
-# ReleaseSafe+stripped build with the web UI embedded. The arm64 binary is cross-compiled there and run on a Windows ARM
-# runner (the Zig 0.16 compiler itself segfaults on windows-11-arm, so nothing is built on it). Called from ci.yml and release.yml; also runnable by hand.
+# ReleaseSafe+stripped build with the web UI embedded. The arm64 binary is cross-compiled there; running it on
+# windows-11-arm is a manual, informational job (see the TODO below). Called from ci.yml and release.yml; also runnable by hand.
 name: windows
 
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches: [fix/windows-serve] # TEMP while iterating on the branch
 
 jobs:
   windows:
@@ -60,35 +58,26 @@ jobs:
 
       - name: cross-compile the arm64 Windows binary for the ARM runner
         run: zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSafe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64"
-      - name: arm64 variants for diagnosing a crash on the ARM runner
+      - name: cross-compile the arm64 binaries (ReleaseSafe as shipped, and Debug for diagnosis)
         run: |
           zig build -Dtarget=aarch64-windows-gnu -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64dbg"
-          zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSafe -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64rs"
-          zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSmall -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64rsm"
-          zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseFast -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64rf"
-          zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSafe -Dstrip=true --prefix "$RUNNER_TEMP/arm64noui"
-          zig build -Dtarget=aarch64-windows-gnu -Dcpu=neoverse_n2 -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/arm64n2"
-          zig build -Dtarget=aarch64-windows-gnu -Dcpu=generic+v8a -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/arm64v8"
-          zig build -Dtarget=aarch64-windows-msvc -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/arm64msvc"
       - uses: actions/upload-artifact@v4
         with:
           name: kerf-aarch64-windows
           path: |
             ${{ runner.temp }}/arm64/bin/kerf.exe
             ${{ runner.temp }}/arm64dbg/bin/kerf.exe
-            ${{ runner.temp }}/arm64rs/bin/kerf.exe
-            ${{ runner.temp }}/arm64rsm/bin/kerf.exe
-            ${{ runner.temp }}/arm64rf/bin/kerf.exe
-            ${{ runner.temp }}/arm64noui/bin/kerf.exe
-            ${{ runner.temp }}/arm64n2/bin/kerf.exe
-            ${{ runner.temp }}/arm64v8/bin/kerf.exe
-            ${{ runner.temp }}/arm64msvc/bin/kerf.exe
 
   windows-arm64:
     name: windows (windows-11-arm, aarch64 binary)
+    # Informational and manual only (workflow_dispatch). TODO(arm64-windows): every optimized aarch64-windows build of kerf (even
+    # `kerf version`, no UI) segfaults on windows-11-arm, Debug works, and the Zig 0.16 compiler itself segfaults there. Looks like a Zig
+    # 0.16 aarch64-windows toolchain problem, not Kerf code. Re-enable as a gate once a Release arm64 binary starts; until then
+    # kerf-aarch64-windows.exe in a release is UNTESTED/likely broken, and arm64 Windows users should run the x86_64 build (emulation).
+    if: github.event_name == 'workflow_dispatch'
     needs: windows
     runs-on: windows-11-arm
-    continue-on-error: true # best effort: a new runner image; the x86_64 job above is the gate
+    continue-on-error: true
     timeout-minutes: 30
     defaults:
       run:
@@ -103,19 +92,12 @@ jobs:
         with:
           name: kerf-aarch64-windows
           path: ${{ runner.temp }}/arm64
-      - name: diagnose (Debug build, stack trace)
+      - name: Debug build (works) then the shipped ReleaseSafe build (currently crashes at startup)
         continue-on-error: true
         run: |
-          find "$RUNNER_TEMP/arm64" -name kerf.exe
-          cd "$RUNNER_TEMP" && mkdir -p w && cd w
-          for v in arm64n2 arm64v8 arm64msvc; do
-            echo "=== $v"
-            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" version || true; echo "version exit $?"
-            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" new x.kerf.json || true; echo "new exit $?"
-            "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" init || true; echo "init exit $?"
-            rm -f AGENTS.md CLAUDE.md x.kerf.json
-          done
+          "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe" version
+          "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe" version
       - run: |
-          node tests/windows_serve.mjs "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe"
-          node tests/serve_smoke.mjs "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe"
-          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe"
+          node tests/windows_serve.mjs "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe"
+          node tests/serve_smoke.mjs "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe"
+          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe"

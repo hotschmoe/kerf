@@ -421,10 +421,9 @@ kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --to
   The events race the HTTP response of `/api/agent/run` (first events can arrive before the client has the run_id): buffer by run_id.
 - Windows: everything is std (Io.Threaded netListen/netAccept on AFD, Child via CreateProcess) plus five `kernel32` job-object calls declared in
   `agents.zig` (spawn suspended -> assign to a KILL_ON_JOB_CLOSE job -> resume; stop = TerminateJobObject; if the job cannot be created the run
-  degrades to NtTerminateProcess of the agent alone, grandchildren may survive). There is no SIGTERM stage on Windows (stop is a hard kill), no
-  advisory lock on the op log (`DocLock` is a no-op there; the server still serialises its own writes), no directory fsync. It compiles for
-  x86_64/aarch64-windows-gnu (CI cross-compiles it) but could NOT be run here (wine32 missing, aarch64 host). `claude.cmd`-style shims are not resolved by
-  CreateProcess; the official `claude.exe`/`grok.exe`/`codex.exe` work, others can be wrapped via `.kerf/agents.json` (`cmd /c ...`).
+  degrades to NtTerminateProcess of the agent alone, grandchildren may survive). There is no SIGTERM stage on Windows (stop is a hard kill) and no
+  directory fsync. The op log has a real exclusive lock (`fsx.lockExclusive`, see "Windows" below). It is built AND RUN on a Windows runner in CI
+  (`.github/workflows/windows.yml`); see the "Windows" section for what broke and how it is tested.
 
 ### Server hardening (REVIEW section 7 / refactor batch 3: V-1..V-16)
 
@@ -511,6 +510,43 @@ x86_64/aarch64 x windows-gnu/linux-musl/macos -> assets `kerf-<arch>-<os>[.exe]`
 - Tests: `zig build test` = engine tests + serve tests (strict head parsing, chunked overflow regression, routing and body caps, access rules, proxy URL
   rules, agent templates and the untrusted-agent guarantee, op-log entry shape and locking, folder scan events, SSE hub); `tests/serve_smoke.mjs` 215 checks; the web agent's `node test/e2e-serve.mjs --real` (puppeteer) passes against
   this binary (KERF_SERVE_BIN=... with a CURRENT dist-serve embedded; a stale embedded UI makes it fail on newer UI features).
+
+## Windows (what broke in v0.1.0-alpha.6/.7, how it is tested now)
+
+Field report: `kerf serve` on Windows 11 (x86_64) died with `reached unreachable code` right after the banner (opening a document in the UI, or
+`--open`, killed it; an agent run through Grok worked until the next document read). alpha.5 was fine. We had never RUN the server on Windows
+(no wine here), only cross-compiled it. Root causes, all found by running the real binary on a `windows-latest` runner:
+
+1. **std 0.16 `Dir.openFile(.{ .follow_symlinks = false })` is broken on Windows.** `dirOpenFileWtf16` opens the handle with
+   `FILE_OPEN_REPARSE_POINT` and ASYNCHRONOUS I/O but returns a `File` with `nonblocking = false`; the first `NtReadFile` that does not complete at once
+   returns STATUS_PENDING and std hits `unreachable // wrong File nonblocking flag`. alpha.6 introduced the no-follow open for every document read (V-10),
+   so the first `GET /api/docs`, `readDoc`, log read or `.kerf/agents.json` read could kill the process (timing dependent, hence "sometimes works").
+   Fix: `src/fsx.zig` `openFileNoFollow` (own `NtCreateFile` with `FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT`; a symlink then shows as
+   `kind == .sym_link` and is refused as before). All five call sites use it. `statFile(.follow_symlinks = false)` and `openDir(...)` are fine (stat only /
+   synchronous). **Never call `openFile(.follow_symlinks = false)` and read from it on Windows.**
+2. **The op-log lock was skipped on Windows**, so concurrent `kerf apply -w` (or the server plus a CLI) lost log lines. `fsx.lockExclusive` takes a
+   byte-range lock on a range far past EOF (std's own `File.lock` locks byte 0, and Windows range locks are mandatory, so readers of the first line would fail).
+3. **Agents installed as `.cmd`/`.bat` shims** (npm installs of grok/claude/codex/pi) are started through `cmd.exe` by std, which refuses CR/LF/NUL in an
+   argument (`InvalidBatchScriptArg`); our prompts are multi-line, so every run failed with `E_SPAWN`. `agents.spawnAgent` retries once with line breaks
+   flattened to spaces (a real `.exe` keeps the exact text). Detection of `.cmd` shims already worked (std resolves PATH + PATHEXT itself); a `.ps1`-only install is
+   reported `available:false, "was not found on PATH"` (CreateProcess cannot run it).
+4. Found on the way: `.gitattributes` forces LF (a Windows checkout had CRLF in embedded fixtures, breaking two unit tests); `apps/web/scripts/run.mjs` ran
+   `node_modules/.bin/vite` (a shell script; now `node .../vite/bin/vite.js`); a 99 000-byte agent message is a clean 400 on Windows (32 767-char command line).
+5. Not ours, but good to know: the **Zig 0.16 compiler itself segfaults on `windows-11-arm`**, and **optimized (Release*) aarch64-windows binaries crash at
+   startup** on that runner (even `kerf version` with no UI; Debug works; variants tried: ReleaseSafe/Small/Fast, with/without strip, `-Dcpu=neoverse_n2`).
+   TODO(arm64-windows): the `windows-arm64` job in windows.yml is manual-only/informational for this reason; until a Release arm64 binary starts there,
+   `kerf-aarch64-windows.exe` is untested and probably broken (arm64 Windows users can run the x86_64 build under emulation). Candidates: a Zig 0.16
+   aarch64-windows codegen/startup bug (the compiler's own segfault on the same runner points that way), or a runner CPU feature mismatch.
+
+Audit: every `unreachable`/`catch unreachable`/`.?`/`@panic` in the serve path is either on a proven invariant (`isoFromSeconds` buffer size, route table
+`else => unreachable` after an exhaustive enum) or in a test; the Windows-only ones were all inside std.
+
+**Testing.** `.github/workflows/windows.yml` (reusable; called by `ci.yml` as the `windows` job and by `release.yml` as `windows-gate`, which `release` needs):
+`zig build test`; wasm + web UI; Debug build (stack traces on) then `tests/windows_serve.mjs` (field session: `kerf init`, `serve --open` which really
+opens a browser that hits the API, fake `grok.cmd`/`claude.cmd`/`codex.cmd`/`pi.ps1` shims on PATH, the UI's document-open sequence incl. SSE and the four
+exports, a designer apply, an outside edit, a 30 s agent run that edits the folder through `kerf apply -w`, stop), `tests/serve_smoke.mjs` (full suite; POSIX-only
+checks, i.e. /proc, SIGTERM-ignoring agents and the exact thread count, are skipped or relaxed on Windows) and `tests/cli_ergonomics.mjs`; then the same three against the
+shipped `ReleaseSafe -Dstrip=true` build. `windows_serve.mjs` also runs on Linux/macOS (shims are shell scripts there).
 
 ## Known gaps
 
