@@ -67,6 +67,9 @@ jobs:
           zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSmall -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64rsm"
           zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseFast -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64rf"
           zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSafe -Dstrip=true --prefix "$RUNNER_TEMP/arm64noui"
+          zig build -Dtarget=aarch64-windows-gnu -Dcpu=neoverse_n2 -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/arm64n2"
+          zig build -Dtarget=aarch64-windows-gnu -Dcpu=generic+v8a -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/arm64v8"
+          zig build -Dtarget=aarch64-windows-msvc -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/arm64msvc"
       - uses: actions/upload-artifact@v4
         with:
           name: kerf-aarch64-windows
@@ -77,6 +80,9 @@ jobs:
             ${{ runner.temp }}/arm64rsm/bin/kerf.exe
             ${{ runner.temp }}/arm64rf/bin/kerf.exe
             ${{ runner.temp }}/arm64noui/bin/kerf.exe
+            ${{ runner.temp }}/arm64n2/bin/kerf.exe
+            ${{ runner.temp }}/arm64v8/bin/kerf.exe
+            ${{ runner.temp }}/arm64msvc/bin/kerf.exe
 
   windows-arm64:
     name: windows (windows-11-arm, aarch64 binary)
@@ -102,7 +108,7 @@ jobs:
         run: |
           find "$RUNNER_TEMP/arm64" -name kerf.exe
           cd "$RUNNER_TEMP" && mkdir -p w && cd w
-          for v in arm64dbg arm64rs arm64rsm arm64rf arm64noui arm64; do
+          for v in arm64n2 arm64v8 arm64msvc; do
             echo "=== $v"
             "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" version || true; echo "version exit $?"
             "$RUNNER_TEMP/arm64/$v/bin/kerf.exe" new x.kerf.json || true; echo "new exit $?"
