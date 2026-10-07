@@ -27,11 +27,13 @@ jobs:
       - name: wasm + UI
         run: |
           cd engines/zig; zig build wasm
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           cd ../../apps/web; npm ci; npm run build:serve
       - name: build kerf.exe (Debug, UI embedded)
         run: |
           cd engines/zig
-          zig build -Dui=../../apps/web/dist-serve
+          zig build '-Dui=../../apps/web/dist-serve'
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           Get-Item zig-out/bin/kerf.exe
       - name: manual repro (init, serve, serve --open, with .cmd agent shims)
         continue-on-error: true
