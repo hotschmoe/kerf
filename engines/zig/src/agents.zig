@@ -526,7 +526,7 @@ pub fn start(m: *Manager, io: Io, a: Allocator, group: *Io.Group, p: StartParams
         .create_no_window = true,
     };
     if (builtin.os.tag == .windows) spawn_opts.start_suspended = true else spawn_opts.pgid = 0; // own process group, id == pid
-    const child = std.process.spawn(io, spawn_opts) catch |e| {
+    const child = spawnAgent(io, a, &spawn_opts) catch |e| {
         releaseSlot(m, io, run);
         m.gpa.free(agent_id);
         m.gpa.free(run_id);
@@ -580,6 +580,47 @@ fn releaseSlot(m: *Manager, io: Io, run: *Manager.Run) void {
     m.mu.lockUncancelable(io);
     if (m.active == run) m.active = null;
     m.mu.unlock(io);
+}
+
+/// Windows: an agent installed through npm (or any installer that leaves a `.cmd`/`.bat` shim, which is what `grok`,
+/// `claude`, `codex` and `pi` usually are there) is started by `cmd.exe`, and `cmd.exe` cannot carry a CR, LF or NUL inside
+/// an argument: std refuses with `InvalidBatchScriptArg` (otherwise the rest of the prompt would run as a command).
+/// Our prompts are multi-line, so for such a shim the line breaks become spaces and the spawn is retried once; a real
+/// `.exe` never takes this path and keeps the exact text.
+fn spawnAgent(io: Io, a: Allocator, opts: *std.process.SpawnOptions) !std.process.Child {
+    return std.process.spawn(io, opts.*) catch |e| {
+        if (builtin.os.tag != .windows or e != error.InvalidBatchScriptArg) return e;
+        opts.argv = try flattenLineBreaks(a, opts.argv);
+        return std.process.spawn(io, opts.*);
+    };
+}
+
+fn flattenLineBreaks(a: Allocator, argv: []const []const u8) Allocator.Error![]const []const u8 {
+    const out = try a.alloc([]const u8, argv.len);
+    for (argv, 0..) |arg, i| {
+        if (std.mem.findAny(u8, arg, "\x00\r\n") == null) {
+            out[i] = arg;
+            continue;
+        }
+        var buf: std.ArrayList(u8) = .empty;
+        var prev_space = false;
+        for (arg) |c| {
+            const brk = c == '\r' or c == '\n' or c == 0;
+            if (brk and prev_space) continue;
+            try buf.append(a, if (brk) ' ' else c);
+            prev_space = brk or c == ' ';
+        }
+        out[i] = buf.items;
+    }
+    return out;
+}
+
+test "flattenLineBreaks turns CR/LF/NUL runs into one space and leaves clean args alone" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const got = try flattenLineBreaks(arena.allocator(), &.{ "grok", "a.\n\nb\r\nc d\x00e" });
+    try std.testing.expectEqualStrings("grok", got[0]);
+    try std.testing.expectEqualStrings("a. b c d e", got[1]);
 }
 
 pub const StopResult = enum { stopped, no_such_run, already_finished };
