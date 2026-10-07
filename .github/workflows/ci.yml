@@ -6,6 +6,9 @@ on:
   pull_request:
 
 jobs:
+  windows:
+    uses: ./.github/workflows/windows.yml
+
   engine:
     runs-on: ubuntu-latest
     defaults:

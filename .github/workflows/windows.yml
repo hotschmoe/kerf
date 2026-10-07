@@ -1,0 +1,65 @@
+# The Windows gate. `kerf serve` shipped to Windows users broke twice in ways no Linux test can see (v0.1.0-alpha.6/.7: an
+# `unreachable` inside std on the first document read), so CI runs the real thing on a Windows runner: unit tests, the full
+# serve smoke suite, a field-shaped session (init, serve --open, the UI's document-open sequence, a 30 s agent run through
+# an npm-style `grok.cmd` shim) and the CLI tests, against a Debug build (stack traces on) and against the shipped
+# ReleaseSafe+stripped build with the web UI embedded. Called from ci.yml and release.yml; also runnable by hand.
+name: windows
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: windows (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            required: true
+          - os: windows-11-arm
+            required: false # best effort: the arm64 runner image is newer and has had toolchain hiccups
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ !matrix.required }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+        working-directory: engines/zig
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: zig build test
+        run: zig build test --summary all
+
+      - name: wasm + web UI (embedded into kerf.exe)
+        run: |
+          zig build wasm
+          cd ../../apps/web
+          npm ci
+          npm run build:serve
+
+      - name: build kerf.exe (Debug, UI embedded, stack traces on)
+        run: zig build -Dui=../../apps/web/dist-serve
+      - name: field-shaped session (init, serve --open, document-open sequence, 30 s grok.cmd run)
+        run: node tests/windows_serve.mjs
+      - name: serve smoke test
+        run: node tests/serve_smoke.mjs
+      - name: CLI ergonomics
+        run: node tests/cli_ergonomics.mjs
+
+      - name: build the shipped binary (ReleaseSafe, stripped, UI embedded) and run the same tests against it
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/release"
+          node tests/windows_serve.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
+          node tests/serve_smoke.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
+          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
