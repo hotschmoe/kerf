@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const KERF = path.resolve(process.argv[2] ?? path.join(here, '..', 'zig-out', 'bin', 'kerf'));
+const KERF = path.resolve(process.argv[2] ?? path.join(here, '..', 'zig-out', 'bin', process.platform === 'win32' ? 'kerf.exe' : 'kerf'));
 if (!fs.existsSync(KERF)) { console.error('kerf binary not found: ' + KERF + ' (zig build first)'); process.exit(2); }
 const DETAILS = path.join(here, '..', '..', '..', 'spec', 'details');
 const DOCS = path.join(here, 'docs');

@@ -14,7 +14,7 @@ import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const KERF = path.resolve(process.argv[2] ?? path.join(here, '..', 'zig-out', 'bin', 'kerf'));
+const KERF = path.resolve(process.argv[2] ?? path.join(here, '..', 'zig-out', 'bin', process.platform === 'win32' ? 'kerf.exe' : 'kerf'));
 const REF = path.join(here, '..', '..', '..', 'spec', 'details', 'flush-beam-strap.kerf.json');
 const FAKE = path.join(here, 'fake-agent.mjs');
 if (!fs.existsSync(KERF)) { console.error('kerf binary not found: ' + KERF + ' (zig build first)'); process.exit(2); }
@@ -32,7 +32,7 @@ process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(130); });
 
 // The server gets a PATH WITHOUT kerf's directory, to prove the agent bridge adds it.
-const bareEnv = { ...process.env, PATH: path.dirname(process.execPath) + ':/usr/bin:/bin', KERF_ACTOR: '' };
+const bareEnv = { ...process.env, PATH: process.platform === 'win32' ? path.dirname(process.execPath) + ';' + (process.env.SystemRoot ?? 'C:\\Windows') + '\\System32' : path.dirname(process.execPath) + ':/usr/bin:/bin', KERF_ACTOR: '' };
 delete bareEnv.KERF_ACTOR;
 
 // A token is the default (V-7); tests that are not about tokens pass --no-token implicitly. 'auto-token' keeps the default.

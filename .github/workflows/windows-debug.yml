@@ -65,6 +65,10 @@ jobs:
             }
             if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
           }
+      - name: field-shaped session (init, serve --open, UI doc-open sequence, 30 s grok.cmd agent run)
+        run: |
+          cd engines/zig
+          node tests/windows_serve.mjs
       - name: serve smoke test
         run: |
           cd engines/zig
