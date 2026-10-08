@@ -18,19 +18,16 @@ fn buildOptions(b: *std.Build) *std.Build.Step.Options {
     return o;
 }
 
-/// `-Dversion=<tag>` (release CI passes the git tag); otherwise `git describe --tags --always --dirty`
-/// with the leading `v` dropped; otherwise "0.0.0-dev" (e.g. building from a source tarball).
+/// The version has ONE source of truth: `.version` in build.zig.zon (semver; the Zig package manager
+/// requires it anyway). Release tags must equal "v" ++ that string (release CI checks this). Optional
+/// `-Dversion-meta=<str>` appends semver build metadata ("+<str>", e.g. a commit hash for CI dev builds);
+/// nothing reads git at configure time, so builds from tarballs/package fetches report the right version
+/// and Zig 0.17's configure cache stays pure.
 fn versionString(b: *std.Build) []const u8 {
-    if (b.option([]const u8, "version", "Version string reported by `kerf version`, /api/info and the web UI (default: git describe)")) |v|
-        return std.mem.trimStart(u8, v, "v");
-    // git state is invisible to the configure cache: re-run configure on every build that derives the version from git.
-    b.graph.poisonCache();
-    var code: u8 = 0;
-    const out = b.runAllowFail(&.{ "git", "-C", b.root.toString(b.allocator) catch ".", "describe", "--tags", "--always", "--dirty" }, &code, .ignore) catch
-        return "0.0.0-dev";
-    const trimmed = std.mem.trim(u8, out, " \t\r\n");
-    if (trimmed.len == 0) return "0.0.0-dev";
-    return std.mem.trimStart(u8, trimmed, "v");
+    const base: []const u8 = @import("build.zig.zon").version;
+    _ = std.SemanticVersion.parse(base) catch @panic("build.zig.zon .version is not valid semver");
+    const meta = b.option([]const u8, "version-meta", "Semver build metadata appended as +<meta> (e.g. a git hash for dev builds)") orelse return base;
+    return b.fmt("{s}+{s}", .{ base, meta });
 }
 
 pub fn build(b: *std.Build) void {

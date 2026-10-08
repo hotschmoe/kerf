@@ -20,6 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Version single source of truth: engines/zig/build.zig.zon `.version`. The tag must be "v" + that string.
+      - name: Tag matches build.zig.zon version
+        run: |
+          zon=$(sed -n 's/^ *\.version = "\(.*\)",$/\1/p' engines/zig/build.zig.zon)
+          test "v$zon" = "$GITHUB_REF_NAME" || { echo "::error::tag $GITHUB_REF_NAME != v$zon (engines/zig/build.zig.zon .version). Bump the zon version, commit, then tag."; exit 1; }
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -37,7 +43,7 @@ jobs:
       # Order matters: the web build copies engines/zig/dist/kerf.wasm, and the CLI embeds the web build.
       - name: Build kerf.wasm
         working-directory: engines/zig
-        run: zig build wasm -Dversion="$GITHUB_REF_NAME"
+        run: zig build wasm
 
       - name: Build the web UI (workspace mode, for `kerf serve`)
         working-directory: apps/web
@@ -59,7 +65,7 @@ jobs:
           zig build test --summary all
           zig build              # Debug (safety checks): what the golden gate exercises
           bash tests/check_golden.sh
-          zig build -Doptimize=safe -Dui="$UI_DIR" -Dversion="$GITHUB_REF_NAME"
+          zig build -Doptimize=safe -Dui="$UI_DIR"
           node tests/cli_ergonomics.mjs
           node tests/serve_smoke.mjs
 
@@ -71,7 +77,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/release"
           build() { # <zig target> <asset name>
             rm -rf zig-out
-            zig build -Dtarget="$1" -Doptimize=safe -Dstrip=true -Dui="$UI_DIR" -Dversion="$GITHUB_REF_NAME"
+            zig build -Dtarget="$1" -Doptimize=safe -Dstrip=true -Dui="$UI_DIR"
             if [ -f zig-out/bin/kerf.exe ]; then cp zig-out/bin/kerf.exe "$GITHUB_WORKSPACE/release/$2"; else cp zig-out/bin/kerf "$GITHUB_WORKSPACE/release/$2"; fi
           }
           build x86_64-windows-gnu   kerf-x86_64-windows.exe
