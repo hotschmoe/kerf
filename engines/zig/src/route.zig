@@ -634,26 +634,7 @@ fn improve(c: *Ctx) Allocator.Error!void {
             var v: usize = 0;
             while (v < cnt and !changed and c.budget > 0 and !c.work.spent()) : (v += 1) {
                 if (v == pos) continue;
-                // rebuild keys of the column with i at position v
-                const ord = c.sortOrder(c.left[i]);
-                var tmp: [64]usize = undefined;
-                var m: usize = 0;
-                for (ord) |o| if (o != i and m < 64) {
-                    tmp[m] = o;
-                    m += 1;
-                };
-                var k: usize = 0;
-                var q: usize = 0;
-                while (q <= m) : (q += 1) {
-                    if (q == v) {
-                        c.key[i] = @floatFromInt(k);
-                        k += 1;
-                    }
-                    if (q < m) {
-                        c.key[tmp[q]] = @floatFromInt(k);
-                        k += 1;
-                    }
-                }
+                rekeyAt(c.key, c.sortOrder(c.left[i]), i, v);
                 c.solveAll();
                 const r = c.eval();
                 if (better(r, cur)) {
@@ -667,6 +648,23 @@ fn improve(c: *Ctx) Allocator.Error!void {
         }
         if (!changed) break;
     }
+}
+
+/// Renumber the keys of a column (`ord`: its notes in key order, `i` among them) to 0, 1, ... with note `i` moved to position
+/// `v` and the others keeping their order. Every note of the column gets a fresh key, however many there are (REVIEW LAY-3:
+/// a 64-entry scratch array used to leave the notes past the 64th with stale keys that collided with the renumbered ones).
+fn rekeyAt(key: []f64, ord: []const usize, i: usize, v: usize) void {
+    var k: usize = 0;
+    for (ord) |o| {
+        if (o == i) continue;
+        if (k == v) {
+            key[i] = @floatFromInt(k);
+            k += 1;
+        }
+        key[o] = @floatFromInt(k);
+        k += 1;
+    }
+    if (k == v) key[i] = @floatFromInt(k);
 }
 
 /// SPEC 16: swap adjacent column notes whose leaders cross (bounded), then renumber the keys by rank so later
@@ -910,6 +908,35 @@ test "route: 150 crowded notes stay inside the work budget (REVIEW LAY-1)" {
         proposals += 1;
     };
     try std.testing.expect(proposals <= max_fix_hits);
+}
+
+test "route: re-inserting a note renumbers every note of a column with more than 64 notes (REVIEW LAY-3)" {
+    // 100 notes in one column (limits.zig allows 150 annotations per view); the old 64-entry scratch array left the notes past
+    // the 64th with their old keys and never placed `i` at a position past 64
+    const n = 100;
+    var ord: [n]usize = undefined;
+    for (&ord, 0..) |*o, k| o.* = (k * 37 + 11) % n; // a permutation: the column order is not the index order
+    for ([_]usize{ 0, 1, 50, 64, 65, 90, n - 1 }) |v| {
+        for ([_]usize{ 0, 20, 70, n - 1 }) |pos| {
+            const i = ord[pos];
+            var key: [n]f64 = undefined;
+            @memset(&key, -1);
+            rekeyAt(&key, &ord, i, v);
+            try std.testing.expectEqual(@as(f64, @floatFromInt(v)), key[i]);
+            // keys are exactly 0..n-1 (no stale, no duplicate) and the other notes keep their order
+            var seen: [n]bool = @splat(false);
+            for (key) |kv| {
+                const k: usize = @intFromFloat(kv);
+                try std.testing.expect(kv >= 0 and !seen[k]);
+                seen[k] = true;
+            }
+            var prev: f64 = -1;
+            for (ord) |o| if (o != i) {
+                try std.testing.expect(key[o] > prev);
+                prev = key[o];
+            };
+        }
+    }
 }
 
 test "route: a refused allocation is an error, never a silently different layout (REVIEW LAY-3)" {
