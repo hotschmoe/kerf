@@ -1,6 +1,7 @@
 //! Visibility of a loop or polyline against the cut and beyond bodies in front of it (SPEC 8.1): exact classification of the parts that stay visible.
 
 const std = @import("std");
+const sort = @import("../sort.zig");
 const geom = @import("../geom.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
@@ -60,7 +61,7 @@ pub fn visibleImpl(a: Allocator, pts: []const Pt, closed: bool, join_wrap: bool,
                 }
             }
         }
-        std.mem.sort(f64, ts.items, {}, std.sort.asc(f64));
+        sort.stable(f64, ts.items, {}, sort.asc(f64));
         var t_prev: f64 = 0;
         var k: usize = 0;
         while (k <= ts.items.len) : (k += 1) {

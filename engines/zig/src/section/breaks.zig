@@ -1,6 +1,7 @@
 //! Break lines on the crop edge where a cut solid is clipped (SPEC 8.1): the zig-zag symbol and which cut regions get one.
 
 const std = @import("std");
+const sort = @import("../sort.zig");
 const geom = @import("../geom.zig");
 const clip = @import("../clip.zig");
 const pathclip = @import("../pathclip.zig");
@@ -47,7 +48,7 @@ pub fn breakLines(self: *Section) Allocator.Error!void {
             }
         }
         if (ivs.items.len == 0) continue;
-        std.mem.sort(Iv, ivs.items, {}, struct {
+        sort.stable(Iv, ivs.items, {}, struct {
             fn lt(_: void, x: Iv, y: Iv) bool {
                 if (x.a != y.a) return x.a < y.a;
                 return x.comp < y.comp;

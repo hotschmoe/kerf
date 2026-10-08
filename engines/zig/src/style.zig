@@ -10,7 +10,8 @@ pub const Pen = pen_mod.Pen;
 pub const LayerKey = pen_mod.LayerKey;
 const Allocator = std.mem.Allocator;
 
-pub const default_json = @embedFile("kerf_style_json");
+/// The default style, whitespace stripped at compile time (REVIEW SIZ-1: 12.1 KB -> 6.4 KB in the wasm).
+pub const default_json = json.minify(@embedFile("kerf_style_json"));
 
 /// A pen as the style defines it: name, width and dash pattern. The engine reaches pens through `pen.Pen`.
 pub const PenDef = struct {
@@ -636,6 +637,21 @@ pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {
         s.color_background = strOr(t.get("background"), s.color_background);
     }
     return s;
+}
+
+test "the minified embedded style is the same document as spec/styles/kerf-standard.kerfstyle.json" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var err: json.ParseError = undefined;
+    const raw = (try json.parse(a, @embedFile("kerf_style_json"), &err)).?;
+    const min = (try json.parse(a, default_json, &err)).?;
+    var x: std.ArrayList(u8) = .empty;
+    var y: std.ArrayList(u8) = .empty;
+    try json.writeCompact(&x, a, raw);
+    try json.writeCompact(&y, a, min);
+    try std.testing.expectEqualStrings(x.items, y.items);
+    try std.testing.expect(default_json.len < @embedFile("kerf_style_json").len * 6 / 10);
 }
 
 test "default style loads" {

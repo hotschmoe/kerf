@@ -6,6 +6,7 @@
 //! side face per profile segment); edges are tested against front-facing faces on a uniform grid.
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const cast = @import("num.zig");
 const geom = @import("geom.zig");
 const clip = @import("clip.zig");
@@ -180,7 +181,7 @@ pub const Iso = struct {
             var col = r[0];
             while (col <= r[1]) : (col += 1) try out.appendSlice(self.a, self.cells[row * self.gn + col]);
         }
-        std.mem.sort(u32, out.items, {}, std.sort.asc(u32));
+        sort.stable(u32, out.items, {}, sort.asc(u32));
         var k: usize = 0;
         for (out.items, 0..) |v, i| {
             if (i == 0 or v != out.items[i - 1]) {
@@ -249,7 +250,7 @@ pub const Iso = struct {
             try addContourCuts(al, &ts, a, b, f.outer);
             for (f.holes) |h| try addContourCuts(al, &ts, a, b, h);
         }
-        std.mem.sort(f64, ts.items, {}, std.sort.asc(f64));
+        sort.stable(f64, ts.items, {}, sort.asc(f64));
         var i: usize = 0;
         while (i + 1 < ts.items.len) : (i += 1) {
             const t0 = ts.items[i];
@@ -525,7 +526,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         const Ent = struct { key: Key, idx: usize };
         var ents = try a.alloc(Ent, ne);
         for (iso.edges.items, 0..) |e, i| ents[i] = .{ .key = keyOf(e.a, e.b), .idx = i };
-        std.mem.sort(Ent, ents, {}, struct {
+        sort.stable(Ent, ents, {}, struct {
             fn lt(_: void, x: Ent, y: Ent) bool {
                 return switch (std.mem.order(i64, &x.key, &y.key)) {
                     .lt => true,
@@ -623,7 +624,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         };
         if (!found) try pens.append(a, pen);
     }
-    std.mem.sort(Pen, pens.items, style, struct {
+    sort.stable(Pen, pens.items, style, struct {
         fn lt(st: *const style_mod.Style, x: Pen, y: Pen) bool {
             const wx = st.penWidthMm(x);
             const wy = st.penWidthMm(y);
@@ -670,7 +671,7 @@ pub fn build(iso: *Iso, scene: *const scene_mod.Scene, spec: *const view_mod.Vie
         var faces: std.ArrayList(usize) = .empty;
         for (iso.faces.items, 0..) |f, i| if (f.prism == pi and f.front) try faces.append(a, i);
         const Ctx = struct { iso: *const Iso, cap: bool };
-        std.mem.sort(usize, faces.items, Ctx{ .iso = iso, .cap = ip.cap_cut }, struct {
+        sort.stable(usize, faces.items, Ctx{ .iso = iso, .cap = ip.cap_cut }, struct {
             fn lt(c: Ctx, x: usize, y: usize) bool {
                 const fx = c.iso.faces.items[x];
                 const fy = c.iso.faces.items[y];

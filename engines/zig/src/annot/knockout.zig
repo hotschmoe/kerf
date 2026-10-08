@@ -1,6 +1,7 @@
 //! Hatch knockout (SPEC 18): hatch lines are cut where a note, dimension text or label sits on them.
 
 const std = @import("std");
+const sort = @import("../sort.zig");
 const drawing = @import("../drawing.zig");
 const geom = @import("../geom.zig");
 const Allocator = std.mem.Allocator;
@@ -47,7 +48,7 @@ pub fn knockHatch(a: Allocator, items: []Item, boxes: []const [4]V2) Allocator.E
             }
             const degenerate = V2.eql(p, q, 1e-12);
             if (degenerate) continue;
-            std.mem.sort([2]f64, cuts.items, {}, struct {
+            sort.stable([2]f64, cuts.items, {}, struct {
                 fn lt(_: void, x: [2]f64, y: [2]f64) bool {
                     return x[0] < y[0];
                 }

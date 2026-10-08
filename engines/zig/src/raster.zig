@@ -11,6 +11,7 @@
 //! Pure std, all memory from the caller's allocator, deterministic, no I/O (builds for wasm32).
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const geom = @import("geom.zig");
 const drawing = @import("drawing.zig");
 const font_mod = @import("font.zig");
@@ -256,7 +257,7 @@ const Canvas = struct {
                     }
                 }
                 if (c.xs.items.len < 2) continue;
-                std.mem.sort(f64, c.xs.items, {}, std.sort.asc(f64));
+                sort.stable(f64, c.xs.items, {}, sort.asc(f64));
                 var i: usize = 0;
                 while (i + 1 < c.xs.items.len) : (i += 2) {
                     const xa = std.math.clamp(c.xs.items[i], 0.0, wf);

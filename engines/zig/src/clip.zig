@@ -13,6 +13,7 @@
 //! bound a hole.
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const geom = @import("geom.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
@@ -147,7 +148,7 @@ pub fn boolean(a: Allocator, A: []const []const V2, B: []const []const V2, op: O
         const e = edges.items[k];
         try verts.append(a, e.a);
         try seq.append(a, @intCast(verts.items.len - 1));
-        std.mem.sort(Cut, cuts[k].items, {}, lessCut);
+        sort.stable(Cut, cuts[k].items, {}, lessCut);
         for (cuts[k].items) |c| {
             if (c.t <= 0 or c.t >= 1) continue;
             try verts.append(a, c.p);
@@ -320,7 +321,7 @@ fn snapVertices(a: Allocator, v: []const V2) Allocator.Error![]u32 {
             return x < y;
         }
     };
-    std.mem.sort(u32, order, Ctx{ .v = v }, Ctx.lt);
+    sort.stable(u32, order, Ctx{ .v = v }, Ctx.lt);
     // union-find over x-sorted sweep
     const parent = try a.alloc(u32, n);
     for (parent, 0..) |*p, i| p.* = @intCast(i);
@@ -382,7 +383,7 @@ fn chain(a: Allocator, pos: []const V2, edges: []Sub) Allocator.Error![][]V2 {
             return x < y;
         }
     };
-    std.mem.sort(u32, by_from, Ctx{ .e = edges }, Ctx.lt);
+    sort.stable(u32, by_from, Ctx{ .e = edges }, Ctx.lt);
     const first = try a.alloc(u32, pos.len + 1);
     @memset(first, 0);
     for (edges) |e| first[e.from + 1] += 1;

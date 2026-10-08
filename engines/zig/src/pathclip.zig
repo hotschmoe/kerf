@@ -2,6 +2,7 @@
 //! axis-parallel lines.
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const geom = @import("geom.zig");
 const Allocator = std.mem.Allocator;
 const V2 = geom.V2;
@@ -57,7 +58,7 @@ fn clipArc(a: Allocator, p0: V2, p1: V2, bulge: f64, b: Box) Allocator.Error![]I
         const n = geom.arcSeg(p0, p1, bulge, corners[i], corners[(i + 1) % 4], &ta, &tb);
         for (0..n) |k| try ts.append(a, ta[k]);
     }
-    std.mem.sort(f64, ts.items, {}, std.sort.asc(f64));
+    sort.stable(f64, ts.items, {}, sort.asc(f64));
     var out: std.ArrayList(Interval) = .empty;
     var i: usize = 0;
     while (i + 1 < ts.items.len) : (i += 1) {
@@ -192,7 +193,7 @@ pub fn scan(a: Allocator, loops: []const []const V2, c: f64, vertical: bool) All
             }
         }
     }
-    std.mem.sort(f64, out.items, {}, std.sort.asc(f64));
+    sort.stable(f64, out.items, {}, sort.asc(f64));
     return out.items;
 }
 

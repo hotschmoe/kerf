@@ -17,7 +17,8 @@ Zig 0.17 names the optimize modes `debug|safe|fast|small` (`-Doptimize=safe`, `-
 cd engines/zig
 zig build                    # CLI -> zig-out/bin/kerf
 zig build test --summary all # unit + reference-document + leak tests (std.testing.allocator)
-zig build wasm               # -> dist/kerf.wasm (wasm32-freestanding, small, zero imports)
+zig build wasm               # -> dist/kerf.wasm (wasm32-freestanding, small, zero imports; through `wasm-opt -Oz` if binaryen is on PATH)
+zig build wasm -Dwasm-opt    # require wasm-opt (what CI/release ship; ~/.cache/trunk/wasm-opt-version_123/bin here); -Dwasm-opt=false: never
 zig build -Dui=../../apps/web/dist-serve -Doptimize=small   # CLI with the web UI embedded (needs `npm run build:serve` in apps/web first)
 node tests/serve_smoke.mjs   # integration test of `kerf serve` (215 checks; starts the built zig-out/bin/kerf on temp folders)
 zig build -Dtarget=x86_64-windows-gnu -Doptimize=small   # cross-compiles (also aarch64-windows-gnu, *-linux-musl, *-macos)
@@ -101,7 +102,8 @@ api.call(name, json)            api.Fn enum -> one function per API function (ch
 ### Module map
 
 - **Foundation**: `json` (parser/writer, Kerf number format) | `units` (lengths, scales, slopes, ft-in) | `num` (checked float->int) |
-  `limits` | `oom` (allocation sensor) | `geom` (exact predicates, bulge arcs) | `clip` `pathclip` `pathgeom` (polygon booleans, path
+  `limits` | `oom` (allocation sensor) | `sort` (the one stable sort: `sort.stable` has `std.mem.sort`'s signature; never use
+  `std.mem.sort` in `src/`, every instantiation costs 2-10 KB of wasm) | `geom` (exact predicates, bulge arcs) | `clip` `pathclip` `pathgeom` (polygon booleans, path
   clipping, fillets/ribbons) | `hatch` | `font` `textgeom` | `view` (view parsing) | `model` (diagnostics, `Params`, `Prism`, `Built`).
 - **Vocabulary (enums, no strings)**: `api.Fn` (API functions) | `catalog.Type` (component types) | `pen.Pen` and `pen.LayerKey` (what the
   drawing code draws with; `Pen.layer()` is an exhaustive switch) | `drawing.Kind` / `view.Kind` | `style.Role` (what a material is) |
@@ -177,11 +179,14 @@ no clocks; every output is a pure function of (doc, style).
 
 ## Measured numbers
 
-wasm (`tools/size_report.sh`): ReleaseSmall **934,693 B raw / 349,261 gzip / 275,657 brotli** on Zig 0.17.0 (964,259 / 355,656 / 281,128 on 0.16.0, -3.1% raw; the figures below are the 0.16 history: after refactor batches 4-7 963,851 B raw / 355,588 gzip / 281,466 brotli (951,291 B before
+wasm (`tools/size_report.sh`), shipped (ReleaseSmall + `wasm-opt -Oz`, REVIEW SIZ-1): **702,937 B raw / 291,366 gzip / 238,979 brotli**;
+without wasm-opt 787,935 / 298,938 / 241,366. Before SIZ-1 (one stable sort -136 KB, minified style -5.5 KB, `dxf` text blocks -5 KB, wasm-opt
+-85 KB): 934,701 / 349,256 / 275,658. Runtime unchanged within noise (node 22: 330k-key `check` 197 -> 185 ms; truss x20 iso export 2.14 -> 2.13 s).
+Earlier: ReleaseSmall 934,693 B raw / 349,261 gzip / 275,657 brotli on Zig 0.17.0 (964,259 / 355,656 / 281,128 on 0.16.0, -3.1% raw; the figures below are the 0.16 history: after refactor batches 4-7 963,851 B raw / 355,588 gzip / 281,466 brotli (951,291 B before
 the batches: the typed `Params` machinery and the catalog row tables cost about 12 KB, the enums saved 2 KB; per batch: 4 -> 949,372, 5 -> 964,314,
 6 -> 966,523, 7 -> 966,990, `params.readScalar` -> 963,851). `twiggy top` (`zig build wasm -Dwasm-strip=false`): `builders.build` 68 KB (all builders
 inlined into the dispatch), annot 51 KB, iso 36 KB, dispatch 36 KB, clip 29 KB, rodata 132 KB. Older figures (662,838 B) predate v0.1.2-0.1.5.
-Zero imports; exports exactly the SPEC 13.1 six. The CLI is built with `-Dstrip` by default outside Debug (ReleaseSafe Linux CLI 16.0 MB -> 2.5 MB;
+Zero imports; exports the SPEC 13.1 six plus `__stack_pointer` (found during SIZ-1, predates it: `wasm_check.mjs` says ABI MISMATCH; open). The CLI is built with `-Dstrip` by default outside Debug (ReleaseSafe Linux CLI 16.0 MB -> 2.5 MB;
 `-Dstrip=false` keeps debug info).
 
 Timings in node 22 (V8), wasm ReleaseSmall, ms per call (`tools/zig-engine/bench.mjs`):
@@ -492,10 +497,10 @@ the template in `<dir>/.kerf/agents.json`.
 
 ### Release CI (`.github/workflows/`)
 `ci.yml` (push/PR): `zig build test`, Debug build -> `tests/check_golden.sh` -> `cli_ergonomics.mjs` -> `serve_smoke.mjs` -> `fuzz.py 300 1`, `zig build wasm`
-+ `wasm_golden.mjs`, a ReleaseSafe build (what ships) re-running `serve_smoke.mjs` and `cli_ergonomics.mjs`, cross-compile smoke (windows x86_64/aarch64,
++ `wasm_golden.mjs` (also ReleaseSafe, and the small build through binaryen version_123 `-Dwasm-opt`), a ReleaseSafe build (what ships) re-running `serve_smoke.mjs` and `cli_ergonomics.mjs`, cross-compile smoke (windows x86_64/aarch64,
 macos, linux-musl x86_64/aarch64, ReleaseSafe), and a web job (wasm -> `npm ci` -> typecheck -> `test:unit` -> `build:serve` -> `zig build -Dui` ->
 `serve_smoke.mjs` against the embedded UI). TODO comments in `ci.yml`: `zig fmt --check src` (after the whitespace-only fmt commit) and
-`zig build wasm -Dwasm-optimize=ReleaseSafe` + golden (after `no_panic`). `release.yml` (tag `v*`): wasm -> web `build:serve`
+`zig build wasm -Dwasm-optimize=ReleaseSafe` + golden (after `no_panic`). `release.yml` (tag `v*`): binaryen version_123 -> wasm (`-Dwasm-opt`, required) + `wasm_golden.mjs` -> web `build:serve`
 (falls back to `build:zig`) -> tests + golden + smoke on the ReleaseSafe build -> `zig build -Dtarget=<t> -Doptimize=ReleaseSafe -Dui=../../apps/web/dist-serve` for
 x86_64/aarch64 x windows-gnu/linux-musl/macos -> assets `kerf-<arch>-<os>[.exe]` (what install.sh/install.ps1 download) + `SHA256SUMS`
 -> `gh release create/upload` with `GITHUB_TOKEN`. Not run here (no GitHub); every command in it was run locally except the gh calls.

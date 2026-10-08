@@ -24,3 +24,4 @@ for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-s
   }
 }
 console.log(`wasm vs native goldens: ${n - bad}/${n} byte-identical`);
+if (bad) process.exitCode = 1; // a CI gate: a mismatch must fail the step

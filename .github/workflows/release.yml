@@ -40,10 +40,21 @@ jobs:
         with:
           python-version: '3.12'
 
+      # The shipped wasm goes through binaryen `wasm-opt -Oz` (REVIEW SIZ-1: about -11% raw); `-Dwasm-opt` fails the
+      # build if wasm-opt is missing, so a release never silently ships the unoptimised module.
+      - name: binaryen wasm-opt (version_123)
+        run: |
+          curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz \
+            | tar xz -C "$RUNNER_TEMP" binaryen-version_123/bin/wasm-opt
+          echo "$RUNNER_TEMP/binaryen-version_123/bin" >> "$GITHUB_PATH"
+
       # Order matters: the web build copies engines/zig/dist/kerf.wasm, and the CLI embeds the web build.
-      - name: Build kerf.wasm
+      - name: Build kerf.wasm (wasm-opt -Oz) + wasm golden
         working-directory: engines/zig
-        run: zig build wasm
+        run: |
+          zig build wasm -Dwasm-opt
+          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+          ls -l dist/kerf.wasm
 
       - name: Build the web UI (workspace mode, for `kerf serve`)
         working-directory: apps/web

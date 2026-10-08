@@ -1,6 +1,7 @@
 //! Dimensions (SPEC 6.5): the dimension line, extension lines, terminators and text of one dimension, and the stacking of dimensions that would collide.
 
 const std = @import("std");
+const sort = @import("../sort.zig");
 const geom = @import("../geom.zig");
 const model = @import("../model.zig");
 const drawing = @import("../drawing.zig");
@@ -261,7 +262,7 @@ pub fn stackDims(env: *Env, specs: []const DimSpec, pushes: []const f64, base_se
     const step = 0.25 * S;
     const order = try a.alloc(usize, specs.len);
     for (order, 0..) |*o, i| o.* = i;
-    std.mem.sort(usize, order, specs, struct {
+    sort.stable(usize, order, specs, struct {
         fn lt(sp: []const DimSpec, x: usize, y: usize) bool {
             const sx = sp[x].span();
             const sy = sp[y].span();

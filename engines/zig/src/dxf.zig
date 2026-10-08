@@ -25,6 +25,10 @@ const Writer = struct {
         try self.out.print(self.a, fmt, args);
         try self.out.append(self.a, '\n');
     }
+    /// A block of group codes built at compile time by `dx`.
+    fn lit(self: *Writer, text: []const u8) Allocator.Error!void {
+        try self.out.appendSlice(self.a, text);
+    }
     fn s(self: *Writer, c: u32, v: []const u8) Allocator.Error!void {
         try self.out.print(self.a, "{d}\n{s}\n", .{ c, v });
     }
@@ -42,6 +46,25 @@ const Writer = struct {
         return h;
     }
 };
+
+/// Fixed `.{ code, "value" }` pairs as one DXF text block, at compile time (REVIEW SIZ-1: the ~300 constant
+/// `s`/`i`/`f` calls of `render` were 16 KB of wasm). Numbers are written as `fmtF` / `{d}` print them.
+inline fn dx(comptime pairs: anytype) []const u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(100 * pairs.len + 1000);
+        var t: []const u8 = "";
+        for (pairs) |p| {
+            var code: []const u8 = "";
+            var c: u32 = p[0];
+            while (true) : (c /= 10) {
+                code = &[1]u8{'0' + c % 10} ++ code;
+                if (c < 10) break;
+            }
+            t = t ++ code ++ "\n" ++ p[1] ++ "\n";
+        }
+        break :blk t;
+    };
+}
 
 /// Shortest decimal of the value rounded to 1e-6 (deterministic, no exponent, never overflows).
 pub fn fmtF(buf: *[40]u8, x: f64) []const u8 {
@@ -81,7 +104,7 @@ fn entityHeader(w: *Writer, etype: []const u8, layer: []const u8, lw: i32, lt: ?
     try w.s(0, etype);
     _ = try w.handle();
     try w.s(330, model_space_handle);
-    try w.s(100, "AcDbEntity");
+    try w.lit(dx(.{.{ 100, "AcDbEntity" }}));
     try w.s(8, layer);
     if (lt) |l| try w.s(6, l);
     try w.i(370, lw);
@@ -90,10 +113,10 @@ fn entityHeader(w: *Writer, etype: []const u8, layer: []const u8, lw: i32, lt: ?
 fn lwpoly(w: *Writer, layer: []const u8, lw: i32, lt: ?[]const u8, closed: bool, pts: []const Pt) Allocator.Error!void {
     if (pts.len < 2) return;
     try entityHeader(w, "LWPOLYLINE", layer, lw, lt);
-    try w.s(100, "AcDbPolyline");
+    try w.lit(dx(.{.{ 100, "AcDbPolyline" }}));
     try w.i(90, @intCast(pts.len));
     try w.i(70, if (closed) 1 else 0);
-    try w.f(43, 0);
+    try w.lit(dx(.{.{ 43, "0" }}));
     for (pts) |p| {
         try w.f(10, p.x);
         try w.f(20, p.y);
@@ -110,29 +133,31 @@ fn hatchBoundary(w: *Writer, loops: []const []const Pt) Allocator.Error!void {
             has_b = true;
         };
         try w.i(72, if (has_b) 1 else 0);
-        try w.i(73, 1);
+        try w.lit(dx(.{.{ 73, "1" }}));
         try w.i(93, @intCast(l.len));
         for (l) |p| {
             try w.f(10, p.x);
             try w.f(20, p.y);
             if (has_b) try w.f(42, p.b);
         }
-        try w.i(97, 0);
+        try w.lit(dx(.{.{ 97, "0" }}));
     }
 }
 
 fn hatchHeader(w: *Writer, layer: []const u8, lw: i32, name: []const u8, solid: bool) Allocator.Error!void {
     try entityHeader(w, "HATCH", layer, lw, null);
-    try w.s(100, "AcDbHatch");
-    try w.f(10, 0);
-    try w.f(20, 0);
-    try w.f(30, 0);
-    try w.f(210, 0);
-    try w.f(220, 0);
-    try w.f(230, 1);
+    try w.lit(dx(.{
+        .{ 100, "AcDbHatch" },
+        .{ 10, "0" },
+        .{ 20, "0" },
+        .{ 30, "0" },
+        .{ 210, "0" },
+        .{ 220, "0" },
+        .{ 230, "1" },
+    }));
     try w.s(2, name);
     try w.i(70, if (solid) 1 else 0);
-    try w.i(71, 0);
+    try w.lit(dx(.{.{ 71, "0" }}));
 }
 
 pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
@@ -150,9 +175,11 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
             .fill => |f| {
                 try hatchHeader(&w, f.layer, lineweightFor(st.penWidthMm(.cut)), "SOLID", true);
                 try hatchBoundary(&w, f.loops);
-                try w.i(75, 0);
-                try w.i(76, 1);
-                try w.i(98, 0);
+                try w.lit(dx(.{
+                    .{ 75, "0" },
+                    .{ 76, "1" },
+                    .{ 98, "0" },
+                }));
                 for (f.loops) |l| ext.addBox(geom.pointsBox(l));
             },
             .hatch => |h| {
@@ -160,11 +187,15 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
                 if (h.loops.len == 0) continue;
                 try hatchHeader(&w, h.layer, lineweightFor(st.penWidthMm(h.pen)), h.pattern, false);
                 try hatchBoundary(&w, h.loops);
-                try w.i(75, 0);
-                try w.i(76, 1);
+                try w.lit(dx(.{
+                    .{ 75, "0" },
+                    .{ 76, "1" },
+                }));
                 try w.f(52, h.angle);
-                try w.f(41, 1);
-                try w.i(77, 0);
+                try w.lit(dx(.{
+                    .{ 41, "1" },
+                    .{ 77, "0" },
+                }));
                 const k = d.scale * h.scale;
                 if (pat) |p| {
                     try w.i(78, @intCast(p.families.len));
@@ -178,17 +209,17 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
                         for (fam.dashes) |dd| try w.f(49, dd * k);
                     }
                 } else try w.i(78, 0);
-                try w.i(98, 0);
+                try w.lit(dx(.{.{ 98, "0" }}));
                 for (h.loops) |l| ext.addBox(geom.pointsBox(l));
             },
             .region => {},
             .text => |t| {
                 if (t.s.len == 0) continue;
                 try entityHeader(&w, "TEXT", t.layer, lineweightFor(st.penWidthMm(t.pen)), null);
-                try w.s(100, "AcDbText");
+                try w.lit(dx(.{.{ 100, "AcDbText" }}));
                 try w.f(10, t.x);
                 try w.f(20, t.y);
-                try w.f(30, 0);
+                try w.lit(dx(.{.{ 30, "0" }}));
                 try w.f(40, t.h);
                 try w.s(1, t.s);
                 if (t.rot != 0) try w.f(50, t.rot);
@@ -207,9 +238,9 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
                     try w.i(72, ha);
                     try w.f(11, t.x);
                     try w.f(21, t.y);
-                    try w.f(31, 0);
+                    try w.lit(dx(.{.{ 31, "0" }}));
                 }
-                try w.s(100, "AcDbText");
+                try w.lit(dx(.{.{ 100, "AcDbText" }}));
                 if (va != 0) try w.i(73, va);
                 ext.addPoint(t.x, t.y);
             },
@@ -221,84 +252,100 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
 
     // ---- assemble ----
     var o = Writer{ .a = a };
-    try o.s(0, "SECTION");
-    try o.s(2, "HEADER");
-    try o.s(9, "$ACADVER");
-    try o.s(1, "AC1015");
-    try o.s(9, "$HANDSEED");
+    try o.lit(dx(.{
+        .{ 0, "SECTION" },
+        .{ 2, "HEADER" },
+        .{ 9, "$ACADVER" },
+        .{ 1, "AC1015" },
+        .{ 9, "$HANDSEED" },
+    }));
     try o.code(5, "{X}", .{seed});
-    try o.s(9, "$INSUNITS");
-    try o.i(70, 1);
-    try o.s(9, "$MEASUREMENT");
-    try o.i(70, 0);
-    try o.s(9, "$LTSCALE");
-    try o.f(40, 1);
-    try o.s(9, "$EXTMIN");
+    try o.lit(dx(.{
+        .{ 9, "$INSUNITS" },
+        .{ 70, "1" },
+        .{ 9, "$MEASUREMENT" },
+        .{ 70, "0" },
+        .{ 9, "$LTSCALE" },
+        .{ 40, "1" },
+        .{ 9, "$EXTMIN" },
+    }));
     try o.f(10, ext.x0);
     try o.f(20, ext.y0);
-    try o.f(30, 0);
-    try o.s(9, "$EXTMAX");
+    try o.lit(dx(.{
+        .{ 30, "0" },
+        .{ 9, "$EXTMAX" },
+    }));
     try o.f(10, ext.x1);
     try o.f(20, ext.y1);
-    try o.f(30, 0);
-    try o.s(0, "ENDSEC");
-    try o.s(0, "SECTION");
-    try o.s(2, "CLASSES");
-    try o.s(0, "ENDSEC");
+    try o.lit(dx(.{
+        .{ 30, "0" },
+        .{ 0, "ENDSEC" },
+        .{ 0, "SECTION" },
+        .{ 2, "CLASSES" },
+        .{ 0, "ENDSEC" },
+    }));
 
     // TABLES
-    try o.s(0, "SECTION");
-    try o.s(2, "TABLES");
+    try o.lit(dx(.{
+        .{ 0, "SECTION" },
+        .{ 2, "TABLES" },
+    }));
     // VPORT
-    try o.s(0, "TABLE");
-    try o.s(2, "VPORT");
-    try o.s(5, "8");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
-    try o.i(70, 1);
-    try o.s(0, "VPORT");
-    try o.s(5, "30");
-    try o.s(330, "8");
-    try o.s(100, "AcDbSymbolTableRecord");
-    try o.s(100, "AcDbViewportTableRecord");
-    try o.s(2, "*ACTIVE");
-    try o.i(70, 0);
-    try o.f(10, 0);
-    try o.f(20, 0);
-    try o.f(11, 1);
-    try o.f(21, 1);
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "VPORT" },
+        .{ 5, "8" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+        .{ 70, "1" },
+        .{ 0, "VPORT" },
+        .{ 5, "30" },
+        .{ 330, "8" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbViewportTableRecord" },
+        .{ 2, "*ACTIVE" },
+        .{ 70, "0" },
+        .{ 10, "0" },
+        .{ 20, "0" },
+        .{ 11, "1" },
+        .{ 21, "1" },
+    }));
     const cx = (ext.x0 + ext.x1) / 2;
     const cy = (ext.y0 + ext.y1) / 2;
     try o.f(12, cx);
     try o.f(22, cy);
-    try o.f(13, 0);
-    try o.f(23, 0);
-    try o.f(14, 10);
-    try o.f(24, 10);
-    try o.f(15, 10);
-    try o.f(25, 10);
-    try o.f(16, 0);
-    try o.f(26, 0);
-    try o.f(36, 1);
-    try o.f(17, 0);
-    try o.f(27, 0);
-    try o.f(37, 0);
+    try o.lit(dx(.{
+        .{ 13, "0" },
+        .{ 23, "0" },
+        .{ 14, "10" },
+        .{ 24, "10" },
+        .{ 15, "10" },
+        .{ 25, "10" },
+        .{ 16, "0" },
+        .{ 26, "0" },
+        .{ 36, "1" },
+        .{ 17, "0" },
+        .{ 27, "0" },
+        .{ 37, "0" },
+    }));
     try o.f(40, @max(ext.y1 - ext.y0, 1) * 1.1);
     try o.f(41, @max((ext.x1 - ext.x0) / @max(ext.y1 - ext.y0, 1), 0.1));
-    try o.f(42, 50);
-    try o.f(43, 0);
-    try o.f(44, 0);
-    try o.f(50, 0);
-    try o.f(51, 0);
-    try o.i(71, 0);
-    try o.i(72, 100);
-    try o.i(73, 1);
-    try o.i(74, 3);
-    try o.i(75, 0);
-    try o.i(76, 0);
-    try o.i(77, 0);
-    try o.i(78, 0);
-    try o.s(0, "ENDTAB");
+    try o.lit(dx(.{
+        .{ 42, "50" },
+        .{ 43, "0" },
+        .{ 44, "0" },
+        .{ 50, "0" },
+        .{ 51, "0" },
+        .{ 71, "0" },
+        .{ 72, "100" },
+        .{ 73, "1" },
+        .{ 74, "3" },
+        .{ 75, "0" },
+        .{ 76, "0" },
+        .{ 77, "0" },
+        .{ 78, "0" },
+        .{ 0, "ENDTAB" },
+    }));
 
     // LTYPE
     var lts: std.ArrayList(struct { name: []const u8, pen: style_mod.PenDef }) = .empty;
@@ -311,36 +358,61 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
         };
         if (used or std.mem.eql(u8, p.name, "hidden")) try lts.append(a, .{ .name = try linetypeName(a, p.name), .pen = p });
     };
-    try o.s(0, "TABLE");
-    try o.s(2, "LTYPE");
-    try o.s(5, "5");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "LTYPE" },
+        .{ 5, "5" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+    }));
     try o.i(70, @intCast(3 + lts.items.len));
-    const fixed_lts = [_][3][]const u8{ .{ "14", "BYBLOCK", "" }, .{ "15", "BYLAYER", "" }, .{ "16", "CONTINUOUS", "Solid line" } };
-    for (fixed_lts) |lt| {
-        try o.s(0, "LTYPE");
-        try o.s(5, lt[0]);
-        try o.s(330, "5");
-        try o.s(100, "AcDbSymbolTableRecord");
-        try o.s(100, "AcDbLinetypeTableRecord");
-        try o.s(2, lt[1]);
-        try o.i(70, 0);
-        try o.s(3, lt[2]);
-        try o.i(72, 65);
-        try o.i(73, 0);
-        try o.f(40, 0);
-    }
+    try o.lit(dx(.{
+        .{ 0, "LTYPE" },
+        .{ 5, "14" },
+        .{ 330, "5" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbLinetypeTableRecord" },
+        .{ 2, "BYBLOCK" },
+        .{ 70, "0" },
+        .{ 3, "" },
+        .{ 72, "65" },
+        .{ 73, "0" },
+        .{ 40, "0" },
+        .{ 0, "LTYPE" },
+        .{ 5, "15" },
+        .{ 330, "5" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbLinetypeTableRecord" },
+        .{ 2, "BYLAYER" },
+        .{ 70, "0" },
+        .{ 3, "" },
+        .{ 72, "65" },
+        .{ 73, "0" },
+        .{ 40, "0" },
+        .{ 0, "LTYPE" },
+        .{ 5, "16" },
+        .{ 330, "5" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbLinetypeTableRecord" },
+        .{ 2, "CONTINUOUS" },
+        .{ 70, "0" },
+        .{ 3, "Solid line" },
+        .{ 72, "65" },
+        .{ 73, "0" },
+        .{ 40, "0" },
+    }));
     for (lts.items, 0..) |lt, idx| {
-        try o.s(0, "LTYPE");
+        try o.lit(dx(.{.{ 0, "LTYPE" }}));
         try o.code(5, "{X}", .{0x40 + idx});
-        try o.s(330, "5");
-        try o.s(100, "AcDbSymbolTableRecord");
-        try o.s(100, "AcDbLinetypeTableRecord");
+        try o.lit(dx(.{
+            .{ 330, "5" },
+            .{ 100, "AcDbSymbolTableRecord" },
+            .{ 100, "AcDbLinetypeTableRecord" },
+        }));
         try o.s(2, lt.name);
-        try o.i(70, 0);
+        try o.lit(dx(.{.{ 70, "0" }}));
         try o.s(3, lt.name);
-        try o.i(72, 65);
+        try o.lit(dx(.{.{ 72, "65" }}));
         const dm = lt.pen.dash_mm.?;
         try o.i(73, @intCast(dm.len));
         var total: f64 = 0;
@@ -349,192 +421,250 @@ pub fn render(a: Allocator, d: *const drawing.Drawing) Allocator.Error![]u8 {
         for (dm, 0..) |x, k| {
             const len = x / 25.4 * d.scale;
             try o.f(49, if (k % 2 == 0) len else -len);
-            try o.i(74, 0);
+            try o.lit(dx(.{.{ 74, "0" }}));
         }
     }
-    try o.s(0, "ENDTAB");
+    try o.lit(dx(.{.{ 0, "ENDTAB" }}));
 
     // LAYER
-    try o.s(0, "TABLE");
-    try o.s(2, "LAYER");
-    try o.s(5, "2");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "LAYER" },
+        .{ 5, "2" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+    }));
     try o.i(70, @intCast(1 + d.layers.len));
-    try o.s(0, "LAYER");
-    try o.s(5, "10");
-    try o.s(330, "2");
-    try o.s(100, "AcDbSymbolTableRecord");
-    try o.s(100, "AcDbLayerTableRecord");
-    try o.s(2, "0");
-    try o.i(70, 0);
-    try o.i(62, 7);
-    try o.s(6, "CONTINUOUS");
-    try o.i(370, -3);
+    try o.lit(dx(.{
+        .{ 0, "LAYER" },
+        .{ 5, "10" },
+        .{ 330, "2" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbLayerTableRecord" },
+        .{ 2, "0" },
+        .{ 70, "0" },
+        .{ 62, "7" },
+        .{ 6, "CONTINUOUS" },
+        .{ 370, "-3" },
+    }));
     for (d.layers, 0..) |l, idx| {
-        try o.s(0, "LAYER");
+        try o.lit(dx(.{.{ 0, "LAYER" }}));
         try o.code(5, "{X}", .{0x50 + idx});
-        try o.s(330, "2");
-        try o.s(100, "AcDbSymbolTableRecord");
-        try o.s(100, "AcDbLayerTableRecord");
+        try o.lit(dx(.{
+            .{ 330, "2" },
+            .{ 100, "AcDbSymbolTableRecord" },
+            .{ 100, "AcDbLayerTableRecord" },
+        }));
         try o.s(2, l.name);
-        try o.i(70, 0);
-        try o.i(62, 7);
+        try o.lit(dx(.{
+            .{ 70, "0" },
+            .{ 62, "7" },
+        }));
         try o.s(6, if (std.mem.eql(u8, l.linetype, "DASHED")) "DASHED" else "CONTINUOUS");
         try o.i(370, lineweightFor(l.lineweight_mm));
     }
-    try o.s(0, "ENDTAB");
+    try o.lit(dx(.{.{ 0, "ENDTAB" }}));
 
     // STYLE
-    try o.s(0, "TABLE");
-    try o.s(2, "STYLE");
-    try o.s(5, "3");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
-    try o.i(70, 2);
-    const styles = [2][3][]const u8{ .{ "11", "STANDARD", "txt" }, .{ "12", st.dxf_style, st.dxf_font } };
-    for (styles) |sy| {
-        try o.s(0, "STYLE");
-        try o.s(5, sy[0]);
-        try o.s(330, "3");
-        try o.s(100, "AcDbSymbolTableRecord");
-        try o.s(100, "AcDbTextStyleTableRecord");
-        try o.s(2, sy[1]);
-        try o.i(70, 0);
-        try o.f(40, 0);
-        try o.f(41, 1);
-        try o.f(50, 0);
-        try o.i(71, 0);
-        try o.f(42, 0.2);
-        try o.s(3, sy[2]);
-        try o.s(4, "");
-    }
-    try o.s(0, "ENDTAB");
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "STYLE" },
+        .{ 5, "3" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+        .{ 70, "2" },
+        .{ 0, "STYLE" },
+        .{ 5, "11" },
+        .{ 330, "3" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbTextStyleTableRecord" },
+        .{ 2, "STANDARD" },
+        .{ 70, "0" },
+        .{ 40, "0" },
+        .{ 41, "1" },
+        .{ 50, "0" },
+        .{ 71, "0" },
+        .{ 42, "0.2" },
+        .{ 3, "txt" },
+        .{ 4, "" },
+        .{ 0, "STYLE" },
+        .{ 5, "12" },
+        .{ 330, "3" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbTextStyleTableRecord" },
+    }));
+    try o.s(2, st.dxf_style);
+    try o.lit(dx(.{
+        .{ 70, "0" },
+        .{ 40, "0" },
+        .{ 41, "1" },
+        .{ 50, "0" },
+        .{ 71, "0" },
+        .{ 42, "0.2" },
+    }));
+    try o.s(3, st.dxf_font);
+    try o.lit(dx(.{
+        .{ 4, "" },
+        .{ 0, "ENDTAB" },
+    }));
 
     // VIEW, UCS (empty)
-    try o.s(0, "TABLE");
-    try o.s(2, "VIEW");
-    try o.s(5, "6");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
-    try o.i(70, 0);
-    try o.s(0, "ENDTAB");
-    try o.s(0, "TABLE");
-    try o.s(2, "UCS");
-    try o.s(5, "7");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
-    try o.i(70, 0);
-    try o.s(0, "ENDTAB");
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "VIEW" },
+        .{ 5, "6" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+        .{ 70, "0" },
+        .{ 0, "ENDTAB" },
+        .{ 0, "TABLE" },
+        .{ 2, "UCS" },
+        .{ 5, "7" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+        .{ 70, "0" },
+        .{ 0, "ENDTAB" },
+    }));
     // APPID
-    try o.s(0, "TABLE");
-    try o.s(2, "APPID");
-    try o.s(5, "9");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
-    try o.i(70, 1);
-    try o.s(0, "APPID");
-    try o.s(5, "13");
-    try o.s(330, "9");
-    try o.s(100, "AcDbSymbolTableRecord");
-    try o.s(100, "AcDbRegAppTableRecord");
-    try o.s(2, "ACAD");
-    try o.i(70, 0);
-    try o.s(0, "ENDTAB");
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "APPID" },
+        .{ 5, "9" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+        .{ 70, "1" },
+        .{ 0, "APPID" },
+        .{ 5, "13" },
+        .{ 330, "9" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbRegAppTableRecord" },
+        .{ 2, "ACAD" },
+        .{ 70, "0" },
+        .{ 0, "ENDTAB" },
+    }));
     // DIMSTYLE
-    try o.s(0, "TABLE");
-    try o.s(2, "DIMSTYLE");
-    try o.s(5, "A");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
-    try o.i(70, 1);
-    try o.s(100, "AcDbDimStyleTable");
-    try o.i(71, 1);
-    try o.s(0, "DIMSTYLE");
-    try o.s(105, "17");
-    try o.s(330, "A");
-    try o.s(100, "AcDbSymbolTableRecord");
-    try o.s(100, "AcDbDimStyleTableRecord");
-    try o.s(2, "STANDARD");
-    try o.i(70, 0);
-    try o.i(340, 0x11);
-    try o.s(0, "ENDTAB");
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "DIMSTYLE" },
+        .{ 5, "A" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+        .{ 70, "1" },
+        .{ 100, "AcDbDimStyleTable" },
+        .{ 71, "1" },
+        .{ 0, "DIMSTYLE" },
+        .{ 105, "17" },
+        .{ 330, "A" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbDimStyleTableRecord" },
+        .{ 2, "STANDARD" },
+        .{ 70, "0" },
+        .{ 340, "17" },
+        .{ 0, "ENDTAB" },
+    }));
     // BLOCK_RECORD
-    try o.s(0, "TABLE");
-    try o.s(2, "BLOCK_RECORD");
-    try o.s(5, "1");
-    try o.s(330, "0");
-    try o.s(100, "AcDbSymbolTable");
-    try o.i(70, 2);
-    const brs = [2][2][]const u8{ .{ model_space_handle, "*Model_Space" }, .{ paper_space_handle, "*Paper_Space" } };
-    for (brs) |br| {
-        try o.s(0, "BLOCK_RECORD");
-        try o.s(5, br[0]);
-        try o.s(330, "1");
-        try o.s(100, "AcDbSymbolTableRecord");
-        try o.s(100, "AcDbBlockTableRecord");
-        try o.s(2, br[1]);
-        try o.i(70, 0);
-        try o.i(280, 1);
-        try o.i(281, 0);
-    }
-    try o.s(0, "ENDTAB");
-    try o.s(0, "ENDSEC");
+    try o.lit(dx(.{
+        .{ 0, "TABLE" },
+        .{ 2, "BLOCK_RECORD" },
+        .{ 5, "1" },
+        .{ 330, "0" },
+        .{ 100, "AcDbSymbolTable" },
+        .{ 70, "2" },
+        .{ 0, "BLOCK_RECORD" },
+        .{ 5, model_space_handle },
+        .{ 330, "1" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbBlockTableRecord" },
+        .{ 2, "*Model_Space" },
+        .{ 70, "0" },
+        .{ 280, "1" },
+        .{ 281, "0" },
+        .{ 0, "BLOCK_RECORD" },
+        .{ 5, paper_space_handle },
+        .{ 330, "1" },
+        .{ 100, "AcDbSymbolTableRecord" },
+        .{ 100, "AcDbBlockTableRecord" },
+        .{ 2, "*Paper_Space" },
+        .{ 70, "0" },
+        .{ 280, "1" },
+        .{ 281, "0" },
+        .{ 0, "ENDTAB" },
+        .{ 0, "ENDSEC" },
+    }));
 
     // BLOCKS
-    try o.s(0, "SECTION");
-    try o.s(2, "BLOCKS");
-    const blocks = [2][4][]const u8{
-        .{ "20", "21", model_space_handle, "*Model_Space" },
-        .{ "22", "23", paper_space_handle, "*Paper_Space" },
-    };
-    for (blocks, 0..) |b, bi| {
-        try o.s(0, "BLOCK");
-        try o.s(5, b[0]);
-        try o.s(330, b[2]);
-        try o.s(100, "AcDbEntity");
-        if (bi == 1) try o.i(67, 1);
-        try o.s(8, "0");
-        try o.s(100, "AcDbBlockBegin");
-        try o.s(2, b[3]);
-        try o.i(70, 0);
-        try o.f(10, 0);
-        try o.f(20, 0);
-        try o.f(30, 0);
-        try o.s(3, b[3]);
-        try o.s(1, "");
-        try o.s(0, "ENDBLK");
-        try o.s(5, b[1]);
-        try o.s(330, b[2]);
-        try o.s(100, "AcDbEntity");
-        if (bi == 1) try o.i(67, 1);
-        try o.s(8, "0");
-        try o.s(100, "AcDbBlockEnd");
-    }
-    try o.s(0, "ENDSEC");
+    try o.lit(dx(.{
+        .{ 0, "SECTION" },
+        .{ 2, "BLOCKS" },
+        .{ 0, "BLOCK" },
+        .{ 5, "20" },
+        .{ 330, model_space_handle },
+        .{ 100, "AcDbEntity" },
+        .{ 8, "0" },
+        .{ 100, "AcDbBlockBegin" },
+        .{ 2, "*Model_Space" },
+        .{ 70, "0" },
+        .{ 10, "0" },
+        .{ 20, "0" },
+        .{ 30, "0" },
+        .{ 3, "*Model_Space" },
+        .{ 1, "" },
+        .{ 0, "ENDBLK" },
+        .{ 5, "21" },
+        .{ 330, model_space_handle },
+        .{ 100, "AcDbEntity" },
+        .{ 8, "0" },
+        .{ 100, "AcDbBlockEnd" },
+        .{ 0, "BLOCK" },
+        .{ 5, "22" },
+        .{ 330, paper_space_handle },
+        .{ 100, "AcDbEntity" },
+        .{ 67, "1" },
+        .{ 8, "0" },
+        .{ 100, "AcDbBlockBegin" },
+        .{ 2, "*Paper_Space" },
+        .{ 70, "0" },
+        .{ 10, "0" },
+        .{ 20, "0" },
+        .{ 30, "0" },
+        .{ 3, "*Paper_Space" },
+        .{ 1, "" },
+        .{ 0, "ENDBLK" },
+        .{ 5, "23" },
+        .{ 330, paper_space_handle },
+        .{ 100, "AcDbEntity" },
+        .{ 67, "1" },
+        .{ 8, "0" },
+        .{ 100, "AcDbBlockEnd" },
+        .{ 0, "ENDSEC" },
+    }));
 
     // ENTITIES
-    try o.s(0, "SECTION");
-    try o.s(2, "ENTITIES");
+    try o.lit(dx(.{
+        .{ 0, "SECTION" },
+        .{ 2, "ENTITIES" },
+    }));
     try o.out.appendSlice(a, entities);
-    try o.s(0, "ENDSEC");
+    try o.lit(dx(.{.{ 0, "ENDSEC" }}));
 
     // OBJECTS
-    try o.s(0, "SECTION");
-    try o.s(2, "OBJECTS");
-    try o.s(0, "DICTIONARY");
-    try o.s(5, "C");
-    try o.s(330, "0");
-    try o.s(100, "AcDbDictionary");
-    try o.i(281, 1);
-    try o.s(3, "ACAD_GROUP");
-    try o.s(350, "D");
-    try o.s(0, "DICTIONARY");
-    try o.s(5, "D");
-    try o.s(330, "C");
-    try o.s(100, "AcDbDictionary");
-    try o.i(281, 1);
-    try o.s(0, "ENDSEC");
-    try o.s(0, "EOF");
+    try o.lit(dx(.{
+        .{ 0, "SECTION" },
+        .{ 2, "OBJECTS" },
+        .{ 0, "DICTIONARY" },
+        .{ 5, "C" },
+        .{ 330, "0" },
+        .{ 100, "AcDbDictionary" },
+        .{ 281, "1" },
+        .{ 3, "ACAD_GROUP" },
+        .{ 350, "D" },
+        .{ 0, "DICTIONARY" },
+        .{ 5, "D" },
+        .{ 330, "C" },
+        .{ 100, "AcDbDictionary" },
+        .{ 281, "1" },
+        .{ 0, "ENDSEC" },
+        .{ 0, "EOF" },
+    }));
     return o.out.items;
 }

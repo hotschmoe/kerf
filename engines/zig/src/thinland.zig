@@ -6,6 +6,7 @@
 //! cross it (junctions), capped at two text heights, then by their distance from the regular label point.
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const cast = @import("num.zig");
 const catalog = @import("catalog.zig");
 const geom = @import("geom.zig");
@@ -140,7 +141,7 @@ pub fn candidates(
         }
     }
     if (samples.items.len == 0) return null;
-    std.mem.sort(Sample, samples.items, {}, struct {
+    sort.stable(Sample, samples.items, {}, struct {
         fn lt(_: void, x: Sample, y: Sample) bool {
             if (@abs(x.score - y.score) > 1e-6) return x.score > y.score;
             return x.d < y.d;
