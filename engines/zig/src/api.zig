@@ -48,7 +48,7 @@ fn errJson(a: Allocator, code: []const u8, comptime fmt: []const u8, args: anyty
     return out.items;
 }
 
-const Out = struct { ok: bool, bytes: []const u8 };
+pub const Out = struct { ok: bool, bytes: []const u8 };
 
 fn fail(a: Allocator, code: []const u8, comptime fmt: []const u8, args: anytype) ApiError!Out {
     return .{ .ok = false, .bytes = try errJson(a, code, fmt, args) };
@@ -128,7 +128,9 @@ const fn_list = blk: {
     break :blk list;
 };
 
-fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
+/// `call` minus the per-call arena, sensor and copy-out: `a` must free nothing on its own (an arena). Public for the OOM tests
+/// (`hostile_tests.zig`), which refuse single allocations of the engine without an arena coalescing them into chunks.
+pub fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
     if (input.len > limits.max_json_bytes) return fail(a, "E_LIMIT", "{s}", .{try limits.message(a, "input too large (bytes)", input.len, limits.max_json_bytes, "Split the detail into several documents (one sheet per document) or drop unused components and views.")});
     var perr: json.ParseError = undefined;
     const trimmed = std.mem.trim(u8, input, " \t\r\n");

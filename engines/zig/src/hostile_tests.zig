@@ -183,6 +183,114 @@ test "out of memory is reported, never swallowed (SAF-6)" {
     }
 }
 
+/// Notes (several per target, one `at`), dimensions and labels in a section view, notes in an iso view: every layout path
+/// (both views are crowded enough that `route` runs its search, with its state snapshots).
+const layout_doc =
+    \\{"kerf":"0.1","id":"lay3","title":"LAYOUT OOM","meta":{"jurisdiction":{"code":"IRC","edition":2021}},
+    \\ "components":[
+    \\  {"id":"slab","type":"concrete","shape":"rect","width":40,"height":6,"at":{"anchor":"bottom_left","to":[0,0]}},
+    \\  {"id":"stud","type":"lumber","size":"2x4","orient":"upright","treated":true,"length":30,"at":{"anchor":"bottom_left","to":[10,6]}},
+    \\  {"id":"post","type":"lumber","size":"2x4","orient":"upright","treated":true,"length":24,"at":{"anchor":"bottom_left","to":[24,6]}},
+    \\  {"id":"sheath","type":"panel","material":"plywood","thickness":0.5,"length":30,"run":"y","at":{"anchor":"bottom_right","to":[10,6]}}
+    \\ ],
+    \\ "views":[
+    \\  {"id":"A","kind":"section","scale":"1\"=1'-0\"","cut_z":0,"notes_side":"right","crop":{"x":[-4,44],"y":[-4,40]},"annotations":[
+    \\   {"id":"n1","type":"note","text":"CONC. SLAB","target":"slab"},
+    \\   {"id":"n2","type":"note","text":"2X4 STUD","target":"stud"},
+    \\   {"id":"n3","type":"note","text":"2X4 POST","target":"post"},
+    \\   {"id":"n4","type":"note","text":"PLYWOOD SHEATHING","target":"sheath"},
+    \\   {"id":"n5","type":"note","text":"SLAB EDGE","target":"slab"},
+    \\   {"id":"n6","type":"note","text":"STUD AGAIN","target":"stud"},
+    \\   {"id":"n7","type":"note","text":"POST AGAIN","target":"post"},
+    \\   {"id":"n8","type":"note","text":"POINT NOTE","at":[30,3]},
+    \\   {"id":"d1","type":"dim","from":"slab@bottom_left","to":"slab@bottom_right","dir":"h","offset":-2},
+    \\   {"id":"d2","type":"dim","from":"stud@bottom_left","to":"stud@top_left","dir":"v","offset":-3},
+    \\   {"id":"d3","type":"dim","from":"stud@top_left","to":"post@top_left","dir":"h","offset":2},
+    \\   {"id":"l1","type":"label","text":"INTERIOR","at":"slab@top_center","offset":[2,8]},
+    \\   {"id":"l2","type":"label","text":"EXTERIOR","at":"stud@middle_left","offset":[-4,0]}]},
+    \\  {"id":"B","kind":"iso","scale":"NTS","annotations":[
+    \\   {"id":"i1","type":"note","text":"SLAB","target":"slab"},
+    \\   {"id":"i2","type":"note","text":"STUD","target":"stud"},
+    \\   {"id":"i3","type":"note","text":"POST","target":"post"}]}
+    \\ ]}
+;
+
+/// One view's single-allocation sweep, split over threads by index (each call takes a few ms; there are a few thousand indices).
+/// Every call allocates from a fixed buffer, not an arena over the heap: whether an arena can grow a node in place depends on
+/// the address space, and that decides whether a list grows in place or allocates, so the allocation count would vary.
+const Sweep = struct {
+    input: []const u8,
+    base: []const u8,
+    /// Allocations of the unconstrained call.
+    total: usize,
+    stride: usize,
+    /// Lowest index whose outcome was wrong (maxInt: none).
+    bad: std.atomic.Value(usize) = .init(std.math.maxInt(usize)),
+    /// Refusals that a site swallowed (`api.call`'s sensor still reports them) and that changed the output.
+    changed: std.atomic.Value(usize) = .init(0),
+
+    /// A drawing of `layout_doc` allocates under 1 MB in total.
+    const buf_len = 32 << 20;
+
+    fn worker(s: *Sweep, first: usize) void {
+        const oom = @import("oom.zig");
+        const buf = std.heap.page_allocator.alloc(u8, buf_len) catch {
+            _ = s.bad.fetchMin(first, .monotonic);
+            return;
+        };
+        defer std.heap.page_allocator.free(buf);
+        var idx = first;
+        while (idx < s.total) : (idx += s.stride) {
+            var fixed = std.heap.FixedBufferAllocator.init(buf);
+            var one = oom.OneShotFail.init(fixed.allocator(), idx);
+            var sensor = oom.Sensor.init(one.allocator());
+            // error.OutOfMemory is the only error `dispatch` has: the refusal was reported
+            const r = api.dispatch(sensor.allocator(), "drawing", s.input) catch continue;
+            if (!one.failed or !sensor.failed) {
+                _ = s.bad.fetchMin(idx, .monotonic);
+                continue;
+            }
+            if (!std.mem.eql(u8, r.bytes, s.base)) _ = s.changed.fetchAdd(1, .monotonic);
+        }
+    }
+};
+
+test "a single refused allocation anywhere in a view build is reported and never desynchronises the layout (LAY-3)" {
+    // The SAF-6 sweep above refuses the *arena's* chunk allocations (a few dozen per call). This one drives `api.dispatch`
+    // without the per-call arena, so every single allocation of the call is refused once (`oom.OneShotFail`) while all later
+    // ones succeed: the hostile case for state kept in parallel lists (annot `per` / `note_slot` / `meta`: index out of
+    // bounds in `renderDimLabels` before LAY-3) or in copies (`route` snapshots). Every index must end in error.OutOfMemory
+    // or in a result that `api.call`'s sensor turns into OutOfMemory; a panic fails the test run. Before LAY-3 view A crashed,
+    // and ~1,860 indices per view came back as "view could not be built" (the embedded font's parse error was swallowed).
+    const oom = @import("oom.zig");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    for ([_][]const u8{ "A", "B" }) |view| {
+        const input = try a.print("{{\"doc\":{s},\"view\":\"{s}\"}}", .{ layout_doc, view });
+        const base = try api.call(std.testing.allocator, "drawing", input);
+        defer std.testing.allocator.free(base.bytes);
+        try std.testing.expect(base.ok);
+        try std.testing.expect(std.mem.indexOf(u8, base.bytes, "\"level\":\"warning\"") == null);
+        // the unconstrained call through the same path: its allocation count, and the identical result
+        const buf = try std.heap.page_allocator.alloc(u8, Sweep.buf_len);
+        defer std.heap.page_allocator.free(buf);
+        var fixed = std.heap.FixedBufferAllocator.init(buf);
+        var counter = oom.OneShotFail.init(fixed.allocator(), std.math.maxInt(usize));
+        const r0 = try api.dispatch(counter.allocator(), "drawing", input);
+        try std.testing.expectEqualStrings(base.bytes, r0.bytes);
+        try std.testing.expect(counter.index > 1000);
+        var sweep = Sweep{ .input = input, .base = base.bytes, .total = counter.index, .stride = 8 };
+        var threads: [8]std.Thread = undefined;
+        for (&threads, 0..) |*t, i| t.* = try std.Thread.spawn(.{}, Sweep.worker, .{ &sweep, i });
+        for (threads) |t| t.join();
+        try std.testing.expectEqual(std.math.maxInt(usize), sweep.bad.load(.monotonic));
+        // what still swallows a refusal builds message text (`catch "?"`, allowed since SAF-6: the sensor reports it); none of
+        // it may change a clean drawing (view A: 6 such indices of ~3,250, view B: 4 of ~3,450)
+        try std.testing.expectEqual(@as(usize, 0), sweep.changed.load(.monotonic));
+    }
+}
+
 // ---- SAF-4: silent defaults are errors with a precise message ---------------------------------------------------------
 
 const conc = "{\"id\":\"c\",\"type\":\"concrete\",\"shape\":\"rect\",\"width\":12,\"height\":12,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}";
