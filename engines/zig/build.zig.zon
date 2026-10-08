@@ -1,6 +1,6 @@
 .{
     .name = .kerf,
-    .version = "0.1.0-alpha.10",
+    .version = "0.1.0-alpha.11",
     .fingerprint = 0x3aa779cc0b4da0b7,
     .minimum_zig_version = "0.17.0",
     .dependencies = .{},
