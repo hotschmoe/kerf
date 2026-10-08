@@ -82,7 +82,7 @@ pub fn targetLanding(env: *Env, target: []const u8) Allocator.Error!?[]const V2 
             };
         },
         .iso => |iso| {
-            const p = iso.landing(comp, inst, part) orelse return null;
+            const p = (try iso.landing(comp, inst, part)) orelse return null;
             return try env.a.dupe(V2, &.{p});
         },
     }

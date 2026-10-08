@@ -139,14 +139,19 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
     var cur_meta = Meta{};
     var seen: std.ArrayList([]const u8) = .empty;
     const types = [_][]const u8{ "note", "dim", "label" };
+    // `per`, `note_slot` and `meta` are parallel (index = annotation index): reserve them up front so the one append per
+    // annotation below cannot fail and the lists never differ in length (REVIEW LAY-3)
+    try per.ensureTotalCapacity(a, spec.annotations.len);
+    try note_slot.ensureTotalCapacity(a, spec.annotations.len);
+    try meta.ensureTotalCapacity(a, spec.annotations.len);
     for (spec.annotations, 0..) |an, k| {
         const its: std.ArrayList(Item) = .empty;
         var slot: ?usize = null;
         cur_meta = .{};
         defer {
-            per.append(a, its) catch {};
-            note_slot.append(a, slot) catch {};
-            meta.append(a, cur_meta) catch {};
+            per.appendAssumeCapacity(its);
+            note_slot.appendAssumeCapacity(slot);
+            meta.appendAssumeCapacity(cur_meta);
         }
         const id = (if (an.get("id")) |x| x.str() else null) orelse {
             env.diags.add(.@"error", "E_PARAM", null, try a.print("views/{s}/annotations/{d}", .{ vid, k }), "annotation {d} of view {s} needs a string \"id\"", .{ k, vid });

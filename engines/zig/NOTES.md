@@ -287,7 +287,9 @@ Rules that now hold for every input (document, style, ops):
   (`drawview.buildFromScene`, `resolveSpec`); when it is spent the notes keep the SPEC 6.3 + de-crossing layout and one aggregate
   W_LEADER_HIT says so. Fix proposals are computed only for the first `route.max_fix_hits` hits (the ones `reportHits` prints).
 - **Out of memory is an error**: `kerf.call` wraps its arena in `oom.Sensor`; a refused allocation anywhere becomes `error.OutOfMemory`
-  (CLI `kerf: OutOfMemory`, wasm `E_OOM`). New code may keep using `catch "?"` in message builders.
+  (CLI `kerf: OutOfMemory`, wasm `E_OOM`). New code may keep using `catch "?"` in message builders, but never on state (copies,
+  parallel lists, "not found" results): those `try` (LAY-3). `hostile_tests` refuses every single allocation of a section and an iso
+  view build (`oom.OneShotFail`, no arena in between) and fails on a panic or on a swallowed refusal that changes the drawing.
 - **No silent defaults**: malformed offsets, `place`/`array`/`recess`/`cover` members and dim/label offsets are E_PARAM with a fix hint;
   use `model.offsetPairOrDiag`, `model.lengthOrDiag`, `Params.fieldLen/fieldInt/fieldChoice/offsetPair` for new optional members.
 - **One number formatter**: `json.fmtFixed(buf, x, decimals)` (svg/pdf 3, json 4, dxf and bulges 6); never `{d}` of a float into a fixed buffer.
@@ -301,7 +303,7 @@ Rules that now hold for every input (document, style, ops):
 
 Done since (refactor batches 4-7, below): typed params, enums for functions/pens/types/kinds, domain roles and traits, the file splits.
 Not done (see REVIEW section 11): performance/size work, exporter tidy (DXF handles, dash clipping), in-tree `std.testing.fuzz`,
-`clip.boolean` diff pass, LAY-3..10, the remaining long functions (`dxf.render`, `iso.build`, `style.fromValue`, `clip.boolean`).
+`clip.boolean` diff pass, LAY-4..10, the remaining long functions (`dxf.render`, `iso.build`, `style.fromValue`, `clip.boolean`).
 
 ## Refactor batches 4-7 (typed vocabulary, typed params, roles, file splits; status table in REVIEW.md section 11)
 
