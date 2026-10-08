@@ -23,6 +23,8 @@ fn buildOptions(b: *std.Build) *std.Build.Step.Options {
 fn versionString(b: *std.Build) []const u8 {
     if (b.option([]const u8, "version", "Version string reported by `kerf version`, /api/info and the web UI (default: git describe)")) |v|
         return std.mem.trimStart(u8, v, "v");
+    // git state is invisible to the configure cache: re-run configure on every build that derives the version from git.
+    b.graph.poisonCache();
     var code: u8 = 0;
     const out = b.runAllowFail(&.{ "git", "-C", b.root.toString(b.allocator) catch ".", "describe", "--tags", "--always", "--dirty" }, &code, .ignore) catch
         return "0.0.0-dev";
