@@ -32,7 +32,7 @@ const itemsBox = annot.itemsBox;
 /// E_LIMIT for a note/label text over `limits.max_text_chars` (reports and returns true).
 pub fn textTooLong(env: *Env, what: []const u8, id: []const u8, apath: []const u8, text: []const u8) Allocator.Error!bool {
     if (text.len <= limits.max_text_chars) return false;
-    env.diags.addFix(.@"error", "E_LIMIT", id, apath, "{s}", .{try limits.message(env.a, try std.fmt.allocPrint(env.a, "characters in the text of {s} '{s}'", .{ what, id }), text.len, limits.max_text_chars, "A drawing note is a short phrase, not a paragraph.")}, "shorten the text to one phrase (about 130 characters or fewer) or split it into several notes");
+    env.diags.addFix(.@"error", "E_LIMIT", id, apath, "{s}", .{try limits.message(env.a, try env.a.print("characters in the text of {s} '{s}'", .{ what, id }), text.len, limits.max_text_chars, "A drawing note is a short phrase, not a paragraph.")}, "shorten the text to one phrase (about 130 characters or fewer) or split it into several notes");
     return true;
 }
 
@@ -140,7 +140,7 @@ pub const LabelSpec = struct {
 };
 
 pub fn fmtPt(a: Allocator, p: V2) Allocator.Error![]const u8 {
-    return std.fmt.allocPrint(a, "[{s}, {s}]", .{ try json.fmtNumberAlloc(a, @round(p.x * 100) / 100), try json.fmtNumberAlloc(a, @round(p.y * 100) / 100) });
+    return a.print("[{s}, {s}]", .{ try json.fmtNumberAlloc(a, @round(p.x * 100) / 100), try json.fmtNumberAlloc(a, @round(p.y * 100) / 100) });
 }
 
 pub fn clearOfLeaders(leaders: []const [3]V2, poly: [4]V2, shift: V2, h: f64) bool {
@@ -162,7 +162,7 @@ pub fn obstacleFix(a: Allocator, o: Obstacle, leaders: []const [3]V2, h: f64) Al
                     const no = o.off + sgn * dirn * delta;
                     if (dirn < 0 and @abs(no) < 2 * h) continue;
                     if (clearOfLeaders(leaders, o.poly, o.axis.scale(sgn * dirn * delta), h)) {
-                        return try std.fmt.allocPrint(a, "set dim '{s}' \"offset\": {s} (now {s})", .{ o.id, try json.fmtNumberAlloc(a, no), try json.fmtNumberAlloc(a, o.off) });
+                        return try a.print("set dim '{s}' \"offset\": {s} (now {s})", .{ o.id, try json.fmtNumberAlloc(a, no), try json.fmtNumberAlloc(a, o.off) });
                     }
                 }
             }
@@ -174,7 +174,7 @@ pub fn obstacleFix(a: Allocator, o: Obstacle, leaders: []const [3]V2, h: f64) Al
                 for (dirs) |dv| {
                     const dn = dv.norm().scale(delta);
                     if (clearOfLeaders(leaders, o.poly, dn, h)) {
-                        return try std.fmt.allocPrint(a, "set label '{s}' \"offset\": [{s}, {s}] (now [{s}, {s}])", .{ o.id, try json.fmtNumberAlloc(a, @round((o.off + dn.x) * 100) / 100), try json.fmtNumberAlloc(a, @round((o.off2 + dn.y) * 100) / 100), try json.fmtNumberAlloc(a, o.off), try json.fmtNumberAlloc(a, o.off2) });
+                        return try a.print("set label '{s}' \"offset\": [{s}, {s}] (now [{s}, {s}])", .{ o.id, try json.fmtNumberAlloc(a, @round((o.off + dn.x) * 100) / 100), try json.fmtNumberAlloc(a, @round((o.off2 + dn.y) * 100) / 100), try json.fmtNumberAlloc(a, o.off), try json.fmtNumberAlloc(a, o.off2) });
                     }
                 }
             }
@@ -184,8 +184,8 @@ pub fn obstacleFix(a: Allocator, o: Obstacle, leaders: []const [3]V2, h: f64) Al
 }
 
 pub fn noteFixText(a: Allocator, id: []const u8, fa: ?V2, fp: ?V2) Allocator.Error!?[]const u8 {
-    if (fa) |p| return try std.fmt.allocPrint(a, "set note '{s}' \"at\": {s} (another point inside its target)", .{ id, try fmtPt(a, p) });
-    if (fp) |p| return try std.fmt.allocPrint(a, "set note '{s}' \"place\": {s}", .{ id, try fmtPt(a, p) });
+    if (fa) |p| return try a.print("set note '{s}' \"at\": {s} (another point inside its target)", .{ id, try fmtPt(a, p) });
+    if (fp) |p| return try a.print("set note '{s}' \"place\": {s}", .{ id, try fmtPt(a, p) });
     return null;
 }
 
@@ -198,40 +198,40 @@ pub fn reportHits(env: *Env, notes: []const NoteIn, obsts: []const Obstacle, r: 
         if (shown >= maxn) break;
         shown += 1;
         const me = notes[ht.note];
-        const rel = if (ht.dist <= 1e-9) try a.dupe(u8, "crosses") else try std.fmt.allocPrint(a, "comes within {d:.2} in (paper) of", .{ht.dist / env.S});
+        const rel = if (ht.dist <= 1e-9) try a.dupe(u8, "crosses") else try a.print("comes within {d:.2} in (paper) of", .{ht.dist / env.S});
         var what: []const u8 = undefined;
         var fix: ?[]const u8 = null;
         switch (ht.kind) {
             .leader => {
                 const o = notes[ht.other];
-                what = try std.fmt.allocPrint(a, "the leader of note '{s}'", .{o.id});
+                what = try a.print("the leader of note '{s}'", .{o.id});
                 fix = try noteFixText(a, o.id, ht.other_fix_at, ht.other_fix_place);
                 if (fix == null) fix = try noteFixText(a, me.id, ht.fix_at, ht.fix_place);
             },
             .note => {
                 const o = notes[ht.other];
-                what = try std.fmt.allocPrint(a, "the text of note '{s}'", .{o.id});
+                what = try a.print("the text of note '{s}'", .{o.id});
                 fix = try noteFixText(a, me.id, ht.fix_at, ht.fix_place);
                 if (fix == null) fix = try noteFixText(a, o.id, null, null);
             },
             .dim, .label => {
                 const o = obsts[ht.other];
                 what = if (ht.kind == .dim)
-                    try std.fmt.allocPrint(a, "the text '{s}' of dimension '{s}'", .{ o.text, o.id })
+                    try a.print("the text '{s}' of dimension '{s}'", .{ o.text, o.id })
                 else
-                    try std.fmt.allocPrint(a, "label '{s}' ('{s}')", .{ o.id, o.text });
+                    try a.print("label '{s}' ('{s}')", .{ o.id, o.text });
                 fix = try obstacleFix(a, o, r.leaders, g.h);
                 if (fix == null) fix = try noteFixText(a, me.id, ht.fix_at, ht.fix_place);
             },
         }
-        const fx = fix orelse try std.fmt.allocPrint(a, "move the note with \"place\", give it another \"at\" point, or change notes_side", .{});
-        env.diags.addFix(.warning, "W_LEADER_HIT", me.id, try std.fmt.allocPrint(a, "views/{s}/annotations/{s}", .{ vid, me.id }), "view {s}: the leader (or arrowhead) of note '{s}' {s} {s}; leaders must stay at least one text height ({d:.3} in paper) clear of other leaders, notes, dimension text and labels", .{ vid, me.id, rel, what, env.style.text_height_in }, try std.fmt.allocPrint(a, "{s}", .{fx}));
+        const fx = fix orelse try a.print("move the note with \"place\", give it another \"at\" point, or change notes_side", .{});
+        env.diags.addFix(.warning, "W_LEADER_HIT", me.id, try a.print("views/{s}/annotations/{s}", .{ vid, me.id }), "view {s}: the leader (or arrowhead) of note '{s}' {s} {s}; leaders must stay at least one text height ({d:.3} in paper) clear of other leaders, notes, dimension text and labels", .{ vid, me.id, rel, what, env.style.text_height_in }, try a.print("{s}", .{fx}));
     }
     if (r.budget_exhausted) {
-        env.diags.addFix(.warning, "W_LEADER_HIT", null, try std.fmt.allocPrint(a, "views/{s}", .{vid}), "view {s}: the layout effort limit was reached ({d} notes, {d} leader hits left): the notes were placed by the basic rule (sorted by landing height, de-crossed) and some leaders may touch each other or other annotations", .{ vid, notes.len, r.hits.len }, "fewer notes per view: split the detail into two views, shorten or merge notes, or set \"place\" on the crowded ones");
+        env.diags.addFix(.warning, "W_LEADER_HIT", null, try a.print("views/{s}", .{vid}), "view {s}: the layout effort limit was reached ({d} notes, {d} leader hits left): the notes were placed by the basic rule (sorted by landing height, de-crossed) and some leaders may touch each other or other annotations", .{ vid, notes.len, r.hits.len }, "fewer notes per view: split the detail into two views, shorten or merge notes, or set \"place\" on the crowded ones");
     }
     if (r.hits.len > maxn) {
-        env.diags.add(.warning, "W_LEADER_HIT", null, try std.fmt.allocPrint(a, "views/{s}", .{vid}), "view {s}: {d} more leader hits not listed; fix the ones above first (dense notes: split the view, shorten notes, or set \"place\" on some)", .{ vid, r.hits.len - maxn });
+        env.diags.add(.warning, "W_LEADER_HIT", null, try a.print("views/{s}", .{vid}), "view {s}: {d} more leader hits not listed; fix the ones above first (dense notes: split the view, shorten notes, or set \"place\" on some)", .{ vid, r.hits.len - maxn });
     }
 }
 
@@ -259,7 +259,7 @@ pub fn prepNotes(env: *Env, notes: []const NoteIn) Allocator.Error!NotePrep {
         var w: f64 = 2 * tag_r;
         var hgt: f64 = 2 * tag_r;
         if (keynote) {
-            const num = try std.fmt.allocPrint(a, "{d}", .{i + 1});
+            const num = try a.print("{d}", .{i + 1});
             const ls = try a.alloc([]const u8, 1);
             ls[0] = num;
             lines_of[i] = ls;
@@ -356,7 +356,7 @@ pub fn legendItems(env: *Env, notes: []const NoteIn, result: *std.ArrayList(Item
     y -= pitch * 1.4;
     for (notes, 0..) |n, i| {
         const lines = try wrap(a, n.text, wrap_n);
-        const num = try std.fmt.allocPrint(a, "{d}", .{i + 1});
+        const num = try a.print("{d}", .{i + 1});
         try result.append(a, try textItem(env, .notes, .anno, "legend", num, x0, y - h, h, 0, .left, .baseline));
         for (lines, 0..) |line, j| {
             try result.append(a, try textItem(env, .notes, .anno, "legend", line, x0 + 0.35 * S, y - h - @as(f64, @floatFromInt(j)) * pitch, h, 0, .left, .baseline));

@@ -57,7 +57,7 @@ pub fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, e
         tmpl = t;
     };
     const t = tmpl orelse {
-        try http.sendError(a, w, 404, ka, extra, "E_AGENT", try std.fmt.allocPrint(a, "unknown agent '{s}'; GET /api/info lists them", .{agent_id}));
+        try http.sendError(a, w, 404, ka, extra, "E_AGENT", try a.print("unknown agent '{s}'; GET /api/info lists them", .{agent_id}));
         return ka;
     };
     const res = try agents.start(&s.agent_mgr, s.io, a, &s.group, .{ .template = t, .message = message_full, .session_id = session, .file = file });
@@ -70,10 +70,10 @@ pub fn apiAgentRun(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, e
             try http.sendJson(w, 200, ka, extra, out.items);
         },
         .failed => |f| switch (f) {
-            .busy => |id| try http.sendError(a, w, 409, ka, extra, "E_BUSY", try std.fmt.allocPrint(a, "run {s} is still active (one run at a time); stop it first", .{id})),
+            .busy => |id| try http.sendError(a, w, 409, ka, extra, "E_BUSY", try a.print("run {s} is still active (one run at a time); stop it first", .{id})),
             .unknown_agent => try http.sendError(a, w, 404, ka, extra, "E_AGENT", "unknown agent"),
             .too_long => |why| try http.sendError(a, w, 400, ka, extra, "E_INPUT", why),
-            .unavailable => |why| try http.sendError(a, w, 409, ka, extra, if (t.untrusted) "E_UNTRUSTED" else "E_UNAVAILABLE", try std.fmt.allocPrint(a, "agent '{s}' is not available: {s}", .{ agent_id, why })),
+            .unavailable => |why| try http.sendError(a, w, 409, ka, extra, if (t.untrusted) "E_UNTRUSTED" else "E_UNAVAILABLE", try a.print("agent '{s}' is not available: {s}", .{ agent_id, why })),
             .spawn_failed => |why| try http.sendError(a, w, 500, ka, extra, "E_SPAWN", why),
         },
     }
@@ -137,7 +137,7 @@ pub fn saveImages(s: *Server, a: Allocator, iv: kerf.json.Value) ![]const []cons
         dec.decode(bytes, data) catch return error.BadImages;
         var rnd: [4]u8 = undefined;
         s.io.random(&rnd);
-        const rel = try std.fmt.allocPrint(a, ".kerf/attachments/{x}-{s}", .{ &rnd, safe.items });
+        const rel = try a.print(".kerf/attachments/{x}-{s}", .{ &rnd, safe.items });
         // exclusive create: never write through a name an agent pre-planted (symlink)
         var af = try s.dir.createFile(s.io, rel, .{ .exclusive = true });
         defer af.close(s.io);

@@ -40,7 +40,7 @@ If you need a change in another agent's dir, write it under `## REQUESTS` in you
 
 ## Environment
 aarch64 Linux, 12 cores. Rust 1.96 stable (edition 2024, `wasm32-unknown-unknown` installed).
-Zig 0.16.0 at `~/tools/zig-aarch64-linux-0.16.0/zig`. Node 22. Python tooling venv: `tools/.venv`
+Zig 0.17.0 at `~/tools/zig-aarch64-linux-0.17.0/zig` (0.16 is still at `~/tools/zig-aarch64-linux-0.16.0/zig` for comparisons). Node 22. Python tooling venv: `tools/.venv`
 (run `tools/setup.sh` if missing). Headless chromium with WebGPU (SwiftShader) and WebGL2:
 see `tools/README.md`. The Claude API skill docs (for the chat harness) are in
 `/tmp/claude-1001/bundled-skills/2.1.289/6a451d1a4081ef80dc9ff2fe1c2bf753/claude-api/`

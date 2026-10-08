@@ -275,7 +275,7 @@ const Check = struct {
                 var b: [40]u8 = undefined;
                 break :blk try self.a.dupe(u8, json.fmtNumber(&b, n));
             },
-            .string => |s| try std.fmt.allocPrint(self.a, "\"{s}\"", .{s[0..@min(s.len, 24)]}),
+            .string => |s| try self.a.print("\"{s}\"", .{s[0..@min(s.len, 24)]}),
             else => v.kindName(),
         };
     }
@@ -351,7 +351,7 @@ fn validate(a: Allocator, root: json.Value) Allocator.Error!?[]const u8 {
     try validatePatterns(&c, root);
     if (root.get("layers")) |lv| if (lv == .object) {
         for (lv.object) |m| if (m.value == .object) {
-            const path = try std.fmt.allocPrint(a, "layers.{s}.lineweight_mm", .{m.key});
+            const path = try a.print("layers.{s}.lineweight_mm", .{m.key});
             try c.range(path, m.value.get("lineweight_mm"), 0, 10, 0.25);
         };
     };
@@ -380,11 +380,11 @@ fn validatePens(c: *Check, root: json.Value) Allocator.Error!void {
     if (pv != .object) return; // reported as BadStyle by fromValue (needs pens and materials objects)
     for (pv.object) |m| {
         if (m.value != .object) continue;
-        const path = try std.fmt.allocPrint(c.a, "pens.{s}.width_mm", .{m.key});
+        const path = try c.a.print("pens.{s}.width_mm", .{m.key});
         try c.range(path, m.value.get("width_mm"), 0, 10, 0.25);
         if (m.value.get("dash_mm")) |dv| if (dv == .array) {
             for (dv.array, 0..) |x, i| {
-                const dp = try std.fmt.allocPrint(c.a, "pens.{s}.dash_mm[{d}]", .{ m.key, i });
+                const dp = try c.a.print("pens.{s}.dash_mm[{d}]", .{ m.key, i });
                 try c.range(dp, x, 0.01, 100, 1);
             }
         };
@@ -393,13 +393,13 @@ fn validatePens(c: *Check, root: json.Value) Allocator.Error!void {
 
 const pen_names = blk: {
     var list: []const u8 = "";
-    for (std.meta.fieldNames(Pen), 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
+    for (@typeInfo(Pen).@"enum".field_names, 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
     break :blk list;
 };
 
 const role_names = blk: {
     var list: []const u8 = "";
-    for (std.meta.fieldNames(Role), 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
+    for (@typeInfo(Role).@"enum".field_names, 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
     break :blk list;
 };
 
@@ -420,16 +420,16 @@ fn validateMaterials(c: *Check, root: json.Value) Allocator.Error!void {
         };
         if (m.value.get("hatch")) |h| if (h == .array) {
             for (h.array, 0..) |x, i| {
-                const base = try std.fmt.allocPrint(c.a, "materials.{s}.hatch[{d}]", .{ m.key, i });
-                try c.range(try std.fmt.allocPrint(c.a, "{s}.scale", .{base}), x.get("scale"), 0.01, 100, 1);
-                try c.range(try std.fmt.allocPrint(c.a, "{s}.angle", .{base}), x.get("angle"), -3600, 3600, 0);
+                const base = try c.a.print("materials.{s}.hatch[{d}]", .{ m.key, i });
+                try c.range(try c.a.print("{s}.scale", .{base}), x.get("scale"), 0.01, 100, 1);
+                try c.range(try c.a.print("{s}.angle", .{base}), x.get("angle"), -3600, 3600, 0);
             }
         };
         if (m.value.get("grain")) |g| if (g == .object) {
-            const base = try std.fmt.allocPrint(c.a, "materials.{s}.grain", .{m.key});
-            try c.range(try std.fmt.allocPrint(c.a, "{s}.scale", .{base}), g.get("scale"), 0.01, 100, 1);
-            try c.range(try std.fmt.allocPrint(c.a, "{s}.amplitude", .{base}), g.get("amplitude"), 0, 1, 0.010);
-            try c.range(try std.fmt.allocPrint(c.a, "{s}.wavelength", .{base}), g.get("wavelength"), 0.05, 100, 1.1);
+            const base = try c.a.print("materials.{s}.grain", .{m.key});
+            try c.range(try c.a.print("{s}.scale", .{base}), g.get("scale"), 0.01, 100, 1);
+            try c.range(try c.a.print("{s}.amplitude", .{base}), g.get("amplitude"), 0, 1, 0.010);
+            try c.range(try c.a.print("{s}.wavelength", .{base}), g.get("wavelength"), 0.05, 100, 1.1);
         };
     }
 }
@@ -443,11 +443,11 @@ fn validatePatterns(c: *Check, root: json.Value) Allocator.Error!void {
         for (fams, 0..) |f, i| {
             const arr = f.arr() orelse continue;
             if (arr.len < 5) continue;
-            const base = try std.fmt.allocPrint(c.a, "patterns.{s}[{d}]", .{ m.key, i });
-            try c.range(try std.fmt.allocPrint(c.a, "{s} angle", .{base}), arr[0], -3600, 3600, 0);
-            try c.range(try std.fmt.allocPrint(c.a, "{s} x0", .{base}), arr[1], -1e4, 1e4, 0);
-            try c.range(try std.fmt.allocPrint(c.a, "{s} y0", .{base}), arr[2], -1e4, 1e4, 0);
-            try c.range(try std.fmt.allocPrint(c.a, "{s} dx", .{base}), arr[3], -1e4, 1e4, 0);
+            const base = try c.a.print("patterns.{s}[{d}]", .{ m.key, i });
+            try c.range(try c.a.print("{s} angle", .{base}), arr[0], -3600, 3600, 0);
+            try c.range(try c.a.print("{s} x0", .{base}), arr[1], -1e4, 1e4, 0);
+            try c.range(try c.a.print("{s} y0", .{base}), arr[2], -1e4, 1e4, 0);
+            try c.range(try c.a.print("{s} dx", .{base}), arr[3], -1e4, 1e4, 0);
             // dy is the line spacing: |dy| >= 1e-4 keeps a hatch run finite (the 150,000-line cap would otherwise truncate silently)
             const dy = arr[4];
             if (dy == .number and (@abs(dy.number) < 1e-4 or @abs(dy.number) > 1e4)) {
@@ -455,7 +455,7 @@ fn validatePatterns(c: *Check, root: json.Value) Allocator.Error!void {
             } else if (dy != .number) {
                 try c.bad("style key '{s} dy' must be a number (got {s})", .{ base, try c.gotText(dy) });
             }
-            for (arr[5..], 0..) |dd, k| try c.range(try std.fmt.allocPrint(c.a, "{s} dash[{d}]", .{ base, k }), dd, -1e4, 1e4, 0);
+            for (arr[5..], 0..) |dd, k| try c.range(try c.a.print("{s} dash[{d}]", .{ base, k }), dd, -1e4, 1e4, 0);
         }
     }
 }
@@ -575,9 +575,9 @@ pub fn fromValue(a: Allocator, root: json.Value) StyleError!Style {
     }
     // Defaults for the scalar groups.
     const d = Style{ .id = "", .pens = &.{}, .materials = &.{}, .patterns = &.{}, .layers = &.{} };
-    inline for (std.meta.fields(Style)) |f| {
-        if (comptime !(std.mem.eql(u8, f.name, "id") or std.mem.eql(u8, f.name, "pens") or std.mem.eql(u8, f.name, "materials") or std.mem.eql(u8, f.name, "patterns") or std.mem.eql(u8, f.name, "layers"))) {
-            @field(s, f.name) = @field(d, f.name);
+    inline for (@typeInfo(Style).@"struct".field_names) |name| {
+        if (comptime !(std.mem.eql(u8, name, "id") or std.mem.eql(u8, name, "pens") or std.mem.eql(u8, name, "materials") or std.mem.eql(u8, name, "patterns") or std.mem.eql(u8, name, "layers"))) {
+            @field(s, name) = @field(d, name);
         }
     }
     if (root.get("text")) |t| {

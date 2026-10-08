@@ -149,10 +149,10 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             meta.append(a, cur_meta) catch {};
         }
         const id = (if (an.get("id")) |x| x.str() else null) orelse {
-            env.diags.add(.@"error", "E_PARAM", null, try std.fmt.allocPrint(a, "views/{s}/annotations/{d}", .{ vid, k }), "annotation {d} of view {s} needs a string \"id\"", .{ k, vid });
+            env.diags.add(.@"error", "E_PARAM", null, try a.print("views/{s}/annotations/{d}", .{ vid, k }), "annotation {d} of view {s} needs a string \"id\"", .{ k, vid });
             continue;
         };
-        const apath = try std.fmt.allocPrint(a, "views/{s}/annotations/{s}", .{ vid, id });
+        const apath = try a.print("views/{s}/annotations/{s}", .{ vid, id });
         var dup = false;
         for (seen.items) |s| if (std.mem.eql(u8, s, id)) {
             dup = true;
@@ -177,7 +177,7 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             var movable = true;
             const at_v: ?json.Value = if (an.get("at")) |v| (if (v == .null) null else v) else null;
             if (at_v) |atv| {
-                if (env.scene.point(atv, id, try std.fmt.allocPrint(a, "{s}/at", .{apath}))) |p| landing = try a.dupe(V2, &.{p});
+                if (env.scene.point(atv, id, try a.print("{s}/at", .{apath}))) |p| landing = try a.dupe(V2, &.{p});
                 movable = false;
             } else if (target.len == 0) {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "note '{s}' needs a \"target\" (component id or comp.part) or an \"at\" point", .{id});
@@ -187,15 +187,15 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 if (std.mem.indexOfAny(u8, target, ".#")) |d| cid = target[0..d];
                 if (env.scene.find(cid) == null) {
                     const ids = try env.scene.compIds(a);
-                    const hint = if (model.nearest(a, cid, ids)) |n| try std.fmt.allocPrint(a, " Did you mean '{s}'?", .{n}) else try std.fmt.allocPrint(a, " Components: {s}", .{scene_mod.joinIds(a, ids)});
-                    env.diags.add(.@"error", "E_REF_UNKNOWN", id, try std.fmt.allocPrint(a, "{s}/target", .{apath}), "note '{s}' target '{s}' is not a component.{s}", .{ id, target, hint });
+                    const hint = if (model.nearest(a, cid, ids)) |n| try a.print(" Did you mean '{s}'?", .{n}) else try a.print(" Components: {s}", .{scene_mod.joinIds(a, ids)});
+                    env.diags.add(.@"error", "E_REF_UNKNOWN", id, try a.print("{s}/target", .{apath}), "note '{s}' target '{s}' is not a component.{s}", .{ id, target, hint });
                     continue;
                 }
                 landing = try targetLanding(env, target);
             }
             var place: ?V2 = null;
             if (an.get("place")) |pv| if (pv != .null) {
-                place = model.offsetPairOrDiag(a, env.diags, id, try std.fmt.allocPrint(a, "{s}/place", .{apath}), "place", pv) orelse continue;
+                place = model.offsetPairOrDiag(a, env.diags, id, try a.print("{s}/place", .{apath}), "place", pv) orelse continue;
             };
             var column: ?route.Side = null;
             if (an.get("column")) |cv| if (cv != .null) {
@@ -205,7 +205,7 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 } else if (std.mem.eql(u8, cs, "right")) {
                     column = .right;
                 } else {
-                    env.diags.addFix(.warning, "W_PARAM", id, try std.fmt.allocPrint(a, "{s}/column", .{apath}), "note '{s}' in view {s}: \"column\" must be \"left\" or \"right\" (got {s}); ignored", .{ id, vid, if (cv.str()) |sv| try std.fmt.allocPrint(a, "\"{s}\"", .{sv}) else "a non-string value" }, "use \"column\": \"left\" or \"right\", or omit it to let the layout choose (view notes_side)");
+                    env.diags.addFix(.warning, "W_PARAM", id, try a.print("{s}/column", .{apath}), "note '{s}' in view {s}: \"column\" must be \"left\" or \"right\" (got {s}); ignored", .{ id, vid, if (cv.str()) |sv| try a.print("\"{s}\"", .{sv}) else "a non-string value" }, "use \"column\": \"left\" or \"right\", or omit it to let the layout choose (view notes_side)");
                 }
             };
             if (landing) |l| {
@@ -222,14 +222,14 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "dim '{s}' needs \"from\" and \"to\" points (Refs)", .{id});
                 continue;
             }
-            const from = env.scene.point(fv.?, id, try std.fmt.allocPrint(a, "{s}/from", .{apath})) orelse continue;
-            const to = env.scene.point(tv.?, id, try std.fmt.allocPrint(a, "{s}/to", .{apath})) orelse continue;
+            const from = env.scene.point(fv.?, id, try a.print("{s}/from", .{apath})) orelse continue;
+            const to = env.scene.point(tv.?, id, try a.print("{s}/to", .{apath})) orelse continue;
             const dir_s = (if (an.get("dir")) |x| x.str() else null) orelse "h";
             const dir: DimDir = if (std.mem.eql(u8, dir_s, "h")) .h else if (std.mem.eql(u8, dir_s, "v")) .v else if (std.mem.eql(u8, dir_s, "aligned")) .aligned else {
-                env.diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/dir", .{apath}), "dim dir must be \"h\", \"v\" or \"aligned\" (got \"{s}\")", .{dir_s});
+                env.diags.add(.@"error", "E_PARAM", id, try a.print("{s}/dir", .{apath}), "dim dir must be \"h\", \"v\" or \"aligned\" (got \"{s}\")", .{dir_s});
                 continue;
             };
-            const off = model.lengthOrDiag(a, env.diags, id, try std.fmt.allocPrint(a, "{s}/offset", .{apath}), an.get("offset"), "dim offset", 0) orelse continue;
+            const off = model.lengthOrDiag(a, env.diags, id, try a.print("{s}/offset", .{apath}), an.get("offset"), "dim offset", 0) orelse continue;
             const text: ?[]const u8 = if (an.get("text")) |x| x.str() else null;
             const ds = DimSpec{ .k = k, .id = id, .from = from, .to = to, .dir = dir, .off0 = off, .text = text };
             cur_meta = .{ .id = id, .kind = .dim, .axis = ds.axis(), .off = off, .owner = dspecs.items.len };
@@ -244,10 +244,10 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
                 env.diags.add(.@"error", "E_PARAM", id, apath, "label '{s}' needs \"at\": a Ref or [x, y]", .{id});
                 continue;
             };
-            var p = env.scene.point(atv, id, try std.fmt.allocPrint(a, "{s}/at", .{apath})) orelse continue;
+            var p = env.scene.point(atv, id, try a.print("{s}/at", .{apath})) orelse continue;
             var loff = V2.init(0, 0);
             if (an.get("offset")) |ov| if (ov != .null) {
-                loff = model.offsetPairOrDiag(a, env.diags, id, try std.fmt.allocPrint(a, "{s}/offset", .{apath}), "label offset", ov) orelse continue;
+                loff = model.offsetPairOrDiag(a, env.diags, id, try a.print("{s}/offset", .{apath}), "label offset", ov) orelse continue;
                 p = p.add(loff);
             };
             cur_meta = .{ .id = id, .kind = .label, .off = loff.x, .off2 = loff.y, .owner = lspecs.items.len };
@@ -257,7 +257,7 @@ pub fn annotate(env: *Env, base_items: []Item) Allocator.Error![]const Item {
             };
             try lspecs.append(a, .{ .k = k, .id = id, .text = text, .base = base, .off = loff });
         } else {
-            env.diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "{s}/type", .{apath}), "annotation '{s}' has type \"{s}\"; use one of {s}", .{ id, ty, model.joinQuoted(a, &types) });
+            env.diags.add(.@"error", "E_PARAM", id, try a.print("{s}/type", .{apath}), "annotation '{s}' has type \"{s}\"; use one of {s}", .{ id, ty, model.joinQuoted(a, &types) });
         }
     }
     var base_segs: std.ArrayList([2]V2) = .empty;

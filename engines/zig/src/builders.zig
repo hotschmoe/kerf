@@ -66,19 +66,20 @@ comptime {
 test "every choice of an enum parameter is mentioned in its catalog row (docs cannot drift from the parser)" {
     inline for (param_structs) |S| {
         const rows = params_mod.rows(S);
-        inline for (@typeInfo(S).@"struct".fields) |f| {
-            const Base = switch (@typeInfo(f.type)) {
+        const info = @typeInfo(S).@"struct";
+        inline for (info.field_names, info.field_types) |field_name, field_type| {
+            const Base = switch (@typeInfo(field_type)) {
                 .optional => |o| o.child,
-                else => f.type,
+                else => field_type,
             };
             if (@typeInfo(Base) == .@"enum") {
                 var found_row = false;
                 for (rows) |r| {
-                    if (!std.mem.eql(u8, r.names[0], f.name)) continue;
+                    if (!std.mem.eql(u8, r.names[0], field_name)) continue;
                     found_row = true;
-                    inline for (@typeInfo(Base).@"enum".fields) |ef| {
-                        if (std.mem.indexOf(u8, r.desc, ef.name) == null and std.mem.indexOf(u8, r.def, ef.name) == null) {
-                            std.debug.print("{s}.{s}: choice '{s}' is not in its catalog text\n", .{ @typeName(S), f.name, ef.name });
+                    inline for (@typeInfo(Base).@"enum".field_names) |choice| {
+                        if (std.mem.indexOf(u8, r.desc, choice) == null and std.mem.indexOf(u8, r.def, choice) == null) {
+                            std.debug.print("{s}.{s}: choice '{s}' is not in its catalog text\n", .{ @typeName(S), field_name, choice });
                             return error.TestUnexpectedResult;
                         }
                     }

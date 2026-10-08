@@ -115,7 +115,7 @@ test "canonical common key order covers every catalog common field (no drift)" {
 fn fmtWorker(src: []const u8, want: []const u8, failures: *std.atomic.Value(u32)) void {
     var i: usize = 0;
     while (i < 40) : (i += 1) {
-        const input = std.fmt.allocPrint(std.heap.page_allocator, "{{\"doc\":{s}}}", .{src}) catch return;
+        const input = std.heap.page_allocator.print("{{\"doc\":{s}}}", .{src}) catch return;
         defer std.heap.page_allocator.free(input);
         const r = @import("api.zig").call(std.heap.page_allocator, "fmt", input) catch {
             _ = failures.fetchAdd(1, .monotonic);
@@ -130,7 +130,7 @@ test "fmt is safe to call from several threads at once (no shared key scratch, R
     const testdocs = @import("testdocs.zig");
     var wants: [3][]u8 = undefined;
     for (testdocs.all, 0..) |src, i| {
-        const input = try std.fmt.allocPrint(std.testing.allocator, "{{\"doc\":{s}}}", .{src});
+        const input = try std.testing.allocator.print("{{\"doc\":{s}}}", .{src});
         defer std.testing.allocator.free(input);
         const r = try @import("api.zig").call(std.testing.allocator, "fmt", input);
         wants[i] = r.bytes;

@@ -57,7 +57,7 @@ pub fn loadAfterEdit(a: Allocator, doc: json.Value, st: *const style_mod.Style, 
                     dup = true;
                 };
                 if (dup) {
-                    diags.add(.@"error", "E_DUP_ID", vid, try std.fmt.allocPrint(a, "views/{d}", .{i}), "duplicate view id '{s}'", .{vid});
+                    diags.add(.@"error", "E_DUP_ID", vid, try a.print("views/{d}", .{i}), "duplicate view id '{s}'", .{vid});
                     continue;
                 }
                 try seen.append(a, vid);
@@ -246,7 +246,7 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
         };
         if (catalog.find(t)) |e| return try catalog.entryJson(a, e);
         const names = try catalog.typeNames(a);
-        err.* = .{ .code = "E_REF_UNKNOWN", .message = try std.fmt.allocPrint(a, "unknown component type \"{s}\". Types: {s}", .{ t, scene_mod.joinIds(a, names) }) };
+        err.* = .{ .code = "E_REF_UNKNOWN", .message = try a.print("unknown component type \"{s}\". Types: {s}", .{ t, scene_mod.joinIds(a, names) }) };
         return null;
     }
     if (eq(u8, kind, "component") or eq(u8, kind, "anchors")) {
@@ -256,12 +256,12 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
         };
         const c = l.scene.find(id) orelse {
             const ids = try l.scene.compIds(a);
-            const hint = if (model.nearest(a, id, ids)) |n| try std.fmt.allocPrint(a, " Did you mean '{s}'?", .{n}) else "";
-            err.* = .{ .code = "E_REF_UNKNOWN", .message = try std.fmt.allocPrint(a, "no component '{s}'.{s} Components: {s}", .{ id, hint, scene_mod.joinIds(a, ids) }) };
+            const hint = if (model.nearest(a, id, ids)) |n| try a.print(" Did you mean '{s}'?", .{n}) else "";
+            err.* = .{ .code = "E_REF_UNKNOWN", .message = try a.print("no component '{s}'.{s} Components: {s}", .{ id, hint, scene_mod.joinIds(a, ids) }) };
             return null;
         };
         if (c.state != .ok) {
-            err.* = .{ .code = "E_PARAM", .message = try std.fmt.allocPrint(a, "component '{s}' could not be built; fix its errors (see check)", .{id}) };
+            err.* = .{ .code = "E_PARAM", .message = try a.print("component '{s}' could not be built; fix its errors (see check)", .{id}) };
             return null;
         }
         const anchors = try boxAnchors(a, c, null);
@@ -315,7 +315,7 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
         }
         const pt = V2.init(units.parseLength(pv[0]).?, units.parseLength(pv[1]).?);
         const vnode = view_mod.findView(l.doc, vid) orelse {
-            err.* = .{ .code = "E_REF_UNKNOWN", .message = try std.fmt.allocPrint(a, "unknown view '{s}'. Views: {s}", .{ vid, scene_mod.joinIds(a, try view_mod.viewIds(a, l.doc)) }) };
+            err.* = .{ .code = "E_REF_UNKNOWN", .message = try a.print("unknown view '{s}'. Views: {s}", .{ vid, scene_mod.joinIds(a, try view_mod.viewIds(a, l.doc)) }) };
             return null;
         };
         var vd = model.Diags.init(a);
@@ -337,7 +337,7 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
             const c = &l.scene.comps[p.comp];
             try hits.append(a, try json.obj(a, &.{
                 .{ .key = "id", .value = .{ .string = c.id } },
-                .{ .key = "src", .value = .{ .string = if (c.arr_count > 1) try std.fmt.allocPrint(a, "{s}#{d}", .{ c.id, p.instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) }) else c.id } },
+                .{ .key = "src", .value = .{ .string = if (c.arr_count > 1) try a.print("{s}#{d}", .{ c.id, p.instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) }) else c.id } },
                 .{ .key = "part", .value = if (p.part.len > 0) json.Value{ .string = p.part } else .null },
                 .{ .key = "kind", .value = .{ .string = if (sec.cls[i] == .cut) "cut" else "beyond" } },
             }));
@@ -348,6 +348,6 @@ pub fn inspect(l: *const Loaded, q: json.Value, err: *InspectError) Allocator.Er
             .{ .key = "components", .value = .{ .array = hits.items } },
         });
     }
-    err.* = .{ .code = "E_PARAM", .message = try std.fmt.allocPrint(a, "unknown query \"{s}\": use summary, component, anchors, at, catalog, doc", .{kind}) };
+    err.* = .{ .code = "E_PARAM", .message = try a.print("unknown query \"{s}\": use summary, component, anchors, at, catalog, doc", .{kind}) };
     return null;
 }

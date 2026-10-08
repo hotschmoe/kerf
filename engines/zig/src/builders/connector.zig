@@ -83,10 +83,10 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .box = geom.loopBox(rib),
         .nat_z = if (edge) width else thickness,
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "connector {s}{s}{s}{d} ga x {s} lay {s}", .{
+        .info = try a.print("connector {s}{s}{s}{d} ga x {s} lay {s}", .{
             model_name,
             if (model_name.len > 0) " " else "",
-            if (hw) |h| try std.fmt.allocPrint(a, "{s} ", .{h.kind}) else "",
+            if (hw) |h| try a.print("{s} ", .{h.kind}) else "",
             gauge_i,
             ftin(a, width),
             @tagName(cp.lay),

@@ -33,7 +33,7 @@ pub fn titleItems(env: *Env, info: SheetInfo, tcrop: Box, out: *std.ArrayList(It
     const top_gap = 0.4 * S;
     const cx = tcrop.x0 + r;
     const cy = tcrop.y0 - top_gap - r;
-    const src = try std.fmt.allocPrint(a, "title:{s}", .{env.spec.id});
+    const src = try a.print("title:{s}", .{env.spec.id});
     const bubble = try a.dupe(Pt, &.{ .{ .x = cx - r, .y = cy, .b = 1 }, .{ .x = cx + r, .y = cy, .b = 1 } });
     try out.append(a, .{ .path = .{ .layer = layerName(env, .title), .pen = .title, .src = src, .closed = true, .pts = bubble } });
     const th = st.title_height_in * S;
@@ -52,7 +52,7 @@ pub fn titleItems(env: *Env, info: SheetInfo, tcrop: Box, out: *std.ArrayList(It
     const tw = env.font.width(try asciiFold(a, title), th);
     const uy = ty - 0.07 * S;
     try out.append(a, try pathItem(env, .title, src, &.{ V2.init(tx, uy), V2.init(tx + tw, uy) }, false));
-    const scale_line = try std.fmt.allocPrint(a, "SCALE: {s}", .{info.scale_text});
+    const scale_line = try a.print("SCALE: {s}", .{info.scale_text});
     const sy = uy - 0.06 * S - nh;
     try out.append(a, try textItem(env, .title, .anno, src, scale_line, tx, sy, nh, 0, .left, .baseline));
     var low = @min(cy - r, sy - 0.02 * S);

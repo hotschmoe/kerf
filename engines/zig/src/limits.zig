@@ -27,5 +27,5 @@ pub const max_text_chars: usize = 2000;
 
 /// The standard E_LIMIT sentence: what, how many, the maximum, and how to get under it.
 pub fn message(a: std.mem.Allocator, what: []const u8, got: usize, max: usize, advice: []const u8) std.mem.Allocator.Error![]u8 {
-    return std.fmt.allocPrint(a, "{s}: {d} found, the maximum is {d}. {s}", .{ what, got, max, advice });
+    return a.print("{s}: {d} found, the maximum is {d}. {s}", .{ what, got, max, advice });
 }

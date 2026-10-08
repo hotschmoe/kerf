@@ -93,7 +93,7 @@ pub fn withSheet(a: Allocator, d: drawing.Drawing, font: *const font_mod.Font) A
     const ratios = [6]f64{ 3.4, 2.0, 1.2, 1.15, 1.2, 1.3 };
     var sum: f64 = 0;
     for (ratios) |r| sum += r;
-    const detail_no = if (d.sheet_no.len == 0) d.number else try std.fmt.allocPrint(a, "{s}/{s}", .{ d.number, d.sheet_no });
+    const detail_no = if (d.sheet_no.len == 0) d.number else try a.print("{s}/{s}", .{ d.number, d.sheet_no });
     const author = if (d.author.len == 0) "KERF" else try font_mod.upperAscii(a, d.author);
     const project = if (d.project.len > 0) try font_mod.upperAscii(a, d.project) else if (st.project.len > 0) try font_mod.upperAscii(a, st.project) else "";
     const title = try font_mod.upperAscii(a, if (d.title.len == 0) d.doc_title else d.title);

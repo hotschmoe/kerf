@@ -78,6 +78,6 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = bx,
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "solid {s} (escape hatch)", .{sp.material}),
+        .info = try a.print("solid {s} (escape hatch)", .{sp.material}),
     };
 }

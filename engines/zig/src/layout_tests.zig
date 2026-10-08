@@ -82,7 +82,7 @@ test "layout is deterministic (byte-identical drawing JSON on repeated builds)" 
     const gpa = std.testing.allocator;
     const api = @import("api.zig");
     const doc = std.mem.trim(u8, testdocs.psl, " \n\r\t");
-    const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"view\":\"A\"}}", .{doc});
+    const input = try gpa.print("{{\"doc\":{s},\"view\":\"A\"}}", .{doc});
     defer gpa.free(input);
     const r1 = try api.call(gpa, "drawing", input);
     defer gpa.free(r1.bytes);

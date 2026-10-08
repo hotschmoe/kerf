@@ -136,14 +136,14 @@ pub fn parsePointList(ctx: *Ctx, key: []const u8, v: json.Value, local: bool) Bu
         return null;
     };
     if (arr.len > limits.max_points) {
-        ctx.p.failCode("E_LIMIT", key, "{s}. Fix: simplify the outline (a drawing detail rarely needs more than a few dozen vertices), or split it into several components", .{try limits.message(ctx.a, try std.fmt.allocPrint(ctx.a, "points in '{s}'", .{key}), arr.len, limits.max_points, "")});
+        ctx.p.failCode("E_LIMIT", key, "{s}. Fix: simplify the outline (a drawing detail rarely needs more than a few dozen vertices), or split it into several components", .{try limits.message(ctx.a, try ctx.a.print("points in '{s}'", .{key}), arr.len, limits.max_points, "")});
         return null;
     }
     var out: std.ArrayList(Pt) = .empty;
     var ok = true;
     for (arr, 0..) |e, i| {
-        const path = try std.fmt.allocPrint(ctx.a, "{s}/{d}", .{ key, i });
-        const fpath = try std.fmt.allocPrint(ctx.a, "{s}/{s}/{s}", .{ ctx.p.base, ctx.p.id, path });
+        const path = try ctx.a.print("{s}/{d}", .{ key, i });
+        const fpath = try ctx.a.print("{s}/{s}/{s}", .{ ctx.p.base, ctx.p.id, path });
         switch (e) {
             .array => |xy| {
                 if (xy.len < 2 or xy.len > 3) {
@@ -195,7 +195,7 @@ pub fn parsePointList(ctx: *Ctx, key: []const u8, v: json.Value, local: bool) Bu
                 if (ctx.scene.resolveRefStr(rstr, ctx.p.id, fpath)) |w| {
                     var q = w;
                     if (e.get("offset")) |off| if (off != .null) {
-                        q = q.add(ctx.p.offsetPair(try std.fmt.allocPrint(ctx.a, "{s}/offset", .{path}), off) orelse {
+                        q = q.add(ctx.p.offsetPair(try ctx.a.print("{s}/offset", .{path}), off) orelse {
                             ok = false;
                             continue;
                         });
@@ -263,7 +263,7 @@ pub fn lengthOrUntil(ctx: *Ctx, run: []const u8, hint: []const u8, note: *[]cons
         p.fail("until", "'until' needs a placement anchor at one end of the member: for run {s} use {s} (got anchor \"{s}\"); center anchors cannot define a growth direction", .{ run, if (along_x) "*_left or *_right" else "top_* or bottom_*", anchor });
         return null;
     }
-    const path = try std.fmt.allocPrint(a, "{s}/{s}/until", .{ p.base, p.id });
+    const path = try a.print("{s}/{s}/until", .{ p.base, p.id });
     const target = ctx.scene.point(uv.?, p.id, path) orelse {
         p.ok = false;
         return null;
@@ -289,7 +289,7 @@ pub fn lengthOrUntil(ctx: *Ctx, run: []const u8, hint: []const u8, note: *[]cons
         .object => if (uv.?.get("ref")) |r| (r.str() orelse "ref") else "ref",
         else => "ref",
     };
-    note.* = try std.fmt.allocPrint(a, " (until {s})", .{ref_txt});
+    note.* = try a.print(" (until {s})", .{ref_txt});
     return len;
 }
 
@@ -311,7 +311,7 @@ pub fn parseCover(ctx: *Ctx, key: []const u8, base: model.Cover) ?struct { cover
                 ctx.p.fail(key, "{s}.parts.{s} must be an object like {{\"bottom\": 0.75}} (got {s})", .{ key, m.key, model.kindOrText(ctx.a, m.value) });
                 return null;
             }
-            const part_key = std.fmt.allocPrint(ctx.a, "{s}/parts/{s}", .{ key, m.key }) catch return null;
+            const part_key = ctx.a.print("{s}/parts/{s}", .{ key, m.key }) catch return null;
             inline for (.{ "bottom", "sides", "top" }) |k| {
                 @field(pc, k) = ctx.p.fieldLen(part_key, m.value, k, @field(pc, k)) orelse return null;
             }

@@ -34,7 +34,7 @@ pub fn scanForAgent(ctx: *anyopaque) void {
 var shutdown_signal = std.atomic.Value(u8).init(0);
 
 pub fn onSignal(sig: std.posix.SIG) callconv(.c) void {
-    shutdown_signal.store(@intCast(@intFromEnum(sig)), .release);
+    shutdown_signal.store(@intCast(@backingInt(sig)), .release);
 }
 
 pub fn installSignalHandlers() void {
@@ -249,7 +249,7 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
             try err.writeAll("kerf serve: no secure random source for the access token; pass --token-file, or --no-token on a trusted machine\n");
             return 1;
         };
-        cfg.token = try std.fmt.allocPrint(gpa, "{x}", .{&raw});
+        cfg.token = try gpa.print("{x}", .{&raw});
     }
     if (cfg.token) |t| if (t.len == 0) {
         try err.writeAll("kerf serve: the token must not be empty\n");
@@ -338,7 +338,7 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
     server.group.concurrent(io, connWatchdog, .{&server}) catch {};
     server.group.concurrent(io, prefetchAgents, .{&server}) catch {};
     if (cfg.open) {
-        const url = if (cfg.token) |t| try std.fmt.allocPrint(gpa, "http://{s}:{d}/?token={s}", .{ local_host, port, t }) else try std.fmt.allocPrint(gpa, "http://{s}:{d}/", .{ local_host, port });
+        const url = if (cfg.token) |t| try gpa.print("http://{s}:{d}/?token={s}", .{ local_host, port, t }) else try gpa.print("http://{s}:{d}/", .{ local_host, port });
         defer gpa.free(url);
         openBrowser(&server, url);
     }

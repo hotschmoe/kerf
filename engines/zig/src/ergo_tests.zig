@@ -36,7 +36,7 @@ test "the example document checks with no errors and no warnings; every catalog 
     const l = try loadSrc(a, schema.example_doc, true);
     for (l.diags.list.items) |d| try std.testing.expect(d.level == .info);
     for (catalog.entries) |e| {
-        const src = try std.fmt.allocPrint(a, "{{\"kerf\":\"0.1\",\"id\":\"x\",\"components\":[{s}],\"views\":[]}}", .{e.example});
+        const src = try a.print("{{\"kerf\":\"0.1\",\"id\":\"x\",\"components\":[{s}],\"views\":[]}}", .{e.example});
         const lx = try loadSrc(a, src, false);
         errdefer std.debug.print("example of {s} failed: {s}\n", .{ e.name(), if (lx.diags.list.items.len > 0) lx.diags.list.items[0].message else "" });
         try std.testing.expectEqual(@as(usize, 0), lx.diags.errCount());
@@ -101,7 +101,7 @@ test "coupled roof geometry: slope @truss, until along the slope, truss anchors,
     defer arena.deinit();
     const a = arena.allocator();
     for ([_][]const u8{ "left", "right" }) |ext| {
-        const src = try std.fmt.allocPrint(a,
+        const src = try a.print(
             \\{{"kerf":"0.1","id":"t","components":[
             \\{{"id":"truss","type":"truss","pitch":"6:12","exterior":"{s}","span_shown":40,"at":{{"anchor":"bearing_outer","to":[0,0]}}}},
             \\{{"id":"deck","type":"panel","thickness":0.5,"slope":"@truss","until":"truss@top_chord_end","at":{{"anchor":"{s}","to":"truss@tail_top"}}}},
@@ -159,19 +159,19 @@ test "acknowledge replaces the warning with I_ACK; barrier clears the contact wa
         \\{{"id":"cmu","type":"cmu_wall","width":8,"courses":2,"at":{{"to":[0,0]}}}},
         \\{{"id":"sill","type":"lumber","size":"2x6","orient":"flat"{s},"at":{{"anchor":"bottom_left","to":"cmu@top_left"}}}}],"views":[]}}
     ;
-    const plain = try loadSrc(a, try std.fmt.allocPrint(a, base, .{""}), false);
+    const plain = try loadSrc(a, try a.print(base, .{""}), false);
     try std.testing.expectEqual(@as(usize, 1), count(plain, "W_UNTREATED_CONTACT"));
-    const acked = try loadSrc(a, try std.fmt.allocPrint(a, base, .{",\"acknowledge\":[{\"code\":\"W_UNTREATED_CONTACT\",\"reason\":\"mfr barrier\"}]"}), false);
+    const acked = try loadSrc(a, try a.print(base, .{",\"acknowledge\":[{\"code\":\"W_UNTREATED_CONTACT\",\"reason\":\"mfr barrier\"}]"}), false);
     try std.testing.expectEqual(@as(usize, 0), count(acked, "W_UNTREATED_CONTACT"));
     try std.testing.expectEqual(@as(usize, 1), count(acked, "I_ACK"));
-    const sealed = try loadSrc(a, try std.fmt.allocPrint(a, base, .{",\"barrier\":\"sill_seal\""}), false);
+    const sealed = try loadSrc(a, try a.print(base, .{",\"barrier\":\"sill_seal\""}), false);
     try std.testing.expectEqual(@as(usize, 0), count(sealed, "W_UNTREATED_CONTACT"));
     try std.testing.expectEqual(@as(usize, 0), sealed.diags.errCount());
     const sill = sealed.scene.find("sill").?;
     try std.testing.expectApproxEqAbs(@as(f64, 1.625), sill.built.box.y1 - sill.built.box.y0, 1e-9);
     try std.testing.expectEqualStrings("barrier", sill.built.prisms[0].part);
     // only warnings can be acknowledged
-    const bad = try loadSrc(a, try std.fmt.allocPrint(a, base, .{",\"acknowledge\":[{\"code\":\"E_PARAM\",\"reason\":\"x\"}]"}), false);
+    const bad = try loadSrc(a, try a.print(base, .{",\"acknowledge\":[{\"code\":\"E_PARAM\",\"reason\":\"x\"}]"}), false);
     try std.testing.expect(bad.diags.errCount() >= 1);
 }
 

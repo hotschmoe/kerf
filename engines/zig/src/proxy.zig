@@ -51,11 +51,11 @@ pub fn isLocalOrLan(host: []const u8) bool {
     if (std.Io.net.Ip4Address.parse(host, 0)) |ip4| return isPrivate4(ip4.bytes) else |_| {}
     if (std.Io.net.Ip6Address.parse(host, 0)) |ip6| {
         const b = ip6.bytes;
-        if (std.mem.eql(u8, &b, &([_]u8{0} ** 16))) return true; // ::
-        if (std.mem.eql(u8, b[0..15], &([_]u8{0} ** 15)) and b[15] == 1) return true; // ::1
+        if (std.mem.allEqual(u8, &b, 0)) return true; // ::
+        if (std.mem.allEqual(u8, b[0..15], 0) and b[15] == 1) return true; // ::1
         if ((b[0] & 0xfe) == 0xfc) return true; // fc00::/7
         if (b[0] == 0xfe and (b[1] & 0xc0) == 0x80) return true; // fe80::/10
-        if (std.mem.eql(u8, b[0..10], &([_]u8{0} ** 10)) and b[10] == 0xff and b[11] == 0xff) return isPrivate4(b[12..16].*); // ::ffff:a.b.c.d
+        if (std.mem.allEqual(u8, b[0..10], 0) and b[10] == 0xff and b[11] == 0xff) return isPrivate4(b[12..16].*); // ::ffff:a.b.c.d
         return false;
     } else |_| {}
     return std.mem.indexOfScalar(u8, host, '.') == null;
@@ -132,9 +132,9 @@ pub fn plan(a: Allocator, root: kerf.json.Value) Allocator.Error!PlanResult {
     const https = std.ascii.eqlIgnoreCase(uri.scheme, "https");
     const httpp = std.ascii.eqlIgnoreCase(uri.scheme, "http");
     if (!https and !httpp) return reject("E_URL", "only https:// URLs are allowed (http:// only for localhost/LAN with provider \"custom\")");
+    // Not `HostName.fromUri`: it applies the RFC 1123 hostname grammar, which rejects IPv6 literals such as `[::1]`.
     const hbuf = try a.alloc(u8, std.Io.net.HostName.max_len);
-    const hn = uri.getHost(hbuf[0..std.Io.net.HostName.max_len]) catch return reject("E_URL", "URL has no valid host");
-    const host = hn.bytes;
+    const host = (uri.host orelse return reject("E_URL", "URL has no valid host")).toRaw(hbuf) catch return reject("E_URL", "URL has no valid host");
     if (is_custom) {
         if (httpp and !isLocalOrLan(host)) return reject("E_URL", "plain http:// is only allowed for localhost and LAN hosts; use https:// for public servers");
     } else {
@@ -268,7 +268,7 @@ fn forwardInner(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, 
         .headers = .{ .accept_encoding = .{ .override = "identity" }, .user_agent = .{ .override = ua } },
         .extra_headers = p.headers,
     }) catch |e| {
-        detail.* = std.fmt.allocPrint(a, "could not connect to {s}: {s}", .{ p.host, @errorName(e) }) catch "could not connect";
+        detail.* = a.print("could not connect to {s}: {s}", .{ p.host, @errorName(e) }) catch "could not connect";
         return error.Upstream;
     };
     defer req.deinit();
@@ -276,18 +276,18 @@ fn forwardInner(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, 
         const mutable = try a.dupe(u8, b);
         req.transfer_encoding = .{ .content_length = mutable.len };
         req.sendBodyComplete(mutable) catch |e| {
-            detail.* = std.fmt.allocPrint(a, "sending the request to {s} failed: {s}", .{ p.host, @errorName(e) }) catch "send failed";
+            detail.* = a.print("sending the request to {s} failed: {s}", .{ p.host, @errorName(e) }) catch "send failed";
             return error.Upstream;
         };
     } else {
         req.sendBodiless() catch |e| {
-            detail.* = std.fmt.allocPrint(a, "sending the request to {s} failed: {s}", .{ p.host, @errorName(e) }) catch "send failed";
+            detail.* = a.print("sending the request to {s} failed: {s}", .{ p.host, @errorName(e) }) catch "send failed";
             return error.Upstream;
         };
     }
     var redirect_buf: [2048]u8 = undefined;
     var resp = req.receiveHead(&redirect_buf) catch |e| {
-        detail.* = std.fmt.allocPrint(a, "no valid response from {s}: {s}", .{ p.host, @errorName(e) }) catch "bad response";
+        detail.* = a.print("no valid response from {s}: {s}", .{ p.host, @errorName(e) }) catch "bad response";
         return error.Upstream;
     };
     var extra: std.ArrayList(u8) = .empty;
@@ -297,7 +297,7 @@ fn forwardInner(a: Allocator, client: *std.http.Client, p: Plan, w: *Io.Writer, 
         if (std.ascii.eqlIgnoreCase(h.name, "content-encoding") and std.ascii.eqlIgnoreCase(h.value, "identity")) continue;
         try extra.print(a, "{s}: {s}\r\n", .{ h.name, h.value });
     }
-    const status: u16 = @intFromEnum(resp.head.status);
+    const status: u16 = @backingInt(resp.head.status);
     try extra.appendSlice(a, "X-Accel-Buffering: no\r\n");
     http.writeHead(w, .{ .status = status, .content_type = null, .content_length = null, .keep_alive = false, .extra = extra.items }) catch return error.HeadSent;
     w.flush() catch return error.HeadSent;

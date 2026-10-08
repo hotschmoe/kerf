@@ -21,7 +21,7 @@ pub fn apiEvents(s: *Server, a: Allocator, w: *Io.Writer, extra: []const u8) !bo
         return false;
     }
     defer _ = s.sse_active.fetchSub(1, .acq_rel);
-    const hdr = try std.fmt.allocPrint(a, "X-Accel-Buffering: no\r\n{s}", .{extra});
+    const hdr = try a.print("X-Accel-Buffering: no\r\n{s}", .{extra});
     arm(s.cfg.timeouts.write_ms);
     try http.writeHead(w, .{ .status = 200, .content_type = "text/event-stream; charset=utf-8", .content_length = null, .keep_alive = false, .extra = hdr });
     try w.writeAll("retry: 2000\n\nevent: ping\ndata: {}\n\n");

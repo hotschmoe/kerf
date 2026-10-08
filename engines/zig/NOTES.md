@@ -1,14 +1,15 @@
-# engines/zig: Kerf engine in Zig 0.16
+# engines/zig: Kerf engine in Zig 0.17
 
 Status: feature complete for the v0.1 contract (SPEC 1-17), including keynote note mode.
-Everything is std-only Zig 0.16; one source tree builds the importable module `kerf`, the CLI and the
+Everything is std-only Zig 0.17; one source tree builds the importable module `kerf`, the CLI and the
 wasm32-freestanding ABI module. All three reference details export SVG, DXF (zero audit errors), PDF
 (vector only), PNG and mesh, with 0 errors / 0 warnings. Goldens are in `tests/golden/<detail>/`.
 
 Also here: `kerf serve` (the local workspace server: embedded web UI, folder API, SSE, LLM proxy, agent bridge) and the
 op log (`<file>.log.jsonl`). See "kerf serve" below.
 
-Zig: `~/tools/zig-aarch64-linux-0.16.0/zig` (0.16.0). No third-party dependencies.
+Zig: `~/tools/zig-aarch64-linux-0.17.0/zig` (0.17.0; `minimum_zig_version` in build.zig.zon; 0.16 stays at `~/tools/zig-aarch64-linux-0.16.0/zig` for comparisons). No third-party dependencies.
+Zig 0.17 names the optimize modes `debug|safe|fast|small` (`-Doptimize=safe`, `-Dwasm-optimize=small`); the old `ReleaseSafe` spellings still parse but are deprecated.
 
 ## Build / run / test
 
@@ -16,13 +17,13 @@ Zig: `~/tools/zig-aarch64-linux-0.16.0/zig` (0.16.0). No third-party dependencie
 cd engines/zig
 zig build                    # CLI -> zig-out/bin/kerf
 zig build test --summary all # unit + reference-document + leak tests (std.testing.allocator)
-zig build wasm               # -> dist/kerf.wasm (wasm32-freestanding, ReleaseSmall, zero imports)
-zig build -Dui=../../apps/web/dist-serve -Doptimize=ReleaseSmall   # CLI with the web UI embedded (needs `npm run build:serve` in apps/web first)
+zig build wasm               # -> dist/kerf.wasm (wasm32-freestanding, small, zero imports)
+zig build -Dui=../../apps/web/dist-serve -Doptimize=small   # CLI with the web UI embedded (needs `npm run build:serve` in apps/web first)
 node tests/serve_smoke.mjs   # integration test of `kerf serve` (215 checks; starts the built zig-out/bin/kerf on temp folders)
-zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseSmall   # cross-compiles (also aarch64-windows-gnu, *-linux-musl, *-macos)
-zig build wasm -Dwasm-optimize=ReleaseFast   # speed comparison
+zig build -Dtarget=x86_64-windows-gnu -Doptimize=small   # cross-compiles (also aarch64-windows-gnu, *-linux-musl, *-macos)
+zig build wasm -Dwasm-optimize=fast   # speed comparison
 zig build wasm -Dwasm-strip=false            # keeps names for `twiggy top dist/kerf.wasm`
-zig build -Doptimize=ReleaseSafe -Dstrip=false   # CLI with debug info (default: stripped outside Debug, 2.5 MB instead of 16 MB)
+zig build -Doptimize=safe -Dstrip=false   # CLI with debug info (default: stripped outside Debug, 2.5 MB instead of 16 MB)
 zig-out/bin/kerf export ../../spec/details/truss-bearing-cmu.kerf.json --view A --format svg --sheet -o /tmp/a.svg
 ../../tools/zig-engine/svg2png.sh /tmp/a.svg /tmp/a.png 1600      # headless chromium; Read the PNG
 node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm <doc> A out.svg   # ABI check (0 imports, exact exports) + timing
@@ -176,7 +177,7 @@ no clocks; every output is a pure function of (doc, style).
 
 ## Measured numbers
 
-wasm (`tools/size_report.sh`, after refactor batches 4-7): ReleaseSmall **963,851 B raw / 355,588 gzip / 281,466 brotli** (951,291 B before
+wasm (`tools/size_report.sh`): ReleaseSmall **934,693 B raw / 349,261 gzip / 275,657 brotli** on Zig 0.17.0 (964,259 / 355,656 / 281,128 on 0.16.0, -3.1% raw; the figures below are the 0.16 history: after refactor batches 4-7 963,851 B raw / 355,588 gzip / 281,466 brotli (951,291 B before
 the batches: the typed `Params` machinery and the catalog row tables cost about 12 KB, the enums saved 2 KB; per batch: 4 -> 949,372, 5 -> 964,314,
 6 -> 966,523, 7 -> 966,990, `params.readScalar` -> 963,851). `twiggy top` (`zig build wasm -Dwasm-strip=false`): `builders.build` 68 KB (all builders
 inlined into the dispatch), annot 51 KB, iso 36 KB, dispatch 36 KB, clip 29 KB, rodata 132 KB. Older figures (662,838 B) predate v0.1.2-0.1.5.
@@ -511,19 +512,38 @@ x86_64/aarch64 x windows-gnu/linux-musl/macos -> assets `kerf-<arch>-<os>[.exe]`
   rules, agent templates and the untrusted-agent guarantee, op-log entry shape and locking, folder scan events, SSE hub); `tests/serve_smoke.mjs` 215 checks; the web agent's `node test/e2e-serve.mjs --real` (puppeteer) passes against
   this binary (KERF_SERVE_BIN=... with a CURRENT dist-serve embedded; a stale embedded UI makes it fail on newer UI features).
 
+## Zig 0.17 port (from 0.16)
+
+Mechanical: `std.builtin.OptimizeMode` -> `std.lang.Optimize` (`debug|safe|fast|small`; the CLI flag values are `-Doptimize=safe` etc.), `b.args` ->
+`run.addPassthruArgs()`, `b.pathFromRoot` -> `b.root` / `b.path` with `b.dependOnDirectoryContents` for the `-Dui` directory walk (the build is no longer
+cache-poisoned; `-Dui` is relative to the build root `engines/zig`), `std.fmt.allocPrint(a, ...)` -> `a.print(...)`, `@intFromEnum/@enumFromInt` ->
+`@backingInt/@fromBackingInt` (zig fmt migrates them), `a ** n` -> `std.mem.allEqual` / loops, `std.meta.fieldNames/fields` -> `@typeInfo(T).<kind>.field_names`
+(struct-of-arrays reflection: `field_names`, `field_types`, `field_attrs[i].defaultValue(T)`; `params.zig` reads fields by index), `std.ascii.indexOfIgnoreCase` ->
+`findIgnoreCase`. `Uri.getHost` moved to `HostName.fromUri`, which applies the RFC 1123 grammar and rejects `[::1]`; the proxy reads `uri.host.?.toRaw(buf)` instead.
+
+**A latent bug the new stack layout exposed:** `builders/joint.zig` (control joint) returned a loop that pointed at a stack array (`orientedCcw(a, &tri)` returns its
+input when it is already counter-clockwise), a use-after-return that 0.16 happened to survive. Visible only as a wrong drawing of `palmer-sd1-like` (view B, a note
+target "not visible"; views A and D shifted), caught by the unit test and the golden gate. Fixed with `a.dupe(Pt, &tri)`. Lesson: a builder never lets a slice
+of a local array escape; copy into the arena.
+
+Goldens are byte-identical to 0.16 (no float formatting change). Sizes on 0.17.0 vs 0.16.0: wasm small 934,693 vs 964,259 B; ReleaseSafe stripped CLI without the UI
+x86_64-linux-musl 3,115,496 vs 3,089,432, aarch64-linux-musl 2,532,968 vs 2,537,168, x86_64-windows 3,398,144 vs 3,417,600, aarch64-windows 2,709,504 vs
+2,771,456, x86_64-macos 3,138,313 vs 3,096,816, aarch64-macos 2,522,984 vs 2,538,424; native aarch64-linux-gnu 2,678,376 vs 2,523,176.
+
 ## Windows (what broke in v0.1.0-alpha.6/.7, how it is tested now)
 
 Field report: `kerf serve` on Windows 11 (x86_64) died with `reached unreachable code` right after the banner (opening a document in the UI, or
 `--open`, killed it; an agent run through Grok worked until the next document read). alpha.5 was fine. We had never RUN the server on Windows
 (no wine here), only cross-compiled it. Root causes, all found by running the real binary on a `windows-latest` runner:
 
-1. **std 0.16 `Dir.openFile(.{ .follow_symlinks = false })` is broken on Windows.** `dirOpenFileWtf16` opens the handle with
-   `FILE_OPEN_REPARSE_POINT` and ASYNCHRONOUS I/O but returns a `File` with `nonblocking = false`; the first `NtReadFile` that does not complete at once
-   returns STATUS_PENDING and std hits `unreachable // wrong File nonblocking flag`. alpha.6 introduced the no-follow open for every document read (V-10),
+1. **std 0.16 `Dir.openFile(.{ .follow_symlinks = false })` was broken on Windows (fixed in std 0.17).** `dirOpenFileWtf16` opened the handle with
+   `FILE_OPEN_REPARSE_POINT` and ASYNCHRONOUS I/O but returned a `File` with `nonblocking = false`; the first `NtReadFile` that did not complete at once
+   returned STATUS_PENDING and std hit `unreachable // wrong File nonblocking flag`. alpha.6 introduced the no-follow open for every document read (V-10),
    so the first `GET /api/docs`, `readDoc`, log read or `.kerf/agents.json` read could kill the process (timing dependent, hence "sometimes works").
-   Fix: `src/fsx.zig` `openFileNoFollow` (own `NtCreateFile` with `FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT`; a symlink then shows as
-   `kind == .sym_link` and is refused as before). All five call sites use it. `statFile(.follow_symlinks = false)` and `openDir(...)` are fine (stat only /
-   synchronous). **Never call `openFile(.follow_symlinks = false)` and read from it on Windows.**
+   On 0.16 `src/fsx.zig` carried an own `NtCreateFile` (`FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT`). Zig 0.17's `dirOpenFileWtf16` always
+   passes `SYNCHRONOUS_NONALERT` (checked in `lib/std/Io/Threaded.zig`), so the workaround was deleted and the five call sites use
+   `dir.openFile(io, path, .{ .follow_symlinks = false })` again (a symlink shows as `kind == .sym_link` and is refused as before). The regression test
+   is the Windows CI gate itself (`tests/windows_serve.mjs` + `serve_smoke.mjs` reading documents through exactly that path on a real Windows runner).
 2. **The op-log lock was skipped on Windows**, so concurrent `kerf apply -w` (or the server plus a CLI) lost log lines. `fsx.lockExclusive` takes a
    byte-range lock on a range far past EOF (std's own `File.lock` locks byte 0, and Windows range locks are mandatory, so readers of the first line would fail).
 3. **Agents installed as `.cmd`/`.bat` shims** (npm installs of grok/claude/codex/pi) are started through `cmd.exe` by std, which refuses CR/LF/NUL in an

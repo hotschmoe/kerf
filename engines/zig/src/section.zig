@@ -77,7 +77,7 @@ pub const Section = struct {
 
     pub fn srcName(self: *const Section, p: Prism) []const u8 {
         const c = &self.scene.comps[p.comp];
-        if (c.arr_count > 1) return std.fmt.allocPrint(self.a, "{s}#{d}", .{ c.id, p.instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) }) catch c.id;
+        if (c.arr_count > 1) return self.a.print("{s}#{d}", .{ c.id, p.instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) }) catch c.id;
         return c.id;
     }
 

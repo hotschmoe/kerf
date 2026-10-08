@@ -162,7 +162,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .zones = zones.items,
         .box = box,
         .nat_z = tsz.t,
-        .info = try std.fmt.allocPrint(a, "truss {s}:12 {s} heel, {s}+{s} chords, ovh {s}", .{ fmtNum(a, @tan(theta) * 12.0), @tagName(tp.heel), top, bot, ftin(a, tp.overhang) }),
+        .info = try a.print("truss {s}:12 {s} heel, {s}+{s} chords, ovh {s}", .{ fmtNum(a, @tan(theta) * 12.0), @tagName(tp.heel), top, bot, ftin(a, tp.overhang) }),
     };
     if (tp.exterior == .right) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
     return built;

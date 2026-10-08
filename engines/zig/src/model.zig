@@ -46,11 +46,11 @@ pub const Diags = struct {
     }
 
     pub fn add(self: *Diags, level: Level, code: []const u8, id: ?[]const u8, path: ?[]const u8, comptime fmt: []const u8, args: anytype) void {
-        const msg = std.fmt.allocPrint(self.a, fmt, args) catch return;
+        const msg = self.a.print(fmt, args) catch return;
         self.list.append(self.a, .{ .level = level, .code = code, .id = id, .path = path, .message = msg }) catch {};
     }
     pub fn addFix(self: *Diags, level: Level, code: []const u8, id: ?[]const u8, path: ?[]const u8, comptime fmt: []const u8, args: anytype, fix: []const u8) void {
-        const msg = std.fmt.allocPrint(self.a, fmt, args) catch return;
+        const msg = self.a.print(fmt, args) catch return;
         self.list.append(self.a, .{ .level = level, .code = code, .id = id, .path = path, .message = msg, .fix = fix }) catch {};
     }
     pub fn errCount(self: *const Diags) usize {
@@ -249,7 +249,7 @@ pub fn oneLoop(a: Allocator, l: []const Pt) Allocator.Error![]const []const Pt {
 /// `[dx, dy]`: two lengths in inches. Reports E_PARAM (path = where it was written) and returns null on any other shape, so a
 /// typo like ["1/2x", 3] is an error with a fix hint instead of an offset of 0.
 pub fn offsetPairOrDiag(a: Allocator, diags: *Diags, id: ?[]const u8, path: []const u8, what: []const u8, v: json.Value) ?V2 {
-    const fix = std.fmt.allocPrint(a, "write {s} as [x, y], two lengths in inches (numbers or strings such as \"1 1/2\"), e.g. [1.5, -2]", .{what}) catch "write it as [x, y], two lengths in inches";
+    const fix = a.print("write {s} as [x, y], two lengths in inches (numbers or strings such as \"1 1/2\"), e.g. [1.5, -2]", .{what}) catch "write it as [x, y], two lengths in inches";
     const arr = v.arr() orelse {
         diags.addFix(.@"error", "E_PARAM", id, path, "{s} must be an array [x, y] (got {s})", .{ what, kindOrText(a, v) }, fix);
         return null;
@@ -306,7 +306,7 @@ pub const Params = struct {
     /// `fail` with another diagnostic code (E_LIMIT, E_ANCHOR_UNKNOWN, ...); the code is part of the diagnostic from the start.
     pub fn failCode(self: *Params, code: []const u8, key: []const u8, comptime fmt: []const u8, args: anytype) void {
         self.ok = false;
-        const path = std.fmt.allocPrint(self.a, "{s}/{s}/{s}", .{ self.base, self.id, key }) catch return;
+        const path = self.a.print("{s}/{s}/{s}", .{ self.base, self.id, key }) catch return;
         self.diags.add(.@"error", code, self.id, path, fmt, args);
     }
 
@@ -385,7 +385,7 @@ pub const Params = struct {
     // and null is returned. Formerly these read `... orelse default`, so a typo such as "cover": "1 1/2x" silently became 1.5.
 
     fn fieldPath(self: *Params, key: []const u8, field: []const u8) []const u8 {
-        return std.fmt.allocPrint(self.a, "{s}/{s}", .{ key, field }) catch key;
+        return self.a.print("{s}/{s}", .{ key, field }) catch key;
     }
 
     pub fn fieldLen(self: *Params, key: []const u8, obj: json.Value, field: []const u8, default: f64) ?f64 {
@@ -420,7 +420,7 @@ pub const Params = struct {
 
     /// An `[dx, dy]` pair of lengths (offset of a Ref) at param `key`; any other shape is E_PARAM, never "0".
     pub fn offsetPair(self: *Params, key: []const u8, v: json.Value) ?V2 {
-        const r = offsetPairOrDiag(self.a, self.diags, self.id, std.fmt.allocPrint(self.a, "{s}/{s}/{s}", .{ self.base, self.id, key }) catch key, "offset", v);
+        const r = offsetPairOrDiag(self.a, self.diags, self.id, self.a.print("{s}/{s}/{s}", .{ self.base, self.id, key }) catch key, "offset", v);
         if (r == null) self.ok = false;
         return r;
     }
@@ -468,7 +468,7 @@ pub fn joinQuoted(a: Allocator, items: []const []const u8) []const u8 {
 pub fn numText(a: Allocator, x: f64) []const u8 {
     if (!std.math.isFinite(x)) return "a non-finite number";
     const m = @abs(x);
-    const s = if (m != 0 and (m >= 1e9 or m < 1e-4)) std.fmt.allocPrint(a, "{e}", .{x}) else json.fmtNumberAlloc(a, x);
+    const s = if (m != 0 and (m >= 1e9 or m < 1e-4)) a.print("{e}", .{x}) else json.fmtNumberAlloc(a, x);
     return s catch "?";
 }
 

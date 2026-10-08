@@ -16,7 +16,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kerf = @import("kerf");
-const fsx = @import("fsx.zig");
 const http = @import("http.zig");
 const events = @import("events.zig");
 const Io = std.Io;
@@ -81,8 +80,8 @@ pub const builtin_templates = [_]Template{
 pub const prefix_fmt = "You are working in a Kerf details library. Run 'kerf guide' first if you haven't this session.";
 
 pub fn contextMessage(a: Allocator, message: []const u8, file: ?[]const u8) Allocator.Error![]u8 {
-    if (file) |f| return std.fmt.allocPrint(a, "{s} Current document: {s}.\n\n{s}", .{ prefix_fmt, f, message });
-    return std.fmt.allocPrint(a, "{s}\n\n{s}", .{ prefix_fmt, message });
+    if (file) |f| return a.print("{s} Current document: {s}.\n\n{s}", .{ prefix_fmt, f, message });
+    return a.print("{s}\n\n{s}", .{ prefix_fmt, message });
 }
 
 /// Built-ins, with `<dir>/.kerf/agents.json` entries added (new id) or, when `trust` is set, replacing (same id).
@@ -113,7 +112,7 @@ pub fn loadTemplates(a: Allocator, io: Io, dir: Io.Dir, trust: bool) Allocator.E
 /// Read a small file of the served folder without following a symlink at the last component (a prompt-injected
 /// agent can plant `.kerf/agents.json -> /somewhere`).
 fn readWorkspaceFile(a: Allocator, io: Io, dir: Io.Dir, sub: []const u8) ?[]u8 {
-    var f = fsx.openFileNoFollow(io, dir, sub) catch return null;
+    var f = dir.openFile(io, sub, .{ .follow_symlinks = false }) catch return null;
     defer f.close(io);
     var rb: [4096]u8 = undefined;
     var fr = f.reader(io, &rb);
@@ -191,9 +190,9 @@ pub fn detect(a: Allocator, io: Io, t: Template) Detected {
         .timeout = .{ .duration = .{ .raw = Io.Duration.fromSeconds(8), .clock = .awake } },
     }) catch |e| {
         const why = switch (e) {
-            error.FileNotFound => std.fmt.allocPrint(a, "`{s}` was not found on PATH", .{t.detect[0]}),
-            error.Timeout => std.fmt.allocPrint(a, "`{s}` did not answer within 8 s", .{t.detect[0]}),
-            else => std.fmt.allocPrint(a, "could not run `{s}`: {s}", .{ t.detect[0], @errorName(e) }),
+            error.FileNotFound => a.print("`{s}` was not found on PATH", .{t.detect[0]}),
+            error.Timeout => a.print("`{s}` did not answer within 8 s", .{t.detect[0]}),
+            else => a.print("could not run `{s}`: {s}", .{ t.detect[0], @errorName(e) }),
         } catch null;
         return .{ .available = false, .reason = why };
     };
@@ -204,7 +203,7 @@ pub fn detect(a: Allocator, io: Io, t: Template) Detected {
         else => false,
     };
     if (!ok) {
-        const why = std.fmt.allocPrint(a, "`{s}` exited with an error (try running it once in a terminal to sign in)", .{t.detect[0]}) catch null;
+        const why = a.print("`{s}` exited with an error (try running it once in a terminal to sign in)", .{t.detect[0]}) catch null;
         return .{ .available = false, .reason = why };
     }
     const text = if (std.mem.trim(u8, res.stdout, " \t\r\n").len > 0) res.stdout else res.stderr;
@@ -284,7 +283,7 @@ const ProcGroup = struct {
             if (g.job) |j| {
                 _ = winjob.TerminateJobObject(j, 1);
             } else if (g.leader) |h| {
-                _ = std.os.windows.ntdll.NtTerminateProcess(h, @enumFromInt(1));
+                _ = std.os.windows.ntdll.NtTerminateProcess(h, @fromBackingInt(1));
             }
         } else {
             if (g.pgid > 1) _ = std.posix.system.kill(-g.pgid, if (hard) .KILL else .TERM);
@@ -374,7 +373,7 @@ pub const Manager = struct {
         const now_s: i64 = @intCast(@divTrunc(Io.Timestamp.now(io, .awake).nanoseconds, std.time.ns_per_s));
         // The key covers the command, so a changed agents.json does not serve a stale answer.
         const joined = std.mem.join(a, "\x00", t.detect) catch return .{ .available = false, .reason = "out of memory" };
-        const full_key = std.fmt.allocPrint(a, "{s}\x01{s}", .{ t.id, joined }) catch return .{ .available = false, .reason = "out of memory" };
+        const full_key = a.print("{s}\x01{s}", .{ t.id, joined }) catch return .{ .available = false, .reason = "out of memory" };
         m.mu.lockUncancelable(io);
         var entry: ?*CacheEntry = null;
         while (true) {
@@ -489,7 +488,7 @@ pub fn start(m: *Manager, io: Io, a: Allocator, group: *Io.Group, p: StartParams
     var env = try m.environ.clone(a);
     const old_path = env.get("PATH") orelse env.get("Path") orelse "";
     const sep: u8 = if (builtin.os.tag == .windows) ';' else ':';
-    const new_path = if (old_path.len > 0) try std.fmt.allocPrint(a, "{s}{c}{s}", .{ m.exe_dir, sep, old_path }) else m.exe_dir;
+    const new_path = if (old_path.len > 0) try a.print("{s}{c}{s}", .{ m.exe_dir, sep, old_path }) else m.exe_dir;
     try env.put("PATH", new_path);
     try env.put("KERF_ACTOR", "agent");
     _ = env.orderedRemove("KERF_TOKEN"); // the server's own secret never reaches an agent
@@ -508,7 +507,7 @@ pub fn start(m: *Manager, io: Io, a: Allocator, group: *Io.Group, p: StartParams
     };
     const n = m.next_id;
     m.next_id += 1;
-    const run_id = std.fmt.allocPrint(m.gpa, "r{d}", .{n}) catch |e| {
+    const run_id = m.gpa.print("r{d}", .{n}) catch |e| {
         m.mu.unlock(io);
         return e;
     };
@@ -532,8 +531,8 @@ pub fn start(m: *Manager, io: Io, a: Allocator, group: *Io.Group, p: StartParams
         m.gpa.free(run_id);
         m.gpa.destroy(run);
         return switch (e) {
-            error.NameTooLong => .{ .failed = .{ .too_long = try std.fmt.allocPrint(a, "the message and arguments exceed the OS limit for starting `{s}`", .{argv[0]}) } },
-            else => .{ .failed = .{ .spawn_failed = try std.fmt.allocPrint(a, "could not start `{s}`: {s}", .{ argv[0], @errorName(e) }) } },
+            error.NameTooLong => .{ .failed = .{ .too_long = try a.print("the message and arguments exceed the OS limit for starting `{s}`", .{argv[0]}) } },
+            else => .{ .failed = .{ .spawn_failed = try a.print("could not start `{s}`: {s}", .{ argv[0], @errorName(e) }) } },
         };
     };
 
@@ -673,7 +672,7 @@ fn watchdog(m: *Manager, io: Io, run: *Manager.Run) void {
         if (announce_timeout) {
             var arena = std.heap.ArenaAllocator.init(m.gpa);
             defer arena.deinit();
-            const msg = std.fmt.allocPrint(arena.allocator(), "{{\"type\":\"stderr\",\"text\":\"kerf: the run exceeded the {d} s limit; stopping the agent\"}}", .{m.max_run_s}) catch continue;
+            const msg = arena.allocator().print("{{\"type\":\"stderr\",\"text\":\"kerf: the run exceeded the {d} s limit; stopping the agent\"}}", .{m.max_run_s}) catch continue;
             publishEvent(m, io, arena.allocator(), run.id, msg);
         }
     }
@@ -700,7 +699,7 @@ fn supervise(m: *Manager, io: Io, run: *Manager.Run) void {
     if (run.child.wait(io)) |term| switch (term) {
         .exited => |c| code = c,
         .signal => |sg| {
-            signal = @intCast(@intFromEnum(sg));
+            signal = @intCast(@backingInt(sg));
             code = 128 + signal.?;
         },
         else => {},
@@ -936,9 +935,9 @@ test "V-2: untrusted workspace agents are listed but never executed, not even th
     try tmp.dir.createDirPath(io, ".kerf");
     var pbuf: [std.fs.max_path_bytes]u8 = undefined;
     const plen = try tmp.dir.realPath(io, &pbuf);
-    const marker = try std.fmt.allocPrint(a, "{s}/PWNED", .{pbuf[0..plen]});
+    const marker = try a.print("{s}/PWNED", .{pbuf[0..plen]});
     std.mem.replaceScalar(u8, marker, '\\', '/'); // a Windows path would need JSON escaping
-    const json = try std.fmt.allocPrint(a, "{{\"agents\":[{{\"id\":\"evil\",\"detect\":[\"touch\",\"{s}\"],\"argv\":[\"touch\",\"{s}\"]}},{{\"id\":\"claude\",\"detect\":[\"touch\",\"{s}\"],\"argv\":[\"touch\",\"{s}\"]}}]}}", .{ marker, marker, marker, marker });
+    const json = try a.print("{{\"agents\":[{{\"id\":\"evil\",\"detect\":[\"touch\",\"{s}\"],\"argv\":[\"touch\",\"{s}\"]}},{{\"id\":\"claude\",\"detect\":[\"touch\",\"{s}\"],\"argv\":[\"touch\",\"{s}\"]}}]}}", .{ marker, marker, marker, marker });
     try tmp.dir.writeFile(io, .{ .sub_path = ".kerf/agents.json", .data = json });
 
     const list = try loadTemplates(a, io, tmp.dir, false);

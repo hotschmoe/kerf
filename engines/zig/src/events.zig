@@ -32,7 +32,7 @@ pub const Hub = struct {
 
     /// Publish `event: <name>\ndata: <data_json>\n\n`. `data_json` must be one line.
     pub fn publish(h: *Hub, io: Io, name: []const u8, data_json: []const u8) void {
-        const frame = std.fmt.allocPrint(h.gpa, "event: {s}\ndata: {s}\n\n", .{ name, data_json }) catch return;
+        const frame = h.gpa.print("event: {s}\ndata: {s}\n\n", .{ name, data_json }) catch return;
         // A CR or LF inside the data would split the SSE frame (a lone CR is a line end for EventSource): the data is one
         // line by contract, so whatever slipped through becomes a space. Inside JSON strings valid text has no raw ones.
         const data_start = "event: ".len + name.len + "\ndata: ".len;

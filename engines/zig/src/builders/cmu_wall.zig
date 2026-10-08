@@ -70,7 +70,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         const y0 = @as(f64, @floatFromInt(k - 1)) * 8.0;
         const y1 = y0 + 7.625;
         const is_bb = k > n - nbb;
-        const part = try std.fmt.allocPrint(a, "course_{d}", .{k});
+        const part = try a.print("course_{d}", .{k});
         try prisms.append(a, .{ .part = part, .material = "cmu", .loops = try model.oneLoop(a, try model.rectLoop(a, 0, y0, fs, y1)), .cmu_unit = true, .course = @intCast(k) });
         try prisms.append(a, .{ .part = part, .material = "cmu", .loops = try model.oneLoop(a, try model.rectLoop(a, w - fs, y0, w, y1)), .cmu_unit = true, .course = @intCast(k) });
         const grouted = cp.grout != .none and (is_bb or cp.grout == .solid or cp.grout == .reinforced);
@@ -81,7 +81,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
             try prisms.append(a, .{ .part = part, .material = "cmu", .loops = cell, .kind = .ghost, .pen = .beyond });
         }
         if (k < n or cp.top_joint) {
-            try prisms.append(a, .{ .part = try std.fmt.allocPrint(a, "joint_{d}", .{k}), .material = "mortar", .loops = try model.oneLoop(a, try model.rectLoop(a, 0, y1, w, y1 + 0.375)) });
+            try prisms.append(a, .{ .part = try a.print("joint_{d}", .{k}), .material = "mortar", .loops = try model.oneLoop(a, try model.rectLoop(a, 0, y1, w, y1 + 0.375)) });
         }
         try zones.append(a, try zoneRect(a, part, 0, y0, w, y1));
     }
@@ -117,6 +117,6 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .zones = zones.items,
         .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = total_h },
         .host = .{ .outline = outline, .cover = cov.?.cover, .part_cover = cov.?.parts },
-        .info = try std.fmt.allocPrint(a, "cmu_wall {s}\" x {d} courses{s}", .{ fmtNum(a, nom), n, if (nbb > 0) try std.fmt.allocPrint(a, " ({d} bond beam)", .{nbb}) else "" }),
+        .info = try a.print("cmu_wall {s}\" x {d} courses{s}", .{ fmtNum(a, nom), n, if (nbb > 0) try a.print(" ({d} bond beam)", .{nbb}) else "" }),
     };
 }

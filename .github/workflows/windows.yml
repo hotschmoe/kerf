@@ -2,8 +2,8 @@
 # `unreachable` inside std on the first document read), so CI runs the real thing on a Windows runner: unit tests, the full
 # serve smoke suite, a field-shaped session (init, serve --open, the UI's document-open sequence, a 30 s agent run through
 # an npm-style `grok.cmd` shim) and the CLI tests, against a Debug build (stack traces on) and against the shipped
-# ReleaseSafe+stripped build with the web UI embedded. The arm64 binary is cross-compiled there; running it on
-# windows-11-arm is a manual, informational job (see the TODO below). Called from ci.yml and release.yml; also runnable by hand.
+# ReleaseSafe+stripped build with the web UI embedded. The arm64 binary is cross-compiled there and then run on a
+# windows-11-arm runner (the `windows-arm64` job: the shipped ReleaseSafe build, same tests). Called from ci.yml and release.yml; also runnable by hand.
 name: windows
 
 on:
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -51,15 +51,14 @@ jobs:
 
       - name: build the shipped binary (ReleaseSafe, stripped, UI embedded) and run the same tests against it
         run: |
-          zig build -Doptimize=ReleaseSafe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/release"
+          zig build -Doptimize=safe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/release"
           node tests/windows_serve.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
           node tests/serve_smoke.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
           node tests/cli_ergonomics.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
 
-      - name: cross-compile the arm64 Windows binary for the ARM runner
-        run: zig build -Dtarget=aarch64-windows-gnu -Doptimize=ReleaseSafe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64"
-      - name: cross-compile the arm64 binaries (ReleaseSafe as shipped, and Debug for diagnosis)
+      - name: cross-compile the arm64 binaries for the ARM runner (as shipped: safe + stripped; and Debug for diagnosis)
         run: |
+          zig build -Dtarget=aarch64-windows-gnu -Doptimize=safe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64"
           zig build -Dtarget=aarch64-windows-gnu -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64dbg"
       - uses: actions/upload-artifact@v4
         with:
@@ -70,11 +69,6 @@ jobs:
 
   windows-arm64:
     name: windows (windows-11-arm, aarch64 binary)
-    # Informational and manual only (workflow_dispatch). TODO(arm64-windows): every optimized aarch64-windows build of kerf (even
-    # `kerf version`, no UI) segfaults on windows-11-arm, Debug works, and the Zig 0.16 compiler itself segfaults there. Looks like a Zig
-    # 0.16 aarch64-windows toolchain problem, not Kerf code. Re-enable as a gate once a Release arm64 binary starts; until then
-    # kerf-aarch64-windows.exe in a release is UNTESTED/likely broken, and arm64 Windows users should run the x86_64 build (emulation).
-    if: github.event_name == 'workflow_dispatch'
     needs: windows
     runs-on: windows-11-arm
     continue-on-error: true
@@ -92,12 +86,14 @@ jobs:
         with:
           name: kerf-aarch64-windows
           path: ${{ runner.temp }}/arm64
-      - name: Debug build (works) then the shipped ReleaseSafe build (currently crashes at startup)
-        continue-on-error: true
+      - name: the shipped build starts (ReleaseSafe, stripped, UI embedded)
+        run: "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe" version
+      - name: field-shaped session, serve smoke test, CLI ergonomics against the shipped build
         run: |
-          "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe" version
-          "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe" version
-      - run: |
-          node tests/windows_serve.mjs "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe"
-          node tests/serve_smoke.mjs "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe"
-          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe"
+          node tests/windows_serve.mjs "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe"
+          node tests/serve_smoke.mjs "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe"
+          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe"
+      - name: Debug build (diagnostics only)
+        if: always()
+        continue-on-error: true
+        run: "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe" version

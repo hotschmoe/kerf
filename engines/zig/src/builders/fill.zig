@@ -54,6 +54,6 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(loop),
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "fill {s}", .{@tagName(fp.material)}),
+        .info = try a.print("fill {s}", .{@tagName(fp.material)}),
     };
 }

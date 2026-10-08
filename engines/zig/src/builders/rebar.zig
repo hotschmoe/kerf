@@ -75,12 +75,12 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
             .prisms = try onePrism(a, prism),
             .box = .{ .x0 = -r, .y0 = -r, .x1 = r, .y1 = r },
             .bar_d = d,
-            .info = try std.fmt.allocPrint(a, "rebar {s} along z", .{size}),
+            .info = try a.print("rebar {s} along z", .{size}),
         };
         if (rp.place) |pl| {
             built.centers = (try placeRebar(ctx, pl, d)) orelse return null;
             const face = if (pl.get("face")) |f| (f.str() orelse "bottom") else "bottom";
-            built.info = try std.fmt.allocPrint(a, "rebar ({d}) {s} along z @ {s} face", .{ built.centers.len, size, face });
+            built.info = try a.print("rebar ({d}) {s} along z @ {s} face", .{ built.centers.len, size, face });
         }
         return built;
     }
@@ -113,7 +113,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .nat_z = d,
         .points_mode = true,
         .bar_d = d,
-        .info = try std.fmt.allocPrint(a, "rebar {s} path L={s}{s}", .{ size, ftin(a, pathLen(vs)), if (rp.spacing_note.len > 0) try std.fmt.allocPrint(a, " ({s})", .{rp.spacing_note}) else "" }),
+        .info = try a.print("rebar {s} path L={s}{s}", .{ size, ftin(a, pathLen(vs)), if (rp.spacing_note.len > 0) try a.print(" ({s})", .{rp.spacing_note}) else "" }),
     };
 }
 
@@ -155,7 +155,7 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
     }
     const host = ctx.scene.find(host_id) orelse {
         const ids = try ctx.scene.compIds(a);
-        const path = try std.fmt.allocPrint(a, "{s}/{s}/place/in", .{ p.base, p.id });
+        const path = try a.print("{s}/{s}/place/in", .{ p.base, p.id });
         if (model.nearest(a, host_id, ids)) |nn| {
             ctx.scene.diags.addFix(.@"error", "E_REF_UNKNOWN", p.id, path, "place.in: no component '{s}'; did you mean '{s}'?", .{ host_id, nn }, nn);
         } else {
@@ -172,7 +172,7 @@ fn placeRebar(ctx: *Ctx, pl: json.Value, d: f64) BuildError!?[]const V2 {
     if (part) |pt| {
         const lb = scene_mod.Scene.partBox(host, pt) orelse {
             const parts = try ctx.scene.partNames(host);
-            const path = try std.fmt.allocPrint(a, "{s}/{s}/place/in", .{ p.base, p.id });
+            const path = try a.print("{s}/{s}/place/in", .{ p.base, p.id });
             ctx.scene.diags.add(.@"error", "E_REF_UNKNOWN", p.id, path, "place.in: component '{s}' has no part '{s}'. Parts: {s}", .{ host_id, pt, if (parts.len == 0) "(none)" else scene_mod.joinIds(a, parts) });
             p.ok = false;
             return null;

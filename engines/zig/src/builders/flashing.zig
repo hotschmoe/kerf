@@ -97,7 +97,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .anchors = anchors,
         .box = geom.loopBox(rib),
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "flashing {s} {d} ga ({s}\" thick)", .{ @tagName(pr), gauge_i, fmtNum(a, thickness) }),
+        .info = try a.print("flashing {s} {d} ga ({s}\" thick)", .{ @tagName(pr), gauge_i, fmtNum(a, thickness) }),
     };
     if (!points_mode and fp.exterior == .right) built = try mirrorBuilt(a, built, geom.Xf.scaling(-1, 1), false);
     return built;

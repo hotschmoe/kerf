@@ -112,7 +112,7 @@ pub fn handleRequest(s: *Server, a: Allocator, req: *http.Request, r: *Io.Reader
         if (checkAccess(s, a, req.*)) |rej| {
             if (route.kind == .info and rej.status == 401) {
                 // Let the UI discover that a token is needed.
-                const body = try std.fmt.allocPrint(a, "{{\"version\":\"{s}\",\"token_required\":true,\"authenticated\":false}}\n", .{kerf.version});
+                const body = try a.print("{{\"version\":\"{s}\",\"token_required\":true,\"authenticated\":false}}\n", .{kerf.version});
                 try http.sendJson(w, 200, ka, extra, body);
                 return ka;
             }
@@ -145,7 +145,7 @@ pub fn handleRequest(s: *Server, a: Allocator, req: *http.Request, r: *Io.Reader
         arm(@as(u64, s.cfg.timeouts.head_ms) * 3 + @as(u64, @min(req.content_length, 256 << 20) / (512 << 10)) * 1000);
         http.readBody(a, r, w, req, cap) catch |e| {
             switch (e) {
-                error.TooLarge => http.sendError(a, w, 413, false, extra, "E_TOO_LARGE", try std.fmt.allocPrint(a, "request body over {d} bytes for this endpoint", .{cap})) catch {},
+                error.TooLarge => http.sendError(a, w, 413, false, extra, "E_TOO_LARGE", try a.print("request body over {d} bytes for this endpoint", .{cap})) catch {},
                 error.BadChunk, error.ShortBody => http.sendError(a, w, 400, false, extra, "E_HTTP", "malformed request body") catch {},
                 else => {},
             }

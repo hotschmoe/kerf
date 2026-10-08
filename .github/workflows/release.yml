@@ -28,7 +28,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - uses: actions/setup-python@v5
         with:
@@ -59,7 +59,7 @@ jobs:
           zig build test --summary all
           zig build              # Debug (safety checks): what the golden gate exercises
           bash tests/check_golden.sh
-          zig build -Doptimize=ReleaseSafe -Dui="$UI_DIR"
+          zig build -Doptimize=safe -Dui="$UI_DIR"
           node tests/cli_ergonomics.mjs
           node tests/serve_smoke.mjs
 
@@ -71,7 +71,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/release"
           build() { # <zig target> <asset name>
             rm -rf zig-out
-            zig build -Dtarget="$1" -Doptimize=ReleaseSafe -Dstrip=true -Dui="$UI_DIR"
+            zig build -Dtarget="$1" -Doptimize=safe -Dstrip=true -Dui="$UI_DIR"
             if [ -f zig-out/bin/kerf.exe ]; then cp zig-out/bin/kerf.exe "$GITHUB_WORKSPACE/release/$2"; else cp zig-out/bin/kerf "$GITHUB_WORKSPACE/release/$2"; fi
           }
           build x86_64-windows-gnu   kerf-x86_64-windows.exe

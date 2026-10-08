@@ -27,7 +27,7 @@ const Ctx = struct {
 
     fn fail(self: *Ctx, code: []const u8, path: []const u8, comptime fmt: []const u8, args: anytype) void {
         self.ok = false;
-        const msg = std.fmt.allocPrint(self.a, "op {d}: " ++ fmt, .{self.op_index} ++ args) catch return;
+        const msg = self.a.print("op {d}: " ++ fmt, .{self.op_index} ++ args) catch return;
         self.diags.list.append(self.a, .{ .level = .@"error", .code = code, .path = path, .message = msg }) catch {};
     }
 
@@ -146,7 +146,7 @@ fn dependents(c: *Ctx, id: []const u8) Allocator.Error![]const []const u8 {
         if (view.get("annotations")) |an| if (an.arr()) |aa| for (aa) |ann| {
             const aid = idOf(ann) orelse "?";
             const hit = annotationReferences(ann, id);
-            if (hit) try out.append(c.a, try std.fmt.allocPrint(c.a, "views/{s}/annotations/{s}", .{ vid, aid }));
+            if (hit) try out.append(c.a, try c.a.print("views/{s}/annotations/{s}", .{ vid, aid }));
         };
     }
     return out.items;
@@ -373,7 +373,7 @@ pub const Normalized = struct {
 
 /// One-line description of what an ops input was, for error messages ("an object with keys op, path, value").
 fn describeInput(a: Allocator, v: Value) Allocator.Error![]const u8 {
-    if (v != .object) return std.fmt.allocPrint(a, "a {s}", .{v.kindName()});
+    if (v != .object) return a.print("a {s}", .{v.kindName()});
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(a, "an object with keys ");
     if (v.object.len == 0) try out.appendSlice(a, "(none)");

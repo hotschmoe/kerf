@@ -319,7 +319,7 @@ fn quadrant(from: view_mod.From) [2]f64 {
 }
 
 fn srcOf(a: Allocator, c: *const scene_mod.Comp, instance: u32) Allocator.Error![]const u8 {
-    if (c.arr_count > 1) return std.fmt.allocPrint(a, "{s}#{d}", .{ c.id, instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) });
+    if (c.arr_count > 1) return a.print("{s}#{d}", .{ c.id, instance / @as(u32, @intCast(c.xfs.len / c.arr_count)) });
     return c.id;
 }
 

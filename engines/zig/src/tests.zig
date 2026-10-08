@@ -148,7 +148,7 @@ test "determinism: every API function is a pure function of its input" {
         .{ .f = "export", .extra = ",\"view\":\"A\",\"format\":\"pdf\"" },
     };
     for (cases) |c| {
-        const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s}{s}}}", .{ doc, c.extra });
+        const input = try gpa.print("{{\"doc\":{s}{s}}}", .{ doc, c.extra });
         defer gpa.free(input);
         const r1 = try api.call(gpa, c.f, input);
         defer gpa.free(r1.bytes);
@@ -163,7 +163,7 @@ test "apply is atomic and enforces the citation rule" {
     const gpa = std.testing.allocator;
     const doc = std.mem.trim(u8, testdocs.beam, " \n\r\t");
     // a failing second op leaves the document unchanged (ok:false, same doc)
-    const bad = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"ops\":[{{\"op\":\"update\",\"path\":\"components/beam\",\"value\":{{\"length\":40}}}},{{\"op\":\"remove\",\"path\":\"components/nope\"}}]}}", .{doc});
+    const bad = try gpa.print("{{\"doc\":{s},\"ops\":[{{\"op\":\"update\",\"path\":\"components/beam\",\"value\":{{\"length\":40}}}},{{\"op\":\"remove\",\"path\":\"components/nope\"}}]}}", .{doc});
     defer gpa.free(bad);
     const r = try api.call(gpa, "apply", bad);
     defer gpa.free(r.bytes);
@@ -171,13 +171,13 @@ test "apply is atomic and enforces the citation rule" {
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "\"length\": 42") != null);
     // LLM cannot verify a citation; designer can
     const op = "[{\"op\":\"update\",\"path\":\"views/A/annotations/n_strap\",\"value\":{\"cite\":[{\"code\":\"IRC\",\"section\":\"R1\",\"status\":\"verified\"}]}}]";
-    const llm = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"ops\":{s}}}", .{ doc, op });
+    const llm = try gpa.print("{{\"doc\":{s},\"ops\":{s}}}", .{ doc, op });
     defer gpa.free(llm);
     const r2 = try api.call(gpa, "apply", llm);
     defer gpa.free(r2.bytes);
     try std.testing.expect(std.mem.indexOf(u8, r2.bytes, "I_CITE_DOWNGRADED") != null);
     try std.testing.expect(std.mem.indexOf(u8, r2.bytes, "\"verified\"") == null);
-    const des = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"ops\":{s},\"actor\":\"designer\"}}", .{ doc, op });
+    const des = try gpa.print("{{\"doc\":{s},\"ops\":{s},\"actor\":\"designer\"}}", .{ doc, op });
     defer gpa.free(des);
     const r3 = try api.call(gpa, "apply", des);
     defer gpa.free(r3.bytes);
@@ -214,7 +214,7 @@ test "every visible component has at least one region item in section view A" {
 
 fn pngExport(gpa: std.mem.Allocator, extra: []const u8) ![]u8 {
     const doc = std.mem.trim(u8, testdocs.truss, " \n\r\t");
-    const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"format\":\"png\",{s}}}", .{ doc, extra });
+    const input = try gpa.print("{{\"doc\":{s},\"format\":\"png\",{s}}}", .{ doc, extra });
     defer gpa.free(input);
     const r = try api.call(gpa, "export", input);
     errdefer gpa.free(r.bytes);
@@ -348,7 +348,7 @@ test "W_COVER on a path bar names the failing segment" {
         \\{"id":"d","type":"rebar","size":"#4","mode":"path","points":[[4,2],[4,12],[1,22]]}
         \\],"views":[]}
     ;
-    const r = try api.call(a, "check", try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{src}));
+    const r = try api.call(a, "check", try a.print("{{\"doc\":{s}}}", .{src}));
     try std.testing.expect(r.ok);
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "W_COVER") != null);
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "segment 2 of 2") != null);
@@ -366,9 +366,9 @@ test "shown dashed: hidden pen outline, no floating warning, WHERE OCCURS suffix
         \\],"views":[{"id":"A","kind":"section","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-6,50],"y":[-6,40]},"annotations":[
         \\{"id":"n","type":"note","text":"2X4 BLOCKING","target":"blk"}]}]}
     ;
-    const chk = try api.call(a, "check", try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{src}));
+    const chk = try api.call(a, "check", try a.print("{{\"doc\":{s}}}", .{src}));
     try std.testing.expect(std.mem.indexOf(u8, chk.bytes, "W_FLOATING") == null);
-    const r = try api.call(a, "drawing", try std.fmt.allocPrint(a, "{{\"doc\":{s},\"view\":\"A\"}}", .{src}));
+    const r = try api.call(a, "drawing", try a.print("{{\"doc\":{s},\"view\":\"A\"}}", .{src}));
     try std.testing.expect(r.ok);
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "WHERE OCCURS") != null or std.mem.indexOf(u8, r.bytes, "W H E R E") != null);
     try std.testing.expect(std.mem.indexOf(u8, r.bytes, "\"hidden\"") != null);
@@ -388,12 +388,12 @@ test "palmer-sd1-like: 0 errors / 0 warnings; every view exports to every format
     }
     for ([_][]const u8{ "A", "B", "C", "D", "E" }) |v| {
         for ([_][]const u8{ "svg", "dxf", "pdf", "png" }) |f| {
-            const inp = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"view\":\"{s}\",\"format\":\"{s}\",\"sheet\":true,\"px\":600}}", .{ testdocs.palmer, v, f });
+            const inp = try a.print("{{\"doc\":{s},\"view\":\"{s}\",\"format\":\"{s}\",\"sheet\":true,\"px\":600}}", .{ testdocs.palmer, v, f });
             const r = try api.call(a, "export", inp);
             try std.testing.expect(r.ok);
             try std.testing.expect(r.bytes.len > 100);
         }
     }
-    const m = try api.call(a, "mesh", try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{testdocs.palmer}));
+    const m = try api.call(a, "mesh", try a.print("{{\"doc\":{s}}}", .{testdocs.palmer}));
     try std.testing.expect(m.ok);
 }

@@ -89,33 +89,39 @@ fn isString(comptime T: type) bool {
 
 fn tagNames(comptime E: type) []const []const u8 {
     return comptime blk: {
-        const fields = @typeInfo(E).@"enum".fields;
-        var out: [fields.len][]const u8 = undefined;
-        for (fields, 0..) |f, i| out[i] = f.name;
+        const names = @typeInfo(E).@"enum".field_names;
+        var out: [names.len][]const u8 = undefined;
+        for (names, 0..) |n, i| out[i] = n;
         const final = out;
         break :blk &final;
     };
 }
 
+/// The declared default of field number `i` of struct `T`, if it has one.
+fn defaultOf(comptime T: type, comptime i: usize) ?@typeInfo(T).@"struct".field_types[i] {
+    const info = @typeInfo(T).@"struct";
+    return info.field_attrs[i].defaultValue(info.field_types[i]);
+}
+
 /// Check the struct and its `spec` agree (compile errors that name the offender).
 fn checkSpec(comptime T: type) void {
     comptime {
-        const fields = @typeInfo(T).@"struct".fields;
+        const info = @typeInfo(T).@"struct";
         if (@hasDecl(T, "spec")) {
-            for (@typeInfo(@TypeOf(T.spec)).@"struct".fields) |sf| {
-                if (!@hasField(T, sf.name)) @compileError(@typeName(T) ++ ".spec names '" ++ sf.name ++ "', which is not a field");
+            for (@typeInfo(@TypeOf(T.spec)).@"struct".field_names) |sname| {
+                if (!@hasField(T, sname)) @compileError(@typeName(T) ++ ".spec names '" ++ sname ++ "', which is not a field");
             }
         }
-        for (fields) |f| {
-            const s = specOf(T, f.name);
-            if (!@hasField(@TypeOf(s), "desc")) @compileError(@typeName(T) ++ "." ++ f.name ++ " has no `spec` entry with a .desc (it would be missing from the catalog)");
-            const Base = Unwrap(f.type);
+        for (info.field_names, info.field_types, 0..) |name, FieldType, i| {
+            const s = specOf(T, name);
+            if (!@hasField(@TypeOf(s), "desc")) @compileError(@typeName(T) ++ "." ++ name ++ " has no `spec` entry with a .desc (it would be missing from the catalog)");
+            const Base = Unwrap(FieldType);
             if (@typeInfo(Base) == .int) {
-                if (!@hasField(@TypeOf(s), "min") or !@hasField(@TypeOf(s), "max")) @compileError(@typeName(T) ++ "." ++ f.name ++ " is an integer: its spec needs .min and .max");
-                if (s.min < std.math.minInt(Base) or s.max > std.math.maxInt(Base)) @compileError(@typeName(T) ++ "." ++ f.name ++ ": .min/.max do not fit the field type");
+                if (!@hasField(@TypeOf(s), "min") or !@hasField(@TypeOf(s), "max")) @compileError(@typeName(T) ++ "." ++ name ++ " is an integer: its spec needs .min and .max");
+                if (s.min < std.math.minInt(Base) or s.max > std.math.maxInt(Base)) @compileError(@typeName(T) ++ "." ++ name ++ ": .min/.max do not fit the field type");
             }
-            if (Base == json.Value and f.defaultValue() == null and !isOptional(f.type) and !@hasField(@TypeOf(s), "def")) {
-                @compileError(@typeName(T) ++ "." ++ f.name ++ ": a raw json.Value field needs a default, `?json.Value`, or an explicit .def");
+            if (Base == json.Value and defaultOf(T, i) == null and !isOptional(FieldType) and !@hasField(@TypeOf(s), "def")) {
+                @compileError(@typeName(T) ++ "." ++ name ++ ": a raw json.Value field needs a default, `?json.Value`, or an explicit .def");
             }
         }
     }
@@ -132,9 +138,10 @@ pub fn parse(comptime T: type, p: *Params) ?T {
 pub fn parseAll(comptime T: type, p: *Params) T {
     comptime checkSpec(T);
     var out: T = undefined;
-    inline for (@typeInfo(T).@"struct".fields) |f| {
-        @field(out, f.name) = comptime (f.defaultValue() orelse zeroOf(f.type));
-        readField(T, f, p, &@field(out, f.name));
+    const info = @typeInfo(T).@"struct";
+    inline for (info.field_names, info.field_types, 0..) |name, FieldType, i| {
+        @field(out, name) = comptime (defaultOf(T, i) orelse zeroOf(FieldType));
+        readField(T, i, p, &@field(out, name));
     }
     return out;
 }
@@ -146,25 +153,28 @@ fn zeroOf(comptime T: type) T {
         .bool => false,
         .float => 0,
         .int => 0,
-        .@"enum" => @enumFromInt(0),
+        .@"enum" => @fromBackingInt(0),
         .pointer => "",
         .@"union" => if (T == json.Value) .null else @compileError("unsupported param type " ++ @typeName(T)),
         else => @compileError("unsupported param type " ++ @typeName(T)),
     };
 }
 
-fn readField(comptime T: type, comptime f: std.builtin.Type.StructField, p: *Params, dst: *f.type) void {
-    const s = comptime specOf(T, f.name);
-    const Base = comptime Unwrap(f.type);
-    const default: ?Base = comptime if (f.defaultValue()) |d| (if (isOptional(f.type)) d else d) else null;
-    if (comptime isOptional(f.type)) {
+fn readField(comptime T: type, comptime i: usize, p: *Params, dst: *@typeInfo(T).@"struct".field_types[i]) void {
+    const info = @typeInfo(T).@"struct";
+    const name = comptime info.field_names[i];
+    const FieldType = comptime info.field_types[i];
+    const s = comptime specOf(T, name);
+    const Base = comptime Unwrap(FieldType);
+    const default: ?Base = comptime if (defaultOf(T, i)) |d| d else null;
+    if (comptime isOptional(FieldType)) {
         // `?X`: absent (or null) is fine; present must be a valid X. A default other than null is allowed too.
-        if (!p.has(f.name)) {
+        if (!p.has(name)) {
             dst.* = default;
-        } else if (readValue(Base, f.name, s, p, null)) |v| {
+        } else if (readValue(Base, name, s, p, null)) |v| {
             dst.* = v;
         }
-    } else if (readValue(Base, f.name, s, p, default)) |v| {
+    } else if (readValue(Base, name, s, p, default)) |v| {
         dst.* = v;
     }
 }
@@ -232,13 +242,15 @@ fn readValue(comptime Base: type, comptime name: []const u8, comptime s: anytype
 
 // ---- the catalog table --------------------------------------------------------------------------------
 
-fn defaultText(comptime T: type, comptime f: std.builtin.Type.StructField) []const u8 {
+fn defaultText(comptime T: type, comptime i: usize) []const u8 {
     comptime {
-        const s = specOf(T, f.name);
+        const info = @typeInfo(T).@"struct";
+        const s = specOf(T, info.field_names[i]);
         if (@hasField(@TypeOf(s), "def")) return s.def;
-        const Base = Unwrap(f.type);
-        const d = f.defaultValue() orelse return if (isOptional(f.type)) "null" else "required";
-        if (isOptional(f.type)) {
+        const FieldType = info.field_types[i];
+        const Base = Unwrap(FieldType);
+        const d = defaultOf(T, i) orelse return if (isOptional(FieldType)) "null" else "required";
+        if (isOptional(FieldType)) {
             if (d == null) return "null";
             return text(Base, d.?);
         }
@@ -261,8 +273,8 @@ fn text(comptime Base: type, comptime v: Base) []const u8 {
 fn rowCount(comptime T: type) usize {
     comptime {
         var n: usize = 0;
-        for (@typeInfo(T).@"struct".fields) |f| {
-            if (opt(specOf(T, f.name), "row", true)) n += 1;
+        for (@typeInfo(T).@"struct".field_names) |name| {
+            if (opt(specOf(T, name), "row", true)) n += 1;
         }
         return n;
     }
@@ -275,15 +287,15 @@ pub fn rows(comptime T: type) []const Row {
         checkSpec(T);
         var out: [rowCount(T)]Row = undefined;
         var i: usize = 0;
-        for (@typeInfo(T).@"struct".fields) |f| {
-            const s = specOf(T, f.name);
+        for (@typeInfo(T).@"struct".field_names, 0..) |name, fi| {
+            const s = specOf(T, name);
             if (!opt(s, "row", true)) continue;
             const also = opt(s, "also", &[_][]const u8{});
             var names: [1 + also.len][]const u8 = undefined;
-            names[0] = f.name;
+            names[0] = name;
             for (also, 0..) |nm, k| names[1 + k] = nm;
             const final_names = names;
-            out[i] = .{ .names = &final_names, .def = defaultText(T, f), .desc = s.desc };
+            out[i] = .{ .names = &final_names, .def = defaultText(T, fi), .desc = s.desc };
             i += 1;
         }
         const final = out;
