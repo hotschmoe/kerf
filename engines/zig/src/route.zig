@@ -431,13 +431,15 @@ const Ctx = struct {
 
     const Snap = struct { left: []bool, ci: []usize, key: []f64, ov: []f64, hits: usize, hard: usize, total: f64 };
 
-    fn snapshot(self: *Ctx) Snap {
+    /// A copy of the search state (REVIEW LAY-3: a refused copy is an error; aliasing the live buffers instead would make
+    /// `restore` a no-op and the search would silently keep a worse layout).
+    fn snapshot(self: *Ctx) Allocator.Error!Snap {
         const cst = self.eval();
         return .{
-            .left = self.a.dupe(bool, self.left) catch self.left,
-            .ci = self.a.dupe(usize, self.ci) catch self.ci,
-            .key = self.a.dupe(f64, self.key) catch self.key,
-            .ov = self.a.dupe(f64, self.ov) catch self.ov,
+            .left = try self.a.dupe(bool, self.left),
+            .ci = try self.a.dupe(usize, self.ci),
+            .key = try self.a.dupe(f64, self.key),
+            .ov = try self.a.dupe(f64, self.ov),
             .hits = cst.hits,
             .hard = cst.hard,
             .total = cst.total,
@@ -596,7 +598,7 @@ fn betterMode(a: Cost, b: Cost, hard_first: bool) bool {
 
 /// Hit-driven improvement: DP re-solve, then single discrete changes (column flip, neighbour swap,
 /// re-insertion) re-solved one at a time; the first change that lowers (hits, cost) is kept.
-fn improve(c: *Ctx) void {
+fn improve(c: *Ctx) Allocator.Error!void {
     const n = c.notes.len;
     c.solveAll();
     var cur = c.eval();
@@ -606,7 +608,7 @@ fn improve(c: *Ctx) void {
         var i: usize = 0;
         while (i < n and !changed and c.budget > 0 and !c.work.spent()) : (i += 1) {
             if (c.fixed(i) or c.hitsOf(i) == 0) continue;
-            const start = c.snapshot();
+            const start = try c.snapshot();
             // (a) other column
             if (c.p.side == .both and c.notes[i].column == null) {
                 c.left[i] = !c.left[i];
@@ -742,14 +744,14 @@ pub fn route(a: Allocator, p: Params, notes: []const NoteIn, obst: []const Obst,
     var searched = false;
     if (c.eval().hits > 0) {
         searched = true;
-        const start = c.snapshot();
+        const start = try c.snapshot();
         var best = start;
         // one bounded search (a few column solves per hit note); hits on dimension text and labels are the
         // caller's to repair (annot.zig), so the search ranks hits between notes first
         c.budget = if (p.light) 20 else 60;
         _ = c.eval();
-        improve(&c);
-        const r = c.snapshot();
+        try improve(&c);
+        const r = try c.snapshot();
         if (betterMode(.{ .total = r.total, .hits = r.hits, .hard = r.hard }, .{ .total = best.total, .hits = best.hits, .hard = best.hard }, true)) best = r;
         c.restore(best);
         _ = c.eval();
@@ -908,4 +910,37 @@ test "route: 150 crowded notes stay inside the work budget (REVIEW LAY-1)" {
         proposals += 1;
     };
     try std.testing.expect(proposals <= max_fix_hits);
+}
+
+test "route: a refused allocation is an error, never a silently different layout (REVIEW LAY-3)" {
+    const oom = @import("oom.zig");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = Geo{ .h = 1.0, .pitch = 1.6, .gap = 0.6, .shoulder = 1.3, .pad = 0.4 };
+    const p = Params{ .geo = g, .crop = .{ .x0 = 0, .y0 = 0, .x1 = 40, .y1 = 30 }, .xl = 0, .xr = 40, .gutter = 4, .side = .both };
+    // a crowded patch: the baseline has hits, so the search (and its state snapshots) runs
+    var lands: std.ArrayList(V2) = .empty;
+    for (0..12) |i| try lands.append(a, V2.init(10 + @as(f64, @floatFromInt(i % 4)) * 1.3, 10 + @as(f64, @floatFromInt(i / 4)) * 1.1));
+    const notes = try testNotes(a, lands.items);
+    const base = try route(a, p, notes, &.{}, &.{});
+    try std.testing.expect(base.searched);
+    var idx: usize = 0;
+    while (true) : (idx += 1) {
+        var one = oom.OneShotFail.init(a, idx);
+        const r = route(one.allocator(), p, notes, &.{}, &.{}) catch |e| {
+            try std.testing.expectEqual(error.OutOfMemory, e);
+            try std.testing.expect(one.failed);
+            continue;
+        };
+        // before: a refused snapshot copy aliased the live state, `restore` did nothing and route returned normally
+        try std.testing.expect(!one.failed);
+        for (0..notes.len) |i| {
+            try std.testing.expectEqual(base.top[i], r.top[i]);
+            try std.testing.expectEqual(base.x[i], r.x[i]);
+            try std.testing.expectEqual(base.left[i], r.left[i]);
+        }
+        break; // idx is past the last allocation of the call
+    }
+    try std.testing.expect(idx > 20);
 }
