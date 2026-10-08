@@ -356,6 +356,39 @@ pub fn parse(alloc: Allocator, src: []const u8, err: *ParseError) Allocator.Erro
     return v;
 }
 
+/// `src` without whitespace outside strings, at compile time (embedded documents: only the result is in the binary).
+pub fn minify(comptime src: []const u8) []const u8 {
+    @setEvalBranchQuota(40 * src.len + 1000);
+    const out = comptime blk: {
+        var buf: [minifyInto(src, null)]u8 = undefined;
+        _ = minifyInto(src, &buf);
+        break :blk buf;
+    };
+    return &out;
+}
+
+fn minifyInto(src: []const u8, out: ?[]u8) usize {
+    var n: usize = 0;
+    var in_str = false;
+    var esc = false;
+    for (src) |c| {
+        if (in_str) {
+            if (esc) esc = false else if (c == '\\') esc = true else if (c == '"') in_str = false;
+        } else switch (c) {
+            ' ', '\t', '\n', '\r' => continue,
+            '"' => in_str = true,
+            else => {},
+        }
+        if (out) |o| o[n] = c;
+        n += 1;
+    }
+    return n;
+}
+
+test "minify keeps strings and escapes, drops whitespace between tokens" {
+    try std.testing.expectEqualStrings("{\"a b\":[1,2,\"x\\\" }\"],\"c\":{}}", comptime minify(" { \"a b\" : [ 1 ,\n 2, \"x\\\" }\" ] ,\r\n\t\"c\": { } } "));
+}
+
 // ---- numbers -------------------------------------------------------------------------------------
 
 /// Kerf number format: round to 1e-4, shortest decimal, no exponent, `-0` -> `0`.
