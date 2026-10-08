@@ -128,7 +128,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
     wasm.entry = .disabled;
-    wasm.rdynamic = true;
+    // exactly the SPEC 13.1 exports (+ memory): `rdynamic` would also export the linker's `__stack_pointer` global
+    wasm.root_module.export_symbol_names = &.{ "kerf_alloc", "kerf_free", "kerf_call", "kerf_out_ptr", "kerf_out_len" };
     wasm.stack_size = 256 * 1024;
     // binaryen `wasm-opt -Oz` (REVIEW SIZ-1, about -11% raw): `-Dwasm-opt` requires wasm-opt on PATH (release CI),
     // `-Dwasm-opt=false` skips it. Default: the stripped small build is passed through wasm-opt when it is on PATH

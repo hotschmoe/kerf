@@ -50,11 +50,13 @@ jobs:
         run: |
           zig build wasm
           node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
       # the module must build and pass the same golden with every safety check compiled in (REVIEW SAF-2, `no_panic` handler)
       - name: wasm build with safety checks (ReleaseSafe) + golden
         run: |
           zig build wasm -Dwasm-optimize=safe
           node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
       # what release.yml ships: the small build through binaryen `wasm-opt -Oz` (REVIEW SIZ-1); same golden
       - name: binaryen wasm-opt (version_123)
         run: |
@@ -65,6 +67,7 @@ jobs:
         run: |
           zig build wasm -Dwasm-opt
           node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
           ls -l dist/kerf.wasm
 
       # What ships is ReleaseSafe (REVIEW SAF-2): run the server smoke test against exactly that, too.

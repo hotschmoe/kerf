@@ -186,7 +186,7 @@ Earlier: ReleaseSmall 934,693 B raw / 349,261 gzip / 275,657 brotli on Zig 0.17.
 the batches: the typed `Params` machinery and the catalog row tables cost about 12 KB, the enums saved 2 KB; per batch: 4 -> 949,372, 5 -> 964,314,
 6 -> 966,523, 7 -> 966,990, `params.readScalar` -> 963,851). `twiggy top` (`zig build wasm -Dwasm-strip=false`): `builders.build` 68 KB (all builders
 inlined into the dispatch), annot 51 KB, iso 36 KB, dispatch 36 KB, clip 29 KB, rodata 132 KB. Older figures (662,838 B) predate v0.1.2-0.1.5.
-Zero imports; exports the SPEC 13.1 six plus `__stack_pointer` (found during SIZ-1, predates it: `wasm_check.mjs` says ABI MISMATCH; open). The CLI is built with `-Dstrip` by default outside Debug (ReleaseSafe Linux CLI 16.0 MB -> 2.5 MB;
+Zero imports; exports exactly the SPEC 13.1 six (`export_symbol_names` in build.zig, not `rdynamic`, which also exported the linker's `__stack_pointer`; CI runs `wasm_check.mjs` after every wasm build). The CLI is built with `-Dstrip` by default outside Debug (ReleaseSafe Linux CLI 16.0 MB -> 2.5 MB;
 `-Dstrip=false` keeps debug info).
 
 Timings in node 22 (V8), wasm ReleaseSmall, ms per call (`tools/zig-engine/bench.mjs`):

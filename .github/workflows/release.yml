@@ -54,6 +54,7 @@ jobs:
         run: |
           zig build wasm -Dwasm-opt
           node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
           ls -l dist/kerf.wasm
 
       - name: Build the web UI (workspace mode, for `kerf serve`)
