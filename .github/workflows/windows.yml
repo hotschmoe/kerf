@@ -56,7 +56,7 @@ jobs:
           node tests/serve_smoke.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
           node tests/cli_ergonomics.mjs "$RUNNER_TEMP/release/bin/kerf.exe"
 
-      - name: cross-compile the arm64 binaries for the ARM runner (as shipped: safe + stripped; and Debug for diagnosis)
+      - name: cross-compile the arm64 binaries for the ARM runner (the shipped safe+stripped build, and a Debug one for diagnosis)
         run: |
           zig build -Dtarget=aarch64-windows-gnu -Doptimize=safe -Dstrip=true -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64"
           zig build -Dtarget=aarch64-windows-gnu -Dui=../../apps/web/dist-serve --prefix "$RUNNER_TEMP/arm64dbg"
