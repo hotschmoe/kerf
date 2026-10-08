@@ -105,13 +105,13 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli_test_mod })).step);
 
     // wasm32-freestanding, raw ABI (SPEC 13.1). `-Dwasm-optimize=fast` to compare speed.
-    const wasm_opt = b.option(std.lang.Optimize, "wasm-optimize", "Optimize mode of the wasm build (default small)") orelse .small;
+    const wasm_optimize = b.option(std.lang.Optimize, "wasm-optimize", "Optimize mode of the wasm build (default small)") orelse .small;
     const wasm_strip = b.option(bool, "wasm-strip", "Strip the wasm build (default true; false keeps the name section for twiggy)") orelse true;
     const wasm_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const wasm_kerf = b.createModule(.{
         .root_source_file = b.path("src/kerf.zig"),
         .target = wasm_target,
-        .optimize = wasm_opt,
+        .optimize = wasm_optimize,
     });
     addSpecImports(b, wasm_kerf);
     const wasm = b.addExecutable(.{
@@ -119,7 +119,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/wasm.zig"),
             .target = wasm_target,
-            .optimize = wasm_opt,
+            .optimize = wasm_optimize,
             .strip = wasm_strip,
             .single_threaded = true,
             .error_tracing = false,
@@ -130,7 +130,27 @@ pub fn build(b: *std.Build) void {
     wasm.entry = .disabled;
     wasm.rdynamic = true;
     wasm.stack_size = 256 * 1024;
-    const install_wasm = b.addInstallFileWithDir(wasm.getEmittedBin(), .{ .custom = "../dist" }, "kerf.wasm");
+    // binaryen `wasm-opt -Oz` (REVIEW SIZ-1, about -11% raw): `-Dwasm-opt` requires wasm-opt on PATH (release CI),
+    // `-Dwasm-opt=false` skips it. Default: the stripped small build is passed through wasm-opt when it is on PATH
+    // and copied unchanged when it is not (decided when the step runs, so the configure cache stays pure).
+    const wasm_opt_option = b.option(bool, "wasm-opt", "Run binaryen wasm-opt -Oz on the wasm (default: if on PATH, small stripped builds only)");
+    const wasm_bin = if (wasm_opt_option orelse (wasm_optimize == .small and wasm_strip)) blk: {
+        const helper = b.addExecutable(.{
+            .name = "wasm_opt",
+            .root_module = b.createModule(.{ .root_source_file = b.path("tools/wasm_opt.zig"), .target = b.graph.host }),
+        });
+        const opt = b.addRunArtifact(helper);
+        opt.addArg(if (wasm_opt_option == true) "required" else "auto");
+        // the cache cannot see whether wasm-opt is on PATH, so the optional pass always re-runs (a copy without it)
+        opt.has_side_effects = wasm_opt_option != true;
+        opt.addFileArg(wasm.getEmittedBin());
+        const out = opt.addOutputFileArg("kerf.wasm");
+        // the features the Zig wasm32 baseline CPU emits (the module carries no target_features section once stripped)
+        opt.addArgs(&.{ "-Oz", "--enable-bulk-memory", "--enable-bulk-memory-opt", "--enable-sign-ext", "--enable-nontrapping-float-to-int", "--enable-mutable-globals" });
+        if (!wasm_strip) opt.addArg("-g");
+        break :blk out;
+    } else wasm.getEmittedBin();
+    const install_wasm = b.addInstallFileWithDir(wasm_bin, .{ .custom = "../dist" }, "kerf.wasm");
     b.step("wasm", "Build dist/kerf.wasm").dependOn(&install_wasm.step);
 }
 

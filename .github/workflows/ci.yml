@@ -55,6 +55,17 @@ jobs:
         run: |
           zig build wasm -Dwasm-optimize=safe
           node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+      # what release.yml ships: the small build through binaryen `wasm-opt -Oz` (REVIEW SIZ-1); same golden
+      - name: binaryen wasm-opt (version_123)
+        run: |
+          curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz \
+            | tar xz -C "$RUNNER_TEMP" binaryen-version_123/bin/wasm-opt
+          echo "$RUNNER_TEMP/binaryen-version_123/bin" >> "$GITHUB_PATH"
+      - name: wasm build through wasm-opt + golden
+        run: |
+          zig build wasm -Dwasm-opt
+          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
+          ls -l dist/kerf.wasm
 
       # What ships is ReleaseSafe (REVIEW SAF-2): run the server smoke test against exactly that, too.
       - name: kerf serve smoke test (ReleaseSafe build, the shipped optimisation mode)
