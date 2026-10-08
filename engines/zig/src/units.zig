@@ -272,7 +272,7 @@ pub fn scaleLabel(a: Allocator, factor: f64) Allocator.Error![]u8 {
         return out.items;
     }
     var b: [40]u8 = undefined;
-    return std.fmt.allocPrint(a, "1:{s}", .{json.fmtNumber(&b, factor)});
+    return a.print("1:{s}", .{json.fmtNumber(&b, factor)});
 }
 
 // ---- slopes ----------------------------------------------------------------------------------------

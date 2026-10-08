@@ -90,18 +90,18 @@ fn lintObject(a: Allocator, diags: *model.Diags, v: json.Value, o: *const schema
     if (v != .object) return;
     for (v.object) |m| {
         if (schema.hasField(o, m.key)) continue;
-        const kpath = try std.fmt.allocPrint(a, "{s}/{s}", .{ path, m.key });
+        const kpath = try a.print("{s}/{s}", .{ path, m.key });
         if (suggestKey(a, o, m.key)) |sg| {
             const valid_target = schema.hasField(o, sg.to);
             if (sg.hint.len > 0) {
-                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). {s}", .{ m.key, path, o.name, sg.hint }, try std.fmt.allocPrint(a, "remove \"{s}\" or follow the hint above (`kerf schema {s}`)", .{ m.key, o.name }));
+                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). {s}", .{ m.key, path, o.name, sg.hint }, try a.print("remove \"{s}\" or follow the hint above (`kerf schema {s}`)", .{ m.key, o.name }));
             } else if (valid_target) {
-                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Did you mean \"{s}\"?", .{ m.key, path, o.name, sg.to }, try std.fmt.allocPrint(a, "rename \"{s}\" to \"{s}\" (`kerf schema {s}`)", .{ m.key, sg.to, o.name }));
+                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Did you mean \"{s}\"?", .{ m.key, path, o.name, sg.to }, try a.print("rename \"{s}\" to \"{s}\" (`kerf schema {s}`)", .{ m.key, sg.to, o.name }));
             } else {
-                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, keyList(a, o) }, try std.fmt.allocPrint(a, "remove \"{s}\" (`kerf schema {s}`)", .{ m.key, o.name }));
+                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, keyList(a, o) }, try a.print("remove \"{s}\" (`kerf schema {s}`)", .{ m.key, o.name }));
             }
         } else {
-            diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, keyList(a, o) }, try std.fmt.allocPrint(a, "remove \"{s}\" or use one of the valid keys (`kerf schema {s}`)", .{ m.key, o.name }));
+            diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, keyList(a, o) }, try a.print("remove \"{s}\" or use one of the valid keys (`kerf schema {s}`)", .{ m.key, o.name }));
         }
     }
 }
@@ -116,11 +116,11 @@ fn unknownKeys(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Err
         if (c != .object) continue;
         const cid = strOf(c, "id");
         if (cid.len == 0) continue;
-        const base = try std.fmt.allocPrint(a, "components/{s}", .{cid});
-        if (c.get("at")) |at| try lintObject(a, diags, at, &schema.at, try std.fmt.allocPrint(a, "{s}/at", .{base}), cid);
-        if (c.get("array")) |ar| try lintObject(a, diags, ar, &schema.array, try std.fmt.allocPrint(a, "{s}/array", .{base}), cid);
+        const base = try a.print("components/{s}", .{cid});
+        if (c.get("at")) |at| try lintObject(a, diags, at, &schema.at, try a.print("{s}/at", .{base}), cid);
+        if (c.get("array")) |ar| try lintObject(a, diags, ar, &schema.array, try a.print("{s}/array", .{base}), cid);
         if (c.get("acknowledge")) |ak| if (ak.arr()) |items| for (items, 0..) |it, i| {
-            try lintObject(a, diags, it, &schema.ack, try std.fmt.allocPrint(a, "{s}/acknowledge/{d}", .{ base, i }), cid);
+            try lintObject(a, diags, it, &schema.ack, try a.print("{s}/acknowledge/{d}", .{ base, i }), cid);
         };
     };
     const vs = (doc.get("views") orelse return).arr() orelse return;
@@ -128,7 +128,7 @@ fn unknownKeys(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Err
         if (v != .object) continue;
         const vid = strOf(v, "id");
         if (vid.len == 0) continue;
-        const vbase = try std.fmt.allocPrint(a, "views/{s}", .{vid});
+        const vbase = try a.print("views/{s}", .{vid});
         try lintObject(a, diags, v, &schema.view, vbase, vid);
         const anns = (v.get("annotations") orelse continue).arr() orelse continue;
         for (anns) |an| {
@@ -137,10 +137,10 @@ fn unknownKeys(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Err
             if (aid.len == 0) continue;
             const ty = strOf(an, "type");
             const o: *const schema.Object = if (std.mem.eql(u8, ty, "dim")) &schema.dim else if (std.mem.eql(u8, ty, "label")) &schema.label else &schema.note;
-            const apath = try std.fmt.allocPrint(a, "{s}/annotations/{s}", .{ vbase, aid });
+            const apath = try a.print("{s}/annotations/{s}", .{ vbase, aid });
             try lintObject(a, diags, an, o, apath, aid);
             if (an.get("cite")) |cv| if (cv.arr()) |items| for (items, 0..) |ci, i| {
-                try lintObject(a, diags, ci, &schema.cite, try std.fmt.allocPrint(a, "{s}/cite/{d}", .{ apath, i }), aid);
+                try lintObject(a, diags, ci, &schema.cite, try a.print("{s}/cite/{d}", .{ apath, i }), aid);
             };
         }
     }
@@ -278,7 +278,7 @@ pub fn checkNoteText(a: Allocator, text: []const u8) Allocator.Error!NoteStyle {
     // spelled-out words
     for (spelled_out) |sp| {
         if (findWord(text, sp.word, 0) != null) {
-            try addIssue(a, &issues, try std.fmt.allocPrint(a, "\"{s}\" spelled out (use \"{s}\")", .{ sp.word, sp.abbr }));
+            try addIssue(a, &issues, try a.print("\"{s}\" spelled out (use \"{s}\")", .{ sp.word, sp.abbr }));
         }
     }
     // trailing period (abbreviations keep theirs)
@@ -299,17 +299,17 @@ pub fn checkNoteText(a: Allocator, text: []const u8) Allocator.Error!NoteStyle {
     var rewrite = false;
     if (text.len > max_note_len) {
         rewrite = true;
-        try addIssue(a, &issues, try std.fmt.allocPrint(a, "{d} characters (notes stay under {d}: one idea per note, split it)", .{ text.len, max_note_len }));
+        try addIssue(a, &issues, try a.print("{d} characters (notes stay under {d}: one idea per note, split it)", .{ text.len, max_note_len }));
     }
     const chat = commentary(text);
     if (chat.len > 0) {
         rewrite = true;
-        try addIssue(a, &issues, try std.fmt.allocPrint(a, "commentary ({s}): a note names the thing and how it is installed, it does not talk", .{chat}));
+        try addIssue(a, &issues, try a.print("commentary ({s}): a note names the thing and how it is installed, it does not talk", .{chat}));
     }
     const end = danglingEnd(text);
     if (end.len > 0) {
         rewrite = true;
-        try addIssue(a, &issues, try std.fmt.allocPrint(a, "ends on \"{s}\" with nothing after it (finish the thought or drop the connector)", .{end}));
+        try addIssue(a, &issues, try a.print("ends on \"{s}\" with nothing after it (finish the thought or drop the connector)", .{end}));
     }
     if (issues.items.len == 0) return .{ .issues = "", .fixed = text };
 
@@ -362,15 +362,15 @@ fn noteStyle(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error
             if (!std.mem.eql(u8, strOf(an, "type"), "note")) continue;
             const text = (if (an.get("text")) |t| t.str() else null) orelse continue;
             const aid = strOf(an, "id");
-            const path = try std.fmt.allocPrint(a, "views/{s}/annotations/{s}/text", .{ vid, aid });
+            const path = try a.print("views/{s}/annotations/{s}/text", .{ vid, aid });
             const st = try checkNoteText(a, text);
             if (st.issues.len > 0) {
                 const fix = if (st.rewrite and std.mem.eql(u8, st.fixed, text))
                     "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary (split a long note in two)"
                 else if (st.rewrite)
-                    try std.fmt.allocPrint(a, "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary; the mechanical part is \"{s}\"", .{st.fixed})
+                    try a.print("rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary; the mechanical part is \"{s}\"", .{st.fixed})
                 else
-                    try std.fmt.allocPrint(a, "set text to \"{s}\"", .{st.fixed});
+                    try a.print("set text to \"{s}\"", .{st.fixed});
                 diags.addFix(.warning, "W_NOTE_STYLE", aid, path, "note '{s}' in view {s} breaks the house note style: {s}. Text: \"{s}\"", .{ aid, vid, st.issues, text }, fix);
             }
             const norm = try normalizedText(a, text);
@@ -381,7 +381,7 @@ fn noteStyle(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error
                 break;
             };
             if (dup) |first| {
-                diags.addFix(.warning, "W_NOTE_STYLE", aid, path, "note '{s}' in view {s} repeats note '{s}' (same text: \"{s}\")", .{ aid, vid, first, text }, try std.fmt.allocPrint(a, "remove '{s}', or give it text that says something different (one note per element or connection)", .{aid}));
+                diags.addFix(.warning, "W_NOTE_STYLE", aid, path, "note '{s}' in view {s} repeats note '{s}' (same text: \"{s}\")", .{ aid, vid, first, text }, try a.print("remove '{s}', or give it text that says something different (one note per element or connection)", .{aid}));
             } else try seen.append(a, .{ .text = norm, .id = aid });
         }
     }
@@ -403,13 +403,13 @@ fn requestedMissing(a: Allocator, doc: json.Value, diags: *model.Diags) Allocato
         const s = std.mem.trim(u8, it.str() orelse "", " \t\r\n");
         if (s.len == 0) {
             bad = true;
-            diags.addFix(.@"error", "E_PARAM", null, try std.fmt.allocPrint(a, "meta/requested/{d}", .{i}), "'meta.requested' entry {d} must be a non-empty string", .{i}, shape_fix);
+            diags.addFix(.@"error", "E_PARAM", null, try a.print("meta/requested/{d}", .{i}), "'meta.requested' entry {d} must be a non-empty string", .{i}, shape_fix);
         }
     }
     if (bad) return;
     for (try coverage.compute(a, doc), 0..) |item, i| {
         if (item.found.len > 0) continue;
-        diags.addFix(.warning, "W_REQUESTED_MISSING", null, try std.fmt.allocPrint(a, "meta/requested/{d}", .{i}), "requested element \"{s}\" (meta.requested) matches no component id, type, label, model or note text", .{item.text}, try std.fmt.allocPrint(a, "build it (name the component after it, or add a note whose text says \"{s}\"), or remove it from meta.requested if the designer dropped it", .{item.text}));
+        diags.addFix(.warning, "W_REQUESTED_MISSING", null, try a.print("meta/requested/{d}", .{i}), "requested element \"{s}\" (meta.requested) matches no component id, type, label, model or note text", .{item.text}, try a.print("build it (name the component after it, or add a note whose text says \"{s}\"), or remove it from meta.requested if the designer dropped it", .{item.text}));
     }
 }
 
@@ -456,12 +456,12 @@ fn dimZero(a: Allocator, scene: *Scene, doc: json.Value, diags: *model.Diags) Al
             const dx = @abs(to.x - from.x);
             const dy = @abs(to.y - from.y);
             const fmt = units.ftin;
-            const path = try std.fmt.allocPrint(a, "views/{s}/annotations/{s}", .{ vid, aid });
+            const path = try a.print("views/{s}/annotations/{s}", .{ vid, aid });
             if (dx < 1.0 / 16.0 and dy < 1.0 / 16.0) {
                 diags.addFix(.warning, "W_DIM_ZERO", aid, path, "dim '{s}' in view {s} measures {s}: 'from' and 'to' are the same point", .{ aid, vid, fmt(a, m) }, "point `from` and `to` at two different anchors, e.g. two corners of the member");
             } else {
                 const other: []const u8 = if (std.mem.eql(u8, dir, "h")) "v" else "h";
-                diags.addFix(.warning, "W_DIM_ZERO", aid, path, "dim '{s}' in view {s} measures {s} along dir \"{s}\" (the points are {s} apart horizontally and {s} vertically)", .{ aid, vid, fmt(a, m), dir, fmt(a, dx), fmt(a, dy) }, try std.fmt.allocPrint(a, "set \"dir\": \"{s}\" (or \"aligned\" for the true distance)", .{other}));
+                diags.addFix(.warning, "W_DIM_ZERO", aid, path, "dim '{s}' in view {s} measures {s} along dir \"{s}\" (the points are {s} apart horizontally and {s} vertically)", .{ aid, vid, fmt(a, m), dir, fmt(a, dx), fmt(a, dy) }, try a.print("set \"dir\": \"{s}\" (or \"aligned\" for the true distance)", .{other}));
             }
         }
     }
@@ -544,7 +544,7 @@ fn ackShape(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error!
         const ak = c.get("acknowledge") orelse continue;
         if (ak.isNull()) continue;
         const cid = strOf(c, "id");
-        const path = try std.fmt.allocPrint(a, "components/{s}/acknowledge", .{cid});
+        const path = try a.print("components/{s}/acknowledge", .{cid});
         const items = ak.arr() orelse {
             diags.addFix(.@"error", "E_PARAM", cid, path, "'acknowledge' must be an array of {{\"code\": \"W_...\", \"reason\": \"...\"}}", .{}, "e.g. \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}]");
             continue;
@@ -552,7 +552,7 @@ fn ackShape(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error!
         for (items, 0..) |it, i| {
             const code = strOf(it, "code");
             const reason = std.mem.trim(u8, strOf(it, "reason"), " ");
-            const ipath = try std.fmt.allocPrint(a, "{s}/{d}", .{ path, i });
+            const ipath = try a.print("{s}/{d}", .{ path, i });
             if (it != .object or code.len == 0 or reason.len == 0) {
                 diags.addFix(.@"error", "E_PARAM", cid, ipath, "acknowledge entry {d} of '{s}' needs a string \"code\" and a non-empty \"reason\"", .{ i, cid }, "e.g. {\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"why this is fine\"}");
             } else if (!isAckable(code)) {
@@ -604,7 +604,7 @@ pub fn applyAcknowledge(a: Allocator, doc: json.Value, diags: *model.Diags) Allo
             }
         }
         if (matched) |m| {
-            try acks.append(a, .{ .level = .info, .code = "I_ACK", .id = m.cid, .path = d.path, .message = try std.fmt.allocPrint(a, "{s} on '{s}' acknowledged: {s} (was: {s})", .{ d.code, m.cid, m.reason, d.message }) });
+            try acks.append(a, .{ .level = .info, .code = "I_ACK", .id = m.cid, .path = d.path, .message = try a.print("{s} on '{s}' acknowledged: {s} (was: {s})", .{ d.code, m.cid, m.reason, d.message }) });
         } else try kept.append(a, d);
     }
     // one I_ACK per (code, component, message) in document order, after the remaining diagnostics

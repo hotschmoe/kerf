@@ -90,8 +90,8 @@ pub fn whereOccursText(a: Allocator, scene: *const Scene, target: []const u8, te
     if (std.mem.indexOfScalar(u8, id, '#')) |h| id = id[0..h];
     const c = scene.find(id) orelse return text;
     if (!c.dashed) return text;
-    if (std.ascii.indexOfIgnoreCase(text, "where occurs") != null) return text;
-    return std.fmt.allocPrint(a, "{s} (WHERE OCCURS)", .{std.mem.trimEnd(u8, text, " ")});
+    if (std.ascii.findIgnoreCase(text, "where occurs") != null) return text;
+    return a.print("{s} (WHERE OCCURS)", .{std.mem.trimEnd(u8, text, " ")});
 }
 
 pub const Scene = struct {
@@ -221,7 +221,7 @@ pub fn pointFromValue(self: *Scene, v: json.Value, from_id: []const u8, path: []
             if (v.get("ref")) |r| if (r.str()) |rs| {
                 var pt = self.resolveRefStr(rs, from_id, path) orelse return null;
                 if (v.get("offset")) |off| if (off != .null) {
-                    const opath = std.fmt.allocPrint(self.a, "{s}/offset", .{path}) catch path;
+                    const opath = self.a.print("{s}/offset", .{path}) catch path;
                     pt = pt.add(model.offsetPairOrDiag(self.a, self.diags, from_id, opath, "offset", off) orelse return null);
                 };
                 return pt;

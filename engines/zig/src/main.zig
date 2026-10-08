@@ -265,7 +265,7 @@ fn logWriteLocked(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, lock: 
 
 /// The server's ETag of a document: `"<mtime_ms>-<size>-<wyhash64 hex16 of the bytes>"` (see `Server.etagOf`).
 fn etagOf(a: std.mem.Allocator, mtime_ns: i96, size: u64, bytes: []const u8) ![]u8 {
-    return std.fmt.allocPrint(a, "\"{d}-{d}-{x:0>16}\"", .{ @divTrunc(mtime_ns, std.time.ns_per_ms), size, std.hash.Wyhash.hash(0, bytes) });
+    return a.print("\"{d}-{d}-{x:0>16}\"", .{ @divTrunc(mtime_ns, std.time.ns_per_ms), size, std.hash.Wyhash.hash(0, bytes) });
 }
 
 /// Does `want` (an ETag with or without quotes, or just the 16-hex content hash) name the current content of `doc_path`?
@@ -275,7 +275,7 @@ fn ifMatchOk(a: std.mem.Allocator, io: std.Io, doc_path: []const u8, want: []con
     const have = try etagOf(a, st.mtime.nanoseconds, st.size, bytes);
     const w = std.mem.trim(u8, want, "\" ");
     if (std.mem.eql(u8, w, std.mem.trim(u8, have, "\""))) return true;
-    const hash_hex = try std.fmt.allocPrint(a, "{x:0>16}", .{std.hash.Wyhash.hash(0, bytes)});
+    const hash_hex = try a.print("{x:0>16}", .{std.hash.Wyhash.hash(0, bytes)});
     return std.mem.eql(u8, w, hash_hex);
 }
 
@@ -510,7 +510,7 @@ fn cmdNew(gpa: std.mem.Allocator, io: std.Io, err: *std.Io.Writer, ctx: Ctx, o: 
         ops_text = prep.text;
         why = o.why orelse prep.why orelse "";
         var vperr: kerf.json.ParseError = undefined;
-        const input = try buildInputText(a, text, o.style, io, try std.fmt.allocPrint(a, "\"ops\":{s}", .{ops_text.?}));
+        const input = try buildInputText(a, text, o.style, io, try a.print("\"ops\":{s}", .{ops_text.?}));
         const r = try kerf.call(gpa, "apply", input);
         defer gpa.free(r.bytes);
         if (!r.ok) {

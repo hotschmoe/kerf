@@ -53,7 +53,7 @@ pub fn codeBasis(a: Allocator, doc: json.Value) Allocator.Error![]const u8 {
     if (doc.get("meta")) |m| if (m.get("jurisdiction")) |j| {
         const code = if (j.get("code")) |c| (c.str() orelse "") else "";
         if (code.len > 0) {
-            if (j.get("edition")) |e| if (e.num()) |n| if (cast.toInt(i64, n)) |ed| return std.fmt.allocPrint(a, "{s} {d}", .{ code, ed });
+            if (j.get("edition")) |e| if (e.num()) |n| if (cast.toInt(i64, n)) |ed| return a.print("{s} {d}", .{ code, ed });
             return code;
         }
     };
@@ -78,9 +78,9 @@ fn sideCulprit(a: Allocator, fit: FitInfo, crop: geom.Box, side: u8) Allocator.E
             notes_ext = @max(notes_ext, e);
             continue;
         }
-        if (e > best.ext + 1e-9) best = .{ .name = try std.fmt.allocPrint(a, "{s} '{s}'", .{ if (b.kind == .dim) "dimension" else "label", b.id }), .ext = e, .kind = b.kind, .id = b.id };
+        if (e > best.ext + 1e-9) best = .{ .name = try a.print("{s} '{s}'", .{ if (b.kind == .dim) "dimension" else "label", b.id }), .ext = e, .kind = b.kind, .id = b.id };
     }
-    if (notes_ext > best.ext + 1e-9) best = .{ .name = try std.fmt.allocPrint(a, "the notes column ({d} notes)", .{nnotes}), .ext = notes_ext, .kind = .note, .id = "" };
+    if (notes_ext > best.ext + 1e-9) best = .{ .name = try a.print("the notes column ({d} notes)", .{nnotes}), .ext = notes_ext, .kind = .note, .id = "" };
     const te = sideExt(fit.title, crop, side);
     if (te > best.ext + 1e-9) best = .{ .name = "the title block", .ext = te, .kind = null, .id = "title" };
     return best;
@@ -184,11 +184,11 @@ fn viewFit(a: Allocator, st: *const style_mod.Style, spec: *const view_mod.ViewS
         }
         const sc: f64 = pick orelse std.math.ceil((@max(crop.width() / @max(aw - extra_w, 0.5), crop.height() / @max(ah - extra_h, 0.5))));
         nfix += 1;
-        const lab = if (pick != null) try units.scaleLabel(a, sc) else try std.fmt.allocPrint(a, "1:{d:.0}", .{sc});
+        const lab = if (pick != null) try units.scaleLabel(a, sc) else try a.print("1:{d:.0}", .{sc});
         try fixes.print(a, "{s}{d}) use a smaller scale (e.g. {s})", .{ if (nfix > 1) "; " else "", nfix, lab });
     }
     if (nfix == 0) try fixes.appendSlice(a, "shorten the notes or shrink the crop");
-    diags.addFix(.warning, "W_VIEW_FIT", view_id, try std.fmt.allocPrint(a, "views/{s}", .{view_id}), "{s}", .{msg.items}, fixes.items);
+    diags.addFix(.warning, "W_VIEW_FIT", view_id, try a.print("views/{s}", .{view_id}), "{s}", .{msg.items}, fixes.items);
 }
 
 /// One complete section pass at a fixed (resolved) crop and scale: geometry, annotations, title.
@@ -324,7 +324,7 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
     for (spec.omit) |o| {
         if (scene.find(o) == null) {
             const ids = try scene.compIds(a);
-            diags.add(.@"error", "E_REF_UNKNOWN", view_id, try std.fmt.allocPrint(a, "views/{s}/omit", .{view_id}), "view {s} omits '{s}', which is not a component id. Components: {s}", .{ view_id, o, scene_mod.joinIds(a, ids) });
+            diags.add(.@"error", "E_REF_UNKNOWN", view_id, try a.print("views/{s}/omit", .{view_id}), "view {s} omits '{s}', which is not a component id. Components: {s}", .{ view_id, o, scene_mod.joinIds(a, ids) });
         }
     }
     const prisms = try compile_mod.viewPrisms(a, scene, spec.omit);

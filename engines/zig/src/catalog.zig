@@ -130,8 +130,8 @@ pub const hardware = [_]Hardware{
 pub fn hardwareLine(a: Allocator, h: Hardware) Allocator.Error![]const u8 {
     var wb: [40]u8 = undefined;
     var lb: [40]u8 = undefined;
-    if (h.length == 0) return std.fmt.allocPrint(a, "{s}: {s}, {s}\" wide, {d} ga, cut to length", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge });
-    return std.fmt.allocPrint(a, "{s}: {s}, {s}\" wide, {d} ga, {s}\" long", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge, json.fmtNumber(&lb, h.length) });
+    if (h.length == 0) return a.print("{s}: {s}, {s}\" wide, {d} ga, cut to length", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge });
+    return a.print("{s}: {s}, {s}\" wide, {d} ga, {s}\" long", .{ h.model, h.kind, json.fmtNumber(&wb, h.width), h.gauge, json.fmtNumber(&lb, h.length) });
 }
 
 pub const common: []const Param = &.{
@@ -298,7 +298,7 @@ comptime {
 
 /// The entry of a type.
 pub fn entry(t: Type) *const Entry {
-    return &entries[@intFromEnum(t)];
+    return &entries[@backingInt(t)];
 }
 
 pub fn find(name: []const u8) ?*const Entry {

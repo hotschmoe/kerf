@@ -57,7 +57,7 @@ test "api apply takes a single op object and the {ops, why} envelope" {
     const doc = "{\"kerf\":\"0.1\",\"id\":\"t\",\"components\":[],\"views\":[]}";
     const op = "{\"op\":\"add\",\"path\":\"components\",\"value\":{\"id\":\"s\",\"type\":\"lumber\",\"size\":\"2x4\"}}";
     inline for (.{ op, "{\"ops\":[" ++ op ++ "],\"why\":\"x\"}" }) |ops_src| {
-        const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"ops\":{s}}}", .{ doc, ops_src });
+        const input = try gpa.print("{{\"doc\":{s},\"ops\":{s}}}", .{ doc, ops_src });
         defer gpa.free(input);
         const r = try api.call(gpa, "apply", input);
         defer gpa.free(r.bytes);
@@ -127,7 +127,7 @@ const crop_doc =
 /// Apply `ops_src` to `doc_src` through the API; returns the result JSON.
 fn applyOps(a: std.mem.Allocator, doc_src: []const u8, ops_src: []const u8) !json.Value {
     const api = @import("api.zig");
-    const input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"ops\":{s}}}", .{ doc_src, ops_src });
+    const input = try a.print("{{\"doc\":{s},\"ops\":{s}}}", .{ doc_src, ops_src });
     const r = try api.call(std.testing.allocator, "apply", input);
     defer std.testing.allocator.free(r.bytes);
     try std.testing.expect(r.ok);

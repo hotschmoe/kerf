@@ -228,7 +228,7 @@ pub fn docStem(file: []const u8) []const u8 {
 
 /// Summary text of the document (`check`), or "" when the engine rejects it.
 pub fn checkSummary(a: Allocator, doc_text: []const u8) ![]const u8 {
-    const input = try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{std.mem.trim(u8, doc_text, " \t\r\n")});
+    const input = try a.print("{{\"doc\":{s}}}", .{std.mem.trim(u8, doc_text, " \t\r\n")});
     const r = try kerf.call(a, "check", input);
     if (!r.ok) return "";
     var perr: kerf.json.ParseError = undefined;

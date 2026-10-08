@@ -3,7 +3,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kerf = @import("kerf");
-const fsx = @import("../fsx.zig");
 const ws = @import("../workspace.zig");
 const http = @import("../http.zig");
 const agents = @import("../agents.zig");
@@ -108,13 +107,13 @@ pub fn apiList(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
 pub fn apiGetDoc(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra: []const u8, file: []const u8) !bool {
     const rd = s.readDoc(a, file) catch |e| {
         if (Server.isMissing(e)) {
-            try http.sendError(a, w, 404, req.keep_alive, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
+            try http.sendError(a, w, 404, req.keep_alive, extra, "E_NOT_FOUND", try a.print("{s} does not exist in the served folder", .{file}));
             return req.keep_alive;
         }
         return e;
     };
     const etag = try Server.etagOf(a, rd.mtime_ns, rd.size, rd.bytes);
-    const hdr = try std.fmt.allocPrint(a, "ETag: {s}\r\n{s}", .{ etag, extra });
+    const hdr = try a.print("ETag: {s}\r\n{s}", .{ etag, extra });
     if (req.header("if-none-match")) |inm| if (std.mem.eql(u8, inm, etag)) {
         try http.send(w, .{ .status = 304, .keep_alive = req.keep_alive, .extra = hdr }, "");
         return req.keep_alive;
@@ -142,13 +141,13 @@ pub fn apiCreate(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, ext
     af.file.writeStreamingAll(s.io, text) catch |e| return e;
     af.link(s.io) catch |e| switch (e) {
         error.PathAlreadyExists => {
-            try http.sendError(a, w, 409, req.keep_alive, extra, "E_EXISTS", try std.fmt.allocPrint(a, "{s} already exists", .{file}));
+            try http.sendError(a, w, 409, req.keep_alive, extra, "E_EXISTS", try a.print("{s} already exists", .{file}));
             return req.keep_alive;
         },
         else => return e,
     };
     const summary = ws.checkSummary(a, text) catch "";
-    const created_ops = try std.fmt.allocPrint(a, "[{{\"op\":\"create\",\"file\":\"{s}\"}}]", .{file});
+    const created_ops = try a.print("[{{\"op\":\"create\",\"file\":\"{s}\"}}]", .{file});
     const line = try ws.buildEntry(a, s.io, .{ .who = "designer", .tool = "kerf-serve", .why = "create" }, created_ops, &.{}, summary);
     const lp = try ws.logPath(a, file);
     s.appendLogOrWarn(lp, line);
@@ -163,7 +162,7 @@ pub fn apiCreate(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, ext
     try out.appendSlice(a, ",\"summary\":");
     try http.jsonString(&out, a, summary);
     try out.appendSlice(a, "}\n");
-    const hdr = try std.fmt.allocPrint(a, "ETag: {s}\r\nLocation: /api/docs/{s}\r\n{s}", .{ etag, file, extra });
+    const hdr = try a.print("ETag: {s}\r\nLocation: /api/docs/{s}\r\n{s}", .{ etag, file, extra });
     try http.sendJson(w, 201, req.keep_alive, hdr, out.items);
     return req.keep_alive;
 }
@@ -200,13 +199,13 @@ pub fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extr
     // The same advisory lock `kerf apply -w` takes: no other process can interleave a read-modify-write with ours.
     const lp = try ws.logPath(a, file);
     const doc_lock = ws.DocLock.acquire(s.io, s.dir, lp) catch |e| {
-        try http.sendError(a, w, 500, ka, extra, "E_WRITE", try std.fmt.allocPrint(a, "cannot open or lock the op log {s}: {s}", .{ lp, @errorName(e) }));
+        try http.sendError(a, w, 500, ka, extra, "E_WRITE", try a.print("cannot open or lock the op log {s}: {s}", .{ lp, @errorName(e) }));
         return ka;
     };
     defer doc_lock.release(s.io);
     const rd = s.readDoc(a, file) catch |e| {
         if (Server.isMissing(e)) {
-            try http.sendError(a, w, 404, ka, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
+            try http.sendError(a, w, 404, ka, extra, "E_NOT_FOUND", try a.print("{s} does not exist in the served folder", .{file}));
             return ka;
         }
         return e;
@@ -216,14 +215,14 @@ pub fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extr
         const want = std.mem.trim(u8, im, " ");
         const cur = std.mem.trim(u8, etag, "\"");
         if (!std.mem.eql(u8, std.mem.trim(u8, want, "\""), cur)) {
-            const msg = try std.fmt.allocPrint(a, "{s} was changed by someone else (current ETag {s}); reload it and re-apply", .{ file, etag });
+            const msg = try a.print("{s} was changed by someone else (current ETag {s}); reload it and re-apply", .{ file, etag });
             var out: std.ArrayList(u8) = .empty;
             try out.appendSlice(a, "{\"error\":{\"code\":\"E_CONFLICT\",\"message\":");
             try http.jsonString(&out, a, msg);
             try out.appendSlice(a, "},\"etag\":");
             try http.jsonString(&out, a, etag);
             try out.appendSlice(a, "}\n");
-            const hdr = try std.fmt.allocPrint(a, "ETag: {s}\r\n{s}", .{ etag, extra });
+            const hdr = try a.print("ETag: {s}\r\n{s}", .{ etag, extra });
             try http.sendJson(w, 409, ka, hdr, out.items);
             return ka;
         }
@@ -232,7 +231,7 @@ pub fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extr
     try kerf.json.writeCompact(&ops_text, a, norm.ops);
     // The engine only distinguishes designer edits (verified citations stay verified) from model edits.
     const engine_actor = if (std.mem.eql(u8, who, "designer")) "designer" else "llm";
-    const input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"ops\":{s},\"actor\":\"{s}\"}}", .{ std.mem.trim(u8, rd.bytes, " \t\r\n"), ops_text.items, engine_actor });
+    const input = try a.print("{{\"doc\":{s},\"ops\":{s},\"actor\":\"{s}\"}}", .{ std.mem.trim(u8, rd.bytes, " \t\r\n"), ops_text.items, engine_actor });
     const r = try kerf.call(a, "apply", input);
     if (!r.ok) {
         try http.sendJson(w, 400, ka, extra, r.bytes);
@@ -252,7 +251,7 @@ pub fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extr
         s.scan_mu.lockUncancelable(s.io);
         defer s.scan_mu.unlock(s.io);
         ws.writeFileAtomic(s.io, s.dir, file, text) catch |e| {
-            try http.sendError(a, w, 500, ka, extra, "E_WRITE", try std.fmt.allocPrint(a, "could not write {s}: {s}", .{ file, @errorName(e) }));
+            try http.sendError(a, w, 500, ka, extra, "E_WRITE", try a.print("could not write {s}: {s}", .{ file, @errorName(e) }));
             return ka;
         };
         doc_lock.appendLine(s.io, line) catch |e| s.warnLog(lp, e);
@@ -266,14 +265,14 @@ pub fn apiApply(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extr
     try out.appendSlice(a, ",\"etag\":");
     try http.jsonString(&out, a, final_etag);
     try out.appendSlice(a, "}\n");
-    const hdr = try std.fmt.allocPrint(a, "ETag: {s}\r\n{s}", .{ final_etag, extra });
+    const hdr = try a.print("ETag: {s}\r\n{s}", .{ final_etag, extra });
     try http.sendJson(w, 200, ka, hdr, out.items);
     return ka;
 }
 
 /// Whole file at `path` (a regular file only: a symlink is "missing"), at most `limit` bytes.
 pub fn readNoFollow(s: *Server, a: Allocator, path: []const u8, limit: usize) ?[]u8 {
-    var f = fsx.openFileNoFollow(s.io, s.dir, path) catch return null;
+    var f = s.dir.openFile(s.io, path, .{ .follow_symlinks = false }) catch return null;
     defer f.close(s.io);
     const st = f.stat(s.io) catch return null;
     if (st.kind != .file) return null;
@@ -286,7 +285,7 @@ pub fn apiLog(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra:
     const since: usize = if (try req.param(a, "since")) |sv| (std.fmt.parseInt(usize, sv, 10) catch return badRequest(a, req, w, extra, "E_INPUT", "since must be a line index (integer)")) else 0;
     const dst = s.dir.statFile(s.io, file, .{ .follow_symlinks = false }) catch null;
     if (dst == null or dst.?.kind != .file) {
-        try http.sendError(a, w, 404, req.keep_alive, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
+        try http.sendError(a, w, 404, req.keep_alive, extra, "E_NOT_FOUND", try a.print("{s} does not exist in the served folder", .{file}));
         return req.keep_alive;
     }
     const lp = try ws.logPath(a, file);
@@ -338,7 +337,7 @@ pub fn apiExport(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, ext
     var input: std.ArrayList(u8) = .empty;
     const rd = s.readDoc(a, file) catch |e| {
         if (Server.isMissing(e)) {
-            try http.sendError(a, w, 404, ka, extra, "E_NOT_FOUND", try std.fmt.allocPrint(a, "{s} does not exist in the served folder", .{file}));
+            try http.sendError(a, w, 404, ka, extra, "E_NOT_FOUND", try a.print("{s} does not exist in the served folder", .{file}));
             return ka;
         }
         return e;
@@ -362,7 +361,7 @@ pub fn apiExport(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, ext
     var safe_view: std.ArrayList(u8) = .empty;
     for (view) |c| try safe_view.append(a, if (std.ascii.isAlphanumeric(c) or c == '-' or c == '_') c else '_');
     const disp = if (try req.param(a, "inline")) |_| "inline" else "attachment";
-    const hdr = try std.fmt.allocPrint(a, "Content-Disposition: {s}; filename=\"{s}-{s}.{s}\"\r\n{s}", .{ disp, ws.docStem(file), safe_view.items, f.ext, extra });
+    const hdr = try a.print("Content-Disposition: {s}; filename=\"{s}-{s}.{s}\"\r\n{s}", .{ disp, ws.docStem(file), safe_view.items, f.ext, extra });
     try http.send(w, .{ .status = 200, .content_type = f.mime, .keep_alive = ka, .extra = hdr }, r.bytes);
     return ka;
 }

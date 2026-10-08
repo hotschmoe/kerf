@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -53,20 +53,20 @@ jobs:
       # the module must build and pass the same golden with every safety check compiled in (REVIEW SAF-2, `no_panic` handler)
       - name: wasm build with safety checks (ReleaseSafe) + golden
         run: |
-          zig build wasm -Dwasm-optimize=ReleaseSafe
+          zig build wasm -Dwasm-optimize=safe
           node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
 
       # What ships is ReleaseSafe (REVIEW SAF-2): run the server smoke test against exactly that, too.
       - name: kerf serve smoke test (ReleaseSafe build, the shipped optimisation mode)
         run: |
-          zig build -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/release-safe"
+          zig build -Doptimize=safe --prefix "$RUNNER_TEMP/release-safe"
           node tests/serve_smoke.mjs "$RUNNER_TEMP/release-safe/bin/kerf"
           node tests/cli_ergonomics.mjs "$RUNNER_TEMP/release-safe/bin/kerf"
 
       - name: cross-compile smoke (windows, macos, linux-musl; the agent bridge has a Windows job-object path)
         run: |
           for t in x86_64-windows-gnu aarch64-windows-gnu aarch64-macos x86_64-linux-musl aarch64-linux-musl; do
-            zig build -Dtarget=$t -Doptimize=ReleaseSafe --prefix "$RUNNER_TEMP/out-$t"
+            zig build -Dtarget=$t -Doptimize=safe --prefix "$RUNNER_TEMP/out-$t"
           done
 
   web:
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -96,7 +96,7 @@ jobs:
         run: |
           npm run build:serve
           cd ../../engines/zig
-          zig build -Doptimize=ReleaseSafe -Dui=../../apps/web/dist-serve
+          zig build -Doptimize=safe -Dui=../../apps/web/dist-serve
           ls -l zig-out/bin/kerf
       - name: the server with the embedded UI passes the smoke test (CSP of the real index.html)
         working-directory: engines/zig

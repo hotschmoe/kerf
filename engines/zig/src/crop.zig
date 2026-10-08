@@ -127,8 +127,8 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, before: ?Before, diags:
             reported[c.index] = true;
             var need = spec.crop;
             need.addBox(ext);
-            const fit = try std.fmt.allocPrint(a, "{{\"x\":[{s},{s}],\"y\":[{s},{s}]}}", .{ try json.fmtNumberAlloc(a, @floor(need.x0)), try json.fmtNumberAlloc(a, @ceil(need.x1)), try json.fmtNumberAlloc(a, @floor(need.y0)), try json.fmtNumberAlloc(a, @ceil(need.y1)) });
-            diags.addFix(.warning, "W_CROP_STALE", c.id, try std.fmt.allocPrint(a, "views/{s}/crop", .{spec.id}), "{s}'{s}' has {d:.0}% of its extent outside the crop of view {s}: it spans x {s}..{s}, y {s}..{s}, the crop is x {s}..{s}, y {s}..{s}", .{
+            const fit = try a.print("{{\"x\":[{s},{s}],\"y\":[{s},{s}]}}", .{ try json.fmtNumberAlloc(a, @floor(need.x0)), try json.fmtNumberAlloc(a, @ceil(need.x1)), try json.fmtNumberAlloc(a, @floor(need.y0)), try json.fmtNumberAlloc(a, @ceil(need.y1)) });
+            diags.addFix(.warning, "W_CROP_STALE", c.id, try a.print("views/{s}/crop", .{spec.id}), "{s}'{s}' has {d:.0}% of its extent outside the crop of view {s}: it spans x {s}..{s}, y {s}..{s}, the crop is x {s}..{s}, y {s}..{s}", .{
                 if (before != null) "after this edit, " else "",
                 c.id,
                 frac * 100,
@@ -141,7 +141,7 @@ pub fn run(a: Allocator, scene: *Scene, doc: json.Value, before: ?Before, diags:
                 fmtIn(a, spec.crop.x1),
                 fmtIn(a, spec.crop.y0),
                 fmtIn(a, spec.crop.y1),
-            }, try std.fmt.allocPrint(a, "remove \"crop\" (and \"scale\", if you set one) from view {s}: the engine then re-fits the view to all non-fill components + 6\"; or set \"crop\" to {s} to contain '{s}'", .{ spec.id, fit, c.id }));
+            }, try a.print("remove \"crop\" (and \"scale\", if you set one) from view {s}: the engine then re-fits the view to all non-fill components + 6\"; or set \"crop\" to {s} to contain '{s}'", .{ spec.id, fit, c.id }));
         }
     }
 }

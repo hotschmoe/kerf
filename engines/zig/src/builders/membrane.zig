@@ -64,7 +64,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
     var until_note: []const u8 = "";
     if (mp.until) |uv| {
         // SPEC 19: the last segment grows or shrinks along its own direction until its end reaches the Ref's coordinate along that direction
-        const path = try std.fmt.allocPrint(a, "{s}/{s}/until", .{ p.base, p.id });
+        const path = try a.print("{s}/{s}/until", .{ p.base, p.id });
         const target = ctx.scene.point(uv, p.id, path) orelse {
             p.ok = false;
             return null;
@@ -93,7 +93,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
             .object => if (uv.get("ref")) |r| (r.str() orelse "ref") else "ref",
             else => "ref",
         };
-        until_note = try std.fmt.allocPrint(a, " (until {s})", .{ref_txt});
+        until_note = try a.print(" (until {s})", .{ref_txt});
     }
     const left = mp.side == .left;
     const t: f64 = mp.thickness orelse membraneThickness(material);
@@ -113,6 +113,6 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = geom.loopBox(rib),
         .points_mode = true,
-        .info = try std.fmt.allocPrint(a, "membrane {s} {s} thick L={s}{s}", .{ material, ftin(a, t), ftin(a, pathLen(try vsOf(a, clean))), until_note }),
+        .info = try a.print("membrane {s} {s} thick L={s}{s}", .{ material, ftin(a, t), ftin(a, pathLen(try vsOf(a, clean))), until_note }),
     };
 }

@@ -73,7 +73,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .prisms = try onePrism(a, prism),
         .box = bx,
         .points_mode = points_mode,
-        .info = try std.fmt.allocPrint(a, "insulation {s}", .{@tagName(ip.form)}),
+        .info = try a.print("insulation {s}", .{@tagName(ip.form)}),
     };
 }
 

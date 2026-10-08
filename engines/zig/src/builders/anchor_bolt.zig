@@ -123,6 +123,6 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .anchors = try a.dupe(model.NamedAnchor, &.{.{ .name = "top_of_concrete", .p = V2.init(0, 0) }}),
         .box = bx,
         .nat_z = d,
-        .info = try std.fmt.allocPrint(a, "anchor_bolt {s}\" dia, embed {s}, proj {s}, {s}{s}", .{ fmtNum(a, d), ftin(a, embed), ftin(a, proj), @tagName(h), if (post) "" else " hook" }),
+        .info = try a.print("anchor_bolt {s}\" dia, embed {s}, proj {s}, {s}{s}", .{ fmtNum(a, d), ftin(a, embed), ftin(a, proj), @tagName(h), if (post) "" else " hook" }),
     };
 }

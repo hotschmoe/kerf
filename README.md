@@ -44,7 +44,7 @@ Grok, Codex or pi from the web console (they run on your machine with your own l
 | path | what |
 |---|---|
 | `spec/` | the contract: [`SPEC.md`](spec/SPEC.md), design language, LLM prompts, reference details, evals |
-| `engines/zig/` | the engine (Zig 0.16): library, `kerf` CLI, wasm for the browser (zero imports) |
+| `engines/zig/` | the engine (Zig 0.17): library, `kerf` CLI, wasm for the browser (zero imports) |
 | `apps/web/` | the web workstation (TypeScript + DOM + three.js) |
 | `docs/STACKS.md` | the 4-stack bake-off and where the archived stacks live |
 

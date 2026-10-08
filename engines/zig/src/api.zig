@@ -37,7 +37,7 @@ pub const Result = struct {
 const ApiError = Allocator.Error;
 
 fn errJson(a: Allocator, code: []const u8, comptime fmt: []const u8, args: anytype) ApiError![]u8 {
-    const msg = try std.fmt.allocPrint(a, fmt, args);
+    const msg = try a.print(fmt, args);
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(a, "{\"error\":{\"code\":");
     try json.writeString(&out, a, code);
@@ -93,7 +93,7 @@ fn schemaFn(a: Allocator, inp: json.Value) ApiError!Out {
         var names: std.ArrayList([]const u8) = .empty;
         for (schema.objects) |o| try names.append(a, o.name);
         for (catalog.entries) |e| try names.append(a, e.name());
-        const hint = if (model.nearest(a, tp, names.items)) |n| try std.fmt.allocPrint(a, " Did you mean \"{s}\"?", .{n}) else "";
+        const hint = if (model.nearest(a, tp, names.items)) |n| try a.print(" Did you mean \"{s}\"?", .{n}) else "";
         return fail(a, "E_TOPIC", "unknown schema topic \"{s}\".{s} Topics: {s}", .{ tp, hint, schema.topics_hint });
     } else try schema.index(a);
     try out.appendSlice(a, "{\"topic\":");
@@ -123,7 +123,7 @@ pub const Fn = enum { version, help, catalog, schema, fmt, check, apply, inspect
 
 const fn_list = blk: {
     var list: []const u8 = "";
-    for (std.meta.fieldNames(Fn), 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
+    for (@typeInfo(Fn).@"enum".field_names, 0..) |n, i| list = list ++ (if (i > 0) ", " else "") ++ n;
     break :blk list;
 };
 
@@ -153,7 +153,7 @@ fn dispatch(a: Allocator, name: []const u8, input: []const u8) ApiError!Out {
 }
 
 fn versionFn(a: Allocator) ApiError!Out {
-    return .{ .ok = true, .bytes = try std.fmt.allocPrint(a, "{{\"engine\":\"{s}\",\"version\":\"{s}\",\"spec\":\"0.1\"}}\n", .{ engine_name, version }) };
+    return .{ .ok = true, .bytes = try a.print("{{\"engine\":\"{s}\",\"version\":\"{s}\",\"spec\":\"0.1\"}}\n", .{ engine_name, version }) };
 }
 
 fn catalogFn(a: Allocator, inp: json.Value) ApiError!Out {
@@ -368,7 +368,7 @@ test "api: every function runs on the reference documents without leaking" {
     for (testdocs.all) |doc| {
         const trimmed = std.mem.trim(u8, doc, " \n\r\t");
         inline for (.{ "check", "inspect" }) |fname| {
-            const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s}}}", .{trimmed});
+            const input = try gpa.print("{{\"doc\":{s}}}", .{trimmed});
             defer gpa.free(input);
             const r = try call(gpa, fname, input);
             defer gpa.free(r.bytes);
@@ -376,14 +376,14 @@ test "api: every function runs on the reference documents without leaking" {
         }
         for ([_][]const u8{"A"}) |v| {
             for ([_][]const u8{ "drawing", "export" }) |fname| {
-                const input = try std.fmt.allocPrint(gpa, "{{\"doc\":{s},\"view\":\"{s}\",\"format\":\"svg\"}}", .{ trimmed, v });
+                const input = try gpa.print("{{\"doc\":{s},\"view\":\"{s}\",\"format\":\"svg\"}}", .{ trimmed, v });
                 defer gpa.free(input);
                 const r = try call(gpa, fname, input);
                 defer gpa.free(r.bytes);
                 try std.testing.expect(r.ok);
             }
         }
-        const finput = try std.fmt.allocPrint(gpa, "{{\"doc\":{s}}}", .{trimmed});
+        const finput = try gpa.print("{{\"doc\":{s}}}", .{trimmed});
         defer gpa.free(finput);
         const r = try call(gpa, "fmt", finput);
         gpa.free(r.bytes);

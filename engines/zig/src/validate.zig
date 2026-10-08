@@ -25,7 +25,7 @@ const Pf = struct {
 const ftin = units.ftin;
 
 fn boxText(a: Allocator, b: geom.Box) []const u8 {
-    return std.fmt.allocPrint(a, "x {s}..{s}, y {s}..{s}", .{ ftin(a, b.x0), ftin(a, b.x1), ftin(a, b.y0), ftin(a, b.y1) }) catch "?";
+    return a.print("x {s}..{s}, y {s}..{s}", .{ ftin(a, b.x0), ftin(a, b.x1), ftin(a, b.y0), ftin(a, b.y1) }) catch "?";
 }
 
 fn segDist(p: V2, q: V2, r: V2, s: V2) f64 {
@@ -260,8 +260,8 @@ fn pieceText(a: Allocator, pieces: []const Piece, k: usize) []const u8 {
     for (pieces) |q| if (!q.is_bend) {
         nlegs += 1;
     };
-    if (pc.is_bend) return std.fmt.allocPrint(a, "the bend after segment {d} of {d} (near x {s}, y {s})", .{ pc.leg, nlegs, ftin(a, pc.segs[pc.segs.len / 2][0].x), ftin(a, pc.segs[pc.segs.len / 2][0].y) }) catch "?";
-    return std.fmt.allocPrint(a, "segment {d} of {d} (x {s}, y {s} to x {s}, y {s})", .{ pc.leg, nlegs, ftin(a, pc.p0.x), ftin(a, pc.p0.y), ftin(a, pc.p1.x), ftin(a, pc.p1.y) }) catch "?";
+    if (pc.is_bend) return a.print("the bend after segment {d} of {d} (near x {s}, y {s})", .{ pc.leg, nlegs, ftin(a, pc.segs[pc.segs.len / 2][0].x), ftin(a, pc.segs[pc.segs.len / 2][0].y) }) catch "?";
+    return a.print("segment {d} of {d} (x {s}, y {s} to x {s}, y {s})", .{ pc.leg, nlegs, ftin(a, pc.p0.x), ftin(a, pc.p0.y), ftin(a, pc.p1.x), ftin(a, pc.p1.y) }) catch "?";
 }
 
 fn cover(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!void {
@@ -401,7 +401,7 @@ fn unverifiedCount(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator
                     mine = true;
                 }
             };
-            if (mine) try ids.append(a, try std.fmt.allocPrint(a, "{s}/{s}", .{ vid, if (x.get("id")) |i| (i.str() orelse "?") else "?" }));
+            if (mine) try ids.append(a, try a.print("{s}/{s}", .{ vid, if (x.get("id")) |i| (i.str() orelse "?") else "?" }));
         };
     };
     if (n > 0) diags.add(.info, "I_UNVERIFIED_CITE", null, null, "{d} citation(s) await designer verification (notes: {s}). Citations print with a trailing * until verified.", .{ n, scene_mod.joinIds(a, ids.items) });
@@ -490,7 +490,7 @@ fn nearMiss(a: Allocator, scene: *Scene, diags: *model.Diags) Allocator.Error!vo
                             grow.c.id,
                             edge_name,
                             other.c.id,
-                        }, std.fmt.allocPrint(a, "set the length of '{s}' to {s}, or use \"until\": \"{s}@{s}\" so it follows '{s}'; ignore this warning if the gap is intended", .{ grow.c.id, ftin(a, grow_len + gap), other.c.id, anchor, other.c.id }) catch "");
+                        }, a.print("set the length of '{s}' to {s}, or use \"until\": \"{s}@{s}\" so it follows '{s}'; ignore this warning if the gap is intended", .{ grow.c.id, ftin(a, grow_len + gap), other.c.id, anchor, other.c.id }) catch "");
                     }
                 }
             }
@@ -614,8 +614,8 @@ fn shortSlope(a: Allocator, scene: *Scene, items: []const Pf, doc: json.Value, d
         const by_crop = crop_room < gap_host;
         const end_anchor = h.ty.traits.slope_host.?.end_anchor;
         const anchor: []const u8 = if (end_anchor.len > 0) end_anchor else if (u.x >= 0) "top_right" else "top_left";
-        const what = if (by_crop) std.fmt.allocPrint(a, "the view crop (where '{s}' continues)", .{h.id}) catch "the crop" else std.fmt.allocPrint(a, "the end of '{s}'", .{h.id}) catch "the member";
-        diags.addFix(.warning, "W_SHORT_SLOPE", c.id, null, "'{s}' rests on the sloped '{s}' (same slope) but its upper end stops {s} short of {s}", .{ c.id, h.id, ftin(a, short), what }, std.fmt.allocPrint(a, "replace the literal length of '{s}' (it does not follow the pitch) with \"until\": \"{s}@{s}\" (grows along the slope to the member's end; pair it with \"slope\": \"@{s}\"), or lengthen it by {s}; acknowledge W_SHORT_SLOPE if it should stop there", .{ c.id, h.id, anchor, h.id, ftin(a, short) }) catch "");
+        const what = if (by_crop) a.print("the view crop (where '{s}' continues)", .{h.id}) catch "the crop" else a.print("the end of '{s}'", .{h.id}) catch "the member";
+        diags.addFix(.warning, "W_SHORT_SLOPE", c.id, null, "'{s}' rests on the sloped '{s}' (same slope) but its upper end stops {s} short of {s}", .{ c.id, h.id, ftin(a, short), what }, a.print("replace the literal length of '{s}' (it does not follow the pitch) with \"until\": \"{s}@{s}\" (grows along the slope to the member's end; pair it with \"slope\": \"@{s}\"), or lengthen it by {s}; acknowledge W_SHORT_SLOPE if it should stop there", .{ c.id, h.id, anchor, h.id, ftin(a, short) }) catch "");
     }
 }
 

@@ -88,7 +88,7 @@ pub fn compute(a: Allocator, doc: json.Value) Allocator.Error![]const Item {
         const want = try tokens(a, text);
         var found: std.ArrayList([]const u8) = .empty;
         if (doc.get("components")) |cs| if (cs.arr()) |ca| for (ca) |c| {
-            const joined = try std.fmt.allocPrint(a, "{s} {s} {s} {s} {s}", .{ strOf(c, "id"), strOf(c, "type"), strOf(c, "label"), strOf(c, "model"), strOf(c, "size") });
+            const joined = try a.print("{s} {s} {s} {s} {s}", .{ strOf(c, "id"), strOf(c, "type"), strOf(c, "label"), strOf(c, "model"), strOf(c, "size") });
             if (covers(want, try tokens(a, joined))) try addFound(a, &found, strOf(c, "id"));
         };
         if (doc.get("views")) |vs| if (vs.arr()) |va| for (va) |v| {
@@ -100,7 +100,7 @@ pub fn compute(a: Allocator, doc: json.Value) Allocator.Error![]const Item {
                 const tc = targetComp(an);
                 if (tc.len > 0 and hasComponent(doc, tc)) {
                     try addFound(a, &found, tc);
-                } else try addFound(a, &found, try std.fmt.allocPrint(a, "note {s}", .{strOf(an, "id")}));
+                } else try addFound(a, &found, try a.print("note {s}", .{strOf(an, "id")}));
             }
         };
         try out.append(a, .{ .text = text, .found = found.items });

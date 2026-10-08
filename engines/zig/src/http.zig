@@ -548,6 +548,9 @@ test "V-9: strict head parsing rejects the request-smuggling shapes" {
     // still fine
     const ok = try parseHead("POST /x?a=b HTTP/1.1\r\nHost: h\r\ncontent-length:   42  \r\nX-A: b:c");
     try std.testing.expectEqual(@as(usize, 42), ok.content_length);
-    const many = "GET /x HTTP/1.1" ++ "\r\nX: 1" ** (max_headers + 1);
-    try std.testing.expectError(error.HeadTooLarge, parseHead(many));
+    var many: std.ArrayList(u8) = .empty;
+    defer many.deinit(std.testing.allocator);
+    try many.appendSlice(std.testing.allocator, "GET /x HTTP/1.1");
+    for (0..max_headers + 1) |_| try many.appendSlice(std.testing.allocator, "\r\nX: 1");
+    try std.testing.expectError(error.HeadTooLarge, parseHead(many.items));
 }

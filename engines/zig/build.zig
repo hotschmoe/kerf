@@ -9,8 +9,8 @@ fn addSpecImports(b: *std.Build, m: *std.Build.Module) void {
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    // Debug info makes a ReleaseSafe Linux binary ~4x larger; release builds drop it unless `-Dstrip=false` (Debug keeps it).
-    const strip = b.option(bool, "strip", "Strip debug info from the CLI (default: true unless -Doptimize=Debug)") orelse (optimize != .Debug);
+    // Debug info makes a safe-mode Linux binary ~4x larger; release builds drop it unless `-Dstrip=false` (Debug keeps it).
+    const strip = b.option(bool, "strip", "Strip debug info from the CLI (default: true unless -Doptimize=debug)") orelse (optimize != .debug);
 
     // The importable library module (`@import("kerf")`). Style and font are embedded from src/data.
     const kerf = b.addModule("kerf", .{
@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addAnonymousImport("kerf_system_md", .{ .root_source_file = b.path("../../spec/llm/system.md") });
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
-    if (b.args) |args| run.addArgs(args);
+    run.addPassthruArgs();
     b.step("run", "Run the kerf CLI").dependOn(&run.step);
 
     // Tests of the serve code (HTTP plumbing, access rules, proxy URL rules, agent templates, op log).
@@ -80,8 +80,8 @@ pub fn build(b: *std.Build) void {
     cli_test_mod.addAnonymousImport("kerf_system_md", .{ .root_source_file = b.path("../../spec/llm/system.md") });
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli_test_mod })).step);
 
-    // wasm32-freestanding, raw ABI (SPEC 13.1). `-Dwasm-optimize=ReleaseFast` to compare speed.
-    const wasm_opt = b.option(std.builtin.OptimizeMode, "wasm-optimize", "Optimize mode of the wasm build (default ReleaseSmall)") orelse .ReleaseSmall;
+    // wasm32-freestanding, raw ABI (SPEC 13.1). `-Dwasm-optimize=fast` to compare speed.
+    const wasm_opt = b.option(std.lang.Optimize, "wasm-optimize", "Optimize mode of the wasm build (default small)") orelse .small;
     const wasm_strip = b.option(bool, "wasm-strip", "Strip the wasm build (default true; false keeps the name section for twiggy)") orelse true;
     const wasm_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const wasm_kerf = b.createModule(.{
@@ -116,13 +116,17 @@ pub fn build(b: *std.Build) void {
 fn uiAssetsModule(b: *std.Build, ui_dir: ?[]const u8) *std.Build.Module {
     const dir = ui_dir orelse return b.createModule(.{ .root_source_file = b.path("src/ui_stub.zig") });
     const io = b.graph.io;
-    const abs = b.pathFromRoot(dir);
-    var d = std.Io.Dir.cwd().openDir(io, abs, .{ .iterate = true }) catch |e|
-        std.debug.panic("-Dui={s}: cannot open directory {s}: {s}", .{ dir, abs, @errorName(e) });
+    const root_lp = b.path(dir);
+    var d = b.root.openDir(io, dir, .{ .iterate = true }) catch |e|
+        std.debug.panic("-Dui={s}: cannot open directory {s}: {s}", .{ dir, dir, @errorName(e) });
     defer d.close(io);
+    // The generated file list is a function of the directory tree, so the configuration depends on every directory's entries
+    // (not recursive in the build system, so each directory the walk enters is declared). File contents are copied at make time.
+    b.dependOnDirectoryContents(root_lp);
     var walker = d.walk(b.allocator) catch @panic("OOM");
     var paths: std.ArrayList([]const u8) = .empty;
     while (walker.next(io) catch |e| std.debug.panic("-Dui walk failed: {s}", .{@errorName(e)})) |entry| {
+        if (entry.kind == .directory) b.dependOnDirectoryContents(root_lp.path(b, entry.path));
         if (entry.kind != .file) continue;
         const rel = b.allocator.dupe(u8, entry.path) catch @panic("OOM");
         for (rel) |*c| if (c.* == '\\') {
@@ -143,7 +147,7 @@ fn uiAssetsModule(b: *std.Build, ui_dir: ?[]const u8) *std.Build.Module {
     }
     src.appendSlice(b.allocator, "};\n") catch @panic("OOM");
     const wf = b.addWriteFiles();
-    _ = wf.addCopyDirectory(.{ .cwd_relative = abs }, "ui", .{});
+    _ = wf.addCopyDirectory(root_lp, "ui", .{});
     const gen = wf.add("ui_assets.zig", src.items);
     return b.createModule(.{ .root_source_file = gen });
 }

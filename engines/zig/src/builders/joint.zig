@@ -97,7 +97,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         if (cap > 0) try prisms.append(a, .{ .part = "sealant", .material = materialOr(ctx, "sealant", "steel"), .loops = try model.oneLoop(a, try model.rectLoop(a, -hw, -cap, hw, 0)) });
     } else if (k == .control) {
         const tri = [_]Pt{ .{ .x = -width / 2, .y = 0 }, .{ .x = 0, .y = -depth }, .{ .x = width / 2, .y = 0 } };
-        try prisms.append(a, .{ .part = "notch", .material = void_mat, .loops = try model.oneLoop(a, try orientedCcw(a, &tri)), .embedded = true });
+        try prisms.append(a, .{ .part = "notch", .material = void_mat, .loops = try model.oneLoop(a, try orientedCcw(a, try a.dupe(Pt, &tri))), .embedded = true });
     } else if (k == .tooled_edge) {
         // the sliver between the sharp corner and the radius, drawn for the top-right corner then flipped into place
         const r = radius;
@@ -123,6 +123,6 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .prisms = prisms.items,
         .anchors = anchors.items,
         .box = boxOfPrisms(prisms.items),
-        .info = try std.fmt.allocPrint(a, "joint {s} {s} wide x {s} deep", .{ @tagName(k), ftin(a, width), ftin(a, depth) }),
+        .info = try a.print("joint {s} {s} wide x {s} deep", .{ @tagName(k), ftin(a, width), ftin(a, depth) }),
     };
 }

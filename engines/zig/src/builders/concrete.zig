@@ -88,7 +88,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
             .zones = zones,
             .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h },
             .host = .{ .outline = loop, .cover = cov.?.cover, .part_cover = cov.?.parts },
-            .info = try std.fmt.allocPrint(a, "concrete {s} {s} x {s}", .{ @tagName(sh), ftin(a, w), ftin(a, h) }),
+            .info = try a.print("concrete {s} {s} x {s}", .{ @tagName(sh), ftin(a, w), ftin(a, h) }),
         };
     }
     if (sh == .polygon) {
@@ -266,12 +266,12 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
         .zones = zones_out.items,
         .box = geom.loopBox(loop),
         .host = .{ .outline = loop, .cover = cov.?.cover, .part_cover = cov.?.parts },
-        .info = try std.fmt.allocPrint(a, "concrete slab_edge {s} slab, ftg {s} x {s}{s}{s}", .{
+        .info = try a.print("concrete slab_edge {s} slab, ftg {s} x {s}{s}{s}", .{
             ftin(a, st),
             ftin(a, fw),
             ftin(a, fd),
-            if (has_recess) try std.fmt.allocPrint(a, ", recess {s} x {s}", .{ ftin(a, rw), ftin(a, rd) }) else "",
-            if (base_t > 0) try std.fmt.allocPrint(a, ", {s} {s} base", .{ ftin(a, base_t), base_mat }) else "",
+            if (has_recess) try a.print(", recess {s} x {s}", .{ ftin(a, rw), ftin(a, rd) }) else "",
+            if (base_t > 0) try a.print(", {s} {s} base", .{ ftin(a, base_t), base_mat }) else "",
         }),
     };
     if (cp.exterior == .right) {

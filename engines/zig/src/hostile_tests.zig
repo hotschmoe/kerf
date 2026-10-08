@@ -106,7 +106,7 @@ fn build(a: std.mem.Allocator, c: Case) ![]u8 {
         doc = try std.mem.replaceOwned(u8, a, doc, b[0], v);
     }
     // the document goes in as a JSON object; the style is spliced in as raw JSON
-    return std.fmt.allocPrint(a, "{{\"doc\":{s},\"view\":\"A\",\"format\":\"svg\",\"style\":{s}}}", .{ doc, c.style });
+    return a.print("{{\"doc\":{s},\"view\":\"A\",\"format\":\"svg\",\"style\":{s}}}", .{ doc, c.style });
 }
 
 test "hostile inputs: no panic, no hang, no nan in drawings, precise diagnostics" {
@@ -155,8 +155,8 @@ test "out of memory is reported, never swallowed (SAF-6)" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
-    const doc_input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"view\":\"A\",\"format\":\"svg\"}}", .{testdocs.beam});
-    const apply_input = try std.fmt.allocPrint(a, "{{\"doc\":{s},\"ops\":[{{\"op\":\"update\",\"path\":\"components/strap\",\"value\":{{\"z\":0}}}}]}}", .{testdocs.beam});
+    const doc_input = try a.print("{{\"doc\":{s},\"view\":\"A\",\"format\":\"svg\"}}", .{testdocs.beam});
+    const apply_input = try a.print("{{\"doc\":{s},\"ops\":[{{\"op\":\"update\",\"path\":\"components/strap\",\"value\":{{\"z\":0}}}}]}}", .{testdocs.beam});
     for ([_]struct { f: []const u8, input: []const u8 }{
         .{ .f = "check", .input = doc_input },
         .{ .f = "drawing", .input = doc_input },
@@ -222,8 +222,8 @@ test "silent defaults are now E_PARAM errors naming the key and giving a fix (SA
         var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer arena.deinit();
         const a = arena.allocator();
-        const comps = if (c.comps.len > 0) try std.fmt.allocPrint(a, "{s},{s}", .{ conc, c.comps }) else conc;
-        const input = try std.fmt.allocPrint(a, "{{\"doc\":{{\"kerf\":\"0.1\",\"id\":\"d\",\"run\":[-12,12],\"components\":[{s}],\"views\":[{{\"id\":\"A\",\"kind\":\"section\",\"scale\":\"1\\\"=1'-0\\\"\",\"crop\":{{\"x\":[-4,60],\"y\":[-4,16]}},\"annotations\":[{s}]}}]}}}}", .{ comps, c.anns });
+        const comps = if (c.comps.len > 0) try a.print("{s},{s}", .{ conc, c.comps }) else conc;
+        const input = try a.print("{{\"doc\":{{\"kerf\":\"0.1\",\"id\":\"d\",\"run\":[-12,12],\"components\":[{s}],\"views\":[{{\"id\":\"A\",\"kind\":\"section\",\"scale\":\"1\\\"=1'-0\\\"\",\"crop\":{{\"x\":[-4,60],\"y\":[-4,16]}},\"annotations\":[{s}]}}]}}}}", .{ comps, c.anns });
         const r = try api.call(std.testing.allocator, "check", input);
         defer std.testing.allocator.free(r.bytes);
         for (c.expect) |want| {

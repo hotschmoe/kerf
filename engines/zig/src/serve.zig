@@ -13,7 +13,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kerf = @import("kerf");
-const fsx = @import("fsx.zig");
 const ws = @import("workspace.zig");
 const http = @import("http.zig");
 const events = @import("events.zig");
@@ -127,7 +126,7 @@ pub const Server = struct {
         const ao = s.cfg.allow_origin orelse return "";
         const origin = req.header("origin") orelse return "";
         if (!std.mem.eql(u8, origin, ao)) return "";
-        return std.fmt.allocPrint(a, "Access-Control-Allow-Origin: {s}\r\nVary: Origin\r\nAccess-Control-Allow-Headers: authorization, content-type, if-match\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Expose-Headers: etag\r\n", .{origin});
+        return a.print("Access-Control-Allow-Origin: {s}\r\nVary: Origin\r\nAccess-Control-Allow-Headers: authorization, content-type, if-match\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Expose-Headers: etag\r\n", .{origin});
     }
 
     // ---- folder scan: the 500 ms poller and every listing call share this ----
@@ -279,7 +278,7 @@ pub const Server = struct {
         }
         if (st.size == f.log_size) return &.{};
         const want: usize = @intCast(@min(st.size - f.log_size, 4 << 20));
-        var file = try fsx.openFileNoFollow(s.io, s.dir, lp);
+        var file = try s.dir.openFile(s.io, lp, .{ .follow_symlinks = false });
         defer file.close(s.io);
         const buf = try a.alloc(u8, want);
         const got = try file.readPositionalAll(s.io, buf, f.log_size);
@@ -327,7 +326,7 @@ pub const Server = struct {
 
     pub fn readDoc(s: *Server, a: Allocator, name: []const u8) !DocRead {
         // O_NOFOLLOW: a symlink planted in the folder (an agent can create one) is not a document (V-10).
-        var f = try fsx.openFileNoFollow(s.io, s.dir, name);
+        var f = try s.dir.openFile(s.io, name, .{ .follow_symlinks = false });
         defer f.close(s.io);
         const st = try f.stat(s.io);
         if (st.kind != .file) return error.NotRegular;
@@ -380,7 +379,7 @@ pub const Server = struct {
 
     /// `"<mtime_ms>-<size>-<hash of the bytes>"`: two same-size edits within one millisecond no longer collide.
     pub fn etagOf(a: Allocator, mtime_ns: i96, size: u64, bytes: []const u8) ![]u8 {
-        return std.fmt.allocPrint(a, "\"{d}-{d}-{x:0>16}\"", .{ @divTrunc(mtime_ns, std.time.ns_per_ms), size, std.hash.Wyhash.hash(0, bytes) });
+        return a.print("\"{d}-{d}-{x:0>16}\"", .{ @divTrunc(mtime_ns, std.time.ns_per_ms), size, std.hash.Wyhash.hash(0, bytes) });
     }
 };
 
@@ -400,7 +399,7 @@ fn computeInfoNoHash(gpa: Allocator, a: Allocator, text: []const u8) !DocInfo {
     const views = if (parsed.get("views")) |v| (if (v.arr()) |x| x.len else 0) else 0;
     var errors: usize = 0;
     var warnings: usize = 0;
-    const input = try std.fmt.allocPrint(a, "{{\"doc\":{s}}}", .{std.mem.trim(u8, text, " \t\r\n")});
+    const input = try a.print("{{\"doc\":{s}}}", .{std.mem.trim(u8, text, " \t\r\n")});
     const r = try kerf.call(a, "check", input);
     if (r.ok) {
         if (try kerf.json.parse(a, r.bytes, &pe)) |res| if (res.get("diagnostics")) |dl| if (dl.arr()) |items| for (items) |d| {

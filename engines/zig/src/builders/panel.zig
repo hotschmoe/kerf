@@ -55,6 +55,6 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
     return .{
         .prisms = try onePrism(a, prism),
         .box = .{ .x0 = 0, .y0 = 0, .x1 = w, .y1 = h },
-        .info = try std.fmt.allocPrint(a, "panel {s} {s} x {s} run {s}{s}", .{ material, ftin(a, pp.thickness), ftin(a, length.?), run, until_note }),
+        .info = try a.print("panel {s} {s} x {s} run {s}{s}", .{ material, ftin(a, pp.thickness), ftin(a, length.?), run, until_note }),
     };
 }

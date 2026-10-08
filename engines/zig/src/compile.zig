@@ -123,7 +123,7 @@ fn readComponents(a: Allocator, scene: *Scene, items: []const json.Value) Alloca
     var comps: std.ArrayList(Comp) = .empty;
     const type_names = try catalog.typeNames(a);
     for (items, 0..) |item, i| {
-        const path = try std.fmt.allocPrint(a, "components/{d}", .{i});
+        const path = try a.print("components/{d}", .{i});
         if (item != .object) {
             diags.add(.@"error", "E_PARAM", null, path, "component {d} must be an object with \"id\" and \"type\"", .{i});
             continue;
@@ -148,12 +148,12 @@ fn readComponents(a: Allocator, scene: *Scene, items: []const json.Value) Alloca
         }
         const ty_v = item.get("type");
         if (ty_v == null or ty_v.? != .string) {
-            diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "components/{s}/type", .{id}), "component '{s}' needs a \"type\": one of {s}", .{ id, model.joinQuoted(a, type_names) });
+            diags.add(.@"error", "E_PARAM", id, try a.print("components/{s}/type", .{id}), "component '{s}' needs a \"type\": one of {s}", .{ id, model.joinQuoted(a, type_names) });
             continue;
         }
         const ty = catalog.find(ty_v.?.string) orelse {
-            const hint = if (model.nearest(a, ty_v.?.string, type_names)) |n| try std.fmt.allocPrint(a, " Did you mean \"{s}\"?", .{n}) else "";
-            diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "components/{s}/type", .{id}), "unknown component type \"{s}\". Types: {s}.{s}", .{ ty_v.?.string, model.joinQuoted(a, type_names), hint });
+            const hint = if (model.nearest(a, ty_v.?.string, type_names)) |n| try a.print(" Did you mean \"{s}\"?", .{n}) else "";
+            diags.add(.@"error", "E_PARAM", id, try a.print("components/{s}/type", .{id}), "unknown component type \"{s}\". Types: {s}.{s}", .{ ty_v.?.string, model.joinQuoted(a, type_names), hint });
             continue;
         };
         // unknown keys
@@ -161,8 +161,8 @@ fn readComponents(a: Allocator, scene: *Scene, items: []const json.Value) Alloca
             if (!catalog.allowedKey(ty, m.key)) {
                 const allowed = try catalog.allowedKeysText(a, ty);
                 const near = model.nearest(a, m.key, try catalog.allowedKeyNames(a, ty));
-                const hint = if (near != null and model.editDistance(a, m.key, near.?) <= 2) try std.fmt.allocPrint(a, " Did you mean '{s}'?", .{near.?}) else "";
-                diags.add(.@"error", "E_PARAM", id, try std.fmt.allocPrint(a, "components/{s}/{s}", .{ id, m.key }), "unknown param '{s}' for type {s}.{s} Allowed: {s} (`kerf schema {s}`)", .{ m.key, ty.name(), hint, allowed, ty.name() });
+                const hint = if (near != null and model.editDistance(a, m.key, near.?) <= 2) try a.print(" Did you mean '{s}'?", .{near.?}) else "";
+                diags.add(.@"error", "E_PARAM", id, try a.print("components/{s}/{s}", .{ id, m.key }), "unknown param '{s}' for type {s}.{s} Allowed: {s} (`kerf schema {s}`)", .{ m.key, ty.name(), hint, allowed, ty.name() });
             }
         }
         var label: ?[]const u8 = null;
@@ -199,7 +199,7 @@ fn placementOrder(a: Allocator, scene: *Scene) Allocator.Error![]const usize {
             };
             // self-reference through `at.to` is a cycle of length 1
             if (std.mem.eql(u8, nm, c.id)) {
-                diags.add(.@"error", "E_CYCLE", c.id, try std.fmt.allocPrint(a, "components/{s}", .{c.id}), "placement cycle: '{s}' refers to its own anchors. Give it an absolute position, e.g. \"at\": {{\"to\": [0, 0]}}", .{c.id});
+                diags.add(.@"error", "E_CYCLE", c.id, try a.print("components/{s}", .{c.id}), "placement cycle: '{s}' refers to its own anchors. Give it an absolute position, e.g. \"at\": {{\"to\": [0, 0]}}", .{c.id});
                 scene.comps[i].state = .failed;
             }
         }
@@ -245,7 +245,7 @@ fn placementOrder(a: Allocator, scene: *Scene) Allocator.Error![]const usize {
                         try txt.appendSlice(a, " -> ");
                     }
                     try txt.appendSlice(a, scene.comps[cyc[0]].id);
-                    diags.addFix(.@"error", "E_CYCLE", scene.comps[cyc[0]].id, try std.fmt.allocPrint(a, "components/{s}/at", .{scene.comps[cyc[0]].id}), "placement cycle: {s}. Components may not locate each other", .{txt.items}, "give one of them an absolute \"at\": {\"to\": [x, y]}");
+                    diags.addFix(.@"error", "E_CYCLE", scene.comps[cyc[0]].id, try a.print("components/{s}/at", .{scene.comps[cyc[0]].id}), "placement cycle: {s}. Components may not locate each other", .{txt.items}, "give one of them an absolute \"at\": {\"to\": [x, y]}");
                     break;
                 }
                 try path.append(a, cur);
@@ -292,7 +292,7 @@ fn parseAt(a: Allocator, scene: *Scene, comp: *Comp, p: *model.Params) Allocator
             return null;
         }
     }
-    const base = try std.fmt.allocPrint(a, "components/{s}/at/to", .{comp.id});
+    const base = try a.print("components/{s}/at/to", .{comp.id});
     if (av.get("to")) |to| if (to != .null) {
         spec.has_to = true;
         switch (to) {
@@ -349,12 +349,12 @@ fn resolveAngle(a: Allocator, scene: *Scene, comp: *Comp, p: *model.Params) Allo
             const ref_id = sv.string[1..];
             const rc = scene.find(ref_id) orelse {
                 const ids = try scene.compIds(a);
-                const hint = if (model.nearest(a, ref_id, ids)) |n| try std.fmt.allocPrint(a, " Did you mean \"@{s}\"?", .{n}) else "";
-                scene.diags.addFix(.@"error", "E_REF_UNKNOWN", comp.id, try std.fmt.allocPrint(a, "components/{s}/slope", .{comp.id}), "slope \"{s}\": no component '{s}'.{s} Components: {s}", .{ sv.string, ref_id, hint, scene_mod.joinIds(a, ids) }, "use \"@<component id>\" of a truss (or any sloped member), or a literal \"4:12\"");
+                const hint = if (model.nearest(a, ref_id, ids)) |n| try a.print(" Did you mean \"@{s}\"?", .{n}) else "";
+                scene.diags.addFix(.@"error", "E_REF_UNKNOWN", comp.id, try a.print("components/{s}/slope", .{comp.id}), "slope \"{s}\": no component '{s}'.{s} Components: {s}", .{ sv.string, ref_id, hint, scene_mod.joinIds(a, ids) }, "use \"@<component id>\" of a truss (or any sloped member), or a literal \"4:12\"");
                 return null;
             };
             if (rc.state != .ok or rc == comp) {
-                scene.diags.addFix(.@"error", "E_REF_UNKNOWN", comp.id, try std.fmt.allocPrint(a, "components/{s}/slope", .{comp.id}), "slope \"{s}\": component '{s}' did not build, so its slope is unavailable", .{ sv.string, ref_id }, "fix that component's errors first, or use a literal \"4:12\"");
+                scene.diags.addFix(.@"error", "E_REF_UNKNOWN", comp.id, try a.print("components/{s}/slope", .{comp.id}), "slope \"{s}\": component '{s}' did not build, so its slope is unavailable", .{ sv.string, ref_id }, "fix that component's errors first, or use a literal \"4:12\"");
                 return null;
             }
             angle += rc.angle + rc.pitch_angle;
@@ -441,7 +441,7 @@ fn instanceTransforms(a: Allocator, scene: *Scene, comp: *const Comp, p: *model.
     const n_centers = if (built.centers.len > 0) built.centers.len else 1;
     const n_inst = n_centers * arr_count;
     if (scene.instances_total + n_inst > limits.max_instances_total) {
-        scene.diags.addFix(.@"error", "E_LIMIT", comp.id, try std.fmt.allocPrint(a, "components/{s}", .{comp.id}), "{s}", .{try limits.message(a, try std.fmt.allocPrint(a, "instances after placing '{s}' ({d} already placed + {d} from this component)", .{ comp.id, scene.instances_total, n_inst }), scene.instances_total + n_inst, limits.max_instances_total, "Every array.count and place.count multiplies the cost of drawing and checking.")}, "draw one representative member and say the spacing in a note (e.g. 2X4 STUDS @ 16\" O.C.), or lower array.count / place.count");
+        scene.diags.addFix(.@"error", "E_LIMIT", comp.id, try a.print("components/{s}", .{comp.id}), "{s}", .{try limits.message(a, try a.print("instances after placing '{s}' ({d} already placed + {d} from this component)", .{ comp.id, scene.instances_total, n_inst }), scene.instances_total + n_inst, limits.max_instances_total, "Every array.count and place.count multiplies the cost of drawing and checking.")}, "draw one representative member and say the spacing in a note (e.g. 2X4 STUDS @ 16\" O.C.), or lower array.count / place.count");
         return null;
     }
     scene.instances_total += n_inst;
