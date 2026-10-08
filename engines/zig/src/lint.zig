@@ -565,12 +565,28 @@ fn ackShape(a: Allocator, doc: json.Value, diags: *model.Diags) Allocator.Error!
 fn mentions(d: model.Diag, id: []const u8) bool {
     if (d.id) |x| if (std.mem.eql(u8, x, id)) return true;
     // pair diagnostics (W_OVERLAP, W_NEAR_MISS, W_UNTREATED_CONTACT) name both members in quotes
-    var buf: [128]u8 = undefined;
-    const needle = std.fmt.bufPrint(&buf, "'{s}'", .{id}) catch return false;
     if (std.mem.eql(u8, d.code, "W_OVERLAP") or std.mem.eql(u8, d.code, "W_NEAR_MISS") or std.mem.eql(u8, d.code, "W_UNTREATED_CONTACT")) {
-        return std.mem.indexOf(u8, d.message, needle) != null;
+        return quoted(d.message, id);
     }
     return false;
+}
+
+/// `'id'` occurs in `msg` (any id length; a fixed 128-byte needle buffer used to miss ids over 126 bytes).
+fn quoted(msg: []const u8, id: []const u8) bool {
+    var from: usize = 0;
+    while (std.mem.indexOfPos(u8, msg, from, id)) |i| : (from = i + 1) {
+        if (i > 0 and msg[i - 1] == '\'' and i + id.len < msg.len and msg[i + id.len] == '\'') return true;
+    }
+    return false;
+}
+
+test "quoted: ids of any length, quotes on both sides" {
+    try std.testing.expect(quoted("components 'a' and 'b' overlap", "b"));
+    try std.testing.expect(!quoted("components 'ab' and 'c' overlap", "b"));
+    try std.testing.expect(!quoted("b' and 'b", "b"));
+    const long: [300]u8 = @splat('x');
+    try std.testing.expect(quoted("components '" ++ long ++ "' and 'b' overlap", &long));
+    try std.testing.expect(!quoted("components '" ++ long ++ "y' and 'b' overlap", &long));
 }
 
 /// Replace every warning that a component acknowledges with one `I_ACK` info line (code, component, reason).
