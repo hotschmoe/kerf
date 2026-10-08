@@ -154,7 +154,7 @@ pub const Server = struct {
             if (!ws.validDocFile(e.name)) continue;
             names.append(a, a.dupe(u8, e.name) catch continue) catch continue;
         }
-        std.mem.sort([]const u8, names.items, {}, lessStr);
+        kerf.sort.stable([]const u8, names.items, {}, lessStr);
 
         var added: std.ArrayList([]const u8) = .empty;
         var changed: std.ArrayList([]const u8) = .empty;

@@ -3,6 +3,7 @@
 //! Everything allocates from the caller's (arena) allocator and never frees individually.
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const cast = @import("num.zig");
 const Allocator = std.mem.Allocator;
 
@@ -283,7 +284,7 @@ pub const Parser = struct {
         }
         const idx = try self.alloc.alloc(u32, items.len);
         for (idx, 0..) |*x, i| x.* = @intCast(i);
-        std.mem.sort(u32, idx, @as([]const Member, items), keyLess);
+        sort.stable(u32, idx, @as([]const Member, items), keyLess);
         const drop = try self.alloc.alloc(bool, items.len);
         @memset(drop, false);
         var g: usize = 0;
@@ -552,7 +553,7 @@ pub const Pretty = struct {
                 n += 1;
             }
         }
-        std.mem.sort(Member, out[start..n], {}, struct {
+        sort.stable(Member, out[start..n], {}, struct {
             fn lt(_: void, x: Member, y: Member) bool {
                 return std.mem.lessThan(u8, x.key, y.key);
             }

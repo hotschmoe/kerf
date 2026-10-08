@@ -1,6 +1,7 @@
 //! Section view (SPEC 8.1): exact 2D cut / beyond / hatch with crop, break lines and dedupe.
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const cast = @import("num.zig");
 const geom = @import("geom.zig");
 const clip = @import("clip.zig");
@@ -271,7 +272,7 @@ pub const Section = struct {
         try self.knockOutFaceTies();
         const deduped = try chainStrokes(self.a, try dedupe(self.a, self.strokes.items, self.style));
         // stable sort by rank (lighter first)
-        std.mem.sort(Stroke, deduped, {}, struct {
+        sort.stable(Stroke, deduped, {}, struct {
             fn lt(_: void, x: Stroke, y: Stroke) bool {
                 if (x.rank != y.rank) return x.rank < y.rank;
                 return x.seq < y.seq;

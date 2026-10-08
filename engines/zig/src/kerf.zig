@@ -11,6 +11,7 @@ pub const limits = @import("limits.zig");
 pub const oom = @import("oom.zig");
 pub const geom = @import("geom.zig");
 pub const clip = @import("clip.zig");
+pub const sort = @import("sort.zig");
 pub const font = @import("font.zig");
 pub const pen = @import("pen.zig");
 pub const style = @import("style.zig");

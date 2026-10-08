@@ -20,6 +20,7 @@
 //!  3. Whatever hits remain are returned with concrete fix proposals (`at` / `place`).
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const geom = @import("geom.zig");
 const V2 = geom.V2;
 const Box = geom.Box;
@@ -270,7 +271,7 @@ const Ctx = struct {
             self.order[n] = i;
             n += 1;
         }
-        std.mem.sort(usize, self.order[0..n], self, struct {
+        sort.stable(usize, self.order[0..n], self, struct {
             fn lt(c: *Ctx, x: usize, y: usize) bool {
                 if (c.key[x] != c.key[y]) return c.key[x] < c.key[y];
                 return x < y;

@@ -1,6 +1,7 @@
 //! Hatch pattern line generation (AutoCAD .pat semantics) clipped to a region (even-odd).
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const geom = @import("geom.zig");
 const cast = @import("num.zig");
 const style_mod = @import("style.zig");
@@ -96,7 +97,7 @@ pub fn generate(
                 }
             }
             if (ts.items.len < 2) continue;
-            std.mem.sort(f64, ts.items, {}, std.sort.asc(f64));
+            sort.stable(f64, ts.items, {}, sort.asc(f64));
             var q: usize = 0;
             while (q + 1 < ts.items.len) : (q += 2) {
                 const ta = ts.items[q];

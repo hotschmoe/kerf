@@ -3,6 +3,7 @@
 //! share, so they no longer import each other).
 
 const std = @import("std");
+const sort = @import("sort.zig");
 const geom = @import("geom.zig");
 const clip = @import("clip.zig");
 const Allocator = std.mem.Allocator;
@@ -54,7 +55,7 @@ pub fn labelPoint(a: Allocator, shapes: []const Shape) Allocator.Error!?V2 {
     const sets = [_][]const V2{b.outer};
     for (sets) |cont| try crossings(a, &xs, cont, c.y);
     for (b.holes) |h| try crossings(a, &xs, h, c.y);
-    std.mem.sort(f64, xs.items, {}, std.sort.asc(f64));
+    sort.stable(f64, xs.items, {}, sort.asc(f64));
     var best_mid: ?struct { d: f64, m: f64 } = null;
     var i: usize = 0;
     while (i + 1 < xs.items.len) : (i += 2) {
