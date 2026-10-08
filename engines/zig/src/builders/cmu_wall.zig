@@ -38,7 +38,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
     const cp = p.parseAll(Params);
-    const cov = parseCover(ctx, "cover", .{ .bottom = 0.5, .sides = 1.5, .top = 1.5 });
+    const cov = try parseCover(ctx, "cover", .{ .bottom = 0.5, .sides = 1.5, .top = 1.5 });
     if (!p.ok) return null;
     const w: f64 = blk: {
         const x = cp.width;

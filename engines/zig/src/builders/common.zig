@@ -293,7 +293,9 @@ pub fn lengthOrUntil(ctx: *Ctx, run: []const u8, hint: []const u8, note: *[]cons
     return len;
 }
 
-pub fn parseCover(ctx: *Ctx, key: []const u8, base: model.Cover) ?struct { cover: model.Cover, parts: []const model.PartCover } {
+/// null: a parameter error (already reported). Out of memory is an error: a swallowed one used to return null with
+/// `p.ok` still true, and the builders' `cov.?` then panicked.
+pub fn parseCover(ctx: *Ctx, key: []const u8, base: model.Cover) Allocator.Error!?struct { cover: model.Cover, parts: []const model.PartCover } {
     const v = ctx.p.raw(key) orelse return .{ .cover = base, .parts = &.{} };
     if (v != .object) {
         ctx.p.fail(key, "param '{s}' must be an object like {{\"bottom\": 3, \"sides\": 3, \"top\": 1.5}}", .{key});
@@ -311,11 +313,11 @@ pub fn parseCover(ctx: *Ctx, key: []const u8, base: model.Cover) ?struct { cover
                 ctx.p.fail(key, "{s}.parts.{s} must be an object like {{\"bottom\": 0.75}} (got {s})", .{ key, m.key, model.kindOrText(ctx.a, m.value) });
                 return null;
             }
-            const part_key = ctx.a.print("{s}/parts/{s}", .{ key, m.key }) catch return null;
+            const part_key = try ctx.a.print("{s}/parts/{s}", .{ key, m.key });
             inline for (.{ "bottom", "sides", "top" }) |k| {
                 @field(pc, k) = ctx.p.fieldLen(part_key, m.value, k, @field(pc, k)) orelse return null;
             }
-            parts.append(ctx.a, .{ .part = m.key, .cover = pc }) catch return null;
+            try parts.append(ctx.a, .{ .part = m.key, .cover = pc });
         }
     };
     return .{ .cover = c, .parts = parts.items };

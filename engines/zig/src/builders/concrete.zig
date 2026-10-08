@@ -63,7 +63,7 @@ pub fn build(ctx: *Ctx) BuildError!?Built {
     const a = ctx.a;
     const p = &ctx.p;
     const cp = p.parseAll(Params);
-    const cov = parseCover(ctx, "cover", .{});
+    const cov = try parseCover(ctx, "cover", .{});
     if (!p.ok) return null;
     const material = cp.material;
     if (!materialOk(ctx, "material", material)) return null;
