@@ -1,9 +1,34 @@
 const std = @import("std");
 
-/// The default style and stroke font are embedded straight from spec/ (single source of truth).
+/// The default style and stroke font are embedded straight from spec/ (single source of truth),
+/// plus the `build_options` module carrying the release version (see `versionString`).
 fn addSpecImports(b: *std.Build, m: *std.Build.Module) void {
     m.addAnonymousImport("kerf_style_json", .{ .root_source_file = b.path("../../spec/styles/kerf-standard.kerfstyle.json") });
     m.addAnonymousImport("kerf_font_json", .{ .root_source_file = b.path("../../spec/fonts/kerf-simplex.json") });
+    m.addOptions("build_options", buildOptions(b));
+}
+
+var build_options_cache: ?*std.Build.Step.Options = null;
+
+fn buildOptions(b: *std.Build) *std.Build.Step.Options {
+    if (build_options_cache) |o| return o;
+    const o = b.addOptions();
+    o.addOption([]const u8, "version", versionString(b));
+    build_options_cache = o;
+    return o;
+}
+
+/// `-Dversion=<tag>` (release CI passes the git tag); otherwise `git describe --tags --always --dirty`
+/// with the leading `v` dropped; otherwise "0.0.0-dev" (e.g. building from a source tarball).
+fn versionString(b: *std.Build) []const u8 {
+    if (b.option([]const u8, "version", "Version string reported by `kerf version`, /api/info and the web UI (default: git describe)")) |v|
+        return std.mem.trimStart(u8, v, "v");
+    var code: u8 = 0;
+    const out = b.runAllowFail(&.{ "git", "-C", b.root.toString(b.allocator) catch ".", "describe", "--tags", "--always", "--dirty" }, &code, .ignore) catch
+        return "0.0.0-dev";
+    const trimmed = std.mem.trim(u8, out, " \t\r\n");
+    if (trimmed.len == 0) return "0.0.0-dev";
+    return std.mem.trimStart(u8, trimmed, "v");
 }
 
 pub fn build(b: *std.Build) void {

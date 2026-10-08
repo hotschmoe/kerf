@@ -791,7 +791,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, args: []const []const u8, err: *std.I
         try err.writeAll(usage);
         return 2;
     };
-    if (std.mem.eql(u8, cmd, "version")) return cmdVersion(gpa, io);
+    if (std.mem.eql(u8, cmd, "version") or std.mem.eql(u8, cmd, "--version") or std.mem.eql(u8, cmd, "-V")) return cmdVersion(gpa, io);
     if (std.mem.eql(u8, cmd, "catalog")) return cmdCatalog(gpa, io, o);
     if (std.mem.eql(u8, cmd, "schema")) return cmdSchema(gpa, io, err, o);
     if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h")) {

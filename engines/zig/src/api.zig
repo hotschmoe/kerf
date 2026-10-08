@@ -24,7 +24,8 @@ const limits = @import("limits.zig");
 const oom = @import("oom.zig");
 const Allocator = std.mem.Allocator;
 
-pub const version = "0.1.0";
+/// Release version, stamped at build time (`-Dversion=<tag>` in release CI, else `git describe`).
+pub const version = @import("build_options").version;
 pub const engine_name = "kerf-zig";
 
 pub const Result = struct {

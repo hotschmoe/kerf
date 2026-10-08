@@ -1,7 +1,6 @@
 {
   "name": "kerf-web",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "description": "Kerf web workstation (TypeScript + DOM + three.js). Loads either engine's kerf.wasm.",
   "scripts": {
