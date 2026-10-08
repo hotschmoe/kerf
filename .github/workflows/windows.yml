@@ -87,7 +87,8 @@ jobs:
           name: kerf-aarch64-windows
           path: ${{ runner.temp }}/arm64
       - name: the shipped build starts (ReleaseSafe, stripped, UI embedded)
-        run: "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe" version
+        run: |
+          "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe" version
       - name: field-shaped session, serve smoke test, CLI ergonomics against the shipped build
         run: |
           node tests/windows_serve.mjs "$RUNNER_TEMP/arm64/arm64/bin/kerf.exe"
@@ -96,4 +97,5 @@ jobs:
       - name: Debug build (diagnostics only)
         if: always()
         continue-on-error: true
-        run: "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe" version
+        run: |
+          "$RUNNER_TEMP/arm64/arm64dbg/bin/kerf.exe" version
