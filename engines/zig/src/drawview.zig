@@ -292,7 +292,10 @@ pub fn resolveSpec(a: Allocator, doc: json.Value, st: *const style_mod.Style, sc
     if (spec.kind != .section or (spec.has_crop and spec.has_scale)) return spec;
     const prisms = try compile_mod.viewPrisms(a, scene, spec.omit);
     const font = try a.create(font_mod.Font);
-    font.* = font_mod.Font.parse(a, font_mod.embedded) catch return spec;
+    font.* = font_mod.Font.parse(a, font_mod.embedded) catch |e| switch (e) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.BadFont => return spec,
+    };
     var d = model.Diags.init(a);
     var work = route.Work{};
     return (try resolveSection(a, st, scene, spec, prisms, font, doc, &d, &work)).spec;
@@ -338,7 +341,11 @@ pub fn buildFromScene(a: Allocator, doc: json.Value, st: *const style_mod.Style,
     var fit = FitInfo{};
     var resolved_spec: *const view_mod.ViewSpec = spec;
     const font = try a.create(font_mod.Font);
-    font.* = font_mod.Font.parse(a, font_mod.embedded) catch return null;
+    // out of memory is an error, not "the view could not be built" (REVIEW LAY-3)
+    font.* = font_mod.Font.parse(a, font_mod.embedded) catch |e| switch (e) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.BadFont => return null,
+    };
     if (spec.kind == .section) {
         const rs = try resolveSection(a, st, scene, spec, prisms, font, doc, diags, &work);
         scale = rs.spec.scale;

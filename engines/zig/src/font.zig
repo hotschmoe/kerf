@@ -13,6 +13,9 @@ pub const Glyph = struct {
     strokes: []const []const V2,
 };
 
+/// `BadFont`: the font JSON is malformed (never for `embedded`, which a test parses); out of memory stays out of memory.
+pub const ParseError = error{BadFont} || Allocator.Error;
+
 pub const Font = struct {
     cap: f64,
     /// Printable ASCII 32..126.
@@ -24,7 +27,7 @@ pub const Font = struct {
     times: Glyph,
     plusminus: Glyph,
 
-    pub fn parse(a: Allocator, src: []const u8) !Font {
+    pub fn parse(a: Allocator, src: []const u8) ParseError!Font {
         var err: json.ParseError = undefined;
         const root = (try json.parse(a, src, &err)) orelse return error.BadFont;
         const cap = (root.get("cap_height") orelse return error.BadFont).num() orelse return error.BadFont;
@@ -65,14 +68,14 @@ pub const Font = struct {
         return f;
     }
 
-    fn strokes1(a: Allocator, pts: []const [2]f64) ![]const []const V2 {
+    fn strokes1(a: Allocator, pts: []const [2]f64) Allocator.Error![]const []const V2 {
         const out = try a.alloc([]const V2, 1);
         const p = try a.alloc(V2, pts.len);
         for (pts, 0..) |q, i| p[i] = V2.init(q[0], q[1]);
         out[0] = p;
         return out;
     }
-    fn strokes2(a: Allocator, groups: []const []const [2]f64) ![]const []const V2 {
+    fn strokes2(a: Allocator, groups: []const []const [2]f64) Allocator.Error![]const []const V2 {
         const out = try a.alloc([]const V2, groups.len);
         for (groups, 0..) |g, k| {
             const p = try a.alloc(V2, g.len);
@@ -82,7 +85,7 @@ pub const Font = struct {
         return out;
     }
 
-    fn parseGlyph(a: Allocator, v: json.Value) !Glyph {
+    fn parseGlyph(a: Allocator, v: json.Value) ParseError!Glyph {
         const adv = (v.get("adv") orelse return error.BadFont).num() orelse return error.BadFont;
         const st = (v.get("strokes") orelse return error.BadFont).arr() orelse return error.BadFont;
         const out = try a.alloc([]const V2, st.len);

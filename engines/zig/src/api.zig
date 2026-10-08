@@ -237,7 +237,10 @@ fn exportFn(a: Allocator, inp: json.Value) ApiError!Out {
     const dr = (try drawview.build(a, try lint.withDimDirsFromDoc(a, d, &st), &st, view_id, &diags)) orelse {
         return fail(a, "E_VIEW", "{s}", .{if (diags.list.items.len > 0) diags.list.items[0].message else "view could not be built"});
     };
-    const font = font_mod.Font.parse(a, font_mod.embedded) catch return fail(a, "E_INTERNAL", "embedded font failed to parse", .{});
+    const font = font_mod.Font.parse(a, font_mod.embedded) catch |e| switch (e) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.BadFont => return fail(a, "E_INTERNAL", "embedded font failed to parse", .{}),
+    };
     const want_sheet = if (inp.get("sheet")) |sv| (sv == .bool and sv.bool) else false;
     if (std.mem.eql(u8, format, "svg")) {
         const dd = if (want_sheet) try sheet_mod.withSheet(a, dr, &font) else dr;
