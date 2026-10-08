@@ -77,11 +77,11 @@ fn suggestKey(a: Allocator, o: *const schema.Object, key: []const u8) ?Syn {
     return null;
 }
 
-fn keyList(a: Allocator, o: *const schema.Object) []const u8 {
+fn keyList(a: Allocator, o: *const schema.Object) Allocator.Error![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     for (o.fields, 0..) |f, i| {
-        if (i > 0) out.appendSlice(a, ", ") catch {};
-        out.appendSlice(a, f.name) catch {};
+        if (i > 0) try out.appendSlice(a, ", ");
+        try out.appendSlice(a, f.name);
     }
     return out.items;
 }
@@ -98,10 +98,10 @@ fn lintObject(a: Allocator, diags: *model.Diags, v: json.Value, o: *const schema
             } else if (valid_target) {
                 diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Did you mean \"{s}\"?", .{ m.key, path, o.name, sg.to }, try a.print("rename \"{s}\" to \"{s}\" (`kerf schema {s}`)", .{ m.key, sg.to, o.name }));
             } else {
-                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, keyList(a, o) }, try a.print("remove \"{s}\" (`kerf schema {s}`)", .{ m.key, o.name }));
+                diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, try keyList(a, o) }, try a.print("remove \"{s}\" (`kerf schema {s}`)", .{ m.key, o.name }));
             }
         } else {
-            diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, keyList(a, o) }, try a.print("remove \"{s}\" or use one of the valid keys (`kerf schema {s}`)", .{ m.key, o.name }));
+            diags.addFix(.warning, "W_UNKNOWN_KEY", id, kpath, "unknown key \"{s}\" in {s} ({s}): it is ignored (kept in the file). Valid keys: {s}", .{ m.key, path, o.name, try keyList(a, o) }, try a.print("remove \"{s}\" or use one of the valid keys (`kerf schema {s}`)", .{ m.key, o.name }));
         }
     }
 }

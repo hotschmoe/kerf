@@ -99,15 +99,17 @@ pub const Iso = struct {
     cells: [][]u32 = &.{},
     eps: f64 = 1e-3,
 
-    pub fn landing(self: *Iso, comp: *const scene_mod.Comp, inst: ?u32, part: ?[]const u8) ?V2 {
+    /// Label point of the visible faces of `comp` (null: nothing of it is visible). Out of memory is an error, not "not
+    /// visible" (REVIEW LAY-3: it used to surface as W_NOTE_TARGET).
+    pub fn landing(self: *Iso, comp: *const scene_mod.Comp, inst: ?u32, part: ?[]const u8) Allocator.Error!?V2 {
         var shapes: std.ArrayList(shape_mod.Shape) = .empty;
         for (self.vis.items) |v| {
             if (v.comp != comp.index) continue;
             if (inst) |k| if (v.instance != k) continue;
             if (part) |p| if (!std.mem.eql(u8, v.part, p)) continue;
-            shapes.appendSlice(self.a, v.shapes) catch return null;
+            try shapes.appendSlice(self.a, v.shapes);
         }
-        return shape_mod.labelPoint(self.a, shapes.items) catch null;
+        return shape_mod.labelPoint(self.a, shapes.items);
     }
 
     /// Non-drawn picking regions: the visible face chosen per prism (cut cap first).
