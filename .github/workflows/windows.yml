@@ -3,7 +3,7 @@
 # serve smoke suite, a field-shaped session (init, serve --open, the UI's document-open sequence, a 30 s agent run through
 # an npm-style `grok.cmd` shim) and the CLI tests, against a Debug build (stack traces on) and against the shipped
 # ReleaseSafe+stripped build with the web UI embedded. The arm64 binary is cross-compiled there and then run on a
-# windows-11-arm runner (the `windows-arm64` job: the shipped ReleaseSafe build, same tests). Called from ci.yml and release.yml; also runnable by hand.
+# windows-11-arm runner (the `windows-arm64` job, a required gate since Zig 0.17: the shipped ReleaseSafe build, same tests). Called from ci.yml and release.yml; also runnable by hand.
 name: windows
 
 on:
@@ -71,7 +71,6 @@ jobs:
     name: windows (windows-11-arm, aarch64 binary)
     needs: windows
     runs-on: windows-11-arm
-    continue-on-error: true
     timeout-minutes: 30
     defaults:
       run:

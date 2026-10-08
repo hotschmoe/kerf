@@ -552,11 +552,12 @@ Field report: `kerf serve` on Windows 11 (x86_64) died with `reached unreachable
    reported `available:false, "was not found on PATH"` (CreateProcess cannot run it).
 4. Found on the way: `.gitattributes` forces LF (a Windows checkout had CRLF in embedded fixtures, breaking two unit tests); `apps/web/scripts/run.mjs` ran
    `node_modules/.bin/vite` (a shell script; now `node .../vite/bin/vite.js`); a 99 000-byte agent message is a clean 400 on Windows (32 767-char command line).
-5. Not ours, but good to know: the **Zig 0.16 compiler itself segfaults on `windows-11-arm`**, and **optimized (Release*) aarch64-windows binaries crash at
-   startup** on that runner (even `kerf version` with no UI; Debug works; variants tried: ReleaseSafe/Small/Fast, with/without strip, `-Dcpu=neoverse_n2`).
-   TODO(arm64-windows): the `windows-arm64` job in windows.yml is manual-only/informational for this reason; until a Release arm64 binary starts there,
-   `kerf-aarch64-windows.exe` is untested and probably broken (arm64 Windows users can run the x86_64 build under emulation). Candidates: a Zig 0.16
-   aarch64-windows codegen/startup bug (the compiler's own segfault on the same runner points that way), or a runner CPU feature mismatch.
+5. Not ours: on Zig 0.16 the **compiler itself segfaulted on `windows-11-arm`** and **optimized (Release*) aarch64-windows binaries crashed at startup**
+   there (even `kerf version`; Debug worked), so arm64 Windows users were pointed at the x86_64 build under emulation. **Fixed in Zig 0.17** (LLVM
+   aarch64-windows bug): the `windows-arm64` job in windows.yml cross-compiles the shipped ReleaseSafe+stripped+UI build, then runs `kerf version`,
+   `windows_serve.mjs`, `serve_smoke.mjs` and `cli_ergonomics.mjs` against it on a real `windows-11-arm` runner, and is a required gate (green on the
+   0.17 port). `install.ps1` picks `aarch64` on ARM64 again (`KERF_ARCH` still overrides). Release assets built before 0.17 (`kerf-aarch64-windows.exe`)
+   are the broken ones; the next release carries a working build.
 
 Audit: every `unreachable`/`catch unreachable`/`.?`/`@panic` in the serve path is either on a proven invariant (`isoFromSeconds` buffer size, route table
 `else => unreachable` after an exhaustive enum) or in a test; the Windows-only ones were all inside std.
