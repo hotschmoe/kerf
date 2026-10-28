@@ -16,6 +16,7 @@ use crate::scene::Scene;
 use crate::shape;
 use crate::thinland;
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -36,7 +37,7 @@ pub fn text_too_long(env: &Env, what: &str, id: &str, apath: &str, text: &str) -
     true
 }
 
-pub fn target_landing(env: &Env, target: &str) -> Option<Vec<V2>> {
+pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
     let mut comp_id = target;
     let mut part: Option<&str> = None;
     let mut inst: Option<u32> = None;
@@ -48,17 +49,21 @@ pub fn target_landing(env: &Env, target: &str) -> Option<Vec<V2>> {
         inst = comp_id[h + 1..].parse::<u32>().ok();
         comp_id = &comp_id[..h];
     }
-    let comp = env.scene.find(comp_id)?;
+    let scene = env.scene;
+    let spec = env.spec;
+    let comp = scene.find(comp_id)?;
     if comp.state != crate::scene::State::Ok {
         return None;
     }
-    if compile::is_omitted(&env.spec.omit, &comp.id) {
+    if compile::is_omitted(&spec.omit, &comp.id) {
         return None;
     }
     let mut shapes_src: Vec<Vec<V2>> = Vec::new();
-    match &env.landing {
+    let h = env.style.text_height_in * env.s;
+    match &mut env.landing {
         Landing::Section(sec) => {
-            for (i, p) in sec.prisms.iter().enumerate() {
+            let prisms = Rc::clone(&sec.prisms);
+            for (i, p) in prisms.iter().enumerate() {
                 if p.comp != comp.index {
                     continue;
                 }
@@ -89,9 +94,8 @@ pub fn target_landing(env: &Env, target: &str) -> Option<Vec<V2>> {
         }
     }
     let shapes = shape::shapes_of(&shapes_src);
-    let h = env.style.text_height_in * env.s;
     let lp = shape::banded_label_point(&shapes, env.crop, h)?;
-    if let Landing::Section(sec) = &env.landing {
+    if let Landing::Section(sec) = &mut env.landing {
         if let Some(c) = thinland::candidates(sec, comp, inst, part, lp.inset, h, lp.p) {
             return Some(c);
         }
@@ -338,7 +342,7 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn]) -> NotePrep {
             let lines = wrap(&n.text, wrap_n);
             w = 0.0;
             for l in &lines {
-                w = w.max(env.font.width(ascii_fold(l).as_bytes(), h));
+                w = w.max(env.font.width(ascii_fold(l), h));
             }
             hgt = h + (lines.len() as f64 - 1.0) * g.pitch;
             lines_of.push(lines);

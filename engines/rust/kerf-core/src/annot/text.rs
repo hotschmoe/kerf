@@ -50,8 +50,8 @@ pub fn ascii_fold_flag<'s>(s: &'s str, unknown: Option<&mut bool>) -> Cow<'s, st
     Cow::Owned(out)
 }
 
-pub fn ascii_fold(s: &str) -> Cow<'_, str> {
-    ascii_fold_flag(s, None)
+pub fn ascii_fold(s: &str) -> String {
+    ascii_fold_flag(s, None).into_owned()
 }
 
 pub fn layer_name<'e>(env: &'e Env, key: LayerKey) -> &'e str {

@@ -136,7 +136,7 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, out: &
     let dist = d.span();
     let label = d.text.map_or_else(|| units::fmt_ft_in(dist), alloc::string::String::from);
     let label_f = ascii_fold(&label);
-    let tw = env.font.width(label_f.as_bytes(), th);
+    let tw = env.font.width(&label_f, th);
     let fits = tw + 2.0 * tgap <= lb.sub(la).len() - tick;
     sh.fits = fits;
     sh.line = [la, lb];

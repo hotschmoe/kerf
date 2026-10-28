@@ -41,7 +41,7 @@ pub fn title_items(env: &mut Env, info: &SheetInfo, tcrop: Box, out: &mut Vec<It
     let title = upper_if(env, info.title).into_owned();
     let ty = cy + 0.02 * sc;
     out.push(text_item(env, LayerKey::Title, Pen::Title, &src, &title, tx, ty, th, 0.0, Align::Left, VAlign::Baseline));
-    let tw = env.font.width(ascii_fold(&title).as_bytes(), th);
+    let tw = env.font.width(ascii_fold(&title), th);
     let uy = ty - 0.07 * sc;
     out.push(path_item(env, Pen::Title, &src, &[V2::init(tx, uy), V2::init(tx + tw, uy)], false));
     let scale_line = format!("SCALE: {}", info.scale_text);

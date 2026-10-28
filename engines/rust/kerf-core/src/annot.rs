@@ -37,13 +37,12 @@ use dims::DimSpec;
 use notes::{LabelSpec, Meta, MetaKind, NoteIn};
 use repair::{Best, DimLab};
 
-#[derive(Clone, Copy)]
-pub enum Landing<'a> {
-    Section(&'a Section<'a>),
-    Iso(&'a Iso<'a>),
+pub enum Landing<'a, 's> {
+    Section(&'a mut Section<'s>),
+    Iso(&'a mut Iso<'s>),
 }
 
-pub struct Env<'a> {
+pub struct Env<'a, 's> {
     pub style: &'a Style,
     pub font: &'a Font,
     pub scene: &'a Scene<'a>,
@@ -52,7 +51,7 @@ pub struct Env<'a> {
     pub s: f64,
     pub crop: Box,
     pub diags: &'a Diags,
-    pub landing: Landing<'a>,
+    pub landing: Landing<'a, 's>,
     pub unverified: bool,
     pub unknown_glyph: bool,
     /// Extents of the annotation groups (model units), filled by `annotate` (used by the view-fit check).
@@ -65,8 +64,8 @@ pub struct Env<'a> {
     pub work: Option<&'a route::Work>,
 }
 
-impl<'a> Env<'a> {
-    pub fn new(style: &'a Style, font: &'a Font, scene: &'a Scene<'a>, spec: &'a ViewSpec<'a>, s: f64, crop: Box, diags: &'a Diags, landing: Landing<'a>) -> Env<'a> {
+impl<'a, 's> Env<'a, 's> {
+    pub fn new(style: &'a Style, font: &'a Font, scene: &'a Scene<'a>, spec: &'a ViewSpec<'a>, s: f64, crop: Box, diags: &'a Diags, landing: Landing<'a, 's>) -> Env<'a, 's> {
         Env {
             style,
             font,
@@ -127,7 +126,7 @@ fn non_null<'v>(an: &'v Value, key: &str) -> Option<&'v Value> {
 /// SPEC 20: dimensions are stacked (`stack_dims`), notes routed (`route::route`), and when leaders still hit
 /// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
 /// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
-pub fn annotate<'a>(env: &mut Env<'a>, base_items: &mut [Item]) -> Vec<Item> {
+pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
     let spec: &'a ViewSpec<'a> = env.spec;
     let vid = spec.id;
     let mut notes: Vec<NoteIn<'a>> = Vec::new();
@@ -275,7 +274,7 @@ pub fn annotate<'a>(env: &mut Env<'a>, base_items: &mut [Item]) -> Vec<Item> {
                         p = p.add(loff);
                     }
                     cur_meta = Meta { id, kind: MetaKind::Label, axis: V2::default(), off: loff.x, off2: loff.y, owner: lspecs.len() };
-                    let base = match env.landing {
+                    let base = match &mut env.landing {
                         Landing::Section(_) => Some(p),
                         Landing::Iso(iso) => iso.project(p),
                     };
