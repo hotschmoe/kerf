@@ -1,0 +1,18 @@
+label	fn	median_us	min_us	reps	bytes	status
+version	version	636.2	614.4	30	0	ok
+truss check	check	44050.7	34250.0	30	0	ok
+truss mesh	mesh	3515.3	3379.0	30	100641	ok
+truss A drawing	drawing	9891.5	8793.9	30	40582	ok
+truss A svg	export	12825.8	10988.8	30	116461	ok
+truss A dxf	export	10897.7	9399.6	30	32967	ok
+truss A pdf	export	14792.7	11540.4	30	146030	ok
+truss A png	export	132573.1	108388.3	30	78544	ok
+truss B svg	export	36511.6	31841.8	30	52962	ok
+palmer check	check	12621.7	9758.8	30	0	ok
+palmer mesh	mesh	3107.4	2795.5	30	58690	ok
+palmer A drawing	drawing	5959.4	5002.7	30	33145	ok
+palmer A svg	export	7451.4	5976.8	30	62468	ok
+palmer A dxf	export	6260.1	5290.4	30	20449	ok
+palmer A pdf	export	7754.8	6582.4	30	88105	ok
+palmer A png	export	175770.2	144540.8	30	73430	ok
+palmer B svg	export	3713.0	3540.8	30	43040	ok

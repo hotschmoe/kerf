@@ -13,11 +13,16 @@ function call(f, i) {
   const n = ex.kerf_out_len(); ex.kerf_free(fp, f.length); ex.kerf_free(ip, i.length);
   return { st, n };
 }
-console.log('label\tfn\tmedian_us\tmin_us\treps\tbytes\tstatus');
+const cases = [];
 for (const line of fs.readFileSync(`${dir}/manifest.tsv`, 'utf8').split('\n').filter(Boolean)) {
   const [label, fn, file] = line.split('\t');
   if (!label.includes(filter) || (exclude && label.includes(exclude))) continue;
-  const f = enc.encode(fn), i = new Uint8Array(fs.readFileSync(`${dir}/${file}`));
+  cases.push([label, fn, enc.encode(fn), new Uint8Array(fs.readFileSync(`${dir}/${file}`))]);
+}
+// V8 tiers wasm up (Liftoff -> TurboFan) while it runs: one pass over every case first, so no case pays for it.
+for (const [, , f, i] of cases) call(f, i);
+console.log('label\tfn\tmedian_us\tmin_us\treps\tbytes\tstatus');
+for (const [label, fn, f, i] of cases) {
   call(f, i); call(f, i);
   const times = []; let r; const start = performance.now();
   while (times.length < minReps || (performance.now() - start < minMs && times.length < 5000)) {

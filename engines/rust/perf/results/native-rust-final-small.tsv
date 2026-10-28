@@ -1,0 +1,127 @@
+label	fn	median_us	min_us	reps	bytes	status
+truss-bearing-cmu check	check	17874.2	17810.8	12	1984	ok
+truss-bearing-cmu mesh	mesh	2348.6	2329.0	86	100641	ok
+truss-bearing-cmu inspect	inspect	584.2	578.3	341	1761	ok
+truss-bearing-cmu fmt	fmt	333.0	331.5	600	20358	ok
+truss-bearing-cmu apply	apply	18517.7	18500.3	11	11511	ok
+truss-bearing-cmu A drawing	drawing	7675.2	7636.4	27	40582	ok
+truss-bearing-cmu A svg	export	8429.8	8414.5	24	116461	ok
+truss-bearing-cmu A sheet-svg	export	8696.8	8681.5	23	138095	ok
+truss-bearing-cmu A dxf	export	7659.4	7626.2	27	32967	ok
+truss-bearing-cmu A pdf	export	9025.3	8998.9	23	146030	ok
+truss-bearing-cmu A png	export	81914.1	81855.2	10	78544	ok
+truss-bearing-cmu B drawing	drawing	10778.4	10752.9	19	43852	ok
+truss-bearing-cmu B svg	export	10845.0	10811.1	19	52962	ok
+truss-bearing-cmu B sheet-svg	export	11121.4	11061.3	18	73874	ok
+truss-bearing-cmu B dxf	export	10741.5	10708.4	19	32318	ok
+truss-bearing-cmu B pdf	export	11227.6	11199.8	18	68126	ok
+truss-bearing-cmu B png	export	102858.5	102331.7	10	90232	ok
+truss-bearing-cmu web-apply	apply	18943.4	18905.2	11	11614	ok
+truss-bearing-cmu web-mesh	mesh	2599.3	2581.7	77	100641	ok
+truss-bearing-cmu A web-drawing	drawing	7926.6	7911.3	26	40582	ok
+truss-bearing-cmu B web-drawing	drawing	11030.8	10990.0	19	43852	ok
+flush-beam-strap check	check	3521.0	3496.7	57	1233	ok
+flush-beam-strap mesh	mesh	539.6	535.8	370	10664	ok
+flush-beam-strap inspect	inspect	357.0	354.1	558	1027	ok
+flush-beam-strap fmt	fmt	224.9	223.2	888	14391	ok
+flush-beam-strap apply	apply	3924.8	3903.7	51	7998	ok
+flush-beam-strap A drawing	drawing	2812.4	2787.6	72	17813	ok
+flush-beam-strap A svg	export	3480.5	3457.9	58	76339	ok
+flush-beam-strap A sheet-svg	export	3719.7	3698.7	54	100096	ok
+flush-beam-strap A dxf	export	2845.7	2823.8	71	17882	ok
+flush-beam-strap A pdf	export	3818.2	3794.4	53	103491	ok
+flush-beam-strap A png	export	52691.4	52396.4	10	56832	ok
+flush-beam-strap B drawing	drawing	851.7	844.5	234	9584	ok
+flush-beam-strap B svg	export	993.9	987.4	201	23631	ok
+flush-beam-strap B sheet-svg	export	1235.1	1225.1	162	44557	ok
+flush-beam-strap B dxf	export	887.8	882.1	225	11741	ok
+flush-beam-strap B pdf	export	1278.9	1266.4	156	40443	ok
+flush-beam-strap B png	export	54470.9	54393.2	10	41713	ok
+flush-beam-strap web-apply	apply	4310.0	4299.6	47	8015	ok
+flush-beam-strap web-mesh	mesh	783.7	777.2	254	10664	ok
+flush-beam-strap A web-drawing	drawing	3076.8	3053.6	65	17813	ok
+flush-beam-strap B web-drawing	drawing	1104.4	1096.0	181	9584	ok
+monopour-slab-door-recess check	check	11753.1	11713.3	18	1780	ok
+monopour-slab-door-recess mesh	mesh	790.1	782.5	253	26064	ok
+monopour-slab-door-recess inspect	inspect	378.4	374.2	526	1369	ok
+monopour-slab-door-recess fmt	fmt	298.7	288.8	675	19759	ok
+monopour-slab-door-recess apply	apply	12182.3	12157.7	17	11088	ok
+monopour-slab-door-recess A drawing	drawing	4151.6	4139.4	49	43207	ok
+monopour-slab-door-recess A svg	export	4931.5	4912.5	41	119655	ok
+monopour-slab-door-recess A sheet-svg	export	5170.3	5150.1	39	144340	ok
+monopour-slab-door-recess A dxf	export	3986.3	3960.2	51	21921	ok
+monopour-slab-door-recess A pdf	export	5393.0	5376.1	38	158414	ok
+monopour-slab-door-recess A png	export	68660.8	68550.8	10	90605	ok
+monopour-slab-door-recess B drawing	drawing	8364.5	8336.0	24	40456	ok
+monopour-slab-door-recess B svg	export	8360.2	8339.0	24	45332	ok
+monopour-slab-door-recess B sheet-svg	export	8590.7	8571.7	24	66482	ok
+monopour-slab-door-recess B dxf	export	8093.9	8074.9	25	14113	ok
+monopour-slab-door-recess B pdf	export	8734.3	8719.8	23	73144	ok
+monopour-slab-door-recess B png	export	112891.1	112535.2	10	107940	ok
+monopour-slab-door-recess web-apply	apply	12589.9	12575.9	16	11125	ok
+monopour-slab-door-recess web-mesh	mesh	1042.8	1033.8	191	26064	ok
+monopour-slab-door-recess A web-drawing	drawing	4409.6	4398.6	46	43207	ok
+monopour-slab-door-recess B web-drawing	drawing	8610.8	8586.5	24	40456	ok
+palmer-sd1-like check	check	6002.3	5977.8	34	1978	ok
+palmer-sd1-like mesh	mesh	1676.5	1656.4	120	58690	ok
+palmer-sd1-like inspect	inspect	709.3	690.6	281	1961	ok
+palmer-sd1-like fmt	fmt	374.7	372.2	533	21333	ok
+palmer-sd1-like apply	apply	6740.0	6721.7	30	11910	ok
+palmer-sd1-like A drawing	drawing	3662.6	3638.4	55	33145	ok
+palmer-sd1-like A svg	export	3970.7	3951.9	51	62468	ok
+palmer-sd1-like A sheet-svg	export	4156.0	4146.7	49	80874	ok
+palmer-sd1-like A dxf	export	3582.5	3558.1	56	20449	ok
+palmer-sd1-like A pdf	export	4300.7	4291.9	47	88105	ok
+palmer-sd1-like A png	export	106316.1	105710.9	10	73430	ok
+palmer-sd1-like C drawing	drawing	1715.6	1698.9	117	53463	ok
+palmer-sd1-like C svg	export	1771.7	1760.5	113	59059	ok
+palmer-sd1-like C sheet-svg	export	1976.2	1956.9	102	78027	ok
+palmer-sd1-like C dxf	export	1357.6	1342.5	147	12690	ok
+palmer-sd1-like C pdf	export	2169.4	2149.9	93	92136	ok
+palmer-sd1-like C png	export	72858.4	72811.8	10	48512	ok
+palmer-sd1-like B drawing	drawing	1333.9	1318.7	150	24372	ok
+palmer-sd1-like B svg	export	1553.0	1536.9	129	43040	ok
+palmer-sd1-like B sheet-svg	export	1759.5	1745.4	114	63830	ok
+palmer-sd1-like B dxf	export	1275.4	1264.2	157	15376	ok
+palmer-sd1-like B pdf	export	1898.4	1881.7	106	70121	ok
+palmer-sd1-like B png	export	37085.7	37018.5	10	34943	ok
+palmer-sd1-like D drawing	drawing	841.1	828.7	237	33091	ok
+palmer-sd1-like D svg	export	863.2	850.2	231	33100	ok
+palmer-sd1-like D sheet-svg	export	1038.9	1029.8	192	51036	ok
+palmer-sd1-like D dxf	export	642.9	627.1	310	9550	ok
+palmer-sd1-like D pdf	export	1185.5	1174.2	169	60806	ok
+palmer-sd1-like D png	export	47165.8	47100.7	10	36441	ok
+palmer-sd1-like E drawing	drawing	799.7	789.8	249	32811	ok
+palmer-sd1-like E svg	export	756.3	746.7	264	27098	ok
+palmer-sd1-like E sheet-svg	export	925.6	920.1	216	43624	ok
+palmer-sd1-like E dxf	export	582.7	564.5	342	7193	ok
+palmer-sd1-like E pdf	export	1082.5	1074.8	184	55391	ok
+palmer-sd1-like E png	export	47509.5	47459.8	10	27306	ok
+palmer-sd1-like web-apply	apply	7218.3	7186.3	28	12046	ok
+palmer-sd1-like web-mesh	mesh	1941.3	1925.7	103	58690	ok
+palmer-sd1-like A web-drawing	drawing	3929.7	3911.0	51	33145	ok
+palmer-sd1-like C web-drawing	drawing	1988.4	1970.2	101	53463	ok
+palmer-sd1-like B web-drawing	drawing	1600.2	1587.6	125	24372	ok
+palmer-sd1-like D web-drawing	drawing	1096.3	1079.9	182	33091	ok
+palmer-sd1-like E web-drawing	drawing	1053.8	1041.7	189	32811	ok
+flush-psl-2x6 check	check	5049.8	5038.7	40	1439	ok
+flush-psl-2x6 mesh	mesh	578.1	574.2	345	10209	ok
+flush-psl-2x6 inspect	inspect	396.7	393.1	503	1212	ok
+flush-psl-2x6 fmt	fmt	253.7	251.8	787	16437	ok
+flush-psl-2x6 apply	apply	5511.0	5491.0	37	9164	ok
+flush-psl-2x6 A drawing	drawing	3085.1	3064.0	65	15218	ok
+flush-psl-2x6 A svg	export	3829.0	3806.6	53	84584	ok
+flush-psl-2x6 A sheet-svg	export	4059.4	4045.7	50	107544	ok
+flush-psl-2x6 A dxf	export	3130.9	3109.2	64	16904	ok
+flush-psl-2x6 A pdf	export	4160.4	4148.6	49	111144	ok
+flush-psl-2x6 A png	export	50221.6	50111.4	10	59499	ok
+flush-psl-2x6 B drawing	drawing	2062.6	2041.8	97	11164	ok
+flush-psl-2x6 B svg	export	2267.5	2248.9	89	33273	ok
+flush-psl-2x6 B sheet-svg	export	2506.6	2482.9	80	52756	ok
+flush-psl-2x6 B dxf	export	2103.7	2086.3	95	13680	ok
+flush-psl-2x6 B pdf	export	2556.7	2536.5	79	48396	ok
+flush-psl-2x6 B png	export	51172.4	51108.4	10	46627	ok
+flush-psl-2x6 web-apply	apply	5925.7	5906.3	34	9193	ok
+flush-psl-2x6 web-mesh	mesh	822.7	816.6	242	10209	ok
+flush-psl-2x6 A web-drawing	drawing	3351.2	3329.3	60	15218	ok
+flush-psl-2x6 B web-drawing	drawing	2322.7	2297.4	87	11164	ok
