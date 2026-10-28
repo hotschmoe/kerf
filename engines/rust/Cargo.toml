@@ -17,3 +17,7 @@ strip = true
 
 [profile.dev]
 panic = "abort"
+
+[profile.wasm]
+inherits = "release"
+opt-level = "z"
