@@ -6,10 +6,26 @@ use crate::schema_fields::{self as schema, Object};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-const META_KEYS: [&str; 9] = ["author", "discipline", "classification", "jurisdiction", "requested", "tags", "forked_from", "sheet", "date"];
+const META_KEYS: [&str; 9] =
+    ["author", "discipline", "classification", "jurisdiction", "requested", "tags", "forked_from", "sheet", "date"];
 const CLASS_KEYS: [&str; 2] = ["uniformat", "masterformat"];
 const JURIS_KEYS: [&str; 2] = ["code", "edition"];
-const COMMON_KEYS: [&str; 14] = ["id", "type", "label", "material", "at", "rotate", "slope", "mirror", "z", "array", "embedded", "visible", "shown", "acknowledge"];
+const COMMON_KEYS: [&str; 14] = [
+    "id",
+    "type",
+    "label",
+    "material",
+    "at",
+    "rotate",
+    "slope",
+    "mirror",
+    "z",
+    "array",
+    "embedded",
+    "visible",
+    "shown",
+    "acknowledge",
+];
 const REF_KEYS: [&str; 2] = ["ref", "offset"];
 const RECESS_KEYS: [&str; 3] = ["width", "depth", "from_edge"];
 const COVER_KEYS: [&str; 4] = ["bottom", "sides", "top", "parts"];

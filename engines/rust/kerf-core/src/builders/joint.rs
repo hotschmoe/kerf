@@ -61,9 +61,21 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let width = jp.width.unwrap_or(if k == Kind::Control { 0.25 } else { 0.5 });
     let depth_def = match k {
-        Kind::Control => if host_h > 0.0 { host_h / 4.0 } else { 1.0 },
+        Kind::Control => {
+            if host_h > 0.0 {
+                host_h / 4.0
+            } else {
+                1.0
+            }
+        }
         Kind::Sealant => (0.5 * width).max(0.25),
-        _ => if host_h > 0.0 { host_h } else { 4.0 },
+        _ => {
+            if host_h > 0.0 {
+                host_h
+            } else {
+                4.0
+            }
+        }
     };
     let depth = jp.depth.unwrap_or(depth_def);
     let radius = jp.radius;
@@ -74,37 +86,83 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     match k {
         Kind::Expansion => {
             if cap < 0.0 || cap >= depth {
-                ctx.p.fail("cap", format!("cap (sealant depth at the top of the joint) must be from 0 to less than depth {} (got {})", fmt_num(depth), fmt_num(cap)));
+                ctx.p.fail(
+                    "cap",
+                    format!(
+                        "cap (sealant depth at the top of the joint) must be from 0 to less than depth {} (got {})",
+                        fmt_num(depth),
+                        fmt_num(cap)
+                    ),
+                );
                 return None;
             }
             let hw = width / 2.0;
-            prisms.push(Prism { part: "filler".into(), material: material_or(ctx, "joint_filler", "generic").into(), loops: model::one_loop(model::rect_loop(-hw, -depth, hw, -cap)), ..Prism::default() });
+            prisms.push(Prism {
+                part: "filler".into(),
+                material: material_or(ctx, "joint_filler", "generic").into(),
+                loops: model::one_loop(model::rect_loop(-hw, -depth, hw, -cap)),
+                ..Prism::default()
+            });
             if cap > 0.0 {
-                prisms.push(Prism { part: "sealant".into(), material: material_or(ctx, "sealant", "steel").into(), loops: model::one_loop(model::rect_loop(-hw, -cap, hw, 0.0)), ..Prism::default() });
+                prisms.push(Prism {
+                    part: "sealant".into(),
+                    material: material_or(ctx, "sealant", "steel").into(),
+                    loops: model::one_loop(model::rect_loop(-hw, -cap, hw, 0.0)),
+                    ..Prism::default()
+                });
             }
         }
         Kind::Control => {
             let tri = vec![Pt::new(-width / 2.0, 0.0), Pt::new(0.0, -depth), Pt::new(width / 2.0, 0.0)];
-            prisms.push(Prism { part: "notch".into(), material: void_mat.into(), loops: model::one_loop(oriented_ccw(tri)), embedded: true, ..Prism::default() });
+            prisms.push(Prism {
+                part: "notch".into(),
+                material: void_mat.into(),
+                loops: model::one_loop(oriented_ccw(tri)),
+                embedded: true,
+                ..Prism::default()
+            });
         }
         Kind::TooledEdge => {
             let r = radius;
-            let loop0 = [Pt::new(0.0, 0.0), Pt { x: -r, y: 0.0, b: geom::bulge_from_sweep(-math::PI / 2.0) }, Pt::new(0.0, -r)];
+            let loop0 =
+                [Pt::new(0.0, 0.0), Pt { x: -r, y: 0.0, b: geom::bulge_from_sweep(-math::PI / 2.0) }, Pt::new(0.0, -r)];
             let c = jp.corner;
             let sx = if matches!(c, Corner::TopLeft | Corner::BottomLeft) { -1.0 } else { 1.0 };
             let sy = if matches!(c, Corner::BottomLeft | Corner::BottomRight) { -1.0 } else { 1.0 };
             let lp = oriented_ccw(geom::Xf::scaling(sx, sy).apply_loop(&loop0));
-            prisms.push(Prism { part: "radius".into(), material: void_mat.into(), loops: model::one_loop(lp), embedded: true, ..Prism::default() });
+            prisms.push(Prism {
+                part: "radius".into(),
+                material: void_mat.into(),
+                loops: model::one_loop(lp),
+                embedded: true,
+                ..Prism::default()
+            });
             anchors.push(NamedAnchor { name: "corner".into(), p: V2::init(0.0, 0.0) });
         }
         Kind::Sealant => {
             let hw = width / 2.0;
-            prisms.push(Prism { part: "bead".into(), material: material_or(ctx, "sealant", "steel").into(), loops: model::one_loop(model::rect_loop(-hw, -depth, hw, 0.0)), ..Prism::default() });
+            prisms.push(Prism {
+                part: "bead".into(),
+                material: material_or(ctx, "sealant", "steel").into(),
+                loops: model::one_loop(model::rect_loop(-hw, -depth, hw, 0.0)),
+                ..Prism::default()
+            });
             if jp.backer_rod {
                 let rd = 1.25 * width;
-                prisms.push(Prism { part: "rod".into(), material: material_or(ctx, "backer_rod", "generic").into(), loops: model::one_loop(model::circle_loop(0.0, -depth - rd / 2.0, rd / 2.0)), ..Prism::default() });
+                prisms.push(Prism {
+                    part: "rod".into(),
+                    material: material_or(ctx, "backer_rod", "generic").into(),
+                    loops: model::one_loop(model::circle_loop(0.0, -depth - rd / 2.0, rd / 2.0)),
+                    ..Prism::default()
+                });
             }
         }
     }
-    Some(Built { box_: box_of_prisms(&prisms), prisms, anchors, info: format!("joint {} {} wide x {} deep", k.tag(), ftin(width), ftin(depth)), ..Built::default() })
+    Some(Built {
+        box_: box_of_prisms(&prisms),
+        prisms,
+        anchors,
+        info: format!("joint {} {} wide x {} deep", k.tag(), ftin(width), ftin(depth)),
+        ..Built::default()
+    })
 }

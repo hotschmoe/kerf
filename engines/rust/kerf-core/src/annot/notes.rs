@@ -1,7 +1,7 @@
 //! Leader notes (SPEC 6.3): landing points, obstacles, routing of the note column and its legend, hit reporting, and note text with citations.
 
 use super::text::{ascii_fold, layer_name, path_item, text_item, upper_if, wrap};
-use super::{items_box, Env, Landing};
+use super::{Env, Landing, items_box};
 use crate::clip;
 use crate::compile;
 use crate::drawing::{Align, FillItem, Item, VAlign};
@@ -25,7 +25,12 @@ pub fn text_too_long(env: &Env, what: &str, id: &str, apath: &str, text: &str) -
     if text.len() <= limits::MAX_TEXT_CHARS {
         return false;
     }
-    let msg = limits::message(&format!("characters in the text of {what} '{id}'"), text.len(), limits::MAX_TEXT_CHARS, "A drawing note is a short phrase, not a paragraph.");
+    let msg = limits::message(
+        &format!("characters in the text of {what} '{id}'"),
+        text.len(),
+        limits::MAX_TEXT_CHARS,
+        "A drawing note is a short phrase, not a paragraph.",
+    );
     env.diags.add_fix(
         crate::model::Level::Error,
         "E_LIMIT",
@@ -79,7 +84,12 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
                 if let Some(pn) = part {
                     if let Some(lb) = Scene::part_box(comp, pn) {
                         let xf = comp.xfs.get(inst.unwrap_or(0) as usize)?;
-                        let cs = [V2::init(lb.x0, lb.y0), V2::init(lb.x1, lb.y0), V2::init(lb.x1, lb.y1), V2::init(lb.x0, lb.y1)];
+                        let cs = [
+                            V2::init(lb.x0, lb.y0),
+                            V2::init(lb.x1, lb.y0),
+                            V2::init(lb.x1, lb.y1),
+                            V2::init(lb.x0, lb.y1),
+                        ];
                         let mut pts = cs.map(|c| xf.apply(c));
                         clip::orient_ccw(&mut pts);
                         let reg = clip::boolean(&[pts.to_vec()], &[sec.crop_loop.clone()], clip::Op::Intersect);
@@ -182,7 +192,8 @@ pub fn clear_of_leaders(leaders: &[[V2; 3]], poly: &[V2; 4], shift: V2, h: f64) 
     leaders.iter().all(|l| route::poly_box_dist(l, &q) >= h)
 }
 
-const DIRS8: [(f64, f64); 8] = [(0.0, 1.0), (0.0, -1.0), (1.0, 0.0), (-1.0, 0.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)];
+const DIRS8: [(f64, f64); 8] =
+    [(0.0, 1.0), (0.0, -1.0), (1.0, 0.0), (-1.0, 0.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)];
 
 pub fn dirs8() -> [V2; 8] {
     DIRS8.map(|(x, y)| V2::init(x, y))
@@ -201,7 +212,12 @@ pub fn obstacle_fix(o: &Obstacle, leaders: &[[V2; 3]], h: f64) -> Option<String>
                         continue;
                     }
                     if clear_of_leaders(leaders, &o.poly, o.axis.scale(sgn * dirn * delta), h) {
-                        return Some(format!("set dim '{}' \"offset\": {} (now {})", o.id, json::number_string(no), json::number_string(o.off)));
+                        return Some(format!(
+                            "set dim '{}' \"offset\": {} (now {})",
+                            o.id,
+                            json::number_string(no),
+                            json::number_string(o.off)
+                        ));
                     }
                 }
             }
@@ -241,7 +257,11 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
     let maxn = 8usize;
     for ht in r.hits.iter().take(maxn) {
         let Some(me) = notes.get(ht.note) else { continue };
-        let rel = if ht.dist <= 1e-9 { "crosses".to_string() } else { format!("comes within {} in (paper) of", fixed(ht.dist / env.s, 2)) };
+        let rel = if ht.dist <= 1e-9 {
+            "crosses".to_string()
+        } else {
+            format!("comes within {} in (paper) of", fixed(ht.dist / env.s, 2))
+        };
         let what;
         let mut fix: Option<String>;
         match ht.kind {
@@ -274,7 +294,9 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
                 }
             }
         }
-        let fx = fix.unwrap_or_else(|| "move the note with \"place\", give it another \"at\" point, or change notes_side".to_string());
+        let fx = fix.unwrap_or_else(|| {
+            "move the note with \"place\", give it another \"at\" point, or change notes_side".to_string()
+        });
         env.diags.add_fix(
             Level::Warning,
             "W_LEADER_HIT",
@@ -327,7 +349,13 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn]) -> NotePrep {
     let st = env.style;
     let sc = env.s;
     let h = st.text_height_in * sc;
-    let g = route::Geo { h, pitch: h * st.line_spacing, gap: st.note_gap_in * sc, shoulder: st.shoulder_in * sc, pad: 0.04 * sc };
+    let g = route::Geo {
+        h,
+        pitch: h * st.line_spacing,
+        gap: st.note_gap_in * sc,
+        shoulder: st.shoulder_in * sc,
+        pad: 0.04 * sc,
+    };
     let wrap_n = st.wrap_cols();
     let keynote = st.notes_mode_keynote;
     let tag_r = 0.14 * sc;
@@ -352,13 +380,28 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn]) -> NotePrep {
     NotePrep { g, gutter: st.gutter_in * sc, tag_r, lines_of, sizes }
 }
 
-pub fn route_notes(env: &Env, prep: &NotePrep, notes: &[NoteIn], ext: Box, obsts: &[Obstacle], soft: &[[V2; 2]], light: bool) -> route::Layout {
+pub fn route_notes(
+    env: &Env,
+    prep: &NotePrep,
+    notes: &[NoteIn],
+    ext: Box,
+    obsts: &[Obstacle],
+    soft: &[[V2; 2]],
+    light: bool,
+) -> route::Layout {
     let crop = env.crop;
     let ro: Vec<route::Obst> = obsts.iter().map(|o| route::Obst { kind: o.kind, poly: o.poly }).collect();
     let rin: Vec<route::NoteIn> = notes
         .iter()
         .zip(&prep.sizes)
-        .map(|(n, &(w, hgt))| route::NoteIn { w, hgt, cands: &n.cands, movable: n.movable, place: n.place, column: n.column })
+        .map(|(n, &(w, hgt))| route::NoteIn {
+            w,
+            hgt,
+            cands: &n.cands,
+            movable: n.movable,
+            place: n.place,
+            column: n.column,
+        })
         .collect();
     let side = match env.spec.notes_side {
         crate::view::NotesSide::Left => route::Side::Left,
@@ -379,9 +422,15 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
     let keynote = st.notes_mode_keynote;
     let tag_r = prep.tag_r;
     for (i, n) in notes.iter().enumerate() {
-        let (Some(lines), Some(o), Some(&px), Some(&ptop), Some(&left), Some(l), Some(&land)) =
-            (prep.lines_of.get(i), out.get_mut(i), r.x.get(i), r.top.get(i), r.left.get(i), r.leaders.get(i), r.landing.get(i))
-        else {
+        let (Some(lines), Some(o), Some(&px), Some(&ptop), Some(&left), Some(l), Some(&land)) = (
+            prep.lines_of.get(i),
+            out.get_mut(i),
+            r.x.get(i),
+            r.top.get(i),
+            r.left.get(i),
+            r.leaders.get(i),
+            r.landing.get(i),
+        ) else {
             continue;
         };
         if keynote {
@@ -394,16 +443,52 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
             }
             o.push(path_item(env, Pen::Anno, n.id, &hex, true));
             let num = lines.first().map_or("", String::as_str);
-            o.push(text_item(env, LayerKey::Notes, Pen::Anno, n.id, num, cx, cy, h, 0.0, Align::Center, VAlign::Middle));
+            o.push(text_item(
+                env,
+                LayerKey::Notes,
+                Pen::Anno,
+                n.id,
+                num,
+                cx,
+                cy,
+                h,
+                0.0,
+                Align::Center,
+                VAlign::Middle,
+            ));
         } else {
             let right_aligned = n.place.is_some() && left;
             let bw = prep.sizes.get(i).map_or(0.0, |s| s.0);
             for (j, line) in lines.iter().enumerate() {
                 let ty = ptop - h - j as f64 * g.pitch;
                 if right_aligned {
-                    o.push(text_item(env, LayerKey::Notes, Pen::Anno, n.id, line, px + bw, ty, h, 0.0, Align::Right, VAlign::Baseline));
+                    o.push(text_item(
+                        env,
+                        LayerKey::Notes,
+                        Pen::Anno,
+                        n.id,
+                        line,
+                        px + bw,
+                        ty,
+                        h,
+                        0.0,
+                        Align::Right,
+                        VAlign::Baseline,
+                    ));
                 } else {
-                    o.push(text_item(env, LayerKey::Notes, Pen::Anno, n.id, line, px, ty, h, 0.0, Align::Left, VAlign::Baseline));
+                    o.push(text_item(
+                        env,
+                        LayerKey::Notes,
+                        Pen::Anno,
+                        n.id,
+                        line,
+                        px,
+                        ty,
+                        h,
+                        0.0,
+                        Align::Left,
+                        VAlign::Baseline,
+                    ));
                 }
             }
         }
@@ -413,8 +498,16 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
         let base = land.sub(d.scale(alen));
         let perp = d.perp();
         o.push(path_item(env, Pen::Anno, n.id, &[l[0], l[1], base], false));
-        let tri = alloc::vec![Pt::at(land, 0.0), Pt::at(base.add(perp.scale(aw)), 0.0), Pt::at(base.sub(perp.scale(aw)), 0.0)];
-        o.push(Item::Fill(FillItem { layer: String::from(layer_name(env, LayerKey::Notes)), src: String::from(n.id), loops: alloc::vec![tri] }));
+        let tri = alloc::vec![
+            Pt::at(land, 0.0),
+            Pt::at(base.add(perp.scale(aw)), 0.0),
+            Pt::at(base.sub(perp.scale(aw)), 0.0)
+        ];
+        o.push(Item::Fill(FillItem {
+            layer: String::from(layer_name(env, LayerKey::Notes)),
+            src: String::from(n.id),
+            loops: alloc::vec![tri],
+        }));
     }
 }
 
@@ -430,14 +523,50 @@ pub fn legend_items(env: &mut Env, notes: &[NoteIn], result: &mut Vec<Item>) {
     let wrap_n = num::to_int_clamped::<usize>(st.wrap_chars * 1.25, 5, 250);
     let x0 = bx.x1 + 0.35 * sc;
     let mut y = top;
-    result.push(text_item(env, LayerKey::Notes, Pen::Anno, "legend", "KEYNOTES", x0, y - h, h, 0.0, Align::Left, VAlign::Baseline));
+    result.push(text_item(
+        env,
+        LayerKey::Notes,
+        Pen::Anno,
+        "legend",
+        "KEYNOTES",
+        x0,
+        y - h,
+        h,
+        0.0,
+        Align::Left,
+        VAlign::Baseline,
+    ));
     y -= pitch * 1.4;
     for (i, n) in notes.iter().enumerate() {
         let lines = wrap(&n.text, wrap_n);
         let num = (i + 1).to_string();
-        result.push(text_item(env, LayerKey::Notes, Pen::Anno, "legend", &num, x0, y - h, h, 0.0, Align::Left, VAlign::Baseline));
+        result.push(text_item(
+            env,
+            LayerKey::Notes,
+            Pen::Anno,
+            "legend",
+            &num,
+            x0,
+            y - h,
+            h,
+            0.0,
+            Align::Left,
+            VAlign::Baseline,
+        ));
         for (j, line) in lines.iter().enumerate() {
-            result.push(text_item(env, LayerKey::Notes, Pen::Anno, "legend", line, x0 + 0.35 * sc, y - h - j as f64 * pitch, h, 0.0, Align::Left, VAlign::Baseline));
+            result.push(text_item(
+                env,
+                LayerKey::Notes,
+                Pen::Anno,
+                "legend",
+                line,
+                x0 + 0.35 * sc,
+                y - h - j as f64 * pitch,
+                h,
+                0.0,
+                Align::Left,
+                VAlign::Baseline,
+            ));
         }
         y -= pitch * lines.len() as f64 + 0.25 * pitch;
     }

@@ -344,7 +344,15 @@ fn piece_text(pieces: &[Piece], k: usize) -> String {
         let m = pc.segs.get(pc.segs.len() / 2).map_or(pc.p0, |s| s[0]);
         return format!("the bend after segment {} of {} (near x {}, y {})", pc.leg, nlegs, ftin(m.x), ftin(m.y));
     }
-    format!("segment {} of {} (x {}, y {} to x {}, y {})", pc.leg, nlegs, ftin(pc.p0.x), ftin(pc.p0.y), ftin(pc.p1.x), ftin(pc.p1.y))
+    format!(
+        "segment {} of {} (x {}, y {} to x {}, y {})",
+        pc.leg,
+        nlegs,
+        ftin(pc.p0.x),
+        ftin(pc.p0.y),
+        ftin(pc.p1.x),
+        ftin(pc.p1.y)
+    )
 }
 
 fn cover(scene: &Scene<'_>, diags: &Diags) {
@@ -394,14 +402,18 @@ fn cover(scene: &Scene<'_>, diags: &Diags) {
                     let fl = geom::flatten_loop(&wl, FLAT_TOL);
                     let Some(&f0) = fl.first() else { continue };
                     if !geom::point_in_loop_eo(centre, &fl) && geom::dist_point_seg(centre, f0, f0) > 0.0 {
-                        let onb = fl.iter().enumerate().any(|(i, &p)| geom::dist_point_seg(centre, p, fl[(i + 1) % fl.len()]) < 1e-6);
+                        let onb = fl
+                            .iter()
+                            .enumerate()
+                            .any(|(i, &p)| geom::dist_point_seg(centre, p, fl[(i + 1) % fl.len()]) < 1e-6);
                         if !onb {
                             continue;
                         }
                     }
                     found = true;
                     let edges = host_edges(&host.outline, xf);
-                    let zw: Vec<ZoneBox<'_>> = h.built.zones.iter().map(|z| ZoneBox { name: &z.name, box_: world_box(xf, z.box_) }).collect();
+                    let zw: Vec<ZoneBox<'_>> =
+                        h.built.zones.iter().map(|z| ZoneBox { name: &z.name, box_: world_box(xf, z.box_) }).collect();
                     let req = cover_for(host, &zw, centre);
                     let mut min_clear = [f64::INFINITY; 3];
                     let mut min_piece = [0usize; 3];
@@ -580,7 +592,8 @@ fn near_miss(scene: &Scene<'_>, diags: &Diags) {
                 let b_len = b1 - b0;
                 let a_across = o1 - o0;
                 let b_across = q1 - q0;
-                let (grow, other) = if b_len / b_across.max(1e-9) > a_len / a_across.max(1e-9) { (cb, ca) } else { (ca, cb) };
+                let (grow, other) =
+                    if b_len / b_across.max(1e-9) > a_len / a_across.max(1e-9) { (cb, ca) } else { (ca, cb) };
                 let grow_is_a = grow.c.index == ca.c.index;
                 let grow_len = if grow_is_a { a_len } else { b_len };
                 let grow_below_other = if grow_is_a { a1 <= b0 } else { b1 <= a0 };
@@ -786,7 +799,11 @@ fn short_slope(scene: &Scene<'_>, items: &[Pf<'_>], doc: &Value, diags: &Diags) 
         } else {
             "top_left"
         };
-        let what = if by_crop { format!("the view crop (where '{}' continues)", h.id) } else { format!("the end of '{}'", h.id) };
+        let what = if by_crop {
+            format!("the view crop (where '{}' continues)", h.id)
+        } else {
+            format!("the end of '{}'", h.id)
+        };
         diags.add_fix(
             Level::Warning,
             "W_SHORT_SLOPE",

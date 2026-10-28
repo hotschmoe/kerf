@@ -1,14 +1,14 @@
 //! connector (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{Ctx, drop_duplicate_points, gauge_thickness, parse_point_list};
-use crate::model::fmt_num;
-use crate::units::ftin;
 use crate::catalog::{HARDWARE, Hardware};
 use crate::geom;
+use crate::model::fmt_num;
 use crate::model::{self, Built, Prism};
 use crate::num;
 use crate::params::{ParamEnum, param_enum, params};
 use crate::pathgeom;
+use crate::units::ftin;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
@@ -31,7 +31,8 @@ params! {
 pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let cp = ctx.p.parse_all::<Params>();
     let model_name = cp.model.as_str();
-    let hw: Option<&Hardware> = if model_name.is_empty() { None } else { HARDWARE.iter().find(|h| h.model.eq_ignore_ascii_case(model_name)) };
+    let hw: Option<&Hardware> =
+        if model_name.is_empty() { None } else { HARDWARE.iter().find(|h| h.model.eq_ignore_ascii_case(model_name)) };
     let gauge_default = hw.map_or(18.0, |h| f64::from(h.gauge));
     let gauge_n = cp.gauge.unwrap_or(gauge_default);
     let width = cp.width.unwrap_or(hw.map_or(1.25, |h| h.width));
@@ -44,7 +45,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let gauge_i = num::to_int::<u32>(crate::math::round(gauge_n)).unwrap_or(0);
     let Some(thickness) = gauge_thickness(gauge_i) else {
-        ctx.p.fail("gauge", format!("gauge {} is not in the table; use 10, 11, 12, 14, 16, 18, 20, 22, 24, 26 or 28", fmt_num(gauge_n)));
+        ctx.p.fail(
+            "gauge",
+            format!("gauge {} is not in the table; use 10, 11, 12, 14, 16, 18, 20, 22, 24, 26 or 28", fmt_num(gauge_n)),
+        );
         return None;
     };
     let pts = parse_point_list(ctx, "points", pv, true)?;
@@ -55,12 +59,22 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let edge = cp.lay == Lay::Edge;
     let rib = if edge {
-        pathgeom::ribbon(&clean, if cp.side == Side::Left { thickness } else { 0.0 }, if cp.side == Side::Right { thickness } else { 0.0 })
+        pathgeom::ribbon(
+            &clean,
+            if cp.side == Side::Left { thickness } else { 0.0 },
+            if cp.side == Side::Right { thickness } else { 0.0 },
+        )
     } else {
         pathgeom::ribbon(&clean, width / 2.0, width / 2.0)
     };
     let box_ = geom::loop_box(&rib);
-    let prism = Prism { material: "steel".to_string(), loops: model::one_loop(rib), centerline: clean, face_tie: !edge, ..Prism::default() };
+    let prism = Prism {
+        material: "steel".to_string(),
+        loops: model::one_loop(rib),
+        centerline: clean,
+        face_tie: !edge,
+        ..Prism::default()
+    };
     let kind_text = hw.map_or_else(alloc::string::String::new, |h| format!("{} ", h.kind));
     Some(Built {
         prisms: vec![prism],

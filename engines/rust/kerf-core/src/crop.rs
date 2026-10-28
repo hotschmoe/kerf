@@ -157,7 +157,14 @@ pub fn run(scene: &Scene<'_>, doc: &Value, before: Option<&Before<'_>>, diags: &
                 "remove \"crop\" (and \"scale\", if you set one) from view {}: the engine then re-fits the view to all non-fill components + 6\"; or set \"crop\" to {fit} to contain '{}'",
                 spec.id, c.id
             );
-            diags.add_fix(Level::Warning, "W_CROP_STALE", Some(&c.id), Some(&format!("views/{}/crop", spec.id)), message, fix);
+            diags.add_fix(
+                Level::Warning,
+                "W_CROP_STALE",
+                Some(&c.id),
+                Some(&format!("views/{}/crop", spec.id)),
+                message,
+                fix,
+            );
         }
     }
 }

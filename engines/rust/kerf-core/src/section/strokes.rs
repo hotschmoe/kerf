@@ -88,7 +88,8 @@ pub fn dedupe(strokes: &[Stroke], style: &Style) -> Vec<Stroke> {
                 continue;
             }
             let w2 = style.pen_width_mm(strokes[s2.stroke].pen);
-            let same_base = s1.stroke != s2.stroke && base_id(&strokes[s1.stroke].src) == base_id(&strokes[s2.stroke].src);
+            let same_base =
+                s1.stroke != s2.stroke && base_id(&strokes[s1.stroke].src) == base_id(&strokes[s2.stroke].src);
             let p_lo = s1.a.add(d1.scale(lo));
             let p_hi = s1.a.add(d1.scale(hi));
             let t2a = p_lo.sub(s2.a).dot(d2) / (l2 * l2);
@@ -123,7 +124,14 @@ pub fn dedupe(strokes: &[Stroke], style: &Style) -> Vec<Stroke> {
         }
         let mut cur: Vec<Pt> = Vec::new();
         let flush = |cur: &mut Vec<Pt>, out: &mut Vec<Stroke>| {
-            out.push(Stroke { pts: core::mem::take(cur), closed: false, pen: s.pen, src: s.src.clone(), rank: s.rank, seq: s.seq });
+            out.push(Stroke {
+                pts: core::mem::take(cur),
+                closed: false,
+                pen: s.pen,
+                src: s.src.clone(),
+                rank: s.rank,
+                seq: s.seq,
+            });
         };
         for sr in items {
             for iv in &sr.keep {

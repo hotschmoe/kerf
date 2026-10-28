@@ -112,4 +112,3 @@ pub fn edge_is_top(lp: &[Pt], i: usize, ccw: bool) -> bool {
     let n = if ccw { V2::init(d.y / l, -d.x / l) } else { V2::init(-d.y / l, d.x / l) };
     n.y > 0.01
 }
-

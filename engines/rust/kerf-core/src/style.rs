@@ -69,8 +69,16 @@ pub enum Role {
 
 impl Role {
     pub const ALL: [Role; 10] = [
-        Role::Generic, Role::Soil, Role::Wood, Role::Masonry, Role::Grout, Role::Steel, Role::Rebar,
-        Role::SheetMetal, Role::VaporRetarder, Role::Void,
+        Role::Generic,
+        Role::Soil,
+        Role::Wood,
+        Role::Masonry,
+        Role::Grout,
+        Role::Steel,
+        Role::Rebar,
+        Role::SheetMetal,
+        Role::VaporRetarder,
+        Role::Void,
     ];
 
     pub fn name(self) -> &'static str {
@@ -402,7 +410,10 @@ impl Check {
         }
         self.bad(format!(
             "style key '{path}' must be a number from {} to {} (got {}; default {})",
-            nt(lo), nt(hi), Self::got_text(x), nt(def)
+            nt(lo),
+            nt(hi),
+            Self::got_text(x),
+            nt(def)
         ));
     }
 
@@ -560,20 +571,30 @@ fn validate_materials(c: &mut Check, root: &Value) {
             match pv.str() {
                 Some(t) => {
                     if Pen::from_name(t).is_none() {
-                        c.bad(format!("style key 'materials.{k}.pen' must be one of the engine's pens ({pen_names}) (got \"{}\")", clip(t, 24)));
+                        c.bad(format!(
+                            "style key 'materials.{k}.pen' must be one of the engine's pens ({pen_names}) (got \"{}\")",
+                            clip(t, 24)
+                        ));
                     }
                 }
-                None => c.bad(format!("style key 'materials.{k}.pen' must be a pen name string (got {})", pv.kind_name())),
+                None => {
+                    c.bad(format!("style key 'materials.{k}.pen' must be a pen name string (got {})", pv.kind_name()))
+                }
             }
         }
         if let Some(rv) = m.value.get("role").filter(|v| !v.is_null()) {
             match rv.str() {
                 Some(t) => {
                     if Role::from_name(t).is_none() {
-                        c.bad(format!("style key 'materials.{k}.role' must be one of {role_names} (got \"{}\")", clip(t, 24)));
+                        c.bad(format!(
+                            "style key 'materials.{k}.role' must be one of {role_names} (got \"{}\")",
+                            clip(t, 24)
+                        ));
                     }
                 }
-                None => c.bad(format!("style key 'materials.{k}.role' must be a role name string (got {})", rv.kind_name())),
+                None => {
+                    c.bad(format!("style key 'materials.{k}.role' must be a role name string (got {})", rv.kind_name()))
+                }
             }
         }
         if let Some(Value::Array(h)) = m.value.get("hatch") {

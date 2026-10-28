@@ -1,6 +1,6 @@
 //! Hatch pattern line generation (AutoCAD .pat semantics) clipped to a region (even-odd).
 
-use crate::geom::{self, Loc, V2, RAD_PER_DEG};
+use crate::geom::{self, Loc, RAD_PER_DEG, V2};
 use crate::math;
 use crate::num;
 use crate::sort;
@@ -134,7 +134,13 @@ fn unit_hash(v_paper: f64, salt: u64) -> f64 {
     (h >> 11) as f64 / 9007199254740992.0
 }
 
-pub fn generate_grain<L: AsRef<[V2]>>(loops: &[L], pattern: &Pattern, k: f64, rot_deg: f64, grain: Grain) -> HatchLines {
+pub fn generate_grain<L: AsRef<[V2]>>(
+    loops: &[L],
+    pattern: &Pattern,
+    k: f64,
+    rot_deg: f64,
+    grain: Grain,
+) -> HatchLines {
     let base = generate(loops, pattern, k, rot_deg);
     let Some(fam0) = pattern.families.first() else { return base };
     let mut out: Vec<Line> = Vec::new();
@@ -175,7 +181,8 @@ pub fn generate_grain<L: AsRef<[V2]>>(loops: &[L], pattern: &Pattern, k: f64, ro
         for i in 0..=n {
             let f = i as f64 / n as f64;
             let t = t0 + (t1 - t0) * f;
-            let d = taper * amp * (math::sin(tau * t / wl + phi) + 0.35 * math::sin(tau * t / (0.37 * wl) + phi2)) / 1.35;
+            let d =
+                taper * amp * (math::sin(tau * t / wl + phi) + 0.35 * math::sin(tau * t / (0.37 * wl) + phi2)) / 1.35;
             let pt = dir.scale(t).add(nrm.scale(v + d));
             let inside = |p: V2| geom::locate_even_odd(p, loops, 1e-9) == Loc::Inside;
             let ok = inside(pt) && inside(pt.add(dir.scale(inset))) && inside(pt.sub(dir.scale(inset)));
@@ -201,7 +208,18 @@ fn line_at(dir: V2, nrm: V2, s: f64, ta: f64, tb: f64) -> Line {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn dash_segments(lines: &mut Vec<Line>, dashes: &[f64], k: f64, period: f64, t_base: f64, ta: f64, tb: f64, dir: V2, nrm: V2, s: f64) {
+fn dash_segments(
+    lines: &mut Vec<Line>,
+    dashes: &[f64],
+    k: f64,
+    period: f64,
+    t_base: f64,
+    ta: f64,
+    tb: f64,
+    dir: V2,
+    nrm: V2,
+    s: f64,
+) {
     let mut m = math::floor((ta - t_base) / period);
     let m_end = math::floor((tb - t_base) / period);
     let mut guard = 0usize;

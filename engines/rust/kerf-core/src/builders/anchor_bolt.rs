@@ -1,13 +1,13 @@
 //! anchor bolt (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{Ctx, box_of_prisms, oriented_ccw};
-use crate::model::fmt_num;
-use crate::units::ftin;
 use crate::geom::{self, Pt, V2};
+use crate::model::fmt_num;
 use crate::model::{self, Built, NamedAnchor, Prism};
 use crate::num;
 use crate::params::{ParamEnum, param_enum, params};
 use crate::pathgeom;
+use crate::units::ftin;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
@@ -96,13 +96,25 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         }
         let head_h = 0.6 * d;
         let fl_t = 0.1 * d;
-        prisms.push(steel("washer", model::one_loop(model::rect_loop(-0.95 * d, proj - head_h - fl_t, 0.95 * d, proj - head_h)), 0.95 * d));
-        prisms.push(steel("head", model::one_loop(model::rect_loop(-0.75 * d, proj - head_h, 0.75 * d, proj)), 0.75 * d));
+        prisms.push(steel(
+            "washer",
+            model::one_loop(model::rect_loop(-0.95 * d, proj - head_h - fl_t, 0.95 * d, proj - head_h)),
+            0.95 * d,
+        ));
+        prisms.push(steel(
+            "head",
+            model::one_loop(model::rect_loop(-0.75 * d, proj - head_h, 0.75 * d, proj)),
+            0.75 * d,
+        ));
     } else if ap.nut_washer {
         let nut_h = 0.875 * d;
         let ytop = proj - 0.25 * d;
         let nut_bot = ytop - nut_h;
-        prisms.push(steel("washer", model::one_loop(model::rect_loop(-1.125 * d, nut_bot - 0.125, 1.125 * d, nut_bot)), 1.125 * d));
+        prisms.push(steel(
+            "washer",
+            model::one_loop(model::rect_loop(-1.125 * d, nut_bot - 0.125, 1.125 * d, nut_bot)),
+            1.125 * d,
+        ));
         prisms.push(steel("nut", model::one_loop(model::rect_loop(-0.75 * d, nut_bot, 0.75 * d, ytop)), 0.75 * d));
     }
     let bx = box_of_prisms(&prisms);
@@ -110,7 +122,14 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         anchors: vec![NamedAnchor { name: "top_of_concrete".to_string(), p: V2::init(0.0, 0.0) }],
         box_: bx,
         nat_z: Some(d),
-        info: format!("anchor_bolt {}\" dia, embed {}, proj {}, {}{}", fmt_num(d), ftin(embed), ftin(proj), h.tag(), if post { "" } else { " hook" }),
+        info: format!(
+            "anchor_bolt {}\" dia, embed {}, proj {}, {}{}",
+            fmt_num(d),
+            ftin(embed),
+            ftin(proj),
+            h.tag(),
+            if post { "" } else { " hook" }
+        ),
         prisms,
         ..Built::default()
     })

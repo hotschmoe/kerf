@@ -31,7 +31,7 @@ pub use crate::shape::Shape;
 pub use dims::polys_overlap;
 pub use notes::report_hits;
 pub use text::{ascii_fold, items_box, text_poly};
-pub use title::{title_items, SheetInfo};
+pub use title::{SheetInfo, title_items};
 
 use dims::DimSpec;
 use notes::{LabelSpec, Meta, MetaKind, NoteIn};
@@ -65,7 +65,16 @@ pub struct Env<'a, 's> {
 }
 
 impl<'a, 's> Env<'a, 's> {
-    pub fn new(style: &'a Style, font: &'a Font, scene: &'a Scene<'a>, spec: &'a ViewSpec<'a>, s: f64, crop: Box, diags: &'a Diags, landing: Landing<'a, 's>) -> Env<'a, 's> {
+    pub fn new(
+        style: &'a Style,
+        font: &'a Font,
+        scene: &'a Scene<'a>,
+        spec: &'a ViewSpec<'a>,
+        s: f64,
+        crop: Box,
+        diags: &'a Diags,
+        landing: Landing<'a, 's>,
+    ) -> Env<'a, 's> {
         Env {
             style,
             font,
@@ -142,12 +151,24 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         let mut cur_meta = Meta::default();
         'body: {
             let Some(id) = str_member(an, "id") else {
-                env.diags.add(Level::Error, "E_PARAM", None, Some(&format!("views/{vid}/annotations/{k}")), format!("annotation {k} of view {vid} needs a string \"id\""));
+                env.diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    None,
+                    Some(&format!("views/{vid}/annotations/{k}")),
+                    format!("annotation {k} of view {vid} needs a string \"id\""),
+                );
                 break 'body;
             };
             let apath = format!("views/{vid}/annotations/{id}");
             if seen.contains(&id) {
-                env.diags.add(Level::Error, "E_DUP_ID", Some(id), Some(&apath), format!("duplicate annotation id '{id}' in view {vid}"));
+                env.diags.add(
+                    Level::Error,
+                    "E_DUP_ID",
+                    Some(id),
+                    Some(&apath),
+                    format!("duplicate annotation id '{id}' in view {vid}"),
+                );
                 break 'body;
             }
             seen.push(id);
@@ -155,7 +176,13 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
             match ty {
                 "note" => {
                     let Some(text0) = str_member(an, "text") else {
-                        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(&apath), format!("note '{id}' needs a string \"text\""));
+                        env.diags.add(
+                            Level::Error,
+                            "E_PARAM",
+                            Some(id),
+                            Some(&apath),
+                            format!("note '{id}' needs a string \"text\""),
+                        );
                         break 'body;
                     };
                     if notes::text_too_long(env, "note", id, &apath, text0) {
@@ -175,7 +202,13 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
                         }
                         movable = false;
                     } else if target.is_empty() {
-                        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(&apath), format!("note '{id}' needs a \"target\" (component id or comp.part) or an \"at\" point"));
+                        env.diags.add(
+                            Level::Error,
+                            "E_PARAM",
+                            Some(id),
+                            Some(&apath),
+                            format!("note '{id}' needs a \"target\" (component id or comp.part) or an \"at\" point"),
+                        );
                         break 'body;
                     } else {
                         let cid = target.find(['.', '#']).map_or(target, |d| &target[..d]);
@@ -185,7 +218,13 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
                                 Some(n) => format!(" Did you mean '{n}'?"),
                                 None => format!(" Components: {}", scene::join_ids(&ids)),
                             };
-                            env.diags.add(Level::Error, "E_REF_UNKNOWN", Some(id), Some(&format!("{apath}/target")), format!("note '{id}' target '{target}' is not a component.{hint}"));
+                            env.diags.add(
+                                Level::Error,
+                                "E_REF_UNKNOWN",
+                                Some(id),
+                                Some(&format!("{apath}/target")),
+                                format!("note '{id}' target '{target}' is not a component.{hint}"),
+                            );
                             break 'body;
                         }
                         landing = notes::target_landing(env, target);
@@ -203,7 +242,8 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
                             "left" => column = Some(route::Side::Left),
                             "right" => column = Some(route::Side::Right),
                             _ => {
-                                let got = cv.str().map_or_else(|| "a non-string value".to_string(), |sv| format!("\"{sv}\""));
+                                let got =
+                                    cv.str().map_or_else(|| "a non-string value".to_string(), |sv| format!("\"{sv}\""));
                                 env.diags.add_fix(
                                     Level::Warning,
                                     "W_PARAM",
@@ -234,7 +274,13 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
                         break 'body;
                     }
                     let (Some(fv), Some(tv)) = (an.get("from"), an.get("to")) else {
-                        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(&apath), format!("dim '{id}' needs \"from\" and \"to\" points (Refs)"));
+                        env.diags.add(
+                            Level::Error,
+                            "E_PARAM",
+                            Some(id),
+                            Some(&apath),
+                            format!("dim '{id}' needs \"from\" and \"to\" points (Refs)"),
+                        );
                         break 'body;
                     };
                     let Some(from) = env.scene.point(fv, id, &format!("{apath}/from")) else { break 'body };
@@ -245,35 +291,77 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
                         "v" => DimDir::V,
                         "aligned" => DimDir::Aligned,
                         _ => {
-                            env.diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{apath}/dir")), format!("dim dir must be \"h\", \"v\" or \"aligned\" (got \"{dir_s}\")"));
+                            env.diags.add(
+                                Level::Error,
+                                "E_PARAM",
+                                Some(id),
+                                Some(&format!("{apath}/dir")),
+                                format!("dim dir must be \"h\", \"v\" or \"aligned\" (got \"{dir_s}\")"),
+                            );
                             break 'body;
                         }
                     };
-                    let Some(off) = model::length_or_diag(env.diags, Some(id), &format!("{apath}/offset"), an.get("offset"), "dim offset", 0.0) else { break 'body };
+                    let Some(off) = model::length_or_diag(
+                        env.diags,
+                        Some(id),
+                        &format!("{apath}/offset"),
+                        an.get("offset"),
+                        "dim offset",
+                        0.0,
+                    ) else {
+                        break 'body;
+                    };
                     let ds = DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text") };
                     cur_meta = Meta { id, kind: MetaKind::Dim, axis: ds.axis(), off, off2: 0.0, owner: dspecs.len() };
                     dspecs.push(ds);
                 }
                 "label" => {
                     let Some(text) = str_member(an, "text") else {
-                        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(&apath), format!("label '{id}' needs a string \"text\""));
+                        env.diags.add(
+                            Level::Error,
+                            "E_PARAM",
+                            Some(id),
+                            Some(&apath),
+                            format!("label '{id}' needs a string \"text\""),
+                        );
                         break 'body;
                     };
                     if notes::text_too_long(env, "label", id, &apath, text) {
                         break 'body;
                     }
                     let Some(atv) = an.get("at") else {
-                        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(&apath), format!("label '{id}' needs \"at\": a Ref or [x, y]"));
+                        env.diags.add(
+                            Level::Error,
+                            "E_PARAM",
+                            Some(id),
+                            Some(&apath),
+                            format!("label '{id}' needs \"at\": a Ref or [x, y]"),
+                        );
                         break 'body;
                     };
                     let Some(mut p) = env.scene.point(atv, id, &format!("{apath}/at")) else { break 'body };
                     let mut loff = V2::init(0.0, 0.0);
                     if let Some(ov) = non_null(an, "offset") {
-                        let Some(o) = model::offset_pair_or_diag(env.diags, Some(id), &format!("{apath}/offset"), "label offset", ov) else { break 'body };
+                        let Some(o) = model::offset_pair_or_diag(
+                            env.diags,
+                            Some(id),
+                            &format!("{apath}/offset"),
+                            "label offset",
+                            ov,
+                        ) else {
+                            break 'body;
+                        };
                         loff = o;
                         p = p.add(loff);
                     }
-                    cur_meta = Meta { id, kind: MetaKind::Label, axis: V2::default(), off: loff.x, off2: loff.y, owner: lspecs.len() };
+                    cur_meta = Meta {
+                        id,
+                        kind: MetaKind::Label,
+                        axis: V2::default(),
+                        off: loff.x,
+                        off2: loff.y,
+                        owner: lspecs.len(),
+                    };
                     let base = match &mut env.landing {
                         Landing::Section(_) => Some(p),
                         Landing::Iso(iso) => iso.project(p),
@@ -281,7 +369,13 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
                     lspecs.push(LabelSpec { k, id, text, base, off: loff });
                 }
                 _ => {
-                    env.diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{apath}/type")), format!("annotation '{id}' has type \"{ty}\"; use one of {}", model::join_quoted(&types)));
+                    env.diags.add(
+                        Level::Error,
+                        "E_PARAM",
+                        Some(id),
+                        Some(&format!("{apath}/type")),
+                        format!("annotation '{id}' has type \"{ty}\"; use one of {}", model::join_quoted(&types)),
+                    );
                 }
             }
         }
@@ -399,4 +493,3 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     }
     result
 }
-

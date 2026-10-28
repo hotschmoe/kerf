@@ -59,8 +59,23 @@ impl Diags {
         self.push(Diag { level, code, id: id.map(String::from), path: path.map(String::from), message, fix: None });
     }
 
-    pub fn add_fix(&self, level: Level, code: &'static str, id: Option<&str>, path: Option<&str>, message: String, fix: String) {
-        self.push(Diag { level, code, id: id.map(String::from), path: path.map(String::from), message, fix: Some(fix) });
+    pub fn add_fix(
+        &self,
+        level: Level,
+        code: &'static str,
+        id: Option<&str>,
+        path: Option<&str>,
+        message: String,
+        fix: String,
+    ) {
+        self.push(Diag {
+            level,
+            code,
+            id: id.map(String::from),
+            path: path.map(String::from),
+            message,
+            fix: Some(fix),
+        });
     }
 
     pub fn push(&self, d: Diag) {
@@ -278,9 +293,15 @@ pub struct Built {
 }
 
 pub const BOX_ANCHOR_NAMES: [&str; 9] = [
-    "top_left", "top_center", "top_right",
-    "middle_left", "center", "middle_right",
-    "bottom_left", "bottom_center", "bottom_right",
+    "top_left",
+    "top_center",
+    "top_right",
+    "middle_left",
+    "center",
+    "middle_right",
+    "bottom_left",
+    "bottom_center",
+    "bottom_right",
 ];
 
 pub fn box_anchor(b: geom::Box, name: &str) -> Option<V2> {
@@ -313,13 +334,28 @@ pub fn one_loop(l: Vec<Pt>) -> Vec<Vec<Pt>> {
 }
 
 pub fn offset_pair_or_diag(diags: &Diags, id: Option<&str>, path: &str, what: &str, v: &Value) -> Option<V2> {
-    let fix = format!("write {what} as [x, y], two lengths in inches (numbers or strings such as \"1 1/2\"), e.g. [1.5, -2]");
+    let fix =
+        format!("write {what} as [x, y], two lengths in inches (numbers or strings such as \"1 1/2\"), e.g. [1.5, -2]");
     let Some(arr) = v.arr() else {
-        diags.add_fix(Level::Error, "E_PARAM", id, Some(path), format!("{what} must be an array [x, y] (got {})", kind_or_text(v)), fix);
+        diags.add_fix(
+            Level::Error,
+            "E_PARAM",
+            id,
+            Some(path),
+            format!("{what} must be an array [x, y] (got {})", kind_or_text(v)),
+            fix,
+        );
         return None;
     };
     if arr.len() != 2 {
-        diags.add_fix(Level::Error, "E_PARAM", id, Some(path), format!("{what} must have exactly 2 values [x, y] (got {})", arr.len()), fix);
+        diags.add_fix(
+            Level::Error,
+            "E_PARAM",
+            id,
+            Some(path),
+            format!("{what} must have exactly 2 values [x, y] (got {})", arr.len()),
+            fix,
+        );
         return None;
     }
     let mut out = [0.0; 2];
@@ -330,7 +366,18 @@ pub fn offset_pair_or_diag(diags: &Diags, id: Option<&str>, path: &str, what: &s
                 if let Some(x) = units::parse_length_any(e) {
                     diags.add_fix(Level::Error, "E_PARAM", id, Some(path), format!("{what}[{i}] is out of range: a length must be within +-{} inches (got {}, which is {} inches)", fmt_num(limits::MAX_COORD_IN), kind_or_text(e), num_text(x)), fix);
                 } else {
-                    diags.add_fix(Level::Error, "E_PARAM", id, Some(path), format!("{what}[{i}] must be a length (got {}); lengths are {}", kind_or_text(e), units::LENGTH_FORMS), fix);
+                    diags.add_fix(
+                        Level::Error,
+                        "E_PARAM",
+                        id,
+                        Some(path),
+                        format!(
+                            "{what}[{i}] must be a length (got {}); lengths are {}",
+                            kind_or_text(e),
+                            units::LENGTH_FORMS
+                        ),
+                        fix,
+                    );
                 }
                 return None;
             }
@@ -339,7 +386,14 @@ pub fn offset_pair_or_diag(diags: &Diags, id: Option<&str>, path: &str, what: &s
     Some(V2::init(out[0], out[1]))
 }
 
-pub fn length_or_diag(diags: &Diags, id: Option<&str>, path: &str, v: Option<&Value>, what: &str, default: f64) -> Option<f64> {
+pub fn length_or_diag(
+    diags: &Diags,
+    id: Option<&str>,
+    path: &str,
+    v: Option<&Value>,
+    what: &str,
+    default: f64,
+) -> Option<f64> {
     let Some(x) = v else { return Some(default) };
     if x.is_null() {
         return Some(default);
@@ -349,9 +403,28 @@ pub fn length_or_diag(diags: &Diags, id: Option<&str>, path: &str, v: Option<&Va
     }
     let fix = "write it as a number of inches or a length string such as \"1 1/2\"".to_string();
     if let Some(n) = units::parse_length_any(x) {
-        diags.add_fix(Level::Error, "E_PARAM", id, Some(path), format!("{what} is out of range: a length must be within +-{} inches (got {}, which is {} inches)", fmt_num(limits::MAX_COORD_IN), kind_or_text(x), num_text(n)), fix);
+        diags.add_fix(
+            Level::Error,
+            "E_PARAM",
+            id,
+            Some(path),
+            format!(
+                "{what} is out of range: a length must be within +-{} inches (got {}, which is {} inches)",
+                fmt_num(limits::MAX_COORD_IN),
+                kind_or_text(x),
+                num_text(n)
+            ),
+            fix,
+        );
     } else {
-        diags.add_fix(Level::Error, "E_PARAM", id, Some(path), format!("{what} must be a length (got {}); lengths are {}", kind_or_text(x), units::LENGTH_FORMS), fix);
+        diags.add_fix(
+            Level::Error,
+            "E_PARAM",
+            id,
+            Some(path),
+            format!("{what} must be a length (got {}); lengths are {}", kind_or_text(x), units::LENGTH_FORMS),
+            fix,
+        );
     }
     None
 }
@@ -419,7 +492,15 @@ impl<'a> Params<'a> {
             return Some(x);
         }
         if let Some(x) = units::parse_length_any(v) {
-            self.fail(key, format!("param '{key}' is out of range: a length must be within +-{} inches (got {}, which is {} inches)", fmt_num(limits::MAX_COORD_IN), kind_or_text(v), num_text(x)));
+            self.fail(
+                key,
+                format!(
+                    "param '{key}' is out of range: a length must be within +-{} inches (got {}, which is {} inches)",
+                    fmt_num(limits::MAX_COORD_IN),
+                    kind_or_text(v),
+                    num_text(x)
+                ),
+            );
             return None;
         }
         self.fail(key, format!("param '{key}' must be a length: {} (got {})", units::LENGTH_FORMS, kind_or_text(v)));
@@ -453,7 +534,13 @@ impl<'a> Params<'a> {
     pub fn int(&mut self, key: &str, default: Option<i64>, min: i64, max: i64) -> Option<i64> {
         let x = self.num(key, default.map(|d| d as f64))?;
         if x != crate::math::round(x) || x < min as f64 || x > max as f64 {
-            self.fail(key, format!("param '{key}' must be an integer from {min} to {max} (got {})", kind_or_text(&Value::Number(x))));
+            self.fail(
+                key,
+                format!(
+                    "param '{key}' must be an integer from {min} to {max} (got {})",
+                    kind_or_text(&Value::Number(x))
+                ),
+            );
             return None;
         }
         num::to_int::<i64>(x)
@@ -473,9 +560,22 @@ impl<'a> Params<'a> {
         }
         let path = format!("{key}/{field}");
         if let Some(x) = units::parse_length_any(v) {
-            self.fail_code("E_PARAM", &path, format!("{key}.{field} is out of range: a length must be within +-{} inches (got {}, which is {} inches)", fmt_num(limits::MAX_COORD_IN), kind_or_text(v), num_text(x)));
+            self.fail_code(
+                "E_PARAM",
+                &path,
+                format!(
+                    "{key}.{field} is out of range: a length must be within +-{} inches (got {}, which is {} inches)",
+                    fmt_num(limits::MAX_COORD_IN),
+                    kind_or_text(v),
+                    num_text(x)
+                ),
+            );
         } else {
-            self.fail_code("E_PARAM", &path, format!("{key}.{field} must be a length: {} (got {})", units::LENGTH_FORMS, kind_or_text(v)));
+            self.fail_code(
+                "E_PARAM",
+                &path,
+                format!("{key}.{field} must be a length: {} (got {})", units::LENGTH_FORMS, kind_or_text(v)),
+            );
         }
         None
     }
@@ -496,12 +596,22 @@ impl<'a> Params<'a> {
             }
         }
         let path = format!("{key}/{field}");
-        self.fail_code("E_PARAM", &path, format!("{key}.{field} must be an integer from {min} to {max} (got {})", kind_or_text(v)));
+        self.fail_code(
+            "E_PARAM",
+            &path,
+            format!("{key}.{field} must be an integer from {min} to {max} (got {})", kind_or_text(v)),
+        );
         None
     }
 
     /// A string member that must be one of `choices` (the first is the default).
-    pub fn field_choice(&mut self, key: &str, obj: &Value, field: &str, choices: &[&'static str]) -> Option<&'static str> {
+    pub fn field_choice(
+        &mut self,
+        key: &str,
+        obj: &Value,
+        field: &str,
+        choices: &[&'static str],
+    ) -> Option<&'static str> {
         let first = choices.first().copied()?;
         let v = match obj.get(field) {
             None => return Some(first),
@@ -514,7 +624,11 @@ impl<'a> Params<'a> {
             }
         }
         let path = format!("{key}/{field}");
-        self.fail_code("E_PARAM", &path, format!("{key}.{field} must be one of {} (got {})", join_quoted(choices), kind_or_text(v)));
+        self.fail_code(
+            "E_PARAM",
+            &path,
+            format!("{key}.{field} must be one of {} (got {})", join_quoted(choices), kind_or_text(v)),
+        );
         None
     }
 
@@ -553,7 +667,12 @@ impl<'a> Params<'a> {
     }
 
     /// One of `allowed`.
-    pub fn choice(&mut self, key: &str, default: Option<&'static str>, allowed: &[&'static str]) -> Option<&'static str> {
+    pub fn choice(
+        &mut self,
+        key: &str,
+        default: Option<&'static str>,
+        allowed: &[&'static str],
+    ) -> Option<&'static str> {
         let s = self.str(key, default)?;
         if let Some(al) = allowed.iter().find(|al| **al == s) {
             return Some(al);

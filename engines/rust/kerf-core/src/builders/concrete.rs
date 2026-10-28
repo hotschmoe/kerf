@@ -1,6 +1,9 @@
 //! concrete (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, drop_duplicate_points, fmt_num, ftin, material_ok, mirror_built, one_prism, oriented_ccw, parse_cover, parse_point_list, zone_rect};
+use super::common::{
+    Ctx, drop_duplicate_points, fmt_num, ftin, material_ok, mirror_built, one_prism, oriented_ccw, parse_cover,
+    parse_point_list, zone_rect,
+};
 use crate::geom::{self, Pt, V2};
 use crate::math;
 use crate::model::{self, Built, HostInfo, NamedAnchor, Prism, Zone};
@@ -60,7 +63,12 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         }
         let lp = model::rect_loop(0.0, 0.0, w, h);
         let part = if sh == Shape::Footing { "footing" } else { "" };
-        let prism = Prism { part: part.into(), material: material.into(), loops: model::one_loop(lp.clone()), ..Prism::default() };
+        let prism = Prism {
+            part: part.into(),
+            material: material.into(),
+            loops: model::one_loop(lp.clone()),
+            ..Prism::default()
+        };
         let zones = if part.is_empty() { vec![] } else { vec![zone_rect("footing", 0.0, 0.0, w, h)] };
         return Some(Built {
             prisms: one_prism(prism),
@@ -73,7 +81,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     if sh == Shape::Polygon {
         let Some(pv) = &cp.points else {
-            ctx.p.fail("points", "shape polygon needs 'points': [[x, y], ...] (relative to the placement point) or Refs".into());
+            ctx.p.fail(
+                "points",
+                "shape polygon needs 'points': [[x, y], ...] (relative to the placement point) or Refs".into(),
+            );
             return None;
         };
         let pts = parse_point_list(ctx, "points", pv, true)?;
@@ -104,7 +115,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let mut has_recess = false;
     if let Some(rv) = &cp.recess {
         if !matches!(rv, crate::json::Value::Object(_)) {
-            ctx.p.fail("recess", "param 'recess' must be {\"width\": w, \"depth\": d, \"from_edge\": e} or null".into());
+            ctx.p
+                .fail("recess", "param 'recess' must be {\"width\": w, \"depth\": d, \"from_edge\": e} or null".into());
         } else {
             has_recess = true;
             rw = rv.get("width").and_then(units::parse_length).unwrap_or_else(|| {
@@ -123,14 +135,25 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let mut base_t = 0.0;
     if let Some(bv) = &cp.base {
         if !matches!(bv, crate::json::Value::Object(_)) {
-            ctx.p.fail("base", "param 'base' must be {\"material\": \"gravel\"|\"sand\"|\"compacted_fill\", \"thickness\": 4} or null".into());
+            ctx.p.fail(
+                "base",
+                "param 'base' must be {\"material\": \"gravel\"|\"sand\"|\"compacted_fill\", \"thickness\": 4} or null"
+                    .into(),
+            );
         } else {
             base_mat = bv.get("material").and_then(|x| x.str()).unwrap_or("gravel").into();
             if !["gravel", "sand", "compacted_fill"].contains(&base_mat.as_str()) {
-                ctx.p.fail("base/material", format!("base.material must be \"gravel\", \"sand\" or \"compacted_fill\" (got \"{base_mat}\")"));
+                ctx.p.fail(
+                    "base/material",
+                    format!("base.material must be \"gravel\", \"sand\" or \"compacted_fill\" (got \"{base_mat}\")"),
+                );
             }
             base_t = bv.get("thickness").and_then(units::parse_length).unwrap_or_else(|| {
-                ctx.p.fail("base/thickness", "base needs a numeric 'thickness' (inches), e.g. {\"material\": \"gravel\", \"thickness\": 4}".into());
+                ctx.p.fail(
+                    "base/thickness",
+                    "base needs a numeric 'thickness' (inches), e.g. {\"material\": \"gravel\", \"thickness\": 4}"
+                        .into(),
+                );
                 0.0
             });
             if ctx.p.ok && base_t <= 0.0 {
@@ -142,20 +165,46 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     }
     if fd <= st {
-        ctx.p.fail("footing_depth", format!("footing_depth ({}) must exceed slab_thickness ({}): it is measured from the top of the slab", fmt_num(fd), fmt_num(st)));
+        ctx.p.fail(
+            "footing_depth",
+            format!(
+                "footing_depth ({}) must exceed slab_thickness ({}): it is measured from the top of the slab",
+                fmt_num(fd),
+                fmt_num(st)
+            ),
+        );
         return None;
     }
     if haunch <= 0.0 || haunch > 90.0 {
-        ctx.p.fail("haunch", format!("haunch must be an angle in degrees from horizontal, > 0 and <= 90 (got {})", fmt_num(haunch)));
+        ctx.p.fail(
+            "haunch",
+            format!("haunch must be an angle in degrees from horizontal, > 0 and <= 90 (got {})", fmt_num(haunch)),
+        );
         return None;
     }
     if has_recess {
         if rw <= 0.0 || rd <= 0.0 || rd >= st {
-            ctx.p.fail("recess", format!("recess width must be > 0 and depth in (0, slab_thickness {}) (got width {}, depth {})", fmt_num(st), fmt_num(rw), fmt_num(rd)));
+            ctx.p.fail(
+                "recess",
+                format!(
+                    "recess width must be > 0 and depth in (0, slab_thickness {}) (got width {}, depth {})",
+                    fmt_num(st),
+                    fmt_num(rw),
+                    fmt_num(rd)
+                ),
+            );
             return None;
         }
         if re + rw > sl {
-            ctx.p.fail("recess", format!("recess (from_edge {} + width {}) extends beyond slab_length {}", fmt_num(re), fmt_num(rw), fmt_num(sl)));
+            ctx.p.fail(
+                "recess",
+                format!(
+                    "recess (from_edge {} + width {}) extends beyond slab_length {}",
+                    fmt_num(re),
+                    fmt_num(rw),
+                    fmt_num(sl)
+                ),
+            );
             return None;
         }
     }
@@ -198,7 +247,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         anchors.push(anchor("recess_top_interior", V2::init(re + rw, 0.0)));
     }
     let mut prisms_out = vec![prism];
-    let mut zones_out: vec::Vec<Zone> = vec![zone_rect("footing", 0.0, -fd, fw, -st), zone_rect("slab", 0.0, -st, sl, 0.0)];
+    let mut zones_out: vec::Vec<Zone> =
+        vec![zone_rect("footing", 0.0, -fd, fw, -st), zone_rect("slab", 0.0, -st, sl, 0.0)];
     if base_t > 0.0 {
         let dx = hx - fw;
         let dy = fd - st;
@@ -220,11 +270,23 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ctx.p.fail("base/thickness", "the base course meets the slab end before the haunch offset does; lengthen slab_length or reduce base.thickness".into());
             return None;
         }
-        let bpts = [Pt::new(fw, -fd), Pt::new(hx, -st), Pt::new(sl, -st), Pt::new(sl, -st - base_t), Pt::new(q1.x, q1.y), Pt::new(q2.x, q2.y)];
+        let bpts = [
+            Pt::new(fw, -fd),
+            Pt::new(hx, -st),
+            Pt::new(sl, -st),
+            Pt::new(sl, -st - base_t),
+            Pt::new(q1.x, q1.y),
+            Pt::new(q2.x, q2.y),
+        ];
         let bloop = oriented_ccw(drop_duplicate_points(&bpts));
         let bb = geom::loop_box(&bloop);
         zones_out.push(Zone { name: "base".into(), loops: model::one_loop(bloop.clone()), box_: bb });
-        prisms_out.push(Prism { part: "base".into(), material: base_mat.clone(), loops: model::one_loop(bloop), ..Prism::default() });
+        prisms_out.push(Prism {
+            part: "base".into(),
+            material: base_mat.clone(),
+            loops: model::one_loop(bloop),
+            ..Prism::default()
+        });
         anchors.push(anchor("base_bottom_interior", V2::init(sl, -st - base_t)));
         anchors.push(anchor("base_bottom_footing", V2::init(q2.x, -fd)));
     }

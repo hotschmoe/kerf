@@ -1,6 +1,8 @@
 //! lumber (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, ftin, length_or_until, material_ok, material_or, one_prism, parse_actual, parse_sawn, quad_of};
+use super::common::{
+    Ctx, ftin, length_or_until, material_ok, material_or, one_prism, parse_actual, parse_sawn, quad_of,
+};
 use crate::geom::{Box, V2, Xf};
 use crate::model::{self, Built, Prism};
 use crate::params::{ParamEnum, param_enum, params};
@@ -46,11 +48,19 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let mut length = 0.0;
     let mut until_note = String::new();
     if lp.run == Run::Z && ctx.p.has("until") {
-        ctx.p.fail("until", "'until' only applies to lumber with run x or y (run z spans the document run; set 'z' instead)".into());
+        ctx.p.fail(
+            "until",
+            "'until' only applies to lumber with run x or y (run z spans the document run; set 'z' instead)".into(),
+        );
         return None;
     }
     if lp.run != Run::Z {
-        length = length_or_until(ctx, run, "lumber with run x or y needs its length, e.g. \"length\": 92.625, or \"until\": \"other@anchor\"", &mut until_note)?;
+        length = length_or_until(
+            ctx,
+            run,
+            "lumber with run x or y needs its length, e.g. \"length\": 92.625, or \"until\": \"other@anchor\"",
+            &mut until_note,
+        )?;
     }
     if !ctx.p.ok {
         return None;
@@ -147,8 +157,19 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ..Prism::default()
         };
         info.push_str(&format!(" + {}", bk.tag()));
-        return Some(Built { prisms: alloc::vec![strip, raised], box_: Box { x0: 0.0, y0: 0.0, x1: w, y1: h + seal_t }, nat_z: nat, info, ..Built::default() });
+        return Some(Built {
+            prisms: alloc::vec![strip, raised],
+            box_: Box { x0: 0.0, y0: 0.0, x1: w, y1: h + seal_t },
+            nat_z: nat,
+            info,
+            ..Built::default()
+        });
     }
-    Some(Built { prisms: one_prism(prism), box_: Box { x0: 0.0, y0: 0.0, x1: w, y1: h }, nat_z: nat, info, ..Built::default() })
+    Some(Built {
+        prisms: one_prism(prism),
+        box_: Box { x0: 0.0, y0: 0.0, x1: w, y1: h },
+        nat_z: nat,
+        info,
+        ..Built::default()
+    })
 }
-

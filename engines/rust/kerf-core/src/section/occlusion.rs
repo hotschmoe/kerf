@@ -80,7 +80,8 @@ fn visible_impl(pts: &[Pt], closed: bool, join_wrap: bool, occ: &[&Occ]) -> Vec<
             }
             let sub = geom::sub_seg(p0, p1, bulge, t_prev, t_next);
             let mid = geom::seg_point(p0, p1, bulge, (t_prev + t_next) / 2.0);
-            let hidden = occ.iter().any(|o| o.bx.contains(mid) && geom::locate(mid, &o.loops, 1e-7) == geom::Loc::Inside);
+            let hidden =
+                occ.iter().any(|o| o.bx.contains(mid) && geom::locate(mid, &o.loops, 1e-7) == geom::Loc::Inside);
             if hidden {
                 any_hidden = true;
                 if let Some(last) = cur.last_mut() {

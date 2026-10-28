@@ -83,7 +83,8 @@ impl Section<'_> {
         let style = self.style;
         let mat = style.material(&p.material);
         let is_fill_mat = mat.is_some_and(|m| m.fill);
-        let fully_inside = bx.x0 >= crop.x0 - 1e-9 && bx.x1 <= crop.x1 + 1e-9 && bx.y0 >= crop.y0 - 1e-9 && bx.y1 <= crop.y1 + 1e-9;
+        let fully_inside =
+            bx.x0 >= crop.x0 - 1e-9 && bx.x1 <= crop.x1 + 1e-9 && bx.y0 >= crop.y0 - 1e-9 && bx.y1 <= crop.y1 + 1e-9;
         let cut_in = style.pen_width_mm(Pen::Cut) / 25.4;
         let mut perim = 0.0;
         if let Some(f0) = flat.first() {
@@ -93,7 +94,10 @@ impl Section<'_> {
         }
         let area0 = flat.first().map_or(0.0, |f0| geom::signed_area_v(f0).abs());
         let thick_model = if perim > 0.0 { 2.0 * area0 / perim } else { 1e9 };
-        let is_thin = p.outline == OutlineMode::Full && p.role.is_metal() && !is_fill_mat && thick_model / self.spec.scale < 2.0 * cut_in;
+        let is_thin = p.outline == OutlineMode::Full
+            && p.role.is_metal()
+            && !is_fill_mat
+            && thick_model / self.spec.scale < 2.0 * cut_in;
         let pen_out = if let Some(pp) = p.pen {
             self.pen_for(pp)
         } else if is_fill_mat {
@@ -135,7 +139,11 @@ impl Section<'_> {
             let groups = group_region(&region, region_exact.then_some(&p.loops[..]));
             for g in groups {
                 if is_fill_mat || is_thin {
-                    self.fills.push(FillItem { layer: self.layer_for(pen_out), src: src.clone(), loops: g.loops.clone() });
+                    self.fills.push(FillItem {
+                        layer: self.layer_for(pen_out),
+                        src: src.clone(),
+                        loops: g.loops.clone(),
+                    });
                 }
                 if want_hatch && !is_thin {
                     for hs in hatches {
@@ -164,7 +172,8 @@ impl Section<'_> {
                     let ang = member_angle_deg(&p.loops[0]);
                     let groups = group_region(&region, region_exact.then_some(&p.loops[..]));
                     for g in groups {
-                        let grain = hatch::Grain { amp: gs.amplitude, wavelength: gs.wavelength, ..hatch::Grain::default() };
+                        let grain =
+                            hatch::Grain { amp: gs.amplitude, wavelength: gs.wavelength, ..hatch::Grain::default() };
                         let res = hatch::generate_grain(&g.flat, pat, self.spec.scale * gs.scale, ang, grain);
                         if res.truncated {
                             self.truncated_hatch = true;
@@ -215,11 +224,25 @@ impl Section<'_> {
             if mark != CutMark::None {
                 for q in &p.quads {
                     if let Some(s) = pathclip::clip_seg(q[0], q[2], crop) {
-                        self.add_stroke(Target::Strokes, alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)], false, Pen::Beyond, &src, false);
+                        self.add_stroke(
+                            Target::Strokes,
+                            alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)],
+                            false,
+                            Pen::Beyond,
+                            &src,
+                            false,
+                        );
                     }
                     if mark == CutMark::X {
                         if let Some(s) = pathclip::clip_seg(q[1], q[3], crop) {
-                            self.add_stroke(Target::Strokes, alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)], false, Pen::Beyond, &src, false);
+                            self.add_stroke(
+                                Target::Strokes,
+                                alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)],
+                                false,
+                                Pen::Beyond,
+                                &src,
+                                false,
+                            );
                         }
                     }
                 }
@@ -227,7 +250,14 @@ impl Section<'_> {
         }
         for pl in &p.ply_lines {
             if let Some(s) = pathclip::clip_seg(pl[0], pl[1], crop) {
-                self.add_stroke(Target::Strokes, alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)], false, Pen::Beyond, &src, false);
+                self.add_stroke(
+                    Target::Strokes,
+                    alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)],
+                    false,
+                    Pen::Beyond,
+                    &src,
+                    false,
+                );
             }
         }
     }

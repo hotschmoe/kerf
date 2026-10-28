@@ -1,8 +1,8 @@
 //! Order-preserving JSON value tree. (The parser and writer land here too.)
 
-use alloc::string::String;
 use crate::math;
 use crate::num::to_int_clamped;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -385,7 +385,9 @@ fn dedupe(mut items: Vec<Member>) -> Vec<Member> {
         }
     }
     let mut idx: Vec<usize> = (0..items.len()).collect();
-    crate::sort::stable(&mut idx, |&x, &y| items[x].key.as_bytes() < items[y].key.as_bytes() || (items[x].key == items[y].key && x < y));
+    crate::sort::stable(&mut idx, |&x, &y| {
+        items[x].key.as_bytes() < items[y].key.as_bytes() || (items[x].key == items[y].key && x < y)
+    });
     let mut drop = alloc::vec![false; items.len()];
     let mut has_dup = false;
     let mut g = 0;

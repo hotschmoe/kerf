@@ -24,9 +24,8 @@ const VALUE_MASK: u16 = 0x7fff;
 
 const CODEGEN_ORDER: [usize; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
-const LEN_BASE: [u16; 29] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 255,
-];
+const LEN_BASE: [u16; 29] =
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 255];
 const LEN_EXTRA: [u8; 29] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
 const DIST_BASE: [u16; 30] = [
     0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144,
@@ -152,7 +151,13 @@ fn heap_remove_root(nodes: &[Node], heap: &mut [u16]) {
 
 /// Huffman code lengths and codes for `freqs` (`out_bits` zero-filled on entry). Returns the total
 /// encoded bits and the index of the last used symbol.
-fn huffman_build(freqs: &[u16], out_codes: &mut [u16], out_bits: &mut [u8], max_bits: u8, incomplete_allowed: bool) -> (u32, u16) {
+fn huffman_build(
+    freqs: &[u16],
+    out_codes: &mut [u16],
+    out_bits: &mut [u8],
+    max_bits: u8,
+    incomplete_allowed: bool,
+) -> (u32, u16) {
     let mut tree_nodes: Vec<Node> = (0..MAX_NODES).map(|_| Node { freq: 0, depth: 0 }).collect();
     let mut parent = vec![0u16; MAX_NODES];
     let mut nodes_end = MAX_LEAFS as u16;
@@ -411,7 +416,8 @@ impl Compressor {
             }
         }
         let prev = l.head[h];
-        l.chain[usize::from(l.chain_pos)] = (l.chain_pos.wrapping_sub(prev & VALUE_MASK) & VALUE_MASK) | (prev & NULL_BIT);
+        l.chain[usize::from(l.chain_pos)] =
+            (l.chain_pos.wrapping_sub(prev & VALUE_MASK) & VALUE_MASK) | (prev & NULL_BIT);
         l.head[h] = l.chain_pos;
     }
 
@@ -462,7 +468,8 @@ impl Compressor {
 
         let mut i = start;
         let mut last_unmatched = i;
-        let mut seq: u32 = if i >= hashable_len { 0 } else { (u32::from(self.buf[i]) << 8) | u32::from(self.buf[i + 1]) };
+        let mut seq: u32 =
+            if i >= hashable_len { 0 } else { (u32::from(self.buf[i]) << 8) | u32::from(self.buf[i + 1]) };
 
         'main: while i < matching_end {
             let mut match_start = i;
@@ -536,14 +543,20 @@ impl Compressor {
 
         let (lit_bitsize, last_lit) = huffman_build(&self.lit_freqs, &mut codes[..286], &mut bits[..286], 15, true);
         let lit_len = (usize::from(last_lit) + 1).max(257);
-        let (dist_bitsize, last_dist) =
-            huffman_build(&self.dist_freqs, &mut codes[lit_len..lit_len + 30], &mut bits[lit_len..lit_len + 30], 15, true);
+        let (dist_bitsize, last_dist) = huffman_build(
+            &self.dist_freqs,
+            &mut codes[lit_len..lit_len + 30],
+            &mut bits[lit_len..lit_len + 30],
+            15,
+            true,
+        );
         let dist_len = (usize::from(last_dist) + 1).max(1);
 
         let mut clen_values = Vec::new();
         let mut clen_extra = Vec::new();
         let mut clen_freqs = [0u16; 19];
-        let clen_extra_bitsize = build_clen(&bits[..lit_len + dist_len], &mut clen_values, &mut clen_extra, &mut clen_freqs);
+        let clen_extra_bitsize =
+            build_clen(&bits[..lit_len + dist_len], &mut clen_values, &mut clen_extra, &mut clen_freqs);
 
         let mut clen_codes = [0u16; 19];
         let mut clen_bits = [0u8; 19];
@@ -582,10 +595,19 @@ impl Compressor {
         let (fl_codes, fl_bits) = fixed_lit();
         let (fd_codes, fd_bits) = fixed_dist();
         let (lit_codes, lit_bits, dist_codes, dist_bits): (&[u16], &[u8], &[u16], &[u8]) = if dynamic {
-            let header = u64::from(eos) | (2 << 1) | (((lit_len - 257) as u64) << 3) | (((dist_len - 1) as u64) << 8) | ((u64::from(hclen)) << 13);
+            let header = u64::from(eos)
+                | (2 << 1)
+                | (((lit_len - 257) as u64) << 3)
+                | (((dist_len - 1) as u64) << 8)
+                | ((u64::from(hclen)) << 13);
             self.bits.write(header, 17);
             self.write_clen(hclen, &clen_values, &clen_extra, &clen_codes, &clen_bits);
-            (&codes[..lit_len], &bits[..lit_len], &codes[lit_len..lit_len + dist_len], &bits[lit_len..lit_len + dist_len])
+            (
+                &codes[..lit_len],
+                &bits[..lit_len],
+                &codes[lit_len..lit_len + dist_len],
+                &bits[lit_len..lit_len + dist_len],
+            )
         } else {
             self.bits.write(u64::from(eos) | (1 << 1), 3);
             (&fl_codes, &fl_bits, &fd_codes, &fd_bits)

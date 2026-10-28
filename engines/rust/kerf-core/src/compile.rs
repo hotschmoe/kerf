@@ -21,7 +21,9 @@ pub const DEFAULT_RUN: [f64; 2] = [-24.0, 24.0];
 pub fn valid_id(id: &str) -> bool {
     let b = id.as_bytes();
     match b.first() {
-        Some(c) if c.is_ascii_lowercase() => b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_'),
+        Some(c) if c.is_ascii_lowercase() => {
+            b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_')
+        }
         _ => false,
     }
 }
@@ -102,15 +104,40 @@ pub fn compile<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags) -> Scene<'a>
 fn read_settings(scene: &mut Scene, doc: &Value) -> bool {
     let diags = scene.diags;
     if !matches!(doc, Value::Object(_)) {
-        diags.add(Level::Error, "E_PARAM", None, Some(""), "the document must be a JSON object with \"kerf\", \"id\", \"components\" and \"views\"".into());
+        diags.add(
+            Level::Error,
+            "E_PARAM",
+            None,
+            Some(""),
+            "the document must be a JSON object with \"kerf\", \"id\", \"components\" and \"views\"".into(),
+        );
         return false;
     }
     if let Some(rv) = doc.get("run") {
-        let z = rv.arr().filter(|a| a.len() == 2).and_then(|a| Some((units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
+        let z = rv
+            .arr()
+            .filter(|a| a.len() == 2)
+            .and_then(|a| Some((units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
         match z {
             Some((z0, z1)) if z0 < z1 => scene.run = [z0, z1],
-            Some((z0, z1)) => diags.add(Level::Error, "E_PARAM", None, Some("run"), format!("'run' must be [z0, z1] with z0 < z1 (got [{}, {}])", model::num_text(z0), model::num_text(z1))),
-            None => diags.add(Level::Error, "E_PARAM", None, Some("run"), format!("'run' must be [z0, z1] in inches, each a length within +-{} inches, e.g. [-24, 24] (got {})", model::fmt_num(limits::MAX_COORD_IN), model::kind_or_text(rv))),
+            Some((z0, z1)) => diags.add(
+                Level::Error,
+                "E_PARAM",
+                None,
+                Some("run"),
+                format!("'run' must be [z0, z1] with z0 < z1 (got [{}, {}])", model::num_text(z0), model::num_text(z1)),
+            ),
+            None => diags.add(
+                Level::Error,
+                "E_PARAM",
+                None,
+                Some("run"),
+                format!(
+                    "'run' must be [z0, z1] in inches, each a length within +-{} inches, e.g. [-24, 24] (got {})",
+                    model::fmt_num(limits::MAX_COORD_IN),
+                    model::kind_or_text(rv)
+                ),
+            ),
         }
     }
     let views = doc.get("views").and_then(Value::arr);
@@ -171,28 +198,68 @@ fn read_components<'a>(scene: &mut Scene<'a>, items: &'a [Value]) {
     for (i, item) in items.iter().enumerate() {
         let path = format!("components/{i}");
         let Value::Object(members) = item else {
-            diags.add(Level::Error, "E_PARAM", None, Some(&path), format!("component {i} must be an object with \"id\" and \"type\""));
+            diags.add(
+                Level::Error,
+                "E_PARAM",
+                None,
+                Some(&path),
+                format!("component {i} must be an object with \"id\" and \"type\""),
+            );
             continue;
         };
         let Some(id) = item.get("id").and_then(Value::str) else {
-            diags.add(Level::Error, "E_PARAM", None, Some(&path), format!("component {i} needs a string \"id\" matching [a-z][a-z0-9_]*"));
+            diags.add(
+                Level::Error,
+                "E_PARAM",
+                None,
+                Some(&path),
+                format!("component {i} needs a string \"id\" matching [a-z][a-z0-9_]*"),
+            );
             continue;
         };
         if !valid_id(id) {
-            diags.add_fix(Level::Error, "E_PARAM", Some(id), Some(&path), format!("id \"{id}\" is invalid: ids must match [a-z][a-z0-9_]* (lowercase letters, digits, underscore)"), "rename it, e.g. \"sill_plate\"".into());
+            diags.add_fix(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&path),
+                format!(
+                    "id \"{id}\" is invalid: ids must match [a-z][a-z0-9_]* (lowercase letters, digits, underscore)"
+                ),
+                "rename it, e.g. \"sill_plate\"".into(),
+            );
             continue;
         }
         if comps.iter().any(|c| c.id == id) {
-            diags.add(Level::Error, "E_DUP_ID", Some(id), Some(&path), format!("duplicate component id '{id}': ids must be unique across components"));
+            diags.add(
+                Level::Error,
+                "E_DUP_ID",
+                Some(id),
+                Some(&path),
+                format!("duplicate component id '{id}': ids must be unique across components"),
+            );
             continue;
         }
         let Some(ty_name) = item.get("type").and_then(Value::str) else {
-            diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("components/{id}/type")), format!("component '{id}' needs a \"type\": one of {}", model::join_quoted(&type_names)));
+            diags.add(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("components/{id}/type")),
+                format!("component '{id}' needs a \"type\": one of {}", model::join_quoted(&type_names)),
+            );
             continue;
         };
         let Some(ty) = catalog::find(ty_name) else {
-            let hint = model::nearest(ty_name, &type_names).map_or(String::new(), |n| format!(" Did you mean \"{n}\"?"));
-            diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("components/{id}/type")), format!("unknown component type \"{ty_name}\". Types: {}.{hint}", model::join_quoted(&type_names)));
+            let hint =
+                model::nearest(ty_name, &type_names).map_or(String::new(), |n| format!(" Did you mean \"{n}\"?"));
+            diags.add(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("components/{id}/type")),
+                format!("unknown component type \"{ty_name}\". Types: {}.{hint}", model::join_quoted(&type_names)),
+            );
             continue;
         };
         for m in members {
@@ -204,7 +271,18 @@ fn read_components<'a>(scene: &mut Scene<'a>, items: &'a [Value]) {
                     Some(n) if model::edit_distance(&m.key, n) <= 2 => format!(" Did you mean '{n}'?"),
                     _ => String::new(),
                 };
-                diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("components/{id}/{}", m.key)), format!("unknown param '{}' for type {}.{hint} Allowed: {allowed} (`kerf schema {}`)", m.key, ty.name(), ty.name()));
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("components/{id}/{}", m.key)),
+                    format!(
+                        "unknown param '{}' for type {}.{hint} Allowed: {allowed} (`kerf schema {}`)",
+                        m.key,
+                        ty.name(),
+                        ty.name()
+                    ),
+                );
             }
         }
         let mut comp = Comp::new(comps.len() as u32, id.to_string(), ty, item);
@@ -300,7 +378,10 @@ struct AtSpec<'n> {
 fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &mut Params<'n>) -> Option<AtSpec<'n>> {
     let Some(av) = p.raw("at") else { return Some(AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0) }) };
     if !matches!(av, Value::Object(_)) {
-        p.fail("at", "param 'at' must be {\"anchor\": \"bottom_left\", \"to\": \"comp@anchor\", \"offset\": [dx, dy]}".into());
+        p.fail(
+            "at",
+            "param 'at' must be {\"anchor\": \"bottom_left\", \"to\": \"comp@anchor\", \"offset\": [dx, dy]}".into(),
+        );
         return None;
     }
     let mut spec = AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0) };
@@ -324,9 +405,14 @@ fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &
                 }
             },
             Value::Array(xy) => {
-                let pt = (xy.len() == 2).then(|| Some(V2::init(units::parse_length(&xy[0])?, units::parse_length(&xy[1])?))).flatten();
+                let pt = (xy.len() == 2)
+                    .then(|| Some(V2::init(units::parse_length(&xy[0])?, units::parse_length(&xy[1])?)))
+                    .flatten();
                 let Some(pt) = pt else {
-                    p.fail("at/to", "at.to must be a Ref, {\"ref\": ..., \"offset\": [dx, dy]} or a point [x, y]".into());
+                    p.fail(
+                        "at/to",
+                        "at.to must be a Ref, {\"ref\": ..., \"offset\": [dx, dy]} or a point [x, y]".into(),
+                    );
                     return None;
                 };
                 spec.to = pt;
@@ -352,7 +438,9 @@ fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &
         }
     }
     if let Some(oa) = av.get("offset").and_then(Value::arr) {
-        let off = (oa.len() == 2).then(|| Some(V2::init(units::parse_length(&oa[0])?, units::parse_length(&oa[1])?))).flatten();
+        let off = (oa.len() == 2)
+            .then(|| Some(V2::init(units::parse_length(&oa[0])?, units::parse_length(&oa[1])?)))
+            .flatten();
         let Some(off) = off else {
             p.fail("at/offset", "at.offset must be [dx, dy] in inches".into());
             return None;
@@ -416,7 +504,9 @@ fn resolve_z(scene: &Scene, p: &mut Params, built: &Built) -> Option<[f64; 2]> {
     if let Some(zv) = p.raw("z") {
         match zv {
             Value::Array(za) => {
-                let pair = (za.len() == 2).then(|| Some([units::parse_length(&za[0])?, units::parse_length(&za[1])?])).flatten();
+                let pair = (za.len() == 2)
+                    .then(|| Some([units::parse_length(&za[0])?, units::parse_length(&za[1])?]))
+                    .flatten();
                 let Some(pair) = pair else {
                     p.fail("z", "param 'z' must be [z0, z1] or a single z (center)".into());
                     return None;
@@ -424,7 +514,14 @@ fn resolve_z(scene: &Scene, p: &mut Params, built: &Built) -> Option<[f64; 2]> {
                 zbase = pair;
                 z_explicit = true;
                 if zbase[0] >= zbase[1] {
-                    p.fail("z", format!("z range must have z0 < z1 (got [{}, {}])", model::num_text(zbase[0]), model::num_text(zbase[1])));
+                    p.fail(
+                        "z",
+                        format!(
+                            "z range must have z0 < z1 (got [{}, {}])",
+                            model::num_text(zbase[0]),
+                            model::num_text(zbase[1])
+                        ),
+                    );
                     return None;
                 }
             }
@@ -481,7 +578,10 @@ fn resolve_array(p: &mut Params) -> Option<ArraySpec> {
         let count = p.field_int("array", av, "count", 1, 1, 500)?;
         spec.count = num::to_int_clamped::<usize>(count as f64, 1, 500);
         let Some(sp) = av.get("spacing").and_then(units::parse_length) else {
-            p.fail("array/spacing", "array.spacing must be a length (inches between instances; may be negative)".into());
+            p.fail(
+                "array/spacing",
+                "array.spacing must be a length (inches between instances; may be negative)".into(),
+            );
             return None;
         };
         spec.spacing = sp;
@@ -497,11 +597,24 @@ struct Instances {
 /// Transform and z range of every instance (array expansion times cover-placed bars). None when the instance budget is exceeded
 /// or the placement anchor is unknown (reported).
 #[allow(clippy::too_many_arguments)]
-fn instance_transforms(scene: &mut Scene, comp_id: &str, ty: &Entry, p: &mut Params, built: &Built, at: &AtSpec, angle: f64, zbase: [f64; 2], arr: &ArraySpec) -> Option<Instances> {
+fn instance_transforms(
+    scene: &mut Scene,
+    comp_id: &str,
+    ty: &Entry,
+    p: &mut Params,
+    built: &Built,
+    at: &AtSpec,
+    angle: f64,
+    zbase: [f64; 2],
+    arr: &ArraySpec,
+) -> Option<Instances> {
     let n_centers = built.centers.len().max(1);
     let n_inst = n_centers * arr.count;
     if scene.instances_total + n_inst > limits::MAX_INSTANCES_TOTAL {
-        let what = format!("instances after placing '{comp_id}' ({} already placed + {n_inst} from this component)", scene.instances_total);
+        let what = format!(
+            "instances after placing '{comp_id}' ({} already placed + {n_inst} from this component)",
+            scene.instances_total
+        );
         scene.diags.add_fix(
             Level::Error,
             "E_LIMIT",
@@ -516,14 +629,19 @@ fn instance_transforms(scene: &mut Scene, comp_id: &str, ty: &Entry, p: &mut Par
     let base_xf = if built.points_mode {
         Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle))
     } else {
-        let anc = model::box_anchor(built.box_, at.anchor).or_else(|| built.anchors.iter().find(|n| n.name == at.anchor).map(|n| n.p));
+        let anc = model::box_anchor(built.box_, at.anchor)
+            .or_else(|| built.anchors.iter().find(|n| n.name == at.anchor).map(|n| n.p));
         let Some(anc) = anc else {
             let mut names = model::BOX_ANCHOR_NAMES.join(", ");
             for n in &built.anchors {
                 names.push_str(", ");
                 names.push_str(&n.name);
             }
-            p.fail_code("E_ANCHOR_UNKNOWN", "at/anchor", format!("'{}' is not an anchor of '{comp_id}' ({}). Anchors: {names}", at.anchor, ty.name()));
+            p.fail_code(
+                "E_ANCHOR_UNKNOWN",
+                "at/anchor",
+                format!("'{}' is not an anchor of '{comp_id}' ({}). Anchors: {names}", at.anchor, ty.name()),
+            );
             return None;
         };
         Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle)).mul(Xf::translate(-anc.x, -anc.y))
@@ -551,7 +669,14 @@ fn instance_transforms(scene: &mut Scene, comp_id: &str, ty: &Entry, p: &mut Par
 }
 
 /// The prisms of every instance in world coordinates, in builder order per instance.
-fn world_prisms(style: &Style, comp_index: u32, built: &Built, inst: &Instances, emb_override: Option<bool>, dashed: bool) -> Vec<Prism> {
+fn world_prisms(
+    style: &Style,
+    comp_index: u32,
+    built: &Built,
+    inst: &Instances,
+    emb_override: Option<bool>,
+    dashed: bool,
+) -> Vec<Prism> {
     let centered = built.nat_z.is_some();
     let mut world = Vec::with_capacity(inst.xfs.len() * built.prisms.len());
     for (ii, (xf, z)) in inst.xfs.iter().zip(&inst.zs).enumerate() {
@@ -664,4 +789,3 @@ pub fn view_prisms<S: AsRef<str>>(scene: &Scene, omit: &[S]) -> Vec<Prism> {
 pub fn is_omitted<S: AsRef<str>>(omit: &[S], id: &str) -> bool {
     omit.iter().any(|o| o.as_ref() == id)
 }
-

@@ -53,8 +53,7 @@ pub fn parse_finite(text: &str) -> Option<f64> {
     text.parse::<f64>().ok().filter(|v| v.is_finite())
 }
 
-pub const LENGTH_FORMS: &str =
-    "a number of inches or a string such as 12, \"7 5/8\", \"7-5/8\\\"\", \"3'\", \"3'-4 1/2\\\"\", \"-1'-2\\\"\", \"15/32\"";
+pub const LENGTH_FORMS: &str = "a number of inches or a string such as 12, \"7 5/8\", \"7-5/8\\\"\", \"3'\", \"3'-4 1/2\\\"\", \"-1'-2\\\"\", \"15/32\"";
 
 struct Scan<'a> {
     s: &'a str,

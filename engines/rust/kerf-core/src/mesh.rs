@@ -82,7 +82,9 @@ pub fn ear_clip(pts: &[V2]) -> Vec<u32> {
         let cr = pb.sub(pa).cross(pc.sub(pb));
         let mut ear = if ccw { cr > 1e-12 } else { cr < -1e-12 };
         if ear {
-            ear = !idx[..remaining].iter().any(|&iv| iv != ia && iv != ib && iv != ic && point_in_tri(pts[iv as usize], pa, pb, pc));
+            ear = !idx[..remaining]
+                .iter()
+                .any(|&iv| iv != ia && iv != ib && iv != ic && point_in_tri(pts[iv as usize], pa, pb, pc));
         }
         if ear {
             out.extend_from_slice(&[ia, ib, ic]);

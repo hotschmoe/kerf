@@ -59,7 +59,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         prism.kind = Kind::Batt;
         prism.line_pts = batt_symbol(bx);
     }
-    Some(Built { prisms: vec![prism], box_: bx, points_mode, info: format!("insulation {}", ip.form.tag()), ..Built::default() })
+    Some(Built {
+        prisms: vec![prism],
+        box_: bx,
+        points_mode,
+        info: format!("insulation {}", ip.form.tag()),
+        ..Built::default()
+    })
 }
 
 fn batt_symbol(bx: geom::Box) -> Vec<Pt> {

@@ -112,21 +112,37 @@ fn lint_object(diags: &Diags, v: &Value, o: &Object, path: &str, id: Option<&str
         let kpath = format!("{path}/{}", m.key);
         let valid_list = || {
             (
-                format!("unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). Valid keys: {}", m.key, o.name, key_list(o)),
+                format!(
+                    "unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). Valid keys: {}",
+                    m.key,
+                    o.name,
+                    key_list(o)
+                ),
                 format!("remove \"{}\" or use one of the valid keys (`kerf schema {}`)", m.key, o.name),
             )
         };
         let (message, fix) = match suggest_key(o, &m.key) {
             Some(sg) if !sg.hint.is_empty() => (
-                format!("unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). {}", m.key, o.name, sg.hint),
+                format!(
+                    "unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). {}",
+                    m.key, o.name, sg.hint
+                ),
                 format!("remove \"{}\" or follow the hint above (`kerf schema {}`)", m.key, o.name),
             ),
             Some(sg) if schema::has_field(o, sg.to) => (
-                format!("unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). Did you mean \"{}\"?", m.key, o.name, sg.to),
+                format!(
+                    "unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). Did you mean \"{}\"?",
+                    m.key, o.name, sg.to
+                ),
                 format!("rename \"{}\" to \"{}\" (`kerf schema {}`)", m.key, sg.to, o.name),
             ),
             Some(_) => (
-                format!("unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). Valid keys: {}", m.key, o.name, key_list(o)),
+                format!(
+                    "unknown key \"{}\" in {path} ({}): it is ignored (kept in the file). Valid keys: {}",
+                    m.key,
+                    o.name,
+                    key_list(o)
+                ),
                 format!("remove \"{}\" (`kerf schema {}`)", m.key, o.name),
             ),
             None => valid_list(),
@@ -219,8 +235,9 @@ static SPELLED_OUT: [Abbr; 10] = [
 
 /// Abbreviations that legitimately end a note with a period (no trailing-period warning).
 const PERIOD_ABBRS: [&str; 40] = [
-    "MIN", "MAX", "EA", "CONT", "TYP", "DIA", "GA", "SIM", "BOTT", "CONC", "EMBED", "MFR", "FTG", "GRD", "HDR", "DBL", "STL", "GALV", "VERT", "HORIZ", "GYP", "BD", "REINF", "SHTG",
-    "CLR", "PLY", "NO", "STD", "SQ", "EQ", "NOM", "APPROX", "REQD", "SPEC", "DWG", "DWGS", "EXIST", "THK", "ALT", "UNO",
+    "MIN", "MAX", "EA", "CONT", "TYP", "DIA", "GA", "SIM", "BOTT", "CONC", "EMBED", "MFR", "FTG", "GRD", "HDR", "DBL",
+    "STL", "GALV", "VERT", "HORIZ", "GYP", "BD", "REINF", "SHTG", "CLR", "PLY", "NO", "STD", "SQ", "EQ", "NOM",
+    "APPROX", "REQD", "SPEC", "DWG", "DWGS", "EXIST", "THK", "ALT", "UNO",
 ];
 
 fn is_word_char(c: u8) -> bool {
@@ -403,17 +420,26 @@ pub fn check_note_text(text: &str) -> NoteStyle {
     let mut rewrite = false;
     if tb.len() > MAX_NOTE_LEN {
         rewrite = true;
-        add_issue(&mut issues, &format!("{} characters (notes stay under {MAX_NOTE_LEN}: one idea per note, split it)", tb.len()));
+        add_issue(
+            &mut issues,
+            &format!("{} characters (notes stay under {MAX_NOTE_LEN}: one idea per note, split it)", tb.len()),
+        );
     }
     let chat = commentary(tb);
     if !chat.is_empty() {
         rewrite = true;
-        add_issue(&mut issues, &format!("commentary ({chat}): a note names the thing and how it is installed, it does not talk"));
+        add_issue(
+            &mut issues,
+            &format!("commentary ({chat}): a note names the thing and how it is installed, it does not talk"),
+        );
     }
     let end = dangling_end(tb);
     if !end.is_empty() {
         rewrite = true;
-        add_issue(&mut issues, &format!("ends on \"{end}\" with nothing after it (finish the thought or drop the connector)"));
+        add_issue(
+            &mut issues,
+            &format!("ends on \"{end}\" with nothing after it (finish the thought or drop the connector)"),
+        );
     }
     if issues.is_empty() {
         return NoteStyle { issues, fixed: text.to_string(), rewrite: false };
@@ -472,7 +498,10 @@ fn note_style(doc: &Value, diags: &Diags) {
                 let fix = if st.rewrite && st.fixed == text {
                     "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary (split a long note in two)".to_string()
                 } else if st.rewrite {
-                    format!("rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary; the mechanical part is \"{}\"", st.fixed)
+                    format!(
+                        "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary; the mechanical part is \"{}\"",
+                        st.fixed
+                    )
                 } else {
                     format!("set text to \"{}\"", st.fixed)
                 };
@@ -514,7 +543,14 @@ fn requested_missing(doc: &Value, diags: &Diags) {
     let shape_fix = "e.g. \"meta\": {\"requested\": [\"cmu wall\", \"bond beam\", \"H2.5A ties\"]} (the designer's asks, one short phrase each)";
     let Some(items) = rv.arr() else {
         if !rv.is_null() {
-            diags.add_fix(Level::Error, "E_PARAM", None, Some("meta/requested"), format!("'meta.requested' must be an array of strings, got a {}", rv.kind_name()), shape_fix.to_string());
+            diags.add_fix(
+                Level::Error,
+                "E_PARAM",
+                None,
+                Some("meta/requested"),
+                format!("'meta.requested' must be an array of strings, got a {}", rv.kind_name()),
+                shape_fix.to_string(),
+            );
         }
         return;
     };
@@ -523,7 +559,14 @@ fn requested_missing(doc: &Value, diags: &Diags) {
         let s = it.str().unwrap_or("").trim_matches([' ', '\t', '\r', '\n']);
         if s.is_empty() {
             bad = true;
-            diags.add_fix(Level::Error, "E_PARAM", None, Some(&format!("meta/requested/{i}")), format!("'meta.requested' entry {i} must be a non-empty string"), shape_fix.to_string());
+            diags.add_fix(
+                Level::Error,
+                "E_PARAM",
+                None,
+                Some(&format!("meta/requested/{i}")),
+                format!("'meta.requested' entry {i} must be a non-empty string"),
+                shape_fix.to_string(),
+            );
         }
     }
     if bad {
@@ -600,7 +643,10 @@ fn dim_zero(scene: &Scene, doc: &Value, diags: &Diags) {
                     "W_DIM_ZERO",
                     Some(aid),
                     Some(&path),
-                    format!("dim '{aid}' in view {vid} measures {}: 'from' and 'to' are the same point", units::ftin(m)),
+                    format!(
+                        "dim '{aid}' in view {vid} measures {}: 'from' and 'to' are the same point",
+                        units::ftin(m)
+                    ),
                     "point `from` and `to` at two different anchors, e.g. two corners of the member".to_string(),
                 );
             } else {
@@ -629,7 +675,11 @@ fn undirected(an: &Value) -> bool {
 
 /// True when some dim has no `dir` (the document needs `with_dim_dirs` before it is drawn).
 pub fn needs_dim_dirs(doc: &Value) -> bool {
-    matches!(doc, Value::Object(_)) && arr_of(doc, "views").unwrap_or(&[]).iter().any(|v| arr_of(v, "annotations").unwrap_or(&[]).iter().any(undirected))
+    matches!(doc, Value::Object(_))
+        && arr_of(doc, "views")
+            .unwrap_or(&[])
+            .iter()
+            .any(|v| arr_of(v, "annotations").unwrap_or(&[]).iter().any(undirected))
 }
 
 fn set_member(obj: &mut Value, key: &str, val: Value) {

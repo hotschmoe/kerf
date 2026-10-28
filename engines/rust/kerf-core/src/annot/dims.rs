@@ -1,7 +1,7 @@
 //! Dimensions (SPEC 6.5): the dimension line, extension lines, terminators and text of one dimension, and the stacking of dimensions that would collide.
 
-use super::text::{ascii_fold, path_item, text_item, text_poly, upper_if, DEG_PER_RAD, RAD_PER_DEG};
-use super::{DimDir, Env, DIM_VARIANTS};
+use super::text::{DEG_PER_RAD, RAD_PER_DEG, ascii_fold, path_item, text_item, text_poly, upper_if};
+use super::{DIM_VARIANTS, DimDir, Env};
 use crate::drawing::{Align, Item, VAlign};
 use crate::geom::{self, Box, V2};
 use crate::math;
@@ -248,7 +248,11 @@ pub fn base_hits(segs: &[[V2; 2]], poly: &[V2; 4]) -> usize {
     }
     segs.iter()
         .filter(|sg| {
-            if sg[0].x.max(sg[1].x) < bb.x0 || sg[0].x.min(sg[1].x) > bb.x1 || sg[0].y.max(sg[1].y) < bb.y0 || sg[0].y.min(sg[1].y) > bb.y1 {
+            if sg[0].x.max(sg[1].x) < bb.x0
+                || sg[0].x.min(sg[1].x) > bb.x1
+                || sg[0].y.max(sg[1].y) < bb.y0
+                || sg[0].y.min(sg[1].y) > bb.y1
+            {
                 return false;
             }
             poly_hits_seg(poly, sg[0], sg[1])
@@ -266,7 +270,15 @@ struct DimPlaced {
 /// one, or whose text would overprint another dimension's text or lines, moves out in steps of 0.25 paper
 /// inch (outside text first tries the other places before the dimension line moves). `pushes` is the extra
 /// outward distance chosen by the layout repair. Returns the effective offsets and fills `items`.
-pub fn stack_dims(env: &mut Env, specs: &[DimSpec], pushes: &[f64], base_segs: &[[V2; 2]], label_polys: &[[V2; 4]], items: &mut [Vec<Item>], eff: &mut [f64]) {
+pub fn stack_dims(
+    env: &mut Env,
+    specs: &[DimSpec],
+    pushes: &[f64],
+    base_segs: &[[V2; 2]],
+    label_polys: &[[V2; 4]],
+    items: &mut [Vec<Item>],
+    eff: &mut [f64],
+) {
     let step = 0.25 * env.s;
     let mut order: Vec<usize> = (0..specs.len()).collect();
     sort::stable(&mut order, |&x, &y| {

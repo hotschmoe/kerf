@@ -2,9 +2,9 @@
 
 use crate::canon;
 use crate::catalog;
-use crate::dxf;
 use crate::drawing;
 use crate::drawview;
+use crate::dxf;
 use crate::font::{self, Font};
 use crate::json::{self, Value};
 use crate::limits;
@@ -50,20 +50,37 @@ fn done(bytes: Vec<u8>) -> Output {
     Output { ok: true, bytes }
 }
 
-pub const FN_NAMES: [&str; 11] = ["version", "help", "catalog", "schema", "fmt", "check", "apply", "inspect", "drawing", "mesh", "export"];
+pub const FN_NAMES: [&str; 11] =
+    ["version", "help", "catalog", "schema", "fmt", "check", "apply", "inspect", "drawing", "mesh", "export"];
 
 const HELP_ROWS: [[&str; 3]; 11] = [
     ["version", "{}", "{engine, version, spec}"],
     ["help", "{}", "this list"],
     ["catalog", "{format?: \"json\"|\"markdown\"}", "the component catalog (json default)"],
-    ["schema", "{topic?: \"view\"|\"note\"|\"dim\"|\"label\"|\"cite\"|\"ops\"|\"doc\"|<component type>}", "{topic, text}: field reference text; no topic lists the topics"],
+    [
+        "schema",
+        "{topic?: \"view\"|\"note\"|\"dim\"|\"label\"|\"cite\"|\"ops\"|\"doc\"|<component type>}",
+        "{topic, text}: field reference text; no topic lists the topics",
+    ],
     ["fmt", "{doc}", "{doc, text}: canonical key order and indentation"],
     ["check", "{doc, style?}", "{diagnostics: [{level, code, id?, path?, message, fix?}], summary}"],
-    ["apply", "{doc, ops: [op...], style?, actor?: \"llm\"|\"designer\"}", "{ok, doc, diagnostics, summary, changed}: ok=false leaves doc unchanged (see diagnostics); `kerf schema ops` for op shapes"],
-    ["inspect", "{doc, style?, query: {q: \"summary\"|\"component\"|\"anchors\"|\"at\"|\"catalog\"|\"doc\", id?, view?, point?: [x,y], type?}}", "query-specific JSON (anchors with coordinates, parts, what is visible at a point)"],
+    [
+        "apply",
+        "{doc, ops: [op...], style?, actor?: \"llm\"|\"designer\"}",
+        "{ok, doc, diagnostics, summary, changed}: ok=false leaves doc unchanged (see diagnostics); `kerf schema ops` for op shapes",
+    ],
+    [
+        "inspect",
+        "{doc, style?, query: {q: \"summary\"|\"component\"|\"anchors\"|\"at\"|\"catalog\"|\"doc\", id?, view?, point?: [x,y], type?}}",
+        "query-specific JSON (anchors with coordinates, parts, what is visible at a point)",
+    ],
     ["drawing", "{doc, view, style?}", "Drawing IR JSON (SPEC 10) of one view"],
     ["mesh", "{doc, style?, include_fills?: bool}", "mesh JSON for 3D viewers"],
-    ["export", "{doc, view, format: \"svg\"|\"png\"|\"pdf\"|\"dxf\", sheet?: bool, px?: number, style?}", "the file bytes (svg/dxf text, png/pdf binary)"],
+    [
+        "export",
+        "{doc, view, format: \"svg\"|\"png\"|\"pdf\"|\"dxf\", sheet?: bool, px?: number, style?}",
+        "the file bytes (svg/dxf text, png/pdf binary)",
+    ],
 ];
 
 fn help_fn() -> Output {
@@ -90,7 +107,10 @@ fn schema_fn(inp: &Value) -> Output {
                 let mut names: Vec<&str> = schema_fields::OBJECTS.iter().map(|o| o.name).collect();
                 names.extend(catalog::ENTRIES.iter().map(|e| e.name()));
                 let hint = model::nearest(tp, &names).map(|n| format!(" Did you mean \"{n}\"?")).unwrap_or_default();
-                return fail("E_TOPIC", &format!("unknown schema topic \"{tp}\".{hint} Topics: {}", schema::TOPICS_HINT));
+                return fail(
+                    "E_TOPIC",
+                    &format!("unknown schema topic \"{tp}\".{hint} Topics: {}", schema::TOPICS_HINT),
+                );
             }
         },
         None => schema::index(),
@@ -112,7 +132,12 @@ pub fn dispatch(name: &[u8], input: &[u8]) -> Output {
     if input.len() > limits::MAX_JSON_BYTES {
         return fail(
             "E_LIMIT",
-            &limits::message("input too large (bytes)", input.len(), limits::MAX_JSON_BYTES, "Split the detail into several documents (one sheet per document) or drop unused components and views."),
+            &limits::message(
+                "input too large (bytes)",
+                input.len(),
+                limits::MAX_JSON_BYTES,
+                "Split the detail into several documents (one sheet per document) or drop unused components and views.",
+            ),
         );
     }
     let trimmed = input.trim_ascii();
@@ -121,14 +146,21 @@ pub fn dispatch(name: &[u8], input: &[u8]) -> Output {
     } else {
         match json::parse(input) {
             Ok(v) => v,
-            Err(e) => return fail("E_JSON", &format!("input is not valid JSON: {} (line {}, column {})", e.msg, e.line, e.col)),
+            Err(e) => {
+                return fail(
+                    "E_JSON",
+                    &format!("input is not valid JSON: {} (line {}, column {})", e.msg, e.line, e.col),
+                );
+            }
         }
     };
     if !matches!(inp, Value::Object(_)) {
         return fail("E_INPUT", "input must be a JSON object");
     }
     match name {
-        b"version" => done(format!("{{\"engine\":\"{ENGINE_NAME}\",\"version\":\"{VERSION}\",\"spec\":\"0.1\"}}\n").into_bytes()),
+        b"version" => {
+            done(format!("{{\"engine\":\"{ENGINE_NAME}\",\"version\":\"{VERSION}\",\"spec\":\"0.1\"}}\n").into_bytes())
+        }
         b"help" => help_fn(),
         b"catalog" => catalog_fn(&inp),
         b"schema" => schema_fn(&inp),
@@ -141,7 +173,11 @@ pub fn dispatch(name: &[u8], input: &[u8]) -> Output {
         b"export" => export_fn(&inp),
         _ => fail(
             "E_FN",
-            &format!("unknown function '{}'. Functions: {} (`kerf call help` lists their input shapes)", String::from_utf8_lossy(name), FN_NAMES.join(", ")),
+            &format!(
+                "unknown function '{}'. Functions: {} (`kerf call help` lists their input shapes)",
+                String::from_utf8_lossy(name),
+                FN_NAMES.join(", ")
+            ),
         ),
     }
 }
@@ -164,7 +200,9 @@ fn get_doc(inp: &Value) -> Result<&Value, Output> {
     match inp.get("doc") {
         None => Err(fail("E_INPUT", "missing \"doc\": the Kerf document object")),
         Some(d @ Value::Object(_)) => Ok(d),
-        Some(d) => Err(fail("E_INPUT", &format!("\"doc\" must be a JSON object (the document), not {}", d.kind_name()))),
+        Some(d) => {
+            Err(fail("E_INPUT", &format!("\"doc\" must be a JSON object (the document), not {}", d.kind_name())))
+        }
     }
 }
 
@@ -247,7 +285,15 @@ fn export_fn(inp: &Value) -> Output {
             let mut opt = raster::Options::default();
             if let Some(pv) = inp.get("px") {
                 let Some(n) = pv.num() else {
-                    return fail("E_INPUT", &format!("export \"px\" must be a number (output width in pixels, {}-{}, default {})", raster::MIN_PX, raster::MAX_PX, raster::DEFAULT_PX));
+                    return fail(
+                        "E_INPUT",
+                        &format!(
+                            "export \"px\" must be a number (output width in pixels, {}-{}, default {})",
+                            raster::MIN_PX,
+                            raster::MAX_PX,
+                            raster::DEFAULT_PX
+                        ),
+                    );
                 };
                 let n = if n.is_nan() { 1600.0 } else { n };
                 opt.px = crate::math::round(n).clamp(raster::MIN_PX as f64, raster::MAX_PX as f64) as u32;

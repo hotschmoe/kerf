@@ -240,8 +240,14 @@ pub fn candidates_for(shapes: &[Shape], inset: Box, primary: V2, h: f64) -> Vec<
         }
     }
     let dirs = [
-        V2::init(-1.0, 0.0), V2::init(1.0, 0.0), V2::init(0.0, 1.0), V2::init(0.0, -1.0),
-        V2::init(-1.0, 1.0), V2::init(1.0, 1.0), V2::init(-1.0, -1.0), V2::init(1.0, -1.0),
+        V2::init(-1.0, 0.0),
+        V2::init(1.0, 0.0),
+        V2::init(0.0, 1.0),
+        V2::init(0.0, -1.0),
+        V2::init(-1.0, 1.0),
+        V2::init(1.0, 1.0),
+        V2::init(-1.0, -1.0),
+        V2::init(1.0, -1.0),
     ];
     for dv in dirs {
         let mut best: Option<V2> = None;

@@ -46,7 +46,8 @@ fn skeleton_of(sec: &mut Section<'_>, i: usize, traits: &Traits, panel_thickness
         if p.centerline.len() < 2 {
             return None;
         }
-        let drawn = if p.kind == Kind::Line && p.line_pts.len() >= 2 { sec.line_points(p) } else { p.centerline.clone() };
+        let drawn =
+            if p.kind == Kind::Line && p.line_pts.len() >= 2 { sec.line_points(p) } else { p.centerline.clone() };
         let v: Vec<V2> = drawn.iter().map(|q| q.v()).collect();
         let gap = if p.kind == Kind::Line { nearest_on_poly(&v, p.centerline[0].v()).dist } else { 0.0 };
         return Some(Skeleton {
@@ -61,7 +62,14 @@ fn skeleton_of(sec: &mut Section<'_>, i: usize, traits: &Traits, panel_thickness
     if traits.rigid_sheet && panel_thickness < THIN_PANEL {
         let flat = sec.flat_of(i);
         let mid = quad_midline(flat.first()?)?;
-        return Some(Skeleton { pts: mid, half_width: 0.5 * panel_thickness, gap: 0.0, prism: i, stroke: false, exposed: !p.embedded });
+        return Some(Skeleton {
+            pts: mid,
+            half_width: 0.5 * panel_thickness,
+            gap: 0.0,
+            prism: i,
+            stroke: false,
+            exposed: !p.embedded,
+        });
     }
     None
 }
@@ -118,7 +126,9 @@ pub fn candidates(
 
     for sk in &skels {
         let near = nearest_on_poly(&sk.pts, prefer);
-        if near.dist > sk.half_width * 1.5 + 0.02 || clearance(&edges, prefer, near.dir, sk.half_width + sk.gap) < text_h {
+        if near.dist > sk.half_width * 1.5 + 0.02
+            || clearance(&edges, prefer, near.dir, sk.half_width + sk.gap) < text_h
+        {
             continue;
         }
         if sk.exposed && inside_body(&bodies, prefer, sk.half_width + sk.gap) {
@@ -248,5 +258,7 @@ fn shown(region: &[Vec<V2>], p: V2, tol: f64) -> bool {
     if geom::locate_even_odd(p, region, 1e-9) != geom::Loc::Outside {
         return true;
     }
-    region.iter().any(|lp| lp.iter().enumerate().any(|(k, &q)| geom::dist_point_seg(p, q, lp[(k + 1) % lp.len()]) <= tol))
+    region
+        .iter()
+        .any(|lp| lp.iter().enumerate().any(|(k, &q)| geom::dist_point_seg(p, q, lp[(k + 1) % lp.len()]) <= tol))
 }

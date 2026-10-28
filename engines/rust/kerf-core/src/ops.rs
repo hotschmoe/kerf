@@ -199,7 +199,12 @@ fn apply_one(c: &mut Ctx, raw: &Value) {
         return c.fail("E_OP", "", "op needs \"op\": add | update | remove | set".to_string());
     };
     let Some(path) = raw.get("path").and_then(Value::str) else {
-        return c.fail("E_OP", "", "op needs a string \"path\" such as \"components\", \"components/<id>\", \"views/<id>/annotations\"".to_string());
+        return c.fail(
+            "E_OP",
+            "",
+            "op needs a string \"path\" such as \"components\", \"components/<id>\", \"views/<id>/annotations\""
+                .to_string(),
+        );
     };
     let value = raw.get("value");
     let kind = match kind_s {
@@ -231,14 +236,22 @@ fn apply_one(c: &mut Ctx, raw: &Value) {
 
 fn sanitize_annotations(c: &Ctx, view: &Value) -> Value {
     match view.get("annotations").and_then(Value::arr) {
-        Some(aa) => with_key(view.clone(), "annotations", Value::Array(aa.iter().map(|a| sanitize_cites(c, a, false)).collect())),
+        Some(aa) => with_key(
+            view.clone(),
+            "annotations",
+            Value::Array(aa.iter().map(|a| sanitize_cites(c, a, false)).collect()),
+        ),
         None => view.clone(),
     }
 }
 
 fn apply_doc(c: &mut Ctx, op: &Op) {
     if op.kind != Kind::Set || op.seg.len() != 1 {
-        return c.fail("E_OP", op.path, "only {\"op\": \"set\", \"path\": \"doc\", \"value\": {whole document}} may target \"doc\"".to_string());
+        return c.fail(
+            "E_OP",
+            op.path,
+            "only {\"op\": \"set\", \"path\": \"doc\", \"value\": {whole document}} may target \"doc\"".to_string(),
+        );
     }
     let Some(v) = op.value.filter(|v| matches!(v, Value::Object(_))) else {
         return c.fail("E_OP", op.path, "set doc needs the whole document object as value".to_string());
@@ -263,7 +276,11 @@ fn apply_doc(c: &mut Ctx, op: &Op) {
 
 fn apply_meta(c: &mut Ctx, op: &Op) {
     if op.seg.len() != 1 || matches!(op.kind, Kind::Add | Kind::Remove) {
-        return c.fail("E_OP", op.path, "meta supports only {\"op\": \"update\", \"path\": \"meta\", \"value\": {merge patch}}".to_string());
+        return c.fail(
+            "E_OP",
+            op.path,
+            "meta supports only {\"op\": \"update\", \"path\": \"meta\", \"value\": {merge patch}}".to_string(),
+        );
     }
     let Some(value) = op.value else { return };
     let nv = if op.kind == Kind::Set {
@@ -285,10 +302,18 @@ fn apply_components(c: &mut Ctx, op: &Op) {
     let mut list = c.list("components");
     if op.seg.len() == 1 && op.kind == Kind::Add {
         let Some(id) = id_of(value).map(str::to_string) else {
-            return c.fail("E_PARAM", op.path, "a component needs a string \"id\" matching [a-z][a-z0-9_]*".to_string());
+            return c.fail(
+                "E_PARAM",
+                op.path,
+                "a component needs a string \"id\" matching [a-z][a-z0-9_]*".to_string(),
+            );
         };
         if index_of_id(&list, &id).is_some() {
-            return c.fail("E_DUP_ID", op.path, format!("component id '{id}' already exists; ids must be unique (use op update to change it)"));
+            return c.fail(
+                "E_DUP_ID",
+                op.path,
+                format!("component id '{id}' already exists; ids must be unique (use op update to change it)"),
+            );
         }
         let mut at = list.len();
         if let Some(bid) = op.raw.get("before").and_then(Value::str) {
@@ -371,13 +396,18 @@ fn apply_views(c: &mut Ctx, op: &Op) {
             }
         }
         if op.seg.len() >= 3 && op.seg[2] == "annotations" {
-            let mut anns: Vec<Value> = list[vi].get("annotations").and_then(Value::arr).map(<[Value]>::to_vec).unwrap_or_default();
+            let mut anns: Vec<Value> =
+                list[vi].get("annotations").and_then(Value::arr).map(<[Value]>::to_vec).unwrap_or_default();
             if op.seg.len() == 3 && op.kind == Kind::Add {
                 let Some(aid) = id_of(value).map(str::to_string) else {
                     return c.fail("E_PARAM", op.path, "an annotation needs a string \"id\"".to_string());
                 };
                 if index_of_id(&anns, &aid).is_some() {
-                    return c.fail("E_DUP_ID", op.path, format!("annotation id '{aid}' already exists in view '{vid}'"));
+                    return c.fail(
+                        "E_DUP_ID",
+                        op.path,
+                        format!("annotation id '{aid}' already exists in view '{vid}'"),
+                    );
                 }
                 anns.push(sanitize_cites(c, value, false));
                 c.touch(&aid);
@@ -396,7 +426,9 @@ fn apply_views(c: &mut Ctx, op: &Op) {
                     Kind::Remove => {
                         anns.remove(ai);
                     }
-                    _ => return c.fail("E_OP", op.path, format!("unsupported op {} on annotation path", op.kind.name())),
+                    _ => {
+                        return c.fail("E_OP", op.path, format!("unsupported op {} on annotation path", op.kind.name()));
+                    }
                 }
                 c.touch(aid);
             } else {
@@ -410,7 +442,8 @@ fn apply_views(c: &mut Ctx, op: &Op) {
     c.fail("E_OP", op.path, format!("unsupported op {} on path {}; view paths: \"views\" (add), \"views/<id>\" (update, remove), \"views/<id>/annotations[/<id>]\"", op.kind.name(), op.path));
 }
 
-const OPS_SHAPES: &str = "an array of op objects [{\"op\":...}, ...], a single op object {\"op\":...}, or {\"ops\":[...], \"why\":\"...\"}";
+const OPS_SHAPES: &str =
+    "an array of op objects [{\"op\":...}, ...], a single op object {\"op\":...}, or {\"ops\":[...], \"why\":\"...\"}";
 
 pub struct Normalized {
     pub ops: Vec<Value>,
@@ -450,8 +483,19 @@ pub fn normalize(input: &Value, diags: &Diags) -> Option<Normalized> {
         }
         _ => {}
     }
-    let fix = if matches!(input, Value::Object(_)) { "wrap a single op in [ ], or put the ops under an \"ops\" key" } else { "pass the op list as a JSON array" };
-    diags.add_fix(Level::Error, "E_PARAM", None, Some("ops"), format!("the ops input must be {OPS_SHAPES}; got {}", describe_input(input)), fix.to_string());
+    let fix = if matches!(input, Value::Object(_)) {
+        "wrap a single op in [ ], or put the ops under an \"ops\" key"
+    } else {
+        "pass the op list as a JSON array"
+    };
+    diags.add_fix(
+        Level::Error,
+        "E_PARAM",
+        None,
+        Some("ops"),
+        format!("the ops input must be {OPS_SHAPES}; got {}", describe_input(input)),
+        fix.to_string(),
+    );
     None
 }
 

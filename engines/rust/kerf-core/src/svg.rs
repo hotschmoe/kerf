@@ -87,7 +87,9 @@ fn path_data(out: &mut Vec<u8>, m: Map, pts: &[Pt], closed: bool, start_move: bo
 fn stroke_attrs(out: &mut Vec<u8>, st: &Style, pen: Pen) {
     let p = st.pen(pen);
     let w_mm = p.map_or(0.25, |x| x.width_mm);
-    out.extend_from_slice(b" fill=\"none\" stroke=\"#000\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"");
+    out.extend_from_slice(
+        b" fill=\"none\" stroke=\"#000\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"",
+    );
     num(out, w_mm / 25.4 * PX_PER_IN);
     out.push(b'"');
     if let Some(d) = p.and_then(|x| x.dash_mm.as_deref()) {

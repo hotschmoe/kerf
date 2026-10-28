@@ -261,7 +261,12 @@ impl<'a> Scene<'a> {
                 "E_REF_UNKNOWN",
                 Some(from_id),
                 Some(path),
-                format!("reference '{ref_}': component '{}' has {} instance(s); instance #{} does not exist", r.comp, c.xfs.len(), r.inst),
+                format!(
+                    "reference '{ref_}': component '{}' has {} instance(s); instance #{} does not exist",
+                    r.comp,
+                    c.xfs.len(),
+                    r.inst
+                ),
             );
             return None;
         }
@@ -332,7 +337,8 @@ pub fn point_from_value(scene: &Scene<'_>, v: &Value, from_id: &str, path: &str)
     None
 }
 
-const BOX_NAMES_TEXT: &str = "top_left, top_center, top_right, middle_left, center, middle_right, bottom_left, bottom_center, bottom_right";
+const BOX_NAMES_TEXT: &str =
+    "top_left, top_center, top_right, middle_left, center, middle_right, bottom_left, bottom_center, bottom_right";
 
 pub fn join_ids<S: AsRef<str>>(ids: &[S]) -> String {
     let mut out = String::new();

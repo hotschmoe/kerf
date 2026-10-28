@@ -1,16 +1,16 @@
 //! rebar (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, world_box};
-use crate::model::fmt_num;
-use crate::units::ftin;
 use crate::geom::{self, Box, V2};
 use crate::json::Value;
+use crate::model::fmt_num;
 use crate::model::{self, Built, Level, Prism};
 use crate::num;
 use crate::params::{param_enum, params};
 use crate::pathgeom;
 use crate::scene::{Scene, State, join_ids};
 use crate::units;
+use crate::units::ftin;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
@@ -55,7 +55,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let r = d / 2.0;
     if rp.mode == Mode::AlongZ {
         let lp = model::circle_loop(0.0, 0.0, r);
-        let prism = Prism { material: "rebar".to_string(), loops: model::one_loop(lp), embedded: true, sweep_r: r, ..Prism::default() };
+        let prism = Prism {
+            material: "rebar".to_string(),
+            loops: model::one_loop(lp),
+            embedded: true,
+            sweep_r: r,
+            ..Prism::default()
+        };
         let mut built = Built {
             prisms: vec![prism],
             box_: Box { x0: -r, y0: -r, x1: r, y1: r },
@@ -85,9 +91,25 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let center = pathgeom::fillet(&vs, br + r);
     let rib = pathgeom::ribbon(&center, r, r);
     let box_ = geom::loop_box(&rib);
-    let note = if rp.spacing_note.is_empty() { alloc::string::String::new() } else { format!(" ({})", rp.spacing_note) };
-    let prism = Prism { material: "rebar".to_string(), loops: model::one_loop(rib), embedded: true, centerline: center, sweep_r: r, ..Prism::default() };
-    Some(Built { prisms: vec![prism], box_, nat_z: Some(d), points_mode: true, bar_d: d, info: format!("rebar {} path L={}{}", size, ftin(path_len(&vs)), note), ..Built::default() })
+    let note =
+        if rp.spacing_note.is_empty() { alloc::string::String::new() } else { format!(" ({})", rp.spacing_note) };
+    let prism = Prism {
+        material: "rebar".to_string(),
+        loops: model::one_loop(rib),
+        embedded: true,
+        centerline: center,
+        sweep_r: r,
+        ..Prism::default()
+    };
+    Some(Built {
+        prisms: vec![prism],
+        box_,
+        nat_z: Some(d),
+        points_mode: true,
+        bar_d: d,
+        info: format!("rebar {} path L={}{}", size, ftin(path_len(&vs)), note),
+        ..Built::default()
+    })
 }
 
 fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
@@ -132,9 +154,22 @@ fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
         let ids = scene.comp_ids();
         let path = format!("{}/{}/place/in", ctx.p.base, ctx.p.id);
         if let Some(nn) = model::nearest(host_id, &ids) {
-            scene.diags.add_fix(Level::Error, "E_REF_UNKNOWN", Some(ctx.p.id), Some(&path), format!("place.in: no component '{host_id}'; did you mean '{nn}'?"), nn.to_string());
+            scene.diags.add_fix(
+                Level::Error,
+                "E_REF_UNKNOWN",
+                Some(ctx.p.id),
+                Some(&path),
+                format!("place.in: no component '{host_id}'; did you mean '{nn}'?"),
+                nn.to_string(),
+            );
         } else {
-            scene.diags.add(Level::Error, "E_REF_UNKNOWN", Some(ctx.p.id), Some(&path), format!("place.in: no component '{host_id}'. Known ids: {}", join_ids(&ids)));
+            scene.diags.add(
+                Level::Error,
+                "E_REF_UNKNOWN",
+                Some(ctx.p.id),
+                Some(&path),
+                format!("place.in: no component '{host_id}'. Known ids: {}", join_ids(&ids)),
+            );
         }
         ctx.p.ok = false;
         return None;
@@ -153,7 +188,10 @@ fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
                 "E_REF_UNKNOWN",
                 Some(ctx.p.id),
                 Some(&path),
-                format!("place.in: component '{host_id}' has no part '{pt}'. Parts: {}", if parts.is_empty() { "(none)".to_string() } else { join_ids(&parts) }),
+                format!(
+                    "place.in: component '{host_id}' has no part '{pt}'. Parts: {}",
+                    if parts.is_empty() { "(none)".to_string() } else { join_ids(&parts) }
+                ),
             );
             ctx.p.ok = false;
             return None;
@@ -221,7 +259,15 @@ fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
             let ya = bx.y0 + side_cover + r;
             let yb = bx.y1 - side_cover - r;
             if yb < ya - 1e-9 && count > 1 {
-                ctx.p.fail("place", format!("zone '{}' is {} tall: bars at side_cover {} do not fit; reduce side_cover or count", in_s, fmt_num(bx.height()), fmt_num(side_cover)));
+                ctx.p.fail(
+                    "place",
+                    format!(
+                        "zone '{}' is {} tall: bars at side_cover {} do not fit; reduce side_cover or count",
+                        in_s,
+                        fmt_num(bx.height()),
+                        fmt_num(side_cover)
+                    ),
+                );
                 return None;
             }
             for i in 0..count {
@@ -234,7 +280,12 @@ fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
             }
         }
         _ => {
-            ctx.p.fail("place/face", format!("place.face must be one of \"bottom\", \"top\", \"left\", \"right\", \"center\" (got \"{face}\")"));
+            ctx.p.fail(
+                "place/face",
+                format!(
+                    "place.face must be one of \"bottom\", \"top\", \"left\", \"right\", \"center\" (got \"{face}\")"
+                ),
+            );
             return None;
         }
     }

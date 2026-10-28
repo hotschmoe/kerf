@@ -1,7 +1,7 @@
 //! Break lines where cut members run off the crop.
 
-use super::Section;
 use super::Class;
+use super::Section;
 use crate::drawing::PathItem;
 use crate::geom::{self, Pt, V2};
 use crate::model::Kind;
@@ -123,13 +123,15 @@ impl Section<'_> {
             [b_, 0.0],
         ];
         uv.iter()
-            .map(|q| {
-                if e.vertical {
-                    Pt { x: e.c + q[1], y: q[0], b: 0.0 }
-                } else {
-                    Pt { x: q[0], y: e.c + q[1], b: 0.0 }
-                }
-            })
+            .map(
+                |q| {
+                    if e.vertical {
+                        Pt { x: e.c + q[1], y: q[0], b: 0.0 }
+                    } else {
+                        Pt { x: q[0], y: e.c + q[1], b: 0.0 }
+                    }
+                },
+            )
             .collect()
     }
 }

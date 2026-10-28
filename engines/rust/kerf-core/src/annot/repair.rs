@@ -1,9 +1,9 @@
 //! Layout repair (SPEC 20): re-rendering the dimension labels and the repair moves for a dimension or label that sits on a note leader.
 
-use super::dims::{base_hits, label_items, polys_overlap, stack_dims, DimSpec};
-use super::notes::{clear_of_leaders, dirs8, LabelSpec, Meta, MetaKind, Obstacle};
+use super::dims::{DimSpec, base_hits, label_items, polys_overlap, stack_dims};
+use super::notes::{LabelSpec, Meta, MetaKind, Obstacle, clear_of_leaders, dirs8};
 use super::text::text_poly;
-use super::{items_box, Env};
+use super::{Env, items_box};
 use crate::drawing::Item;
 use crate::geom::{Box, V2};
 use crate::pen::Pen;
@@ -27,7 +27,14 @@ pub struct DimLab<'d, 'a> {
     pub base_segs: &'d [[V2; 2]],
 }
 
-pub fn render_dim_labels<'a>(env: &mut Env, dl: &DimLab<'_, 'a>, per_in: &[Vec<Item>], meta_in: &[Meta<'a>], dpush: &[f64], lpush: &[V2]) -> Render<'a> {
+pub fn render_dim_labels<'a>(
+    env: &mut Env,
+    dl: &DimLab<'_, 'a>,
+    per_in: &[Vec<Item>],
+    meta_in: &[Meta<'a>],
+    dpush: &[f64],
+    lpush: &[V2],
+) -> Render<'a> {
     let mut per: Vec<Vec<Item>> = per_in.to_vec();
     let mut meta: Vec<Meta<'a>> = meta_in.to_vec();
     let mut eff = alloc::vec![0.0; dl.dspecs.len()];
@@ -119,7 +126,14 @@ pub fn repair_dim(env: &Env, o: &Obstacle, leaders: &[[V2; 3]], h: f64, dpush: &
 
 /// Move a label (smallest move first, up/down before sideways) to where no leader comes within a text height
 /// and it overprints no other label or dimension text; prefers a spot that does not sit on drawn outlines.
-pub fn repair_label(o: &Obstacle, obsts: &[Obstacle], leaders: &[[V2; 3]], h: f64, lpush: &mut [V2], base_segs: &[[V2; 2]]) -> bool {
+pub fn repair_label(
+    o: &Obstacle,
+    obsts: &[Obstacle],
+    leaders: &[[V2; 3]],
+    h: f64,
+    lpush: &mut [V2],
+    base_segs: &[[V2; 2]],
+) -> bool {
     let dirs = dirs8();
     let cap = 12.0 * h;
     let Some(cur) = lpush.get_mut(o.owner) else { return false };
@@ -136,7 +150,9 @@ pub fn repair_label(o: &Obstacle, obsts: &[Obstacle], leaders: &[[V2; 3]], h: f6
                     continue;
                 }
                 let q = o.poly.map(|p| p.add(dn));
-                let blocked = obsts.iter().any(|ob| !(ob.kind == route::ObstKind::Label && ob.owner == o.owner) && polys_overlap(&q, &ob.poly));
+                let blocked = obsts.iter().any(|ob| {
+                    !(ob.kind == route::ObstKind::Label && ob.owner == o.owner) && polys_overlap(&q, &ob.poly)
+                });
                 if blocked {
                     continue;
                 }

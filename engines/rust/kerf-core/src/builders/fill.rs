@@ -41,5 +41,11 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     };
     let box_ = geom::loop_box(&lp);
     let prism = Prism { material: fp.material.tag().into(), loops: model::one_loop(lp), outline, ..Prism::default() };
-    Some(Built { prisms: one_prism(prism), box_, points_mode: true, info: format!("fill {}", fp.material.tag()), ..Built::default() })
+    Some(Built {
+        prisms: one_prism(prism),
+        box_,
+        points_mode: true,
+        info: format!("fill {}", fp.material.tag()),
+        ..Built::default()
+    })
 }

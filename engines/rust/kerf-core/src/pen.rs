@@ -20,8 +20,20 @@ pub enum Pen {
 
 impl Pen {
     pub const ALL: [Pen; 14] = [
-        Pen::Cut, Pen::Profile, Pen::Beyond, Pen::Hidden, Pen::Hatch, Pen::Rebar, Pen::Steel,
-        Pen::Membrane, Pen::Vapor, Pen::Anno, Pen::Dim, Pen::Break, Pen::Title, Pen::Frame,
+        Pen::Cut,
+        Pen::Profile,
+        Pen::Beyond,
+        Pen::Hidden,
+        Pen::Hatch,
+        Pen::Rebar,
+        Pen::Steel,
+        Pen::Membrane,
+        Pen::Vapor,
+        Pen::Anno,
+        Pen::Dim,
+        Pen::Break,
+        Pen::Title,
+        Pen::Frame,
     ];
 
     pub fn name(self) -> &'static str {
@@ -95,6 +107,14 @@ impl LayerKey {
 }
 
 pub const DRAW_ORDER: [LayerKey; 10] = [
-    LayerKey::Hatch, LayerKey::Beyond, LayerKey::Cut, LayerKey::Steel, LayerKey::Rebar,
-    LayerKey::Hidden, LayerKey::Break, LayerKey::Notes, LayerKey::Dims, LayerKey::Title,
+    LayerKey::Hatch,
+    LayerKey::Beyond,
+    LayerKey::Cut,
+    LayerKey::Steel,
+    LayerKey::Rebar,
+    LayerKey::Hidden,
+    LayerKey::Break,
+    LayerKey::Notes,
+    LayerKey::Dims,
+    LayerKey::Title,
 ];

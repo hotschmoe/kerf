@@ -1,8 +1,8 @@
 //! flashing (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{Ctx, drop_duplicate_points, gauge_thickness, material_or, mirror_built, parse_point_list};
-use crate::model::fmt_num;
 use crate::geom::{self, Pt, V2, Xf};
+use crate::model::fmt_num;
 use crate::model::{self, Built, NamedAnchor, Prism};
 use crate::num;
 use crate::params::{ParamEnum, param_enum, params};
@@ -41,7 +41,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let kick = fp.kick;
     let gauge_i = num::to_int::<u32>(crate::math::round(fp.gauge)).unwrap_or(0);
     let Some(thickness) = gauge_thickness(gauge_i) else {
-        ctx.p.fail("gauge", format!("gauge {} is not in the table; use 20, 22, 24, 26 (default, 0.0179\") or 28", fmt_num(fp.gauge)));
+        ctx.p.fail(
+            "gauge",
+            format!("gauge {} is not in the table; use 20, 22, 24, 26 (default, 0.0179\") or 28", fmt_num(fp.gauge)),
+        );
         return None;
     };
     let mut pts: Vec<Pt> = Vec::new();
@@ -51,7 +54,12 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             pts.extend([Pt::new(0.0, flange), Pt::new(0.0, 0.0), Pt::new(-leg, 0.0), Pt::new(-leg, -drop)]);
         }
         Profile::L => pts.extend([Pt::new(0.0, flange), Pt::new(0.0, 0.0), Pt::new(-leg, 0.0)]),
-        Profile::Drip => pts.extend([Pt::new(flange, 0.0), Pt::new(0.0, 0.0), Pt::new(0.0, -drop), Pt::new(-kick, -drop - 0.5 * kick)]),
+        Profile::Drip => pts.extend([
+            Pt::new(flange, 0.0),
+            Pt::new(0.0, 0.0),
+            Pt::new(0.0, -drop),
+            Pt::new(-kick, -drop - 0.5 * kick),
+        ]),
         Profile::Points => {
             let Some(pv) = fp.points.as_ref() else {
                 ctx.p.fail("points", "profile \"points\" needs 'points': the sheet-metal centerline polyline, e.g. [[0,2],[0,0],[-1,0],[-1,-2]] (or Refs)".to_string());
@@ -77,7 +85,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         NamedAnchor { name: "end".to_string(), p: last },
     ];
     let box_ = geom::loop_box(&rib);
-    let prism = Prism { material: mat.to_string(), loops: model::one_loop(rib), embedded: true, centerline: pts, ..Prism::default() };
+    let prism = Prism {
+        material: mat.to_string(),
+        loops: model::one_loop(rib),
+        embedded: true,
+        centerline: pts,
+        ..Prism::default()
+    };
     let mut built = Built {
         prisms: vec![prism],
         anchors,

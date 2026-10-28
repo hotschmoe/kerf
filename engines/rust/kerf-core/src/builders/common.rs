@@ -35,7 +35,11 @@ pub fn box_of_prisms(prisms: &[Prism]) -> Box {
 }
 
 pub fn zone_rect(name: &str, x0: f64, y0: f64, x1: f64, y1: f64) -> model::Zone {
-    model::Zone { name: name.into(), loops: model::one_loop(model::rect_loop(x0, y0, x1, y1)), box_: Box { x0, y0, x1, y1 } }
+    model::Zone {
+        name: name.into(),
+        loops: model::one_loop(model::rect_loop(x0, y0, x1, y1)),
+        box_: Box { x0, y0, x1, y1 },
+    }
 }
 
 pub fn one_prism(prism: Prism) -> Vec<Prism> {
@@ -151,7 +155,14 @@ pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Opt
                 let y = units::parse_length(&xy[1]);
                 let (Some(x), Some(y)) = (x, y) else {
                     let bad = if units::parse_length(&xy[0]).is_none() { &xy[0] } else { &xy[1] };
-                    ctx.p.fail(&path, format!("point {i} of '{key}': a coordinate must be a length within +-{} inches (got {})", fmt_num(limits::MAX_COORD_IN), model::kind_or_text(bad)));
+                    ctx.p.fail(
+                        &path,
+                        format!(
+                            "point {i} of '{key}': a coordinate must be a length within +-{} inches (got {})",
+                            fmt_num(limits::MAX_COORD_IN),
+                            model::kind_or_text(bad)
+                        ),
+                    );
                     ok = false;
                     continue;
                 };
@@ -247,7 +258,10 @@ pub fn length_or_until(ctx: &mut Ctx, run: &str, hint: &str, note: &mut String) 
     let has_len = ctx.p.has("length");
     let Some(uv) = ctx.p.raw("until") else { return ctx.p.len_pos("length", None, hint) };
     if has_len {
-        ctx.p.fail("until", "give either 'length' or 'until', not both (the engine computes length from 'until')".into());
+        ctx.p.fail(
+            "until",
+            "give either 'length' or 'until', not both (the engine computes length from 'until')".into(),
+        );
         return None;
     }
     let anchor = ctx.p.raw("at").and_then(|at| at.get("anchor")).and_then(Value::str).unwrap_or("bottom_left");
@@ -273,12 +287,22 @@ pub fn length_or_until(ctx: &mut Ctx, run: &str, hint: &str, note: &mut String) 
         ctx.p.ok = false;
         return None;
     };
-    let run_dir = if along_x { V2::init(math::cos(ctx.angle), math::sin(ctx.angle)) } else { V2::init(-math::sin(ctx.angle), math::cos(ctx.angle)) };
+    let run_dir = if along_x {
+        V2::init(math::cos(ctx.angle), math::sin(ctx.angle))
+    } else {
+        V2::init(-math::sin(ctx.angle), math::cos(ctx.angle))
+    };
     let start = ctx.origin.x * run_dir.x + ctx.origin.y * run_dir.y;
     let end = target.x * run_dir.x + target.y * run_dir.y;
     let len = (end - start) * dir;
     if len <= 1e-6 {
-        let grows = if along_x { if dir > 0.0 { "right (+x)" } else { "left (-x)" } } else if dir > 0.0 { "up (+y)" } else { "down (-y)" };
+        let grows = if along_x {
+            if dir > 0.0 { "right (+x)" } else { "left (-x)" }
+        } else if dir > 0.0 {
+            "up (+y)"
+        } else {
+            "down (-y)"
+        };
         ctx.p.fail("until", format!(
             "'until' target is {} the anchor along {} (anchor at {}, target at {}); the member would have length {}. The anchor grows {}",
             if len < -1e-6 { "behind" } else { "at" },
@@ -324,7 +348,14 @@ pub fn parse_cover(ctx: &mut Ctx, key: &str, base: model::Cover) -> Option<Parse
     if let Some(Value::Object(members)) = v.get("parts") {
         for m in members {
             if !matches!(m.value, Value::Object(_)) {
-                ctx.p.fail(key, format!("{key}.parts.{} must be an object like {{\"bottom\": 0.75}} (got {})", m.key, model::kind_or_text(&m.value)));
+                ctx.p.fail(
+                    key,
+                    format!(
+                        "{key}.parts.{} must be an object like {{\"bottom\": 0.75}} (got {})",
+                        m.key,
+                        model::kind_or_text(&m.value)
+                    ),
+                );
                 return None;
             }
             let part_key = format!("{key}/parts/{}", m.key);

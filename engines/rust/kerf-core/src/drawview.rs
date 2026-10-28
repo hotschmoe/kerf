@@ -3,8 +3,8 @@
 use crate::annot::{self, AnnBox, AnnKind, Env, Landing, SheetInfo};
 use crate::compile;
 use crate::drawing::{Drawing, Item, LayerDef};
-use crate::geom::{self, Box};
 use crate::font::{self, Font};
+use crate::geom::{self, Box};
 use crate::iso::{self, Iso};
 use crate::json::{self, Value};
 use crate::math;
@@ -134,7 +134,12 @@ fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
         }
     }
     if notes_ext > best.ext + 1e-9 {
-        best = Culprit { name: format!("the notes column ({nnotes} notes)"), ext: notes_ext, kind: Some(AnnKind::Note), id: String::new() };
+        best = Culprit {
+            name: format!("the notes column ({nnotes} notes)"),
+            ext: notes_ext,
+            kind: Some(AnnKind::Note),
+            id: String::new(),
+        };
     }
     let te = side_ext(fit.title, crop, side);
     if te > best.ext + 1e-9 {
@@ -167,13 +172,30 @@ fn dim_offset_fix(fit: &FitInfo, big: &Culprit, need: f64, nfix: &mut usize, fix
             let no = b.offset - sg * need.min(b.offset.abs() - 1.0);
             *nfix += 1;
             let sep = if *nfix > 1 { "; " } else { "" };
-            fixes.push_str(&format!("{sep}{}) change dim '{}' offset from {} to {}", *nfix, b.id, fmt_num(b.offset), fmt_num(no)));
+            fixes.push_str(&format!(
+                "{sep}{}) change dim '{}' offset from {} to {}",
+                *nfix,
+                b.id,
+                fmt_num(b.offset),
+                fmt_num(no)
+            ));
         }
     }
 }
 
 /// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
-fn view_fit(st: &Style, spec: &ViewSpec, scale_text: &str, scale: f64, crop: Box, bounds: Box, fit: &FitInfo, aw: f64, ah: f64, diags: &Diags) {
+fn view_fit(
+    st: &Style,
+    spec: &ViewSpec,
+    scale_text: &str,
+    scale: f64,
+    crop: Box,
+    bounds: Box,
+    fit: &FitInfo,
+    aw: f64,
+    ah: f64,
+    diags: &Diags,
+) {
     let view_id = spec.id;
     let pw = (bounds.x1 - bounds.x0) / scale;
     let ph = (bounds.y1 - bounds.y0) / scale;
@@ -213,7 +235,12 @@ fn view_fit(st: &Style, spec: &ViewSpec, scale_text: &str, scale: f64, crop: Box
         let need = ow * scale;
         if cw > ow + 0.5 {
             nfix += 1;
-            fixes.push_str(&format!("{nfix}) narrow crop.x by {} in (now [{}, {}])", fmt_num(need), fmt_num(crop.x0), fmt_num(crop.x1)));
+            fixes.push_str(&format!(
+                "{nfix}) narrow crop.x by {} in (now [{}, {}])",
+                fmt_num(need),
+                fmt_num(crop.x0),
+                fmt_num(crop.x1)
+            ));
         }
         match big.kind {
             Some(AnnKind::Dim) => dim_offset_fix(fit, big, need, &mut nfix, &mut fixes),
@@ -230,7 +257,11 @@ fn view_fit(st: &Style, spec: &ViewSpec, scale_text: &str, scale: f64, crop: Box
         }
         if big.kind == Some(AnnKind::Note) {
             nfix += 1;
-            fixes.push_str(&format!("{}{nfix}) shorten the longest notes (they wrap at {} characters)", sep(nfix), st.wrap_cols()));
+            fixes.push_str(&format!(
+                "{}{nfix}) shorten the longest notes (they wrap at {} characters)",
+                sep(nfix),
+                st.wrap_cols()
+            ));
         }
     }
     if oh > 0.0 {
@@ -245,7 +276,13 @@ fn view_fit(st: &Style, spec: &ViewSpec, scale_text: &str, scale: f64, crop: Box
         let need = oh * scale;
         if ch > oh + 0.5 {
             nfix += 1;
-            fixes.push_str(&format!("{}{nfix}) shorten crop.y by {} in (now [{}, {}])", sep(nfix), fmt_num(need), fmt_num(crop.y0), fmt_num(crop.y1)));
+            fixes.push_str(&format!(
+                "{}{nfix}) shorten crop.y by {} in (now [{}, {}])",
+                sep(nfix),
+                fmt_num(need),
+                fmt_num(crop.y0),
+                fmt_num(crop.y1)
+            ));
         }
         let big = if tc.ext >= bc.ext { &tc } else { &bc };
         match big.kind {
@@ -262,7 +299,10 @@ fn view_fit(st: &Style, spec: &ViewSpec, scale_text: &str, scale: f64, crop: Box
         }
         if big.kind.is_none() && big.id == "title" {
             nfix += 1;
-            fixes.push_str(&format!("{}{nfix}) the title block sits below the lowest annotation: shorten the notes column or the crop", sep(nfix)));
+            fixes.push_str(&format!(
+                "{}{nfix}) the title block sits below the lowest annotation: shorten the notes column or the crop",
+                sep(nfix)
+            ));
         }
     }
     // a scale change only when the overflow is greater than 15% of the frame
@@ -273,7 +313,9 @@ fn view_fit(st: &Style, spec: &ViewSpec, scale_text: &str, scale: f64, crop: Box
             .iter()
             .copied()
             .find(|&s2| s2 > scale && crop.width() / s2 + extra_w <= aw && crop.height() / s2 + extra_h <= ah);
-        let sc = pick.unwrap_or_else(|| math::ceil((crop.width() / (aw - extra_w).max(0.5)).max(crop.height() / (ah - extra_h).max(0.5))));
+        let sc = pick.unwrap_or_else(|| {
+            math::ceil((crop.width() / (aw - extra_w).max(0.5)).max(crop.height() / (ah - extra_h).max(0.5)))
+        });
         nfix += 1;
         let lab = if pick.is_some() { units::scale_label(sc) } else { format!("1:{}", fixed(sc, 0)) };
         fixes.push_str(&format!("{}{nfix}) use a smaller scale (e.g. {lab})", sep(nfix)));
@@ -295,7 +337,16 @@ struct SecPass {
 
 const GLYPH_INFO: &str = "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)";
 
-fn section_pass(st: &Style, scene: &Scene, spec: &ViewSpec, prisms: &[Prism], font: &Font, doc: &Value, diags: &Diags, work: &Work) -> SecPass {
+fn section_pass(
+    st: &Style,
+    scene: &Scene,
+    spec: &ViewSpec,
+    prisms: &[Prism],
+    font: &Font,
+    doc: &Value,
+    diags: &Diags,
+    work: &Work,
+) -> SecPass {
     let scale = spec.scale;
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
@@ -315,7 +366,13 @@ fn section_pass(st: &Style, scene: &Scene, spec: &ViewSpec, prisms: &[Prism], fo
         tcrop.y0 = ab.y0;
     }
     let scale_text = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
-    let info = SheetInfo { number: &spec.number, title: spec.title, scale_text: &scale_text, sheet: meta_string(doc, "sheet"), unverified };
+    let info = SheetInfo {
+        number: &spec.number,
+        title: spec.title,
+        scale_text: &scale_text,
+        sheet: meta_string(doc, "sheet"),
+        unverified,
+    };
     let mut detail = annot::items_box(font, &all);
     detail.add_box(spec.crop);
     let title_from = all.len();
@@ -371,7 +428,16 @@ struct SecResolved {
 /// Resolve an omitted crop and/or scale (SPEC 19) and run the section pass. The scale is the first of the
 /// standard scales (largest first) at which view + notes + dimensions + title fit the sheet frame; every
 /// candidate is evaluated in order, so the result is stable. Explicit crop and scale are used as given.
-fn resolve_section(st: &Style, scene: &Scene, spec: &ViewSpec, prisms: &[Prism], font: &Font, doc: &Value, diags: &Diags, work: &Work) -> SecResolved {
+fn resolve_section(
+    st: &Style,
+    scene: &Scene,
+    spec: &ViewSpec,
+    prisms: &[Prism],
+    font: &Font,
+    doc: &Value,
+    diags: &Diags,
+    work: &Work,
+) -> SecResolved {
     let mut rs = spec.clone();
     if !spec.has_crop {
         rs.crop = auto_crop(prisms, spec.cut_z);
@@ -437,7 +503,13 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
 pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Option<Drawing<'a>> {
     let Some(vnode) = view::find_view(doc, view_id) else {
         let ids = view::view_ids(doc);
-        diags.add(Level::Error, "E_REF_UNKNOWN", Some(view_id), Some("views"), format!("no view with id '{view_id}'. Views: {}", scene::join_ids(&ids)));
+        diags.add(
+            Level::Error,
+            "E_REF_UNKNOWN",
+            Some(view_id),
+            Some("views"),
+            format!("no view with id '{view_id}'. Views: {}", scene::join_ids(&ids)),
+        );
         return None;
     };
     let idx = doc
@@ -451,7 +523,13 @@ pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Op
 }
 
 /// Build a view's Drawing from an already compiled scene. `diags` receives view-level diagnostics.
-pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, spec: &ViewSpec, diags: &Diags) -> Option<Drawing<'a>> {
+pub fn build_from_scene<'a>(
+    doc: &Value,
+    st: &'a Style,
+    scene: &Scene,
+    spec: &ViewSpec,
+    diags: &Diags,
+) -> Option<Drawing<'a>> {
     let view_id = spec.id;
     for o in &spec.omit {
         if scene.find(o).is_none() {
@@ -460,7 +538,10 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, spec: &Vi
                 "E_REF_UNKNOWN",
                 Some(view_id),
                 Some(&format!("views/{view_id}/omit")),
-                format!("view {view_id} omits '{o}', which is not a component id. Components: {}", scene::join_ids(&scene.comp_ids())),
+                format!(
+                    "view {view_id} omits '{o}', which is not a component id. Components: {}",
+                    scene::join_ids(&scene.comp_ids())
+                ),
             );
         }
     }
@@ -513,7 +594,13 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, spec: &Vi
                 tcrop.y0 = ab.y0;
             }
             let label = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
-            let info = SheetInfo { number: &spec.number, title: spec.title, scale_text: &label, sheet: meta_string(doc, "sheet"), unverified: un };
+            let info = SheetInfo {
+                number: &spec.number,
+                title: spec.title,
+                scale_text: &label,
+                sheet: meta_string(doc, "sheet"),
+                unverified: un,
+            };
             let mut det = annot::items_box(&font, &all);
             det.add_box(res.crop);
             let title_from = all.len();
@@ -527,7 +614,8 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, spec: &Vi
             // NTS views grow their (internal) fit factor until notes and title fit the sheet frame
             let pw = (b.x1 - b.x0) / scale;
             let ph = (b.y1 - b.y0) / scale;
-            let fits = pw <= st.sheet_w_in - 2.0 * st.margin_in + 1e-6 && ph <= st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in + 1e-6;
+            let fits = pw <= st.sheet_w_in - 2.0 * st.margin_in + 1e-6
+                && ph <= st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in + 1e-6;
             if fits || spec.scale != 0.0 || trial >= 16 {
                 diags.extend(tdiags.take());
                 items = all;

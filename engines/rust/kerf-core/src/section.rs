@@ -81,7 +81,8 @@ impl<'s> Section<'s> {
             })
             .collect();
         let c = spec.crop;
-        let crop_loop = alloc::vec![V2::init(c.x0, c.y0), V2::init(c.x1, c.y0), V2::init(c.x1, c.y1), V2::init(c.x0, c.y1)];
+        let crop_loop =
+            alloc::vec![V2::init(c.x0, c.y0), V2::init(c.x1, c.y0), V2::init(c.x1, c.y1), V2::init(c.x0, c.y1)];
         Section {
             scene,
             style: scene.style,
@@ -141,7 +142,14 @@ impl<'s> Section<'s> {
     pub fn add_stroke(&mut self, target: Target, pts: Vec<Pt>, closed: bool, pen: Pen, src: &str, embedded: bool) {
         let w = self.style.pen_width_mm(pen);
         self.seq += 1;
-        let stroke = Stroke { pts, closed, pen, src: src.to_string(), rank: w + if embedded { 10.0 } else { 0.0 }, seq: self.seq };
+        let stroke = Stroke {
+            pts,
+            closed,
+            pen,
+            src: src.to_string(),
+            rank: w + if embedded { 10.0 } else { 0.0 },
+            seq: self.seq,
+        };
         match target {
             Target::Strokes => self.strokes.push(stroke),
             Target::Ghosts => self.ghosts.push(stroke),
@@ -203,7 +211,8 @@ impl<'s> Section<'s> {
                 }
                 Kind::Line => {
                     if p.line_pts.len() >= 2 {
-                        let mat_pen = self.style.material(&p.material).map_or(Pen::Membrane, |m| m.pen.unwrap_or(Pen::Membrane));
+                        let mat_pen =
+                            self.style.material(&p.material).map_or(Pen::Membrane, |m| m.pen.unwrap_or(Pen::Membrane));
                         let pen = self.pen_for(mat_pen);
                         let pts = self.line_points(p);
                         let src = self.src_name(p);
@@ -265,7 +274,14 @@ impl<'s> Section<'s> {
                 let fb = clip::loops_box(&f);
                 let c = self.spec.crop;
                 if fb.x0 >= c.x0 - 1e-9 && fb.x1 <= c.x1 + 1e-9 && fb.y0 >= c.y0 - 1e-9 && fb.y1 <= c.y1 + 1e-9 {
-                    out.push(Item::Region(RegionItem { src, part, instance: inst, cut: true, loops: p.loops.clone(), layer: String::new() }));
+                    out.push(Item::Region(RegionItem {
+                        src,
+                        part,
+                        instance: inst,
+                        cut: true,
+                        loops: p.loops.clone(),
+                        layer: String::new(),
+                    }));
                     continue;
                 }
             }
@@ -293,10 +309,15 @@ impl<'s> Section<'s> {
         let mut deduped = chain_strokes(dedupe(&self.strokes, self.style));
         sort::stable(&mut deduped, |x, y| if x.rank != y.rank { x.rank < y.rank } else { x.seq < y.seq });
         for s in deduped.into_iter().chain(self.ghosts.iter().cloned()) {
-            items.push(Item::Path(PathItem { layer: self.layer_for(s.pen), pen: s.pen, src: s.src, closed: s.closed, pts: s.pts }));
+            items.push(Item::Path(PathItem {
+                layer: self.layer_for(s.pen),
+                pen: s.pen,
+                src: s.src,
+                closed: s.closed,
+                pts: s.pts,
+            }));
         }
         items.extend(self.breaks.iter().cloned().map(Item::Path));
         items
     }
 }
-

@@ -41,7 +41,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let top = tp.top_chord.as_str();
     let bot = tp.bottom_chord.as_str();
     let Some(theta) = units::parse_slope(&tp.pitch) else {
-        ctx.p.fail("pitch", format!("param 'pitch' must be rise:run like \"4:12\" or degrees (got {})", model::kind_or_text(&tp.pitch)));
+        ctx.p.fail(
+            "pitch",
+            format!("param 'pitch' must be rise:run like \"4:12\" or degrees (got {})", model::kind_or_text(&tp.pitch)),
+        );
         return None;
     };
     if theta <= 0.0 || theta >= math::PI / 2.0 {
@@ -90,8 +93,18 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     ];
     let bot_loop = model::rect_loop(0.0, 0.0, xe, db);
     let mut prisms = vec![
-        Prism { part: "bottom_chord".into(), material: "wood".into(), loops: model::one_loop(bot_loop), ..Prism::default() },
-        Prism { part: "top_chord".into(), material: "wood".into(), loops: model::one_loop(top_loop.clone()), ..Prism::default() },
+        Prism {
+            part: "bottom_chord".into(),
+            material: "wood".into(),
+            loops: model::one_loop(bot_loop),
+            ..Prism::default()
+        },
+        Prism {
+            part: "top_chord".into(),
+            material: "wood".into(),
+            loops: model::one_loop(top_loop.clone()),
+            ..Prism::default()
+        },
     ];
     let mut zones: Vec<Zone> = vec![
         zone_rect("bottom_chord", 0.0, 0.0, xe, db),
@@ -99,14 +112,28 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     ];
     if raised {
         let web_w = 1.5;
-        let web = vec![Pt::new(0.0, db), Pt::new(web_w, db), Pt::new(web_w, lower(web_w, y_low0, s)), Pt::new(0.0, y_low0)];
+        let web =
+            vec![Pt::new(0.0, db), Pt::new(web_w, db), Pt::new(web_w, lower(web_w, y_low0, s)), Pt::new(0.0, y_low0)];
         zones.push(Zone { name: "heel_web".into(), loops: model::one_loop(web.clone()), box_: geom::loop_box(&web) });
-        prisms.push(Prism { part: "heel_web".into(), material: "wood".into(), loops: model::one_loop(web), ..Prism::default() });
+        prisms.push(Prism {
+            part: "heel_web".into(),
+            material: "wood".into(),
+            loops: model::one_loop(web),
+            ..Prism::default()
+        });
     }
     if tp.plate {
         let py1 = (db + 0.5).max(y_low0 + 0.5);
         let pl = model::rect_loop(0.25, 0.25, 5.25, py1);
-        prisms.push(Prism { part: "plate".into(), material: "steel".into(), loops: model::one_loop(pl), kind: Kind::Ghost, pen: Some(Pen::Hidden), embedded: true, ..Prism::default() });
+        prisms.push(Prism {
+            part: "plate".into(),
+            material: "steel".into(),
+            loops: model::one_loop(pl),
+            kind: Kind::Ghost,
+            pen: Some(Pen::Hidden),
+            embedded: true,
+            ..Prism::default()
+        });
         zones.push(zone_rect("plate", 0.25, 0.25, 5.25, py1));
     }
     {
@@ -115,7 +142,11 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         tb.add_point(tail_top.x, tail_top.y);
         tb.add_point(0.0, lower(0.0, y_low0, s));
         tb.add_point(0.0, lower(0.0, y_low0, s) + v_thick);
-        zones.push(Zone { name: "tail".into(), loops: model::one_loop(model::rect_loop(tb.x0, tb.y0, tb.x1, tb.y1)), box_: tb });
+        zones.push(Zone {
+            name: "tail".into(),
+            loops: model::one_loop(model::rect_loop(tb.x0, tb.y0, tb.x1, tb.y1)),
+            box_: tb,
+        });
     }
     let anchor = |name: &str, p: V2| NamedAnchor { name: name.into(), p };
     let anchors = vec![
@@ -141,8 +172,17 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         zones,
         box_,
         nat_z: Some(tsz.t),
-        info: format!("truss {}:12 {} heel, {top}+{bot} chords, ovh {}", fmt_num(math::tan(theta) * 12.0), tp.heel.tag(), ftin(tp.overhang)),
+        info: format!(
+            "truss {}:12 {} heel, {top}+{bot} chords, ovh {}",
+            fmt_num(math::tan(theta) * 12.0),
+            tp.heel.tag(),
+            ftin(tp.overhang)
+        ),
         ..Built::default()
     };
-    Some(if tp.exterior == Exterior::Right { mirror_built(&built, &geom::Xf::scaling(-1.0, 1.0), false) } else { built })
+    Some(if tp.exterior == Exterior::Right {
+        mirror_built(&built, &geom::Xf::scaling(-1.0, 1.0), false)
+    } else {
+        built
+    })
 }

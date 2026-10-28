@@ -24,7 +24,12 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let pp = ctx.p.parse_all::<Params>();
     let run = pp.run.tag();
     let mut until_note = String::new();
-    let length = length_or_until(ctx, run, "the in-plane extent of the panel: \"length\" or \"until\": \"other@anchor\"", &mut until_note);
+    let length = length_or_until(
+        ctx,
+        run,
+        "the in-plane extent of the panel: \"length\" or \"until\": \"other@anchor\"",
+        &mut until_note,
+    );
     if !ctx.p.ok {
         return None;
     }

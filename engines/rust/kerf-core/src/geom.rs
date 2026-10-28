@@ -408,11 +408,7 @@ fn fmod_floor(a: f64, b: f64) -> f64 {
 pub fn angle_in_sweep(ang: f64, a0: f64, sweep: f64) -> bool {
     let two_pi = 2.0 * PI;
     let d = ang - a0;
-    if sweep >= 0.0 {
-        fmod_floor(d, two_pi) <= sweep + 1e-12
-    } else {
-        fmod_floor(-d, two_pi) <= -sweep + 1e-12
-    }
+    if sweep >= 0.0 { fmod_floor(d, two_pi) <= sweep + 1e-12 } else { fmod_floor(-d, two_pi) <= -sweep + 1e-12 }
 }
 
 pub fn points_box(pts: &[Pt]) -> Box {

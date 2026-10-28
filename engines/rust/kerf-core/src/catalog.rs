@@ -65,11 +65,39 @@ pub struct SlopeHost {
 /// Adding a type: add the variant, an entry to `ENTRIES` (same position), `name`, and a `builders::build` arm (exhaustive matches).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Type {
-    Lumber, Panel, CmuWall, Concrete, Rebar, AnchorBolt, Connector, Truss, Membrane, Fill, Insulation, Flashing, Joint, Solid,
+    Lumber,
+    Panel,
+    CmuWall,
+    Concrete,
+    Rebar,
+    AnchorBolt,
+    Connector,
+    Truss,
+    Membrane,
+    Fill,
+    Insulation,
+    Flashing,
+    Joint,
+    Solid,
 }
 
 impl Type {
-    pub const ALL: [Type; 14] = [Type::Lumber, Type::Panel, Type::CmuWall, Type::Concrete, Type::Rebar, Type::AnchorBolt, Type::Connector, Type::Truss, Type::Membrane, Type::Fill, Type::Insulation, Type::Flashing, Type::Joint, Type::Solid];
+    pub const ALL: [Type; 14] = [
+        Type::Lumber,
+        Type::Panel,
+        Type::CmuWall,
+        Type::Concrete,
+        Type::Rebar,
+        Type::AnchorBolt,
+        Type::Connector,
+        Type::Truss,
+        Type::Membrane,
+        Type::Fill,
+        Type::Insulation,
+        Type::Flashing,
+        Type::Joint,
+        Type::Solid,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -176,10 +204,34 @@ pub const HARDWARE: [Hardware; 55] = [
     Hardware { model: "LTP4", width: 3.0, gauge: 20, length: 4.25, kind: "lateral tie plate" },
     Hardware { model: "LSTHD8", width: 3.0, gauge: 14, length: 18.625, kind: "strap-tie holdown (embedded)" },
     Hardware { model: "STHD14", width: 3.0, gauge: 12, length: 26.125, kind: "strap-tie holdown (embedded)" },
-    Hardware { model: "LUS26", width: 1.5625, gauge: 18, length: 4.75, kind: "face-mount joist hanger, 2x6 (length = height)" },
-    Hardware { model: "MUS26", width: 1.5625, gauge: 18, length: 5.1875, kind: "face-mount joist hanger, 2x6 (length = height)" },
-    Hardware { model: "HUS26", width: 1.625, gauge: 16, length: 5.375, kind: "heavy face-mount hanger, 2x6 (length = height)" },
-    Hardware { model: "HHUS26-2", width: 3.3125, gauge: 14, length: 5.375, kind: "heavy face-mount hanger, double 2x6 (length = height)" },
+    Hardware {
+        model: "LUS26",
+        width: 1.5625,
+        gauge: 18,
+        length: 4.75,
+        kind: "face-mount joist hanger, 2x6 (length = height)",
+    },
+    Hardware {
+        model: "MUS26",
+        width: 1.5625,
+        gauge: 18,
+        length: 5.1875,
+        kind: "face-mount joist hanger, 2x6 (length = height)",
+    },
+    Hardware {
+        model: "HUS26",
+        width: 1.625,
+        gauge: 16,
+        length: 5.375,
+        kind: "heavy face-mount hanger, 2x6 (length = height)",
+    },
+    Hardware {
+        model: "HHUS26-2",
+        width: 3.3125,
+        gauge: 14,
+        length: 5.375,
+        kind: "heavy face-mount hanger, double 2x6 (length = height)",
+    },
     Hardware { model: "ST2215", width: 2.0625, gauge: 20, length: 16.3125, kind: "strap tie" },
     Hardware { model: "ST6224", width: 2.0625, gauge: 16, length: 23.3125, kind: "strap tie" },
     Hardware { model: "FHA18", width: 1.4375, gauge: 12, length: 17.75, kind: "strap tie" },
@@ -198,16 +250,40 @@ const COMMON: [(&[&str], &str, &str); 13] = [
     (&["id"], "required", "unique slug [a-z][a-z0-9_]*; annotations and refs name it"),
     (&["type"], "required", "one of the catalog types"),
     (&["label"], "null", "short human label for summaries"),
-    (&["at"], "origin", "{anchor (default bottom_left), to: Ref | {ref, offset} | [x,y], offset: [dx,dy]}: translates the part so its anchor lands on `to`+offset. Point-list types (connector, membrane, fill, rebar path, concrete polygon, solid points) ignore `anchor`: literal [x,y] entries are relative to `to`+offset, Refs are absolute"),
+    (
+        &["at"],
+        "origin",
+        "{anchor (default bottom_left), to: Ref | {ref, offset} | [x,y], offset: [dx,dy]}: translates the part so its anchor lands on `to`+offset. Point-list types (connector, membrane, fill, rebar path, concrete polygon, solid points) ignore `anchor`: literal [x,y] entries are relative to `to`+offset, Refs are absolute",
+    ),
     (&["rotate"], "0", "degrees CCW about the placement point"),
-    (&["slope"], "null", "\"4:12\" rise:run, degrees, or \"@<component>\" (e.g. \"@truss\": inherit that member's slope, so pitch lives in ONE place; a truss with exterior right slopes the other way). Rotation about the placement point; adds to rotate"),
+    (
+        &["slope"],
+        "null",
+        "\"4:12\" rise:run, degrees, or \"@<component>\" (e.g. \"@truss\": inherit that member's slope, so pitch lives in ONE place; a truss with exterior right slopes the other way). Rotation about the placement point; adds to rotate",
+    ),
     (&["mirror"], "false", "mirror the profile about its vertical centerline before placement"),
-    (&["z"], "null", "[z0,z1] absolute, or a number = centered there with the member's natural z thickness. Default: spans doc `run` (members along Z); members with a natural z thickness (lumber run x/y, truss, connector, path rebar, anchor_bolt) are centered on the first section view's `cut_z` (when it sets one, so they are cut, not hidden), else on the middle of `run`"),
-    (&["array"], "null", "{axis: x|y|z, count, spacing}: instance k offset by k*spacing; instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k"),
+    (
+        &["z"],
+        "null",
+        "[z0,z1] absolute, or a number = centered there with the member's natural z thickness. Default: spans doc `run` (members along Z); members with a natural z thickness (lumber run x/y, truss, connector, path rebar, anchor_bolt) are centered on the first section view's `cut_z` (when it sets one, so they are cut, not hidden), else on the middle of `run`",
+    ),
+    (
+        &["array"],
+        "null",
+        "{axis: x|y|z, count, spacing}: instance k offset by k*spacing; instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k",
+    ),
     (&["embedded"], "type default", "drawn over cut solids and never occluded (rebar, anchor bolts)"),
     (&["visible"], "true", "false hides the component from views and mesh"),
-    (&["shown"], "solid", "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)"),
-    (&["acknowledge"], "null", "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged; I_* codes are accepted and ignored (`kerf schema acknowledge`)"),
+    (
+        &["shown"],
+        "solid",
+        "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)",
+    ),
+    (
+        &["acknowledge"],
+        "null",
+        "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged; I_* codes are accepted and ignored (`kerf schema acknowledge`)",
+    ),
 ];
 
 pub fn common() -> Vec<Row> {
@@ -224,7 +300,12 @@ pub static ENTRIES: [Entry; 14] = [
         anchors: "the 9 box anchors",
         draws: "Section: run z cut => outline + wood X mark per ply (blocking: one diagonal); run x/y cut lengthwise => outline only; beyond => outline. Actual sizes: 2x 1.5 thick; 4x 3.5; 6x 5.5; depths x4 3.5, x6 5.5, x8 7.25, x10 9.25, x12 11.25 (6x8 7.5, 6x10 9.5, 6x12 11.5). Natural z thickness for run x/y.",
         example: "{\"id\":\"stud\",\"type\":\"lumber\",\"size\":\"2x4\",\"run\":\"y\",\"face\":\"narrow\",\"length\":92.625,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,1.5]}}",
-        traits: Traits { lengthwise_grain: true, near_miss: true, slope_host: Some(SlopeHost { part: "", end_anchor: "" }), ..Traits::NONE },
+        traits: Traits {
+            lengthwise_grain: true,
+            near_miss: true,
+            slope_host: Some(SlopeHost { part: "", end_anchor: "" }),
+            ..Traits::NONE
+        },
     },
     Entry {
         ty: Type::Panel,
@@ -233,7 +314,12 @@ pub static ENTRIES: [Entry; 14] = [
         anchors: "the 9 box anchors",
         draws: "Cut rectangle with the material's hatch / cut mark (wood_board: one diagonal). Spans the document run along Z. Use `slope` for roof sheathing (rotates about the placement anchor).",
         example: "{\"id\":\"roof_sheathing\",\"type\":\"panel\",\"material\":\"osb\",\"thickness\":0.4375,\"length\":66,\"run\":\"x\",\"slope\":\"4:12\",\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
-        traits: Traits { sheet: true, rigid_sheet: true, slope_host: Some(SlopeHost { part: "", end_anchor: "" }), ..Traits::NONE },
+        traits: Traits {
+            sheet: true,
+            rigid_sheet: true,
+            slope_host: Some(SlopeHost { part: "", end_anchor: "" }),
+            ..Traits::NONE
+        },
     },
     Entry {
         ty: Type::CmuWall,
@@ -287,7 +373,11 @@ pub static ENTRIES: [Entry; 14] = [
         anchors: "9 box anchors + bearing_outer (local origin: outer edge of bearing at bottom of bottom chord), bearing_inner, tail_bottom, tail_top, top_chord_at_bearing, top_chord_bottom_at_bearing (lower edge of the top chord at the bearing plane), heel_outer (middle of the heel's outer vertical face, between the bottom chord's top and the top chord's top at the bearing: where ties and straps land), top_chord_end, bottom_chord_top_inner",
         draws: "Standard heel: bottom chord from the bearing outer edge inward; top chord lower edge passes through (bearing_outer.x, top of bottom chord) at the pitch and extends to the plumb tail at x=-overhang. Members are in-plane, z thickness 1.5: set `z` and `array` for spacing.",
         example: "{\"id\":\"truss\",\"type\":\"truss\",\"pitch\":\"4:12\",\"top_chord\":\"2x4\",\"bottom_chord\":\"2x4\",\"bearing_width\":7.25,\"overhang\":18,\"at\":{\"anchor\":\"bearing_outer\",\"to\":[0,0]}}",
-        traits: Traits { has_pitch: true, slope_host: Some(SlopeHost { part: "top_chord", end_anchor: "top_chord_end" }), ..Traits::NONE },
+        traits: Traits {
+            has_pitch: true,
+            slope_host: Some(SlopeHost { part: "top_chord", end_anchor: "top_chord_end" }),
+            ..Traits::NONE
+        },
     },
     Entry {
         ty: Type::Membrane,

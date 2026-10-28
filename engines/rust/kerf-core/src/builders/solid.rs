@@ -17,7 +17,10 @@ params! {
 pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let sp = ctx.p.parse_all::<Params>();
     let Some(prof) = &sp.profile else {
-        ctx.p.fail("profile", "solid needs 'profile': {\"rect\": [w, h]}, {\"circle\": d} or {\"points\": [[x, y], ...]}".into());
+        ctx.p.fail(
+            "profile",
+            "solid needs 'profile': {\"rect\": [w, h]}, {\"circle\": d} or {\"points\": [[x, y], ...]}".into(),
+        );
         return None;
     };
     if !ctx.p.ok {
@@ -65,5 +68,11 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let box_ = geom::loop_box(&lp);
     let prism = Prism { material: sp.material.clone(), loops: model::one_loop(lp), ..Prism::default() };
-    Some(Built { prisms: one_prism(prism), box_, points_mode, info: format!("solid {} (escape hatch)", sp.material), ..Built::default() })
+    Some(Built {
+        prisms: one_prism(prism),
+        box_,
+        points_mode,
+        info: format!("solid {} (escape hatch)", sp.material),
+        ..Built::default()
+    })
 }

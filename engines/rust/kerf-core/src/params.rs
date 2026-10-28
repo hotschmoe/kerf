@@ -1,7 +1,7 @@
 //! Typed builder parameters: one declaration generates the struct, its parser and its catalog rows.
 
 use crate::json::Value;
-use crate::model::{fmt_num, Params};
+use crate::model::{Params, fmt_num};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -224,17 +224,39 @@ macro_rules! field_read {
 }
 
 macro_rules! field_def {
-    (OptStr, []) => { "null".to_string() };
-    (OptNum, []) => { "null".to_string() };
-    (OptLen, []) => { "null".to_string() };
-    (OptLenPos, []) => { "null".to_string() };
-    (OptInt($($a:tt)*), []) => { "null".to_string() };
-    (OptRaw, []) => { "null".to_string() };
-    (Raw, [$d:expr]) => { alloc::string::String::new() };
-    (OptEnum($($a:tt)*), []) => { "null".to_string() };
-    (Int($t:ty, $min:expr, $max:expr), [$d:expr]) => { (($d as $t) as i64).to_string() };
-    ($kind:ident $(($($a:tt)*))?, []) => { "required".to_string() };
-    ($kind:ident $(($($a:tt)*))?, [$d:expr]) => { $crate::params::ParamText::param_text(&$d) };
+    (OptStr, []) => {
+        "null".to_string()
+    };
+    (OptNum, []) => {
+        "null".to_string()
+    };
+    (OptLen, []) => {
+        "null".to_string()
+    };
+    (OptLenPos, []) => {
+        "null".to_string()
+    };
+    (OptInt($($a:tt)*), []) => {
+        "null".to_string()
+    };
+    (OptRaw, []) => {
+        "null".to_string()
+    };
+    (Raw, [$d:expr]) => {
+        alloc::string::String::new()
+    };
+    (OptEnum($($a:tt)*), []) => {
+        "null".to_string()
+    };
+    (Int($t:ty, $min:expr, $max:expr), [$d:expr]) => {
+        (($d as $t) as i64).to_string()
+    };
+    ($kind:ident $(($($a:tt)*))?, []) => {
+        "required".to_string()
+    };
+    ($kind:ident $(($($a:tt)*))?, [$d:expr]) => {
+        $crate::params::ParamText::param_text(&$d)
+    };
 }
 
 /// Declares one builder's parameters; generates the struct, `ParamSet::parse_all` (every problem reported in one pass, in field

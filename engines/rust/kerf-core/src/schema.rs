@@ -10,15 +10,24 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub const EXAMPLE_DOC: &str = concat!(
-    r#"{"kerf":"0.1","id":"wall-at-sill","title":"WALL AT PT SILL","meta":{"jurisdiction":{"code":"IRC","edition":2021}},"run":[-24,24],"#, "\n",
-    r#""components":["#, "\n",
-    r#"{"id":"sill","type":"lumber","size":"2x6","orient":"flat","treated":true,"at":{"anchor":"bottom_left","to":[0,0]}},"#, "\n",
-    r#"{"id":"stud","type":"lumber","size":"2x6","run":"y","length":24,"at":{"anchor":"bottom_left","to":"sill@top_left"}}],"#, "\n",
-    r#""views":[{"id":"A","kind":"section","number":"1","title":"WALL AT PT SILL","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-12,18],"y":[-8,30]},"notes_side":"both","#, "\n",
-    r#""annotations":["#, "\n",
-    r#"{"id":"n_sill","type":"note","text":"2X6 PT SILL PLATE","target":"sill","cite":[{"code":"IRC","edition":2021,"section":"R317.1","title":"Location required","status":"suggested"}]},"#, "\n",
-    r#"{"id":"n_stud","type":"note","text":"2X6 STUDS @ 16\" O.C.","target":"stud"},"#, "\n",
-    r#"{"id":"d_sill","type":"dim","from":"sill@bottom_left","to":"sill@bottom_right","dir":"h","offset":-3},"#, "\n",
+    r#"{"kerf":"0.1","id":"wall-at-sill","title":"WALL AT PT SILL","meta":{"jurisdiction":{"code":"IRC","edition":2021}},"run":[-24,24],"#,
+    "\n",
+    r#""components":["#,
+    "\n",
+    r#"{"id":"sill","type":"lumber","size":"2x6","orient":"flat","treated":true,"at":{"anchor":"bottom_left","to":[0,0]}},"#,
+    "\n",
+    r#"{"id":"stud","type":"lumber","size":"2x6","run":"y","length":24,"at":{"anchor":"bottom_left","to":"sill@top_left"}}],"#,
+    "\n",
+    r#""views":[{"id":"A","kind":"section","number":"1","title":"WALL AT PT SILL","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-12,18],"y":[-8,30]},"notes_side":"both","#,
+    "\n",
+    r#""annotations":["#,
+    "\n",
+    r#"{"id":"n_sill","type":"note","text":"2X6 PT SILL PLATE","target":"sill","cite":[{"code":"IRC","edition":2021,"section":"R317.1","title":"Location required","status":"suggested"}]},"#,
+    "\n",
+    r#"{"id":"n_stud","type":"note","text":"2X6 STUDS @ 16\" O.C.","target":"stud"},"#,
+    "\n",
+    r#"{"id":"d_sill","type":"dim","from":"sill@bottom_left","to":"sill@bottom_right","dir":"h","offset":-3},"#,
+    "\n",
     r#"{"id":"l_ext","type":"label","text":"EXTERIOR","at":"sill@top_left","offset":[-6,6]}]}]}"#,
 );
 
@@ -83,7 +92,8 @@ fn render_object(o: &Object) -> String {
 }
 
 fn render_common() -> String {
-    let mut out = String::from("common: fields every component accepts (plus the type's own params: `kerf schema <type>`).\n\n");
+    let mut out =
+        String::from("common: fields every component accepts (plus the type's own params: `kerf schema <type>`).\n\n");
     for p in catalog::common() {
         out.push_str(&format!("- {}: ", p.name_text()));
         if p.def == "required" {
@@ -182,7 +192,9 @@ fn first_sentence(s: &str) -> &str {
 }
 
 pub fn index() -> String {
-    let mut out = String::from("kerf schema <topic>: field reference (required/optional, types, defaults, one example). Topics:\n\n");
+    let mut out = String::from(
+        "kerf schema <topic>: field reference (required/optional, types, defaults, one example). Topics:\n\n",
+    );
     for o in fields::OBJECTS {
         out.push_str(&format!("  {:<12} {}\n", o.name, o.brief));
     }
@@ -230,7 +242,9 @@ fn compact_line(out: &mut String, o: &Object) {
 }
 
 pub fn compact_section() -> String {
-    let mut out = String::from("## Document schema (field names are exact; `*` required, `:type`, `=default`; descriptions: `kerf schema <topic>`)\n");
+    let mut out = String::from(
+        "## Document schema (field names are exact; `*` required, `:type`, `=default`; descriptions: `kerf schema <topic>`)\n",
+    );
     for o in [&fields::DOC, &fields::VIEW, &fields::NOTE, &fields::DIM, &fields::LABEL, &fields::CITE] {
         compact_line(&mut out, o);
     }

@@ -41,7 +41,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     } else if [5.625, 7.625, 9.625, 11.625].iter().any(|v| (x - v).abs() < 1e-3) {
         x
     } else {
-        ctx.p.fail("width", format!("param 'width' must be a nominal 6, 8, 10 or 12 (actual 5.625, 7.625, 9.625, 11.625) (got {})", fmt_num(x)));
+        ctx.p.fail(
+            "width",
+            format!(
+                "param 'width' must be a nominal 6, 8, 10 or 12 (actual 5.625, 7.625, 9.625, 11.625) (got {})",
+                fmt_num(x)
+            ),
+        );
         return None;
     };
     let n = usize::from(cp.courses);
@@ -51,7 +57,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     }
     if cp.face_shell * 2.0 >= w {
-        ctx.p.fail("face_shell", format!("face_shell {} leaves no cell in a {} wide wall", fmt_num(cp.face_shell), fmt_num(w)));
+        ctx.p.fail(
+            "face_shell",
+            format!("face_shell {} leaves no cell in a {} wide wall", fmt_num(cp.face_shell), fmt_num(w)),
+        );
         return None;
     }
     let nf = n as f64;
@@ -79,10 +88,22 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         if grouted {
             prisms.push(unit(cell, "grout", "grout"));
         } else {
-            prisms.push(Prism { part: part.clone(), material: "cmu".into(), loops: model::one_loop(cell), kind: Kind::Ghost, pen: Some(Pen::Beyond), ..Prism::default() });
+            prisms.push(Prism {
+                part: part.clone(),
+                material: "cmu".into(),
+                loops: model::one_loop(cell),
+                kind: Kind::Ghost,
+                pen: Some(Pen::Beyond),
+                ..Prism::default()
+            });
         }
         if k < n || cp.top_joint {
-            prisms.push(Prism { part: format!("joint_{k}"), material: "mortar".into(), loops: model::one_loop(model::rect_loop(0.0, y1, w, y1 + 0.375)), ..Prism::default() });
+            prisms.push(Prism {
+                part: format!("joint_{k}"),
+                material: "mortar".into(),
+                loops: model::one_loop(model::rect_loop(0.0, y1, w, y1 + 0.375)),
+                ..Prism::default()
+            });
         }
         zones.push(zone_rect(&part, 0.0, y0, w, y1));
     }

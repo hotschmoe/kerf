@@ -59,7 +59,19 @@ pub fn layer_name<'e>(env: &'e Env, key: LayerKey) -> &'e str {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn text_item(env: &mut Env, layer_key: LayerKey, pen: Pen, src: &str, s: &str, x: f64, y: f64, h: f64, rot: f64, align: Align, valign: VAlign) -> Item {
+pub fn text_item(
+    env: &mut Env,
+    layer_key: LayerKey,
+    pen: Pen,
+    src: &str,
+    s: &str,
+    x: f64,
+    y: f64,
+    h: f64,
+    rot: f64,
+    align: Align,
+    valign: VAlign,
+) -> Item {
     let layer = String::from(layer_name(env, layer_key));
     let folded = ascii_fold_flag(s, Some(&mut env.unknown_glyph)).into_owned();
     Item::Text(TextItem { layer, pen, src: String::from(src), s: folded, x, y, h, rot, align, valign })
@@ -90,7 +102,8 @@ pub fn text_poly(font: &Font, t: &TextItem, pad: f64) -> [V2; 4] {
     let ang = t.rot * RAD_PER_DEG;
     let c = math::cos(ang);
     let s = math::sin(ang);
-    let pts = [[ox - pad, oy - pad], [ox + w + pad, oy - pad], [ox + w + pad, oy + t.h + pad], [ox - pad, oy + t.h + pad]];
+    let pts =
+        [[ox - pad, oy - pad], [ox + w + pad, oy - pad], [ox + w + pad, oy + t.h + pad], [ox - pad, oy + t.h + pad]];
     pts.map(|q| V2::init(t.x + q[0] * c - q[1] * s, t.y + q[0] * s + q[1] * c))
 }
 

@@ -80,7 +80,13 @@ const DEFAULT_SECTION_SCALE: &str = "1\"=1'-0\"";
 
 pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpec<'a>> {
     let Some(id) = node.get("id").and_then(Value::str) else {
-        diags.add(Level::Error, "E_PARAM", None, Some(&format!("views/{index}")), format!("view {index} needs a string \"id\""));
+        diags.add(
+            Level::Error,
+            "E_PARAM",
+            None,
+            Some(&format!("views/{index}")),
+            format!("view {index} needs a string \"id\""),
+        );
         return None;
     };
     let base = format!("views/{id}");
@@ -91,12 +97,19 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         "section" => {}
         "iso" => kind = Kind::Iso,
         _ => {
-            diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{base}/kind")), format!("view kind must be \"section\" or \"iso\" (got \"{kind_s}\")"));
+            diags.add(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("{base}/kind")),
+                format!("view kind must be \"section\" or \"iso\" (got \"{kind_s}\")"),
+            );
             ok = false;
         }
     }
     let has_scale = node.get("scale").is_some_and(|v| !v.is_null());
-    let scale_text = node.get("scale").and_then(Value::str).unwrap_or(if kind == Kind::Iso { "NTS" } else { DEFAULT_SECTION_SCALE });
+    let scale_text =
+        node.get("scale").and_then(Value::str).unwrap_or(if kind == Kind::Iso { "NTS" } else { DEFAULT_SECTION_SCALE });
     let mut scale = 12.0;
     let spath = format!("{base}/scale");
     if let Some(s) = units::parse_scale(scale_text) {
@@ -131,7 +144,13 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         match units::parse_length(cz) {
             Some(z) => cut_z = z,
             None => {
-                diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{base}/cut_z")), "cut_z must be a length".to_string());
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/cut_z")),
+                    "cut_z must be a length".to_string(),
+                );
                 ok = false;
             }
         }
@@ -144,7 +163,13 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
             "back_right" => from = From::BackRight,
             "back_left" => from = From::BackLeft,
             _ => {
-                diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{base}/from")), format!("iso 'from' must be front_right, front_left, back_right or back_left (got \"{s}\")"));
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/from")),
+                    format!("iso 'from' must be front_right, front_left, back_right or back_left (got \"{s}\")"),
+                );
                 ok = false;
             }
         }
@@ -156,7 +181,13 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
             "left" => notes_side = NotesSide::Left,
             "both" => {}
             _ => {
-                diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{base}/notes_side")), format!("notes_side must be right, left or both (got \"{s}\")"));
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/notes_side")),
+                    format!("notes_side must be right, left or both (got \"{s}\")"),
+                );
                 ok = false;
             }
         }
@@ -165,7 +196,8 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     if !ok {
         return None;
     }
-    let omit = node.get("omit").and_then(Value::arr).map(|oa| oa.iter().filter_map(Value::str).collect()).unwrap_or_default();
+    let omit =
+        node.get("omit").and_then(Value::arr).map(|oa| oa.iter().filter_map(Value::str).collect()).unwrap_or_default();
     let anns = node.get("annotations").map_or(&[][..], |av| av.arr().unwrap_or(&[]));
     if anns.len() > limits::MAX_ANNOTATIONS_PER_VIEW {
         let msg = limits::message(

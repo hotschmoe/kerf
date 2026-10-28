@@ -82,7 +82,14 @@ pub fn compute(doc: &Value) -> Vec<Item> {
         let mut found = Vec::new();
         if let Some(ca) = doc.get("components").and_then(Value::arr) {
             for c in ca {
-                let joined = format!("{} {} {} {} {}", str_of(c, "id"), str_of(c, "type"), str_of(c, "label"), str_of(c, "model"), str_of(c, "size"));
+                let joined = format!(
+                    "{} {} {} {} {}",
+                    str_of(c, "id"),
+                    str_of(c, "type"),
+                    str_of(c, "label"),
+                    str_of(c, "model"),
+                    str_of(c, "size")
+                );
                 if covers(&want, &tokens(&joined)) {
                     add_found(&mut found, String::from(str_of(c, "id")));
                 }

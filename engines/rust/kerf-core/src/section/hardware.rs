@@ -50,8 +50,20 @@ pub fn thicken_thin_hardware(prisms: &[Prism], scale: f64) -> Vec<Prism> {
             continue;
         }
         let both = on_left && on_right;
-        let lt = if both { min_t / 2.0 } else if on_left { min_t } else { 0.0 };
-        let rt = if both { min_t / 2.0 } else if on_right { min_t } else { 0.0 };
+        let lt = if both {
+            min_t / 2.0
+        } else if on_left {
+            min_t
+        } else {
+            0.0
+        };
+        let rt = if both {
+            min_t / 2.0
+        } else if on_right {
+            min_t
+        } else {
+            0.0
+        };
         let rib = pathgeom::ribbon(&p.centerline, lt, rt);
         out[i].loops = model::one_loop(rib);
     }

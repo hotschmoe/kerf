@@ -180,8 +180,14 @@ impl Iso {
 
     fn cell_range(&self, b: Box) -> [usize; 4] {
         let gn = self.gn;
-        let cl = |v: f64, o: f64, w: f64| num::to_int_clamped::<usize>(math::floor((v - o) / w), 0, gn.saturating_sub(1));
-        [cl(b.x0, self.gx0, self.gw), cl(b.x1, self.gx0, self.gw), cl(b.y0, self.gy0, self.gh), cl(b.y1, self.gy0, self.gh)]
+        let cl =
+            |v: f64, o: f64, w: f64| num::to_int_clamped::<usize>(math::floor((v - o) / w), 0, gn.saturating_sub(1));
+        [
+            cl(b.x0, self.gx0, self.gw),
+            cl(b.x1, self.gx0, self.gw),
+            cl(b.y0, self.gy0, self.gh),
+            cl(b.y1, self.gy0, self.gh),
+        ]
     }
 
     fn build_grid(&mut self) {
@@ -263,7 +269,9 @@ impl Iso {
         self.candidates(bb, &mut cand);
         let keep: Vec<u32> = cand
             .into_iter()
-            .filter(|&fi| !skip.contains(&(fi as usize)) && self.faces.get(fi as usize).is_some_and(|f| f.bbox.overlaps(bb, 0.0)))
+            .filter(|&fi| {
+                !skip.contains(&(fi as usize)) && self.faces.get(fi as usize).is_some_and(|f| f.bbox.overlaps(bb, 0.0))
+            })
             .collect();
         let mut out: Vec<[f64; 2]> = Vec::new();
         if keep.is_empty() {
@@ -361,7 +369,8 @@ fn src_of(c: &Comp, instance: u32) -> String {
 }
 
 fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPrism>) {
-    let crop_loop: Option<Vec<V2>> = crop.map(|c| vec![V2::init(c.x0, c.y0), V2::init(c.x1, c.y0), V2::init(c.x1, c.y1), V2::init(c.x0, c.y1)]);
+    let crop_loop: Option<Vec<V2>> =
+        crop.map(|c| vec![V2::init(c.x0, c.y0), V2::init(c.x1, c.y0), V2::init(c.x1, c.y1), V2::init(c.x0, c.y1)]);
     for c in &scene.comps {
         if c.state != State::Ok || !c.visible {
             continue;
@@ -412,7 +421,9 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
                     }
                     let mut loops: Vec<Vec<V2>> = vec![outer.clone()];
                     for h in &region {
-                        if geom::signed_area_v(h) < 0.0 && h.first().is_some_and(|&h0| geom::point_in_loop_eo(h0, &region[oi])) {
+                        if geom::signed_area_v(h) < 0.0
+                            && h.first().is_some_and(|&h0| geom::point_in_loop_eo(h0, &region[oi]))
+                        {
                             loops.push(h.clone());
                         }
                     }
@@ -449,7 +460,16 @@ fn mk_face(iso: &mut Iso, n: [f64; 3], verts: &[[f64; 3]], holes3: &[Vec<[f64; 3
         .collect();
     let holes = holes3.iter().map(|h| h.iter().map(|&v| proj(iso.sx, iso.sz, v)).collect()).collect();
     let nd = n[0] * iso.sx + n[1] + n[2] * iso.sz;
-    iso.faces.push(Face { n, p0: verts.first().copied().unwrap_or([0.0; 3]), outer, holes, bbox: bb, prism: pi, front: nd > 1e-9, nd });
+    iso.faces.push(Face {
+        n,
+        p0: verts.first().copied().unwrap_or([0.0; 3]),
+        outer,
+        holes,
+        bbox: bb,
+        prism: pi,
+        front: nd > 1e-9,
+        nd,
+    });
     iso.faces.len() - 1
 }
 
@@ -482,9 +502,25 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             let q = fl.pts[(i + 1) % n];
             let sf = side_faces[i];
             let top_pen = pen_of(iso, ip_pen, ftop, sf, cap_cut);
-            iso.edges.push(Edge { a: [p.x, p.y, z1], b: [q.x, q.y, z1], pen: top_pen, prism: pi, f1: ftop, f2: sf, chain });
+            iso.edges.push(Edge {
+                a: [p.x, p.y, z1],
+                b: [q.x, q.y, z1],
+                pen: top_pen,
+                prism: pi,
+                f1: ftop,
+                f2: sf,
+                chain,
+            });
             let bot_pen = pen_of(iso, ip_pen, fbot, sf, false);
-            iso.edges.push(Edge { a: [p.x, p.y, z0], b: [q.x, q.y, z0], pen: bot_pen, prism: pi, f1: fbot, f2: sf, chain: chain + 8 });
+            iso.edges.push(Edge {
+                a: [p.x, p.y, z0],
+                b: [q.x, q.y, z0],
+                pen: bot_pen,
+                prism: pi,
+                f1: fbot,
+                f2: sf,
+                chain: chain + 8,
+            });
         }
         for i in 0..n {
             let p = fl.pts[i];
@@ -580,7 +616,8 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
     let ne = iso.edges.len();
     let mut keep = vec![true; ne];
     {
-        let mut ents: Vec<(EdgeKey, usize)> = iso.edges.iter().enumerate().map(|(i, e)| (edge_key(e.a, e.b), i)).collect();
+        let mut ents: Vec<(EdgeKey, usize)> =
+            iso.edges.iter().enumerate().map(|(i, e)| (edge_key(e.a, e.b), i)).collect();
         sort::stable(&mut ents, |x, y| x.0 < y.0 || (x.0 == y.0 && x.1 < y.1));
         let mut i = 0;
         while i < ne {
@@ -663,7 +700,11 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
                         out_lines.push([p0.x, p0.y, p1.x, p1.y]);
                     }
                 }
-                let loops = ip.loops.iter().map(|l| l.iter().map(|v| Pt::at(proj(sx, sz, [v.x, v.y, ip.z1]), 0.0)).collect()).collect();
+                let loops = ip
+                    .loops
+                    .iter()
+                    .map(|l| l.iter().map(|v| Pt::at(proj(sx, sz, [v.x, v.y, ip.z1]), 0.0)).collect())
+                    .collect();
                 items.push(Item::Hatch(HatchItem {
                     layer: style.layer_for_pen(Pen::Hatch).into(),
                     pen: Pen::Hatch,
@@ -700,7 +741,13 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
         let mut cur_chain = usize::MAX;
         let flush = |cur: &mut Vec<Pt>, src: &str, items: &mut Vec<Item>| {
             if cur.len() >= 2 {
-                items.push(Item::Path(PathItem { layer: layer.into(), pen, src: src.into(), closed: false, pts: core::mem::take(cur) }));
+                items.push(Item::Path(PathItem {
+                    layer: layer.into(),
+                    pen,
+                    src: src.into(),
+                    closed: false,
+                    pts: core::mem::take(cur),
+                }));
             }
             cur.clear();
         };
@@ -711,7 +758,8 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
             }
             let src = iso.prisms[e.prism].src.as_str();
             for sg in &pc.segs {
-                let continues = cur_chain == e.chain && cur_src == src && cur.last().is_some_and(|l| V2::eql(l.v(), sg[0], 1e-7));
+                let continues =
+                    cur_chain == e.chain && cur_src == src && cur.last().is_some_and(|l| V2::eql(l.v(), sg[0], 1e-7));
                 if !continues {
                     flush(&mut cur, cur_src, &mut items);
                     cur.push(Pt::at(sg[0], 0.0));
@@ -729,7 +777,11 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
     let mut vis_out: Vec<Vis> = Vec::new();
     for (pi, ip) in iso.prisms.iter().enumerate() {
         if ip.is_fill {
-            let lp: Vec<V2> = ip.loops.first().map(|l| l.iter().map(|v| proj(sx, sz, [v.x, v.y, ip.z1])).collect()).unwrap_or_default();
+            let lp: Vec<V2> = ip
+                .loops
+                .first()
+                .map(|l| l.iter().map(|v| proj(sx, sz, [v.x, v.y, ip.z1])).collect())
+                .unwrap_or_default();
             vis_out.push(Vis {
                 comp: ip.comp,
                 part: ip.part.clone(),
@@ -740,7 +792,8 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
             });
             continue;
         }
-        let mut faces: Vec<usize> = (0..iso.faces.len()).filter(|&i| iso.faces[i].prism == pi && iso.faces[i].front).collect();
+        let mut faces: Vec<usize> =
+            (0..iso.faces.len()).filter(|&i| iso.faces[i].prism == pi && iso.faces[i].front).collect();
         sort::stable(&mut faces, |&x, &y| {
             let (fx, fy) = (&iso.faces[x], &iso.faces[y]);
             let cx = fx.n[2] > 0.5 && ip.cap_cut;
@@ -794,13 +847,21 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
                 }
                 if let Some(qp) = best {
                     let e = 1e-3;
-                    let tri = vec![V2::init(qp.x - e, qp.y - e), V2::init(qp.x + e, qp.y - e), V2::init(qp.x, qp.y + e)];
+                    let tri =
+                        vec![V2::init(qp.x - e, qp.y - e), V2::init(qp.x + e, qp.y - e), V2::init(qp.x, qp.y + e)];
                     shapes.push(OwnedShape { outer: tri, holes: Vec::new() });
                     break;
                 }
             }
         }
-        vis_out.push(Vis { comp: ip.comp, part: ip.part.clone(), instance: ip.instance, shapes, src: ip.src.clone(), cut: ip.cap_cut });
+        vis_out.push(Vis {
+            comp: ip.comp,
+            part: ip.part.clone(),
+            instance: ip.instance,
+            shapes,
+            src: ip.src.clone(),
+            cut: ip.cap_cut,
+        });
     }
     iso.vis = vis_out;
 
@@ -825,7 +886,9 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
 /// Grade-line chain (or full outline) of a fill's cut face.
 fn fill_outline(items: &mut Vec<Item>, ip: &IsoPrism, style: &Style, sx: f64, sz: f64) {
     let layer = style.layer_for_pen(Pen::Cut);
-    let path = |pts: Vec<Pt>| Item::Path(PathItem { layer: layer.into(), pen: Pen::Cut, src: ip.src.clone(), closed: false, pts });
+    let path = |pts: Vec<Pt>| {
+        Item::Path(PathItem { layer: layer.into(), pen: Pen::Cut, src: ip.src.clone(), closed: false, pts })
+    };
     for l in &ip.loops {
         let mut cur: Vec<Pt> = Vec::new();
         let n = l.len();

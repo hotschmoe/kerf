@@ -1,14 +1,14 @@
 //! membrane (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, vs_of};
-use crate::model::fmt_num;
-use crate::units::ftin;
 use crate::geom::{self, V2};
 use crate::json::Value;
 use crate::math;
+use crate::model::fmt_num;
 use crate::model::{self, Built, Kind, Prism};
 use crate::params::{ParamEnum, param_enum, params};
 use crate::pathgeom;
+use crate::units::ftin;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -63,7 +63,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         let last = clean.len() - 1;
         let seg = V2::init(clean[last].x - clean[last - 1].x, clean[last].y - clean[last - 1].y);
         if seg.len() < 1e-9 {
-            ctx.p.fail("until", "'until' needs a last segment with a direction (the last two points coincide)".to_string());
+            ctx.p.fail(
+                "until",
+                "'until' needs a last segment with a direction (the last two points coincide)".to_string(),
+            );
             return None;
         }
         let u = seg.norm();

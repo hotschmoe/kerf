@@ -191,7 +191,10 @@ fn segs_cross(a0: V2, a1: V2, b0: V2, b1: V2) -> bool {
 }
 
 fn on_seg(a: V2, b: V2, p: V2) -> bool {
-    p.x >= a.x.min(b.x) - 1e-12 && p.x <= a.x.max(b.x) + 1e-12 && p.y >= a.y.min(b.y) - 1e-12 && p.y <= a.y.max(b.y) + 1e-12
+    p.x >= a.x.min(b.x) - 1e-12
+        && p.x <= a.x.max(b.x) + 1e-12
+        && p.y >= a.y.min(b.y) - 1e-12
+        && p.y <= a.y.max(b.y) + 1e-12
 }
 
 fn pt_seg_dist(p: V2, a: V2, b: V2) -> f64 {
@@ -211,9 +214,7 @@ pub fn seg_seg_dist(a0: V2, a1: V2, b0: V2, b1: V2) -> f64 {
     if segs_cross(a0, a1, b0, b1) {
         return 0.0;
     }
-    pt_seg_dist(a0, b0, b1)
-        .min(pt_seg_dist(a1, b0, b1))
-        .min(pt_seg_dist(b0, a0, a1).min(pt_seg_dist(b1, a0, a1)))
+    pt_seg_dist(a0, b0, b1).min(pt_seg_dist(a1, b0, b1)).min(pt_seg_dist(b0, a0, a1).min(pt_seg_dist(b1, a0, a1)))
 }
 
 pub fn poly_poly_dist(p: &[V2; 3], q: &[V2; 3]) -> f64 {
@@ -358,7 +359,8 @@ impl Ctx<'_> {
     }
 
     fn sort_order(&self, col_left: bool) -> Vec<usize> {
-        let mut ord: Vec<usize> = (0..self.notes.len()).filter(|&i| !self.fixed(i) && self.left[i] == col_left).collect();
+        let mut ord: Vec<usize> =
+            (0..self.notes.len()).filter(|&i| !self.fixed(i) && self.left[i] == col_left).collect();
         let key = &self.key;
         sort::stable(&mut ord, |&x, &y| if key[x] != key[y] { key[x] < key[y] } else { x < y });
         ord
@@ -400,7 +402,8 @@ impl Ctx<'_> {
         for col_left in [false, true] {
             let ord = self.sort_order(col_left);
             for &i in &ord {
-                self.x[i] = if col_left { self.p.xl - self.p.gutter - self.notes[i].w } else { self.p.xr + self.p.gutter };
+                self.x[i] =
+                    if col_left { self.p.xl - self.p.gutter - self.notes[i].w } else { self.p.xr + self.p.gutter };
             }
             self.stack_top_down(&ord);
             for &i in &ord {
@@ -416,7 +419,8 @@ impl Ctx<'_> {
                 self.top[i] = pl.y;
                 self.left[i] = pl.x + nt.w * 0.5 < self.landing(i).x;
             }
-            self.leaders[i] = leader_of(self.left[i], self.x[i], self.top[i], nt.w, nt.hgt, self.landing(i), &self.p.geo);
+            self.leaders[i] =
+                leader_of(self.left[i], self.x[i], self.top[i], nt.w, nt.hgt, self.landing(i), &self.p.geo);
             self.boxes[i] = box_poly(self.x[i], self.top[i], nt.w, nt.hgt);
         }
     }
@@ -452,7 +456,8 @@ impl Ctx<'_> {
         let h = self.p.geo.h;
         let mut c = 0.0;
         for s in self.soft {
-            let sb = BB { x0: s[0].x.min(s[1].x), y0: s[0].y.min(s[1].y), x1: s[0].x.max(s[1].x), y1: s[0].y.max(s[1].y) };
+            let sb =
+                BB { x0: s[0].x.min(s[1].x), y0: s[0].y.min(s[1].y), x1: s[0].x.max(s[1].x), y1: s[0].y.max(s[1].y) };
             if lb.apart(&sb, h * 0.5) {
                 continue;
             }
@@ -550,7 +555,15 @@ impl Ctx<'_> {
 
     fn snapshot(&mut self) -> Snap {
         let cst = self.eval();
-        Snap { left: self.left.clone(), ci: self.ci.clone(), key: self.key.clone(), ov: self.ov.clone(), hits: cst.hits, hard: cst.hard, total: cst.total }
+        Snap {
+            left: self.left.clone(),
+            ci: self.ci.clone(),
+            key: self.key.clone(),
+            ov: self.ov.clone(),
+            hits: cst.hits,
+            hard: cst.hard,
+            total: cst.total,
+        }
     }
 
     fn restore(&mut self, s: &Snap) {
@@ -898,7 +911,16 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
     }
 
     let mut hits: Vec<Hit> = Vec::new();
-    let mk = |note, kind, other, dist| Hit { note, kind, other, dist, fix_at: None, fix_place: None, other_fix_at: None, other_fix_place: None };
+    let mk = |note, kind, other, dist| Hit {
+        note,
+        kind,
+        other,
+        dist,
+        fix_at: None,
+        fix_place: None,
+        other_fix_at: None,
+        other_fix_place: None,
+    };
     for i in 0..n {
         for j in i + 1..n {
             let d = poly_poly_dist(&c.leaders[i], &c.leaders[j]);

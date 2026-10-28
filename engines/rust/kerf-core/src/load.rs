@@ -35,7 +35,13 @@ pub fn load<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags, with_views: boo
 
 /// Compile, validate and lint `doc`; with `with_views` also build every view so view diagnostics are included.
 /// `before` is the loaded document prior to an edit (the crop check compares against it).
-pub fn load_after_edit<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags, with_views: bool, before: Option<&Loaded<'_>>) -> Loaded<'a> {
+pub fn load_after_edit<'a>(
+    doc: &'a Value,
+    st: &'a Style,
+    diags: &'a Diags,
+    with_views: bool,
+    before: Option<&Loaded<'_>>,
+) -> Loaded<'a> {
     let scene = compile::compile(doc, st, diags);
     let is_obj = matches!(doc, Value::Object(_));
     if is_obj {
@@ -54,7 +60,13 @@ pub fn load_after_edit<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags, with
             for (i, v) in views.iter().enumerate() {
                 let vid = v.get("id").map_or("", |x| x.str().unwrap_or(""));
                 if seen.contains(&vid) {
-                    diags.add(Level::Error, "E_DUP_ID", Some(vid), Some(&format!("views/{i}")), format!("duplicate view id '{vid}'"));
+                    diags.add(
+                        Level::Error,
+                        "E_DUP_ID",
+                        Some(vid),
+                        Some(&format!("views/{i}")),
+                        format!("duplicate view id '{vid}'"),
+                    );
                     continue;
                 }
                 seen.push(vid);
@@ -160,7 +172,14 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
     let w = diags.iter().filter(|d| d.level == Level::Warning).count();
     let id = l.doc.get("id").map_or("", |x| x.str().unwrap_or(""));
     let nc = l.scene.comps.len();
-    let mut out = format!("DOC {id}  {nc} component{}  {} view{}  {e} error{}  {w} warning{}\n", plural(nc), l.nviews, plural(l.nviews), plural(e), plural(w));
+    let mut out = format!(
+        "DOC {id}  {nc} component{}  {} view{}  {e} error{}  {w} warning{}\n",
+        plural(nc),
+        l.nviews,
+        plural(l.nviews),
+        plural(e),
+        plural(w)
+    );
     for c in &l.scene.comps {
         out.push(' ');
         pad_to(&mut out, &c.id, 14);
@@ -197,7 +216,9 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
         coverage_block(&mut out, l.doc);
     }
     for d in diags {
-        if d.level == Level::Info && !matches!(d.code, "I_SOLID_USED" | "I_UNVERIFIED_CITE" | "I_CITE_DOWNGRADED" | "I_ACK") {
+        if d.level == Level::Info
+            && !matches!(d.code, "I_SOLID_USED" | "I_UNVERIFIED_CITE" | "I_CITE_DOWNGRADED" | "I_ACK")
+        {
             continue;
         }
         out.push_str(&diag_line(d));
@@ -256,20 +277,29 @@ pub fn inspect(l: &Loaded, q: &Value) -> Result<Value, InspectError> {
         "summary" => Ok(json::obj([("summary", Value::String(summary(l)))])),
         "doc" => Ok(json::obj([("doc", l.doc.clone())])),
         "catalog" => {
-            let t = q.get("type").and_then(Value::str).ok_or_else(|| ierr("E_PARAM", "inspect catalog needs \"type\", e.g. \"truss\""))?;
+            let t = q
+                .get("type")
+                .and_then(Value::str)
+                .ok_or_else(|| ierr("E_PARAM", "inspect catalog needs \"type\", e.g. \"truss\""))?;
             match catalog::find(t) {
                 Some(e) => Ok(catalog::entry_json(e)),
-                None => Err(ierr("E_REF_UNKNOWN", format!("unknown component type \"{t}\". Types: {}", scene::join_ids(&catalog::type_names())))),
+                None => Err(ierr(
+                    "E_REF_UNKNOWN",
+                    format!("unknown component type \"{t}\". Types: {}", scene::join_ids(&catalog::type_names())),
+                )),
             }
         }
         "component" | "anchors" => inspect_component(l, q, kind == "anchors"),
         "at" => inspect_at(l, q),
-        _ => Err(ierr("E_PARAM", format!("unknown query \"{kind}\": use summary, component, anchors, at, catalog, doc"))),
+        _ => {
+            Err(ierr("E_PARAM", format!("unknown query \"{kind}\": use summary, component, anchors, at, catalog, doc")))
+        }
     }
 }
 
 fn inspect_component(l: &Loaded, q: &Value, anchors_only: bool) -> Result<Value, InspectError> {
-    let id = q.get("id").and_then(Value::str).ok_or_else(|| ierr("E_PARAM", "inspect component/anchors needs \"id\""))?;
+    let id =
+        q.get("id").and_then(Value::str).ok_or_else(|| ierr("E_PARAM", "inspect component/anchors needs \"id\""))?;
     let Some(c) = l.scene.find(id) else {
         let ids = l.scene.comp_ids();
         let hint = model::nearest(id, &ids).map(|n| format!(" Did you mean '{n}'?")).unwrap_or_default();
@@ -292,7 +322,11 @@ fn inspect_component(l: &Loaded, q: &Value, anchors_only: bool) -> Result<Value,
         .into_iter()
         .map(|pn| {
             let is_zone = c.built.zones.iter().any(|z| z.name == pn);
-            json::obj([("name", s(pn)), ("kind", s(if is_zone { "zone" } else { "prism" })), ("anchors", box_anchors(c, Some(pn)))])
+            json::obj([
+                ("name", s(pn)),
+                ("kind", s(if is_zone { "zone" } else { "prism" })),
+                ("anchors", box_anchors(c, Some(pn))),
+            ])
         })
         .collect();
     let b = comp_box(c);
@@ -313,14 +347,20 @@ fn inspect_component(l: &Loaded, q: &Value, anchors_only: bool) -> Result<Value,
 }
 
 fn inspect_at(l: &Loaded, q: &Value) -> Result<Value, InspectError> {
-    let vid = q.get("view").and_then(Value::str).ok_or_else(|| ierr("E_PARAM", "inspect at needs \"view\" and \"point\": [x, y]"))?;
+    let vid = q
+        .get("view")
+        .and_then(Value::str)
+        .ok_or_else(|| ierr("E_PARAM", "inspect at needs \"view\" and \"point\": [x, y]"))?;
     let bad_point = || ierr("E_PARAM", "inspect at needs \"point\": [x, y] in inches");
     let pv = q.get("point").and_then(Value::arr).ok_or_else(bad_point)?;
     let [px, py] = pv else { return Err(bad_point()) };
     let (Some(x), Some(y)) = (units::parse_length(px), units::parse_length(py)) else { return Err(bad_point()) };
     let pt = V2::init(x, y);
     let Some(vnode) = view::find_view(l.doc, vid) else {
-        return Err(ierr("E_REF_UNKNOWN", format!("unknown view '{vid}'. Views: {}", scene::join_ids(&view::view_ids(l.doc)))));
+        return Err(ierr(
+            "E_REF_UNKNOWN",
+            format!("unknown view '{vid}'. Views: {}", scene::join_ids(&view::view_ids(l.doc))),
+        ));
     };
     let vd = Diags::new();
     let Some(spec_v) = view::parse(vnode, 0, &vd) else {
