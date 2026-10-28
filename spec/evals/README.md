@@ -24,19 +24,11 @@ Human or LLM-judge rubric (score each 0–2):
 3. Note grammar follows `spec/llm/system.md`, and the notes are consistent across details.
 4. Citations are plausible and none are invented. Uncertainty is surfaced.
 
-Run (needs `ANTHROPIC_API_KEY` and a built engine CLI):
-```
-node spec/evals/run.mjs --engine engines/zig/zig-out/bin/kerf --model claude-opus-5-5 [--only e01]
-```
-The runner drives the Messages-API tool loop in spec/llm/HARNESS.md (no app uses it any more). It renders
-`kerf_render` images through the engine's SVG output and headless chromium. Each run writes
-`spec/evals/runs/<timestamp>/<id>/` containing the final doc, transcript, PNGs and score.json.
+## Runner (`run-cli.mjs`): a coding agent driving the real `kerf` CLI
 
-## CLI-path eval (`run-cli.mjs`): a coding agent driving the real `kerf` CLI
-
-`run.mjs` above exercises the raw API tool loop. `run-cli.mjs` measures the path users actually
-take: a headless coding agent in a fresh workspace folder, using only the `kerf` CLI
-(`kerf init` → `kerf guide` → `kerf apply -w` → `kerf export`).
+No API keys: the runner drives a local agent CLI headless on the owner's subscription, the same way
+`kerf serve`'s agent bridge does. It measures the path users actually take: a headless coding agent
+in a fresh workspace folder, using only the `kerf` CLI (`kerf init` → `kerf guide` → `kerf apply -w` → `kerf export`).
 
 ```
 node spec/evals/run-cli.mjs --agent claude [--kerf ~/kerf-eval/bin/kerf-baseline] [--only e01,e05] \

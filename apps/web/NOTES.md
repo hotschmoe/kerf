@@ -71,7 +71,7 @@ the choice is `localStorage kerf.agent`. Manila cards `LOCAL AGENT · <name>`; B
 the output; Read/Write/Edit as `READ details/x.kerf.json`; the agent's session id is kept per agent and document (`kerf.session.<agent>.<file>`) and resumed on the
 next message; NEW clears them. Agents take text only (no image attach). Static mode: the composer and picker are disabled and the console says
 `CHAT NEEDS \`kerf serve\` AND A LOCAL AGENT CLI (claude, codex, grok OR pi)`; the status line shows `CHAT OFF`.
-`spec/llm/system.md` and `tools.json` are no longer loaded by the web app (`kerf guide` embeds system.md; `tools.json` is used by `spec/evals/run.mjs`).
+`spec/llm/system.md` is no longer loaded by the web app (`kerf guide` embeds it).
 
 ## Tests
 - `test/unit.mjs` (10): units, stroke font, raw ABI loader, agent store, agent event parsing for 3 CLIs (fixtures recorded from the real CLIs).

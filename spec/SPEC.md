@@ -13,7 +13,7 @@ Where it says SHOULD, deviate only with a note in your stack's `NOTES.md`.
 
 Companion files:
 - `spec/DESIGN.md` — UI design language (1970s IBM engineering) shared by all four apps.
-- `spec/llm/` — system prompt + tool definitions shared by all chat implementations.
+- `spec/llm/` — the agent guide (`cli-guide.md`) and system prompt (`system.md`) embedded by `kerf guide`.
 - `spec/styles/kerf-standard.kerfstyle.json` — the default style.
 - `spec/details/*.kerf.json` — reference documents (golden inputs).
 - `spec/details/REFERENCE-CONTENT.md` — domain research for the reference details.
