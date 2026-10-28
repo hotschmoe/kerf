@@ -12,3 +12,6 @@ path = "src/lib.rs"
 [[example]]
 name = "bench"
 path = "../bench/bench.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kerf_bench_alloc)"] }

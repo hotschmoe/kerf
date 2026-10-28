@@ -2,7 +2,8 @@
 //!
 //!   cargo run --profile release --example bench -- <cases dir> [--filter S] [--exclude S] [--min-ms N] [--min-reps N]
 //!   cargo run --profile release --example bench -- <cases dir> --loop N [--filter S]   (profiling: every case N times, no report)
-//!   cargo run --profile release --example bench -- <cases dir> --count [--filter S]    (allocations and bytes per call)
+//!   RUSTFLAGS="--cfg kerf_bench_alloc" cargo run --release --example bench -- <cases dir> --count   (allocations per call)
+//!   RUSTFLAGS="--cfg kerf_bench_alloc" cargo run --release --example bench -- <cases dir> --arena   (per-call arena timing)
 //!
 //! Prints one TSV row per case: label, fn, median us, min us, reps, output bytes, status.
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -83,7 +84,10 @@ unsafe impl GlobalAlloc for Counting {
     }
 }
 
-#[global_allocator]
+// Only with RUSTFLAGS="--cfg kerf_bench_alloc": the counters cost an atomic add per allocation, which the timing runs
+// must not pay (they use the plain system allocator, like the CLI).
+#[cfg_attr(kerf_bench_alloc, global_allocator)]
+#[allow(dead_code)]
 static GLOBAL: Counting = Counting;
 
 struct Case {
@@ -102,6 +106,10 @@ fn main() {
     let min_reps: usize = opt("--min-reps").map_or(10, |s| s.parse().unwrap());
     let loops: Option<usize> = opt("--loop").map(|s| s.parse().unwrap());
     let arena = args.iter().any(|a| a == "--arena");
+    if (arena || args.iter().any(|a| a == "--count")) && !cfg!(kerf_bench_alloc) {
+        eprintln!("--count and --arena need the instrumented allocator: RUSTFLAGS=\"--cfg kerf_bench_alloc\"");
+        std::process::exit(2);
+    }
     if arena {
         // SAFETY: a plain 1 GiB block from the system allocator, never freed (the process ends with the bench).
         let base = unsafe { System.alloc(Layout::from_size_align(ARENA_SIZE, 4096).unwrap()) };

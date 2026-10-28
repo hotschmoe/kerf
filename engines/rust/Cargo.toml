@@ -23,6 +23,14 @@ panic = "abort"
 inherits = "release"
 opt-level = "z"
 
+# Edit-compile-test loop with optimized code: no LTO, parallel codegen, incremental (PERF.md: about 4 s per edit
+# instead of 33 s, runs about 1.1x slower than release). Gates: KERF=target/fastbuild/kerf tests/check_golden.sh
+[profile.fastbuild]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+
 # perf/callgrind builds: release codegen with symbols and line tables (see PERF.md).
 [profile.profiling]
 inherits = "release"

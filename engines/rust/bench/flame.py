@@ -146,7 +146,7 @@ def svg(path, title='flame graph'):
 
     walk(root, 0, 0)
     height = (depth_max[0] + 2) * fh + 30
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" font-family="monospace" font-size="11">',
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" font-family="monospace" font-size="11">',
            f'<rect width="100%" height="100%" fill="#fdfdf6"/><text x="8" y="18" font-size="14">{html.escape(title)}</text>']
     for x, d, node in rects:
         w = node['w'] * (width - 16) / total
