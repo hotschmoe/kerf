@@ -1,0 +1,113 @@
+diff --git a/engines/rust/kerf-core/src/png.rs b/engines/rust/kerf-core/src/png.rs
+index cb2d71b..187edc2 100644
+--- a/engines/rust/kerf-core/src/png.rs
++++ b/engines/rust/kerf-core/src/png.rs
+@@ -96,6 +96,37 @@ fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut [u8]) {
+     }
+ }
+ 
++/// `row_score` of `filter_row(kind, ..)` without materialising the row: one specialised pass per filter type.
++fn filter_score(kind: u8, row: &[u8], prev: &[u8], bpp: usize) -> u64 {
++    let abs = |v: u8| u64::from((v as i8).unsigned_abs());
++    let (head, tail) = row.split_at(bpp.min(row.len()));
++    let (phead, ptail) = prev.split_at(bpp.min(prev.len()));
++    match kind {
++        0 => row.iter().map(|&x| abs(x)).sum(),
++        1 => head.iter().map(|&x| abs(x)).sum::<u64>() + tail.iter().zip(row).map(|(&x, &a)| abs(x.wrapping_sub(a))).sum::<u64>(),
++        2 => row.iter().zip(prev).map(|(&x, &b)| abs(x.wrapping_sub(b))).sum(),
++        3 => {
++            head.iter().zip(phead).map(|(&x, &b)| abs(x.wrapping_sub(b / 2))).sum::<u64>()
++                + tail
++                    .iter()
++                    .zip(row)
++                    .zip(ptail)
++                    .map(|((&x, &a), &b)| abs(x.wrapping_sub(((u16::from(a) + u16::from(b)) / 2) as u8)))
++                    .sum::<u64>()
++        }
++        _ => {
++            head.iter().zip(phead).map(|(&x, &b)| abs(x.wrapping_sub(paeth(0, b, 0)))).sum::<u64>()
++                + tail
++                    .iter()
++                    .zip(row)
++                    .zip(ptail.iter().zip(prev))
++                    .map(|((&x, &a), (&b, &c))| abs(x.wrapping_sub(paeth(a, b, c))))
++                    .sum::<u64>()
++        }
++    }
++}
++
++#[allow(dead_code)]
+ fn row_score(buf: &[u8]) -> u64 {
+     buf.iter().map(|&v| u64::from((v as i8).unsigned_abs())).sum()
+ }
+@@ -122,14 +153,12 @@ pub fn encode(width: u32, height: u32, color: ColorType, pixels: &[u8]) -> Resul
+ 
+     let mut filtered = vec![0u8; (stride + 1) * height as usize];
+     let zero_row = vec![0u8; stride];
+-    let mut cand = vec![0u8; stride];
+     for (y, (row, dst)) in pixels.chunks_exact(stride).zip(filtered.chunks_exact_mut(stride + 1)).enumerate() {
+         let prev = if y == 0 { &zero_row[..] } else { &pixels[(y - 1) * stride..y * stride] };
+         let mut best_kind = 0u8;
+         let mut best_score = u64::MAX;
+         for kind in 0..5u8 {
+-            filter_row(kind, row, prev, ch, &mut cand);
+-            let sc = row_score(&cand);
++            let sc = filter_score(kind, row, prev, ch);
+             if sc < best_score {
+                 best_score = sc;
+                 best_kind = kind;
+diff --git a/engines/rust/kerf-core/src/png/deflate.rs b/engines/rust/kerf-core/src/png/deflate.rs
+index d42c1eb..f79ff3a 100644
+--- a/engines/rust/kerf-core/src/png/deflate.rs
++++ b/engines/rust/kerf-core/src/png/deflate.rs
+@@ -74,7 +74,7 @@ fn fixed_dist() -> ([u16; 30], [u8; 30]) {
+ }
+ 
+ fn hash(x: u32) -> usize {
+-    (x.wrapping_mul(0x9E37_79B1) >> (32 - HASH_BITS)) as usize
++    (x.wrapping_mul(0x9E37_79B1) >> (32 - HASH_BITS)) as usize & ((1 << HASH_BITS) - 1)
+ }
+ 
+ #[derive(Clone, Copy)]
+@@ -333,8 +333,8 @@ fn clen_hlen(freqs: &[u16; 19]) -> u32 {
+ }
+ 
+ struct Lookup {
+-    head: Vec<u16>,
+-    chain: Vec<u16>,
++    head: alloc::boxed::Box<[u16; 1 << HASH_BITS]>,
++    chain: alloc::boxed::Box<[u16; 32768]>,
+     chain_pos: u16,
+ }
+ 
+@@ -365,7 +365,11 @@ impl Compressor {
+             tokens: Vec::with_capacity(BLOCK_TOKENS),
+             lit_freqs: [0; 286],
+             dist_freqs: [0; 30],
+-            lookup: Lookup { head: vec![0xffff; 1 << HASH_BITS], chain: vec![0xffff; 32768], chain_pos: VALUE_MASK },
++            lookup: Lookup {
++                head: alloc::boxed::Box::new([0xffff; 1 << HASH_BITS]),
++                chain: alloc::boxed::Box::new([0xffff; 32768]),
++                chain_pos: VALUE_MASK,
++            },
+         }
+     }
+ 
+@@ -669,8 +673,16 @@ impl Compressor {
+ /// Common prefix length of `prev` and `bytes`, at most 258 and at most `bytes.len()`.
+ fn match_len(prev: &[u8], bytes: &[u8]) -> u16 {
+     let cap = bytes.len().min(MAX_LENGTH);
++    let (p, b) = (&prev[..cap], &bytes[..cap]);
+     let mut n = 0;
+-    while n < cap && prev[n] == bytes[n] {
++    for (pc, bc) in p.chunks_exact(8).zip(b.chunks_exact(8)) {
++        let x = u64::from_le_bytes(pc.try_into().unwrap_or([0; 8])) ^ u64::from_le_bytes(bc.try_into().unwrap_or([0; 8]));
++        if x != 0 {
++            return (n + (x.trailing_zeros() / 8) as usize) as u16;
++        }
++        n += 8;
++    }
++    while n < cap && p[n] == b[n] {
+         n += 1;
+     }
+     n as u16

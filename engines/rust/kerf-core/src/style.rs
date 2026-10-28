@@ -9,7 +9,44 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-pub const DEFAULT_JSON: &str = include_str!("../../../../spec/styles/kerf-standard.kerfstyle.json");
+const DEFAULT_SRC: &[u8] = include_bytes!("../../../../spec/styles/kerf-standard.kerfstyle.json");
+
+/// JSON whitespace between tokens dropped, strings and escapes kept (`out: None` only counts).
+const fn minify_into(src: &[u8], mut out: Option<&mut [u8]>) -> usize {
+    let (mut i, mut n, mut in_str, mut esc) = (0, 0, false, false);
+    while i < src.len() {
+        let c = src[i];
+        i += 1;
+        if in_str {
+            if esc {
+                esc = false;
+            } else if c == b'\\' {
+                esc = true;
+            } else if c == b'"' {
+                in_str = false;
+            }
+        } else if matches!(c, b' ' | b'\t' | b'\n' | b'\r') {
+            continue;
+        } else if c == b'"' {
+            in_str = true;
+        }
+        if let Some(o) = &mut out {
+            o[n] = c;
+        }
+        n += 1;
+    }
+    n
+}
+
+const DEFAULT_LEN: usize = minify_into(DEFAULT_SRC, None);
+const DEFAULT_MIN: [u8; DEFAULT_LEN] = {
+    let mut buf = [0u8; DEFAULT_LEN];
+    minify_into(DEFAULT_SRC, Some(&mut buf));
+    buf
+};
+
+/// The embedded default style (spec/styles/kerf-standard.kerfstyle.json), minified at compile time (12.1 -> 6.6 KB).
+pub const DEFAULT_JSON: &[u8] = &DEFAULT_MIN;
 
 #[derive(Clone, Debug)]
 pub struct PenDef {
@@ -351,17 +388,43 @@ pub enum StyleError {
     BadStyle(String),
 }
 
+/// The embedded default style as a JSON tree, parsed on first use and kept for the life of the process: it is a
+/// constant, so sharing it changes no output (every call used to parse the 12 KB text again).
+fn default_tree() -> Option<&'static Value> {
+    use core::sync::atomic::{AtomicPtr, Ordering};
+    static TREE: AtomicPtr<Value> = AtomicPtr::new(core::ptr::null_mut());
+    let p = TREE.load(Ordering::Acquire);
+    if !p.is_null() {
+        // SAFETY: a non-null TREE was published below from `Box::into_raw` and is never freed or written again.
+        return Some(unsafe { &*p });
+    }
+    let fresh = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(json::parse(DEFAULT_JSON).ok()?));
+    match TREE.compare_exchange(core::ptr::null_mut(), fresh, Ordering::AcqRel, Ordering::Acquire) {
+        // SAFETY: `fresh` is now published and, like any published tree, lives until the process ends.
+        Ok(_) => Some(unsafe { &*fresh }),
+        Err(won) => {
+            // SAFETY: `fresh` lost the race and was never shared; `won` was published by the winning thread.
+            drop(unsafe { alloc::boxed::Box::from_raw(fresh) });
+            Some(unsafe { &*won })
+        }
+    }
+}
+
 /// Build a Style from the embedded default merged with `user` (may be `None`).
 pub fn load(user: Option<&Value>) -> Result<Style, StyleError> {
-    let base = json::parse(DEFAULT_JSON.as_bytes()).map_err(|_| StyleError::BadStyle(String::new()))?;
+    let base = default_tree().ok_or_else(|| StyleError::BadStyle(String::new()))?;
+    let merged;
     let root = match user {
-        Some(u @ Value::Object(m)) if !m.is_empty() => json::merge_patch(&base, u),
+        Some(u @ Value::Object(m)) if !m.is_empty() => {
+            merged = json::merge_patch(base, u);
+            &merged
+        }
         _ => base,
     };
-    if let Some(msg) = validate(&root) {
+    if let Some(msg) = validate(root) {
         return Err(StyleError::BadStyle(msg));
     }
-    from_value(&root)
+    from_value(root)
 }
 
 // ---- validation: every number that later becomes a loop step, a character count or an array size is range-checked here once.

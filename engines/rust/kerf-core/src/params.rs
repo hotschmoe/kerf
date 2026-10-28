@@ -37,6 +37,8 @@ impl Row {
 pub trait ParamSet: Sized {
     fn parse_all(p: &mut Params<'_>) -> Self;
     fn rows() -> Vec<Row>;
+    /// `rows().iter().any(|r| r.names.contains(&k))` without building the rows.
+    fn has_key(k: &str) -> bool;
 }
 
 pub trait ParamEnum: Copy + Sized + 'static {
@@ -320,6 +322,16 @@ macro_rules! params {
                     }
                 } )*
                 out
+            }
+
+            fn has_key(k: &str) -> bool {
+                $( {
+                    let s = $crate::params::Spec { $($sk: $sv,)* ..$crate::params::Spec::NONE };
+                    if s.row && ((if s.key.is_empty() { stringify!($name) } else { s.key }) == k || s.also.contains(&k)) {
+                        return true;
+                    }
+                } )*
+                false
             }
         }
     };

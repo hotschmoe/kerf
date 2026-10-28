@@ -57,6 +57,22 @@ pub fn sqrt(x: f64) -> f64 {
         // SAFETY: SSE2 is part of the x86_64 baseline.
         return unsafe { _mm_cvtsd_f64(_mm_sqrt_sd(_mm_set_sd(x), _mm_set_sd(x))) };
     }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // `core::arch::wasm32::f64_sqrt` is unstable, but compiler-builtins defines the libm symbol `sqrt` on
+        // wasm32-unknown-unknown (as the `f64.sqrt` instruction) and LLVM lowers a call to it to `f64.sqrt` inline.
+        // NaN results of `f64.sqrt` have an unspecified payload, so NaN and negative inputs keep the soft result.
+        unsafe extern "C" {
+            #[link_name = "sqrt"]
+            fn libm_sqrt(x: f64) -> f64;
+        }
+        if x.is_nan() || x < 0.0 {
+            return f64::NAN;
+        }
+        // SAFETY: `sqrt` takes any f64 and touches no memory; wasm `f64.sqrt` is IEEE 754 correctly rounded, so the
+        // result equals `sqrt_soft` bit for bit (checked on 302 million inputs against the hardware sqrt, see NOTES.md).
+        return unsafe { libm_sqrt(x) };
+    }
     #[allow(unreachable_code)]
     sqrt_soft(x)
 }

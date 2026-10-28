@@ -1,0 +1,11 @@
+dev	7.36	1.40
+dev-lld	7.07	1.37
+dev-lines	6.77	1.35
+dev-nodebug	6.18	1.29
+dev-lines-lld	6.45	1.33
+release-thin	11.50	10.54
+release-nolto	10.69	4.08
+release-lld	32.96	32.50
+dev-nightly	7.46	1.44
+dev-threads8	5.72	2.24
+dev-cranelift	6.22	1.34

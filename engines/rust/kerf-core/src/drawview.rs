@@ -495,10 +495,10 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
         return same;
     }
     let prisms = compile::view_prisms(scene, &spec.omit);
-    let Ok(font) = Font::parse(font::EMBEDDED) else { return same };
+    let font = font::embedded();
     let d = Diags::new();
     let work = Work::new(DEFAULT_WORK_LIMIT);
-    let r = resolve_section(st, scene, spec, &prisms, &font, doc, &d, &work);
+    let r = resolve_section(st, scene, spec, &prisms, font, doc, &d, &work);
     Resolved { crop: r.crop, scale: r.scale }
 }
 
@@ -550,7 +550,7 @@ pub fn build_from_scene<'a>(
     }
     let prisms = compile::view_prisms(scene, &spec.omit);
     let work = Work::new(DEFAULT_WORK_LIMIT);
-    let font = Font::parse(font::EMBEDDED).ok()?;
+    let font = font::embedded();
     let items: Vec<Item>;
     let mut scale: f64;
     let bounds: Box;
@@ -560,7 +560,7 @@ pub fn build_from_scene<'a>(
     let fit: FitInfo;
     let scale_text: String;
     if spec.kind == Kind::Section {
-        let rs = resolve_section(st, scene, spec, &prisms, &font, doc, diags, &work);
+        let rs = resolve_section(st, scene, spec, &prisms, font, doc, diags, &work);
         scale = rs.scale;
         crop_out = rs.crop;
         scale_text = rs.scale_text;
@@ -584,7 +584,7 @@ pub fn build_from_scene<'a>(
             scale = res.scale;
             let mut res = res;
             let regions = iso.region_items();
-            let mut env = Env::new(st, &font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&iso));
+            let mut env = Env::new(st, font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&iso));
             env.work = Some(&work);
             let ann = annot::annotate(&mut env, &mut res.items);
             let un = env.unverified;
@@ -592,7 +592,7 @@ pub fn build_from_scene<'a>(
             all.extend(regions);
             all.extend(ann);
             let mut tcrop = res.crop;
-            let ab = annot::items_box(&font, &all);
+            let ab = annot::items_box(font, &all);
             if !ab.is_empty() && ab.y0 < tcrop.y0 {
                 tcrop.y0 = ab.y0;
             }
@@ -604,15 +604,15 @@ pub fn build_from_scene<'a>(
                 sheet: meta_string(doc, "sheet"),
                 unverified: un,
             };
-            let mut det = annot::items_box(&font, &all);
+            let mut det = annot::items_box(font, &all);
             det.add_box(res.crop);
             let title_from = all.len();
             annot::title_items(&mut env, &info, tcrop, &mut all);
-            let fit_t = FitInfo { ann: env.ann_boxes.clone(), title: annot::items_box(&font, &all[title_from..]) };
+            let fit_t = FitInfo { ann: env.ann_boxes.clone(), title: annot::items_box(font, &all[title_from..]) };
             if env.unknown_glyph {
                 tdiags.add(Level::Info, "I_GLYPH", Some(view_id), None, GLYPH_INFO.to_string());
             }
-            let mut b = annot::items_box(&font, &all);
+            let mut b = annot::items_box(font, &all);
             b.add_box(res.crop);
             // NTS views grow their (internal) fit factor until notes and title fit the sheet frame
             let pw = (b.x1 - b.x0) / scale;

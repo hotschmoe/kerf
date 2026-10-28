@@ -8,5 +8,10 @@ license.workspace = true
 [lib]
 path = "src/lib.rs"
 
+# In-process benchmark harness (std, examples only; see bench/bench.rs and PERF.md).
+[[example]]
+name = "bench"
+path = "../bench/bench.rs"
+
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)', 'cfg(kerf_bench_alloc)'] }
