@@ -57,6 +57,30 @@ def collapse(script_path, binary):
                 names[a] = chain  # innermost first
             else:
                 i += 1
+    dyn = {}  # shared libraries: nearest preceding dynamic symbol (libc has no debug info here)
+
+    def dso_name(dso, a):
+        if dso not in dyn:
+            syms = []
+            try:
+                for l in subprocess.run(['nm', '-D', '--defined-only', dso], capture_output=True, text=True).stdout.splitlines():
+                    f = l.split()
+                    if len(f) == 3 and f[1] in 'TtWi':
+                        syms.append((int(f[0], 16), f[2].split('@')[0]))
+            except OSError:
+                pass
+            dyn[dso] = sorted(syms)
+        syms = dyn[dso]
+        lo, hi = 0, len(syms)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if syms[mid][0] <= a:
+                lo = mid + 1
+            else:
+                hi = mid
+        base = dso.split('/')[-1]
+        return f'{syms[lo - 1][1]} [{base}]' if lo else f'[{base}]'
+
     folded = collections.Counter()
     for w, frames in samples:
         stack = []
@@ -67,7 +91,7 @@ def collapse(script_path, binary):
             elif dso.startswith('[') or a >= 0xffff000000000000:
                 stack.append('[kernel]')
             else:
-                stack.append('[' + dso.split('/')[-1] + ']')
+                stack.append(dso_name(dso, a))
         stack.reverse()
         dedup = [s for j, s in enumerate(stack) if j == 0 or s != '[kernel]' or stack[j - 1] != '[kernel]']
         folded[';'.join(dedup)] += w
