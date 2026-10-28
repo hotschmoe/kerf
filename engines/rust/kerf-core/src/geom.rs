@@ -7,6 +7,10 @@ use crate::num;
 use alloc::vec::Vec;
 use core::f64::consts::PI;
 
+/// Zig's `std.math.rad_per_deg` / `deg_per_rad` (the literals round to the same doubles).
+pub const RAD_PER_DEG: f64 = 0.017453292519943295769236907684886127134428718885417;
+pub const DEG_PER_RAD: f64 = 57.295779513082320876798154814105170332405472466564;
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct V2 {
     pub x: f64,
