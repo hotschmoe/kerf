@@ -580,14 +580,7 @@ fn insertion_swap<T, F: Fn(&T, &T) -> bool>(v: &mut [T], a: usize, b: usize, les
         forall|k: int| 0 <= k < a || b <= k < final(v)@.len() ==> #[trigger] final(v)@[k] == old(v)@[k],
         sortsc(cx.ok(), cx.ord(), old(v)@, final(v)@, a as int, b as int),
 ))]
-fn merge_core(
-    cx: &dyn IdxLess,
-    v: &mut [usize],
-    buf: &mut Vec<usize>,
-    a: usize,
-    m: usize,
-    b: usize,
-) {
+fn merge_core(cx: &dyn IdxLess, v: &mut [usize], buf: &mut [usize], a: usize, m: usize, b: usize) {
     #[cfg(verus_keep_ghost)]
     proof_decl! {
         let ghost v0 = v@;
@@ -801,14 +794,7 @@ fn merge_core(
         forall|k: int| 0 <= k < a0 || b <= k < final(v)@.len() ==> #[trigger] final(v)@[k] == old(v)@[k],
         sortsc(cx.ok(), cx.ord(), old(v)@, final(v)@, a0 as int, b as int),
 ))]
-fn merge_low(
-    cx: &dyn IdxLess,
-    v: &mut [usize],
-    buf: &mut Vec<usize>,
-    a0: usize,
-    m: usize,
-    b: usize,
-) {
+fn merge_low(cx: &dyn IdxLess, v: &mut [usize], buf: &mut [usize], a0: usize, m: usize, b: usize) {
     #[cfg(verus_keep_ghost)]
     proof_decl! {
         let ghost v0 = v@;
@@ -934,14 +920,7 @@ proof fn lemma_mono_le<T>(lt: spec_fn(T, T) -> bool, y: T, gy: int, z: T, gz: in
         forall|k: int| 0 <= k < a || b0 <= k < final(v)@.len() ==> #[trigger] final(v)@[k] == old(v)@[k],
         sortsc(cx.ok(), cx.ord(), old(v)@, final(v)@, a as int, b0 as int),
 ))]
-fn merge_high(
-    cx: &dyn IdxLess,
-    v: &mut [usize],
-    buf: &mut Vec<usize>,
-    a: usize,
-    m: usize,
-    b0: usize,
-) {
+fn merge_high(cx: &dyn IdxLess, v: &mut [usize], buf: &mut [usize], a: usize, m: usize, b0: usize) {
     #[cfg(verus_keep_ghost)]
     proof_decl! {
         let ghost v0 = v@;
@@ -1267,7 +1246,7 @@ fn rotate<T>(v: &mut [T], s: usize, m: usize, e: usize) {
 fn merge_opt(
     cx: &dyn IdxLess,
     v: &mut [usize],
-    buf: &mut Vec<usize>,
+    buf: &mut [usize],
     a: usize,
     m: usize,
     b: usize,
@@ -1458,7 +1437,7 @@ proof fn lemma_sorted_frame(lt: spec_fn(usize, usize) -> bool, v1: Seq<usize>, v
 fn sym_tail(
     cx: &dyn IdxLess,
     v: &mut [usize],
-    buf: &mut Vec<usize>,
+    buf: &mut [usize],
     a: usize,
     m: usize,
     b: usize,
@@ -1540,7 +1519,7 @@ fn sym_tail(
 fn merge(
     cx: &dyn IdxLess,
     v: &mut [usize],
-    buf: &mut Vec<usize>,
+    buf: &mut [usize],
     a: usize,
     m: usize,
     b: usize,
@@ -1945,7 +1924,7 @@ pub const BLOCK: usize = 20;
         final(v)@.len() == old(v)@.len(),
         sortsc(cx.ok(), cx.ord(), old(v)@, final(v)@, 0, old(v)@.len() as int),
 ))]
-fn sort_runs(cx: &dyn IdxLess, v: &mut [usize], buf: &mut Vec<usize>, cap: usize) {
+fn sort_runs(cx: &dyn IdxLess, v: &mut [usize], buf: &mut [usize], cap: usize) {
     #[cfg(verus_keep_ghost)]
     proof_decl! { let ghost v0 = v@; }
     let n = v.len();
@@ -2241,21 +2220,22 @@ fn apply_perm<T>(items: &mut [T], idx: &[usize]) {
     #[cfg(verus_keep_ghost)]
     proof_decl! { let ghost v0 = items@; }
     let n = items.len();
-    let mut at: Vec<usize> = Vec::with_capacity(n);
-    let mut pos: Vec<usize> = Vec::with_capacity(n);
+    let mut at_v: Vec<usize> = alloc::vec![0usize; n];
+    let mut pos_v: Vec<usize> = alloc::vec![0usize; n];
+    let at = at_v.as_mut_slice();
+    let pos = pos_v.as_mut_slice();
     let mut i: usize = 0;
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant
-            i <= n == items@.len(),
+            i <= n == items@.len() == at@.len() == pos@.len(),
             items@ == v0,
-            at@.len() == i && pos@.len() == i,
             forall|q: int| 0 <= q < i ==> #[trigger] at@[q] == q,
             forall|q: int| 0 <= q < i ==> #[trigger] pos@[q] == q,
         decreases n - i,
     ))]
     while i < n {
-        at.push(i);
-        pos.push(i);
+        at[i] = i;
+        pos[i] = i;
         i += 1;
     }
     let mut k: usize = 0;
@@ -2346,34 +2326,25 @@ pub fn stable<T, F: Fn(&T, &T) -> bool>(items: &mut [T], less: F) {
     proof_decl! { let ghost v0 = items@; }
     let size = core::mem::size_of::<T>();
     let cap = if size == 0 { 4096 } else { 4096 / size };
-    let mut idx: Vec<usize> = Vec::with_capacity(n);
-    let mut i: usize = 0;
-    #[cfg_attr(verus_keep_ghost, verus_spec(
-        invariant
-            i <= n,
-            idx@.len() == i,
-            forall|q: int| 0 <= q < i ==> #[trigger] idx@[q] == q,
-        decreases n - i,
-    ))]
-    while i < n {
-        idx.push(i);
-        i += 1;
+    let mut idx: Vec<usize> = alloc::vec![0usize; n];
+    {
+        let ix = idx.as_mut_slice();
+        let mut i: usize = 0;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                i <= n == ix@.len(),
+                forall|q: int| 0 <= q < i ==> #[trigger] ix@[q] == q,
+            decreases n - i,
+        ))]
+        while i < n {
+            ix[i] = i;
+            i += 1;
+        }
     }
     #[cfg(verus_keep_ghost)]
     proof_decl! { let ghost idx0 = idx@; }
     let blen = if cap < n { cap } else { n };
-    let mut buf: Vec<usize> = Vec::with_capacity(blen);
-    let mut t: usize = 0;
-    #[cfg_attr(verus_keep_ghost, verus_spec(
-        invariant
-            t <= blen,
-            buf@.len() == t,
-        decreases blen - t,
-    ))]
-    while t < blen {
-        buf.push(0);
-        t += 1;
-    }
+    let mut buf: Vec<usize> = alloc::vec![0usize; blen];
     let ic = IdxCmp {
         items: &*items,
         less: &less,
@@ -2382,7 +2353,7 @@ pub fn stable<T, F: Fn(&T, &T) -> bool>(items: &mut [T], less: F) {
     proof! {
         lemma_ilt_swo(less, v0);
     }
-    sort_runs(&ic, idx.as_mut_slice(), &mut buf, cap);
+    sort_runs(&ic, idx.as_mut_slice(), buf.as_mut_slice(), cap);
     #[cfg(verus_keep_ghost)]
     proof_decl! { let ghost idxf = idx@; }
     #[cfg(verus_keep_ghost)]

@@ -12,21 +12,25 @@ pub const MAX_SIDE: usize = 8192;
 /// The float functions core lacks on stable `no_std`, from the engine's `math` (exact, identical on every target).
 /// Trusted: nothing about their results is assumed; every index written is proven in bounds whatever they return.
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[inline(always)]
 fn floor(x: f64) -> f64 {
     crate::math::floor(x)
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[inline(always)]
 fn ceil(x: f64) -> f64 {
     crate::math::ceil(x)
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[inline(always)]
 fn sqrt(x: f64) -> f64 {
     crate::math::sqrt(x)
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[inline(always)]
 fn round(x: f64) -> f64 {
     crate::math::round(x)
 }
@@ -51,54 +55,63 @@ pub struct V {
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn fmin(a: f64, b: f64) -> f64 {
     a.min(b)
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn fmax(a: f64, b: f64) -> f64 {
     a.max(b)
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn add(a: f64, b: f64) -> f64 {
     a + b
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn sub(a: f64, b: f64) -> f64 {
     a - b
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn mul(a: f64, b: f64) -> f64 {
     a * b
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn div(a: f64, b: f64) -> f64 {
     a / b
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn lt(a: f64, b: f64) -> bool {
     a < b
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn le(a: f64, b: f64) -> bool {
     a <= b
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn abs(a: f64) -> f64 {
     a.abs()
 }
@@ -107,18 +120,21 @@ fn abs(a: f64) -> f64 {
 /// gives 0), so it is total for any input.
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn to_index(x: f64) -> usize {
     x as usize
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn to_u8(x: f64) -> u8 {
     x as u8
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn from_usize(n: usize) -> f64 {
     n as f64
 }
@@ -131,6 +147,7 @@ fn from_usize(n: usize) -> f64 {
     ensures
         final(acc)@.len() == old(acc)@.len(),
 ))]
+#[inline(always)]
 fn acc_add(acc: &mut Vec<f32>, i: usize, x: f64) {
     acc[i] += x as f32 * (1.0f32 / 8.0);
 }
@@ -141,6 +158,7 @@ fn acc_add(acc: &mut Vec<f32>, i: usize, x: f64) {
     requires
         i < acc@.len(),
 ))]
+#[inline(always)]
 fn acc_byte(acc: &Vec<f32>, i: usize) -> u8 {
     round((acc[i].min(1.0).max(0.0) * 255.0) as f64) as u8
 }
@@ -757,6 +775,7 @@ impl Canvas {
     ensures
         r == if a < b { a } else { b },
 ))]
+#[inline(always)]
 fn min(a: usize, b: usize) -> usize {
     if a < b { a } else { b }
 }
@@ -787,17 +806,8 @@ proof fn lemma_row(y: usize, w: usize, h: usize)
         r@.len() == n,
 ))]
 fn fill_u8(v: u8, n: usize) -> Vec<u8> {
-    let mut out: Vec<u8> = Vec::with_capacity(n);
-    let mut i: usize = 0;
-    #[cfg_attr(verus_keep_ghost, verus_spec(
-        invariant
-            i <= n,
-            out@.len() == i,
-        decreases n - i,
-    ))]
-    while i < n {
-        out.push(v);
-        i += 1;
-    }
+    let out = alloc::vec![v; n];
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(out@.len() == n); }
     out
 }

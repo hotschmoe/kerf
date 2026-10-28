@@ -308,17 +308,20 @@ pub fn utf8_valid(s: &[u8]) -> bool {
     requires
         valid_utf8(bytes@),
 ))]
+#[inline(always)]
 fn utf8_string(bytes: Vec<u8>) -> String {
     unsafe { String::from_utf8_unchecked(bytes) }
 }
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[inline(always)]
 fn owned(msg: &str) -> String {
     String::from(msg)
 }
 
 /// The bytes of a member's key (trusted accessor; the duplicate-key pass only needs it to be some slice).
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[inline(always)]
 fn key_bytes(m: &Member) -> &[u8] {
     m.key.as_bytes()
 }
@@ -343,6 +346,7 @@ fn number_value(lexeme: &[u8]) -> Result<f64, bool> {
 // ---- parser (json.zig `Parser`, same acceptance, values and error positions) ---------------------
 
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn is_ws(c: u8) -> bool {
     c == 32 || c == 9 || c == 10 || c == 13
 }
@@ -353,6 +357,7 @@ fn is_ws(c: u8) -> bool {
     ensures
         pos <= r <= src@.len(),
 ))]
+#[inline(always)]
 fn ws(src: &[u8], pos: usize) -> usize {
     let mut p = pos;
     #[cfg_attr(verus_keep_ghost, verus_spec(
@@ -367,6 +372,7 @@ fn ws(src: &[u8], pos: usize) -> usize {
 }
 
 #[cfg_attr(verus_keep_ghost, verus_spec)]
+#[inline(always)]
 fn is_digit(c: u8) -> bool {
     48 <= c && c <= 57
 }
@@ -482,6 +488,7 @@ fn value(src: &[u8], pos: usize, depth: u32) -> Result<(Value, usize), Fail> {
     ensures
         pos <= r <= src@.len(),
 ))]
+#[inline(always)]
 fn digits(src: &[u8], pos: usize) -> usize {
     let mut p = pos;
     #[cfg_attr(verus_keep_ghost, verus_spec(

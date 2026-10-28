@@ -451,6 +451,7 @@ pub open spec fn png_file(width: u32, height: u32, channels: nat, z: Seq<u8>) ->
     ensures
         final(out)@ == old(out)@ + be32(x),
 ))]
+#[inline(always)]
 fn push_be32(out: &mut Vec<u8>, x: u32) {
     out.push((x >> 24) as u8);
     out.push(((x >> 16) & 0xff) as u8);
@@ -641,6 +642,7 @@ pub open spec fn filter_byte(kind: u8, row: Seq<u8>, prev: Seq<u8>, bpp: nat, i:
     ensures
         r == paeth_spec(a, b, c),
 ))]
+#[inline(always)]
 fn paeth(a: u8, b: u8, c: u8) -> u8 {
     let p: i32 = a as i32 + b as i32 - c as i32;
     let pa = if p >= a as i32 {
@@ -667,31 +669,27 @@ fn paeth(a: u8, b: u8, c: u8) -> u8 {
     }
 }
 
-/// Filters `row` into `out[o..o + row.len())` and returns the row's score (sum of the filtered
-/// bytes read as signed magnitudes).
+/// Filters `row` into `out` (one row) and returns the row's score (sum of the filtered bytes read
+/// as signed magnitudes).
 #[cfg_attr(verus_keep_ghost, verus_spec(score =>
     requires
-        row@.len() == prev@.len(),
+        row@.len() == prev@.len() == old(out)@.len(),
         bpp >= 1,
-        o + row@.len() <= old(out)@.len() <= usize::MAX,
         row@.len() <= 0x1_0000_0000,
     ensures
         final(out)@.len() == old(out)@.len(),
-        forall|k: int| 0 <= k < o || o + row@.len() <= k < final(out)@.len() ==> final(out)@[k] == old(out)@[k],
-        forall|i: int| 0 <= i < row@.len() ==> #[trigger] final(out)@[o + i] == filter_byte(kind, row@, prev@, bpp as nat, i),
+        forall|i: int| 0 <= i < row@.len() ==> #[trigger] final(out)@[i] == filter_byte(kind, row@, prev@, bpp as nat, i),
 ))]
-fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut Vec<u8>, o: usize) -> u64 {
+fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut [u8]) -> u64 {
     let mut s: u64 = 0;
     let mut i: usize = 0;
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant
-            row@.len() == prev@.len(),
+            row@.len() == prev@.len() == out@.len(),
             bpp >= 1,
             i <= row@.len() <= 0x1_0000_0000,
-            o + row@.len() <= out@.len() == old(out)@.len() <= usize::MAX,
             s <= 128 * i,
-            forall|k: int| 0 <= k < o || o + i <= k < out@.len() ==> out@[k] == old(out)@[k],
-            forall|j: int| 0 <= j < i ==> #[trigger] out@[o + j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
         decreases row.len() - i,
     ))]
     while i < row.len() {
@@ -720,7 +718,7 @@ fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut Vec<u8>, 
                 lemma_small_mod((x as int - pred as int + 256) as nat, 256);
             }
         }; }
-        out[o + i] = f;
+        out[i] = f;
         s = s + if f < 128 { f as u64 } else { 256 - f as u64 };
         i += 1;
     }
@@ -800,7 +798,7 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
     let n = n64 as usize;
     let zero_row: Vec<u8> = vec_of(0u8, stride);
     let mut cand: Vec<u8> = vec_of(0u8, stride);
-    let mut out: Vec<u8> = vec_of(0u8, n);
+    let mut out: Vec<u8> = Vec::with_capacity(n);
     let mut y: usize = 0;
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant
@@ -812,7 +810,7 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
             pixels@.len() == st * hh,
             plen == pixels@.len(),
             n == (st + 1) * hh,
-            out@.len() == n,
+            out@.len() == y * (st + 1),
             zero_row@ == Seq::new(stride as nat, |k: int| 0u8),
             cand@.len() == stride,
             y <= height,
@@ -839,11 +837,7 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
                     y + 1 <= hh,
                     st >= 0,
             ;
-            assert((y + 1) * (st + 1) <= (st + 1) * hh && y * (st + 1) + st + 1 == (y + 1) * (st + 1)) by (nonlinear_arith)
-                requires
-                    y + 1 <= hh,
-                    st >= 0,
-            ;
+            assert(y * (st + 1) + st + 1 == (y + 1) * (st + 1)) by (nonlinear_arith);
             if y > 0 {
                 assert((y - 1) * st + st == y * st) by (nonlinear_arith);
             }
@@ -867,20 +861,22 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
             decreases 5 - kind,
         ))]
         while kind < 5 {
-            let sc = filter_row(kind, row, prev, channels, &mut cand, 0);
+            let sc = filter_row(kind, row, prev, channels, cand.as_mut_slice());
             if sc < best_score {
                 best_score = sc;
                 best_kind = kind;
             }
             kind += 1;
         }
-        let o = y * (stride + 1);
+        filter_row(best_kind, row, prev, channels, cand.as_mut_slice());
         #[cfg(verus_keep_ghost)]
         proof_decl! { let ghost before = out@; }
-        out[o] = best_kind;
-        filter_row(best_kind, row, prev, channels, &mut out, o + 1);
+        out.push(best_kind);
+        push_bytes(&mut out, cand.as_slice());
         #[cfg(verus_keep_ghost)]
         proof! {
+            let o = y * (st + 1);
+            assert(out@ =~= before + seq![best_kind] + cand@);
             assert forall|yy: int, i: int|
                 0 <= yy < y + 1 && 0 <= i < st implies #[trigger] out@[yy * (st + 1) + 1 + i]
                 == filter_byte(
@@ -898,19 +894,28 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
                     lemma_mul_inequality(yy + 1, y as int, st + 1);
                     lemma_mul_is_distributive_add_other_way(st + 1, yy, 1);
                     assert(out@[yy * (st + 1)] == before[yy * (st + 1)]);
+                    assert(out@[yy * (st + 1) + 1 + i] == before[yy * (st + 1) + 1 + i]);
                 } else {
-                    assert(out@[o as int] == best_kind);
-                    assert(out@[(o + 1) + i] == filter_byte(best_kind, row@, prev@, channels as nat, i));
+                    assert(out@[o] == best_kind);
+                    assert(out@[o + 1 + i] == cand@[i]);
                 }
             }
             assert forall|yy: int| 0 <= yy < y + 1 implies #[trigger] out@[yy * (st + 1)] <= 4 by {
                 if yy < y {
                     lemma_mul_inequality(yy + 1, y as int, st + 1);
                     lemma_mul_is_distributive_add_other_way(st + 1, yy, 1);
+                    assert(out@[yy * (st + 1)] == before[yy * (st + 1)]);
                 }
             }
         }
         y += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(height as int * (st + 1) == (st + 1) * hh) by (nonlinear_arith)
+            requires
+                hh == height,
+        ;
     }
     Some(out)
 }
@@ -920,18 +925,9 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
         v@ == Seq::new(n as nat, |k: int| x),
 ))]
 fn vec_of(x: u8, n: usize) -> Vec<u8> {
-    let mut v = Vec::with_capacity(n);
-    let mut i: usize = 0;
-    #[cfg_attr(verus_keep_ghost, verus_spec(
-        invariant
-            i <= n,
-            v@ == Seq::new(i as nat, |k: int| x),
-        decreases n - i,
-    ))]
-    while i < n {
-        v.push(x);
-        i += 1;
-    }
+    let v = alloc::vec![x; n];
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(v@ =~= Seq::new(n as nat, |k: int| x)); }
     v
 }
 
@@ -939,6 +935,7 @@ fn vec_of(x: u8, n: usize) -> Vec<u8> {
     ensures
         final(out)@ == old(out)@ + bytes@,
 ))]
+#[inline(always)]
 fn push_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
     out.extend_from_slice(bytes);
     #[cfg(verus_keep_ghost)]
