@@ -1,0 +1,15 @@
+[package]
+name = "kerf-verified-proof"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Verus sources of kerf-verified (the source of truth). Verified with engines/rust/verus/verify.sh; ../src is generated from this crate by engines/rust/verus/erase.sh."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+vstd = { version = "=0.0.0-2026-10-25-0158", default-features = false, features = ["alloc"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(verus_keep_ghost)', 'cfg(verus_verify_core)'] }
