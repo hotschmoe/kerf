@@ -425,8 +425,7 @@ pub fn forward(p: &Plan, w: &mut Out, lim: Limits) -> Result<(), ForwardError> {
             && started.elapsed().as_millis() < u128::from(lim.total_ms)
     };
     if chunked {
-        loop {
-            let Ok(line) = read_line(&mut r) else { break };
+        while let Ok(line) = read_line(&mut r) {
             let text = String::from_utf8_lossy(&line);
             let size_text = text.split(';').next().unwrap_or("").trim();
             let Ok(mut size) = usize::from_str_radix(size_text, 16) else { break };
