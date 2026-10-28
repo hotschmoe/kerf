@@ -22,3 +22,9 @@ panic = "abort"
 [profile.small]
 inherits = "release"
 opt-level = "z"
+
+# perf/callgrind builds: release codegen with symbols and line tables (see PERF.md).
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+strip = false
