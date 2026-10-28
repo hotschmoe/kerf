@@ -86,23 +86,8 @@ fn sqrt_soft(x: f64) -> f64 {
         e2 -= 1;
     }
     let n = (m as u128) << 56;
-    let mut op = n;
-    let mut res: u128 = 0;
-    let mut one: u128 = 1 << 126;
-    while one > op {
-        one >>= 2;
-    }
-    while one != 0 {
-        if op >= res + one {
-            op -= res + one;
-            res = (res >> 1) + one;
-        } else {
-            res >>= 1;
-        }
-        one >>= 2;
-    }
-    let r = res as u64;
-    let sticky = op != 0;
+    let r = isqrt(n, m);
+    let sticky = n != (r as u128) * (r as u128);
     let mut q = r >> 2;
     let rem = r & 3;
     if rem > 2 || (rem == 2 && (sticky || q & 1 == 1)) {
@@ -114,6 +99,26 @@ fn sqrt_soft(x: f64) -> f64 {
         ex += 1;
     }
     f64::from_bits((((ex + 52 + 1023) as u64) << 52) | (q & ((1 << 52) - 1)))
+}
+
+/// `floor(sqrt(n))` for `n = m * 2^56` (`m < 2^54`): a float Newton estimate, one integer correction, then exact fix-ups.
+fn isqrt(n: u128, m: u64) -> u64 {
+    let nf = m as f64 * 72057594037927936.0;
+    let mut y = f64::from_bits((bits(nf) >> 1) + (1023u64 << 51));
+    for _ in 0..5 {
+        y = 0.5 * (y + nf / y);
+    }
+    let mut r = y as u64;
+    let diff = n as i128 - (r as u128 * r as u128) as i128;
+    let step = diff as f64 / (2.0 * r as f64);
+    r = (r as i64 + step as i64) as u64;
+    while (r as u128) * (r as u128) > n {
+        r -= 1;
+    }
+    while (r as u128 + 1) * (r as u128 + 1) <= n {
+        r += 1;
+    }
+    r
 }
 
 /// `x * 2^n`, exact like C `scalbn`.

@@ -51,7 +51,7 @@ unsafe impl GlobalAlloc for Heap {
         let start = (st.top + 15) & !15;
         let Some(stop) = start.checked_add(size) else { return core::ptr::null_mut() };
         if stop > st.end {
-            let pages = (stop - st.end).div_ceil(PAGE);
+            let pages = (stop - st.end).div_ceil(PAGE).max(st.end / PAGE / 2).max(16);
             if core::arch::wasm32::memory_grow(0, pages) == usize::MAX {
                 return core::ptr::null_mut();
             }
