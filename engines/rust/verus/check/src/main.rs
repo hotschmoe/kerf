@@ -1,5 +1,6 @@
 use std::process::ExitCode;
 
+mod json;
 mod pdf;
 mod png;
 mod sort;
@@ -14,6 +15,7 @@ fn main() -> ExitCode {
         "pdf" => pdf::check(rest),
         "sort" => sort::check(rest),
         "png" => png::check(rest),
+        "json" => json::check(rest),
         _ => {
             eprintln!("kvcheck: unknown command {cmd}");
             false

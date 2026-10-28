@@ -6,7 +6,7 @@
 use kerf_verified::sort::stable_sort_by;
 use std::process::Command;
 
-pub struct Rng(u64);
+pub struct Rng(pub u64);
 
 impl Rng {
     pub fn next(&mut self) -> u64 {
