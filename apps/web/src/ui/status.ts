@@ -37,12 +37,11 @@ export function mountStatus(app: App, el: HTMLElement, ws: Workspace | null = nu
       if (ws.lastAgentEdit !== null) segs.push(['opt', h('span.agentseg', `LOCAL AGENT · LAST EDIT ${ago(Date.now() - ws.lastAgentEdit)} AGO`)]);
     }
     const cl = app.claude;
-    const pl = app.providerLabel;
     const claude: (HTMLElement | string)[] = cl.state === 'BUSY'
-      ? [`${pl} BUSY `, h('span.spin', '◐'), cl.round ? ` ROUND ${cl.round}` : '']
-      : cl.state === 'ERR' ? [h('span', { class: 'bad' }, `${pl} ERR`)]
-      : cl.state === 'NO KEY' ? [h('span', { class: 'warn' }, 'NO KEY')]
-      : [`${pl} OK`];
+      ? ['AGENT BUSY ', h('span.spin', '◐')]
+      : cl.state === 'ERR' ? [h('span', { class: 'bad' }, 'AGENT ERR')]
+      : cl.state === 'OFF' ? [h('span', { class: 'warn' }, 'CHAT OFF')]
+      : ['AGENT OK'];
     segs.forEach((s0, i) => {
       const opt = s0[0] === 'opt';
       const s = opt ? s0.slice(1) : s0;

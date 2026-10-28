@@ -17,7 +17,6 @@
     "test:serve": "node test/e2e-serve.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
     "three": "^0.186.1"
   },
   "devDependencies": {

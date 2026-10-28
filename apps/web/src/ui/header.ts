@@ -2,16 +2,13 @@ import type { App } from '../app';
 import { h, clear, btn, download } from './dom';
 import { popup } from './popup';
 import type { KerfDoc } from '../types';
-import type { ChatSession } from '../chat/session';
 import type { Workspace } from '../workspace/workspace';
-import { openSetup } from './setup';
 
 export interface SampleInfo { file: string; id: string; title: string }
 
 export interface HeaderHooks {
   samples: SampleInfo[];
   openSample(s: SampleInfo): Promise<void>;
-  session: ChatSession;
   /** workspace mode: samples and files are IMPORTED into the library folder instead of replacing an unsaved scratch document */
   ws: Workspace | null;
   loadSample(s: SampleInfo): Promise<KerfDoc>;
@@ -56,14 +53,12 @@ export function mountHeader(app: App, el: HTMLElement, hooks: HeaderHooks) {
     download(name, text, 'application/json');
     app.flash(`SAVED ${name.toUpperCase()} (${Math.max(1, Math.round(text.length / 1024))} KB)`);
   });
-  const keyBtn = btn('SETUP', () => openSetup(keyBtn, hooks.session));
-  keyBtn.id = 'setupbtn';
 
   el.append(
     h('div.wm', h('b', 'KERF'), h('span.bars', h('i'), h('i'), h('i'))),
     h('span.hsub', 'DETAIL WORKSTATION'),
     dir ?? '', doc, style, engine, h('span.sp'),
-    h('div.btns', sampleBtn, openBtn, saveBtn, keyBtn, fileInput),
+    h('div.btns', sampleBtn, openBtn, saveBtn, fileInput),
   );
   const render = () => {
     clear(doc);

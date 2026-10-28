@@ -28,7 +28,7 @@
       var pre = window.__pre = { t0: performance.now() };
       pre.wasm = f('./kerf.wasm', 'arrayBuffer'); pre.style = f('./style.json', 'json'); pre.font = f('./kerf-simplex.json', 'json');
       pre.samples = f('./samples/index.json', 'json');
-      var s = p.get('sample') || (p.get('demo') === '1' ? 'truss-bearing-cmu' : '');
+      var s = p.get('sample');
       if (s) pre.sample = pre.samples.then(function (idx) { var e = idx.find(function (x) { return x.id === s; }) || idx[0]; return f('./samples/' + e.file, 'json'); });
       for (var k in pre) if (pre[k] && pre[k].catch) pre[k].catch(function () {});
     })();

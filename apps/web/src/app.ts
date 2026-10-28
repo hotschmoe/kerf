@@ -54,14 +54,10 @@ export class App {
   cursor: [number, number] | null = null;
   /** transient status-line message (e.g. EXPORTED ...), cleared after a few seconds */
   message: { text: string; level: 'ok' | 'err' | 'warn' } | null = null;
-  claude: { state: 'NO KEY' | 'OK' | 'BUSY' | 'ERR'; round?: number; detail?: string } = { state: 'NO KEY' };
-  /** designer edits not yet reported to Claude (HARNESS.md "Designer edits") */
-  pendingDesignerEdits: string[] = [];
+  claude: { state: 'OFF' | 'OK' | 'BUSY' | 'ERR'; detail?: string } = { state: 'OFF' };
   perf: Record<string, number> = {};
   /** set in workspace mode; null in static mode (everything below behaves exactly as before) */
   remote: Remote | null = null;
-  /** status-line / console label of the active chat provider ("CLAUDE", "OPENAI", ...) */
-  providerLabel = 'CLAUDE';
 
   private listeners = new Map<Ev, Set<() => void>>();
   private chain: Promise<unknown> = Promise.resolve();
@@ -177,8 +173,6 @@ export class App {
     this.rev++;
     this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
     this.opLog.push({ n: this.opLog.length + 1, who, kind, why, ops, ts: hhmm(), before, changed: res.changed ?? [], file: this.remote?.file });
-    if (who === 'DESIGNER') this.pendingDesignerEdits.push(`${kind === 'undo' ? 'UNDO' : kind === 'open' ? 'OPENED' : 'EDIT'}: ${why}`);
-    else if (who === 'AGENT') this.pendingDesignerEdits.push(`EXTERNAL EDIT (${why}): the document on disk was changed by someone else (a local agent or an editor); re-read it with kerf_inspect before editing`);
     if (!this.views.some((v) => v.id === this.activeView)) this.activeView = this.views[0]?.id ?? '';
     if (this.selection && !this.doc.components.some((c) => c.id === this.selection!.id) && !this.isNote(this.selection.id)) this.selection = null;
     this.emit('doc'); this.emit('log'); this.emit('view'); this.emit('selection');
@@ -197,7 +191,6 @@ export class App {
       if (r.ok && r.doc) {
         this.activeView = '';
         this.commit(r, before, 'DESIGNER', why, [{ op: 'set', path: 'doc', value: '…' }], 'open');
-        this.pendingDesignerEdits[this.pendingDesignerEdits.length - 1] = `OPENED ${r.doc.id} (${r.doc.components.length} components, ${r.doc.views.length} views): ${why}. Read it with kerf_inspect before editing.`;
       }
       return r;
     });
@@ -233,7 +226,6 @@ export class App {
       }
       last.undone = true;
       this.opLog.push({ n: this.opLog.length + 1, who: 'DESIGNER', kind: 'undo', why: `UNDO ${last.n}: ${last.why}`, ops: [], ts: hhmm(), before: cur, changed: last.changed });
-      this.pendingDesignerEdits.push(`UNDID op group ${last.n} (${last.why}); the document reverted to its state before it`);
       if (!this.views.some((v) => v.id === this.activeView)) this.activeView = this.views[0]?.id ?? '';
       this.emit('doc'); this.emit('log'); this.emit('view'); this.emit('selection');
       return true;

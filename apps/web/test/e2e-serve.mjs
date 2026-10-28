@@ -10,8 +10,6 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { startMock, seedDir } from './mock-serve.mjs';
-import { startFake } from './fake-anthropic.mjs';
-import { startFakeOpenAI } from './fake-openai.mjs';
 
 const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(web, '../..');
@@ -102,7 +100,7 @@ await t('workspace mode is detected; library lists docs live; first doc opens; h
   assert.equal(await ev(page, 'window.__kerf.app.doc.id'), 'flush-beam-strap'); // first by file name
   assert.match(await ev(page, 'document.querySelector("#hdr").textContent'), /DIR:/);
   assert.match(await status(page), /AGENT OK/);
-  assert.equal(await ev(page, 'window.__kerf.session.choice'), 'agent:claude'); // first available local agent by default
+  assert.equal(await ev(page, 'window.__kerf.session.choice'), 'claude'); // first available local agent by default
   assert.equal(await ev(page, '!!document.querySelector(".librow.sel")'), true);
   await shot(page, '01-workspace');
   // a document dropped into the folder appears (doc_added), counts update live (warnings from the engine's check)
@@ -120,15 +118,18 @@ await t('workspace mode is detected; library lists docs live; first doc opens; h
   await page.close();
 });
 
-await t('static mode is untouched: no workspace UI, no /api probe when static=1', async (track) => {
+await t('static mode is untouched: no workspace UI, no /api probe when static=1; chat is off with a clear note', async (track) => {
   const m = await track();
-  const page = await open(m, 'static=1&sample=truss-bearing-cmu&demo=1&auto=0');
+  const page = await open(m, 'static=1&sample=truss-bearing-cmu');
   assert.equal(await ev(page, 'window.__kerf.mode'), 'static');
   assert.equal(await ev(page, '!!document.getElementById("library")'), false);
   assert.equal(await ev(page, 'window.__kerf.app.remote'), null);
-  assert.equal(await ev(page, 'window.__kerf.session.isAgent'), false);
-  assert.equal(await ev(page, 'window.__kerf.session.choice'), 'anthropic');
-  assert.equal(await ev(page, '[...document.querySelectorAll("select.pick option")].some(o => /CLAUDE CODE/.test(o.textContent))'), false);
+  assert.equal(await ev(page, 'window.__kerf.session.available'), false);
+  assert.equal(await ev(page, 'document.querySelector("#composer textarea").disabled'), true);
+  assert.equal(await ev(page, 'document.querySelector("select.pick").disabled'), true);
+  assert.match(await ev(page, 'document.querySelector("#msgs .intro").textContent'), /CHAT NEEDS `kerf serve` AND A LOCAL AGENT CLI \(claude, codex, grok OR pi\)/);
+  assert.match(await status(page), /CHAT OFF/);
+  await shot(page, '09-static-chat-off');
   await page.close();
 });
 
@@ -176,8 +177,6 @@ await t('external edit: reloads in place (view, zoom, selection kept) and shows 
   assert.match(card.sum, /^DOC truss-bearing-cmu/);
   assert.match(card.ops, /EXTERNAL REWORD/);
   assert.match(await status(page), /LOCAL AGENT · LAST EDIT \d+S AGO/);
-  // the next model turn is told about it
-  assert.ok(await ev(page, 'window.__kerf.app.pendingDesignerEdits.some(p => /EXTERNAL EDIT/.test(p))'));
   // log entries of an unrelated file also produce a card (labelled with the file)
   await shot(page, '02-local-agent-card');
   // no reload loop: nothing further happens
@@ -367,10 +366,10 @@ await t('REAL agent bridge (.kerf/agents.json + scripted stream-json agent): car
     argv: ['node', path.join(web, 'test/fake-agent.mjs'), '{message}', '{resume}'], resume: ['--resume', '{session_id}'] }]));
   const m = await track({ dir });
   const page = await open(m, `fast=1&doc=${TRUSS}`);
-  await page.evaluate(() => localStorage.setItem('kerf.provider', 'agent:fakeagent'));
+  await page.evaluate(() => localStorage.setItem('kerf.agent', 'fakeagent'));
   await page.reload({ waitUntil: 'load' });
   await waitFor(page, 'window.__ready===true && window.__rendered===true');
-  assert.equal(await ev(page, 'window.__kerf.session.choice'), 'agent:fakeagent');
+  assert.equal(await ev(page, 'window.__kerf.session.choice'), 'fakeagent');
   await ev(page, `window.__kerf.con.sendText('EDIT the first note')`);
   await waitFor(page, `window.__kerf.app.opLog.some(e => e.kind === 'external')`, 30000);
   await idle(page, 30000);
@@ -395,170 +394,26 @@ await t('REAL agent bridge (.kerf/agents.json + scripted stream-json agent): car
   await page.close();
 }, { realOnly: true });
 
-// ======================================================================================= cloud providers through POST /api/llm
-await t('Custom (OpenAI-compatible) via /api/llm: file created on first apply, tool results incl. render image follow-up, key forwarded not stored', async (track) => {
-  const m = await track({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-empty-')) });
-  const fake = await startFakeOpenAI(0, sample);
-  try {
-    const page = await open(m, 'fast=1');
-    await page.evaluate((port) => {
-      localStorage.setItem('kerf.provider', 'custom'); localStorage.setItem('kerf.baseurl.custom', `http://127.0.0.1:${port}/v1`);
-      localStorage.setItem('kerf.model.custom', 'fake-1'); localStorage.setItem('kerf.key.custom', 'sk-fake-ok');
-    }, fake.port);
-    await page.reload({ waitUntil: 'load' });
-    await waitFor(page, 'window.__ready===true');
-    assert.equal(await ev(page, 'window.__kerf.session.choice'), 'custom');
-    assert.match(await status(page), /CUSTOM OK/);
-    await ev(page, `window.__kerf.con.sendText('build me a truss bearing detail')`);
-    await waitFor(page, 'window.__kerf.app.doc && window.__kerf.app.doc.components.length > 10');
-    await idle(page);
-    // the file was created in the workspace folder on the first apply, and the write is attributed to the model
-    assert.ok(fs.existsSync(path.join(m.dir, TRUSS)), fs.readdirSync(m.dir).join(','));
-    assert.equal(readDoc(m, TRUSS).components.length, sample.components.length);
-    assert.equal(readLog(m, TRUSS).at(-1).who, 'llm');
-    assert.equal(await ev(page, 'window.__kerf.ws.file'), TRUSS);
-    await waitFor(page, 'document.querySelectorAll(".librow").length === 1');
-    // the provider saw the key (forwarded by the proxy in `headers`) and the proxied request shape
-    assert.equal(fake.requests.length, 2);
-    assert.equal(fake.requests[0].key, 'sk-fake-ok');
-    assert.equal(fake.requests[0].body.model, 'fake-1');
-    assert.equal(fake.requests[0].body.stream, true);
-    if (!m.real) {
-      assert.equal(m.state.llm.length, 2);
-      assert.equal(m.state.llm[0].provider, 'custom');
-      assert.equal(m.state.llm[0].url, `http://127.0.0.1:${fake.port}/v1/chat/completions`);
-    }
-    // second request: assistant tool_calls, two tool messages, then the render image as a follow-up user message
-    const req2 = fake.requests[1].body;
-    assert.deepEqual(req2.messages.map((x) => x.role), ['system', 'user', 'assistant', 'tool', 'tool', 'user']);
-    assert.deepEqual(req2.messages[2].tool_calls.map((c) => c.function.name), ['kerf_apply', 'kerf_render']);
-    assert.match(req2.messages[3].content, /^ok/);
-    assert.equal(typeof req2.messages[4].content, 'string');
-    const imgPart = req2.messages[5].content.find((p) => p.type === 'image_url');
-    assert.match(imgPart.image_url.url, /^data:image\/png;base64,iVBOR/);
-    assert.ok(imgPart.image_url.url.length > 20000, 'real PNG rendered by the app');
-    assert.ok(!JSON.stringify(m.state.llm.map((x) => ({ ...x, key: undefined }))).includes('sk-fake-ok'), 'key not echoed outside Authorization');
-    if (m.real) assert.ok(!fs.readdirSync(m.dir).some((f) => fs.readFileSync(path.join(m.dir, f), 'utf8').includes('sk-fake-ok')), 'the server never writes the key to disk');
-    const card = await ev(page, `(() => { const c = [...document.querySelectorAll('.msg.llm')].at(-1); return { head: c.querySelector('.mh').textContent, tools: [...c.querySelectorAll('.tl summary .tt')].map(e => e.textContent), thumb: c.querySelectorAll('img.thumb').length } })()`);
-    assert.match(card.head, /KERF\/CUSTOM/);
-    assert.deepEqual(card.tools.map((x) => x.split(/\s+/)[0]), ['APPLY', 'RENDER']);
-    assert.equal(card.thumb, 1);
-    await shot(page, '08-custom-provider-chat');
-    noErrors(page);
-    await page.close();
-  } finally { fake.close(); }
-});
-
-await t('provider errors: 401 -> INVALID API KEY / NO KEY; reasoning_effort rejection is retried transparently', async (track) => {
+// ======================================================================================= local agents only
+await t('no direct provider path: POST /api/llm is 404 and /api/info has no proxy field', async (track) => {
   const m = await track();
-  const fake = await startFakeOpenAI(0, sample);
-  try {
-    const run = async (key, text) => {
-      const page = await open(m, `fast=1&doc=${TRUSS}`);
-      await page.evaluate((port, k) => {
-        localStorage.setItem('kerf.provider', 'custom'); localStorage.setItem('kerf.baseurl.custom', `http://127.0.0.1:${port}/v1`);
-        localStorage.setItem('kerf.model.custom', 'fake-1'); localStorage.setItem('kerf.key.custom', k);
-      }, fake.port, key);
-      await page.reload({ waitUntil: 'load' });
-      await waitFor(page, 'window.__ready===true');
-      await ev(page, `window.__kerf.con.sendText(${JSON.stringify(text)})`);
-      return page;
-    };
-    let page = await run('sk-fake-401', 'hello');
-    await waitFor(page, `[...document.querySelectorAll('.notice')].some(n => /INVALID API KEY/.test(n.textContent))`);
-    await idle(page);
-    assert.match(await status(page), /NO KEY/);
-    await page.close();
-    const before = fake.requests.length;
-    page = await run('sk-fake-reasoning', 'build it');
-    await waitFor(page, 'window.__kerf.app.opLog.some(e => e.who === "CLAUDE")');
-    await idle(page);
-    const mine = fake.requests.slice(before);
-    assert.equal(mine.length, 3); // rejected, retried with reasoning_effort none, final turn
-    assert.ok(!('reasoning_effort' in mine[0].body)); assert.equal(mine[1].body.reasoning_effort, 'none'); assert.equal(mine[2].body.reasoning_effort, 'none');
-    noErrors(page, /ResizeObserver|400 \(Bad Request\)/); // the browser logs the rejected first request
-    await page.close();
-  } finally { fake.close(); }
+  const llm = await fetch(`${m.url}/api/llm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"provider":"custom","path":"/x"}' });
+  assert.equal(llm.status, 404);
+  const info = await (await fetch(`${m.url}/api/info`)).json();
+  assert.ok(!('proxy' in info), Object.keys(info).join(','));
 });
 
-await t('Anthropic (official SDK) in workspace mode also goes through /api/llm', async (track) => {
-  const m = await track({ allowHttpProviders: ['custom', 'anthropic'] });
-  const fake = await startFake(0, sample);
-  try {
-    const page = await open(m, `fast=1&doc=${TRUSS}&api=${encodeURIComponent('http://127.0.0.1:' + fake.port)}`);
-    await page.evaluate(() => { localStorage.setItem('kerf.provider', 'anthropic'); localStorage.setItem('kerf.apiKey', 'sk-test-ok'); localStorage.setItem('kerf.model', 'claude-sonnet-5-5'); });
-    await page.reload({ waitUntil: 'load' });
-    await waitFor(page, 'window.__ready===true');
-    await ev(page, `window.__kerf.con.sendText('build me a truss bearing detail')`);
-    await waitFor(page, 'window.__kerf.app.opLog.some(e => e.who === "CLAUDE")');
-    await idle(page);
-    assert.equal(m.state.llm.length, 3);
-    assert.equal(m.state.llm[0].provider, 'anthropic');
-    assert.match(m.state.llm[0].url, /\/v1\/messages/);
-    assert.equal(m.state.llm[0].key, 'sk-test-ok');
-    assert.equal(m.state.llm[0].body.model, 'claude-sonnet-5-5');
-    assert.equal(fake.requests.length, 3);
-    assert.equal(fake.requests[0].headers['anthropic-version'], '2023-06-01');
-    assert.equal(readLog(m, TRUSS).at(-1).who, 'llm');
-    noErrors(page);
-    await page.close();
-  } finally { fake.close(); }
-}, { mockOnly: true });
-
-await t('static mode: a provider that blocks the browser (CORS) shows a clear message; keyless provider asks for a key', async (track) => {
-  const m = await track();
-  const page = await open(m, 'static=1&fast=1&sample=truss-bearing-cmu');
-  await page.evaluate(() => { localStorage.setItem('kerf.provider', 'openai'); localStorage.setItem('kerf.key.openai', 'sk-x'); });
-  await page.reload({ waitUntil: 'load' });
-  await waitFor(page, 'window.__ready===true');
-  // block the provider host at the network layer the way a missing CORS header would look to fetch(): a TypeError
-  await page.setRequestInterception(true);
-  page.on('request', (r) => { if (/api\.openai\.com/.test(r.url())) r.abort('failed'); else r.continue(); });
-  await ev(page, `window.__kerf.con.sendText('hello')`);
-  await waitFor(page, `[...document.querySelectorAll('.notice.err')].some(n => /BLOCKED THE REQUEST TO API\\.OPENAI\\.COM/.test(n.textContent))`);
-  assert.ok(await ev(page, `[...document.querySelectorAll('.notice.err')].some(n => /kerf serve/.test(n.textContent))`));
-  await idle(page);
-  await shot(page, '09-cors-error');
-  await page.evaluate(() => { localStorage.removeItem('kerf.key.openai'); });
-  await page.reload({ waitUntil: 'load' });
-  await waitFor(page, 'window.__ready===true');
-  assert.match(await status(page), /NO KEY/);
-  await ev(page, `window.__kerf.con.sendText('hello')`);
-  await waitFor(page, `[...document.querySelectorAll('.notice.err')].some(n => /NO API KEY FOR OPENAI/.test(n.textContent))`);
-  await page.close();
-});
-
-// ======================================================================================= provider UI
-await t('provider picker + setup form: choices, per-provider key/model, custom base URL, screenshots', async (track) => {
+await t('the console lists local agents only: no API key, setup or provider storage', async (track) => {
   const m = await track();
   const page = await open(m, 'fast=1');
   const opts = await ev(page, `[...document.querySelectorAll('select.pick option')].map(o => o.value + (o.disabled ? '!' : ''))`);
-  assert.deepEqual(opts, ['agent:claude', 'agent:grok!', 'agent:codex', 'anthropic', 'openai', 'gemini', 'xai', 'openrouter', 'custom']);
-  await page.select('select.pick', 'openai');
-  await waitFor(page, `document.querySelector('.dlg.setup')`); // no key yet -> setup opens
-  assert.ok(await ev(page, `[...document.querySelectorAll('.notice.warn')].some(n => /NO API KEY FOR OPENAI/.test(n.textContent))`));
-  assert.match(await ev(page, `document.querySelector('.dlg.setup').textContent`), /LOCAL KERF SERVER/);
-  await page.type('.dlg.setup input[type=password]', 'sk-openai-test');
-  assert.equal(await ev(page, `document.querySelector('.dlg.setup input[aria-label="Model"]').value`), 'gpt-6.1-sol');
-  await shot(page, '10-setup-openai');
-  await ev(page, `[...document.querySelectorAll('.dlg .btn')].find(b => b.textContent === 'SAVE').click()`);
-  assert.equal(await ev(page, `localStorage.getItem('kerf.key.openai')`), 'sk-openai-test');
-  assert.match(await status(page), /OPENAI OK/);
-  // switching provider tells the designer the model starts fresh only if there was a conversation; and the label follows
-  await page.select('select.pick', 'custom'); // not configured yet -> the setup form opens by itself
-  await page.waitForSelector('.dlg.setup input[aria-label="Base URL"]');
-  assert.equal(await ev(page, `document.querySelector('.dlg.setup input[aria-label="Base URL"]').value`), 'http://localhost:11434/v1');
-  await shot(page, '11-setup-custom');
-  await page.keyboard.press('Escape');
-  await page.select('select.pick', 'agent:claude');
-  await ev(page, `document.getElementById('setupbtn').click()`);
-  await page.waitForSelector('.dlg.setup');
-  assert.match(await ev(page, `document.querySelector('.dlg.setup').textContent`), /CLAUDE CODE/);
-  assert.match(await ev(page, `document.querySelector('.dlg.setup').textContent`), /v2\.1\.289/);
-  await shot(page, '12-setup-agent');
-  // narrow screen
+  assert.deepEqual(opts, ['claude', 'grok!', 'codex']);
+  assert.equal(await ev(page, '!document.getElementById("setupbtn")'), true);
+  assert.equal(await ev(page, 'Object.keys(localStorage).some(k => /apiKey|\\.key\\./.test(k))'), false);
+  await page.select('select.pick', 'codex');
+  assert.equal(await ev(page, `localStorage.getItem('kerf.agent')`), 'codex');
+  await shot(page, '10-agent-picker');
   await page.setViewport({ width: 420, height: 800 });
-  await page.keyboard.press('Escape');
   await ev(page, `document.querySelector('#mtabs .tab[data-p=console]').click()`);
   await shot(page, '13-narrow-console');
   noErrors(page);

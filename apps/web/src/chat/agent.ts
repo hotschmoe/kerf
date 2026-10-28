@@ -12,8 +12,15 @@
 //   Codex `exec --json`:  {type:"item.completed", item:{type:"agent_message", text} | {type:"command_execution", command, aggregated_output, exit_code}}
 import type { App } from '../app';
 import type { Workspace } from '../workspace/workspace';
-import { store, agentId, type AgentInfo } from './providers';
-import type { ChatEvent } from './harness';
+import { store, type AgentInfo } from './store';
+
+export type ChatEvent =
+  | { type: 'user'; text: string }
+  | { type: 'assistant-start'; who?: string }
+  | { type: 'text'; delta: string }
+  | { type: 'tool'; id: string; phase: 'start' | 'end'; title?: string; status?: string; ok?: boolean; detail?: string; input?: unknown }
+  | { type: 'notice'; text: string; level: 'info' | 'warn' | 'err' }
+  | { type: 'done' };
 
 type Json = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
@@ -65,17 +72,14 @@ export class AgentRunner {
 
   async stop() { if (this.runId) await this.ws.client.agentStop(this.runId); }
 
-  /** `choice` is `agent:<id>`. Never throws. */
-  async send(choice: string, text: string, imageCount = 0): Promise<void> {
+  /** Never throws. */
+  async send(id: string, text: string): Promise<void> {
     if (this.busy) return;
-    const id = agentId(choice);
     const agent = this.info().find((a) => a.id === id);
     const file = this.ws.file;
     this.busy = true; this.sawExit = false;
-    this.app.pendingDesignerEdits.length = 0; // the agent reads the folder itself; designer edits are already on disk
     this.ws.uiRunActive = true;
-    this.emit({ type: 'user', text, images: [], edits: [] });
-    if (imageCount) this.emit({ type: 'notice', level: 'warn', text: 'LOCAL AGENTS TAKE TEXT ONLY HERE. THE ATTACHED IMAGE WAS NOT SENT.' });
+    this.emit({ type: 'user', text });
     this.app.setClaude({ state: 'BUSY', detail: agent?.name });
     const session = store.session(id, file);
     try {

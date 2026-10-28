@@ -9,7 +9,6 @@ import { mountConsole } from './ui/console';
 import { mountViewport } from './ui/viewport';
 import { mountInspector } from './ui/inspector';
 import { mountStatus } from './ui/status';
-import { MockTransport } from './chat/mock';
 import { ChatSession } from './chat/session';
 import { Workspace } from './workspace/workspace';
 import { WorkspaceClient, ServerError, captureToken } from './workspace/client';
@@ -51,36 +50,27 @@ async function boot() {
   app.perf.engineReady = performance.now() - t0;
   const ws = detected ? new Workspace(app, detected.client, detected.info) : null;
 
-  // ---- chat plumbing ----
-  let demo = params.get('demo') === '1';
-  let catalogMd = '';
-  engine.catalog('markdown').then((c) => { catalogMd = typeof c === 'string' ? c : (c as { markdown?: string })?.markdown ?? JSON.stringify(c); }).catch(() => { catalogMd = '(catalog unavailable)'; });
   const loadSampleDoc = async (id?: string): Promise<KerfDoc> => {
     const s = samples.find((x) => x.id === id) ?? samples.find((x) => x.id === 'truss-bearing-cmu') ?? samples[0];
     return getJson<KerfDoc>(`./samples/${s.file}`);
   };
-  const mock = new MockTransport({ loadDoc: () => loadSampleDoc(), chunkMs: params.get('fast') === '1' ? 0 : 12 });
-  const apiParam = params.get('api');
-  const testBase = apiParam && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(apiParam) ? apiParam : undefined; // test hook; never a remote host
-  const session = new ChatSession({ app, ws, catalogMd: () => catalogMd, mock, demo, testBase });
-  const harness = session.harness;
+  const session = new ChatSession({ app, ws });
 
   // ---- UI ----
   const $ = (id: string) => document.getElementById(id)!;
   let con: ReturnType<typeof mountConsole>;
   const hooks: HeaderHooks = {
-    samples, session, ws,
+    samples, ws,
     loadSample: (s) => getJson<KerfDoc>(`./samples/${s.file}`),
     openSample: async (s) => { const r = await app.openDoc(await getJson<KerfDoc>(`./samples/${s.file}`), `sample ${s.id}`); if (!r.ok) app.flash('OPEN FAILED: ' + (r.error ?? ''), 'err'); },
   };
   mountHeader(app, $('hdr'), hooks);
-  const setupBtn = () => document.getElementById('setupbtn') as HTMLButtonElement;
   if (ws) {
     const lib = h('div#library');
     $('console').append(lib);
     mountLibrary(ws, lib);
   }
-  con = mountConsole(app, $('console'), session, { openSetup: () => setupBtn().click() });
+  con = mountConsole(app, $('console'), session);
   if (ws) { $('console').insertBefore($('library'), $('msgs')); ws.on('card', (c) => con.addAgentCard(c as never)); }
   session.onChange(() => { app.emit('claude'); });
   const vp = mountViewport(app, $('viewport'));
@@ -103,7 +93,7 @@ async function boot() {
 
   // ---- debug / test hooks ----
   const w = window as unknown as Record<string, unknown>;
-  w.__kerf = { app, harness, session, ws, vp, con, exportActive: (f: 'dxf' | 'pdf' | 'svg' | 'png', save = true) => exportActive(app, f, save), engine, popup, loadEngine, version: 1, params: Object.fromEntries(params), mode: ws ? 'workspace' : 'static' };
+  w.__kerf = { app, session, ws, vp, con, exportActive: (f: 'dxf' | 'pdf' | 'svg' | 'png', save = true) => exportActive(app, f, save), engine, popup, loadEngine, version: 1, params: Object.fromEntries(params), mode: ws ? 'workspace' : 'static' };
 
   // ---- startup actions from URL ----
   if (ws) {
@@ -116,20 +106,15 @@ async function boot() {
     if (pick) await ws.open(pick);
   }
   const sample = ws ? null : params.get('sample');
-  if (sample || demo) {
-    if (sample) {
-      const r = await app.openDoc(pre.sample ? await pre.sample.catch(() => loadSampleDoc(sample)) : await loadSampleDoc(sample), `sample ${sample}`);
-      if (!r.ok) app.flash('OPEN FAILED: ' + (r.error ?? ''), 'err');
-    }
+  if (sample) {
+    const r = await app.openDoc(pre.sample ? await pre.sample.catch(() => loadSampleDoc(sample)) : await loadSampleDoc(sample), `sample ${sample}`);
+    if (!r.ok) app.flash('OPEN FAILED: ' + (r.error ?? ''), 'err');
   }
   const view = params.get('view'); if (view) app.setActiveView(view);
   const mode = params.get('mode'); if (mode === '3d' || mode === 'sheet' || mode === 'view') app.setMode(mode);
   const sel = params.get('select'); if (sel) app.setSelection(sel);
   if (params.get('cut') === '1') { const t = setInterval(() => { const v3 = vp.view3; if (v3 && v3.ok && v3.cut === null && (window as unknown as { __rendered3d?: boolean }).__rendered3d) { v3.setCut(app.view?.cut_z ?? 0); clearInterval(t); (window as unknown as { __cut?: boolean }).__cut = true; } }, 100); }
   const tab = params.get('tab'); if (tab) (document.querySelector(`.itabs .tab:nth-child(${['parts', 'notes', 'diff', 'diag'].indexOf(tab) + 1})`) as HTMLElement | null)?.click();
-  if (demo && params.get('auto') !== '0') {
-    con.sendText('Build a detail of a prefab roof truss bearing on an 8-inch CMU wall with a grouted bond beam, hurricane ties and a PT sill plate.');
-  }
   // The chrome must be in IBM Plex Mono before anything signals ready (font-display: block hides text until loaded).
   await Promise.all(['400 13px', '500 12px', '700 22px'].map((f) => document.fonts.load(`${f} "Plex Mono"`))).catch(() => undefined);
   await document.fonts.ready;

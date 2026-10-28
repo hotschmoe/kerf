@@ -65,9 +65,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .msg.llm { background: var(--manila); position: relative; }
 .msg.llm .mh { background: var(--manila-2); }
 .msg.llm::after { content: ''; position: absolute; right: -1px; top: -1px; width: 12px; height: 12px; background: linear-gradient(225deg, var(--paper) 0 50%, var(--ink) 50% calc(50% + 1px), transparent calc(50% + 1px)); pointer-events: none; }
-.msg .atts { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 10px 8px; }
-.msg .atts img { max-width: 120px; max-height: 80px; border: 1px solid var(--ink); background: #fff; display: block; }
-.msg .edits { padding: 0 10px 8px; font-size: 11px; color: var(--ink-2); }
 .seg { white-space: pre-wrap; overflow-wrap: anywhere; }
 .seg code { font-weight: 500; background: rgba(26,26,26,0.08); padding: 0 3px; }
 .seg b { font-weight: 700; }
@@ -82,7 +79,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .tl > summary::before { content: '\25B8'; display: inline-block; width: 1ch; }
 .tl[open] > summary::before { content: '\25BC'; font-size: 9px; }
 .tl pre { margin: 2px 0 6px 2ch; padding: 6px 8px; background: var(--paper); border: 1px solid var(--ink); max-height: 220px; overflow: auto; font-size: 11px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
-.tl img.thumb { display: block; margin: 4px 0 6px 2ch; max-width: calc(100% - 2ch); border: 1px solid var(--ink); background: #fff; }
 .spin { display: inline-block; animation: spin 0.8s steps(4) infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .notice { font-size: 12px; padding: 4px 10px; border: 1px solid var(--ink-2); color: var(--ink-2); background: var(--paper); flex: none; overflow-wrap: anywhere; }
@@ -100,11 +96,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #composer .row { display: flex; gap: 8px; align-items: center; }
 #composer .row .sp { flex: 1; }
 #composer .hint { font-size: 11px; color: var(--ink-2); }
-#attached { display: flex; gap: 8px; flex-wrap: wrap; }
-#attached .att { position: relative; border: 1px solid var(--ink); background: #fff; }
-#attached .att img { display: block; height: 44px; max-width: 90px; object-fit: cover; }
-#attached .att button { position: absolute; top: -1px; right: -1px; width: 16px; height: 16px; padding: 0; border: 1px solid var(--ink); background: var(--paper); font-size: 11px; line-height: 12px; cursor: pointer; }
-#console.drop { outline: 3px dashed var(--blue); outline-offset: -6px; }
 
 /* ---------- viewport ---------- */
 #viewport { border-left: 0; }
@@ -286,12 +277,8 @@ table.t th { top: 38px; }
 .msg .mb .meta { font-size: 11px; color: var(--ink-2); margin-top: 2px; }
 .msg .mb .sum { font-size: 11px; margin-top: 4px; padding: 2px 6px; border: 1px solid var(--ink); background: var(--paper); overflow-wrap: anywhere; }
 .msg .mb details.tl { margin-top: 4px; }
-.dlg.setup { width: 420px; max-width: calc(100vw - 16px); }
-.dlg .chk { border: 0; background: transparent; padding: 0; font-weight: 700; cursor: pointer; }
 .dlg .field .v { min-height: 22px; }
 .dlg .note { text-transform: none; overflow-wrap: anywhere; }
-.sform { display: flex; flex-direction: column; }
-.sform .note + .note { margin-top: 6px; }
 @media (max-width: 1199px) { #hdr .hf.dir { display: none; } }
 
 .kv input.pe { display: block; width: 100%; border: 0; border-bottom: 1px dotted var(--ink-2); background: transparent; padding: 0; outline: 0; min-height: 18px; }

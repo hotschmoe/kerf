@@ -46,9 +46,9 @@ export function seedDir(dir, files = ['truss-bearing-cmu', 'flush-beam-strap']) 
   return dir;
 }
 
-export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-ws-'))), port = 0, token = '', ui = path.join(here, '../dist-serve'), pollMs = 120, allowHttpProviders = ['custom'] } = {}) {
+export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-ws-'))), port = 0, token = '', ui = path.join(here, '../dist-serve'), pollMs = 120 } = {}) {
   const engine = await loadEngine();
-  const state = { llm: [], agentRuns: [], stops: [], applies: [], sseClients: 0 };
+  const state = { agentRuns: [], stops: [], applies: [], sseClients: 0 };
   const clients = new Set();
   const sessions = { n: 0 };
   const runs = new Map();
@@ -192,7 +192,7 @@ export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpd
 
   async function api(req, res, u) {
     const m = req.method, pn = u.pathname;
-    if (m === 'GET' && pn === '/api/info') return json(res, 200, { version: '0.1.0-mock', dir, token_required: !!token, agents: AGENTS, proxy: true });
+    if (m === 'GET' && pn === '/api/info') return json(res, 200, { version: '0.1.0-mock', dir, token_required: !!token, agents: AGENTS });
     if (m === 'GET' && pn === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
       res.write(': hello\n\n');
@@ -241,22 +241,6 @@ export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpd
         res.end(out); return;
       }
     }
-    if (m === 'POST' && pn === '/api/llm') {
-      const b = await body(req);
-      if (!b || !b.path || !b.provider) return err(res, 400, 'bad_request', 'need provider, path, headers, body');
-      let url;
-      try { url = new URL(b.path.replace(/^\/?/, '/'), (b.base_url ?? '').replace(/\/+$/, '') + '/'); url = new URL((b.base_url ?? '').replace(/\/+$/, '') + b.path); } catch { return err(res, 400, 'bad_url', 'bad base_url/path'); }
-      const local = /^(localhost|127\.|10\.|192\.168\.)/.test(url.hostname);
-      if (url.protocol !== 'https:' && !(allowHttpProviders.includes(b.provider) && local && url.protocol === 'http:')) return err(res, 400, 'bad_url', 'only https:// URLs (http://localhost/LAN for custom)');
-      state.llm.push({ provider: b.provider, url: url.href, headers: { ...b.headers, authorization: b.headers?.authorization ? '<redacted>' : undefined, 'x-api-key': b.headers?.['x-api-key'] ? '<redacted>' : undefined }, key: b.headers?.authorization ?? b.headers?.['x-api-key'], body: b.body });
-      const up = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...b.headers }, body: JSON.stringify(b.body) });
-      const h = { 'content-type': up.headers.get('content-type') ?? 'application/json' };
-      res.writeHead(up.status, h);
-      if (!up.body) { res.end(); return; }
-      const reader = up.body.getReader();
-      for (;;) { const { done, value } = await reader.read(); if (done) break; res.write(value); }
-      res.end(); return;
-    }
     if (m === 'POST' && pn === '/api/agent/run') {
       const b = await body(req);
       const a = AGENTS.find((x) => x.id === b?.agent);
@@ -280,7 +264,7 @@ export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpd
   async function testHooks(req, res, pn) {
     if (pn === '/__state') return json(res, 200, { ...state, dir, files: listDocs().map((d) => d.file) });
     const b = await body(req);
-    if (pn === '/__reset') { state.llm.length = 0; state.agentRuns.length = 0; state.stops.length = 0; state.applies.length = 0; return json(res, 200, { ok: true }); }
+    if (pn === '/__reset') { state.agentRuns.length = 0; state.stops.length = 0; state.applies.length = 0; return json(res, 200, { ok: true }); }
     if (pn === '/__external') { // like `kerf apply <file> --ops ... -w --why ...` run by an agent in a terminal
       const r = applyOps(b.file, b.ops, b.why ?? '', 'designer', b.who ?? 'agent');
       return json(res, 200, { ok: r.ok, summary: headOf(r) });

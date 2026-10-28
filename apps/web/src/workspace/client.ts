@@ -1,9 +1,9 @@
 // HTTP/SSE client for `kerf serve` (spec/SERVE.md "HTTP API"). Token: ?token= -> sessionStorage -> Authorization: Bearer
 // (SSE cannot send headers, so /api/events takes ?token=).
-import type { AgentInfo } from '../chat/providers';
+import type { AgentInfo } from '../chat/store';
 import type { ApplyResult, KerfDoc, Op } from '../types';
 
-export interface ServerInfo { version: string; dir: string; token_required: boolean; agents: AgentInfo[]; proxy: boolean }
+export interface ServerInfo { version: string; dir: string; token_required: boolean; agents: AgentInfo[] }
 export interface DocRow { file: string; id: string; title: string; mtime_ms: number; size: number; components: number; views: number; errors: number; warnings: number }
 export interface ServerLogEntry { ts: string; who: string; tool?: string; why?: string; ops?: unknown[]; changed?: string[]; summary_head?: string }
 export type ServerEvent =
