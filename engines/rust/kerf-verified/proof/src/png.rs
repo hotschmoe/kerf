@@ -62,6 +62,18 @@ proof fn lemma_steps_linear(x: u32, y: u32, k: nat)
     }
 }
 
+proof fn lemma_step_even(c: u32)
+    requires
+        c & 1u32 == 0,
+    ensures
+        crc_step(c) == c >> 1u32,
+{
+    assert(((c >> 1u32) ^ (if c & 1u32 == 1u32 { 0xEDB88320u32 } else { 0u32 })) == c >> 1u32) by (bit_vector)
+        requires
+            c & 1u32 == 0,
+    ;
+}
+
 proof fn lemma_steps_high(h: u32)
     requires
         h & 0xffu32 == 0,
@@ -87,14 +99,14 @@ proof fn lemma_steps_high(h: u32)
             h6 == h5 >> 1u32,
             h7 == h6 >> 1u32,
     ;
-    assert(crc_step(h) == h1);
-    assert(crc_step(h1) == h2);
-    assert(crc_step(h2) == h3);
-    assert(crc_step(h3) == h4);
-    assert(crc_step(h4) == h5);
-    assert(crc_step(h5) == h6);
-    assert(crc_step(h6) == h7);
-    assert(crc_step(h7) == h >> 8u32);
+    lemma_step_even(h);
+    lemma_step_even(h1);
+    lemma_step_even(h2);
+    lemma_step_even(h3);
+    lemma_step_even(h4);
+    lemma_step_even(h5);
+    lemma_step_even(h6);
+    lemma_step_even(h7);
     reveal_with_fuel(crc_steps, 9);
 }
 
@@ -145,7 +157,7 @@ pub fn crc_table() -> (t: Vec<u32>)
                 crc_steps(n, 8) == crc_steps(c, (8 - k) as nat),
             decreases 8 - k,
         {
-            c = if c & 1 == 1 { (c >> 1) ^ 0xEDB88320 } else { c >> 1 };
+            c = (c >> 1) ^ (if c & 1 == 1 { 0xEDB88320 } else { 0 });
             k += 1;
         }
         t.push(c);
@@ -173,7 +185,8 @@ pub fn crc_feed(table: &[u32], c: u32, s: &[u8]) -> (r: u32)
         proof {
             lemma_table_byte(r, s@[i as int]);
             assert(s@.subrange(0, i + 1).drop_last() =~= s@.subrange(0, i as int));
-            assert(((r ^ (s@[i as int] as u32)) & 0xffu32) < 256) by (bit_vector);
+            let b = s@[i as int];
+            assert(((r ^ (b as u32)) & 0xffu32) < 256) by (bit_vector);
         }
         r = table[((r ^ s[i] as u32) & 0xff) as usize] ^ (r >> 8);
         i += 1;
@@ -271,7 +284,45 @@ pub fn adler32_of(s: &[u8]) -> (r: u32)
         i += 1;
     }
     assert(s@.subrange(0, i as int) =~= s@);
+    assert((b << 16u32) | a == b * 65536 + a) by (bit_vector)
+        requires
+            a < 65521u32,
+            b < 65521u32,
+    ;
     (b << 16) | a
+}
+
+// ---- zlib container (RFC 1950) -------------------------------------------------------------------
+
+/// CMF 0x78: deflate (CM 8) with a 32 KiB window (CINFO 7); FLG 0x9C: FLEVEL 2 (default), no
+/// preset dictionary, FCHECK making the 16-bit header a multiple of 31.
+pub open spec fn zlib_header() -> Seq<u8> {
+    seq![0x78u8, 0x9C]
+}
+
+pub proof fn lemma_zlib_header()
+    ensures
+        zlib_header()[0] & 0x0f == 8,
+        zlib_header()[0] >> 4 == 7,
+        zlib_header()[1] & 0x20 == 0,
+        (zlib_header()[0] as nat * 256 + zlib_header()[1] as nat) % 31 == 0,
+{
+    assert((0x78u8 & 0x0fu8) == 8u8 && (0x78u8 >> 4u8) == 7u8 && (0x9Cu8 & 0x20u8) == 0u8) by (bit_vector);
+    assert((0x78 * 256 + 0x9C) % 31 == 0nat) by (compute);
+}
+
+/// Header, the raw deflate stream, and the Adler-32 of the uncompressed data, big-endian.
+pub fn zlib_frame(deflate: &[u8], raw: &[u8]) -> (r: Vec<u8>)
+    ensures
+        r@ == zlib_header() + deflate@ + be32(adler32(raw@) as u32),
+{
+    let mut out: Vec<u8> = Vec::new();
+    push_bytes(&mut out, &[0x78u8, 0x9C]);
+    push_bytes(&mut out, deflate);
+    let a = adler32_of(raw);
+    push_be32(&mut out, a);
+    assert(out@ =~= zlib_header() + deflate@ + be32(adler32(raw@) as u32));
+    out
 }
 
 // ---- chunks and container (PNG 1.2 section 5) ----------------------------------------------------
@@ -387,7 +438,7 @@ pub fn png_container(width: u32, height: u32, channels: usize, z: &[u8]) -> (r: 
         r@ == png_file(width, height, channels as nat, z@),
 {
     let table = crc_table();
-    let mut out: Vec<u8> = Vec::with_capacity(z.len() / 65536 * 12 + z.len() + 64);
+    let mut out: Vec<u8> = Vec::new();
     push_bytes(&mut out, &[0x89u8, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
     let mut h: Vec<u8> = Vec::with_capacity(13);
     push_be32(&mut h, width);
@@ -398,6 +449,7 @@ pub fn png_container(width: u32, height: u32, channels: usize, z: &[u8]) -> (r: 
     push_chunk(&mut out, table.as_slice(), &[0x49u8, 0x48, 0x44, 0x52], h.as_slice());
     let ghost head = out@;
     let mut off: usize = 0;
+    assert(z@.subrange(0, z@.len() as int) =~= z@);
     while off < z.len()
         invariant
             crc_table_ok(table@),
@@ -499,7 +551,7 @@ fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut Vec<u8>, 
     requires
         row@.len() == prev@.len(),
         bpp >= 1,
-        o + row@.len() <= old(out)@.len(),
+        o + row@.len() <= old(out)@.len() <= usize::MAX,
         row@.len() <= 0x1_0000_0000,
     ensures
         final(out)@.len() == old(out)@.len(),
@@ -513,7 +565,7 @@ fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut Vec<u8>, 
             row@.len() == prev@.len(),
             bpp >= 1,
             i <= row@.len() <= 0x1_0000_0000,
-            o + row@.len() <= out@.len() == old(out)@.len(),
+            o + row@.len() <= out@.len() == old(out)@.len() <= usize::MAX,
             s <= 128 * i,
             forall|k: int| 0 <= k < o || o + i <= k < out@.len() ==> out@[k] == old(out)@[k],
             forall|j: int| 0 <= j < i ==> #[trigger] out@[o + j] == filter_byte(kind, row@, prev@, bpp as nat, j),
@@ -584,20 +636,34 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
     if !(channels == 1 || channels == 3 || channels == 4) {
         return None;
     }
+    proof {
+        assert(width as int * channels as int <= 0x400_0000) by (nonlinear_arith)
+            requires
+                width <= 0x100_0000,
+                channels <= 4,
+        ;
+    }
     let stride: usize = width as usize * channels;
+    proof {
+        assert(stride as int * height as int <= 0x4_0000_0000_0000 && (stride as int + 1) * height as int
+            <= 0x4_0000_0100_0000) by (nonlinear_arith)
+            requires
+                stride <= 0x400_0000,
+                height <= 0x100_0000,
+        ;
+    }
+    let plen = pixels.len();
     let total = stride as u64 * height as u64;
-    if total != pixels.len() as u64 {
+    if total != plen as u64 {
+        return None;
+    }
+    let n64 = (stride as u64 + 1) * height as u64;
+    if n64 > usize::MAX as u64 {
         return None;
     }
     let ghost st = stride as int;
     let ghost hh = height as int;
-    proof {
-        lemma_mul_inequality(width as int, 0x100_0000, channels as int);
-        assert(stride <= 0x400_0000);
-        lemma_mul_inequality(st + 1, 0x400_0001, hh);
-        lemma_mul_inequality(hh, 0x100_0000, 0x400_0001);
-    }
-    let n = (stride + 1) * height as usize;
+    let n = n64 as usize;
     let zero_row: Vec<u8> = vec_of(0u8, stride);
     let mut cand: Vec<u8> = vec_of(0u8, stride);
     let mut out: Vec<u8> = vec_of(0u8, n);
@@ -610,6 +676,7 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
             1 <= height <= 0x100_0000,
             channels == 1 || channels == 3 || channels == 4,
             pixels@.len() == st * hh,
+            plen == pixels@.len(),
             n == (st + 1) * hh,
             out@.len() == n,
             zero_row@ == Seq::new(stride as nat, |k: int| 0u8),
@@ -631,10 +698,19 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
         decreases height - y,
     {
         proof {
-            lemma_mul_inequality(y as int + 1, hh, st);
-            lemma_mul_is_distributive_add_other_way(st, y as int, 1);
-            lemma_mul_inequality(y as int + 1, hh, st + 1);
-            lemma_mul_is_distributive_add_other_way(st + 1, y as int, 1);
+            assert((y + 1) * st <= st * hh && y * st + st == (y + 1) * st) by (nonlinear_arith)
+                requires
+                    y + 1 <= hh,
+                    st >= 0,
+            ;
+            assert((y + 1) * (st + 1) <= (st + 1) * hh && y * (st + 1) + st + 1 == (y + 1) * (st + 1)) by (nonlinear_arith)
+                requires
+                    y + 1 <= hh,
+                    st >= 0,
+            ;
+            if y > 0 {
+                assert((y - 1) * st + st == y * st) by (nonlinear_arith);
+            }
         }
         let row = slice_range(pixels, y * stride, y * stride + stride);
         let prev = if y == 0 {

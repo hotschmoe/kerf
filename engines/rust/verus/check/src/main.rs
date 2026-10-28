@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 mod pdf;
+mod png;
 mod sort;
 
 fn main() -> ExitCode {
@@ -12,6 +13,7 @@ fn main() -> ExitCode {
     let ok = match cmd.as_str() {
         "pdf" => pdf::check(rest),
         "sort" => sort::check(rest),
+        "png" => png::check(rest),
         _ => {
             eprintln!("kvcheck: unknown command {cmd}");
             false
