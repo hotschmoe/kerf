@@ -39,7 +39,7 @@ use repair::{Best, DimLab};
 
 pub enum Landing<'a, 's> {
     Section(&'a mut Section<'s>),
-    Iso(&'a mut Iso<'s>),
+    Iso(&'a Iso),
 }
 
 pub struct Env<'a, 's> {
