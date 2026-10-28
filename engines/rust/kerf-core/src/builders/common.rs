@@ -13,10 +13,10 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub struct Ctx<'a, 's> {
+pub struct Ctx<'a, 's, 'p> {
     pub scene: &'a Scene<'s>,
     pub style: &'a Style,
-    pub p: Params<'a>,
+    pub p: Params<'p>,
     /// Placement point (world) used as the origin of point-list builders.
     pub origin: V2,
     pub run: [f64; 2],
