@@ -481,11 +481,10 @@ impl Manager {
         let run;
         {
             let mut g = self.lock();
-            if let Some(r) = &g.active {
-                if !r.lock().finished {
+            if let Some(r) = &g.active
+                && !r.lock().finished {
                     return Err(StartError::Busy(r.id.clone()));
                 }
-            }
             let id = format!("r{}", g.next_id);
             g.next_id += 1;
             run = Arc::new(Run {
@@ -580,12 +579,11 @@ impl Manager {
                     st.term_sent = Some(now);
                     group::signal(pid, false);
                     announce = true;
-                } else if let Some(t0) = st.term_sent {
-                    if t0.elapsed() > KILL_GRACE {
+                } else if let Some(t0) = st.term_sent
+                    && t0.elapsed() > KILL_GRACE {
                         group::signal(pid, true);
                         st.term_sent = Some(now);
                     }
-                }
             }
             if announce {
                 let msg = format!(
@@ -720,15 +718,14 @@ impl Manager {
         if text.trim_ascii().is_empty() {
             return;
         }
-        if !is_stderr {
-            if let Ok(v @ Value::Object(_)) = json::parse(text) {
+        if !is_stderr
+            && let Ok(v @ Value::Object(_)) = json::parse(text) {
                 capture_session(run, &v);
                 let mut compact = Vec::new();
                 json::write_compact(&mut compact, &v);
                 self.publish(&run.id, &compact);
                 return;
             }
-        }
         let mut ev = if is_stderr {
             b"{\"type\":\"stderr\",\"text\":".to_vec()
         } else {

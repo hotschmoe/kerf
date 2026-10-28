@@ -121,8 +121,8 @@ pub fn handle_request(s: &Server, req: &mut Request, rd: &mut In, w: &mut Out) -
         http::send(w, http::Head { status: 204, keep_alive: ka, extra: &extra, ..http::Head::default() }, b"")?;
         return Ok(ka);
     }
-    if route.api {
-        if let Some(rej) = check_access(s, req) {
+    if route.api
+        && let Some(rej) = check_access(s, req) {
             if route.kind == Kind::Info && rej.status == 401 {
                 let body = format!(
                     "{{\"version\":\"{}\",\"token_required\":true,\"authenticated\":false}}\n",
@@ -134,7 +134,6 @@ pub fn handle_request(s: &Server, req: &mut Request, rd: &mut In, w: &mut Out) -
             http::send_error(w, rej.status, ka, &extra, rej.code, rej.message)?;
             return Ok(ka);
         }
-    }
     match route.kind {
         Kind::MethodNotAllowed => {
             let m = if route.api { "method not allowed for this path" } else { "method not allowed" };

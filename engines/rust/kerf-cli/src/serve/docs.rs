@@ -230,11 +230,10 @@ pub fn api_apply(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &str
     let why =
         body.get("why").map_or_else(|| norm.why.clone().unwrap_or_default(), |v| v.str().unwrap_or("").to_string());
     let mut who = "designer".to_string();
-    if let Some(ac) = body.get("actor").and_then(Value::str) {
-        if !ac.is_empty() && ac.len() <= 32 && ac.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
+    if let Some(ac) = body.get("actor").and_then(Value::str)
+        && !ac.is_empty() && ac.len() <= 32 && ac.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
             who = ac.to_string();
         }
-    }
     let mut if_match = None;
     if let Some(v) = body.get("if_match") {
         match v.str() {

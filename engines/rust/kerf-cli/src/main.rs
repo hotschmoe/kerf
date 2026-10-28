@@ -243,7 +243,14 @@ fn json_string(s: &str) -> String {
 
 /// Appends the op-log line. The document is already written (atomically), so a failure here is reported on stderr
 /// (what failed, that the document is fine) and the caller exits 3. Returns true when the log line was appended.
-fn log_write(doc_path: &str, lock: Option<&mut DocLock>, meta: &LogMeta, ops_text: &str, changed: &[String], summary: &str) -> bool {
+fn log_write(
+    doc_path: &str,
+    lock: Option<&mut DocLock>,
+    meta: &LogMeta,
+    ops_text: &str,
+    changed: &[String],
+    summary: &str,
+) -> bool {
     let lp = workspace::log_path(doc_path);
     let line = workspace::build_entry(meta, ops_text, changed, summary);
     let res = match lock {
@@ -254,7 +261,9 @@ fn log_write(doc_path: &str, lock: Option<&mut DocLock>, meta: &LogMeta, ops_tex
         Ok(()) => true,
         Err(e) => {
             let name = if e.to_string() == "SymLink" { "SymLink".to_string() } else { Fail::from(e).0 };
-            stderr(&format!("kerf: error: could not append to op log {lp}: {name}. The document itself WAS written; only the log entry is missing. Exit code 3.\n"));
+            stderr(&format!(
+                "kerf: error: could not append to op log {lp}: {name}. The document itself WAS written; only the log entry is missing. Exit code 3.\n"
+            ));
             false
         }
     }
@@ -287,7 +296,12 @@ fn if_match_ok(doc_path: &str, want: &str) -> Res<bool> {
 }
 
 fn create_op(file: &str, id: &str, title: &str) -> String {
-    format!("[{{\"op\":\"create\",\"file\":{},\"id\":{},\"title\":{}}}]", json_string(file), json_string(id), json_string(title))
+    format!(
+        "[{{\"op\":\"create\",\"file\":{},\"id\":{},\"title\":{}}}]",
+        json_string(file),
+        json_string(id),
+        json_string(title)
+    )
 }
 
 /// `ERROR <code> <path>: <message>  Fix: <fix>` (SPEC 19). `path` falls back to the diagnostic id, then `-`.
@@ -349,14 +363,13 @@ fn prepare_ops(raw: &[u8]) -> Option<PreparedOps> {
 
 /// Print an engine failure `{"error": {code, message}}` as `ERROR <code>: <message>`; falls back to the raw bytes.
 fn print_api_error(bytes: &[u8]) {
-    if let Ok(v) = json::parse(bytes) {
-        if let Some(e) = v.get("error") {
+    if let Ok(v) = json::parse(bytes)
+        && let Some(e) = v.get("error") {
             let code = e.get("code").and_then(Value::str).unwrap_or("E_UNKNOWN");
             let msg = e.get("message").and_then(Value::str).unwrap_or("");
             stderr(&format!("ERROR {code}: {msg}\n"));
             return;
         }
-    }
     let _ = io::stderr().write_all(bytes);
 }
 
@@ -379,7 +392,8 @@ fn cmd_catalog(o: &Opts) -> Res<u8> {
 fn cmd_schema(o: &Opts) -> Res<u8> {
     let mut text = String::new();
     let mut failed = false;
-    let topics: Vec<Option<&str>> = if o.pos.is_empty() { vec![None] } else { o.pos.iter().map(|s| Some(s.as_str())).collect() };
+    let topics: Vec<Option<&str>> =
+        if o.pos.is_empty() { vec![None] } else { o.pos.iter().map(|s| Some(s.as_str())).collect() };
     for topic in topics {
         let input = match topic {
             Some(t) => format!("{{\"topic\":{}}}", json_string(t)),
@@ -418,7 +432,9 @@ fn cmd_guide(o: &Opts) -> Res<u8> {
     } else {
         text.push('\n');
         text.push_str(&schema::compact_section());
-        text.push_str("\nMore: `kerf guide --full` (drafting rules, long-form notes, full schema and component catalog).\n");
+        text.push_str(
+            "\nMore: `kerf guide --full` (drafting rules, long-form notes, full schema and component catalog).\n",
+        );
     }
     write_out(o.out.as_deref(), &ascii_fold(text.as_bytes())?)?;
     Ok(0)
@@ -469,7 +485,9 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
     let title = o.title.as_deref().unwrap_or("");
     let text = if let Some(tpl) = &o.template {
         if tpl != "section" {
-            stderr(&format!("kerf new: unknown template \"{tpl}\"; available: section (a section view with two members, two notes, a dim, a label)\n"));
+            stderr(&format!(
+                "kerf new: unknown template \"{tpl}\"; available: section (a section view with two members, two notes, a dim, a label)\n"
+            ));
             return Ok(2);
         }
         schema::template_text(&workspace::slug(id_src), title).ok_or_else(|| Fail("BadDoc".to_string()))?
@@ -483,7 +501,9 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
     let mut apply_summary = String::new();
     if let Some(oa) = &o.ops {
         let Ok(raw) = ops_from_arg(oa) else {
-            stderr(&format!("kerf new: cannot read ops '{oa}' (--ops takes a file path, or inline JSON starting with [)\n"));
+            stderr(&format!(
+                "kerf new: cannot read ops '{oa}' (--ops takes a file path, or inline JSON starting with [)\n"
+            ));
             return Ok(2);
         };
         let Some(prep) = prepare_ops(&raw) else { return Ok(1) };
@@ -512,14 +532,19 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
         say(summary)?;
     }
     workspace::write_file_atomic(path, &final_text)?;
-    let create = create_op(
-        std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path),
-        id_src,
-        title,
+    let create =
+        create_op(std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path), id_src, title);
+    let mut logged = log_write(
+        path,
+        None,
+        &LogMeta { who: actor, tool: TOOL, why: "create" },
+        &create,
+        &[],
+        &workspace::check_summary(&text),
     );
-    let mut logged = log_write(path, None, &LogMeta { who: actor, tool: TOOL, why: "create" }, &create, &[], &workspace::check_summary(&text));
     if let Some(ot) = &ops_text {
-        logged &= log_write(path, None, &LogMeta { who: actor, tool: TOOL, why: &why }, ot, &apply_changed, &apply_summary);
+        logged &=
+            log_write(path, None, &LogMeta { who: actor, tool: TOOL, why: &why }, ot, &apply_changed, &apply_summary);
     }
     say(&format!("created {path}"))?;
     say(if ops_text.is_some() {
@@ -587,7 +612,9 @@ fn prepare_doc_call(cmd: &str, o: &Opts, call: &mut DocCall) -> Res<Option<u8>> 
         "apply" => {
             let ops: Vec<u8> = if let Some(arg) = &o.ops {
                 let Ok(b) = ops_from_arg(arg) else {
-                    stderr(&format!("kerf apply: cannot read ops '{arg}' (--ops takes inline JSON starting with [, or a file path)\n"));
+                    stderr(&format!(
+                        "kerf apply: cannot read ops '{arg}' (--ops takes inline JSON starting with [, or a file path)\n"
+                    ));
                     return Ok(Some(2));
                 };
                 b
@@ -647,7 +674,9 @@ fn lock_for_write(cmd: &str, o: &Opts, doc_path: &str) -> Res<Result<Option<DocL
                 return Ok(Err(1));
             }
             Ok(false) => {
-                stderr(&format!("ERROR E_STALE {doc_path}: --if-match {want} does not match the document as it is now (it changed since you read it)  Fix: read {doc_path} again (kerf check / cat), rebuild your ops against the current content and retry\nnothing written\n"));
+                stderr(&format!(
+                    "ERROR E_STALE {doc_path}: --if-match {want} does not match the document as it is now (it changed since you read it)  Fix: read {doc_path} again (kerf check / cat), rebuild your ops against the current content and retry\nnothing written\n"
+                ));
                 return Ok(Err(1));
             }
             Ok(true) => {}
@@ -668,7 +697,15 @@ fn finish_fmt(o: &Opts, doc_path: &str, bytes: &[u8]) -> Res<u8> {
 }
 
 /// Report the result of `apply` or `check` (summary, errors on stderr) and, for `apply -w`, write the document and its log line.
-fn finish_apply_check(actor: &str, cmd: &str, o: &Opts, doc_path: &str, lock: Option<&mut DocLock>, call: &DocCall, bytes: &[u8]) -> Res<u8> {
+fn finish_apply_check(
+    actor: &str,
+    cmd: &str,
+    o: &Opts,
+    doc_path: &str,
+    lock: Option<&mut DocLock>,
+    call: &DocCall,
+    bytes: &[u8],
+) -> Res<u8> {
     let res = json::parse(bytes).map_err(|_| bad_engine_output())?;
     let summary = res.get("summary").and_then(Value::str).unwrap_or("");
     if let Some(txt) = res.get("summary").and_then(Value::str) {
@@ -692,10 +729,16 @@ fn finish_apply_check(actor: &str, cmd: &str, o: &Opts, doc_path: &str, lock: Op
         let text = canon::write(dv);
         if o.write && !o.dry_run {
             workspace::write_file_atomic(doc_path, &text)?;
-            let changed: Vec<String> =
-                res.get("changed").and_then(Value::arr).unwrap_or(&[]).iter().filter_map(|c| c.str().map(String::from)).collect();
+            let changed: Vec<String> = res
+                .get("changed")
+                .and_then(Value::arr)
+                .unwrap_or(&[])
+                .iter()
+                .filter_map(|c| c.str().map(String::from))
+                .collect();
             let why = o.why.as_deref().or(call.why.as_deref()).unwrap_or("");
-            logged = log_write(doc_path, lock, &LogMeta { who: actor, tool: TOOL, why }, &call.ops_text, &changed, summary);
+            logged =
+                log_write(doc_path, lock, &LogMeta { who: actor, tool: TOOL, why }, &call.ops_text, &changed, summary);
             say(&format!("wrote {doc_path}\n"))?;
         } else if o.dry_run {
             say("(dry run: nothing written)\n")?;

@@ -88,7 +88,8 @@ static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 pub fn write_file_atomic(path: &str, bytes: &[u8]) -> io::Result<()> {
     let p = Path::new(path);
     let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("kerf");
-    let tmp = p.with_file_name(format!(".{name}.{}.{}.tmp", std::process::id(), TMP_SEQ.fetch_add(1, Ordering::Relaxed)));
+    let tmp =
+        p.with_file_name(format!(".{name}.{}.{}.tmp", std::process::id(), TMP_SEQ.fetch_add(1, Ordering::Relaxed)));
     let res = (|| {
         let mut f = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
         f.write_all(bytes)?;

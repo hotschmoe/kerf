@@ -257,8 +257,8 @@ pub fn plan(root: &Value) -> PlanResult {
         }
     }
     let mut body = None;
-    if let Some(bv) = root.get("body") {
-        if !bv.is_null() {
+    if let Some(bv) = root.get("body")
+        && !bv.is_null() {
             body = Some(match bv.str() {
                 Some(s) => s.as_bytes().to_vec(),
                 None => {
@@ -268,7 +268,6 @@ pub fn plan(root: &Value) -> PlanResult {
                 }
             });
         }
-    }
     let mut post = body.is_some();
     if let Some(ms) = root.get("method").and_then(Value::str) {
         if ms.eq_ignore_ascii_case("GET") {

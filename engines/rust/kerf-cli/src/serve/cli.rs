@@ -61,7 +61,7 @@ fn poller(s: Arc<Server>) {
         }
         s.scan(true);
         tick += 1;
-        if tick % 30 == 0 {
+        if tick.is_multiple_of(30) {
             s.hub.publish("ping", "{}");
         }
     }

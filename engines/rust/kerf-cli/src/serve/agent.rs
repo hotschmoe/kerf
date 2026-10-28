@@ -197,7 +197,7 @@ fn save_images(s: &Server, iv: &Value) -> Result<Vec<String>, BadImages> {
 /// Standard base64 with padding, as `std.base64.standard.Decoder`: no whitespace, trailing bits must be zero.
 fn base64_decode(s: &str) -> Option<Vec<u8>> {
     let b = s.as_bytes();
-    if b.len() % 4 != 0 {
+    if !b.len().is_multiple_of(4) {
         return None;
     }
     let pad = b.iter().rev().take_while(|&&c| c == b'=').count();
