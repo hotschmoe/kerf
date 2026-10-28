@@ -348,7 +348,8 @@ impl PdfWriter {
             self.lemma_count_bound();
         }
         let ghost w = self;
-        let PdfWriter { mut out, offsets } = self;
+        let mut out = self.out;
+        let offsets = self.offsets;
         let k = offsets.len();
         if k > 0 && offsets[k - 1] as u64 >= 10_000_000_000u64 {
             return None;

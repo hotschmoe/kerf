@@ -1,0 +1,17 @@
+[package]
+name = "kerf-verified-check"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "End-to-end behavioural checks of kerf-verified against the Zig engine's outputs (no unit tests)."
+
+[[bin]]
+name = "kvcheck"
+path = "src/main.rs"
+
+[dependencies]
+kerf-verified = { path = "../../kerf-verified" }
+
+[profile.release]
+opt-level = 3
+debug = false

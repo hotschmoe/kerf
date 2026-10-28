@@ -543,7 +543,7 @@ fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut Vec<u8>, 
                 lemma_small_mod((x as int - pred as int + 256) as nat, 256);
             }
         }
-        out.set(o + i, f);
+        out[o + i] = f;
         s = s + if f < 128 { f as u64 } else { 256 - f as u64 };
         i += 1;
     }
@@ -663,7 +663,7 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
         }
         let o = y * (stride + 1);
         let ghost before = out@;
-        out.set(o, best_kind);
+        out[o] = best_kind;
         filter_row(best_kind, row, prev, channels, &mut out, o + 1);
         proof {
             assert forall|yy: int, i: int|

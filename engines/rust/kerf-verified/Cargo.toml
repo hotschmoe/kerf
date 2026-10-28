@@ -1,0 +1,13 @@
+[package]
+name = "kerf-verified"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT"
+publish = false
+description = "Kerf kernels proven with Verus, as plain Rust: src/ is generated from proof/src by engines/rust/verus/erase.py."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
