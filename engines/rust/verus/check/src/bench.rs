@@ -3,7 +3,8 @@
 
 use crate::baseline_json;
 use crate::sort::Rng;
-use kerf_verified::{json, pdf::PdfWriter, png, sort::stable_sort_by};
+use kerf_core::sort::stable as stable_sort_by;
+use kerf_core::{json, pdf::writer::Writer, png};
 use std::hint::black_box;
 use std::process::Command;
 use std::time::Instant;
@@ -63,19 +64,19 @@ fn pdf_fmt(content: &[u8]) -> Vec<u8> {
 }
 
 fn pdf_verified(content: &[u8]) -> Vec<u8> {
-    let mut w = PdfWriter::new();
+    let mut w = Writer::new();
     for i in 1..=5 {
         w.begin_object();
         if i == 4 {
-            w.push(b"<< /Length ");
+            w.put(b"<< /Length ");
             w.push_usize(content.len());
-            w.push(b" >>\nstream\n");
-            w.push(content);
-            w.push(b"endstream\n");
+            w.put(b" >>\nstream\n");
+            w.put(content);
+            w.put(b"endstream\n");
         }
-        w.push(b"endobj\n");
+        w.end_object();
     }
-    w.finish(1, 5).unwrap()
+    w.finish(1, 5)
 }
 
 fn row(name: &str, verified: f64, baseline: Option<(&str, f64)>, zig: Option<f64>) {

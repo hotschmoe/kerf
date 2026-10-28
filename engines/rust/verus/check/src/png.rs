@@ -5,7 +5,7 @@
 //!   adler32_of(scanlines) == the zlib trailer, and zlib_frame rebuilds the zlib stream,
 //!   png_container(width, height, channels, zlib stream) == the golden file, byte for byte.
 
-use kerf_verified::png::{adler32_of, filter_image, png_container, zlib_frame};
+use kerf_core::png::{adler32_of, filter_image, png_container, zlib_frame};
 
 fn be32(b: &[u8]) -> u32 {
     u32::from_be_bytes([b[0], b[1], b[2], b[3]])

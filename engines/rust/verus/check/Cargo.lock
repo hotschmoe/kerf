@@ -3,12 +3,12 @@
 version = 4
 
 [[package]]
-name = "kerf-verified"
-version = "0.1.0"
+name = "kerf-core"
+version = "0.1.0-alpha.11"
 
 [[package]]
 name = "kerf-verified-check"
 version = "0.1.0"
 dependencies = [
- "kerf-verified",
+ "kerf-core",
 ]

@@ -1,4 +1,6 @@
-use crate::sort::*;
+//! The raster canvas (raster.zig's `Canvas`), proven with Verus (engines/rust/verus/VERUS.md): no write outside the
+//! pixel, coverage, accumulator or span buffers for any float input, integer arithmetic overflow-free.
+
 use alloc::vec::Vec;
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
@@ -7,15 +9,26 @@ use vstd::prelude::*;
 #[cfg_attr(verus_keep_ghost, verus_verify)]
 pub const MAX_SIDE: usize = 8192;
 
-/// The float functions core lacks on stable `no_std` (the caller's math module provides them).
-/// Nothing about them is assumed: every index the kernels write is proven in bounds whatever they
-/// return.
-#[cfg_attr(verus_keep_ghost, verus_verify)]
-pub trait FloatMath {
-    fn floor(x: f64) -> f64;
-    fn ceil(x: f64) -> f64;
-    fn sqrt(x: f64) -> f64;
-    fn round(x: f64) -> f64;
+/// The float functions core lacks on stable `no_std`, from the engine's `math` (exact, identical on every target).
+/// Trusted: nothing about their results is assumed; every index written is proven in bounds whatever they return.
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
+fn floor(x: f64) -> f64 {
+    crate::math::floor(x)
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
+fn ceil(x: f64) -> f64 {
+    crate::math::ceil(x)
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
+fn sqrt(x: f64) -> f64 {
+    crate::math::sqrt(x)
+}
+
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
+fn round(x: f64) -> f64 {
+    crate::math::round(x)
 }
 
 #[derive(Clone, Copy)]
@@ -29,7 +42,7 @@ pub struct Edge {
 
 #[derive(Clone, Copy)]
 #[cfg_attr(verus_keep_ghost, verus_verify)]
-pub struct Point {
+pub struct V {
     pub x: f64,
     pub y: f64,
 }
@@ -128,8 +141,8 @@ fn acc_add(acc: &mut Vec<f32>, i: usize, x: f64) {
     requires
         i < acc@.len(),
 ))]
-fn acc_byte<M: FloatMath>(acc: &Vec<f32>, i: usize) -> u8 {
-    M::round((acc[i].min(1.0).max(0.0) * 255.0) as f64) as u8
+fn acc_byte(acc: &Vec<f32>, i: usize) -> u8 {
+    round((acc[i].min(1.0).max(0.0) * 255.0) as f64) as u8
 }
 
 // ---- canvas ---------------------------------------------------------------------------------------
@@ -178,16 +191,16 @@ pub closed spec fn height(&self) -> nat {
 
 #[cfg_attr(verus_keep_ghost, verus_verify)]
 impl Canvas {
-    /// A white page; `None` unless `1 <= w, h <= MAX_SIDE`.
-    #[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    /// A white page of `w` x `h` pixels, each clamped to `1..=MAX_SIDE` (`raster::layout` already keeps them there).
+    #[cfg_attr(verus_keep_ghost, verus_spec(c =>
         ensures
-            r matches Some(c) ==> c.wf() && c.width() == w && c.height() == h,
-            r is None <==> !(1 <= w <= MAX_SIDE && 1 <= h <= MAX_SIDE),
+            c.wf(),
+            c.width() == if w < 1 { 1 } else if w > MAX_SIDE { MAX_SIDE } else { w },
+            c.height() == if h < 1 { 1 } else if h > MAX_SIDE { MAX_SIDE } else { h },
     ))]
-    pub fn new(w: usize, h: usize) -> Option<Canvas> {
-        if w == 0 || h == 0 || w > MAX_SIDE || h > MAX_SIDE {
-            return None;
-        }
+    pub fn new(w: usize, h: usize) -> Canvas {
+        let w = if w < 1 { 1 } else if w > MAX_SIDE { MAX_SIDE } else { w };
+        let h = if h < 1 { 1 } else if h > MAX_SIDE { MAX_SIDE } else { h };
         #[cfg(verus_keep_ghost)]
         proof! { assert(w * h <= MAX_SIDE * MAX_SIDE) by (nonlinear_arith)
             requires
@@ -226,16 +239,7 @@ impl Canvas {
             acc.push(0.0);
             x += 1;
         }
-        Some(Canvas {
-            w,
-            h,
-            pix,
-            cov,
-            rmin,
-            rmax,
-            acc,
-            xs: Vec::new(),
-        })
+        Canvas { w, h, pix, cov, rmin, rmax, acc, xs: Vec::new() }
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec)]
@@ -358,7 +362,7 @@ impl Canvas {
             final(self).width() == old(self).width(),
             final(self).height() == old(self).height(),
     ))]
-    pub fn capsule<M: FloatMath>(&mut self, ax: f64, ay: f64, bx: f64, by: f64, r: f64) {
+    pub fn capsule(&mut self, ax: f64, ay: f64, bx: f64, by: f64, r: f64) {
         let w = self.w;
         let h = self.h;
         let rr = add(r, 0.5);
@@ -371,12 +375,12 @@ impl Canvas {
         if !(lt(0.0, maxx) && lt(minx, wf) && lt(0.0, maxy) && lt(miny, hf)) {
             return;
         }
-        let ry0 = to_index(fmax(0.0, M::floor(sub(miny, 0.5))));
-        let ry1 = min(to_index(fmin(sub(hf, 1.0), M::ceil(sub(maxy, 0.5)))), h - 1);
+        let ry0 = to_index(fmax(0.0, floor(sub(miny, 0.5))));
+        let ry1 = min(to_index(fmin(sub(hf, 1.0), ceil(sub(maxy, 0.5)))), h - 1);
         let dx = sub(bx, ax);
         let dy = sub(by, ay);
         let len2 = add(mul(dx, dx), mul(dy, dy));
-        let len = M::sqrt(len2);
+        let len = sqrt(len2);
         let has_dir = lt(1e-12, len2);
         let inv2 = if has_dir { div(1.0, len2) } else { 0.0 };
         let nx = if has_dir { div(sub(0.0, dy), len) } else { 0.0 };
@@ -409,8 +413,8 @@ impl Canvas {
                 }
             }
             if !skip && !lt(xr, xl) {
-                let fx0 = fmax(0.0, M::floor(sub(xl, 0.5)));
-                let fx1 = fmin(sub(wf, 1.0), M::ceil(sub(xr, 0.5)));
+                let fx0 = fmax(0.0, floor(sub(xl, 0.5)));
+                let fx1 = fmin(sub(wf, 1.0), ceil(sub(xr, 0.5)));
                 if !lt(fx1, fx0) {
                     let ix0 = to_index(fx0);
                     let ix1 = min(to_index(fx1), w - 1);
@@ -440,9 +444,9 @@ impl Canvas {
                             }
                             let qx = sub(add(ax, mul(t, dx)), pxc);
                             let qy = sub(add(ay, mul(t, dy)), yc);
-                            let cv = sub(rr, M::sqrt(add(mul(qx, qx), mul(qy, qy))));
+                            let cv = sub(rr, sqrt(add(mul(qx, qx), mul(qy, qy))));
                             if !le(cv, 0.0) {
-                                let v = to_u8(M::round(mul(fmin(cv, 1.0), 255.0)));
+                                let v = to_u8(round(mul(fmin(cv, 1.0), 255.0)));
                                 if v > self.cov[row + x] {
                                     self.cov[row + x] = v;
                                 }
@@ -469,12 +473,12 @@ impl Canvas {
             final(self).width() == old(self).width(),
             final(self).height() == old(self).height(),
     ))]
-    pub fn stroke<M: FloatMath>(&mut self, p: &[Point], r: f64, dash: Option<&[f64]>) {
+    pub fn stroke(&mut self, p: &[V], r: f64, dash: Option<&[f64]>) {
         if p.len() == 0 {
             return;
         }
         if p.len() == 1 {
-            self.capsule::<M>(p[0].x, p[0].y, p[0].x, p[0].y, r);
+            self.capsule(p[0].x, p[0].y, p[0].x, p[0].y, r);
             return;
         }
         let mut pat_sum = 0.0;
@@ -503,7 +507,7 @@ impl Canvas {
                 decreases p.len() - i,
             ))]
             while i < p.len() - 1 {
-                self.capsule::<M>(p[i].x, p[i].y, p[i + 1].x, p[i + 1].y, r);
+                self.capsule(p[i].x, p[i].y, p[i + 1].x, p[i + 1].y, r);
                 i += 1;
             }
             return;
@@ -533,7 +537,7 @@ impl Canvas {
             let ay = p[i].y;
             let sx = sub(p[i + 1].x, ax);
             let sy = sub(p[i + 1].y, ay);
-            let len = M::sqrt(add(mul(sx, sx), mul(sy, sy)));
+            let len = sqrt(add(mul(sx, sx), mul(sy, sy)));
             let mut pos = 0.0;
             #[cfg_attr(verus_keep_ghost, verus_spec(
                 invariant
@@ -549,7 +553,7 @@ impl Canvas {
                 if on {
                     let t0 = div(pos, len);
                     let t1 = div(add(pos, take), len);
-                    self.capsule::<M>(
+                    self.capsule(
                         add(ax, mul(sx, t0)),
                         add(ay, mul(sy, t0)),
                         add(ax, mul(sx, t1)),
@@ -579,7 +583,7 @@ impl Canvas {
             final(self).width() == old(self).width(),
             final(self).height() == old(self).height(),
     ))]
-    pub fn fill<M: FloatMath>(&mut self, es: &[Edge]) {
+    pub fn fill(&mut self, es: &[Edge]) {
         if es.len() == 0 {
             return;
         }
@@ -603,8 +607,8 @@ impl Canvas {
             return;
         }
         let wf = from_usize(w);
-        let y0 = to_index(fmax(0.0, M::floor(ymin)));
-        let y1 = min(to_index(fmin(sub(hf, 1.0), M::floor(ymax))), h - 1);
+        let y0 = to_index(fmax(0.0, floor(ymin)));
+        let y1 = min(to_index(fmin(sub(hf, 1.0), floor(ymax))), h - 1);
         let mut y = y0;
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
@@ -652,7 +656,7 @@ impl Canvas {
                     k += 1;
                 }
                 if self.xs.len() >= 2 {
-                    stable_sort_by(self.xs.as_mut_slice(), |a: &f64, b: &f64| lt(*a, *b));
+                    crate::sort::stable(self.xs.as_mut_slice(), |a: &f64, b: &f64| lt(*a, *b));
                     let mut i: usize = 0;
                     #[cfg_attr(verus_keep_ghost, verus_spec(
                         invariant
@@ -667,8 +671,8 @@ impl Canvas {
                         let xa = fmax(0.0, fmin(self.xs[i], wf));
                         let xb = fmax(0.0, fmin(self.xs[i + 1], wf));
                         if !le(xb, xa) {
-                            let ia = min(to_index(M::floor(xa)), w);
-                            let ib = min(to_index(M::floor(xb)), w);
+                            let ia = min(to_index(floor(xa)), w);
+                            let ib = min(to_index(floor(xb)), w);
                             if !any {
                                 let mut z: usize = 0;
                                 #[cfg_attr(verus_keep_ghost, verus_spec(
@@ -735,7 +739,7 @@ impl Canvas {
                         decreases last + 1 - x,
                     ))]
                     while x <= last {
-                        let v = acc_byte::<M>(&self.acc, x);
+                        let v = acc_byte(&self.acc, x);
                         if v > self.cov[row + x] {
                             self.cov[row + x] = v;
                         }

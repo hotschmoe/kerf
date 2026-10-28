@@ -676,25 +676,11 @@ fn match_len(prev: &[u8], bytes: &[u8]) -> u16 {
     n as u16
 }
 
-pub fn adler32(data: &[u8]) -> u32 {
-    let (mut a, mut b) = (1u32, 0u32);
-    for chunk in data.chunks(5552) {
-        for &x in chunk {
-            a += u32::from(x);
-            b += a;
-        }
-        a %= 65521;
-        b %= 65521;
-    }
-    (b << 16) | a
-}
-
-pub fn zlib_compress(data: &[u8]) -> Vec<u8> {
+/// The raw DEFLATE stream of `data` (no zlib header or trailer: the verified `png::zlib_frame` adds them).
+pub fn deflate_raw(data: &[u8]) -> Vec<u8> {
     let mut c = Compressor::new();
-    c.bits.out.extend_from_slice(&[0x78, 0x9c]);
     c.write_all(data);
     c.rebase(true, true);
     c.bits.byte_align();
-    c.bits.out.extend_from_slice(&adler32(data).to_be_bytes());
     c.bits.out
 }

@@ -3,7 +3,7 @@
 //! compared in one canonical form (numbers as f64 bits, strings as hex, errors as line:col message).
 
 use crate::sort::Rng;
-use kerf_verified::json::{Value, parse};
+use kerf_core::json::{Value, parse};
 use std::fmt::Write;
 use std::process::Command;
 
@@ -16,7 +16,7 @@ fn dump(v: &Value, out: &mut String) {
         Value::Null => out.push('n'),
         Value::Bool(b) => out.push(if *b { 't' } else { 'f' }),
         Value::Number(x) => write!(out, "d{:016x}", x.to_bits()).unwrap(),
-        Value::String(s) => write!(out, "s{}", hex(s)).unwrap(),
+        Value::String(s) => write!(out, "s{}", hex(s.as_bytes())).unwrap(),
         Value::Array(xs) => {
             out.push('[');
             for x in xs {
@@ -28,7 +28,7 @@ fn dump(v: &Value, out: &mut String) {
         Value::Object(ms) => {
             out.push('{');
             for m in ms {
-                write!(out, "s{}:", hex(&m.key)).unwrap();
+                write!(out, "s{}:", hex(m.key.as_bytes())).unwrap();
                 dump(&m.value, out);
                 out.push(',');
             }

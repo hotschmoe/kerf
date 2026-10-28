@@ -3,7 +3,7 @@
 //! presorted, reversed and sawtooth orders, and f64 keys, including NaN (not a strict weak
 //! ordering, where the two algorithms are allowed to disagree; reported separately).
 
-use kerf_verified::sort::stable_sort_by;
+use kerf_core::sort::stable as stable_sort_by;
 use std::process::Command;
 
 pub struct Rng(pub u64);

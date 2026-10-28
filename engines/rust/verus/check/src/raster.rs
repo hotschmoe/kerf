@@ -3,24 +3,7 @@
 //! `strokeFlat` (flattened points, half-width, dash), `fillEdges` (edges) and `flush` it made, then
 //! the final gray8 pixels. Replaying the same calls must give the same pixels, byte for byte.
 
-use kerf_verified::raster::{Canvas, Edge, FloatMath, Point};
-
-struct Std;
-
-impl FloatMath for Std {
-    fn floor(x: f64) -> f64 {
-        x.floor()
-    }
-    fn ceil(x: f64) -> f64 {
-        x.ceil()
-    }
-    fn sqrt(x: f64) -> f64 {
-        x.sqrt()
-    }
-    fn round(x: f64) -> f64 {
-        x.round()
-    }
-}
+use kerf_core::raster::kernels::{Canvas, Edge, V};
 
 struct Rd<'a>(&'a [u8], usize);
 
@@ -47,19 +30,19 @@ pub fn replay(trace: &[u8]) -> (Vec<u8>, Vec<u8>, usize, usize) {
         match r.u8() {
             b'N' => {
                 let (w, h) = (r.u32(), r.u32());
-                canvas = Canvas::new(w, h);
+                canvas = Some(Canvas::new(w, h));
             }
             b'S' => {
                 let half = r.f64();
                 let dash: Option<Vec<f64>> = (r.u8() == 1).then(|| (0..r.u32()).map(|_| r.f64()).collect());
-                let pts: Vec<Point> = (0..r.u32()).map(|_| Point { x: r.f64(), y: r.f64() }).collect();
-                canvas.as_mut().unwrap().stroke::<Std>(&pts, half, dash.as_deref());
+                let pts: Vec<V> = (0..r.u32()).map(|_| V { x: r.f64(), y: r.f64() }).collect();
+                canvas.as_mut().unwrap().stroke(&pts, half, dash.as_deref());
                 strokes += 1;
             }
             b'F' => {
                 let es: Vec<Edge> =
                     (0..r.u32()).map(|_| Edge { x0: r.f64(), y0: r.f64(), x1: r.f64(), y1: r.f64() }).collect();
-                canvas.as_mut().unwrap().fill::<Std>(&es);
+                canvas.as_mut().unwrap().fill(&es);
                 fills += 1;
             }
             b'U' => canvas.as_mut().unwrap().flush(),

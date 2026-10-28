@@ -1,7 +1,7 @@
 //! Rebuilds each golden PDF with the verified writer, following pdf.zig's object sequence, from the
 //! golden's own content stream and MediaBox numbers, and requires byte equality.
 
-use kerf_verified::pdf::PdfWriter;
+use kerf_core::pdf::writer::Writer;
 
 fn find(h: &[u8], n: &[u8], from: usize) -> Option<usize> {
     h[from..].windows(n.len()).position(|w| w == n).map(|p| p + from)
@@ -17,26 +17,18 @@ fn rebuild(golden: &[u8]) -> Option<Vec<u8>> {
     let ce = find(golden, b"endstream\nendobj\n5 0 obj", cs)?;
     let content = &golden[cs..ce];
 
-    let mut w = PdfWriter::new();
-    w.begin_object();
-    w.push(b"<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-    w.begin_object();
-    w.push(b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-    w.begin_object();
-    w.push(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ");
-    w.push(w_txt);
-    w.push(b" ");
-    w.push(h_txt);
-    w.push(b"] /Contents 4 0 R /Resources << >> >>\nendobj\n");
-    w.begin_object();
-    w.push(b"<< /Length ");
-    w.push_usize(content.len());
-    w.push(b" >>\nstream\n");
-    w.push(content);
-    w.push(b"endstream\nendobj\n");
-    w.begin_object();
-    w.push(b"<< /Title (Kerf detail) /Producer (kerf-zig) >>\nendobj\n");
-    w.finish(1, 5)
+    let mut w = Writer::new();
+    w.object(b"<< /Type /Catalog /Pages 2 0 R >>");
+    w.object(b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+    let mut page = b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ".to_vec();
+    page.extend_from_slice(w_txt);
+    page.push(b' ');
+    page.extend_from_slice(h_txt);
+    page.extend_from_slice(b"] /Contents 4 0 R /Resources << >> >>");
+    w.object(&page);
+    w.stream_object(content);
+    w.object(b"<< /Title (Kerf detail) /Producer (kerf-zig) >>");
+    Some(w.finish(1, 5))
 }
 
 pub fn check(paths: &[String]) -> bool {

@@ -10,8 +10,10 @@ name = "kvcheck"
 path = "src/main.rs"
 
 [dependencies]
-kerf-verified = { path = "../../kerf-verified" }
+kerf-core = { path = "../../kerf-core" }
 
 [profile.release]
 opt-level = 3
 debug = false
+
+[workspace]

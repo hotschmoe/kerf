@@ -2,7 +2,7 @@
 //! Unverified baseline for `kvcheck bench`: kerf-verified's JSON parser with core's UTF-8
 //! validation (`str::from_utf8`) in place of the verified validator: the verified parser with its
 //! proofs erased (commit 3f4d940, erase.py), edited only there.
-use kerf_verified::sort::stable_sort_by;
+use kerf_core::sort::stable as stable_sort_by;
 
 
 /// Deepest array/object nesting the parser accepts (json.zig).
