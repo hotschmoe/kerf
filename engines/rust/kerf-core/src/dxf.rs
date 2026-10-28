@@ -190,7 +190,7 @@ fn hatch_header(w: &mut Writer, layer: &str, lw: i32, name: &str, solid: bool) {
 }
 
 pub fn render(d: &Drawing<'_>) -> Vec<u8> {
-    let st = &*d.style;
+    let st = d.style;
     let mut w = Writer::new();
     let mut ext = geom::Box::default();
     for it in &d.items {

@@ -184,6 +184,7 @@ fn dim_offset_fix(fit: &FitInfo, big: &Culprit, need: f64, nfix: &mut usize, fix
 }
 
 /// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
+#[allow(clippy::too_many_arguments)]
 fn view_fit(
     st: &Style,
     spec: &ViewSpec,
@@ -337,6 +338,7 @@ struct SecPass {
 
 const GLYPH_INFO: &str = "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)";
 
+#[allow(clippy::too_many_arguments)]
 fn section_pass(
     st: &Style,
     scene: &Scene,
@@ -428,6 +430,7 @@ struct SecResolved {
 /// Resolve an omitted crop and/or scale (SPEC 19) and run the section pass. The scale is the first of the
 /// standard scales (largest first) at which view + notes + dimensions + title fit the sheet frame; every
 /// candidate is evaluated in order, so the result is stable. Explicit crop and scale are used as given.
+#[allow(clippy::too_many_arguments)]
 fn resolve_section(
     st: &Style,
     scene: &Scene,
@@ -581,7 +584,7 @@ pub fn build_from_scene<'a>(
             scale = res.scale;
             let mut res = res;
             let regions = iso.region_items();
-            let mut env = Env::new(st, &font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&mut iso));
+            let mut env = Env::new(st, &font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&iso));
             env.work = Some(&work);
             let ann = annot::annotate(&mut env, &mut res.items);
             let un = env.unverified;

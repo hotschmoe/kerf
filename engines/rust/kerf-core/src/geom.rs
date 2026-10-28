@@ -2,6 +2,8 @@
 //! intersection. Loops are closed polylines of `Pt` (x, y, bulge); the bulge on vertex i describes the
 //! segment i -> i+1 with DXF LWPOLYLINE semantics (bulge = tan(theta/4), CCW positive).
 
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
 use crate::math;
 use crate::num;
 use alloc::vec::Vec;
@@ -21,9 +23,11 @@ impl V2 {
     pub fn init(x: f64, y: f64) -> V2 {
         V2 { x, y }
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn add(self, b: V2) -> V2 {
         V2 { x: self.x + b.x, y: self.y + b.y }
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn sub(self, b: V2) -> V2 {
         V2 { x: self.x - b.x, y: self.y - b.y }
     }
@@ -709,7 +713,7 @@ pub fn arc_seg(p0: V2, p1: V2, bulge: f64, b0: V2, b1: V2, ta: &mut [f64; 2], tb
         if k == 1 && sq == 0.0 {
             break;
         }
-        if u < -1e-12 || u > 1.0 + 1e-12 {
+        if !(-1e-12..=1.0 + 1e-12).contains(&u) {
             continue;
         }
         let uc = u.clamp(0.0, 1.0);

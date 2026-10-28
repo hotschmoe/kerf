@@ -256,8 +256,8 @@ fn build_bits(out_bits: &mut [u8], bit_counts: &mut [u16; 16], parent: &[u16], s
         }
     }
     let mut i = 0usize;
-    for bits in 1..16usize {
-        let mut remaining = bit_counts[bits];
+    for (bits, &count) in bit_counts.iter().enumerate().take(16).skip(1) {
+        let mut remaining = count;
         while remaining != 0 {
             let s = usize::from(sorted[i]);
             i += 1;

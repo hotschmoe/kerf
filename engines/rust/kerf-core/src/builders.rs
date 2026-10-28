@@ -3,6 +3,7 @@
 //!     `kerf catalog` / `kerf schema <type>`, the accepted-key list and the canonical key order all come from it;
 //!   - `build(ctx)`: turn the parsed parameters into a `Built` (prisms, anchors, zones) in local coordinates, reporting problems as
 //!     E_PARAM diagnostics and returning `None` when the component cannot be built.
+//!
 //! Helpers shared by the builders are in `builders/common.rs`.
 //!
 //! Adding a component type: (1) a variant in `catalog::Type` and an entry in `catalog::ENTRIES`; (2) `builders/<type>.rs`;

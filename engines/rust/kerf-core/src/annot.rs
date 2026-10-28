@@ -65,6 +65,7 @@ pub struct Env<'a, 's> {
 }
 
 impl<'a, 's> Env<'a, 's> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         style: &'a Style,
         font: &'a Font,
@@ -482,10 +483,10 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     let mut result: Vec<Item> = Vec::new();
     for (k, its) in rd.per.into_iter().enumerate() {
         result.extend(its);
-        if let Some(Some(sl)) = note_slot.get(k) {
-            if let Some(o) = outs.get_mut(*sl) {
-                result.append(o);
-            }
+        if let Some(Some(sl)) = note_slot.get(k)
+            && let Some(o) = outs.get_mut(*sl)
+        {
+            result.append(o);
         }
     }
     if env.style.notes_mode_keynote && !notes.is_empty() {

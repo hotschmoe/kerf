@@ -80,22 +80,17 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
                 }
                 shapes_src.extend(sec.visible_region(i));
             }
-            if shapes_src.is_empty() {
-                if let Some(pn) = part {
-                    if let Some(lb) = Scene::part_box(comp, pn) {
-                        let xf = comp.xfs.get(inst.unwrap_or(0) as usize)?;
-                        let cs = [
-                            V2::init(lb.x0, lb.y0),
-                            V2::init(lb.x1, lb.y0),
-                            V2::init(lb.x1, lb.y1),
-                            V2::init(lb.x0, lb.y1),
-                        ];
-                        let mut pts = cs.map(|c| xf.apply(c));
-                        clip::orient_ccw(&mut pts);
-                        let reg = clip::boolean(&[pts.to_vec()], &[sec.crop_loop.clone()], clip::Op::Intersect);
-                        shapes_src.extend(reg);
-                    }
-                }
+            if shapes_src.is_empty()
+                && let Some(pn) = part
+                && let Some(lb) = Scene::part_box(comp, pn)
+            {
+                let xf = comp.xfs.get(inst.unwrap_or(0) as usize)?;
+                let cs =
+                    [V2::init(lb.x0, lb.y0), V2::init(lb.x1, lb.y0), V2::init(lb.x1, lb.y1), V2::init(lb.x0, lb.y1)];
+                let mut pts = cs.map(|c| xf.apply(c));
+                clip::orient_ccw(&mut pts);
+                let reg = clip::boolean(&[pts.to_vec()], core::slice::from_ref(&sec.crop_loop), clip::Op::Intersect);
+                shapes_src.extend(reg);
             }
         }
         Landing::Iso(iso) => {
@@ -105,10 +100,10 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
     }
     let shapes = shape::shapes_of(&shapes_src);
     let lp = shape::banded_label_point(&shapes, env.crop, h)?;
-    if let Landing::Section(sec) = &mut env.landing {
-        if let Some(c) = thinland::candidates(sec, comp, inst, part, lp.inset, h, lp.p) {
-            return Some(c);
-        }
+    if let Landing::Section(sec) = &mut env.landing
+        && let Some(c) = thinland::candidates(sec, comp, inst, part, lp.inset, h, lp.p)
+    {
+        return Some(c);
     }
     Some(shape::candidates_for(&shapes, lp.inset, lp.p, h))
 }

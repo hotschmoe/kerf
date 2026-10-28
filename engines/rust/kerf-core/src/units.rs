@@ -109,15 +109,15 @@ fn parse_inches(sc: &mut Scan) -> Option<f64> {
     if matches!(sc.peek(), b' ' | b'-') {
         sc.i += 1;
         sc.skip_spaces();
-        if let Some(n) = sc.number() {
-            if sc.peek() == b'/' {
-                sc.i += 1;
-                let d = sc.number()?;
-                if d == 0.0 {
-                    return None;
-                }
-                return Some(first + n / d);
+        if let Some(n) = sc.number()
+            && sc.peek() == b'/'
+        {
+            sc.i += 1;
+            let d = sc.number()?;
+            if d == 0.0 {
+                return None;
             }
+            return Some(first + n / d);
         }
         sc.i = save;
     }
@@ -311,7 +311,7 @@ pub fn scale_label(factor: f64) -> String {
     }
     let per_foot = 12.0 / factor;
     let sixteenths = per_foot * 16.0;
-    if (sixteenths - math::round(sixteenths)).abs() < 1e-6 && per_foot >= 1.0 / 16.0 && per_foot < 1e6 {
+    if (sixteenths - math::round(sixteenths)).abs() < 1e-6 && (1.0 / 16.0..1e6).contains(&per_foot) {
         let s = num::to_int::<i64>(math::round(sixteenths)).unwrap_or(0);
         let whole = s / 16;
         let (n, d) = reduce(s % 16);
@@ -348,7 +348,7 @@ pub fn parse_slope(v: &Value) -> Option<f64> {
                 return Some(math::atan2(rise, run));
             }
             let deg = parse_finite(t)?;
-            (deg.abs() <= 360.0).then(|| deg * RAD_PER_DEG)
+            (deg.abs() <= 360.0).then_some(deg * RAD_PER_DEG)
         }
         _ => None,
     }

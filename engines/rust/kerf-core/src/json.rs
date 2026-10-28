@@ -1,5 +1,7 @@
 //! Order-preserving JSON value tree. (The parser and writer land here too.)
 
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
 use crate::math;
 use crate::num::to_int_clamped;
 use alloc::string::String;
@@ -462,7 +464,7 @@ pub fn fmt_fixed(buf: &mut [u8; 40], x: f64, decimals: u8) -> &str {
     let mut i = buf.len();
     if frac != 0 {
         let mut digits = decimals as usize;
-        while frac % 10 == 0 {
+        while frac.is_multiple_of(10) {
             frac /= 10;
             digits -= 1;
         }

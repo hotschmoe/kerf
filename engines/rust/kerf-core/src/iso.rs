@@ -497,6 +497,7 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             side_faces.push(mk_face(iso, nn, &verts, &[], pi));
         }
         let chain = pi * 16 + li;
+        #[allow(clippy::needless_range_loop)]
         for i in 0..n {
             let p = fl.pts[i];
             let q = fl.pts[(i + 1) % n];

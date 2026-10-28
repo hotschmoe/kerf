@@ -328,10 +328,10 @@ impl Style {
         if let Some(l) = self.layer_by_key(key) {
             return &l.name;
         }
-        if key == LayerKey::Rebar {
-            if let Some(l) = self.layer_by_key(LayerKey::Steel) {
-                return &l.name;
-            }
+        if key == LayerKey::Rebar
+            && let Some(l) = self.layer_by_key(LayerKey::Steel)
+        {
+            return &l.name;
         }
         "0"
     }
@@ -403,10 +403,11 @@ impl Check {
         if x.is_null() {
             return;
         }
-        if let Value::Number(n) = x {
-            if *n >= lo && *n <= hi {
-                return;
-            }
+        if let Value::Number(n) = x
+            && *n >= lo
+            && *n <= hi
+        {
+            return;
         }
         self.bad(format!(
             "style key '{path}' must be a number from {} to {} (got {}; default {})",
@@ -480,20 +481,19 @@ fn validate(root: &Value) -> Option<String> {
             c.range(&path, sec.get(r.key), r.lo, r.hi, (r.def)(&d));
         }
     }
-    if let Some(sec) = c.section(root, "sheet") {
-        if let Some(sz) = sec.get("size_in") {
-            if !sz.is_null() {
-                match sz.arr() {
-                    Some([w, h]) => {
-                        c.range("sheet.size_in[0]", Some(w), 2.0, 200.0, d.sheet_w_in);
-                        c.range("sheet.size_in[1]", Some(h), 2.0, 200.0, d.sheet_h_in);
-                    }
-                    _ => c.bad(format!(
-                        "style key 'sheet.size_in' must be [width, height] in inches (got {})",
-                        Check::got_text(sz)
-                    )),
-                }
+    if let Some(sec) = c.section(root, "sheet")
+        && let Some(sz) = sec.get("size_in")
+        && !sz.is_null()
+    {
+        match sz.arr() {
+            Some([w, h]) => {
+                c.range("sheet.size_in[0]", Some(w), 2.0, 200.0, d.sheet_w_in);
+                c.range("sheet.size_in[1]", Some(h), 2.0, 200.0, d.sheet_h_in);
             }
+            _ => c.bad(format!(
+                "style key 'sheet.size_in' must be [width, height] in inches (got {})",
+                Check::got_text(sz)
+            )),
         }
     }
     validate_pens(&mut c, root);

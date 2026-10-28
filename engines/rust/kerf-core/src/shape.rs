@@ -1,6 +1,8 @@
 //! Visible-region shapes and where a label or a note's arrow can land inside them (SPEC 6.3, SPEC 18): pure geometry on
 //! polygons with holes, used by both the section and the iso annotation code.
 
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
 use crate::clip;
 use crate::geom::{self, Box, V2};
 use crate::sort;
@@ -207,13 +209,13 @@ pub fn candidates_for(shapes: &[Shape], inset: Box, primary: V2, h: f64) -> Vec<
         let mut y = bb.y0 + step * 0.5;
         while y < bb.y1 {
             let q = V2::init(x, y);
-            if inset.contains(q) {
-                if let Some(s) = shapes.iter().find(|s| shape_contains(s, q)) {
-                    let d = shape_depth(s, q);
-                    pts.push(q);
-                    depth.push(d);
-                    maxd = maxd.max(d);
-                }
+            if inset.contains(q)
+                && let Some(s) = shapes.iter().find(|s| shape_contains(s, q))
+            {
+                let d = shape_depth(s, q);
+                pts.push(q);
+                depth.push(d);
+                maxd = maxd.max(d);
             }
             y += step;
         }
@@ -259,10 +261,10 @@ pub fn candidates_for(shapes: &[Shape], inset: Box, primary: V2, h: f64) -> Vec<
                 best = Some(q);
             }
         }
-        if let Some(q) = best {
-            if far_from_all(&out, q, 0.5 * h) {
-                out.push(q);
-            }
+        if let Some(q) = best
+            && far_from_all(&out, q, 0.5 * h)
+        {
+            out.push(q);
         }
     }
     out

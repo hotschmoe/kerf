@@ -1,6 +1,9 @@
 //! Float math that `core` lacks, ported from Zig's std.math / compiler_rt (themselves musl) so every
 //! target produces identical bits. Only what the engine uses.
 
+// The constants are the published musl literals, kept verbatim.
+#![allow(clippy::excessive_precision, clippy::approx_constant, clippy::eq_op)]
+
 pub const PI: f64 = core::f64::consts::PI;
 const TWO_M120: f64 = f64::from_bits(0x3870_0000_0000_0000);
 

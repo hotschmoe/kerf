@@ -42,10 +42,8 @@ pub fn ascii_fold_flag<'s>(s: &'s str, unknown: Option<&mut bool>) -> Cow<'s, st
             }
         }
     }
-    if unk {
-        if let Some(u) = unknown {
-            *u = true;
-        }
+    if unk && let Some(u) = unknown {
+        *u = true;
     }
     Cow::Owned(out)
 }

@@ -59,13 +59,14 @@ pub fn offset_open(pts: &[Pt], d: f64) -> Vec<Pt> {
         if s0.b.eql(s1.a, 1e-9) {
             continue;
         }
-        if s0.bulge == 0.0 && s1.bulge == 0.0 {
-            if let Some(m) = line_intersect(s0.a, s0.b, s1.a, s1.b) {
-                let lim = 4.0 * d.abs().max(1e-9);
-                if m.dist(pts[i + 1].v()) <= lim {
-                    segs[i].b = m;
-                    segs[i + 1].a = m;
-                }
+        if s0.bulge == 0.0
+            && s1.bulge == 0.0
+            && let Some(m) = line_intersect(s0.a, s0.b, s1.a, s1.b)
+        {
+            let lim = 4.0 * d.abs().max(1e-9);
+            if m.dist(pts[i + 1].v()) <= lim {
+                segs[i].b = m;
+                segs[i + 1].a = m;
             }
         }
     }
@@ -95,10 +96,12 @@ pub fn ribbon(center: &[Pt], left: f64, right: f64) -> Vec<Pt> {
         }
         cleaned.push(p);
     }
-    if let (Some(first), Some(last)) = (cleaned.first(), cleaned.last()) {
-        if cleaned.len() > 1 && first.v().eql(last.v(), 1e-12) && last.b == 0.0 {
-            cleaned.pop();
-        }
+    if let (Some(first), Some(last)) = (cleaned.first(), cleaned.last())
+        && cleaned.len() > 1
+        && first.v().eql(last.v(), 1e-12)
+        && last.b == 0.0
+    {
+        cleaned.pop();
     }
     cleaned
 }

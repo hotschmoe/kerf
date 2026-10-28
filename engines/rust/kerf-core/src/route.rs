@@ -628,6 +628,7 @@ impl Ctx<'_> {
                         for (m, o) in self.obst.iter().enumerate() {
                             u += self.box_pen(&lead, &lb, &o.poly, &self.obst_bb[m]);
                         }
+                        #[allow(clippy::needless_range_loop)]
                         for j in 0..nn {
                             if j == i {
                                 continue;

@@ -1,5 +1,7 @@
 //! Hatch pattern line generation (AutoCAD .pat semantics) clipped to a region (even-odd).
 
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
 use crate::geom::{self, Loc, RAD_PER_DEG, V2};
 use crate::math;
 use crate::num;

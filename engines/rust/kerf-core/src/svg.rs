@@ -118,7 +118,7 @@ fn escape_attr(out: &mut Vec<u8>, s: &str) {
 
 /// Emit the drawing's layers. The caller has opened the <svg>.
 pub fn emit_items(out: &mut Vec<u8>, d: &Drawing<'_>, m: Map, font: &Font) {
-    let st = &*d.style;
+    let st = d.style;
     for layer in &d.layers {
         out.extend_from_slice(b"<g id=\"");
         escape_attr(out, &layer.name);

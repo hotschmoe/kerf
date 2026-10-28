@@ -271,7 +271,7 @@ pub const CMU_JOINT: f64 = 0.375;
 
 pub fn cmu_split(pr: &Prism) -> Vec<ZSeg> {
     let mut out = Vec::new();
-    let offset = if pr.course % 2 == 0 { 8.0 } else { 0.0 };
+    let offset = if pr.course.is_multiple_of(2) { 8.0 } else { 0.0 };
     let mut z = pr.z0 - offset;
     while z < pr.z1 {
         let a0 = z.max(pr.z0);

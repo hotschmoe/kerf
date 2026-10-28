@@ -54,7 +54,7 @@ impl Section<'_> {
             return Vec::new();
         }
         let f = self.flat_of(i);
-        let mut region = clip::boolean(&f, &[self.crop_loop.clone()], Op::Intersect);
+        let mut region = clip::boolean(&f, core::slice::from_ref(&self.crop_loop), Op::Intersect);
         if cls == Class::Beyond && !embedded && !dashed {
             for o in &self.occs {
                 if o.prism == i || !(o.cut || o.z1 > z1 + 1e-9) {

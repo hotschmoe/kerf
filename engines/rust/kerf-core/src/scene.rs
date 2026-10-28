@@ -270,19 +270,19 @@ impl<'a> Scene<'a> {
             );
             return None;
         }
-        if let Some(p) = r.part {
-            if Scene::part_box(c, p).is_none() {
-                let parts = self.part_names(c);
-                let list = if parts.is_empty() { "(none)".to_string() } else { join_ids(&parts) };
-                d.add(
-                    Level::Error,
-                    "E_REF_UNKNOWN",
-                    Some(from_id),
-                    Some(path),
-                    format!("reference '{ref_}': component '{}' has no part '{p}'. Parts: {list}", r.comp),
-                );
-                return None;
-            }
+        if let Some(p) = r.part
+            && Scene::part_box(c, p).is_none()
+        {
+            let parts = self.part_names(c);
+            let list = if parts.is_empty() { "(none)".to_string() } else { join_ids(&parts) };
+            d.add(
+                Level::Error,
+                "E_REF_UNKNOWN",
+                Some(from_id),
+                Some(path),
+                format!("reference '{ref_}': component '{}' has no part '{p}'. Parts: {list}", r.comp),
+            );
+            return None;
         }
         if let Some(pt) = Scene::anchor_point(c, r.inst as usize, r.part, r.anchor) {
             return Some(pt);
@@ -309,10 +309,10 @@ pub fn point_from_value(scene: &Scene<'_>, v: &Value, from_id: &str, path: &str)
     match v {
         Value::String(s) => return scene.resolve_ref_str(s, from_id, path),
         Value::Array(xy) => {
-            if xy.len() >= 2 {
-                if let (Some(x), Some(y)) = (units::parse_length(&xy[0]), units::parse_length(&xy[1])) {
-                    return Some(V2::init(x, y));
-                }
+            if xy.len() >= 2
+                && let (Some(x), Some(y)) = (units::parse_length(&xy[0]), units::parse_length(&xy[1]))
+            {
+                return Some(V2::init(x, y));
             }
         }
         Value::Object(_) => {

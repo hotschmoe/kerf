@@ -52,32 +52,30 @@ pub fn load_after_edit<'a>(
     }
     let mut nviews = 0;
     let vdoc = if with_views && is_obj { lint::with_dim_dirs(&scene, doc) } else { Cow::Borrowed(doc) };
-    if is_obj {
-        if let Some(va) = vdoc.get("views").and_then(Value::arr) {
-            nviews = va.len();
-            let views: &[Value] = if va.len() > limits::MAX_VIEWS { &[] } else { va };
-            let mut seen: Vec<&str> = Vec::new();
-            for (i, v) in views.iter().enumerate() {
-                let vid = v.get("id").map_or("", |x| x.str().unwrap_or(""));
-                if seen.contains(&vid) {
-                    diags.add(
-                        Level::Error,
-                        "E_DUP_ID",
-                        Some(vid),
-                        Some(&format!("views/{i}")),
-                        format!("duplicate view id '{vid}'"),
-                    );
-                    continue;
-                }
-                seen.push(vid);
-                let vd = Diags::new();
-                if let Some(spec) = view::parse(v, i, &vd) {
-                    if with_views {
-                        drawview::build_from_scene(&vdoc, st, &scene, &spec, &vd);
-                    }
-                }
-                diags.extend(vd.into_vec());
+    if is_obj && let Some(va) = vdoc.get("views").and_then(Value::arr) {
+        nviews = va.len();
+        let views: &[Value] = if va.len() > limits::MAX_VIEWS { &[] } else { va };
+        let mut seen: Vec<&str> = Vec::new();
+        for (i, v) in views.iter().enumerate() {
+            let vid = v.get("id").map_or("", |x| x.str().unwrap_or(""));
+            if seen.contains(&vid) {
+                diags.add(
+                    Level::Error,
+                    "E_DUP_ID",
+                    Some(vid),
+                    Some(&format!("views/{i}")),
+                    format!("duplicate view id '{vid}'"),
+                );
+                continue;
             }
+            seen.push(vid);
+            let vd = Diags::new();
+            if let Some(spec) = view::parse(v, i, &vd)
+                && with_views
+            {
+                drawview::build_from_scene(&vdoc, st, &scene, &spec, &vd);
+            }
+            diags.extend(vd.into_vec());
         }
     }
     if is_obj {
@@ -189,12 +187,12 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
             continue;
         }
         let mut desc = c.built.info.clone();
-        if c.arr_count > 1 {
-            if let Some(av) = c.node.get("array") {
-                let ax = av.get("axis").map_or("x", |x| x.str().unwrap_or("x"));
-                let sp = av.get("spacing").map_or(0.0, |x| units::parse_length(x).unwrap_or(0.0));
-                desc.push_str(&format!(" [x{} {ax} @ {}]", c.arr_count, units::fmt_ft_in(sp)));
-            }
+        if c.arr_count > 1
+            && let Some(av) = c.node.get("array")
+        {
+            let ax = av.get("axis").map_or("x", |x| x.str().unwrap_or("x"));
+            let sp = av.get("spacing").map_or(0.0, |x| units::parse_length(x).unwrap_or(0.0));
+            desc.push_str(&format!(" [x{} {ax} @ {}]", c.arr_count, units::fmt_ft_in(sp)));
         }
         if let Some(lb) = &c.label {
             desc.push_str(&format!(" \"{lb}\""));
@@ -252,11 +250,11 @@ fn box_anchors(c: &Comp<'_>, part: Option<&str>) -> Value {
             list.push(anchor_json(n, p));
         }
     }
-    if part.is_none() {
-        if let Some(xf) = c.xfs.first() {
-            for n in &c.built.anchors {
-                list.push(anchor_json(&n.name, xf.apply(n.p)));
-            }
+    if part.is_none()
+        && let Some(xf) = c.xfs.first()
+    {
+        for n in &c.built.anchors {
+            list.push(anchor_json(&n.name, xf.apply(n.p)));
         }
     }
     Value::Array(list)

@@ -72,7 +72,7 @@ fn batt_symbol(bx: geom::Box) -> Vec<Pt> {
     let horizontal = bx.width() >= bx.height();
     let long = if horizontal { bx.width() } else { bx.height() };
     let short = if horizontal { bx.height() } else { bx.width() };
-    let loops = math::round(long / (short * 0.9)).max(2.0).min(2000.0);
+    let loops = math::round(long / (short * 0.9)).clamp(2.0, 2000.0);
     let pad = short * 0.2;
     let pitch = (long - 2.0 * pad) / loops;
     let loop_w = 1.7 * pitch / (2.0 * PI);

@@ -116,7 +116,7 @@ impl Cs {
 }
 
 fn content_stream(d: &Drawing<'_>, font: &Font) -> Vec<u8> {
-    let st = &*d.style;
+    let st = d.style;
     let mut cs = Cs { out: Vec::new(), s: d.scale, x0: d.bounds[0], y0: d.bounds[1] };
     cs.out.extend_from_slice(b"1 J 1 j 0 0 0 RG 0 0 0 rg\n");
     for layer in &d.layers {

@@ -319,18 +319,20 @@ fn bar_pieces(cl: &[Pt]) -> Vec<Piece> {
         let d = out[i].p1.sub(out[i].p0).norm();
         if i >= 2 && out[i - 1].is_bend {
             let prev = &out[i - 2];
-            if !prev.is_bend && prev.p0.dist(prev.p1) > 1e-6 {
-                if let Some(x) = line_intersect(out[i].p0, d, prev.p0, prev.p1.sub(prev.p0).norm()) {
-                    out[i].p0 = x;
-                }
+            if !prev.is_bend
+                && prev.p0.dist(prev.p1) > 1e-6
+                && let Some(x) = line_intersect(out[i].p0, d, prev.p0, prev.p1.sub(prev.p0).norm())
+            {
+                out[i].p0 = x;
             }
         }
         if i + 2 < out.len() && out[i + 1].is_bend {
             let next = &out[i + 2];
-            if !next.is_bend && next.p0.dist(next.p1) > 1e-6 {
-                if let Some(x) = line_intersect(out[i].p0, d, next.p0, next.p1.sub(next.p0).norm()) {
-                    out[i].p1 = x;
-                }
+            if !next.is_bend
+                && next.p0.dist(next.p1) > 1e-6
+                && let Some(x) = line_intersect(out[i].p0, d, next.p0, next.p1.sub(next.p0).norm())
+            {
+                out[i].p1 = x;
             }
         }
     }

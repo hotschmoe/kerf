@@ -62,10 +62,11 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     if let Some(u) = node.get("until") {
         add_ref_dep(u, out);
     }
-    if let Some(ss) = node.get("slope").and_then(Value::str) {
-        if ss.len() > 1 && ss.starts_with('@') {
-            out.push(&ss[1..]);
-        }
+    if let Some(ss) = node.get("slope").and_then(Value::str)
+        && ss.len() > 1
+        && ss.starts_with('@')
+    {
+        out.push(&ss[1..]);
     }
     if let Some(arr) = node.get("points").and_then(Value::arr) {
         for e in arr {
@@ -357,9 +358,9 @@ fn placement_order(scene: &mut Scene) -> Vec<usize> {
                 None => break,
             }
         }
-        for i in 0..n {
-            if !done[i] {
-                done[i] = true;
+        for (i, d) in done.iter_mut().enumerate() {
+            if !*d {
+                *d = true;
                 scene.comps[i].state = State::Failed;
                 order.push(i);
             }
@@ -540,11 +541,9 @@ fn resolve_z(scene: &Scene, p: &mut Params, built: &Built) -> Option<[f64; 2]> {
             }
         }
     }
-    if !z_explicit {
-        if let Some(th) = built.nat_z {
-            let mid = scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0);
-            zbase = [mid - th / 2.0, mid + th / 2.0];
-        }
+    if !z_explicit && let Some(th) = built.nat_z {
+        let mid = scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0);
+        zbase = [mid - th / 2.0, mid + th / 2.0];
     }
     Some(zbase)
 }

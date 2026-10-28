@@ -586,14 +586,13 @@ impl<'a> Params<'a> {
             Some(v) if v.is_null() => return Some(default),
             Some(v) => v,
         };
-        if let Value::Number(x) = v {
-            if *x == crate::math::round(*x) {
-                if let Some(n) = num::to_int::<i64>(*x) {
-                    if n >= min && n <= max {
-                        return Some(n);
-                    }
-                }
-            }
+        if let Value::Number(x) = v
+            && *x == crate::math::round(*x)
+            && let Some(n) = num::to_int::<i64>(*x)
+            && n >= min
+            && n <= max
+        {
+            return Some(n);
         }
         let path = format!("{key}/{field}");
         self.fail_code(
@@ -618,10 +617,10 @@ impl<'a> Params<'a> {
             Some(v) if v.is_null() => return Some(first),
             Some(v) => v,
         };
-        if let Value::String(s) = v {
-            if let Some(c) = choices.iter().find(|c| **c == s.as_str()) {
-                return Some(c);
-            }
+        if let Value::String(s) = v
+            && let Some(c) = choices.iter().find(|c| **c == s.as_str())
+        {
+            return Some(c);
         }
         let path = format!("{key}/{field}");
         self.fail_code(
@@ -707,7 +706,7 @@ pub fn num_text(x: f64) -> String {
         return "a non-finite number".to_string();
     }
     let m = x.abs();
-    if m != 0.0 && (m >= 1e9 || m < 1e-4) { format!("{x:e}") } else { fmt_num(x) }
+    if m != 0.0 && !(1e-4..1e9).contains(&m) { format!("{x:e}") } else { fmt_num(x) }
 }
 
 pub fn kind_or_text(v: &Value) -> String {

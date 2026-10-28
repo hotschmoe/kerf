@@ -385,13 +385,13 @@ fn snap_vertices(v: &[V2]) -> Vec<usize> {
     let mut ids = vec![0usize; n];
     let mut root_id = vec![usize::MAX; n];
     let mut next = 0;
-    for k in 0..n {
+    for (k, id) in ids.iter_mut().enumerate() {
         let r = find(&mut parent, k);
         if root_id[r] == usize::MAX {
             root_id[r] = next;
             next += 1;
         }
-        ids[k] = root_id[r];
+        *id = root_id[r];
     }
     ids
 }
@@ -435,8 +435,7 @@ fn chain(pos: &[V2], edges: &[Sub]) -> Vec<Vec<V2>> {
             let back = din.scale(-1.0);
             let mut best: Option<usize> = None;
             let mut best_ang = f64::INFINITY;
-            for k in first[v]..first[v + 1] {
-                let ei = by_from[k];
+            for &ei in &by_from[first[v]..first[v + 1]] {
                 if used[ei] {
                     continue;
                 }

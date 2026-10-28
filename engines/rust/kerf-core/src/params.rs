@@ -114,10 +114,10 @@ pub fn read_opt_int(p: &mut Params<'_>, key: &str, min: i64, max: i64) -> Option
 }
 
 pub fn read_str(p: &mut Params<'_>, key: &str, default: Option<&str>) -> String {
-    if !p.has(key) {
-        if let Some(d) = default {
-            return d.to_string();
-        }
+    if !p.has(key)
+        && let Some(d) = default
+    {
+        return d.to_string();
     }
     p.str(key, None).map(String::from).or_else(|| default.map(String::from)).unwrap_or_default()
 }

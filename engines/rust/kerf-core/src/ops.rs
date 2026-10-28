@@ -130,10 +130,10 @@ fn references_comp(v: &Value, id: &str) -> bool {
 }
 
 fn annotation_references(ann: &Value, id: &str) -> bool {
-    if let Some(s) = ann.get("target").and_then(Value::str) {
-        if s.split('.').next() == Some(id) {
-            return true;
-        }
+    if let Some(s) = ann.get("target").and_then(Value::str)
+        && s.split('.').next() == Some(id)
+    {
+        return true;
     }
     ["at", "from", "to"].iter().any(|k| ann.get(k).is_some_and(|x| references_comp(x, id)))
 }
@@ -257,11 +257,11 @@ fn apply_doc(c: &mut Ctx, op: &Op) {
         return c.fail("E_OP", op.path, "set doc needs the whole document object as value".to_string());
     };
     let mut v = v.clone();
-    if c.actor == Actor::Llm {
-        if let Some(va) = v.get("views").and_then(Value::arr) {
-            let nv: Vec<Value> = va.iter().map(|view| sanitize_annotations(c, view)).collect();
-            set_key(&mut v, "views", Value::Array(nv));
-        }
+    if c.actor == Actor::Llm
+        && let Some(va) = v.get("views").and_then(Value::arr)
+    {
+        let nv: Vec<Value> = va.iter().map(|view| sanitize_annotations(c, view)).collect();
+        set_key(&mut v, "views", Value::Array(nv));
     }
     c.doc = v;
     c.changed.clear();
@@ -427,7 +427,11 @@ fn apply_views(c: &mut Ctx, op: &Op) {
                         anns.remove(ai);
                     }
                     _ => {
-                        return c.fail("E_OP", op.path, format!("unsupported op {} on annotation path", op.kind.name()));
+                        return c.fail(
+                            "E_OP",
+                            op.path,
+                            format!("unsupported op {} on annotation path", op.kind.name()),
+                        );
                     }
                 }
                 c.touch(aid);

@@ -75,10 +75,11 @@ impl Font {
             ascii.push(slot);
         }
         for (i, slot) in ascii.iter_mut().enumerate() {
-            if slot.adv == 0.0 && i != 0 {
-                if let Some(q) = &question {
-                    *slot = q.clone();
-                }
+            if slot.adv == 0.0
+                && i != 0
+                && let Some(q) = &question
+            {
+                *slot = q.clone();
             }
         }
         let times = ascii[(b'X' - 32) as usize].clone();

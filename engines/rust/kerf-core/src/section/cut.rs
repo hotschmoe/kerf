@@ -36,7 +36,7 @@ pub fn member_angle_deg(lp: &[Pt]) -> f64 {
     if ang < 0.0 {
         ang = (ang + 180.0) % 180.0;
     }
-    if ang < 1e-6 || ang > 180.0 - 1e-6 {
+    if !(1e-6..=180.0 - 1e-6).contains(&ang) {
         return 0.0;
     }
     if (ang - 90.0).abs() < 1e-6 {
@@ -112,7 +112,7 @@ impl Section<'_> {
         if fully_inside {
             region = flat.to_vec();
         } else {
-            region = clip::boolean(&flat, &[self.crop_loop.clone()], Op::Intersect);
+            region = clip::boolean(&flat, core::slice::from_ref(&self.crop_loop), Op::Intersect);
             region_exact = false;
         }
         if !p.embedded && !holes.is_empty() {
@@ -166,33 +166,32 @@ impl Section<'_> {
                 }
             }
         }
-        if let Some(gs) = mat.and_then(|m| m.grain.as_ref()) {
-            if !region.is_empty() && self.is_lengthwise_lumber(p) {
-                if let Some(pat) = style.pattern(&gs.pattern) {
-                    let ang = member_angle_deg(&p.loops[0]);
-                    let groups = group_region(&region, region_exact.then_some(&p.loops[..]));
-                    for g in groups {
-                        let grain =
-                            hatch::Grain { amp: gs.amplitude, wavelength: gs.wavelength, ..hatch::Grain::default() };
-                        let res = hatch::generate_grain(&g.flat, pat, self.spec.scale * gs.scale, ang, grain);
-                        if res.truncated {
-                            self.truncated_hatch = true;
-                        }
-                        if res.lines.is_empty() {
-                            continue;
-                        }
-                        self.hatches.push(HatchItem {
-                            layer: self.layer_for(Pen::Hatch),
-                            pen: Pen::Hatch,
-                            src: src.clone(),
-                            pattern: gs.pattern.clone(),
-                            scale: gs.scale,
-                            angle: ang,
-                            loops: g.loops,
-                            lines: res.lines,
-                        });
-                    }
+        if let Some(gs) = mat.and_then(|m| m.grain.as_ref())
+            && !region.is_empty()
+            && self.is_lengthwise_lumber(p)
+            && let Some(pat) = style.pattern(&gs.pattern)
+        {
+            let ang = member_angle_deg(&p.loops[0]);
+            let groups = group_region(&region, region_exact.then_some(&p.loops[..]));
+            for g in groups {
+                let grain = hatch::Grain { amp: gs.amplitude, wavelength: gs.wavelength, ..hatch::Grain::default() };
+                let res = hatch::generate_grain(&g.flat, pat, self.spec.scale * gs.scale, ang, grain);
+                if res.truncated {
+                    self.truncated_hatch = true;
                 }
+                if res.lines.is_empty() {
+                    continue;
+                }
+                self.hatches.push(HatchItem {
+                    layer: self.layer_for(Pen::Hatch),
+                    pen: Pen::Hatch,
+                    src: src.clone(),
+                    pattern: gs.pattern.clone(),
+                    scale: gs.scale,
+                    angle: ang,
+                    loops: g.loops,
+                    lines: res.lines,
+                });
             }
         }
         if path_bar {
@@ -233,17 +232,17 @@ impl Section<'_> {
                             false,
                         );
                     }
-                    if mark == CutMark::X {
-                        if let Some(s) = pathclip::clip_seg(q[1], q[3], crop) {
-                            self.add_stroke(
-                                Target::Strokes,
-                                alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)],
-                                false,
-                                Pen::Beyond,
-                                &src,
-                                false,
-                            );
-                        }
+                    if mark == CutMark::X
+                        && let Some(s) = pathclip::clip_seg(q[1], q[3], crop)
+                    {
+                        self.add_stroke(
+                            Target::Strokes,
+                            alloc::vec![Pt::at(s[0], 0.0), Pt::at(s[1], 0.0)],
+                            false,
+                            Pen::Beyond,
+                            &src,
+                            false,
+                        );
                     }
                 }
             }

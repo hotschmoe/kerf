@@ -326,7 +326,7 @@ fn last_token(text: &[u8]) -> &[u8] {
 
 /// The connector word a note ends on ("" = none), ignoring a trailing period.
 fn dangling_end(text: &[u8]) -> &'static str {
-    let tok = trim_end(last_token(trim_end(text, &[b' ', b'\t', b'\r', b'\n', b'.'])), b".");
+    let tok = trim_end(last_token(trim_end(text, b" \t\r\n.")), b".");
     CONNECTOR_WORDS.into_iter().find(|w| tok.eq_ignore_ascii_case(w.as_bytes())).unwrap_or("")
 }
 
@@ -334,7 +334,7 @@ fn dangling_end(text: &[u8]) -> &'static str {
 fn normalized_text(text: &str) -> String {
     let mut out = String::new();
     let mut space = false;
-    let bytes = trim_end(text.as_bytes(), &[b' ', b'\t', b'\r', b'\n', b'.']);
+    let bytes = trim_end(text.as_bytes(), b" \t\r\n.");
     let mut start = 0;
     while start < bytes.len() && matches!(bytes[start], b' ' | b'\t' | b'\r' | b'\n' | b'.') {
         start += 1;

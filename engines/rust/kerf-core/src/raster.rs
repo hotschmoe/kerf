@@ -395,7 +395,7 @@ pub fn rasterize(d: &Drawing<'_>, font: &Font, opt: &Options) -> Image {
     let mut c = Canvas::new(lay.w as usize, lay.h as usize);
     let m = svg::Map { s: d.scale, x0: d.bounds[0], y1: d.bounds[3], ox: lay.margin_in, oy: lay.margin_in };
     let k = lay.ppi / svg::PX_PER_IN;
-    let st = &*d.style;
+    let st = d.style;
     for it in &d.items {
         if matches!(it, Item::Region(_)) || !layer_known(d, it.layer()) {
             continue;
