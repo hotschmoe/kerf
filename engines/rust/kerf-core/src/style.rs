@@ -9,7 +9,44 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-pub const DEFAULT_JSON: &str = include_str!("../../../../spec/styles/kerf-standard.kerfstyle.json");
+const DEFAULT_SRC: &[u8] = include_bytes!("../../../../spec/styles/kerf-standard.kerfstyle.json");
+
+/// JSON whitespace between tokens dropped, strings and escapes kept (`out: None` only counts).
+const fn minify_into(src: &[u8], mut out: Option<&mut [u8]>) -> usize {
+    let (mut i, mut n, mut in_str, mut esc) = (0, 0, false, false);
+    while i < src.len() {
+        let c = src[i];
+        i += 1;
+        if in_str {
+            if esc {
+                esc = false;
+            } else if c == b'\\' {
+                esc = true;
+            } else if c == b'"' {
+                in_str = false;
+            }
+        } else if matches!(c, b' ' | b'\t' | b'\n' | b'\r') {
+            continue;
+        } else if c == b'"' {
+            in_str = true;
+        }
+        if let Some(o) = &mut out {
+            o[n] = c;
+        }
+        n += 1;
+    }
+    n
+}
+
+const DEFAULT_LEN: usize = minify_into(DEFAULT_SRC, None);
+const DEFAULT_MIN: [u8; DEFAULT_LEN] = {
+    let mut buf = [0u8; DEFAULT_LEN];
+    minify_into(DEFAULT_SRC, Some(&mut buf));
+    buf
+};
+
+/// The embedded default style (spec/styles/kerf-standard.kerfstyle.json), minified at compile time (12.1 -> 6.6 KB).
+pub const DEFAULT_JSON: &[u8] = &DEFAULT_MIN;
 
 #[derive(Clone, Debug)]
 pub struct PenDef {
@@ -361,7 +398,7 @@ fn default_tree() -> Option<&'static Value> {
         // SAFETY: a non-null TREE was published below from `Box::into_raw` and is never freed or written again.
         return Some(unsafe { &*p });
     }
-    let fresh = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(json::parse(DEFAULT_JSON.as_bytes()).ok()?));
+    let fresh = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(json::parse(DEFAULT_JSON).ok()?));
     match TREE.compare_exchange(core::ptr::null_mut(), fresh, Ordering::AcqRel, Ordering::Acquire) {
         // SAFETY: `fresh` is now published and, like any published tree, lives until the process ends.
         Ok(_) => Some(unsafe { &*fresh }),
