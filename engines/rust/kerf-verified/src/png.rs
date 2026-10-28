@@ -29,20 +29,26 @@ pub fn crc_feed(table: &[u32], c: u32, s: &[u8]) -> u32 {
     r
 }
 
+/// Adler-32 with the modulo deferred to every 5552 bytes (zlib's NMAX: the largest run after which
+/// `b` still fits in 32 bits), as Zig's std and zlib compute it.
 pub fn adler32_of(s: &[u8]) -> u32 {
     let mut a: u32 = 1;
     let mut b: u32 = 0;
     let mut i: usize = 0;
     while i < s.len() {
-        a = a + s[i] as u32;
-        if a >= 65521 {
-            a = a - 65521;
+        let end = if s.len() - i < 5552 {
+            s.len()
+        } else {
+            i + 5552
+        };
+        while i < end {
+            let x = s[i] as u32;
+            a = a + x;
+            b = b + a;
+            i += 1;
         }
-        b = b + a;
-        if b >= 65521 {
-            b = b - 65521;
-        }
-        i += 1;
+        a = a % 65521;
+        b = b % 65521;
     }
     (b << 16) | a
 }

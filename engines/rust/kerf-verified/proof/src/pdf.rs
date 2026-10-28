@@ -698,18 +698,8 @@ pub fn push_bytes(out: &mut Vec<u8>, bytes: &[u8])
     ensures
         final(out)@ == old(out)@ + bytes@,
 {
-    let mut i: usize = 0;
-    while i < bytes.len()
-        invariant
-            i <= bytes@.len(),
-            out@ == old(out)@ + bytes@.subrange(0, i as int),
-        decreases bytes.len() - i,
-    {
-        out.push(bytes[i]);
-        i += 1;
-        assert(out@ =~= old(out)@ + bytes@.subrange(0, i as int));
-    }
-    assert(bytes@.subrange(0, i as int) =~= bytes@);
+    out.extend_from_slice(bytes);
+    assert(final(out)@ =~= old(out)@ + bytes@);
 }
 
 } // verus!

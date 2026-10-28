@@ -131,12 +131,8 @@ fn starts_with(src: &[u8], pos: usize, word: &[u8]) -> bool {
 }
 
 fn slice_to_vec(src: &[u8], a: usize, b: usize) -> Vec<u8> {
-    let mut v: Vec<u8> = Vec::with_capacity(b - a);
-    let mut k = a;
-    while k < b {
-        v.push(src[k]);
-        k += 1;
-    }
+    let mut v: Vec<u8> = Vec::new();
+    v.extend_from_slice(&src[a..b]);
     v
 }
 
@@ -250,8 +246,7 @@ fn number(src: &[u8], pos: usize) -> Result<(f64, usize), Fail> {
             });
         }
     }
-    let lexeme = slice_to_vec(src, start, p);
-    match number_value(lexeme.as_slice()) {
+    match number_value(&src[start..p]) {
         Ok(f) => Ok((f, p)),
         Err(false) => Err(Fail {
             pos: p,

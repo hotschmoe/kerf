@@ -282,18 +282,9 @@ fn slice_to_vec(src: &[u8], a: usize, b: usize) -> (r: Vec<u8>)
     ensures
         r@ == src@.subrange(a as int, b as int),
 {
-    let mut v: Vec<u8> = Vec::with_capacity(b - a);
-    let mut k = a;
-    while k < b
-        invariant
-            a <= k <= b <= src@.len(),
-            v@ == src@.subrange(a as int, k as int),
-        decreases b - k,
-    {
-        v.push(src[k]);
-        k += 1;
-        assert(v@ =~= src@.subrange(a as int, k as int));
-    }
+    let mut v: Vec<u8> = Vec::new();
+    v.extend_from_slice(&src[a..b]);
+    assert(v@ =~= src@.subrange(a as int, b as int));
     v
 }
 
@@ -404,8 +395,7 @@ fn number(src: &[u8], pos: usize) -> (r: Result<(f64, usize), Fail>)
             return Err(Fail { pos: p, msg: "invalid number exponent" });
         }
     }
-    let lexeme = slice_to_vec(src, start, p);
-    match number_value(lexeme.as_slice()) {
+    match number_value(&src[start..p]) {
         Ok(f) => Ok((f, p)),
         Err(false) => Err(Fail { pos: p, msg: "invalid number" }),
         Err(true) => Err(Fail {

@@ -1,5 +1,7 @@
 use std::process::ExitCode;
 
+mod baseline_json;
+mod bench;
 mod json;
 mod pdf;
 mod raster;
@@ -18,6 +20,8 @@ fn main() -> ExitCode {
         "png" => png::check(rest),
         "json" => json::check(rest),
         "raster" => raster::check(rest),
+        "bench" => bench::run(rest),
+        "json-loop" => bench::json_loop(rest),
         _ => {
             eprintln!("kvcheck: unknown command {cmd}");
             false

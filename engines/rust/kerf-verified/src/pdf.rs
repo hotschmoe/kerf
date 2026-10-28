@@ -102,9 +102,5 @@ fn push_entry(out: &mut Vec<u8>, o: usize) {
 }
 
 pub fn push_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
-    let mut i: usize = 0;
-    while i < bytes.len() {
-        out.push(bytes[i]);
-        i += 1;
-    }
+    out.extend_from_slice(bytes);
 }

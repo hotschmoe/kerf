@@ -227,6 +227,24 @@ pub open spec fn adler32(s: Seq<u8>) -> nat {
     (prefix_sums(s) % adler_mod()) * 65536 + (1 + byte_sum(s)) % adler_mod()
 }
 
+proof fn lemma_adler_step(a: nat, b: nat, a0: nat, b0: nat, sum: nat, ps: nat, x: nat)
+    requires
+        a % 65521 == (1 + sum) % 65521,
+        b % 65521 == ps % 65521,
+        a0 == a + x,
+        b0 == b + a0,
+    ensures
+        a0 % 65521 == (1 + (sum + x)) % 65521,
+        b0 % 65521 == (ps + 1 + (sum + x)) % 65521,
+{
+    lemma_add_mod_noop(a as int, x as int, 65521);
+    lemma_add_mod_noop((1 + sum) as int, x as int, 65521);
+    lemma_add_mod_noop(b as int, a0 as int, 65521);
+    lemma_add_mod_noop(ps as int, (1 + sum + x) as int, 65521);
+}
+
+/// Adler-32 with the modulo deferred to every 5552 bytes (zlib's NMAX: the largest run after which
+/// `b` still fits in 32 bits), as Zig's std and zlib compute it.
 pub fn adler32_of(s: &[u8]) -> (r: u32)
     ensures
         r as nat == adler32(s@),
@@ -241,47 +259,38 @@ pub fn adler32_of(s: &[u8]) -> (r: u32)
             b as nat == prefix_sums(s@.subrange(0, i as int)) % adler_mod(),
         decreases s.len() - i,
     {
-        let ghost p0 = s@.subrange(0, i as int);
-        let ghost p1 = s@.subrange(0, i + 1);
-        proof {
-            assert(p1.drop_last() =~= p0);
-            lemma_add_mod_noop((1 + byte_sum(p0)) as int, s@[i as int] as int, 65521);
-            lemma_mod_twice((s@[i as int] as int), 65521);
-            lemma_small_mod(s@[i as int] as nat, 65521);
-        }
-        a = a + s[i] as u32;
-        if a >= 65521 {
-            a = a - 65521;
-        }
-        proof {
-            lemma_fundamental_div_mod((a as int), 65521);
-            assert(a as nat == (1 + byte_sum(p1)) % adler_mod()) by {
-                let x = (1 + byte_sum(p0)) % 65521 + s@[i as int] as int;
-                assert(x < 2 * 65521);
-                if x >= 65521 {
-                    lemma_mod_sub_multiples_vanish(x - 65521, 65521);
-                    lemma_small_mod((x - 65521) as nat, 65521);
-                } else {
-                    lemma_small_mod(x as nat, 65521);
-                }
+        let end = if s.len() - i < 5552 { s.len() } else { i + 5552 };
+        let ghost i0 = i;
+        while i < end
+            invariant
+                i0 <= i <= end <= s@.len(),
+                end - i0 <= 5552,
+                a % 65521 == (1 + byte_sum(s@.subrange(0, i as int))) % 65521,
+                b % 65521 == prefix_sums(s@.subrange(0, i as int)) % 65521,
+                a <= 65520 + 255 * (i - i0),
+                2 * b <= 131040 * (i - i0 + 1) + 255 * (i - i0) * (i - i0 + 1),
+            decreases end - i,
+        {
+            let ghost p0 = s@.subrange(0, i as int);
+            let ghost p1 = s@.subrange(0, i + 1);
+            let ghost t = (i - i0) as int;
+            let x = s[i] as u32;
+            proof {
+                assert(p1.drop_last() =~= p0);
+                assert(131040 * (t + 2) + 255 * (t + 1) * (t + 2) == 131040 * (t + 1) + 255 * t * (t + 1)
+                    + 2 * (65520 + 255 * (t + 1))) by (nonlinear_arith);
+                assert(131040 * (t + 2) + 255 * (t + 1) * (t + 2) <= 8_589_934_590) by (nonlinear_arith)
+                    requires
+                        0 <= t < 5552,
+                ;
+                lemma_adler_step(a as nat, b as nat, (a + x) as nat, (b + a + x) as nat, byte_sum(p0), prefix_sums(p0), x as nat);
             }
-            lemma_add_mod_noop(prefix_sums(p0) as int, (1 + byte_sum(p1)) as int, 65521);
+            a = a + x;
+            b = b + a;
+            i += 1;
         }
-        b = b + a;
-        if b >= 65521 {
-            b = b - 65521;
-        }
-        proof {
-            let y = prefix_sums(p0) % 65521 + (1 + byte_sum(p1)) % 65521;
-            assert(y < 2 * 65521);
-            if y >= 65521 {
-                lemma_mod_sub_multiples_vanish(y - 65521, 65521);
-                lemma_small_mod((y - 65521) as nat, 65521);
-            } else {
-                lemma_small_mod(y as nat, 65521);
-            }
-        }
-        i += 1;
+        a = a % 65521;
+        b = b % 65521;
     }
     assert(s@.subrange(0, i as int) =~= s@);
     assert((b << 16u32) | a == b * 65536 + a) by (bit_vector)
@@ -482,7 +491,6 @@ pub fn png_container(width: u32, height: u32, channels: usize, z: &[u8]) -> (r: 
     out
 }
 
-#[verifier::external_body]
 fn slice_range(s: &[u8], a: usize, b: usize) -> (r: &[u8])
     requires
         a <= b <= s@.len(),
