@@ -1,0 +1,29 @@
+kerf: conversational construction details (https://github.com/hotschmoe/kerf)
+
+usage:
+  kerf guide [--full]              instructions for LLM agents (short, ~12 KB; --full adds the full schema, drafting rules and catalog)
+  kerf init [dir]                  make a details folder agent-ready (AGENTS.md + CLAUDE.md)
+  kerf schema [topic ...]          field reference: doc view note dim label cite ops <component type> (several topics at once; none: list)
+  kerf new <file> [--id ID] [--title "TITLE"] [--template section] [--ops ops.json] [--why "REASON"]
+      --ops creates the file and applies the ops in one command (nothing is written if an op fails; both steps are logged)
+  kerf apply <doc> <ops.json|-> [-w] [--why "REASON"] [--if-match ETAG] [-o out]   apply ops (file or stdin); -w writes back to <doc>
+  kerf apply <doc> --ops '<json>' [-w] [--why "REASON"] [--dry-run]
+      ops: an array, a single op object, or {"ops":[...],"why":"..."} (the why is used when --why is absent)
+      a failed apply prints "ERROR <code> <path>: <message>  Fix: <fix>" per error on stderr, then "nothing written" (exit 1)
+      -w also appends one line to <doc>.log.jsonl (who = $KERF_ACTOR or "agent"; --why = the reason, shown to the designer)
+      -w holds the same advisory lock as `kerf serve` (parallel writers queue instead of losing edits) and writes atomically;
+      --if-match ETAG refuses the write when <doc> changed since you read it (ETAG is the server's "<mtime_ms>-<size>-<hash>" or just the hash)
+  kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --token-file F | --no-token]
+             [--trust-agents] [--agent-timeout SEC] [--allow-origin URL]
+      local workspace server: web UI + /api over the folder of *.kerf.json (see spec/SERVE.md). A random access token is the
+      default even on loopback (printed in the first banner line as ?token=); also KERF_TOKEN; --no-token opts out.
+      Agents from <dir>/.kerf/agents.json run only with --trust-agents (or an interactive yes).
+  kerf check <doc>                 summary + diagnostics (exit 1 on errors)
+  kerf export <doc> --view A --format png|svg|dxf|pdf [--px 1600] [--sheet] -o <file>
+  kerf catalog [--markdown]
+  kerf fmt <doc> [-w]
+  kerf drawing <doc> --view A [-o out.json]
+  kerf mesh <doc> [-o mesh.json]
+  kerf call <fn> < input.json      raw engine API (JSON in, JSON/bytes out); `kerf call help` lists functions + input shapes
+  kerf version
+common: [--style file.kerfstyle.json]

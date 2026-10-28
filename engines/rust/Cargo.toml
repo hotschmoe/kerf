@@ -1,0 +1,24 @@
+[workspace]
+resolver = "3"
+members = ["kerf-core", "kerf-cli", "kerf-wasm"]
+default-members = ["kerf-core", "kerf-cli"]
+
+[workspace.package]
+version = "0.1.0-alpha.11"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT"
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+panic = "abort"
+
+[profile.small]
+inherits = "release"
+opt-level = "z"
