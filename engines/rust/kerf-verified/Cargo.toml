@@ -5,9 +5,12 @@ edition = "2024"
 rust-version = "1.96"
 license = "MIT"
 publish = false
-description = "Kerf kernels proven with Verus, as plain Rust: src/ is generated from proof/src by engines/rust/verus/erase.py."
+description = "Kerf kernels proven with Verus; plain no_std Rust with no dependencies (proofs are cfg-gated)."
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(verus_keep_ghost)'] }
