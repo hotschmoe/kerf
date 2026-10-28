@@ -2,6 +2,8 @@
 //! heuristic, DEFLATE through `deflate` (unverified exact port of Zig's std.compress.flate), zlib framing, CRC-32 per chunk.
 //! Proven with Verus (engines/rust/verus/VERUS.md): CRC-32 and Adler-32 equal their definitions, the zlib header and
 //! trailer, the chunk/IHDR/IDAT/IEND framing and every filtered byte equal their specs. Deterministic.
+#![allow(clippy::assign_op_pattern, clippy::collapsible_match, clippy::implicit_saturating_add, clippy::len_zero, clippy::manual_checked_ops, clippy::manual_clamp, clippy::manual_is_multiple_of, clippy::manual_range_contains, clippy::ptr_arg, clippy::question_mark, clippy::single_match, clippy::too_many_arguments)]
+// Verified code is written in the forms Verus has specifications for, which these style lints would rewrite.
 
 #[path = "png/deflate.rs"]
 mod deflate;
@@ -636,7 +638,87 @@ pub open spec fn filter_byte(kind: u8, row: Seq<u8>, prev: Seq<u8>, bpp: nat, i:
     ((x as int - pred as int + 256) % 256) as u8
 }
 
+/// A filtered byte read as a signed magnitude (the minimum-sum-of-absolute-values heuristic).
+pub open spec fn mag(f: u8) -> nat {
+    if f < 128 {
+        f as nat
+    } else {
+        (256 - f) as nat
+    }
+}
+
+pub open spec fn score_upto(kind: u8, row: Seq<u8>, prev: Seq<u8>, bpp: nat, n: int) -> nat
+    decreases n,
+{
+    if n <= 0 {
+        0
+    } else {
+        score_upto(kind, row, prev, bpp, n - 1) + mag(filter_byte(kind, row, prev, bpp, n - 1))
+    }
+}
+
+/// The heuristic's score of `row` filtered with `kind`.
+pub open spec fn row_score(kind: u8, row: Seq<u8>, prev: Seq<u8>, bpp: nat) -> nat {
+    score_upto(kind, row, prev, bpp, row.len() as int)
+}
+
+pub open spec fn pick(row: Seq<u8>, prev: Seq<u8>, bpp: nat, k: int, bk: u8, bs: nat) -> u8
+    decreases 5 - k,
+{
+    if k >= 5 {
+        bk
+    } else if row_score(k as u8, row, prev, bpp) < bs {
+        pick(row, prev, bpp, k + 1, k as u8, row_score(k as u8, row, prev, bpp))
+    } else {
+        pick(row, prev, bpp, k + 1, bk, bs)
+    }
+}
+
+/// The filter type of a row: the lowest score, the earliest type on ties (as png.zig).
+pub open spec fn best_filter(row: Seq<u8>, prev: Seq<u8>, bpp: nat) -> u8 {
+    pick(row, prev, bpp, 0, 0, u64::MAX as nat)
+}
+
 } // verus!
+
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    ensures
+        r == ((x as int - p as int + 256) % 256) as u8,
+))]
+#[inline(always)]
+fn sub8(x: u8, p: u8) -> u8 {
+    let f = x.wrapping_sub(p);
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(f == ((x as int - p as int + 256) % 256) as u8) by {
+        if x >= p {
+            lemma_mod_add_multiples_vanish((x - p) as int, 256);
+            lemma_small_mod((x - p) as nat, 256);
+        } else {
+            lemma_small_mod((x as int - p as int + 256) as nat, 256);
+        }
+    }; }
+    f
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    ensures
+        r as nat == mag(f),
+        r <= 128,
+))]
+#[inline(always)]
+fn mag8(f: u8) -> u64 {
+    let m: u8 = if f < 128 {
+        f
+    } else {
+        let g = 0u8.wrapping_sub(f);
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(g == 256 - f) by {
+            lemma_small_mod((256 - f) as nat, 256);
+        }; }
+        g
+    };
+    m as u64
+}
 
 #[cfg_attr(verus_keep_ghost, verus_spec(r =>
     ensures
@@ -669,9 +751,8 @@ fn paeth(a: u8, b: u8, c: u8) -> u8 {
     }
 }
 
-/// Filters `row` into `out` (one row) and returns the row's score (sum of the filtered bytes read
-/// as signed magnitudes).
-#[cfg_attr(verus_keep_ghost, verus_spec(score =>
+/// Filters `row` into `out` (one row): one pass specialised per filter type, as `filter_score`.
+#[cfg_attr(verus_keep_ghost, verus_spec(
     requires
         row@.len() == prev@.len() == old(out)@.len(),
         bpp >= 1,
@@ -680,47 +761,223 @@ fn paeth(a: u8, b: u8, c: u8) -> u8 {
         final(out)@.len() == old(out)@.len(),
         forall|i: int| 0 <= i < row@.len() ==> #[trigger] final(out)@[i] == filter_byte(kind, row@, prev@, bpp as nat, i),
 ))]
-fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut [u8]) -> u64 {
+fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut [u8]) {
+    let n = out.len();
+    let rv = slice_range(row, 0, n);
+    let pv = slice_range(prev, 0, n);
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(rv@ =~= row@); assert(pv@ =~= prev@); }
+    let h = if bpp < n { bpp } else { n };
+    let mut i: usize = 0;
+    if kind == 0 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind == 0,
+                i <= n,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases n - i,
+        ))]
+        while i < n {
+            out[i] = sub8(rv[i], 0);
+            i += 1;
+        }
+    } else if kind == 1 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind == 1,
+                h <= n, h <= bpp, h == n || h == bpp, i <= h,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases h - i,
+        ))]
+        while i < h {
+            out[i] = sub8(rv[i], 0);
+            i += 1;
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind == 1,
+                h == n || h == bpp, h <= i <= n,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases n - i,
+        ))]
+        while i < n {
+            out[i] = sub8(rv[i], rv[i - bpp]);
+            i += 1;
+        }
+    } else if kind == 2 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind == 2,
+                i <= n,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases n - i,
+        ))]
+        while i < n {
+            out[i] = sub8(rv[i], pv[i]);
+            i += 1;
+        }
+    } else if kind == 3 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind == 3,
+                h <= n, h <= bpp, h == n || h == bpp, i <= h,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases h - i,
+        ))]
+        while i < h {
+            out[i] = sub8(rv[i], pv[i] / 2);
+            i += 1;
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind == 3,
+                h == n || h == bpp, h <= i <= n,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases n - i,
+        ))]
+        while i < n {
+            out[i] = sub8(rv[i], ((rv[i - bpp] as u16 + pv[i] as u16) / 2) as u8);
+            i += 1;
+        }
+    } else {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind > 3,
+                h <= n, h <= bpp, h == n || h == bpp, i <= h,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases h - i,
+        ))]
+        while i < h {
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(paeth_spec(0, prev@[i as int], 0) == prev@[i as int]); }
+            out[i] = sub8(rv[i], pv[i]);
+            i += 1;
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() == out@.len() <= 0x1_0000_0000, rv@ == row@, pv@ == prev@, bpp >= 1, kind > 3,
+                h == n || h == bpp, h <= i <= n,
+                forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
+            decreases n - i,
+        ))]
+        while i < n {
+            out[i] = sub8(rv[i], paeth(rv[i - bpp], pv[i], pv[i - bpp]));
+            i += 1;
+        }
+    }
+}
+
+/// `row_score(kind, ..)` without writing the filtered row: one pass specialised per filter type, split where `i`
+/// reaches `bpp` (before it, the left and upper-left neighbours are 0).
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    requires
+        row@.len() == prev@.len(),
+        bpp >= 1,
+        row@.len() <= 0x1_0000_0000,
+    ensures
+        r as nat == row_score(kind, row@, prev@, bpp as nat),
+))]
+fn filter_score(kind: u8, row: &[u8], prev: &[u8], bpp: usize) -> u64 {
+    let n = row.len();
+    let pv = slice_range(prev, 0, n);
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(pv@ =~= prev@); }
+    let h = if bpp < n { bpp } else { n };
     let mut s: u64 = 0;
     let mut i: usize = 0;
-    #[cfg_attr(verus_keep_ghost, verus_spec(
-        invariant
-            row@.len() == prev@.len() == out@.len(),
-            bpp >= 1,
-            i <= row@.len() <= 0x1_0000_0000,
-            s <= 128 * i,
-            forall|j: int| 0 <= j < i ==> #[trigger] out@[j] == filter_byte(kind, row@, prev@, bpp as nat, j),
-        decreases row.len() - i,
-    ))]
-    while i < row.len() {
-        let x = row[i];
-        let a: u8 = if i >= bpp { row[i - bpp] } else { 0 };
-        let b: u8 = prev[i];
-        let c: u8 = if i >= bpp { prev[i - bpp] } else { 0 };
-        let pred: u8 = if kind == 0 {
-            0
-        } else if kind == 1 {
-            a
-        } else if kind == 2 {
-            b
-        } else if kind == 3 {
-            ((a as u16 + b as u16) / 2) as u8
-        } else {
-            paeth(a, b, c)
-        };
-        let f: u8 = x.wrapping_sub(pred);
-        #[cfg(verus_keep_ghost)]
-        proof! { assert(f == ((x as int - pred as int + 256) % 256) as u8) by {
-            if x >= pred {
-                lemma_mod_add_multiples_vanish((x - pred) as int, 256);
-                lemma_small_mod((x - pred) as nat, 256);
-            } else {
-                lemma_small_mod((x as int - pred as int + 256) as nat, 256);
-            }
-        }; }
-        out[i] = f;
-        s = s + if f < 128 { f as u64 } else { 256 - f as u64 };
-        i += 1;
+    if kind == 0 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind == 0, bpp >= 1,
+                i <= n, s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases n - i,
+        ))]
+        while i < n {
+            s = s + mag8(row[i]);
+            i += 1;
+        }
+    } else if kind == 1 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind == 1, bpp >= 1, h <= n, h <= bpp,
+                h == n || h == bpp,
+                i <= h, s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases h - i,
+        ))]
+        while i < h {
+            s = s + mag8(sub8(row[i], 0));
+            i += 1;
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind == 1, bpp >= 1, h <= i <= n,
+                h == n || h == bpp,
+                s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases n - i,
+        ))]
+        while i < n {
+            s = s + mag8(sub8(row[i], row[i - bpp]));
+            i += 1;
+        }
+    } else if kind == 2 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind == 2, bpp >= 1,
+                i <= n, s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases n - i,
+        ))]
+        while i < n {
+            s = s + mag8(sub8(row[i], pv[i]));
+            i += 1;
+        }
+    } else if kind == 3 {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind == 3, bpp >= 1, h <= n, h <= bpp,
+                h == n || h == bpp,
+                i <= h, s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases h - i,
+        ))]
+        while i < h {
+            s = s + mag8(sub8(row[i], pv[i] / 2));
+            i += 1;
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind == 3, bpp >= 1, h <= i <= n,
+                h == n || h == bpp,
+                s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases n - i,
+        ))]
+        while i < n {
+            s = s + mag8(sub8(row[i], ((row[i - bpp] as u16 + pv[i] as u16) / 2) as u8));
+            i += 1;
+        }
+    } else {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind > 3, bpp >= 1, h <= n, h <= bpp,
+                h == n || h == bpp,
+                i <= h, s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases h - i,
+        ))]
+        while i < h {
+            #[cfg(verus_keep_ghost)]
+            proof! { assert(paeth_spec(0, prev@[i as int], 0) == prev@[i as int]); }
+            s = s + mag8(sub8(row[i], pv[i]));
+            i += 1;
+        }
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == row@.len() == prev@.len() <= 0x1_0000_0000, pv@ == prev@, kind > 3, bpp >= 1, h <= i <= n,
+                h == n || h == bpp,
+                s <= 128 * i, s as nat == score_upto(kind, row@, prev@, bpp as nat, i as int),
+            decreases n - i,
+        ))]
+        while i < n {
+            s = s + mag8(sub8(row[i], paeth(row[i - bpp], pv[i], pv[i - bpp])));
+            i += 1;
+        }
     }
     s
 }
@@ -754,6 +1011,15 @@ fn filter_row(kind: u8, row: &[u8], prev: &[u8], bpp: usize, out: &mut [u8]) -> 
                     i,
                 )
             &&& forall|y: int| 0 <= y < height ==> #[trigger] r.unwrap()@[y * (stride + 1)] <= 4
+            &&& forall|y: int| 0 <= y < height ==> #[trigger] r.unwrap()@[y * (stride + 1)] == best_filter(
+                pixels@.subrange(y * stride, y * stride + stride),
+                if y == 0 {
+                    Seq::new(stride as nat, |k: int| 0u8)
+                } else {
+                    pixels@.subrange((y - 1) * stride, y * stride)
+                },
+                channels as nat,
+            )
         },
 ))]
 pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> Option<Vec<u8>> {
@@ -827,6 +1093,15 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
                     i,
                 ),
             forall|yy: int| 0 <= yy < y ==> #[trigger] out@[yy * (st + 1)] <= 4,
+            forall|yy: int| 0 <= yy < y ==> #[trigger] out@[yy * (st + 1)] == best_filter(
+                pixels@.subrange(yy * st, yy * st + st),
+                if yy == 0 {
+                    Seq::new(stride as nat, |k: int| 0u8)
+                } else {
+                    pixels@.subrange((yy - 1) * st, yy * st)
+                },
+                channels as nat,
+            ),
         decreases height - y,
     ))]
     while y < height as usize {
@@ -858,10 +1133,15 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
                 row@.len() == prev@.len() == stride <= 0x400_0000,
                 cand@.len() == stride,
                 channels >= 1,
+                pick(row@, prev@, channels as nat, kind as int, best_kind, best_score as nat) == best_filter(
+                    row@,
+                    prev@,
+                    channels as nat,
+                ),
             decreases 5 - kind,
         ))]
         while kind < 5 {
-            let sc = filter_row(kind, row, prev, channels, cand.as_mut_slice());
+            let sc = filter_score(kind, row, prev, channels);
             if sc < best_score {
                 best_score = sc;
                 best_kind = kind;
@@ -871,6 +1151,8 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
         filter_row(best_kind, row, prev, channels, cand.as_mut_slice());
         #[cfg(verus_keep_ghost)]
         proof_decl! { let ghost before = out@; }
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(best_kind == best_filter(row@, prev@, channels as nat)); }
         out.push(best_kind);
         push_bytes(&mut out, cand.as_slice());
         #[cfg(verus_keep_ghost)]
@@ -905,6 +1187,23 @@ pub fn filter_image(width: u32, height: u32, channels: usize, pixels: &[u8]) -> 
                     lemma_mul_inequality(yy + 1, y as int, st + 1);
                     lemma_mul_is_distributive_add_other_way(st + 1, yy, 1);
                     assert(out@[yy * (st + 1)] == before[yy * (st + 1)]);
+                }
+            }
+            assert forall|yy: int| 0 <= yy < y + 1 implies #[trigger] out@[yy * (st + 1)] == best_filter(
+                pixels@.subrange(yy * st, yy * st + st),
+                if yy == 0 {
+                    Seq::new(stride as nat, |k: int| 0u8)
+                } else {
+                    pixels@.subrange((yy - 1) * st, yy * st)
+                },
+                channels as nat,
+            ) by {
+                if yy < y {
+                    lemma_mul_inequality(yy + 1, y as int, st + 1);
+                    lemma_mul_is_distributive_add_other_way(st + 1, yy, 1);
+                    assert(out@[yy * (st + 1)] == before[yy * (st + 1)]);
+                } else {
+                    assert(out@[o] == best_kind);
                 }
             }
         }

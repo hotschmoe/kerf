@@ -1,5 +1,7 @@
 //! The raster canvas (raster.zig's `Canvas`), proven with Verus (engines/rust/verus/VERUS.md): no write outside the
 //! pixel, coverage, accumulator or span buffers for any float input, integer arithmetic overflow-free.
+#![allow(clippy::assign_op_pattern, clippy::collapsible_match, clippy::implicit_saturating_add, clippy::len_zero, clippy::manual_checked_ops, clippy::manual_clamp, clippy::manual_is_multiple_of, clippy::manual_range_contains, clippy::ptr_arg, clippy::question_mark, clippy::single_match, clippy::too_many_arguments)]
+// Verified code is written in the forms Verus has specifications for, which these style lints would rewrite.
 
 use alloc::vec::Vec;
 #[cfg(verus_keep_ghost)]
@@ -726,7 +728,7 @@ impl Canvas {
                                     decreases ib - x,
                                 ))]
                                 while x < ib {
-                                    acc_add(&mut self.acc, x, 8.0 / 8.0);
+                                    acc_add(&mut self.acc, x, 1.0);
                                     x += 1;
                                 }
                                 acc_add(&mut self.acc, ib, sub(xb, from_usize(ib)));

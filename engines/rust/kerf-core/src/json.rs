@@ -1,5 +1,7 @@
 //! Order-preserving JSON value tree, the parser (proven with Verus, engines/rust/verus/VERUS.md: total, terminating,
 //! nesting at most 200, every string valid UTF-8 by proof rather than a second check), and the writers (not verified).
+#![allow(clippy::assign_op_pattern, clippy::collapsible_match, clippy::implicit_saturating_add, clippy::len_zero, clippy::manual_checked_ops, clippy::manual_clamp, clippy::manual_is_multiple_of, clippy::manual_range_contains, clippy::ptr_arg, clippy::question_mark, clippy::single_match, clippy::too_many_arguments)]
+// Verified code is written in the forms Verus has specifications for, which these style lints would rewrite.
 
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
@@ -1408,13 +1410,29 @@ pub fn push_number(out: &mut Vec<u8>, x: f64) {
 /// The one number formatter of the engine: `x` rounded to `decimals` places (at most 9), printed as the shortest decimal
 /// with no exponent, `-0` -> `0`, NaN/inf -> `0`. Integer arithmetic only, so it is identical on every target, never allocates and
 /// can not overflow its buffer: beyond 9e15 / 10^decimals the fraction no longer fits a double and the rounded integer is
-/// printed, saturating at 1e18.
+/// printed, saturating at 1e18. Monomorphized per decimal count (Zig's `comptime decimals`), so `10^decimals` divides by a
+/// constant; the digits are written by the verified `write_fixed`, which proves them ASCII, so no re-validation.
 pub fn fmt_fixed(buf: &mut [u8; 40], x: f64, decimals: u8) -> &str {
+    match decimals {
+        0 => fmt_fixed_n::<0>(buf, x),
+        1 => fmt_fixed_n::<1>(buf, x),
+        2 => fmt_fixed_n::<2>(buf, x),
+        3 => fmt_fixed_n::<3>(buf, x),
+        4 => fmt_fixed_n::<4>(buf, x),
+        5 => fmt_fixed_n::<5>(buf, x),
+        6 => fmt_fixed_n::<6>(buf, x),
+        7 => fmt_fixed_n::<7>(buf, x),
+        8 => fmt_fixed_n::<8>(buf, x),
+        _ => fmt_fixed_n::<9>(buf, x),
+    }
+}
+
+#[inline(always)]
+fn fmt_fixed_n<const D: u32>(buf: &mut [u8; 40], x: f64) -> &str {
     if !x.is_finite() {
         return "0";
     }
-    let decimals = decimals.min(9);
-    let scale: u64 = 10u64.pow(decimals as u32);
+    let scale: u64 = 10u64.pow(D);
     let scale_f = scale as f64;
     let neg = x < 0.0;
     let ip;
@@ -1429,18 +1447,51 @@ pub fn fmt_fixed(buf: &mut [u8; 40], x: f64, decimals: u8) -> &str {
         ip = n / scale;
         frac = n % scale;
     }
+    let i = write_fixed(buf, neg, ip, frac, D as usize);
+    ascii_str(buf, i)
+}
+
+/// Writes `ip`, then `.` and the `digits`-digit fraction `frac` without trailing zeros (none if `frac` is 0), then a
+/// leading `-` if `neg`, right-aligned at the end of `buf`; returns where the text starts. Every byte written is ASCII.
+#[cfg_attr(verus_keep_ghost, verus_spec(i =>
+    requires
+        old(buf)@.len() == 40,
+        digits <= 9,
+    ensures
+        final(buf)@.len() == 40,
+        i < 40,
+        forall|k: int| i <= k < 40 ==> #[trigger] final(buf)@[k] < 128,
+))]
+#[inline(always)]
+fn write_fixed(buf: &mut [u8], neg: bool, ip: u64, frac: u64, digits: usize) -> usize {
     let mut ip = ip;
-    let mut i = buf.len();
+    let mut frac = frac;
+    let mut digits = digits;
+    let mut i: usize = 40;
     if frac != 0 {
-        let mut digits = decimals as usize;
-        while frac.is_multiple_of(10) {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                digits <= 9,
+            decreases digits,
+        ))]
+        while digits > 0 && frac % 10 == 0 {
             frac /= 10;
             digits -= 1;
         }
-        for _ in 0..digits {
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                buf@.len() == 40,
+                digits <= 9,
+                i <= 40,
+                31 + digits <= i,
+                forall|k: int| i <= k < 40 ==> #[trigger] buf@[k] < 128,
+            decreases digits,
+        ))]
+        while digits > 0 {
             i -= 1;
             buf[i] = b'0' + (frac % 10) as u8;
             frac /= 10;
+            digits -= 1;
         }
         i -= 1;
         buf[i] = b'.';
@@ -1449,7 +1500,17 @@ pub fn fmt_fixed(buf: &mut [u8; 40], x: f64, decimals: u8) -> &str {
         i -= 1;
         buf[i] = b'0';
     } else {
-        while ip > 0 {
+        i -= 1;
+        buf[i] = b'0' + (ip % 10) as u8;
+        ip /= 10;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                buf@.len() == 40,
+                1 <= i < 40,
+                forall|k: int| i <= k < 40 ==> #[trigger] buf@[k] < 128,
+            decreases i,
+        ))]
+        while ip > 0 && i > 1 {
             i -= 1;
             buf[i] = b'0' + (ip % 10) as u8;
             ip /= 10;
@@ -1459,7 +1520,62 @@ pub fn fmt_fixed(buf: &mut [u8; 40], x: f64, decimals: u8) -> &str {
         i -= 1;
         buf[i] = b'-';
     }
-    core::str::from_utf8(&buf[i..]).unwrap_or("0")
+    i
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+proof fn lemma_ascii_utf8(s: Seq<u8>)
+    requires
+        forall|k: int| 0 <= k < s.len() ==> #[trigger] s[k] < 128,
+    ensures
+        valid_utf8(s),
+    decreases s.len(),
+{
+    if s.len() != 0 {
+        assert(pop_first_scalar(s) =~= s.drop_first());
+        lemma_ascii_utf8(s.drop_first());
+    }
+}
+
+} // verus!
+
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    requires
+        buf@.len() == 40,
+        i < 40,
+        forall|k: int| i <= k < 40 ==> #[trigger] buf@[k] < 128,
+))]
+#[inline(always)]
+fn ascii_str(buf: &[u8], i: usize) -> &str {
+    let s = slice_bytes(buf, i);
+    #[cfg(verus_keep_ghost)]
+    proof! { lemma_ascii_utf8(s@); }
+    str_of(s)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    requires
+        i <= s@.len(),
+    ensures
+        r@ == s@.subrange(i as int, s@.len() as int),
+))]
+#[inline(always)]
+fn slice_bytes(s: &[u8], i: usize) -> &[u8] {
+    &s[i..]
+}
+
+/// SAFETY: as `utf8_string`: `requires` makes Verus prove `valid_utf8(s@)` at every call. Trusted: that vstd's definition
+/// is the one `str` requires.
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[cfg_attr(verus_keep_ghost, verus_spec(
+    requires
+        valid_utf8(s@),
+))]
+#[inline(always)]
+fn str_of(s: &[u8]) -> &str {
+    unsafe { core::str::from_utf8_unchecked(s) }
 }
 
 /// Round to 1e-4 (the canonical precision).

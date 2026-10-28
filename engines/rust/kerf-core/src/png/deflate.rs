@@ -1,7 +1,12 @@
-//! zlib stream with DEFLATE compression, an exact port of Zig 0.17's `std.compress.flate.Compress` at level
-//! `.default` fed through one 64 KiB window buffer (the compressed bytes are what the Zig engine emits).
-//! Self-contained: `zlib_compress(&[u8]) -> Vec<u8>`.
+//! DEFLATE compression, an exact port of Zig 0.17's `std.compress.flate.Compress` at level `.default` fed through
+//! one 64 KiB window buffer (the compressed bytes are what the Zig engine emits). `deflate_raw(&[u8]) -> Vec<u8>`; the
+//! zlib header and trailer are added by the verified `png::zlib_frame`. Unverified, except `match_len`.
 
+use alloc::boxed::Box;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::std_specs::bits::*;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -74,7 +79,7 @@ fn fixed_dist() -> ([u16; 30], [u8; 30]) {
 }
 
 fn hash(x: u32) -> usize {
-    (x.wrapping_mul(0x9E37_79B1) >> (32 - HASH_BITS)) as usize
+    (x.wrapping_mul(0x9E37_79B1) >> (32 - HASH_BITS)) as usize & ((1 << HASH_BITS) - 1)
 }
 
 #[derive(Clone, Copy)]
@@ -332,9 +337,14 @@ fn clen_hlen(freqs: &[u16; 19]) -> u32 {
     max
 }
 
+/// A table of `N` entries set to 0xffff, allocated on the heap directly (no 64 KiB stack temporary).
+fn table<const N: usize>() -> Box<[u16; N]> {
+    vec![0xffff; N].into_boxed_slice().try_into().unwrap_or_else(|_| unreachable!())
+}
+
 struct Lookup {
-    head: Vec<u16>,
-    chain: Vec<u16>,
+    head: Box<[u16; 1 << HASH_BITS]>,
+    chain: Box<[u16; 32768]>,
     chain_pos: u16,
 }
 
@@ -365,7 +375,11 @@ impl Compressor {
             tokens: Vec::with_capacity(BLOCK_TOKENS),
             lit_freqs: [0; 286],
             dist_freqs: [0; 30],
-            lookup: Lookup { head: vec![0xffff; 1 << HASH_BITS], chain: vec![0xffff; 32768], chain_pos: VALUE_MASK },
+            lookup: Lookup {
+                head: table(),
+                chain: table(),
+                chain_pos: VALUE_MASK,
+            },
         }
     }
 
@@ -666,10 +680,158 @@ impl Compressor {
     }
 }
 
-/// Common prefix length of `prev` and `bytes`, at most 258 and at most `bytes.len()`.
+/// Little-endian `u64` of `s[i..i + 8]` (LLVM folds the eight loads into one).
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    requires
+        i + 8 <= s@.len(),
+    ensures
+        r == le64(s@[i as int], s@[i + 1], s@[i + 2], s@[i + 3], s@[i + 4], s@[i + 5], s@[i + 6], s@[i + 7]),
+))]
+#[inline(always)]
+fn load64(s: &[u8], i: usize) -> u64 {
+    let _len = s.len();
+    let p = &s[i..i + 8];
+    p[0] as u64 | (p[1] as u64) << 8 | (p[2] as u64) << 16 | (p[3] as u64) << 24 | (p[4] as u64) << 32 | (p[5] as u64)
+        << 40 | (p[6] as u64) << 48 | (p[7] as u64) << 56
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+pub open spec fn le64(b0: u8, b1: u8, b2: u8, b3: u8, b4: u8, b5: u8, b6: u8, b7: u8) -> u64 {
+    b0 as u64 | (b1 as u64) << 8 | (b2 as u64) << 16 | (b3 as u64) << 24 | (b4 as u64) << 32 | (b5 as u64) << 40
+        | (b6 as u64) << 48 | (b7 as u64) << 56
+}
+
+proof fn lemma_le64_injective(a0: u8, a1: u8, a2: u8, a3: u8, a4: u8, a5: u8, a6: u8, a7: u8, b0: u8, b1: u8, b2: u8, b3: u8, b4: u8, b5: u8, b6: u8, b7: u8)
+    requires
+        le64(a0, a1, a2, a3, a4, a5, a6, a7) == le64(b0, b1, b2, b3, b4, b5, b6, b7),
+    ensures
+        a0 == b0 && a1 == b1 && a2 == b2 && a3 == b3 && a4 == b4 && a5 == b5 && a6 == b6 && a7 == b7,
+{
+    assert(a0 == b0 && a1 == b1 && a2 == b2 && a3 == b3 && a4 == b4 && a5 == b5 && a6 == b6 && a7 == b7) by (bit_vector)
+        requires
+            a0 as u64 | (a1 as u64) << 8 | (a2 as u64) << 16 | (a3 as u64) << 24 | (a4 as u64) << 32 | (a5 as u64) << 40
+                | (a6 as u64) << 48 | (a7 as u64) << 56 == b0 as u64 | (b1 as u64) << 8 | (b2 as u64) << 16 | (b3 as u64)
+                << 24 | (b4 as u64) << 32 | (b5 as u64) << 40 | (b6 as u64) << 48 | (b7 as u64) << 56,
+    ;
+}
+
+/// The first set bit `t` of `le64(a) ^ le64(b)` lies in byte `t / 8`: the first byte where `a` and `b` differ.
+proof fn lemma_first_diff(a0: u8, a1: u8, a2: u8, a3: u8, a4: u8, a5: u8, a6: u8, a7: u8, b0: u8, b1: u8, b2: u8, b3: u8, b4: u8, b5: u8, b6: u8, b7: u8, x: u64, t: u64)
+    requires
+        x == le64(a0, a1, a2, a3, a4, a5, a6, a7) ^ le64(b0, b1, b2, b3, b4, b5, b6, b7),
+        t < 64,
+        x << sub(64, t) == 0,
+        (x >> t) & 1 == 1,
+    ensures
+        t < 8 ==> a0 != b0,
+        8 <= t ==> a0 == b0,
+        8 <= t < 16 ==> a1 != b1,
+        16 <= t ==> a1 == b1,
+        16 <= t < 24 ==> a2 != b2,
+        24 <= t ==> a2 == b2,
+        24 <= t < 32 ==> a3 != b3,
+        32 <= t ==> a3 == b3,
+        32 <= t < 40 ==> a4 != b4,
+        40 <= t ==> a4 == b4,
+        40 <= t < 48 ==> a5 != b5,
+        48 <= t ==> a5 == b5,
+        48 <= t < 56 ==> a6 != b6,
+        56 <= t ==> a6 == b6,
+        56 <= t ==> a7 != b7,
+{
+    assert({
+        &&& t < 8 ==> a0 != b0
+        &&& 8 <= t ==> a0 == b0
+        &&& 8 <= t < 16 ==> a1 != b1
+        &&& 16 <= t ==> a1 == b1
+        &&& 16 <= t < 24 ==> a2 != b2
+        &&& 24 <= t ==> a2 == b2
+        &&& 24 <= t < 32 ==> a3 != b3
+        &&& 32 <= t ==> a3 == b3
+        &&& 32 <= t < 40 ==> a4 != b4
+        &&& 40 <= t ==> a4 == b4
+        &&& 40 <= t < 48 ==> a5 != b5
+        &&& 48 <= t ==> a5 == b5
+        &&& 48 <= t < 56 ==> a6 != b6
+        &&& 56 <= t ==> a6 == b6
+        &&& 56 <= t ==> a7 != b7
+    }) by (bit_vector)
+        requires
+            x == (a0 as u64 | (a1 as u64) << 8 | (a2 as u64) << 16 | (a3 as u64) << 24 | (a4 as u64) << 32 | (a5 as u64)
+                << 40 | (a6 as u64) << 48 | (a7 as u64) << 56) ^ (b0 as u64 | (b1 as u64) << 8 | (b2 as u64) << 16 | (b3
+                as u64) << 24 | (b4 as u64) << 32 | (b5 as u64) << 40 | (b6 as u64) << 48 | (b7 as u64) << 56),
+            t < 64,
+            x << sub(64, t) == 0,
+            (x >> t) & 1 == 1,
+    ;
+}
+
+} // verus!
+
+/// Common prefix length of `prev` and `bytes`, at most 258 (`MAX_LENGTH`): 8 bytes per step, the first difference
+/// in an unequal step located by `trailing_zeros` of the XOR.
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    ensures
+        r <= 258 && r as int <= prev@.len() && r as int <= bytes@.len(),
+        forall|k: int| 0 <= k < r ==> prev@[k] == bytes@[k],
+        r == 258 || r as int == prev@.len() || r as int == bytes@.len() || prev@[r as int] != bytes@[r as int],
+))]
 fn match_len(prev: &[u8], bytes: &[u8]) -> u16 {
-    let cap = bytes.len().min(MAX_LENGTH);
-    let mut n = 0;
+    let mut cap = bytes.len();
+    if prev.len() < cap {
+        cap = prev.len();
+    }
+    if 258 < cap {
+        cap = 258;
+    }
+    let mut n: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            cap <= 258 && cap <= prev@.len() && cap <= bytes@.len(),
+            cap == 258 || cap == prev@.len() || cap == bytes@.len(),
+            n <= cap,
+            forall|k: int| 0 <= k < n ==> prev@[k] == bytes@[k],
+        decreases cap - n,
+    ))]
+    while n + 8 <= cap {
+        let (pa, pb) = (load64(prev, n), load64(bytes, n));
+        let x = pa ^ pb;
+        if x != 0 {
+            let t = x.trailing_zeros();
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                axiom_u64_trailing_zeros(x);
+                lemma_first_diff(prev@[n as int], prev@[n + 1], prev@[n + 2], prev@[n + 3], prev@[n + 4], prev@[n + 5],
+                    prev@[n + 6], prev@[n + 7], bytes@[n as int], bytes@[n + 1], bytes@[n + 2], bytes@[n + 3],
+                    bytes@[n + 4], bytes@[n + 5], bytes@[n + 6], bytes@[n + 7], x, t as u64);
+                let k = (t / 8) as int;
+                assert forall|j: int| 0 <= j < n + k implies prev@[j] == bytes@[j] by {
+                    if j >= n {
+                        assert(prev@[j] == bytes@[j]);
+                    }
+                }
+            }
+            return (n + (t / 8) as usize) as u16;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(pa ^ pb == 0 ==> pa == pb) by (bit_vector);
+            lemma_le64_injective(prev@[n as int], prev@[n + 1], prev@[n + 2], prev@[n + 3], prev@[n + 4], prev@[n + 5],
+                prev@[n + 6], prev@[n + 7], bytes@[n as int], bytes@[n + 1], bytes@[n + 2], bytes@[n + 3], bytes@[n + 4],
+                bytes@[n + 5], bytes@[n + 6], bytes@[n + 7]);
+        }
+        n += 8;
+    }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            cap <= 258 && cap <= prev@.len() && cap <= bytes@.len(),
+            cap == 258 || cap == prev@.len() || cap == bytes@.len(),
+            n <= cap,
+            forall|k: int| 0 <= k < n ==> prev@[k] == bytes@[k],
+        decreases cap - n,
+    ))]
     while n < cap && prev[n] == bytes[n] {
         n += 1;
     }

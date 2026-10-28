@@ -1,4 +1,6 @@
 //! The one stable sort of the engine: exactly Zig's `sort.stable`, proven with Verus (engines/rust/verus/VERUS.md).
+#![allow(clippy::assign_op_pattern, clippy::collapsible_match, clippy::implicit_saturating_add, clippy::len_zero, clippy::manual_checked_ops, clippy::manual_clamp, clippy::manual_is_multiple_of, clippy::manual_range_contains, clippy::ptr_arg, clippy::question_mark, clippy::single_match, clippy::too_many_arguments)]
+// Verified code is written in the forms Verus has specifications for, which these style lints would rewrite.
 
 use alloc::vec::Vec;
 #[cfg(verus_keep_ghost)]
