@@ -17,7 +17,6 @@ pub enum Kind {
     DocLog,
     DocExport,
     Events,
-    Llm,
     AgentRun,
     AgentStop,
     BadFile,
@@ -41,11 +40,10 @@ struct Methods {
     post: Option<Kind>,
 }
 
-const ENDPOINTS: [(&str, Methods); 6] = [
+const ENDPOINTS: [(&str, Methods); 5] = [
     ("/info", Methods { get: Some(Kind::Info), post: None }),
     ("/docs", Methods { get: Some(Kind::DocsList), post: Some(Kind::DocsCreate) }),
     ("/events", Methods { get: Some(Kind::Events), post: None }),
-    ("/llm", Methods { get: None, post: Some(Kind::Llm) }),
     ("/agent/run", Methods { get: None, post: Some(Kind::AgentRun) }),
     ("/agent/stop", Methods { get: None, post: Some(Kind::AgentStop) }),
 ];
@@ -104,7 +102,6 @@ pub fn body_cap(kind: Kind) -> usize {
         Kind::AgentStop => 4 << 10,
         Kind::DocsCreate => 64 << 10,
         Kind::DocApply => 16 << 20,
-        Kind::Llm => 32 << 20,
         Kind::AgentRun => 64 << 20,
         _ => 0,
     }
@@ -187,7 +184,6 @@ pub fn handle_request(s: &Server, req: &mut Request, rd: &mut In, w: &mut Out) -
         Kind::DocLog => docs::api_log(s, rq, w, &extra, route.file),
         Kind::DocExport => docs::api_export(s, rq, w, &extra, route.file),
         Kind::Events => stream::api_events(s, w, &extra),
-        Kind::Llm => stream::api_llm(s, rq, w, &extra),
         Kind::AgentRun => agent::api_agent_run(s, rq, w, &extra),
         Kind::AgentStop => agent::api_agent_stop(s, rq, w, &extra),
         Kind::Static => ui::static_file(s, rq, w, &path),

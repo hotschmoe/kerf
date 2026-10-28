@@ -17,7 +17,6 @@ const ws = @import("workspace.zig");
 const http = @import("http.zig");
 const events = @import("events.zig");
 const agents = @import("agents.zig");
-const proxy = @import("proxy.zig");
 const ui_assets = @import("ui_assets");
 const Io = std.Io;
 const net = std.Io.net;
@@ -32,7 +31,6 @@ const agent_mod = @import("serve/agent.zig");
 const stream_mod = @import("serve/stream.zig");
 const docs_mod = @import("serve/docs.zig");
 pub const max_sse_streams = conn_mod.max_sse_streams;
-pub const max_proxy_calls = conn_mod.max_proxy_calls;
 const Timeouts = conn_mod.Timeouts;
 const Conn = conn_mod.Conn;
 pub const arm = conn_mod.arm;
@@ -62,8 +60,6 @@ pub const Config = struct {
     /// Run agents defined in `<dir>/.kerf/agents.json` (they execute commands from the folder; V-2).
     trust_agents: bool = false,
     timeouts: Timeouts = .{},
-    /// Stall limits of proxied LLM calls.
-    llm_limits: proxy.Limits = .{},
     /// Wall-clock limit of one agent run, seconds (0 = none).
     agent_timeout_s: u32 = agents.default_max_run_s,
 };
@@ -98,7 +94,6 @@ pub const Server = struct {
     scan_mu: Io.Mutex = .init,
     files: std.ArrayList(FileState) = .empty,
     write_mu: Io.Mutex = .init,
-    client: std.http.Client,
     agent_mgr: agents.Manager,
     group: Io.Group = .init,
     loopback_only: bool,
@@ -108,7 +103,6 @@ pub const Server = struct {
     conns: std.ArrayList(*Conn) = .empty,
     active_conns: std.atomic.Value(u32) = .init(0),
     sse_active: std.atomic.Value(u32) = .init(0),
-    proxy_active: std.atomic.Value(u32) = .init(0),
     /// `Content-Security-Policy` of the embedded UI (script hashes of its inline scripts are added at startup).
     ui_csp: []const u8 = default_ui_csp,
 
@@ -421,8 +415,7 @@ pub const serve_usage =
     \\  --token T         require this token (Authorization: Bearer T, or ?token=T); visible in `ps`, prefer:
     \\  --token-file F    read the token from file F (or set KERF_TOKEN); the default is a random token, printed in the URL
     \\  --no-token        no token at all (trusted machine and network only; localhost then also checks Host/Origin)
-    \\  --llm-timeout S   longest pause of a proxied LLM call (first byte and between chunks; default 300 s / 120 s)
-    \\  --timeouts-ms I,H,W  tuning/testing: keep-alive idle, request head and streaming write deadlines (30000,10000,20000)
+    \\    \\  --timeouts-ms I,H,W  tuning/testing: keep-alive idle, request head and streaming write deadlines (30000,10000,20000)
     \\  --allow-origin U  also accept browser requests from origin U (dev server, e.g. http://localhost:5173)
     \\  --trust-agents    run agents defined in <dir>/.kerf/agents.json (they execute commands from the folder; without
     \\                    this flag, or a yes at the interactive prompt, they are listed as untrusted and never started)
@@ -449,7 +442,6 @@ fn testServer(gpa: Allocator, io: Io, tok: ?[]const u8, loopback: bool) Server {
         .dir = Io.Dir.cwd(),
         .dir_abs = &.{},
         .hub = events.Hub.init(gpa),
-        .client = .{ .allocator = gpa, .io = io },
         .agent_mgr = undefined,
         .loopback_only = loopback,
         .started_ns = 0,
@@ -482,7 +474,7 @@ test "V-5: routes are decided before any body is read, and only body routes have
     try std.testing.expect(bodyCap(.agent_stop) <= 4096);
     try std.testing.expect(bodyCap(.docs_create) <= 1 << 20);
     try std.testing.expect(bodyCap(.doc_apply) <= 16 << 20);
-    try std.testing.expect(bodyCap(.llm) <= 64 << 20 and bodyCap(.agent_run) <= 64 << 20);
+    try std.testing.expect(bodyCap(.agent_run) <= 64 << 20);
 }
 
 test "access: token, host, origin" {
@@ -552,5 +544,4 @@ test {
     _ = http;
     _ = events;
     _ = agents;
-    _ = proxy;
 }

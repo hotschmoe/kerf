@@ -18,7 +18,7 @@ pub fn api_info(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io::Resu
     let mut out = format!("{{\"version\":\"{}\",\"dir\":", api::VERSION).into_bytes();
     out.extend(http::json_string(&s.dir_abs.to_string_lossy()));
     out.extend_from_slice(
-        format!(",\"token_required\":{},\"authenticated\":true,\"proxy\":true,\"agents\":[", s.cfg.token.is_some())
+        format!(",\"token_required\":{},\"authenticated\":true,\"agents\":[", s.cfg.token.is_some())
             .as_bytes(),
     );
     for (i, t) in agents::load_templates(&s.dir_abs, s.cfg.trust_agents).iter().enumerate() {

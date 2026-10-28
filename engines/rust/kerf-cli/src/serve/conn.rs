@@ -1,7 +1,7 @@
 //! Connection limits, deadlines and the access rules (token, Host, Origin).
 //!
 //! One thread per connection. Every phase arms a deadline on the connection (`arm`); a watchdog thread shuts the
-//! socket down once it passes, which wakes the blocked read or write. `arm(0)` disarms (SSE waiting, the LLM proxy).
+//! socket down once it passes, which wakes the blocked read or write. `arm(0)` disarms (SSE waiting).
 
 use super::{Server, lock, routes};
 use crate::http::{self, In, Out, Request};
@@ -14,9 +14,8 @@ use std::time::Duration;
 
 pub const MAX_CONNS: u32 = 256;
 pub const MAX_SSE_STREAMS: u32 = 32;
-pub const MAX_PROXY_CALLS: u32 = 8;
 pub const MAX_REQUESTS_PER_CONN: u32 = 1000;
-/// One handler, apart from SSE and the LLM proxy.
+/// One handler, apart from SSE.
 pub const BUSY_MS: u64 = 120_000;
 
 #[derive(Clone, Copy)]

@@ -11,7 +11,6 @@ const static = @import("ui.zig").static;
 const apiAgentRun = @import("agent.zig").apiAgentRun;
 const apiAgentStop = @import("agent.zig").apiAgentStop;
 const apiEvents = @import("stream.zig").apiEvents;
-const apiLlm = @import("stream.zig").apiLlm;
 const apiInfo = @import("docs.zig").apiInfo;
 const apiList = @import("docs.zig").apiList;
 const apiGetDoc = @import("docs.zig").apiGetDoc;
@@ -25,7 +24,7 @@ const serve = @import("../serve.zig");
 const Server = serve.Server;
 const arm = serve.arm;
 
-pub const Kind = enum { options, info, docs_list, docs_create, doc_get, doc_apply, doc_log, doc_export, events, llm, agent_run, agent_stop, bad_file, method_not_allowed, not_found, static };
+pub const Kind = enum { options, info, docs_list, docs_create, doc_get, doc_apply, doc_log, doc_export, events, agent_run, agent_stop, bad_file, method_not_allowed, not_found, static };
 
 pub const Route = struct { kind: Kind, file: []const u8 = "", api: bool = false };
 
@@ -37,7 +36,6 @@ const endpoints = [_]struct { path: []const u8, methods: Methods }{
     .{ .path = "/info", .methods = .{ .get = .info } },
     .{ .path = "/docs", .methods = .{ .get = .docs_list, .post = .docs_create } },
     .{ .path = "/events", .methods = .{ .get = .events } },
-    .{ .path = "/llm", .methods = .{ .post = .llm } },
     .{ .path = "/agent/run", .methods = .{ .post = .agent_run } },
     .{ .path = "/agent/stop", .methods = .{ .post = .agent_stop } },
 };
@@ -88,7 +86,6 @@ pub fn bodyCap(kind: Kind) usize {
         .agent_stop => 4 << 10,
         .docs_create => 64 << 10,
         .doc_apply => 16 << 20,
-        .llm => 32 << 20,
         .agent_run => 64 << 20, // images: up to 8 x 12 MB decoded, base64
         else => 0,
     };
@@ -163,7 +160,6 @@ pub fn handleRequest(s: *Server, a: Allocator, req: *http.Request, r: *Io.Reader
         .doc_log => apiLog(s, a, rq, w, extra, route.file),
         .doc_export => apiExport(s, a, rq, w, extra, route.file),
         .events => apiEvents(s, a, w, extra),
-        .llm => apiLlm(s, a, rq, w, extra),
         .agent_run => apiAgentRun(s, a, rq, w, extra),
         .agent_stop => apiAgentStop(s, a, rq, w, extra),
         .static => static(s, a, rq, w, path),

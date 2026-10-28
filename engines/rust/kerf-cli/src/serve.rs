@@ -22,7 +22,6 @@ use crate::agents::{self, Manager};
 use crate::events::Hub;
 use crate::hash;
 use crate::http::{self, Out, Request};
-use crate::proxy;
 use crate::workspace;
 use conn::{ConnState, Timeouts};
 use kerf_core::json::{self, Value};
@@ -37,7 +36,6 @@ pub const DEFAULT_PORT: u16 = 7700;
 pub const POLL_MS: u64 = 500;
 pub const ATTACHMENT_TTL_S: u64 = 24 * 3600;
 pub const MAX_SSE_STREAMS: u32 = conn::MAX_SSE_STREAMS;
-pub const MAX_PROXY_CALLS: u32 = conn::MAX_PROXY_CALLS;
 
 pub struct Config {
     pub dir_path: String,
@@ -48,7 +46,6 @@ pub struct Config {
     pub open: bool,
     pub trust_agents: bool,
     pub timeouts: Timeouts,
-    pub llm_limits: proxy::Limits,
     pub agent_timeout_s: u32,
 }
 
@@ -63,7 +60,6 @@ impl Default for Config {
             open: false,
             trust_agents: false,
             timeouts: Timeouts::default(),
-            llm_limits: proxy::Limits::default(),
             agent_timeout_s: agents::DEFAULT_MAX_RUN_S,
         }
     }
@@ -111,7 +107,6 @@ pub struct Server {
     pub conns: Mutex<Vec<std::sync::Arc<ConnState>>>,
     pub active_conns: AtomicU32,
     pub sse_active: AtomicU32,
-    pub proxy_active: AtomicU32,
     pub ui_csp: String,
 }
 
@@ -422,7 +417,6 @@ usage: kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T
   --token T         require this token (Authorization: Bearer T, or ?token=T); visible in `ps`, prefer:
   --token-file F    read the token from file F (or set KERF_TOKEN); the default is a random token, printed in the URL
   --no-token        no token at all (trusted machine and network only; localhost then also checks Host/Origin)
-  --llm-timeout S   longest pause of a proxied LLM call (first byte and between chunks; default 300 s / 120 s)
   --timeouts-ms I,H,W  tuning/testing: keep-alive idle, request head and streaming write deadlines (30000,10000,20000)
   --allow-origin U  also accept browser requests from origin U (dev server, e.g. http://localhost:5173)
   --trust-agents    run agents defined in <dir>/.kerf/agents.json (they execute commands from the folder; without

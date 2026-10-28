@@ -172,7 +172,7 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const a = args[i];
-        const takes_value = std.mem.eql(u8, a, "--dir") or std.mem.eql(u8, a, "--host") or std.mem.eql(u8, a, "--port") or std.mem.eql(u8, a, "--token") or std.mem.eql(u8, a, "--allow-origin") or std.mem.eql(u8, a, "--agent-timeout") or std.mem.eql(u8, a, "--token-file") or std.mem.eql(u8, a, "--llm-timeout") or std.mem.eql(u8, a, "--timeouts-ms");
+        const takes_value = std.mem.eql(u8, a, "--dir") or std.mem.eql(u8, a, "--host") or std.mem.eql(u8, a, "--port") or std.mem.eql(u8, a, "--token") or std.mem.eql(u8, a, "--allow-origin") or std.mem.eql(u8, a, "--agent-timeout") or std.mem.eql(u8, a, "--token-file") or std.mem.eql(u8, a, "--timeouts-ms");
         if (takes_value) {
             if (i + 1 >= args.len) {
                 try err.print("kerf serve: {s} needs a value\n{s}", .{ a, serve_usage });
@@ -190,13 +190,6 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
                     return 2;
                 }
                 cfg.timeouts = .{ .idle_ms = t_idle, .head_ms = t_head, .write_ms = t_write };
-            } else if (std.mem.eql(u8, a, "--llm-timeout")) {
-                const secs = std.fmt.parseInt(u32, v, 10) catch {
-                    try err.print("kerf serve: --llm-timeout must be a number of seconds, got '{s}'\n", .{v});
-                    return 2;
-                };
-                cfg.llm_limits.idle_ms = @as(u64, secs) * 1000;
-                cfg.llm_limits.first_byte_ms = cfg.llm_limits.idle_ms;
             } else if (std.mem.eql(u8, a, "--token-file")) {
                 token_file = v;
             } else if (std.mem.eql(u8, a, "--agent-timeout")) {
@@ -302,14 +295,12 @@ pub fn cliMain(gpa: Allocator, io: Io, args: []const []const u8, err: *Io.Writer
         .dir = dir,
         .dir_abs = dir_abs,
         .hub = events.Hub.init(gpa),
-        .client = .{ .allocator = gpa, .io = io },
         .agent_mgr = undefined,
         .loopback_only = loopback,
         .started_ns = Io.Timestamp.now(io, .awake).nanoseconds,
     };
     server.cfg.port = port;
     server.agent_mgr = .{ .gpa = gpa, .hub = &server.hub, .dir = dir, .dir_abs = dir_abs, .environ = environ, .exe_dir = exe_dir, .before_exit_ctx = &server, .before_exit = scanForAgent, .trust_agents = cfg.trust_agents, .max_run_s = cfg.agent_timeout_s };
-    defer server.client.deinit();
     defer server.hub.deinit();
     defer server.agent_mgr.deinit();
 

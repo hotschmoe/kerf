@@ -204,7 +204,6 @@ pub fn cli_main(args: &[String]) -> u8 {
             "--allow-origin",
             "--agent-timeout",
             "--token-file",
-            "--llm-timeout",
             "--timeouts-ms",
         ]
         .contains(&a);
@@ -221,14 +220,6 @@ pub fn cli_main(args: &[String]) -> u8 {
                         return 2;
                     }
                     cfg.timeouts = super::conn::Timeouts { idle_ms: t_idle, head_ms: t_head, write_ms: t_write };
-                }
-                "--llm-timeout" => {
-                    let Ok(secs) = v.parse::<u32>() else {
-                        eprintln!("kerf serve: --llm-timeout must be a number of seconds, got '{v}'");
-                        return 2;
-                    };
-                    cfg.llm_limits.idle_ms = u64::from(secs) * 1000;
-                    cfg.llm_limits.first_byte_ms = cfg.llm_limits.idle_ms;
                 }
                 "--token-file" => token_file = Some(v.clone()),
                 "--agent-timeout" => {
@@ -362,7 +353,6 @@ pub fn cli_main(args: &[String]) -> u8 {
             conns: Mutex::default(),
             active_conns: Default::default(),
             sse_active: Default::default(),
-            proxy_active: Default::default(),
             ui_csp: if ui::has_ui() { ui::build_ui_csp() } else { ui::default_ui_csp() },
             cfg,
         }

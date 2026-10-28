@@ -3,7 +3,6 @@
 const std = @import("std");
 const kerf = @import("kerf");
 const http = @import("../http.zig");
-const proxy = @import("../proxy.zig");
 const Io = std.Io;
 const net = std.Io.net;
 const Allocator = std.mem.Allocator;
@@ -15,11 +14,9 @@ pub const max_conns: u32 = 256;
 
 pub const max_sse_streams: u32 = 32;
 
-pub const max_proxy_calls: u32 = 8;
-
 pub const max_requests_per_conn: u32 = 1000;
 
-pub const busy_ms: u32 = 120_000; // one handler, apart from SSE and the LLM proxy
+pub const busy_ms: u32 = 120_000; // one handler, apart from SSE
 
 pub const Timeouts = struct {
     /// Keep-alive wait for the next request.

@@ -2,7 +2,6 @@ mod agents;
 mod events;
 mod hash;
 mod http;
-mod proxy;
 mod serve;
 mod workspace;
 

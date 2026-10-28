@@ -64,7 +64,7 @@ pub fn build(b: *std.Build) void {
     run.addPassthruArgs();
     b.step("run", "Run the kerf CLI").dependOn(&run.step);
 
-    // Tests of the serve code (HTTP plumbing, access rules, proxy URL rules, agent templates, op log).
+    // Tests of the serve code (HTTP plumbing, access rules, agent templates, op log).
     const serve_test_mod = b.createModule(.{
         .root_source_file = b.path("src/serve.zig"),
         .target = target,

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Integration smoke test for `kerf serve` (spec/SERVE.md). Starts the real binary on temp folders and
 // exercises every endpoint: CLI edits -> SSE, designer apply + ETag conflicts, op log, exports, the
-// agent bridge (fake agent), token auth on 0.0.0.0, Host/Origin checks, and the LLM proxy against a
-// local node server (no real LLM API is ever called).
+// agent bridge (fake agent), token auth on 0.0.0.0 and Host/Origin checks.
 //
 //   node tests/serve_smoke.mjs [path/to/kerf]      (default: zig-out/bin/kerf; run `zig build` first)
 import { spawn, execFileSync } from 'node:child_process';
@@ -169,7 +168,7 @@ async function main() {
   let t0 = performance.now();
   let info = await api(port, 'GET', '/api/info');
   const info_ms = performance.now() - t0;
-  check('GET /api/info', info.status === 200 && info.json.version && info.json.token_required === false && info.json.proxy === true && Array.isArray(info.json.agents), info.text);
+  check('GET /api/info', info.status === 200 && info.json.version && info.json.token_required === false && !('proxy' in info.json) && Array.isArray(info.json.agents), info.text);
   check('info.dir is the served folder', fs.realpathSync(info.json.dir) === fs.realpathSync(dir), info.json.dir);
   const fake = info.json.agents.find((a) => a.id === 'fake'), ghost = info.json.agents.find((a) => a.id === 'ghost');
   check('agents: override from .kerf/agents.json is available with a version', fake && fake.available === true && /^v\d+/.test(fake.version ?? ''), fake);
@@ -356,73 +355,9 @@ async function main() {
   const noMsg = await api(port, 'POST', '/api/agent/run', { body: { agent: 'fake' } });
   check('missing message -> 400', noMsg.status === 400);
 
-  section('LLM proxy (against a local node server; no real API)');
-  const seen = [];
-  const upstream = http.createServer((req, res) => {
-    const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => {
-      const body = Buffer.concat(chunks).toString('utf8');
-      seen.push({ method: req.method, url: req.url, headers: req.headers, body });
-      if (req.url === '/v1/limited') { res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '7' }); res.end('{"error":"slow down"}'); return; }
-      if (req.url === '/v1/gz') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('plain'); return; }
-      res.writeHead(200, { 'content-type': 'text/event-stream', 'x-request-id': 'up-1' });
-      res.write('data: one\n\n');
-      setTimeout(() => res.write('data: two\n\n'), 400);
-      setTimeout(() => { res.write('data: [DONE]\n\n'); res.end(); }, 800);
-    });
-  });
-  await new Promise((r) => upstream.listen(0, '127.0.0.1', r));
-  const up = upstream.address().port;
-  const base = `http://127.0.0.1:${up}`;
-  const llmBody = { provider: 'custom', base_url: base + '/', path: '/v1/chat/completions', headers: { authorization: 'Bearer sk-secret', 'x-test': 'yes', 'Content-Type': 'application/json', Host: 'evil.example' }, body: { model: 'm', stream: true, messages: [{ role: 'user', content: 'hi' }] } };
-  const firstChunkAt = {};
-  const t_start = performance.now();
-  const streamed = await new Promise((resolve, reject) => {
-    const rq = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/api/llm', headers: { 'content-type': 'application/json' } }, (res) => {
-      const parts = [];
-      res.on('data', (d) => { if (!firstChunkAt.t) firstChunkAt.t = performance.now() - t_start; parts.push(d.toString()); });
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text: parts.join(''), chunks: parts.length }));
-    });
-    rq.on('error', reject);
-    rq.end(JSON.stringify(llmBody));
-  });
-  const total_ms = performance.now() - t_start;
-  check('proxy: status + SSE body forwarded verbatim', streamed.status === 200 && streamed.text === 'data: one\n\ndata: two\n\ndata: [DONE]\n\n' && /event-stream/.test(streamed.headers['content-type']), streamed);
-  check('proxy: response is streamed (first chunk well before the end)', firstChunkAt.t < 350 && total_ms > 700 && streamed.chunks >= 2, [firstChunkAt.t, total_ms, streamed.chunks]);
-  check('proxy: upstream header x-request-id passed back', streamed.headers['x-request-id'] === 'up-1');
-  const u = seen[0];
-  check('proxy: upstream got POST, path, auth + custom headers, JSON body', u.method === 'POST' && u.url === '/v1/chat/completions' && u.headers.authorization === 'Bearer sk-secret' && u.headers['x-test'] === 'yes' && JSON.parse(u.body).model === 'm', u);
-  check('proxy: client-supplied Host is not forwarded', u.headers.host === `127.0.0.1:${up}`, u.headers.host);
-  const lim = await api(port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: base, path: '/v1/limited', body: {} } });
-  check('proxy: upstream 429 + retry-after pass through', lim.status === 429 && lim.headers['retry-after'] === '7' && lim.json.error === 'slow down', lim.text);
-  const getp = await api(port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: base, path: '/v1/gz', method: 'GET' } });
-  check('proxy: GET without body', getp.status === 200 && getp.text === 'plain' && seen.at(-1).method === 'GET', getp.text);
-  const secretsSeenInEvents = JSON.stringify(ev.frames).includes('sk-secret');
-  check('proxy: API keys never leak into SSE/log', !secretsSeenInEvents);
-  const rules = [
-    ['custom http to a public host', { provider: 'custom', base_url: 'http://example.com', path: '/v1' }],
-    ['custom http to a public IP', { provider: 'custom', base_url: 'http://8.8.8.8', path: '/v1' }],
-    ['anthropic with http base_url', { provider: 'anthropic', base_url: 'http://api.anthropic.com', path: '/v1/messages' }],
-    ['openai pointed at localhost (https)', { provider: 'openai', base_url: 'https://localhost:9', path: '/v1' }],
-    ['openai pointed at the metadata IP', { provider: 'openai', base_url: 'https://169.254.169.254', path: '/latest/meta-data' }],
-    ['non-custom with a plain-http LAN url', { provider: 'openai', base_url: base, path: '/v1' }],
-    ['file:// scheme', { provider: 'custom', base_url: 'file:///etc', path: '/passwd' }],
-    ['credentials in the URL', { provider: 'custom', base_url: 'http://u:p@127.0.0.1:9', path: '/x' }],
-    ['protocol-relative path', { provider: 'anthropic', path: '//evil.example/x' }],
-    ['path without a leading slash', { provider: 'anthropic', path: 'v1/messages' }],
-    ['unknown provider', { provider: 'nope', path: '/x' }],
-    ['custom without base_url', { provider: 'custom', path: '/x' }],
-    ['header injection', { provider: 'anthropic', path: '/x', headers: { a: 'b\r\nHost: evil' } }],
-  ];
-  for (const [name, body] of rules) {
-    const rj = await api(port, 'POST', '/api/llm', { body });
-    check('proxy rejects: ' + name, rj.status === 400 && !!rj.json?.error?.code, [rj.status, rj.text.slice(0, 120)]);
-  }
-  check('rejected requests never reached the upstream', seen.length === 3, seen.length);
-  const dead = await api(port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: 'http://127.0.0.1:1', path: '/x', body: {} } });
-  check('proxy: unreachable upstream -> 502 E_UPSTREAM', dead.status === 502 && dead.json.error.code === 'E_UPSTREAM', dead.text);
-  upstream.close();
+  section('direct LLM proxy is gone');
+  const llmGone = await api(port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: 'http://127.0.0.1:1', path: '/x', body: {} } });
+  check('POST /api/llm -> 404', llmGone.status === 404, llmGone.text);
 
   section('V-1 / V-9: HTTP parsing hardening (raw sockets)');
   // V-1: a 1-byte chunk, then a chunk size of ffffffffffffffff, killed the whole process before any auth check.
@@ -498,7 +433,7 @@ async function main() {
   check('SSE with ?token= connects', !!pingTok);
   sseTok.close();
   const llmNo = await api(lan.port, 'POST', '/api/llm', { body: { provider: 'anthropic', path: '/x' } });
-  check('proxy without token -> 401', llmNo.status === 401);
+  check('no token -> 401 even on the removed /api/llm (the token check precedes routing)', llmNo.status === 401);
   const staticNo = await api(lan.port, 'GET', '/');
   check('UI page itself loads without a token (it reads ?token= from the URL)', staticNo.status === 200);
   lan.proc.kill('SIGTERM');
@@ -632,7 +567,7 @@ async function main() {
   fs.writeFileSync(path.join(dirQ, '.kerf', 'agents.json'), JSON.stringify({ agents: [
     { id: 'fake', detect: [process.execPath, '--version'], argv: [process.execPath, FAKE, '{message}', '{resume}'], resume: ['--resume', '{session_id}'] }] }));
   cli(dirQ, ['new', 'q.kerf.json']);
-  const Q = await startServer(dirQ, ['--trust-agents', '--timeouts-ms', '1500,1500,1500', '--llm-timeout', '2']);
+  const Q = await startServer(dirQ, ['--trust-agents', '--timeouts-ms', '1500,1500,1500']);
   const tClose = async (pieces, ms = 6000) => { const t = performance.now(); const r = await rawSocket(Q.port, pieces, { ms }); return { ...r, took: performance.now() - t }; };
   // slowloris: a head that never ends is cut at the head deadline, however slowly the bytes trickle in
   const slow = await tClose(['GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\nX-A: ', 700, 'b', 700, 'c', 700, 'd', 700, 'e', 700, 'f']);
@@ -677,24 +612,6 @@ async function main() {
   const afterHuge = await evQ.waitFor((f) => f.event === 'log' && f.data.entry?.why === 'after the huge line', 4000);
   check('V-13: a >4 MiB log line is skipped and later entries still arrive', !!afterHuge);
   evQ.close();
-
-  section('V-12: LLM proxy stall limits and concurrency cap');
-  const slowUp = http.createServer((req, res) => {
-    req.resume();
-    if (req.url === '/silent') return; // never answers
-    res.writeHead(200, { 'content-type': 'text/event-stream' }); res.write('data: first\n\n'); // then stalls
-  });
-  await new Promise((r) => slowUp.listen(0, '127.0.0.1', r));
-  const slowBase = `http://127.0.0.1:${slowUp.address().port}`;
-  const tS0 = performance.now();
-  const silent = await api(Q.port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: slowBase, path: '/silent', body: {} } });
-  check('V-12: an upstream that never answers -> 502 E_UPSTREAM after the first-byte limit (--llm-timeout 2)', silent.status === 502 && silent.json?.error?.code === 'E_UPSTREAM' && performance.now() - tS0 < 6000, [silent.status, performance.now() - tS0, silent.text.slice(0, 100)]);
-  const tS1 = performance.now();
-  const stalled = await api(Q.port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: slowBase, path: '/stall', body: {} } });
-  check('V-12: an upstream that stalls mid-stream is cut at the idle limit; what arrived was forwarded', stalled.status === 200 && /first/.test(stalled.text) && performance.now() - tS1 < 6000, [stalled.status, performance.now() - tS1]);
-  const many = await Promise.all(Array.from({ length: 12 }, () => api(Q.port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: slowBase, path: '/silent', body: {} } })));
-  check('V-12: at most 8 proxy calls in flight; the rest get 429', many.filter((r) => r.status === 429).length >= 3 && many.every((r) => [429, 502].includes(r.status)), many.map((r) => r.status));
-  slowUp.close(); slowUp.closeAllConnections?.();
 
   Q.proc.kill('SIGTERM');
 

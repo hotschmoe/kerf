@@ -6,7 +6,6 @@ const kerf = @import("kerf");
 const ws = @import("../workspace.zig");
 const http = @import("../http.zig");
 const agents = @import("../agents.zig");
-const proxy = @import("../proxy.zig");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const serve = @import("../serve.zig");
@@ -20,7 +19,7 @@ pub fn apiInfo(s: *Server, a: Allocator, req: http.Request, w: *Io.Writer, extra
     var out: std.ArrayList(u8) = .empty;
     try out.print(a, "{{\"version\":\"{s}\",\"dir\":", .{kerf.version});
     try http.jsonString(&out, a, s.dir_abs);
-    try out.print(a, ",\"token_required\":{s},\"authenticated\":true,\"proxy\":true,\"agents\":[", .{if (s.cfg.token != null) "true" else "false"});
+    try out.print(a, ",\"token_required\":{s},\"authenticated\":true,\"agents\":[", .{if (s.cfg.token != null) "true" else "false"});
     const templates = try agents.loadTemplates(a, s.io, s.dir, s.cfg.trust_agents);
     for (templates, 0..) |t, i| {
         if (i > 0) try out.append(a, ',');
