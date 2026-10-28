@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end behavioural checks of kerf-verified against the Zig engine (no unit tests):
+# End-to-end behavioural checks of the verified kerf-core kernels against the Zig engine (no unit tests):
 #   pdf     13 golden PDFs rebuilt byte for byte by the verified writer
 #   png     26 golden raster PNGs: filters, zlib frame and container reproduced byte for byte
 #   sort    2448 generated cases vs the engine's sort.stable

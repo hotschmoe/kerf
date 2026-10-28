@@ -2,14 +2,16 @@
 
 Verification track of the Rust port. Five kernels of the Zig engine were re-implemented in Rust and
 proven with Verus. They ship as plain `no_std` Rust with **no dependencies and no proc macros**, and
-are checked end to end against the Zig engine's real outputs. Everything here was measured on this
-machine (aarch64, Debian 12, 12 cores) on 2026-10-28.
+are checked end to end against the Zig engine's real outputs. Sections 2–8 describe that work as a
+standalone crate (Phases A–C). **Section 9 is the current state: the verified kernels replaced
+kerf-core's own `sort`, `json`, `png`, `pdf/writer` and raster canvas, and ship in the CLI and wasm.**
+Everything here was measured on this machine (aarch64, Debian 12, 12 cores) on 2026-10-28.
 
 | | |
 |---|---|
-| Crate | `engines/rust/kerf-verified` (the verified sources *are* the shipped sources) |
-| Verify | `engines/rust/verus/verify.sh`: 188 items, about 6 s wall, then plain stable builds for native and wasm32 |
-| End-to-end checks | `engines/rust/verus/check/run.sh`: every check identical to Zig (about 3.5 min) |
+| Code | `kerf-core/src/{sort,json,png,pdf/writer,raster/kernels}.rs` (the verified sources *are* the shipped sources) |
+| Verify | `engines/rust/verus/verify.sh`: 244 items, about 11 s wall, then plain stable builds of kerf-core for native and wasm32 |
+| End-to-end checks | `engines/rust/verus/check/run.sh`: every check identical to Zig (about 3.5 min), plus the engine's own gates (9.4) |
 | Toolchain | `engines/rust/verus/setup.sh`: Verus 0.2026.10.26.d17fbd0 and Z3 4.16.0, both built from source |
 
 ## 1. Verus in one page
@@ -556,7 +558,8 @@ cost the same as plain Rust (0.9 s clean), and the shipped file is the verified 
 differential checks (`check/run.sh`) as the behavioural oracle. They caught nothing here, which is
 the point: proofs and end-to-end checks together, no unit tests.
 
-**Integration with the port** (`engines/rust` on `rust-verus`; I only read it):
+**Integration with the port** (`engines/rust` on `rust-verus`; I only read it). This was the plan
+before Phase D; section 9 is what was done, including a different answer for the sort:
 
 - **`kerf-verified` has no dependencies;** add it as a path dependency.
 - **pdf:** `pdf::PdfWriter` replaces the file assembly in `pdf.rs`. Content stream formatting stays
@@ -573,16 +576,238 @@ the point: proofs and end-to-end checks together, no unit tests.
   `sort::stable_sort_by` where comparators are known to be strict weak orderings (`T: Copy`). The
   next proof worth doing is SymMerge itself.
 
-## 9. Files and commands
+## 9. Integrated: the verified kernels are the port's own modules (Phase D)
+
+`rust-verus` (the zero-dependency port) was merged into `rust-verus-proofs` (`abbbb68`). Then five
+of kerf-core's own modules were replaced by the verified kernels, adapted to the port's data
+structures (`e6bea62`), and made at least as fast as the port where they were slower (`5866556`).
+The standalone `kerf-verified` crate is gone: **the files kerf-core compiles are the files Verus
+verifies.** `verus/verified.rs` is a verification root that includes them by `#[path]`, with `math`
+and `num` along as unverified context.
+
+### 9.1 What ships verified
+
+| module | replaces in the port | proven |
+|---|---|---|
+| `sort.rs` | Go-style in-place SymMerge | **Zig's exact `sort.stable`**, generic over any `T`: always a permutation, never panics, terminates; sorted and stable when `less` is a strict weak ordering |
+| `json.rs` (parser) | the port's parser | produces the port's own `Value`/`Member`/`ParseError`; total (no panic, overflow or non-termination on any input); on success every string and key is valid UTF-8 and nesting is at most 200 |
+| `png.rs` | CRC, Adler, zlib frame, filters, container | `encode`'s output is exactly `png_file(...)`: signature, IHDR of (width, height, color), IDAT chunks with their CRCs, IEND, around a zlib header + DEFLATE body + Adler trailer; `InvalidDimensions` only for a zero side, a side above 2^24, or a filtered size that overflows `usize`. The body is the trusted `deflate_raw`, so `encode`'s spec does not tie the payload to the pixels; `filter_image`, CRC-32 and Adler-32 are proven separately as in 4.4 |
+| `pdf/writer.rs` | the port's object table and xref | `finish` returns exactly `pdf_file(body, offsets, root, info)`; `offsets_fit ==> xref_valid` |
+| `raster/kernels.rs` | `Canvas` (from `raster.rs`) | no write outside any buffer for any float input; integer arithmetic overflow-free |
+
+Writers and formatters in `json.rs` (`write_string`, `fmt_number`, ...) stay unverified in the same
+file. `png/deflate.rs` stays the unverified exact port of Zig's `std.compress.flate`. Its `adler32`
+and `zlib_compress` were removed; `deflate_raw` returns the bare stream and the verified
+`zlib_frame` adds header and trailer. Verifying DEFLATE was not cheap enough for this phase.
+
+**Adaptations to the port:**
+
+- **pdf:** the port's API (`Writer::new`, `begin_object`, `put`, `push_usize`, `end_object`,
+  `object`, `stream_object`, `finish(root, info) -> Vec<u8>`). `finish` is now total: entries are
+  padded to *at least* 10 digits like Zig's `{d:0>10}`, so the 11-digit case of 4.1 behaves as in
+  Zig, and the xref is proven valid whenever every offset is below 10^10. `dec.rs` was inlined.
+- **json:** the parser builds `String`s. `utf8_string` is the one `unsafe`
+  (`String::from_utf8_unchecked`), and its `requires valid_utf8(bytes@)` is proven at every call
+  from the parser's validator. The UTF-8 conjunct of `value_ok` is now carried by `String` itself,
+  so `value_ok` states depth only. The parser's `string` became `parse_string` because the port
+  already exports `json::string`; `MAX_DEPTH` became `pub`.
+- **png:** `ColorType` (`channels` with spec `channels_of`), `EncodeError` and `encode` are
+  verified; `deflate_raw` is trusted.
+- **raster:** `Canvas::new(w, h)` is total, clamping each side to 1..8192. The float helpers call
+  `crate::math::{floor, ceil, sqrt, round}`. Clamping now follows Zig on NaN (the port's
+  `f64::clamp` returns NaN for NaN; Zig's `std.math.clamp`, `@max(lo, @min(x, hi))`, returns a bound).
+
+### 9.2 The sort: the Zig-exact algorithm is verified, so NaN may reach it
+
+Of the two options (verify Zig's algorithm, or make sure NaN cannot reach a sort), the first was
+done. `sort::stable` is `sort.zig`'s `stable` comparison for comparison:
+
+- n ≤ 20: binary insertion in place (`insertion_swap`).
+- n > 20: an index array is sorted: blocks of 20, bottom-up passes, each merge is an in-order check,
+  `merge_low` (prefix skip) or `merge_high` (suffix skip, back to front) through Zig's 4 KiB buffer
+  (`cap = 4096 / size_of::<T>()`), or SymMerge with rotations (`sym_split`, `sym_tail`,
+  `reverse`). The permutation is then applied once (`apply_perm`).
+
+Why it must be Zig-exact: the port sorts with comparators that are *not* strict weak orders. f64
+`<` with NaN is one; thinland's tolerance comparator (`|Δscore| > 1e-6 ? ... : ...`) is another,
+and is not transitive in general (equality within 1e-6 is not). For those, no spec of "the stable order" exists and only
+the same comparison sequence gives Zig's bytes. The proof covers every comparator for safety and
+permutation; sortedness and stability are proven under `well_behaved(less)`. That the comparison
+sequence equals Zig's is checked end to end, not proven (Zig is not modelled):
+
+- 2448/2448 generated strict-weak-order cases identical to `sort.zig`;
+- **301/301 f64 cases with NaN identical**; the port's previous SymMerge matched only 24/301.
+
+Generic over `T` because `section::Stroke` and thinland's `Sample` are not `Copy`. The comparator
+is passed as `&dyn IdxLess` into the merge phase so it is compiled once, not per call site (the
+generic first version cost +26.6 KB of wasm). `IdxLess` has spec methods, so it is declared twice:
+in a gated `verus!` block, and as a plain trait for the shipping build.
+
+### 9.3 Trusted base, as integrated
+
+Section 5 still applies. Changes and additions:
+
+- `json::utf8_string`: one `unsafe`, justified by a proven precondition; trusted that vstd's
+  `valid_utf8` is the definition `String` requires.
+- `json::owned`, `json::key_bytes`: `String::from(&str)` and `as_bytes()`, nothing assumed.
+- `json::number_value`: unchanged.
+- `sort::swap`: `slice::swap`, with the obvious `ensures`.
+- `sort::IdxLess`: that the plain trait and the gated `verus!` trait declare the same methods.
+- `png::deflate_raw`: trusted, and `encode`'s spec says only "some byte sequence `d`" there.
+- raster float helpers now delegate to `math`; `math` and `num` are unverified.
+- `Canvas::stroke`'s dash walker has `exec_allows_no_decreases_clause`: termination is argued (dashes
+  are at least 0.01 mm) but not proven.
+- `impl Default for pdf::writer::Writer` is `external` (it calls the verified `new`).
+
+### 9.4 Gates
+
+All on the final engine (`5866556`), aarch64:
+
+| gate | result |
+|---|---|
+| `verus/verify.sh` | `244 verified, 0 errors`; native and wasm32 builds with `-D warnings` |
+| `tests/check_golden.sh` | `golden: OK` |
+| `wasm_golden.mjs` | `24/24 byte-identical` |
+| `wasm_check.mjs` | `ABI OK: 0 imports`, `A.svg equals golden` |
+| `cli_ergonomics.mjs` | `145 passed, 0 failed` |
+| `diff_fuzz.py` | 2000 × seed 1: 1 difference; 1000 × seeds 2 and 3: 0 |
+| `fuzz.py` (debug, overflow checks) | 1500 × 3: 0 crashes |
+| `serve_smoke.mjs` | `215 passed, 0 failed` |
+| `verus/check/run.sh` | pdf 13, png 26, raster 52, sort 2448 + NaN 301, json 100000: all identical to Zig |
+
+The one `diff_fuzz` difference is pre-existing: the unchanged port (`abbbb68`) gives the same output
+on the same mutant. It is the known number-format difference in an `E_PARAM` message (`99.9888`
+against Zig's `99.98875`) from unverified number formatting.
+
+### 9.5 Before and after
+
+Same machine, before = `abbbb68`, after = `5866556`. A second agent was benchmarking on the machine
+throughout (load average 3–4 on 12 cores), so engines were always alternated per case.
+
+**Sizes** (bytes; `tools/size_report.sh`):
+
+| artifact | before raw / gzip / brotli | after raw / gzip / brotli |
+|---|---|---|
+| CLI, release (stripped) | 1,677,064 / 874,184 / 686,529 | 1,659,048 / 863,918 / 680,735 (-1.1%) |
+| CLI, `small` | 1,241,856 | 1,232,760 (-0.7%) |
+| wasm (`small` + wasm-opt) | 604,675 / 265,006 / 222,335 | 596,066 / 262,957 / 221,662 (-1.4% raw) |
+
+**Wasm, per function** (`verus/bench_wasm.mjs`, best of 3 rounds of 10 calls, in-process): total
+over 39 cases **1482.4 → 1441.8 ms (0.973)**.
+
+- `drawing`/`svg`/`dxf`/`pdf` of view B: 0.81–0.89 (likely the index-array sort: large elements
+  such as `Stroke` move once instead of through rotations);
+- `check` 0.88–0.97, `inspect` 0.86–0.90, `mesh` 0.90–0.96;
+- view A exports 0.97–1.00 (0.966–0.997);
+- PNG export 0.99–1.02.
+
+**Native, per function** (`verus/bench_native.py`, includes process start): total
+**940.4 → 945.7 ms (1.006)**. Individual cases scatter from 0.69 to 1.89 in both directions with no
+pattern; under the background load this harness only shows "no change".
+
+**Native, in process** (`sortbench`, a scratch harness linking both kerf-cores, release with LTO,
+best of 7):
+
+| case | before | after | ratio |
+|---|---:|---:|---:|
+| sort f64, n = 8 | 70 ns | 49 ns | 0.71 |
+| sort f64, n = 20 | 223 ns | 182 ns | 0.82 |
+| sort f64, n = 100 | 2.41 µs | 3.48 µs | **1.44** |
+| sort f64, n = 1000 | 55.9 µs | 55.1 µs | 0.99 |
+| sort f64, n = 10⁴ | 1.38 ms | 1.17 ms | 0.85 |
+| sort f64, n = 10⁵ | 16.4 ms | 16.5 ms | 1.01 |
+| sort 48-byte record, n = 20 | 275 ns | 409 ns | **1.49** |
+| sort 48-byte record, n = 100 | 3.56 µs | 4.07 µs | **1.15** |
+| sort 48-byte record, n = 1000 | 89.8 µs | 70.2 µs | 0.78 |
+| sort 48-byte record, n = 10⁵ | 27.0 ms | 21.6 ms | 0.80 |
+| JSON parse, the 3 reference docs | 128.5 µs | 127.5 µs | 0.99 |
+
+The sort is not the same algorithm before and after, so this compares two algorithms, not a proof's
+overhead. Two cases are slower, and both are left as they are:
+
+- **n = 21 to a few hundred** pays for the index phase (four `usize` arrays: indices, merge buffer,
+  and the `at`/`pos` maps of `apply_perm`) and a `dyn` call per comparison, which cannot be
+  inlined. The `dyn` is what keeps the merge phase compiled once
+  (26.6 KB of wasm), and Zig's own sort also calls the comparator through a function pointer.
+- **Records with n ≤ 20:** the comparisons are Zig's (and were the port's), but the verified
+  insertion moves the element down with `swap`s, three moves per step, where Zig and the port shift
+  (`rotate_right(1)`, one move). Cheap for `f64` (0.71–0.82 above), visible for 48-byte records. A
+  trusted `rotate_right` wrapper with a sequence `ensures`, like `swap`'s, would close it; it was
+  not done because it adds to the trusted base for a gap that does not show end to end.
+
+Neither shows in the per-function totals above, which do not get slower.
+
+**Build times** (`CARGO_TARGET_DIR` fresh per side, two interleaved rounds; incremental = `touch
+kerf-core/src/lib.rs` and rebuild):
+
+| build | before clean | after clean | before incremental | after incremental |
+|---|---:|---:|---:|---:|
+| CLI release (LTO, 1 CGU) | 35.0 / 33.1 s | 32.8 / 33.5 s | 33.7 / 33.0 s | 32.2 / 32.6 s |
+| CLI dev | 6.7 / 6.9 s | 6.6 / 7.0 s | 1.34 / 1.33 s | 1.26 / 1.31 s |
+| wasm `small` | 12.2 / 12.5 s | 12.1 / 11.7 s | 12.0 / 11.8 s | 11.8 / 12.6 s |
+
+No difference beyond noise. The gated ghost code is removed by `cfg` before type checking, so the
+five modules growing from 1,556 to 7,157 lines, nearly all of it specs and proofs, costs the plain
+build nothing measurable.
+
+**Verification:** 244 items in 10.6 s wall (about 20 s CPU), against 188 items in 6 s for the
+standalone crate.
+
+Per module (`--time-expanded`; summed across 7 threads):
+
+| module | time | heaviest function (Z3 resource units) |
+|---|---:|---|
+| sort | 6.6 s | `lemma_symmerge_compose` 16.6M, `merge_high` 9.3M |
+| png | 4.2 s | `filter_image` 6.2M |
+| json | 2.0 s | `parse_string` 0.6M |
+| pdf/writer | 2.0 s | `push_trailer` 2.4M |
+| raster/kernels | 1.5 s | `fill` 0.7M |
+
+The rustc front end takes 2.1 s of the 10.9 s wall. **Margin:** everything verifies at `--rlimit 6`.
+At 5 and below, `lemma_symmerge_compose` fails, so the default of 10 leaves about 2x headroom (it was
+3x in Phase C: the Zig-exact sort's SymMerge composition is the heaviest proof in the repository).
+
+### 9.6 Where the verified form was slower, and the faster proven form
+
+The first integration (`e6bea62`) was 1.206x slower in wasm in total. The wasm profile is `small`
+(opt-level z), which leaves per-element bounds and capacity checks inside indexed and `push` loops
+where opt-level 3 hoists or vectorizes them. Each fix is proven:
+
+- **PNG export, +26–46%:** `filter_row` built each filtered row with `Vec` indexing and per-byte
+  `push`. It now writes into a `&mut [u8]` scratch slice, the output is assembled with `push` +
+  `extend_from_slice`, and buffers are created with `vec![x; n]`. PNG is now within 1–3% of the port.
+- **Drawing view B, +8–12%:** the sort's index phase used push loops and repeated indexing. It now
+  fills preallocated slices and applies the permutation once through `at`/`pos` maps. View B is now
+  11–19% faster than the port.
+- **wasm +26.6 KB:** one `merge` per comparator type; fixed by `&dyn IdxLess` (9.2).
+
+### 9.7 For the merge of later `rust-verus` work
+
+Edits stay inside `sort.rs`, `json.rs`, `png.rs`, `png/deflate.rs`, `pdf/writer.rs`,
+`raster/kernels.rs`, `kerf-core/Cargo.toml` (a `check-cfg` lint for `verus_keep_ghost`) and
+`engines/rust/verus/`, **with one exception: `raster.rs`.** The port's `raster.rs` had an inline
+`pub mod kernels` (`composite`, `union_max`) next to its private `Canvas`. The verified `Canvas` now
+lives in `raster/kernels.rs` (with `V`, `Edge`, `MAX_SIDE`), and `raster.rs` lost about 300 lines
+and gained `pub mod kernels; use kernels::{Canvas, Edge, V};`. A later change to `Canvas` on
+`rust-verus` would conflict there.
+
+A dry run (`git merge-tree`) of `rust-verus` as of `75610a4` into this branch conflicts only in
+`kerf-core/Cargo.toml` (both add a section at the end; keep both). Changes to `math.rs` are compiled
+into the verification run as unverified context, so `verify.sh` must still be rerun after a merge.
+
+## 10. Files and commands
 
 ```
 engines/rust/verus/setup.sh          toolchain (Phase A); logs per-step time and disk
-engines/rust/verus/verify.sh         Verus on the crate, then plain stable builds (native, wasm32)
+engines/rust/verus/verify.sh         Verus on verified.rs, then plain stable builds of kerf-core (native, wasm32)
+engines/rust/verus/verified.rs       verification root: includes the five kerf-core files by #[path]
 engines/rust/verus/check/run.sh      every end-to-end check against the Zig engine
 engines/rust/verus/check/            kvcheck (Rust) and the Zig oracles: json_dump.zig, sort_dump.zig,
                                      png_inflate.zig, bench.zig, trace_raster.py
-engines/rust/kerf-verified/src/      dec, pdf, sort, json, png, raster (verified and shipped)
-kvcheck bench <zig bench> <dir> spec/details/*.kerf.json    the speed table
+engines/rust/kerf-core/src/          sort.rs, json.rs, png.rs, pdf/writer.rs, raster/kernels.rs (verified and shipped)
+engines/rust/verus/bench_wasm.mjs    per-function wasm timings, two engines alternated
+engines/rust/verus/bench_native.py   per-function CLI timings, two binaries alternated
+kvcheck bench <zig bench> <dir> spec/details/*.kerf.json    the speed table of 6.3 (now against kerf-core)
 ```
 
 Commits on `rust-verus-proofs`:
@@ -597,4 +822,8 @@ Commits on `rust-verus-proofs`:
 | `05aa317` | `run.sh` |
 | `3f4d940` | Adler NMAX, last `verus!`-syntax state with `erase.py` |
 | `ad4c434` | option 3 adopted |
-| this report | the commit that adds VERUS.md |
+| `16f6d12` | VERUS.md (Phases A–C) |
+| `abbbb68` | merge of `rust-verus` (the port) |
+| `e6bea62` | verified kernels integrated into kerf-core; `kerf-verified` removed |
+| `5866556` | faster proven forms where the integration was slower |
+| this commit | section 9 |
