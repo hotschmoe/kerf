@@ -110,6 +110,8 @@ pub struct Iso {
     gh: f64,
     gn: usize,
     cells: Vec<Vec<u32>>,
+    /// Scratch bitmap over face indices for `candidates` (all zero between calls).
+    seen: core::cell::RefCell<Vec<u64>>,
     eps: f64,
 }
 
@@ -129,6 +131,7 @@ impl Default for Iso {
             gh: 1.0,
             gn: 0,
             cells: Vec::new(),
+            seen: core::cell::RefCell::new(Vec::new()),
             eps: 1e-3,
         }
     }
@@ -218,21 +221,39 @@ impl Iso {
         self.cells = lists;
     }
 
+    /// The face indices listed in the grid cells under `b`, ascending and without duplicates (the union of the
+    /// cell lists through a bitmap: the same set and order as sorting the concatenation and dropping repeats).
     fn candidates(&self, b: Box, out: &mut Vec<u32>) {
         out.clear();
         if self.cells.is_empty() {
             return;
         }
         let r = self.cell_range(b);
+        let mut seen = self.seen.borrow_mut();
+        let (mut lo, mut hi) = (usize::MAX, 0);
         for row in r[2]..=r[3] {
             for col in r[0]..=r[1] {
-                if let Some(c) = self.cells.get(row * self.gn + col) {
-                    out.extend_from_slice(c);
+                for &fi in self.cells.get(row * self.gn + col).map_or(&[][..], Vec::as_slice) {
+                    let w = (fi >> 6) as usize;
+                    if w >= seen.len() {
+                        seen.resize(w + 1, 0);
+                    }
+                    seen[w] |= 1 << (fi & 63);
+                    lo = lo.min(w);
+                    hi = hi.max(w);
                 }
             }
         }
-        sort::stable(out, |a, b| a < b);
-        out.dedup();
+        if lo > hi {
+            return;
+        }
+        for (w, word) in seen[lo..=hi].iter_mut().enumerate() {
+            let mut bits = core::mem::take(word);
+            while bits != 0 {
+                out.push((((lo + w) as u32) << 6) | bits.trailing_zeros());
+                bits &= bits - 1;
+            }
+        }
     }
 
     fn face_depth(&self, f: &Face, m: V2) -> f64 {
