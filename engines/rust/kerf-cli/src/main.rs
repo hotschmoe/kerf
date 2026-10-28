@@ -338,7 +338,7 @@ fn prepare_ops(raw: &[u8]) -> Option<PreparedOps> {
         return None;
     };
     let mut out = Vec::new();
-    json::write_compact(&mut out, &norm.ops);
+    json::write_compact(&mut out, &Value::Array(norm.ops));
     Some(PreparedOps { text: String::from_utf8_lossy(&out).into_owned(), why: norm.why })
 }
 
