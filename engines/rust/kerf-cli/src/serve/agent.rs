@@ -2,7 +2,7 @@
 //! `.kerf/attachments`, start or stop a run of the agent bridge.
 
 use super::{ATTACHMENT_TTL_S, Server, bad_request, parse_body};
-use crate::agents::{self, StartError, StartParams, StopResult};
+use crate::agents::{StartError, StartParams, StopResult};
 use crate::http::{self, Out, Request};
 use crate::workspace;
 use kerf_core::json::Value;
@@ -24,17 +24,31 @@ pub fn api_agent_run(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io:
         return bad_request(req, w, extra, "E_JSON", "body must be JSON: { agent, message, session_id?, file? }");
     };
     let Some(agent_id) = body.get("agent").and_then(Value::str) else {
-        return bad_request(req, w, extra, "E_INPUT", "missing \"agent\" (claude, grok, codex, or an id from .kerf/agents.json)");
+        return bad_request(
+            req,
+            w,
+            extra,
+            "E_INPUT",
+            "missing \"agent\" (claude, grok, codex, or an id from .kerf/agents.json)",
+        );
     };
     let Some(message) = body.get("message").and_then(Value::str) else {
         return bad_request(req, w, extra, "E_INPUT", "missing \"message\"");
     };
     if message.trim_ascii().is_empty() || message.len() > MAX_MESSAGE_BYTES {
-        return bad_request(req, w, extra, "E_INPUT", "\"message\" must be 1..100000 bytes (it is one command-line argument; the OS limit is 128 KiB)");
+        return bad_request(
+            req,
+            w,
+            extra,
+            "E_INPUT",
+            "\"message\" must be 1..100000 bytes (it is one command-line argument; the OS limit is 128 KiB)",
+        );
     }
     let mut session = None;
     if let Some(sid) = body.get("session_id").and_then(Value::str).filter(|s| !s.is_empty()) {
-        let ok = sid.len() <= 200 && !sid.starts_with('-') && sid.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_.:".contains(&c));
+        let ok = sid.len() <= 200
+            && !sid.starts_with('-')
+            && sid.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_.:".contains(&c));
         if !ok {
             return bad_request(req, w, extra, "E_INPUT", "invalid session_id");
         }
@@ -50,7 +64,13 @@ pub fn api_agent_run(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io:
     let mut message_full = message.to_owned();
     if let Some(iv) = body.get("images").filter(|v| !v.is_null()) {
         let Ok(paths) = save_images(s, iv) else {
-            return bad_request(req, w, extra, "E_IMAGES", "images must be [{ name, data_base64 }] (png/jpg/gif/webp, at most 8, 12 MB each)");
+            return bad_request(
+                req,
+                w,
+                extra,
+                "E_IMAGES",
+                "images must be [{ name, data_base64 }] (png/jpg/gif/webp, at most 8, 12 MB each)",
+            );
         };
         if !paths.is_empty() {
             message_full.push_str("\n\nThe designer attached these images (open them with your file-reading tool):\n");
@@ -59,9 +79,16 @@ pub fn api_agent_run(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io:
             }
         }
     }
-    let templates = agents::load_templates(&s.dir_abs, s.cfg.trust_agents);
+    let templates = s.agent_mgr.templates();
     let Some(t) = templates.iter().find(|t| t.id == agent_id) else {
-        http::send_error(w, 404, ka, extra, "E_AGENT", &format!("unknown agent '{agent_id}'; GET /api/info lists them"))?;
+        http::send_error(
+            w,
+            404,
+            ka,
+            extra,
+            "E_AGENT",
+            &format!("unknown agent '{agent_id}'; GET /api/info lists them"),
+        )?;
         return Ok(ka);
     };
     match s.agent_mgr.start(StartParams { template: t, message: &message_full, session_id: session, file }) {
@@ -71,8 +98,14 @@ pub fn api_agent_run(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io:
             out.extend_from_slice(b"}\n");
             http::send_json(w, 200, ka, extra, &out)?;
         }
-        Err(StartError::Busy(id)) => http::send_error(w, 409, ka, extra, "E_BUSY", &format!("run {id} is still active (one run at a time); stop it first"))?,
-        Err(StartError::UnknownAgent) => http::send_error(w, 404, ka, extra, "E_AGENT", "unknown agent")?,
+        Err(StartError::Busy(id)) => http::send_error(
+            w,
+            409,
+            ka,
+            extra,
+            "E_BUSY",
+            &format!("run {id} is still active (one run at a time); stop it first"),
+        )?,
         Err(StartError::TooLong(why)) => http::send_error(w, 400, ka, extra, "E_INPUT", &why)?,
         Err(StartError::Unavailable(why)) => {
             let code = if t.untrusted { "E_UNTRUSTED" } else { "E_UNAVAILABLE" };
@@ -105,7 +138,8 @@ pub fn cleanup_attachments(s: &Server) {
         if !m.is_file() {
             continue;
         }
-        let old = m.modified().ok().and_then(|t| now.duration_since(t).ok()).is_some_and(|d| d.as_secs() > ATTACHMENT_TTL_S);
+        let old =
+            m.modified().ok().and_then(|t| now.duration_since(t).ok()).is_some_and(|d| d.as_secs() > ATTACHMENT_TTL_S);
         if old {
             let _ = fs::remove_file(e.path());
         }
@@ -115,7 +149,8 @@ pub fn cleanup_attachments(s: &Server) {
 fn random_tag() -> u32 {
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.subsec_nanos() ^ (d.as_secs() as u32));
-    let mut x = nanos ^ std::process::id().rotate_left(16) ^ COUNTER.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9E37_79B9);
+    let mut x =
+        nanos ^ std::process::id().rotate_left(16) ^ COUNTER.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9E37_79B9);
     x ^= x >> 16;
     x = x.wrapping_mul(0x85EB_CA6B);
     x ^ (x >> 13)
@@ -140,7 +175,11 @@ fn save_images(s: &Server, iv: &Value) -> Result<Vec<String>, BadImages> {
             data = &data[data.find(',').ok_or(BadImages)? + 1..];
         }
         let base = name_in.rsplit(['/', '\\']).next().unwrap_or("");
-        let mut safe: String = base.chars().take(60).map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' }).collect();
+        let mut safe: String = base
+            .chars()
+            .take(60)
+            .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+            .collect();
         let ext = safe.rfind('.').map_or("", |i| &safe[i..]);
         if ![".png", ".jpg", ".jpeg", ".gif", ".webp"].iter().any(|e| ext.eq_ignore_ascii_case(e)) {
             safe.push_str(".png");

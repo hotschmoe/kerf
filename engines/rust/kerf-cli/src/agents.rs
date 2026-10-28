@@ -30,7 +30,8 @@ pub struct Template {
 
 pub const UNTRUSTED_REASON: &str = "defined by this folder's .kerf/agents.json and not trusted: it would run a command from the folder. Start `kerf serve --trust-agents` (or answer yes at the prompt) if you wrote it";
 
-pub const PREFIX: &str = "You are working in a Kerf details library. Run 'kerf guide' first if you haven't this session.";
+pub const PREFIX: &str =
+    "You are working in a Kerf details library. Run 'kerf guide' first if you haven't this session.";
 pub const DEFAULT_MAX_RUN_S: u32 = 30 * 60;
 const DETECT_TTL: Duration = Duration::from_secs(30);
 const DETECT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -56,24 +57,63 @@ pub fn builtin_templates() -> Vec<Template> {
             "claude",
             "Claude Code",
             &[
-                "claude", "-p", "{message}", "--output-format", "stream-json", "--verbose", "{resume}", "--permission-mode",
-                "acceptEdits", "--allowedTools", "Bash(kerf:*)", "Bash(kerf *)", "Read", "Write", "Edit",
+                "claude",
+                "-p",
+                "{message}",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "{resume}",
+                "--permission-mode",
+                "acceptEdits",
+                "--allowedTools",
+                "Bash(kerf:*)",
+                "Bash(kerf *)",
+                "Read",
+                "Write",
+                "Edit",
             ],
             &["--resume", "{session_id}"],
         ),
         builtin(
             "grok",
             "Grok Build",
-            &["grok", "-p", "{message}", "--output-format", "streaming-json", "--always-approve", "--cwd", "{dir}", "{resume}"],
+            &[
+                "grok",
+                "-p",
+                "{message}",
+                "--output-format",
+                "streaming-json",
+                "--always-approve",
+                "--cwd",
+                "{dir}",
+                "{resume}",
+            ],
             &["--resume", "{session_id}"],
         ),
         builtin(
             "codex",
             "Codex CLI",
-            &["codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "--cd", "{dir}", "--json", "{resume}", "{message}"],
+            &[
+                "codex",
+                "exec",
+                "--sandbox",
+                "workspace-write",
+                "--skip-git-repo-check",
+                "--cd",
+                "{dir}",
+                "--json",
+                "{resume}",
+                "{message}",
+            ],
             &["resume", "{session_id}"],
         ),
-        builtin("pi", "Pi", &["pi", "-p", "--mode", "json", "{resume}", "{message}"], &["--session-id", "{session_id}"]),
+        builtin(
+            "pi",
+            "Pi",
+            &["pi", "-p", "--mode", "json", "{resume}", "{message}"],
+            &["--session-id", "{session_id}"],
+        ),
     ]
 }
 
@@ -205,11 +245,14 @@ pub fn detect(t: &Template) -> Detected {
         return unavailable(UNTRUSTED_REASON.into());
     }
     let Some((bin, args)) = t.detect.split_first() else { return unavailable("no detect command".into()) };
-    let mut child = match Command::new(bin).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return unavailable(format!("`{bin}` was not found on PATH")),
-        Err(e) => return unavailable(format!("could not run `{bin}`: {e}")),
-    };
+    let mut child =
+        match Command::new(bin).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return unavailable(format!("`{bin}` was not found on PATH"));
+            }
+            Err(e) => return unavailable(format!("could not run `{bin}`: {e}")),
+        };
     let out = child.stdout.take().map(|s| drain_limited(s, 8192));
     let err = child.stderr.take().map(|s| drain_limited(s, 8192));
     let start = Instant::now();
@@ -330,7 +373,16 @@ pub enum StopResult {
 
 impl Manager {
     pub fn new(hub: Arc<Hub>, dir_abs: PathBuf, exe_dir: PathBuf, trust_agents: bool, max_run_s: u32) -> Manager {
-        Manager { hub, dir_abs, exe_dir, trust_agents, max_run_s, before_exit: None, inner: Mutex::new(Inner { next_id: 1, ..Inner::default() }), cond: Condvar::new() }
+        Manager {
+            hub,
+            dir_abs,
+            exe_dir,
+            trust_agents,
+            max_run_s,
+            before_exit: None,
+            inner: Mutex::new(Inner { next_id: 1, ..Inner::default() }),
+            cond: Condvar::new(),
+        }
     }
 
     /// Called after the agent's pipes are drained and before its `exit` event, so the server can publish the
@@ -436,7 +488,13 @@ impl Manager {
             }
             let id = format!("r{}", g.next_id);
             g.next_id += 1;
-            run = Arc::new(Run { id, agent: p.template.id.clone(), started: Instant::now(), state: Mutex::default(), pumps_done: AtomicU32::new(0) });
+            run = Arc::new(Run {
+                id,
+                agent: p.template.id.clone(),
+                started: Instant::now(),
+                state: Mutex::default(),
+                pumps_done: AtomicU32::new(0),
+            });
             g.active = Some(run.clone());
         }
         let mut child = match cmd.spawn() {
@@ -513,7 +571,10 @@ impl Manager {
                 }
                 let now = Instant::now();
                 let pid = st.pid.unwrap_or(0);
-                if st.term_sent.is_none() && self.max_run_s > 0 && run.started.elapsed() > Duration::from_secs(self.max_run_s.into()) {
+                if st.term_sent.is_none()
+                    && self.max_run_s > 0
+                    && run.started.elapsed() > Duration::from_secs(self.max_run_s.into())
+                {
                     st.timed_out = true;
                     st.stop_requested = true;
                     st.term_sent = Some(now);
@@ -527,7 +588,10 @@ impl Manager {
                 }
             }
             if announce {
-                let msg = format!("{{\"type\":\"stderr\",\"text\":\"kerf: the run exceeded the {} s limit; stopping the agent\"}}", self.max_run_s);
+                let msg = format!(
+                    "{{\"type\":\"stderr\",\"text\":\"kerf: the run exceeded the {} s limit; stopping the agent\"}}",
+                    self.max_run_s
+                );
                 self.publish(&run.id, msg.as_bytes());
             }
         }
@@ -546,7 +610,13 @@ impl Manager {
         }
     }
 
-    fn supervise(self: Arc<Self>, run: Arc<Run>, mut child: Child, stdout: Option<std::process::ChildStdout>, stderr: Option<std::process::ChildStderr>) {
+    fn supervise(
+        self: Arc<Self>,
+        run: Arc<Run>,
+        mut child: Child,
+        stdout: Option<std::process::ChildStdout>,
+        stderr: Option<std::process::ChildStderr>,
+    ) {
         let pid = child.id();
         let mut expect = 0;
         let mut pumps = Vec::new();
@@ -659,7 +729,11 @@ impl Manager {
                 return;
             }
         }
-        let mut ev = if is_stderr { b"{\"type\":\"stderr\",\"text\":".to_vec() } else { b"{\"type\":\"text\",\"text\":".to_vec() };
+        let mut ev = if is_stderr {
+            b"{\"type\":\"stderr\",\"text\":".to_vec()
+        } else {
+            b"{\"type\":\"text\",\"text\":".to_vec()
+        };
         json::write_string(&mut ev, &String::from_utf8_lossy(text));
         ev.push(b'}');
         self.publish(&run.id, &ev);
