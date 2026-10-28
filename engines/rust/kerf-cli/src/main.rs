@@ -1,4 +1,9 @@
+mod agents;
+mod events;
 mod hash;
+mod http;
+mod proxy;
+mod serve;
 mod workspace;
 
 use kerf_core::json::{self, Value};
@@ -743,8 +748,7 @@ fn run(args: &[String], actor: &str) -> Res<u8> {
         return Ok(2);
     };
     if cmd == "serve" {
-        stderr("kerf serve: not built into this engine yet\n");
-        return Ok(2);
+        return Ok(serve::cli_main(&args[1..]));
     }
     let Ok(o) = parse_opts(&args[1..]) else {
         stderr(USAGE);

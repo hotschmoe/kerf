@@ -270,6 +270,7 @@ struct RunState {
 
 struct Run {
     id: String,
+    agent: String,
     started: Instant,
     state: Mutex<RunState>,
     pumps_done: AtomicU32,
@@ -308,7 +309,6 @@ pub struct Manager {
 
 pub enum StartError {
     Busy(String),
-    UnknownAgent,
     Unavailable(String),
     SpawnFailed(String),
     TooLong(String),
@@ -337,6 +337,10 @@ impl Manager {
     /// document changes the run made ahead of it.
     pub fn set_before_exit(&mut self, f: impl Fn() + Send + Sync + 'static) {
         self.before_exit = Some(Box::new(f));
+    }
+
+    pub fn templates(&self) -> Vec<Template> {
+        load_templates(&self.dir_abs, self.trust_agents)
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -373,10 +377,10 @@ impl Manager {
         det
     }
 
-    pub fn active_info(&self) -> Option<String> {
+    pub fn active_info(&self) -> Option<(String, String)> {
         let r = self.lock().active.clone()?;
         let finished = r.lock().finished;
-        (!finished).then(|| r.id.clone())
+        (!finished).then(|| (r.id.clone(), r.agent.clone()))
     }
 
     /// Asks the active run to stop and waits for it to be gone (SIGTERM, then SIGKILL after the grace period).
@@ -432,7 +436,7 @@ impl Manager {
             }
             let id = format!("r{}", g.next_id);
             g.next_id += 1;
-            run = Arc::new(Run { id, started: Instant::now(), state: Mutex::default(), pumps_done: AtomicU32::new(0) });
+            run = Arc::new(Run { id, agent: p.template.id.clone(), started: Instant::now(), state: Mutex::default(), pumps_done: AtomicU32::new(0) });
             g.active = Some(run.clone());
         }
         let mut child = match cmd.spawn() {
