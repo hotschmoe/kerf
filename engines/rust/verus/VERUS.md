@@ -10,7 +10,7 @@ Everything here was measured on this machine (aarch64, Debian 12, 12 cores) on 2
 | | |
 |---|---|
 | Code | `kerf-core/src/{sort,json,png,pdf/writer,raster/kernels}.rs` (the verified sources *are* the shipped sources) |
-| Verify | `engines/rust/verus/verify.sh`: 244 items, about 11 s wall, then plain stable builds of kerf-core for native and wasm32 |
+| Verify | `engines/rust/verus/verify.sh`: 280 items, about 11 s wall, then plain stable builds of kerf-core for native and wasm32 |
 | End-to-end checks | `engines/rust/verus/check/run.sh`: every check identical to Zig (about 3.5 min), plus the engine's own gates (9.4) |
 | Toolchain | `engines/rust/verus/setup.sh`: Verus 0.2026.10.26.d17fbd0 and Z3 4.16.0, both built from source |
 
@@ -581,6 +581,8 @@ before Phase D; section 9 is what was done, including a different answer for the
 `rust-verus` (the zero-dependency port) was merged into `rust-verus-proofs` (`abbbb68`). Then five
 of kerf-core's own modules were replaced by the verified kernels, adapted to the port's data
 structures (`e6bea62`), and made at least as fast as the port where they were slower (`5866556`).
+After the performance track was merged (`5bc76a5`), its kernel prototypes went into the verified
+modules with their proofs (`08f0261`, section 9.8).
 The standalone `kerf-verified` crate is gone: **the files kerf-core compiles are the files Verus
 verifies.** `verus/verified.rs` is a verification root that includes them by `#[path]`, with `math`
 and `num` along as unverified context.
@@ -591,7 +593,9 @@ and `num` along as unverified context.
 |---|---|---|
 | `sort.rs` | Go-style in-place SymMerge | **Zig's exact `sort.stable`**, generic over any `T`: always a permutation, never panics, terminates; sorted and stable when `less` is a strict weak ordering |
 | `json.rs` (parser) | the port's parser | produces the port's own `Value`/`Member`/`ParseError`; total (no panic, overflow or non-termination on any input); on success every string and key is valid UTF-8 and nesting is at most 200 |
-| `png.rs` | CRC, Adler, zlib frame, filters, container | `encode`'s output is exactly `png_file(...)`: signature, IHDR of (width, height, color), IDAT chunks with their CRCs, IEND, around a zlib header + DEFLATE body + Adler trailer; `InvalidDimensions` only for a zero side, a side above 2^24, or a filtered size that overflows `usize`. The body is the trusted `deflate_raw`, so `encode`'s spec does not tie the payload to the pixels; `filter_image`, CRC-32 and Adler-32 are proven separately as in 4.4 |
+| `png.rs` | CRC, Adler, zlib frame, filters, container | every row's filter type is `best_filter` (lowest heuristic score, earliest on ties) and every filtered byte its `filter_byte`; `encode`'s output is exactly `png_file(...)`: signature, IHDR of (width, height, color), IDAT chunks with their CRCs, IEND, around a zlib header + DEFLATE body + Adler trailer; `InvalidDimensions` only for a zero side, a side above 2^24, or a filtered size that overflows `usize`. The body is the trusted `deflate_raw`, so `encode`'s spec does not tie the payload to the pixels; `filter_image`, CRC-32 and Adler-32 are proven separately as in 4.4 |
+| `png/deflate.rs`, `match_len` only | the port's byte loop | the common prefix length of the two slices, at most 258, 8 bytes per step |
+| `json.rs`, `write_fixed` only | the digit loop of `fmt_fixed` | never writes outside its 40-byte buffer, and writes only ASCII (so the `&str` needs no re-validation) |
 | `pdf/writer.rs` | the port's object table and xref | `finish` returns exactly `pdf_file(body, offsets, root, info)`; `offsets_fit ==> xref_valid` |
 | `raster/kernels.rs` | `Canvas` (from `raster.rs`) | no write outside any buffer for any float input; integer arithmetic overflow-free |
 
@@ -651,6 +655,11 @@ Section 5 still applies. Changes and additions:
   `valid_utf8` is the definition `String` requires.
 - `json::owned`, `json::key_bytes`: `String::from(&str)` and `as_bytes()`, nothing assumed.
 - `json::number_value`: unchanged.
+- `json::str_of`: `from_utf8_unchecked`, the same pattern as `utf8_string`: `requires valid_utf8`,
+  proven at its one call from `write_fixed`'s ASCII postcondition.
+- `deflate::match_len` relies on vstd's `assume_specification` of `u64::trailing_zeros` (bit-level
+  axioms that vstd proves from its own recursive definition, trusting only that the instruction
+  computes that definition).
 - `sort::swap`: `slice::swap`, with the obvious `ensures`.
 - `sort::IdxLess`: that the plain trait and the gated `verus!` trait declare the same methods.
 - `png::deflate_raw`: trusted, and `encode`'s spec says only "some byte sequence `d`" there.
@@ -661,11 +670,13 @@ Section 5 still applies. Changes and additions:
 
 ### 9.4 Gates
 
-All on the final engine (`5866556`), aarch64:
+All on the final engine (`08f0261`), aarch64:
 
 | gate | result |
 |---|---|
-| `verus/verify.sh` | `244 verified, 0 errors`; native and wasm32 builds with `-D warnings` |
+| `verus/verify.sh` | `280 verified, 0 errors` at the default `--rlimit 10`; native and wasm32 builds with `-D warnings` |
+| rlimit margin | 280/280 at `--rlimit 6`; at 5 and below only `lemma_symmerge_compose` fails (16.6M units): about 2x headroom |
+| `cargo clippy --release` (CLI and wasm32) | 0 warnings |
 | `tests/check_golden.sh` | `golden: OK` |
 | `wasm_golden.mjs` | `24/24 byte-identical` |
 | `wasm_check.mjs` | `ABI OK: 0 imports`, `A.svg equals golden` |
@@ -675,11 +686,11 @@ All on the final engine (`5866556`), aarch64:
 | `serve_smoke.mjs` | `215 passed, 0 failed` |
 | `verus/check/run.sh` | pdf 13, png 26, raster 52, sort 2448 + NaN 301, json 100000: all identical to Zig |
 
-The one `diff_fuzz` difference is pre-existing: the unchanged port (`abbbb68`) gives the same output
-on the same mutant. It is the known number-format difference in an `E_PARAM` message (`99.9888`
+The one `diff_fuzz` difference is pre-existing: the engine before this round (`5bc76a5`) gives the
+byte-identical output on the same mutant, as did the unchanged port (`abbbb68`) in Phase D. It is the known number-format difference in an `E_PARAM` message (`99.9888`
 against Zig's `99.98875`) from unverified number formatting.
 
-### 9.5 Before and after
+### 9.5 Before and after (Phase D, `abbbb68` against `5866556`)
 
 Same machine, before = `abbbb68`, after = `5866556`. A second agent was benchmarking on the machine
 throughout (load average 3–4 on 12 cores), so engines were always alternated per case.
@@ -781,7 +792,7 @@ where opt-level 3 hoists or vectorizes them. Each fix is proven:
   11–19% faster than the port.
 - **wasm +26.6 KB:** one `merge` per comparator type; fixed by `&dyn IdxLess` (9.2).
 
-### 9.7 For the merge of later `rust-verus` work
+### 9.7 Merging `rust-verus` work
 
 Edits stay inside `sort.rs`, `json.rs`, `png.rs`, `png/deflate.rs`, `pdf/writer.rs`,
 `raster/kernels.rs`, `kerf-core/Cargo.toml` (a `check-cfg` lint for `verus_keep_ghost`) and
@@ -791,9 +802,148 @@ lives in `raster/kernels.rs` (with `V`, `Edge`, `MAX_SIDE`), and `raster.rs` los
 and gained `pub mod kernels; use kernels::{Canvas, Edge, V};`. A later change to `Canvas` on
 `rust-verus` would conflict there.
 
-A dry run (`git merge-tree`) of `rust-verus` as of `75610a4` into this branch conflicts only in
-`kerf-core/Cargo.toml` (both add a section at the end; keep both). Changes to `math.rs` are compiled
-into the verification run as unverified context, so `verify.sh` must still be rerun after a merge.
+`rust-verus` was merged at `5bc76a5` (`f532ae1`); the only conflict was `kerf-core/Cargo.toml`, and
+Verus stayed at 244/0. `math.rs` is compiled into the verification run as unverified context, so
+`verify.sh` must be rerun after every merge.
+
+### 9.8 Final round: the performance track's kernel prototypes, proven (`08f0261`)
+
+The performance track (`engines/rust/PERF.md`) left the verified modules alone and wrote prototypes
+for them (`perf/proto-*.patch`). PNG export was the one group where Rust trailed Zig fast (deflate and
+filtering were 57% of native time). The prototypes were written against the pre-verification
+modules. Here they went into the verified ones, with no spec weakened.
+
+**PNG filtering** (`png.rs`, proven):
+
+- `filter_score(kind, row, prev, bpp)` computes a filter type's heuristic score without writing the
+  row. There is one pass per type, split where `i` reaches `bpp`, and it is proven equal to
+  `row_score`.
+- `filter_row` is specialised the same way for the one pass that writes the chosen row.
+- **The spec got stronger.** `filter_image` now also proves that each row's filter byte is
+  `best_filter`: the lowest score, the earliest type on ties. Before, it stated only `<= 4`; the
+  heuristic itself was checked only end to end.
+- **The first proven version was 5x slower per pass than the prototype.** The magnitude
+  `if f < 128 { f as u64 } else { 256 - f as u64 }` selects in 64-bit lanes and does not vectorize.
+  Computing it in `u8` (`0u8.wrapping_sub(f)`) and widening afterwards matches the prototype's
+  `(v as i8).unsigned_abs()`, pass for pass. That was the whole difference.
+
+**DEFLATE** (`png/deflate.rs`, still the unverified exact port of Zig's flate, except `match_len`):
+
+- The hash tables are now `Box<[u16; N]>` with a masked hash, so their indexing has no bounds checks.
+  They are allocated directly on the heap.
+- `match_len` compares 8 bytes per step and finds the first difference with `trailing_zeros` of the
+  XOR. **It is now proven:**
+  - the result is the length of the common prefix, at most 258 and at most either slice length;
+  - this covers the 8-byte loads (`le64` injectivity and the first set bit's byte, both
+    `by (bit_vector)`) and the case of `prev` being shorter than `bytes`, where the old loop would
+    have panicked.
+  - Two intermediate proven forms lost speed:
+    - Indexing `s[i + k]` eight times kept eight bounds checks, which blocked load folding. Slicing
+      `&s[i..i + 8]` once folds them into one `ldr`.
+    - Locating the difference by halving (4, 2, 1) instead of `trailing_zeros` cost 4%.
+
+**`fmt_fixed`** (`json.rs`):
+
+- It is monomorphized per decimal count, so `10^decimals` divides by a constant, as Zig's `comptime`.
+  The float part stays unverified.
+- The digits are written by the verified `write_fixed`. It is proven never to write outside the 40
+  bytes and to write only ASCII.
+- `str_of` (`from_utf8_unchecked`, `requires valid_utf8`, proven from the ASCII postcondition through
+  `lemma_ascii_utf8`) therefore replaces `from_utf8(..).unwrap_or("0")`. The prototype's bare
+  `unsafe` becomes the `utf8_string` pattern.
+- **The writer's loops have guards that can never fire** (`digits > 0` when stripping zeros, `i > 1`
+  for integer digits). They give the bounds proof without power-of-ten reasoning, and the output is
+  unchanged for every input.
+
+**Not taken:**
+
+- **The non-generic sort core** (`proto-sort-core.patch`, -15.5 KB wasm against the port's 16
+  monomorphized SymMerges). The verified sort already sorts an index permutation behind
+  `&dyn IdxLess`, so the merge phase is compiled once (1.4 KB). What a non-generic core could still
+  remove is the per-type small-slice insertion: dropping it measured -1.85 KB (586,130 -> 584,280
+  bytes). That is not worth a heap index array for every sort of 20 or fewer elements.
+- **The small-sort regression** stays: 20 records of 48 bytes take 409 ns against 275 ns for the
+  port's sort (1.49x; 100 records 1.15x; f64 slices of 20 or fewer are 0.71–0.82x).
+  - Zig and the port shift elements (`rotate_right`); the verified insertion swaps them.
+  - Shifting a generic `T` needs `rotate_right` or `ptr::copy`, which vstd does not specify. That
+    would mean a new trusted function.
+  - The proven alternative, sorting indices and then applying the permutation, needs scratch arrays.
+    Heap scratch costs more than it saves at n <= 20, and Verus has no spec for slicing a stack
+    array mutably.
+  - It does not show in any per-function number.
+- **Adler-32** (4% of a native PNG export) keeps the Phase C loop.
+
+**Effect on PNG export**, native, each step against `5bc76a5`, geomean of the 13 PNG cases
+(pinned, best of the harness's medians):
+
+| step | PNG time |
+|---|---:|
+| hash tables + masked hash + prototype `match_len` | 0.84 |
+| the same with the proven `match_len` | 0.85 |
+| + proven `filter_score`, first form (64-bit magnitude) | 0.79 |
+| + proven `filter_score`, `u8` magnitude | 0.65 |
+| + proven specialised `filter_row` | **0.60** |
+| (the perf track's prototype applied to its own tree `f532ae1`, same harness) | 0.63 |
+
+`fmt_fixed`: `mesh` 0.94, `pdf` 0.96, `sheet-svg` 0.96, all non-PNG cases 0.98, matching the
+prototype.
+
+**Final engine against Zig.** The perf track's harness (`bench/run_suite.sh`) was used, with every
+engine run in one session pinned to cpu1 (load average 2.2–2.4). The ratio is the geomean over the
+126 cases.
+
+| | before this round (`5bc76a5`) | **final (`08f0261`)** |
+|---|---:|---:|
+| native in-process, Rust release / Zig fast | 0.80 | **0.75** |
+| native, PNG group, release / Zig fast | 1.17 | **0.69** |
+| native, Rust small / Zig small | not run | **0.67** (PNG 0.51) |
+| wasm, Rust shipped / Zig small (shipped) | 0.77 | **0.74** |
+| wasm, PNG group / Zig small | 1.09 | **0.77** |
+| wasm, Rust shipped / Zig fast | 1.18 | **1.13** (PNG 1.23, was 1.75) |
+| CLI processes, release / Zig fast | not run | 1.06 |
+
+PNG rows, median ms:
+
+| case | Zig fast | Zig small | Rust before | **Rust final** | Rust small final |
+|---|---:|---:|---:|---:|---:|
+| truss A png, native | 37.80 | 102.82 | 46.52 | **29.75** | 58.35 |
+| truss B png, native | 48.09 | 141.51 | 56.97 | **34.05** | 70.00 |
+| palmer A png, native | 48.06 | 141.00 | 57.61 | **34.31** | 73.17 |
+| truss A png, wasm | 69.10 | 108.83 | 119.74 | **88.26** | |
+| truss B png, wasm | 84.25 | 138.56 | 144.83 | **102.27** | |
+| palmer A png, wasm | 91.03 | 142.32 | 156.98 | **110.81** | |
+
+**Where Zig is still ahead:**
+
+- natively, `fmt` (1.25), `web-mesh` (1.25) and `mesh` (1.01): JSON writing and allocation (see
+  PERF.md);
+- the wasm against Zig fast, a size-for-speed choice.
+
+**Sizes** (bytes; raw / gzip / brotli):
+
+| artifact | before this round (`5bc76a5`) | final |
+|---|---:|---:|
+| CLI release | 1,656,600 / 865,139 / 682,169 | 1,663,352 / 868,181 / 684,480 |
+| CLI small | 1,229,432 / 644,797 / 529,983 | 1,233,192 / 646,678 / 531,360 |
+| wasm | 584,657 / 262,054 / 221,302 | 588,538 / 263,487 / 222,092 |
+
+Of the +3.9 KB of wasm, about 1.5 KB is PNG (ten specialised loops, two copies) and 2.4 KB is the
+ten `fmt_fixed` instances. Zig's shipped wasm is 699,181 / 288,292 / 236,991.
+
+**Verification:** 280 items, 10.5 s wall (21.9 s CPU).
+
+| module | time |
+|---|---:|
+| sort | 6.1 s |
+| png | 5.1 s |
+| json | 2.4 s |
+| pdf/writer | 1.7 s |
+| raster/kernels | 1.4 s |
+| png::deflate | 0.6 s |
+
+Each new proof took one to three attempts. The rlimit margin is unchanged (9.4). The heaviest PNG
+function, `filter_image`, now takes 4.9M units (6.2M before), under a third of
+`lemma_symmerge_compose`.
 
 ## 10. Files and commands
 
@@ -826,4 +976,7 @@ Commits on `rust-verus-proofs`:
 | `abbbb68` | merge of `rust-verus` (the port) |
 | `e6bea62` | verified kernels integrated into kerf-core; `kerf-verified` removed |
 | `5866556` | faster proven forms where the integration was slower |
-| this commit | section 9 |
+| `1f92334` | section 9 |
+| `5bc76a5` | merge of `rust-verus` (performance track, `f532ae1`) |
+| `08f0261` | the performance track's kernel prototypes as verified code |
+| this commit | section 9.8 and PERF.md's final numbers |
