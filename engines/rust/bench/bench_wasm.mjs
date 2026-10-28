@@ -1,9 +1,9 @@
-// Usage: node bench/bench_wasm.mjs <kerf.wasm> <cases dir> [--filter S] [--min-ms N] [--min-reps N]
+// Usage: node bench/bench_wasm.mjs <kerf.wasm> <cases dir> [--filter S] [--exclude S] [--min-ms N] [--min-reps N]
 // Wasm twin of bench/bench.rs over the SPEC 13.1 ABI (any engine's kerf.wasm): one TSV row per case, median/min per call.
 import fs from 'node:fs';
 const [wasm, dir, ...rest] = process.argv.slice(2);
 const opt = (k, d) => { const i = rest.indexOf(k); return i >= 0 ? rest[i + 1] : d; };
-const filter = opt('--filter', ''), minMs = +opt('--min-ms', 300), minReps = +opt('--min-reps', 10);
+const filter = opt('--filter', ''), exclude = opt('--exclude', null), minMs = +opt('--min-ms', 300), minReps = +opt('--min-reps', 10);
 const inst = new WebAssembly.Instance(new WebAssembly.Module(fs.readFileSync(wasm)), {});
 const ex = inst.exports, enc = new TextEncoder();
 function call(f, i) {
@@ -16,7 +16,7 @@ function call(f, i) {
 console.log('label\tfn\tmedian_us\tmin_us\treps\tbytes\tstatus');
 for (const line of fs.readFileSync(`${dir}/manifest.tsv`, 'utf8').split('\n').filter(Boolean)) {
   const [label, fn, file] = line.split('\t');
-  if (!label.includes(filter)) continue;
+  if (!label.includes(filter) || (exclude && label.includes(exclude))) continue;
   const f = enc.encode(fn), i = new Uint8Array(fs.readFileSync(`${dir}/${file}`));
   call(f, i); call(f, i);
   const times = []; let r; const start = performance.now();

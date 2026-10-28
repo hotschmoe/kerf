@@ -70,3 +70,23 @@ pub fn params_rows(ty: Type) -> Vec<Row> {
         Type::Joint => joint::Params::rows(),
     }
 }
+
+/// Whether `key` names a parameter row of `ty` (what `catalog::allowed_key` asks per document key).
+pub fn params_has_key(ty: Type, key: &str) -> bool {
+    match ty {
+        Type::Lumber => lumber::Params::has_key(key),
+        Type::Panel => panel::Params::has_key(key),
+        Type::CmuWall => cmu_wall::Params::has_key(key),
+        Type::Concrete => concrete::Params::has_key(key),
+        Type::Rebar => rebar::Params::has_key(key),
+        Type::AnchorBolt => anchor_bolt::Params::has_key(key),
+        Type::Connector => connector::Params::has_key(key),
+        Type::Truss => truss::Params::has_key(key),
+        Type::Membrane => membrane::Params::has_key(key),
+        Type::Fill => fill::Params::has_key(key),
+        Type::Insulation => insulation::Params::has_key(key),
+        Type::Solid => solid::Params::has_key(key),
+        Type::Flashing => flashing::Params::has_key(key),
+        Type::Joint => joint::Params::has_key(key),
+    }
+}

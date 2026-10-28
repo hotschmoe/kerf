@@ -13,6 +13,7 @@ pub fn main(init: std.process.Init) !void {
     while (it.next()) |a| try args.append(gpa, a);
     const dir = args.items[0];
     var filter: []const u8 = "";
+    var exclude: ?[]const u8 = null;
     var min_ms: i96 = 300;
     var min_reps: usize = 10;
     var i: usize = 1;
@@ -20,6 +21,7 @@ pub fn main(init: std.process.Init) !void {
         const k = args.items[i];
         const v = args.items[i + 1];
         if (std.mem.eql(u8, k, "--filter")) filter = v;
+        if (std.mem.eql(u8, k, "--exclude")) exclude = v;
         if (std.mem.eql(u8, k, "--min-ms")) min_ms = try std.fmt.parseInt(i96, v, 10);
         if (std.mem.eql(u8, k, "--min-reps")) min_reps = try std.fmt.parseInt(usize, v, 10);
     }
@@ -34,6 +36,7 @@ pub fn main(init: std.process.Init) !void {
         const func = f.next().?;
         const file = f.next().?;
         if (std.mem.indexOf(u8, label, filter) == null) continue;
+        if (exclude) |x| if (std.mem.indexOf(u8, label, x) != null) continue;
         const p = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ dir, file });
         try cases.append(gpa, .{ .label = label, .func = func, .input = try cwd.readFileAlloc(io, p, gpa, .limited(64 << 20)) });
     }

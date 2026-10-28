@@ -449,7 +449,7 @@ pub fn type_names() -> Vec<&'static str> {
 
 /// Is `key` an accepted top-level key of a component of type `ty`?
 pub fn allowed_key(ty: &Entry, key: &str) -> bool {
-    COMMON.iter().any(|c| c.0.contains(&key)) || ty.params().iter().any(|p| p.names.contains(&key))
+    COMMON.iter().any(|c| c.0.contains(&key)) || builders::params_has_key(ty.ty, key)
 }
 
 /// Every accepted top-level key of a component of type `ty` (type params, then common fields).

@@ -2,9 +2,40 @@
 //!
 //!   cargo run --profile release --example bench -- <cases dir> [--filter S] [--exclude S] [--min-ms N] [--min-reps N]
 //!   cargo run --profile release --example bench -- <cases dir> --loop N [--filter S]   (profiling: every case N times, no report)
+//!   cargo run --profile release --example bench -- <cases dir> --count [--filter S]    (allocations and bytes per call)
 //!
 //! Prints one TSV row per case: label, fn, median us, min us, reps, output bytes, status.
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 use std::time::{Duration, Instant};
+
+/// The system allocator with counters, so the report can show allocation churn per call (`--count`).
+struct Counting;
+static ALLOCS: AtomicU64 = AtomicU64::new(0);
+static REALLOCS: AtomicU64 = AtomicU64::new(0);
+static BYTES: AtomicU64 = AtomicU64::new(0);
+
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        ALLOCS.fetch_add(1, Relaxed);
+        BYTES.fetch_add(l.size() as u64, Relaxed);
+        // SAFETY: forwarded unchanged to the system allocator.
+        unsafe { System.alloc(l) }
+    }
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        // SAFETY: forwarded unchanged to the system allocator.
+        unsafe { System.dealloc(p, l) }
+    }
+    unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
+        REALLOCS.fetch_add(1, Relaxed);
+        BYTES.fetch_add(n.saturating_sub(l.size()) as u64, Relaxed);
+        // SAFETY: forwarded unchanged to the system allocator.
+        unsafe { System.realloc(p, l, n) }
+    }
+}
+
+#[global_allocator]
+static GLOBAL: Counting = Counting;
 
 struct Case {
     label: String,
@@ -36,6 +67,16 @@ fn main() {
             )
         })
         .collect();
+    if args.iter().any(|a| a == "--count") {
+        println!("label\tallocs\treallocs\tbytes");
+        for c in &cases {
+            let (a, r, b) = (ALLOCS.load(Relaxed), REALLOCS.load(Relaxed), BYTES.load(Relaxed));
+            drop(kerf_core::api::call(c.func.as_bytes(), &c.input));
+            let (a2, r2, b2) = (ALLOCS.load(Relaxed), REALLOCS.load(Relaxed), BYTES.load(Relaxed));
+            println!("{}\t{}\t{}\t{}", c.label, a2 - a, r2 - r, b2 - b);
+        }
+        return;
+    }
     if let Some(n) = loops {
         let mut total = 0usize;
         for c in &cases {
