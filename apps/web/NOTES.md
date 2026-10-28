@@ -1,7 +1,7 @@
 # apps/web — Kerf web workstation
 
 TypeScript + DOM + three.js, built with Vite. The engine is the Zig wasm (`engines/zig/dist/kerf.wasm`). The app runs in two modes:
-**static** (hosted / file-opened: OPEN/SAVE files, browser chat with your keys) and **workspace** (served by `kerf serve`: a folder of
+**static** (hosted / file-opened: OPEN/SAVE files; chat is off and says it needs `kerf serve` and a local agent CLI) and **workspace** (served by `kerf serve`: a folder of
 `*.kerf.json` is the source of truth, local agents edit it with the CLI, this UI watches and edits too; see `spec/SERVE.md`).
 (The rust stack was archived; `dist-rust`/`build:rust` no longer exist.)
 
@@ -14,8 +14,8 @@ npm run build:serve     # the bundle `kerf serve` embeds -> dist-serve/ (relativ
 npm run dev             # vite dev server on :5173 (dev:fixture = no engine). Probes /api/info on the page origin; use
                         #   http://localhost:5173/?server=http://127.0.0.1:7700 with `kerf serve --allow-origin http://localhost:5173`
 npm run typecheck
-npm run test:unit       # node test/unit.mjs  (Vite SSR loader: units, stroke font, harness loop, OpenAI-compatible adapter, agent events, ...)
-node test/e2e.mjs zig   # puppeteer, STATIC mode: demo chat, notes/undo/drag, real SDK vs fake Messages API, exports + dxf/pdf checks
+npm run test:unit       # node test/unit.mjs  (Vite SSR loader: units, stroke font, raw ABI loader, agent store, agent events)
+node test/e2e.mjs zig   # puppeteer, STATIC mode: chat-off note, notes/undo/drag, save/open, exports + dxf/pdf checks
 npm run test:serve      # puppeteer, WORKSPACE mode vs test/mock-serve.mjs (real engine wasm, scripted agent); needs dist-serve
 KERF_SERVE_BIN=<kerf built with -Dui=...dist-serve> node test/e2e-serve.mjs --real     # the same suite vs the REAL server
 node test/mock-serve.mjs --port 7710 --dir /tmp/details   # the mock as a dev server (then open http://127.0.0.1:7710/)
@@ -25,9 +25,8 @@ node tools/serve.mjs apps/web/dist-zig 8080   # static: http://localhost:8080/?s
 of a wasm engine: UI development without an engine build. Fixture mode is never part of the rust/zig bundles.
 
 URL parameters (also used by the test scripts; workspace: `doc=<file>` opens a library file, `static=1` forces static mode, `workspace=1`/`server=<origin>` probe a server from a non-serve build): `sample=<id>` open a reference detail, `view=A`, `mode=view|3d|sheet`,
-`select=<id>`, `tab=parts|notes|diff|diag`, `demo=1` (scripted Claude, no API; autoplays a build conversation; `auto=0`
-to only enable it, `fast=1` no streaming delay), `worker=0` run the engine on the main thread, `cut=1` 3D section cut.
-`window.__ready`, `__rendered`, `__rendered3d`, `__renderedSheet` flags and `window.__kerf` ({app, harness, engine, ...})
+`select=<id>`, `tab=parts|notes|diff|diag`, `worker=0` run the engine on the main thread, `cut=1` 3D section cut.
+`window.__ready`, `__rendered`, `__rendered3d`, `__renderedSheet` flags and `window.__kerf` ({app, session, engine, ...})
 exist for tests.
 
 ## Architecture (src/)
@@ -40,14 +39,11 @@ exist for tests.
 | `strokefont.ts` | Hershey Simplex strokes from `kerf-simplex.json` |
 | `raster.ts` | `kerf_render`: IR (or sheet SVG) -> PNG on an OffscreenCanvas (~1400 px, white bg) |
 | `view3d.ts` | three.js (WebGLRenderer, ortho camera, own orbit/pan/zoom, LineSegments2 feature edges, manila stencil cut caps); lazy chunk |
-| `chat/` | `harness.ts` tool loop + retries, `transport.ts` (official SDK, lazy chunk), `mock.ts` (scripted Claude + history validator), `tools.ts`, `images.ts` |
-| `chat/openai.ts` | THE OpenAI-compatible chat-completions adapter (OpenAI, Gemini, xAI, OpenRouter, Custom): history translation, SSE/JSON parsing, error mapping |
-| `chat/providers.ts`, `chat/session.ts` | provider table + localStorage store; `ChatSession` = selected provider, transport factory, one send/stop surface for Harness and AgentRunner |
-| `chat/net.ts` | how a provider request leaves the browser: `directFetch` (CORS error message) or `proxyFetch` (POST /api/llm) |
+| `chat/store.ts`, `chat/session.ts` | localStorage store (selected agent, resume session per agent and document); `ChatSession` = selected agent, readiness text, one send/stop surface over `AgentRunner`. Static mode: `available` is false |
 | `chat/agent.ts` | `AgentRunner`: POST /api/agent/run, SSE `agent` events (Claude Code / Grok Build / Codex shapes) -> console events |
 | `workspace/client.ts` | `kerf serve` HTTP + SSE client, token handling (`?token=` -> sessionStorage -> Bearer) |
 | `workspace/workspace.ts` | `Workspace` (implements `App.remote`): library list, open file, ETag, event handling, own-write echo detection |
-| `ui/` | header, console, library, setup (provider form), viewport (tabs + sheet viewer), inspector, status line, popups |
+| `ui/` | header, console, library, viewport (tabs + sheet viewer), inspector, status line, popups |
 | `fixture-engine.ts` | dev-only engine double |
 
 ## Workspace mode (served by `kerf serve`)
@@ -57,73 +53,45 @@ exist for tests.
 - **Left panel**: a LIBRARY list above the console messages (file stem, `E`/`W` count tags from `GET /api/docs`, collapsible, `+ NEW` form -> `POST /api/docs`).
   `ADD SAMPLE` / `IMPORT` copy a reference detail / a JSON file INTO the folder (create + `set doc` apply). Last opened file in localStorage `kerf.lastDoc`.
 - **Writes**: `App.applyOps` -> `Workspace.apply` -> `POST /api/docs/:file/apply {ops, why, actor, if_match}` for designer edits (notes, citations, drag, undo)
-  and for browser-LLM `kerf_apply` (`actor:"llm"`, logged `who:"llm"`). With no file open the first LLM `set doc` creates `<doc.id>.kerf.json`.
+  (`actor:"designer"`).
   `if_match` is the ETag string exactly as the server sent it (with quotes). 409 -> reload from disk + toast `DOCUMENT CHANGED ON DISK — RELOADED`
-  (an LLM tool call gets the same message back as a tool error). Undo is a `set doc` of the before-snapshot and is limited to op groups of the open file.
+  Undo is a `set doc` of the before-snapshot and is limited to op groups of the open file.
 - **Live reload**: one EventSource on `/api/events`. `doc_changed` for the open file -> GET it; if it equals a state we already know (our own write echoing back,
   compared by key-sorted JSON) nothing happens, otherwise `App.syncFromRemote` replaces the doc in place (zoom/pan, active view and selection survive)
-  and the next model turn is told `EXTERNAL EDIT ...`. `log` events whose `who` is not designer/llm become `LOCAL AGENT` manila cards (blue left rule: why, file,
+  `log` events whose `who` is not designer/llm become `LOCAL AGENT` manila cards (blue left rule: why, file,
   N OPS, changed ids, summary head, collapsible ops JSON). Cards are suppressed while a run started from this UI is active and for 2 s after it
   (the server polls every 500 ms, so its log lines trail the exit event). Status line: `LOCAL AGENT · LAST EDIT 12S AGO` (ticks each second), `WORKSPACE OFFLINE`.
 - **Export** buttons call `GET /api/docs/:file/export` (DXF/PDF/SVG + a PNG button); PNG exists only in workspace mode (the wasm has no png).
 - **Static features kept**: OPEN/SAVE/OPEN SAMPLE behave as before; in workspace mode they become IMPORT/SAVE (download a copy)/ADD SAMPLE.
 
-## Providers (console header picker + SETUP form)
-| choice | route | notes |
-|---|---|---|
-| Local agent: Claude Code / Grok Build / Codex / `.kerf/agents.json` ids | `/api/agent/run` + SSE (workspace only) | no key; manila cards `LOCAL AGENT · <name>`; Bash `kerf ...` calls show as `▸ KERF APPLY ...` with `✓ 0 ERR 0 WARN` parsed from the output; Read/Write/Edit as `READ details/x.kerf.json`; session id kept per agent+doc (`kerf.session.<agent>.<file>`), sent as `session_id`; `NEW` clears it; STOP -> `/api/agent/stop`. Text only (no images). |
-| Anthropic | official SDK (`maxRetries:0`, harness backoff); workspace: SDK `fetch` replaced so the request goes through `/api/llm` | key/model keep their original storage keys `kerf.apiKey`/`kerf.model` |
-| OpenAI, Gemini, xAI, OpenRouter, Custom | ONE adapter (`chat/openai.ts`), streaming SSE | workspace: `/api/llm`; static: direct, with `THE BROWSER BLOCKED THE REQUEST TO <host> (CORS)...` on failure |
-Default models (verified 2026-10-06; all editable, datalist suggestions): OpenAI `gpt-6.1-sol` (also `gpt-6-astra`, `gpt-6-luna`; developers.openai.com model catalog),
-Gemini `gemini-3.8-flash` (`gemini-3.1-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`; ai.google.dev thinking page + OpenAI-compat example), xAI `grok-4.7`
-(`grok-4.6`, `grok-4.3`, `grok-4.20-0309-reasoning`; docs.x.ai/docs/models), OpenRouter `anthropic/claude-sonnet-5.5` (ids checked against
-openrouter.ai/api/v1/models), Anthropic `claude-opus-5-5` / `claude-sonnet-5-5`. Custom has no default (Ollama-style `http://localhost:11434/v1`).
-Keys: localStorage per provider (`kerf.key.<id>`), never logged, only ever in the request `headers`; the real server never writes them to disk (tested).
-Switching provider resets the model conversation (histories are not portable); NEW does too.
-
-### OpenAI-compatible adapter facts (what is verified, what is not)
-- Wire format: `tools:[{type:"function",function:{name,description,parameters}}]`; assistant `tool_calls[{id,type:"function",function:{name,arguments:<JSON string>}}]`;
-  results `{role:"tool",tool_call_id,content:<string>}`. **Tool messages are text only** (OpenAI, xAI, OpenRouter docs show string content; no provider documents images in
-  tool results), so a `kerf_render` PNG goes in a follow-up `{role:"user",content:[text,image_url data URL]}` placed after ALL tool messages of that round, and the tool
-  message says so. Verified end to end against the real server's proxy + a fake provider (`test/e2e-serve.mjs`).
-- No `max_tokens`/`max_completion_tokens`, `temperature`, `tool_choice` are sent (OpenAI reasoning models reject `max_tokens`; the provider default is large enough).
-- OpenAI gpt-5.4+/gpt-6: "Function tools with reasoning_effort are not supported ... in /v1/chat/completions" -> on that 400 the request is retried once with
-  `reasoning_effort:"none"` and remembered for the session (unit + e2e tested).
-- Gemini OpenAI layer: tool calls may arrive without `index`, with an empty `id`, whole in one chunk, `finish_reason:"stop"` with tool calls, and carry
-  `extra_content.google.thought_signature` which MUST be replayed verbatim (Gemini 3 400s otherwise): all handled (call id synthesized, `oai_extra` replayed);
-  tool messages also carry `name`. Errors can be an array `[{error:{...}}]`.
-- OpenRouter: `: OPENROUTER PROCESSING` comment lines ignored; `reasoning_details` kept and echoed back verbatim in the assistant message (their tool-calling guidance);
-  nested provider errors (`error.metadata.raw`) are appended to the message. `X-Title: Kerf` sent.
-- xAI: Chat Completions is documented as a *legacy* endpoint ("new features come to Responses first") but still serves tool calling + `image_url`; streamed calls arrive whole.
-- Vision: `image_url` data URLs for designer images and render follow-ups. CUSTOM has a VISION checkbox; a no-vision model gets a visible stand-in instead of the image.
-- NOT verified against live APIs (no keys here): all fixtures in `test/fixtures/openai/` are shaped from the provider docs and public bug reports, not recorded
-  from live calls (the Claude Code / Grok Build / Codex agent fixtures ARE recorded from the real CLIs on this machine).
+## Chat (local agents only)
+The console talks only to local agent CLIs through `kerf serve`'s bridge (`POST /api/agent/run`, SSE `agent` events). No API keys, no provider HTTP calls, no
+`/api/llm` (removed in both engines; it answers 404), no Anthropic SDK. The header picker lists the agents from `/api/info` (unavailable ones disabled);
+the choice is `localStorage kerf.agent`. Manila cards `LOCAL AGENT · <name>`; Bash `kerf ...` calls show as `▸ KERF APPLY ...` with `✓ 0 ERR 0 WARN` parsed from
+the output; Read/Write/Edit as `READ details/x.kerf.json`; the agent's session id is kept per agent and document (`kerf.session.<agent>.<file>`) and resumed on the
+next message; NEW clears them. Agents take text only (no image attach). Static mode: the composer and picker are disabled and the console says
+`CHAT NEEDS \`kerf serve\` AND A LOCAL AGENT CLI (claude, codex, grok OR pi)`; the status line shows `CHAT OFF`.
+`spec/llm/system.md` and `tools.json` are no longer loaded by the web app (`kerf guide` embeds system.md; `tools.json` is used by `spec/evals/run.mjs`).
 
 ## Tests
-- `test/unit.mjs` (31): + OpenAI adapter (request shaping, history translation, parallel/interleaved streamed tool calls, Gemini/OpenRouter/xAI quirks, error mapping,
-  reasoning retry, multi-round Harness loop, no-vision, invalid args), net (CORS message, proxy envelope), providers/store, agent event parsing for 3 CLIs.
-- `test/e2e.mjs zig` (10): static mode, unchanged.
-- `test/e2e-serve.mjs` (16 vs mock, 11 vs real): detection, live library, external edit reload (view/zoom/selection preserved) + LOCAL AGENT card, designer edits (`if_match`,
-  log, no echo reload), 409, NEW/ADD SAMPLE, export, token, offline, scripted agent run/resume/STOP, Custom provider via `/api/llm` (file created by first LLM apply, render image
-  follow-up), 401/reasoning retry, Anthropic SDK via proxy, CORS message in static mode, provider/setup UI. `test/mock-serve.mjs` implements SERVE.md with the real engine wasm;
-  the REAL server passes everything runnable (the rest is mock-only: it needs mock hooks or http providers). Screenshots: `KERF_SHOTS=dir`.
+- `test/unit.mjs` (10): units, stroke font, raw ABI loader, agent store, agent event parsing for 3 CLIs (fixtures recorded from the real CLIs).
+- `test/e2e.mjs zig` (8): static mode (chat-off note), notes/undo/drag, save/open, worker loader (fixture only), exports + dxf/pdf checks.
+- `test/e2e-serve.mjs` (13 vs mock, 9 vs real): detection, live library, external edit reload (view/zoom/selection preserved) + LOCAL AGENT card, designer edits (`if_match`,
+  log, no echo reload), 409, NEW/ADD SAMPLE, export, token, offline, scripted agent run/resume/STOP, `/api/llm` is 404 and `/api/info` has no `proxy`, agent picker.
+  `test/mock-serve.mjs` implements SERVE.md with the real engine wasm; the REAL server passes everything runnable (the rest is mock-only: it needs mock hooks). Screenshots: `KERF_SHOTS=dir`.
 
 ## Decisions
 - **Renderer**: plain `WebGLRenderer` (WebGL2). Measured with a minimal scene: WebGL path 586 kB raw / 146 kB gzip (three core + renderer);
   `three/webgpu` path 798 kB raw / 218 kB gzip, i.e. +212 kB / +72 kB gz, and the fat-line (`LineSegments2`) feature edges would need TSL
   node-material variants. WebGPU was not worth it for a flat-shaded 2.5D viewer. three is a lazy chunk (first 3D tab only).
-- **Lazy chunks**: three.js (view3d) and `@anthropic-ai/sdk` load on demand, so the initial bundle is the app shell only.
+- **Lazy chunks**: three.js (view3d) loads on demand, so the initial bundle is the app shell only.
 - **Sheet**: the SHEET tab shows the engine's own `export {format:"svg", sheet:true}` output in an `<img>` (what is exported is what you see).
 - **Canvas 2D** not SVG for the drawing viewport: Path2D batches per pen, repaint in 1-2 ms; picking is done on flattened geometry.
-- **Op log undo** restores a snapshot of the document taken before the op group and tells Claude on the next turn
-  (`[designer edits since your last turn: ...]`).
+- **Op log undo** restores a snapshot of the document taken before the op group.
 
 ## SPEC ISSUES
 - SERVE.md `if_match`: the UI sends the ETag exactly as received (`"<mtime_ms>-<size>"` with the quotes). The real server accepts it with or without quotes. Please say so.
-- SERVE.md `/api/llm`: the UI always sends `base_url` (also for known providers: `https://api.openai.com/v1`, `https://api.anthropic.com`, ...) plus `path` (`/chat/completions`, `/v1/messages`),
-  the provider's own headers (`authorization: Bearer ..` or `x-api-key`) and `body` as a JSON OBJECT (not a string). Works against the real server.
-- SERVE.md `/api/docs/:file/apply` `actor`: the UI sends `"llm"` for tool calls made by a browser-side model (Anthropic/OpenAI/...) and `"designer"` for the designer; both are
-  logged (`who:"llm"` / `"designer"`). Local-agent edits are `who:"agent"`. The UI shows cards only for who not in {designer, llm}.
+- SERVE.md `/api/docs/:file/apply` `actor`: the UI sends `"designer"`; `"llm"` is still accepted by the server. Local-agent edits are `who:"agent"`. The UI shows cards only for who not in {designer, llm}.
 - SERVE.md events: the UI accepts named SSE events (`event: doc_changed`) as the real server sends them, and also unnamed `data: {"type":...}`.
 - Agent event shapes the UI renders are now listed in `chat/agent.ts` (Claude Code stream-json, Grok Build streaming-json, Codex `--json`); `{type:"text", text}` = a plain line,
   `{type:"text", data}` = a streamed token delta (Grok).
@@ -133,18 +101,16 @@ Switching provider resets the model conversation (histories are not portable); N
 - The `view` argument of `drawing` / `export` is passed as the view id string (`"A"`); `export` gets `sheet:true` for PDF and for the SHEET tab's SVG.
 - `catalog` with `format:"markdown"` may return JSON-encoded string or raw text; both are accepted.
 
-## Bundle after workspace mode + providers (dist-serve, zig stack; raw / gzip-9)
-Initial app-shell JS 116.6 kB / 43.1 kB (was 80.5 / 30.8 before workspace/providers/agents/OpenAI adapter, +36 kB raw), CSS 20.1 kB, wasm 692 kB raw; lazy: three.js 566 kB, Anthropic SDK 207 kB / 49.8 kB.
-The OpenAI-compatible adapter needs no SDK (plain fetch + SSE parsing), so it adds nothing to the lazy chunks. `dist-serve` total 1.7 MB.
+## Bundle after removing the direct providers (dist-serve, zig stack; raw / gzip-9)
+Initial app-shell JS 76.5 kB / 28.1 kB (was 119.0 / 44.6 with the OpenAI adapter, harness and SDK glue), CSS 19.2 kB; lazy: three.js 566 kB / 142 kB. The lazy Anthropic SDK chunk (206.8 kB / 50.4 kB) and its two helper chunks are gone.
 
 ## Measured numbers (this box: aarch64, headless chromium, other agents loading the CPU, so timings are +-30% noisy)
 Bundle (dist JS/CSS/wasm/fonts, `tools/size_report.sh`; raw / gzip-9 / brotli-11):
-| stack | initial JS (app shell) | CSS | fonts (3 woff2) | wasm | lazy 3D chunk (three.js) | lazy SDK chunk |
-|---|---|---|---|---|---|---|
-| rust-ts | 80.5 kB / 30.8 / 27.2 | 17.6 / 4.4 / 3.9 | 25.6 / 25.8 / 25.7 | 735.1 kB / 275.1 / 223.5 | 566.5 / 139.8 / 114.8 | 206.8 / 49.8 / 40.4 |
-| zig-ts | same JS/CSS/fonts | | | 581.2 kB / 217.5 / 174.1 | same | same |
-Everything the first render needs: shell JS + CSS + fonts + wasm. three.js and the Anthropic SDK are only fetched when the 3D tab / a real
-API call is used.
+| stack | initial JS (app shell) | CSS | fonts (3 woff2) | wasm | lazy 3D chunk (three.js) |
+|---|---|---|---|---|---|
+| rust-ts | 80.5 kB / 30.8 / 27.2 | 17.6 / 4.4 / 3.9 | 25.6 / 25.8 / 25.7 | 735.1 kB / 275.1 / 223.5 | 566.5 / 139.8 / 114.8 |
+| zig-ts | same JS/CSS/fonts | | | 581.2 kB / 217.5 / 174.1 | same |
+Everything the first render needs: shell JS + CSS + fonts + wasm. three.js is only fetched when the 3D tab is used. (Numbers above predate the removal of the direct providers; see the section above for the shell JS now.)
 
 Timing (median of 5 fresh loads, `node test/perf/measure.mjs rust`; engine on main thread, `?worker=1` = Web Worker):
 | sample | time to first render | engine ready (fetch+compile) | wasm compile |
@@ -159,27 +125,24 @@ Worker vs main thread: engine calls are 5-20 ms, so postMessage structured-clone
 Worker version is NOT faster here (and starts later). Default is the main thread; `?worker=1` keeps the Worker path (tested).
 2D paint stress (`test/perf/paint-stress.mjs`): 40,000 hatch lines + 400 text items: model build 57 ms, repaint 2.3 ms avg (Path2D batches).
 
-## Features implemented (static mode; workspace + providers are described above)
+## Features implemented (static mode; workspace + chat are described above)
 Layout (console | viewport | inspector | 3270 status line, narrow-screen tabs), vellum + blue grid, true-pen-weight canvas drawing with arcs, dashes,
 hatch lines, fills, stroke-font text; pan/zoom/fit; hover/select by `src`; drag notes (sets `place`, top-left anchor, as an op); 3D (WebGL2,
 flat shading with the style colors, feature edges 1.25 px, orbit/pan/zoom, FRONT/ISO/TOP/RIGHT, manila CUT caps); SHEET (engine SVG);
-component scalar fields (size, embed, diameter, ...) editable in the inspector (one `update components/<id>` designer op each), chat with BYO key, model picker, image paste/drop/attach (<=1568 px), tool loop with kerf_apply/inspect/render, retries, refusal and
-fallback handling, STOP, demo mode; inspector PARTS (auto-compact), NOTES editor with citations, VERIFIED stamps (designer actor), DIFF with undo, DIAG;
+component scalar fields (size, embed, diameter, ...) editable in the inspector (one `update components/<id>` designer op each);
+inspector PARTS (auto-compact), NOTES editor with citations, VERIFIED stamps (designer actor), DIFF with undo, DIAG;
 export DXF/PDF/SVG, save/open `.kerf.json`; samples menu.
 
 ## REQUESTS
 - engines/zig (kerf serve): after a UI-started agent run the `log` SSE lines arrive up to ~1 s after the agent's `exit` event (poll interval). The UI hides cards for 2 s after a
   run; publishing the log event right when `kerf apply -w` returns (or before `exit`) would make this exact.
-- engines/zig (kerf serve): `POST /api/agent/run` could take `images: [{name, data_base64}]` (saved under `<dir>/.kerf/attachments/`, paths appended to the message) so the UI can send
-  screenshots to local agents; today the console disables ATTACH for them.
+- engines/zig (kerf serve): `POST /api/agent/run` already takes `images` (SERVE.md) but the console sends text only; wiring attach back for agents is possible.
 - engines/zig: `drawing` for `kind:"iso"` views returned zero items in an earlier build (the UI shows an explicit "engine returned no drawing items" panel); recheck.
 - engines: title text with an em dash ("... — ELEVATION"): the web app folds such characters client-side, exporters should too.
 
 ## Known gaps
 - No pinch-zoom on touch devices (wheel/drag only). 3D has no touch orbit tuning.
 - Undo is a snapshot restore of the last op group only (no redo). In workspace mode only op groups of the open file, and it is itself a write to disk.
-- The Anthropic path is verified against a local fake Messages API, the OpenAI-compatible path against recorded-from-docs fixtures + a fake chat-completions server; neither against the live
-  providers (no keys). Gemini thought signatures and OpenRouter reasoning echo are implemented from public reports and untested live.
 - Sheet view is an image of the engine SVG: no picking on the sheet. `kerf_render` PNG uses the canvas renderer, not byte-identical to the SVG export.
 - Workspace: one open document per tab; a second browser tab on the same folder works (events) but its designer edits show up as `who:designer` log lines without a card.
   Not-yet-done: renaming/deleting documents from the library, conflict merge UI (a 409 simply reloads), agent runs for a different file than the open one.

@@ -14,7 +14,7 @@ Performance track: see `PERF.md` (benchmarks, profiles, what was changed and mea
 | 3 wasm | exact SPEC 13.1 ABI, 0 imports; `wasm_golden.mjs`: `24/24 byte-identical`; `wasm_check.mjs` writes an `A.svg` equal to the golden; loaded in the web app (screenshot read, looks right, header shows `ENGINE: KERF-RUST`) |
 | 4 CLI parity | `cli_ergonomics.mjs`: `145 passed, 0 failed`; ~28 invocation pairs (stdout/stderr/exit/files) compared by hand identical except `kerf-rust` in `version` |
 | 5 fuzz | `tests/fuzz.py`: 0 crashes (1000 x 3 release; 1500 x 3 and 12 more seeds on a debug build with overflow checks); `tests/diff_fuzz.py` (same mutants through both CLIs, stdout bytes + exit code): 0 differences in 2000 + 1000 mutants x 3 functions |
-| 6 `kerf serve` | **215/215** `serve_smoke.mjs` checks; web `e2e-serve.mjs --real` 11 passed, 6 mock-only skipped. **Missing: outbound HTTPS in `/api/llm`** (std has no TLS, no crates allowed). `proxy::plan` applies the same URL rules, `forward` answers 502 `E_UPSTREAM` "this kerf build has no TLS" for `https://` upstreams; plain-http upstreams (localhost, LAN, `custom` provider) work. Windows is untested (signal handling and the token source are unix-only) |
+| 6 `kerf serve` | **190/190** `serve_smoke.mjs` checks; web `e2e-serve.mjs --real` 9 passed, 5 mock-only skipped. `POST /api/llm` and the outbound HTTP client were removed (chat is local agent CLIs only; the server makes no outbound connections). Windows is untested (signal handling and the token source are unix-only) |
 
 Output of the last full run (`tests/` scripts, release binary, same tree as the final commit):
 ```
@@ -35,14 +35,14 @@ One `serve_smoke` run in the S1/S2 work showed `V-4: over 256 open connections .
 - PDF `Producer` still says `kerf-zig`: the committed goldens contain it and the gate is byte equality. Fixing it needs new goldens (REQUESTS).
 - Messages that Zig formats with `{d}`/`{d:.N}` use `json::fmt_number` / small integer-based fixed formatters instead of float `{}`; they can differ from Zig only on exact rounding ties or values with more than 4 decimals. No such case occurs in the goldens or the hostile-input tests; `diff_fuzz.py 1000 1` (rerun in the performance track, same output from the port's original binary) hits one: `z range must have z0 < z1 (got [99.9888, 11.25])`, Zig `99.98875`. The single use of Rust float formatting is `model::num_text` (`{:e}` for tiny/huge numbers, like Zig's `{e}`) and a `format!("{}", x)` digit source in `drawview` (`view_fit` message, Zig's `{d:.N}` rounding rule).
 - Sort is binary insertion + in-place SymMerge (no buffer, safe, no `Copy` bound), not Zig's buffered merge; stable, so results are identical for any strict weak ordering. Slower than Zig's; candidate for the performance track.
-- `kerf serve`: no outbound HTTPS (above); symlink check uses `symlink_metadata` before open, not `O_NOFOLLOW`.
+- `kerf serve`: symlink check uses `symlink_metadata` before open, not `O_NOFOLLOW`.
 - Unsafe code (all with a SAFETY note): `math.rs` 4 blocks (NEON/SSE2 sqrt and fma intrinsics, core has no sqrt; on wasm the libm `sqrt` symbol, which LLVM lowers to `f64.sqrt`), `style.rs` 3 (the once-per-process default style tree behind an `AtomicPtr`), `kerf-wasm` (allocator, ABI pointers), `kerf-cli` 7 (`libc` `signal`/`kill` declared via `extern "C"`, no `libc` crate). `kerf-core` has no other unsafe, no `unwrap`/`expect`/`panic!`, no HashMap.
 
 ## Layout
 - `kerf-core`: `#![no_std]` + `alloc`, the whole engine, one module per Zig file (snake_case). `build.rs` compiles `spec/fonts/kerf-simplex.json` into static glyph tables
   (it runs the engine's own `json.rs` via `#[path]`; coordinates must stay small integers). `math.rs` carries the float functions `core` lacks,
   ported from Zig's std.math / compiler_rt (sin, cos, tan, atan, atan2, acos, hypot, ldexp, floor, ceil, round, trunc, exact sqrt/fma): identical bits on every target.
-- `kerf-cli`: binary `kerf`; `workspace`, `hash`, `http`, `events`, `proxy`, `agents`, `serve`, `serve/*`. `build.rs` embeds a web UI directory given by `KERF_UI`.
+- `kerf-cli`: binary `kerf`; `workspace`, `hash`, `http`, `events`, `agents`, `serve`, `serve/*`. `build.rs` embeds a web UI directory given by `KERF_UI`.
 - `kerf-wasm`: cdylib, SPEC 13.1 ABI, 120 lines + a 90-line size-class allocator (`heap.rs`).
 - Modules written for a later Verus swap (narrow slice APIs, no engine imports except where noted): `json.rs` (parser, `fmt_fixed`/`fmt_number`, writers; uses `math`+`num`), `sort.rs`,
   `png.rs` + `png/deflate.rs` (CRC-32, Adler-32, chunk framing, exact port of Zig `std.compress.flate` level default, so PNGs are byte-identical), `pdf/writer.rs` (object writer + xref), `raster::kernels` (integer pixel kernels).
@@ -88,7 +88,7 @@ Sizes (`tools/size_report.sh`; Zig 0.17 from the same tree, `-Doptimize=small|fa
 | Zig `kerf.wasm` | 699,181 | 288,292 | 236,991 |
 | Rust `kerf.wasm` | 593,144 | 264,087 | 221,786 |
 
-The Zig CLI includes an outbound TLS client (`std.http`) that the Rust CLI does not have; the Rust numbers would grow with one.
+These sizes predate the `/api/llm` proxy removal, which also dropped the Zig CLI's outbound TLS client (`std.http`); the Rust CLI release binary is now 1,635,664 bytes (was 1,663,352).
 
 Build times, edit = one constant in `geom` changed (mean of change and revert), Zig global cache warm:
 
@@ -115,7 +115,7 @@ Lines of code (non-blank, non-comment; Zig test files and inline `test` blocks e
 | | Zig | Rust |
 |---|---:|---:|
 | engine (core) | 17,277 | 22,923 |
-| CLI + serve (+ http, agents, proxy, workspace) | 3,954 | 4,729 |
+| CLI + serve (+ http, agents, workspace) | 3,954 | 4,729 |
 | wasm entry | 48 | 120 |
 | total | 21,279 | 27,772 |
 

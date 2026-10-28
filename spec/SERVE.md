@@ -24,7 +24,7 @@ Every successful write appends one line to `<file>.log.jsonl` next to the docume
 ## HTTP API (JSON; errors are `{ "error": { "code", "message" } }` with 4xx/5xx)
 | method & path | body | returns |
 |---|---|---|
-| `GET /api/info` | | `{ version, dir, token_required, agents: [{ id, name, available, version? }], proxy: true }` |
+| `GET /api/info` | | `{ version, dir, token_required, agents: [{ id, name, available, version? }] }` |
 | `GET /api/docs` | | `[{ file, id, title, mtime_ms, size, components, views, errors, warnings }]`, sorted by file |
 | `POST /api/docs` | `{ file, title?, id? }` | creates like `kerf new`; 409 if it exists |
 | `GET /api/docs/:file` | | the document JSON. `ETag: "<mtime_ms>-<size>"` |
@@ -32,7 +32,6 @@ Every successful write appends one line to `<file>.log.jsonl` next to the docume
 | `GET /api/docs/:file/log?since=N` | | `{ entries: [...], next: N }` (N = line index) |
 | `GET /api/docs/:file/export?view=A&format=png\|svg\|dxf\|pdf&sheet=1&px=1600` | | bytes with a download filename |
 | `GET /api/events` | | **SSE**: `doc_changed {file, mtime_ms, who?}`, `doc_added {file}`, `doc_removed {file}`, `log {file, entry}`, `agent {run_id, event}`, `ping` every 15 s. The server polls the folder every 500 ms (mtime + size) |
-| `POST /api/llm` | `{ provider, base_url?, path, headers, body }` | forwards one HTTP request to an LLM provider (avoids browser CORS). Only `https://` URLs, plus `http://localhost`/LAN URLs for `custom`. The response body is streamed back verbatim. API keys travel in `headers` from the browser and are never stored or logged by the server |
 | `POST /api/agent/run` | `{ agent: "claude"\|"grok"\|…, message, session_id?, file? }` | starts a local agent CLI headless in `--dir`. Returns `{ run_id }`. Output streams as SSE `agent` events (one per stdout JSON line, or `{type:"text", text}` for plain lines), then `{type:"exit", code, session_id?}` |
 | `POST /api/agent/stop` | `{ run_id }` | kills the run |
 
@@ -51,7 +50,7 @@ Results go in `engines/zig/NOTES.md`. Users can add or override agents in `<dir>
 (same template shape). One run at a time per server in v0.1.
 
 ## UI modes (apps/web)
-- **Static** (no `/api/info`, e.g. hosted or file-opened): current behavior: OPEN/SAVE files, browser chat with keys.
+- **Static** (no `/api/info`, e.g. hosted or file-opened): OPEN/SAVE files and everything else except chat. The console says that chat needs `kerf serve` and a local agent CLI (claude, codex, grok or pi); the composer is disabled.
 - **Workspace** (served by `kerf serve`):
   - The left panel gets a LIBRARY list (docs with error/warn counts, live).
   - Opening a doc subscribes to its changes. External edits reload the doc in place, keeping
@@ -59,16 +58,12 @@ Results go in `engines/zig/NOTES.md`. Users can add or override agents in `<dir>
     (who, why, ops count, summary head).
   - Designer edits POST to `/apply` with `if_match`.
   - The status line shows `LOCAL AGENT · last edit 12 s ago` when agent log entries arrive.
-- **Chat providers** (console header picker; key + model per provider stored in localStorage):
-  - `Local agent: Claude Code` / `Grok` (workspace mode only, via `/api/agent/run`; no key; uses the
-    user's own subscription/login).
-  - `Anthropic` (Messages API, existing harness).
-  - `OpenAI`, `Gemini`, `xAI (Grok API)`, `OpenRouter`, `Custom (OpenAI-compatible base URL)`. All
-    use ONE OpenAI-compatible chat-completions tool-calling adapter (Gemini via its OpenAI
-    compatibility endpoint). Tools are the same three kerf tools translated to function schemas.
-    Images go as `image_url` data URLs where the model supports vision.
-  - In workspace mode provider calls go through `POST /api/llm`; in static mode they go direct
-    (CORS permitting, with a clear error otherwise).
+- **Chat** (workspace mode only): the console header picker lists the local agents from `/api/info`
+  (Claude Code, Codex, Grok Build, pi, plus any in `.kerf/agents.json`). A message goes to
+  `POST /api/agent/run`; the agent CLI runs on this machine with the user's own login or subscription and edits
+  the folder with the `kerf` CLI. There is no direct-to-provider path: no API keys, no provider HTTP calls
+  from the browser or the server (the former `POST /api/llm` proxy is gone and answers 404). The picked
+  agent and each agent's resume session id per document are kept in localStorage.
 
 ## Clarifications (from the implementation)
 - `if_match` accepts the ETag with or without quotes. `apply` with invalid ops returns HTTP 200 with
@@ -84,6 +79,7 @@ Results go in `engines/zig/NOTES.md`. Users can add or override agents in `<dir>
   --cd <dir> --json [resume <id>] <msg>`.
 
 ## Security defaults (v0.1.5 hardening, see engines/zig/REVIEW.md §7)
+- **No outbound network.** The server never opens a connection to a third party and holds no API keys; only the agent CLIs it starts talk to their own providers.
 - **Token on by default, loopback included.** The banner prints `http://…/?token=<t>`. Use
   `--token T`, `--token-file F` or `KERF_TOKEN` to pin one, and `--no-token` to opt out (localhost only;
   not recommended).

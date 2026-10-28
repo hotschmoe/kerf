@@ -909,6 +909,8 @@ Open with `.follow_symlinks = false` / `O_NOFOLLOW`, skip symlinks in the scan, 
 
 ### V-12 - minor - `/api/llm` proxy
 
+**Note (later change): the `/api/llm` proxy and `proxy.zig` were removed; chat is local agent CLIs only. The text below is the historical review.**
+
 **Status: Fixed for the stall/concurrency parts: `--llm-timeout`, 30 min total and 256 MiB caps, at most 8 calls in flight (429), stalled upstreams are cancelled. `custom` still reaches any host by design. Regressions: `V-12:` checks.**
 
 By design `provider:"custom"` can reach any host (including `169.254.169.254` and loopback) with a chosen body and

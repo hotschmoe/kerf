@@ -5,7 +5,7 @@ Everything is std-only Zig 0.17; one source tree builds the importable module `k
 wasm32-freestanding ABI module. All three reference details export SVG, DXF (zero audit errors), PDF
 (vector only), PNG and mesh, with 0 errors / 0 warnings. Goldens are in `tests/golden/<detail>/`.
 
-Also here: `kerf serve` (the local workspace server: embedded web UI, folder API, SSE, LLM proxy, agent bridge) and the
+Also here: `kerf serve` (the local workspace server: embedded web UI, folder API, SSE, agent bridge; the former `/api/llm` provider proxy was removed: chat is local agent CLIs only) and the
 op log (`<file>.log.jsonl`). See "kerf serve" below.
 
 Zig: `~/tools/zig-aarch64-linux-0.17.0/zig` (0.17.0; `minimum_zig_version` in build.zig.zon; 0.16 stays at `~/tools/zig-aarch64-linux-0.16.0/zig` for comparisons). No third-party dependencies.
@@ -124,8 +124,8 @@ api.call(name, json)            api.Fn enum -> one function per API function (ch
 
 CLI-only files (not in the `kerf` module, never in the wasm): `workspace.zig` (op log, atomic writes, file-name rules, new-doc text) |
 `serve.zig` (`Server`: folder scan, edit log, ETag) + `serve/{cli,conn,routes,docs,agent,stream,ui}.zig` (startup and arguments; limits,
-deadlines and access rules; the route table and dispatcher; document / agent / SSE+LLM handlers; static UI and CSP) | `http.zig` (HTTP/1.1) |
-`events.zig` (SSE hub) | `agents.zig` (agent bridge) | `proxy.zig` (`/api/llm`) | `ui_stub.zig` (empty `ui_assets`; `-Dui=` replaces it).
+deadlines and access rules; the route table and dispatcher; document / agent / SSE handlers; static UI and CSP) | `http.zig` (HTTP/1.1) |
+`events.zig` (SSE hub) | `agents.zig` (agent bridge) | `ui_stub.zig` (empty `ui_assets`; `-Dui=` replaces it).
 
 Import rules: no cycles between "layers" any more (shape.zig is shared by annot and iso; schema_fields by canon, lint and schema; mesh does
 not import section). Inside a directory the split files import their parent for its main type (`const Section = @import("../section.zig").Section`)
@@ -372,7 +372,7 @@ on the safety-checked debug CLI: 2,300+ mutations x 3 calls, 0 crashes.
 
 ```sh
 kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --token-file F | --no-token] [--allow-origin URL]
-           [--trust-agents] [--agent-timeout S] [--llm-timeout S] [--timeouts-ms IDLE,HEAD,WRITE]     # `kerf serve --help` has the text
+           [--trust-agents] [--agent-timeout S] [--timeouts-ms IDLE,HEAD,WRITE]     # `kerf serve --help` has the text
 ```
 - First stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0` picks a free port).
   A token is the DEFAULT, also on loopback (V-7; generated with `io.randomSecure`, fail closed); `--token-file F` / `KERF_TOKEN` fix it without
@@ -380,7 +380,7 @@ kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --to
   Host/Origin checks then apply as before). `--host 0.0.0.0` also prints `LAN:  http://<lan-ip>:7700/?token=<32 hex>`. The LAN IP comes from a connected UDP socket toward 192.0.2.1 (nothing is sent).
 - Exit 1 with a hint when the port is busy (std sets SO_REUSEPORT with SO_REUSEADDR, which would let a second server share the port
   silently, so it probes with a connect first) or `--dir` cannot be opened.
-- Everything in SERVE.md is implemented: `/api/info docs docs/:file apply log export events llm agent/run agent/stop`.
+- Everything in SERVE.md is implemented: `/api/info docs docs/:file apply log export events agent/run agent/stop`.
   Not in the spec, added: `GET /api/info` also returns `authenticated` and `active_run` (`{run_id, agent}` or null) and, without a valid token,
   just `{version, token_required:true, authenticated:false}` (so the UI can ask for the token); `POST /api/agent/run` also takes
   `images:[{name, data_base64}]` (saved in `<dir>/.kerf/attachments/`, absolute paths appended to the message; web agent's request);
@@ -403,18 +403,7 @@ kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --to
   server's own origin gets 403 (`--allow-origin` whitelists one dev origin). Without a token on a loopback bind the `Host` header must be
   localhost/127.0.0.1/[::1] (DNS rebinding). Token compare is constant time; it is accepted as `Authorization: Bearer` or `?token=`.
   Static files are served without a token so the page can read `?token=`. File names are `[A-Za-z0-9._ ()-]+.kerf.json`, no separators.
-- `/api/llm` rules (`proxy.zig plan`, unit tested): provider in anthropic|openai|gemini|xai|openrouter|custom with defaults
-  (`https://api.anthropic.com`, `https://api.openai.com`, `https://generativelanguage.googleapis.com`, `https://api.x.ai`,
-  `https://openrouter.ai/api`); `base_url` overrides (custom requires it); URL = base_url + `/path` (path must start with a single `/`,
-  no spaces/backslashes/`://`); no userinfo, no fragment. Non-custom providers: https only AND a public DNS name (no IP literals, no
-  localhost/LAN/.local/single-label, no numeric-looking hosts such as `2130706433`). `custom`: https anywhere, http only for
-  localhost/127/10/172.16-31/192.168/169.254/CGNAT/::1/fc00::/7/fe80::/10/`.local`/single-label hosts. `headers` values must not contain
-  CR/LF; host, content-length, connection, transfer-encoding, accept-encoding, te, upgrade, expect, proxy-*, forwarded are dropped.
-  `body`: object -> compact JSON, string -> raw. Redirects are not followed. Response: status, content-type, content-encoding,
-  retry-after, request-id, x-ratelimit-*, anthropic-ratelimit-*, openai-* pass through; the body is streamed chunk by chunk (tested: first
-  chunk 0.4 s before the end) and the connection closes at the end. Upstream failure before any byte: 502 `E_UPSTREAM`.
-  Not covered: a public DNS name that resolves to a private address. Keys are never stored or logged (tested: they appear nowhere in SSE).
-  TLS is `std.http.Client` (std.crypto.tls, system cert bundle scanned on first https use); only the http path is exercised in tests (no network).
+- `/api/llm` (provider proxy: `proxy.zig`, URL rules, TLS via `std.http.Client`, `--llm-timeout`) was removed in the local-agents-only change; the route answers 404, `/api/info` has no `proxy` field, and the server makes no outbound connections. The text of earlier entries below that mentions it is historical.
 - Agent bridge (`agents.zig`): templates (built-in + `<dir>/.kerf/agents.json`, which is executed only when trusted: `--trust-agents` or a yes
   at the interactive prompt; otherwise listed `untrusted` and never detected or started; a trusted entry with a built-in id replaces it) with `{message} {session_id} {dir}
   {file}` and a `{resume}` element; spawn with `std.process.spawn`, cwd = `--dir`, stdin ignored, stdout/stderr piped, env = server env
@@ -445,10 +434,10 @@ Every item has a regression test in `tests/serve_smoke.mjs` (raw sockets for the
 - **V-3**: slot reserved under `mu`; process group / job object; watchdog (`--agent-timeout`, default 1800 s, 0 = none; timeout = TERM, KILL after 3 s,
   `exit` event gets `timeout:true`); SIGINT/SIGTERM/SIGHUP stop the active run and exit (POSIX; a SIGKILLed server still orphans the agent on POSIX,
   Windows kills it via the job). Detection is single-flight and no longer leaks. `KERF_TOKEN` is removed from the agent's environment.
-- **V-4/V-5/V-13 (`serve.zig`)**: at most 256 connections (503 beyond), 32 SSE streams, 8 concurrent LLM calls (429), 1000 requests per connection;
+- **V-4/V-5/V-13 (`serve.zig`)**: at most 256 connections (503 beyond), 32 SSE streams, 1000 requests per connection;
   watchdog deadlines: idle 30 s, request head 10 s (from the first byte), body 3x head + 1 s per 512 KiB declared, handler 120 s, SSE write 20 s
   (`--timeouts-ms IDLE,HEAD,WRITE` for tuning/tests). The body buffer grows as data arrives. `handleRequest` routes (`routeOf`, pure and unit-tested),
-  authenticates, then reads the body with a per-route cap: stop 4 KiB, create 64 KiB, apply 16 MiB, llm 32 MiB, agent/run 64 MiB, GET routes 0 (a body
+  authenticates, then reads the body with a per-route cap: stop 4 KiB, create 64 KiB, apply 16 MiB, agent/run 64 MiB, GET routes 0 (a body
   is 400). Everything answered before the body was read closes the connection and never sends `100 Continue`. A log line over 4 MiB is skipped
   instead of re-read every tick; `apiList` runs the engine `check` outside `scan_mu`; SSE data lines never contain CR/LF.
 - **V-6**: message <= 100,000 bytes (400 `E_INPUT`); an OS "argument too long" at spawn is 400, not 500.
@@ -463,8 +452,7 @@ Every item has a regression test in `tests/serve_smoke.mjs` (raw sockets for the
   file (POSIX) and fsync; the server holds `DocLock` across read-modify-write of `apply`. ETag = `"<mtime_ms>-<size>-<wyhash of the bytes>"` (GET, list
   rows carry the same `etag`). `if_match` of a non-string is 400. Still open (CLI, engine agent's files): `kerf apply -w --if-match` and taking
   `DocLock` around the CLI's read-modify-write (the 40 parallel appliers now leave intact log lines but only one edit survives), `kerf fmt -w` non-atomic.
-- **V-12**: LLM calls run in a task watched by the handler: `--llm-timeout S` (first byte and gaps; default 300 s / 120 s), 30 min total, 256 MiB;
-  stalls are cancelled (502 `E_UPSTREAM` before the head, a cut stream after). `custom` still reaches any host by design (token-gated).
+- **V-12**: the proxy stall limits and concurrency cap are gone with the proxy (see the `/api/llm` note above).
 - **V-14/V-15/V-16**: `px` printed as the parsed integer; attachments older than 24 h are removed (at start and on each save); the pump drops a line on OOM
   instead of truncating; `cors()` reports OOM; Windows device names (`CON`, `NUL`, `COM1`...) and stems ending in dot/space are not document names;
   HEAD answers with the real Content-Length. Not done: error logging for `publish`/`scanLocked` OOM (still best effort), `serveConn`'s silent close on
@@ -515,8 +503,8 @@ x86_64/aarch64 x windows-gnu/linux-musl/macos -> assets `kerf-<arch>-<os>[.exe]`
   UI index 0.5 ms, SVG export (section view, no sheet) 13 ms, PNG sheet export 118 ms. Smoke test, ReleaseSmall: `/api/docs` p50 1.5 ms / p95 3.3 ms with
   4 SSE streams open, 24 parallel `/api/info` requests fine.
 - Poller: a CLI edit shows up as `doc_changed` within 500 ms (tested with a 3 s allowance); agent edits show up before the run's `exit` event.
-- Tests: `zig build test` = engine tests + serve tests (strict head parsing, chunked overflow regression, routing and body caps, access rules, proxy URL
-  rules, agent templates and the untrusted-agent guarantee, op-log entry shape and locking, folder scan events, SSE hub); `tests/serve_smoke.mjs` 215 checks; the web agent's `node test/e2e-serve.mjs --real` (puppeteer) passes against
+- Tests: `zig build test` = engine tests + serve tests (strict head parsing, chunked overflow regression, routing and body caps, access rules,
+  agent templates and the untrusted-agent guarantee, op-log entry shape and locking, folder scan events, SSE hub); `tests/serve_smoke.mjs` 190 checks; the web agent's `node test/e2e-serve.mjs --real` (puppeteer) passes against
   this binary (KERF_SERVE_BIN=... with a CURRENT dist-serve embedded; a stale embedded UI makes it fail on newer UI features).
 
 ## Zig 0.17 port (from 0.16)

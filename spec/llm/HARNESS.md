@@ -1,7 +1,9 @@
-# Kerf chat harness — what every app implements
+# Kerf tool loop against the Claude Messages API (eval runner reference)
 
-All four apps run the same loop against the Claude Messages API with the designer's own key
-(BYO key, stored locally, never sent anywhere except api.anthropic.com).
+No app implements this any more: the web chat talks only to local agent CLIs through `kerf serve`
+(`spec/SERVE.md`, "Agent bridge"), and `kerf serve` has no `/api/llm` proxy. This is the direct Messages-API
+tool loop that `spec/evals/run.mjs` still drives to evaluate models (with `ANTHROPIC_API_KEY`); `system.md` and
+`tools.json` are its inputs (`system.md` is also embedded by `kerf guide --full`).
 
 ## Request
 `POST https://api.anthropic.com/v1/messages`
@@ -29,10 +31,7 @@ Body:
   "messages": [ … ]
 }
 ```
-- TypeScript (apps/web) MUST use the official `@anthropic-ai/sdk` with `dangerouslyAllowBrowser: true`
-  (the SDK sets the browser header). Rust (egui) and Zig (teak) have no official SDK, so they use raw HTTP
-  with exactly the headers above.
-- Non-streaming is acceptable for MVP (use streaming in TS if easy: `client.messages.stream(...).finalMessage()`).
+- Non-streaming is fine for an eval run. The `anthropic-dangerous-direct-browser-access` header is only for browsers.
 - Do not send `temperature`, `top_p`, `budget_tokens`, or `tool_choice` `any`/`tool` (all rejected on
   current models). Use `tool_choice` `auto` (default).
 - If the beta/fallbacks params are rejected by the API (400 mentioning them), retry once without them
@@ -62,12 +61,6 @@ loop:
     the engine's SVG via resvg.)
 - Designer images: `{"type":"image","source":{"type":"base64","media_type":"image/png"|"image/jpeg","data":…}}`
   placed before the text block. Downscale so the long side is ≤ 1568 px.
-- Cap the loop at 25 tool rounds per designer turn; show `CLAUDE BUSY ◐ ROUND n` in the status line.
+- Cap the loop at 25 tool rounds per designer turn.
 - Errors: 401 → "INVALID API KEY"; 429/529 → retry with backoff (2 s, 4 s, 8 s), then show; other
   4xx → show the API error message verbatim in a red console line.
-
-## Designer edits
-Designer actions in the UI (edit note text, drag note, verify citation, edit param) become ops
-applied through the engine's `apply` (citation verify uses a UI-only flag, see SPEC §14) and logged
-with `who:"DESIGNER"`. Before the next LLM turn, the app appends a short text block to the designer's
-next message: `[designer edits since your last turn: …why lines…]` so Claude knows.

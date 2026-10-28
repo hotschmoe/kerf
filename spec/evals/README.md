@@ -28,7 +28,7 @@ Run (needs `ANTHROPIC_API_KEY` and a built engine CLI):
 ```
 node spec/evals/run.mjs --engine engines/zig/zig-out/bin/kerf --model claude-opus-5-5 [--only e01]
 ```
-The runner drives the same tool loop as the apps (spec/llm/HARNESS.md). It renders
+The runner drives the Messages-API tool loop in spec/llm/HARNESS.md (no app uses it any more). It renders
 `kerf_render` images through the engine's SVG output and headless chromium. Each run writes
 `spec/evals/runs/<timestamp>/<id>/` containing the final doc, transcript, PNGs and score.json.
 
