@@ -272,15 +272,15 @@ fn export_fn(inp: &Value) -> Output {
         Err(e) => return e,
     };
     let format = inp.get("format").and_then(Value::str).unwrap_or("svg");
-    let Ok(font) = Font::parse(font::EMBEDDED) else { return fail("E_INTERNAL", "embedded font failed to parse") };
+    let font = font::embedded();
     let want_sheet = matches!(inp.get("sheet"), Some(Value::Bool(true)));
     fn maybe_sheet<'s>(dr: drawing::Drawing<'s>, font: &Font, want: bool) -> drawing::Drawing<'s> {
         if want { sheet::with_sheet(dr, font) } else { dr }
     }
     match format {
-        "svg" => done(svg::render(&maybe_sheet(dr, &font, want_sheet), &font, &svg::Options::default())),
-        "pdf" => done(pdf::render(&sheet::with_sheet(dr, &font), &font)),
-        "dxf" => done(dxf::render(&maybe_sheet(dr, &font, want_sheet))),
+        "svg" => done(svg::render(&maybe_sheet(dr, font, want_sheet), font, &svg::Options::default())),
+        "pdf" => done(pdf::render(&sheet::with_sheet(dr, font), font)),
+        "dxf" => done(dxf::render(&maybe_sheet(dr, font, want_sheet))),
         "png" => {
             let mut opt = raster::Options::default();
             if let Some(pv) = inp.get("px") {
@@ -298,7 +298,7 @@ fn export_fn(inp: &Value) -> Output {
                 let n = if n.is_nan() { 1600.0 } else { n };
                 opt.px = crate::math::round(n).clamp(raster::MIN_PX as f64, raster::MAX_PX as f64) as u32;
             }
-            match raster::render(&maybe_sheet(dr, &font, want_sheet), &font, &opt) {
+            match raster::render(&maybe_sheet(dr, font, want_sheet), font, &opt) {
                 Ok(b) => done(b),
                 Err(e) => fail("E_INTERNAL", &format!("png encoding failed ({e:?})")),
             }

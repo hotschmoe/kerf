@@ -27,11 +27,13 @@ fn main() {
         .filter_map(|l| {
             let mut it = l.split('\t');
             let (label, func, file) = (it.next()?, it.next()?, it.next()?);
-            (label.contains(filter.as_str()) && !exclude.as_ref().is_some_and(|x| label.contains(x.as_str()))).then(|| Case {
-                label: label.to_string(),
-                func: func.to_string(),
-                input: std::fs::read(format!("{dir}/{file}")).unwrap(),
-            })
+            (label.contains(filter.as_str()) && !exclude.as_ref().is_some_and(|x| label.contains(x.as_str()))).then(
+                || Case {
+                    label: label.to_string(),
+                    func: func.to_string(),
+                    input: std::fs::read(format!("{dir}/{file}")).unwrap(),
+                },
+            )
         })
         .collect();
     if let Some(n) = loops {
@@ -62,6 +64,13 @@ fn main() {
         }
         times.sort_by(f64::total_cmp);
         let med = times[times.len() / 2];
-        println!("{}\t{}\t{med:.1}\t{:.1}\t{}\t{bytes}\t{}", c.label, c.func, times[0], times.len(), if ok { "ok" } else { "err" });
+        println!(
+            "{}\t{}\t{med:.1}\t{:.1}\t{}\t{bytes}\t{}",
+            c.label,
+            c.func,
+            times[0],
+            times.len(),
+            if ok { "ok" } else { "err" }
+        );
     }
 }
