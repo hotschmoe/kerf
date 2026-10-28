@@ -62,7 +62,40 @@ def rustfmt(path):
     subprocess.run(["rustfmt", f"+{FMT_TOOLCHAIN}", "--edition", "2024", path], check=True)
 
 
+DERIVE_INTERNAL = {"TrivialClone", "StructuralPartialEq", "StructuralEq"}
+
+
+def fold_derives(body):
+    """`#[derive(..)]` comes out of -Zunpretty=expanded as `#[automatically_derived]` impls (some
+    of them unstable internals); put the attribute back on the type instead."""
+    derives = {}
+    out, i = [], 0
+    pat = re.compile(r"#\[automatically_derived\]\s*(?:#\[[^\]]*\]\s*)*(?:unsafe\s+)?impl\s*(?:<[^>]*>)?\s*::core::[\w:]*?(\w+)(?:<[^>]*>)?\s+for\s+(\w+)")
+    while True:
+        m = pat.search(body, i)
+        if not m:
+            out.append(body[i:])
+            break
+        out.append(body[i:m.start()])
+        j = body.index("{", m.end())
+        depth = 0
+        while True:
+            depth += {"{": 1, "}": -1}.get(body[j], 0)
+            j += 1
+            if depth == 0:
+                break
+        trait, ty = m.group(1), m.group(2)
+        if trait not in DERIVE_INTERNAL:
+            derives.setdefault(ty, []).append(trait)
+        i = j
+    body = "".join(out)
+    for ty, traits in derives.items():
+        body = re.sub(rf"^([ \t]*)((?:pub )?(?:struct|enum) {ty}\b)", lambda m: f"{m.group(1)}#[derive({', '.join(traits)})]\n{m.group(1)}{m.group(2)}", body, count=1, flags=re.M)
+    return body
+
+
 def tidy(body):
+    body = fold_derives(body)
     body = re.sub(r"^\s*use (vstd|verus_builtin|verus_builtin_macros)::[^;]*;\n", "", body, flags=re.M)
     body = re.sub(r"^\s*const _: \(\) = \(\);\n", "", body, flags=re.M)
     body = doc_comments(body)

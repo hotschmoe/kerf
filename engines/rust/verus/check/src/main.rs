@@ -2,6 +2,7 @@ use std::process::ExitCode;
 
 mod json;
 mod pdf;
+mod raster;
 mod png;
 mod sort;
 
@@ -16,6 +17,7 @@ fn main() -> ExitCode {
         "sort" => sort::check(rest),
         "png" => png::check(rest),
         "json" => json::check(rest),
+        "raster" => raster::check(rest),
         _ => {
             eprintln!("kvcheck: unknown command {cmd}");
             false
