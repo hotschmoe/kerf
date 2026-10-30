@@ -1,6 +1,6 @@
 //! truss (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, fmt_num, fmt_ft_in, mirror_built, parse_sawn, zone_rect};
+use super::common::{Ctx, fmt_ft_in, fmt_num, mirror_built, parse_sawn, zone_rect};
 use crate::geom::{self, Box, Pt, V2};
 use crate::json::Value;
 use crate::math;

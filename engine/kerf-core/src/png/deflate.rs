@@ -372,11 +372,7 @@ impl Compressor {
             tokens: Vec::with_capacity(BLOCK_TOKENS),
             lit_freqs: [0; 286],
             dist_freqs: [0; 30],
-            lookup: Lookup {
-                head: table(),
-                chain: table(),
-                chain_pos: VALUE_MASK,
-            },
+            lookup: Lookup { head: table(), chain: table(), chain_pos: VALUE_MASK },
         }
     }
 
@@ -682,8 +678,14 @@ impl Compressor {
 fn load64(s: &[u8], i: usize) -> u64 {
     let _len = s.len();
     let p = &s[i..i + 8];
-    p[0] as u64 | (p[1] as u64) << 8 | (p[2] as u64) << 16 | (p[3] as u64) << 24 | (p[4] as u64) << 32 | (p[5] as u64)
-        << 40 | (p[6] as u64) << 48 | (p[7] as u64) << 56
+    p[0] as u64
+        | (p[1] as u64) << 8
+        | (p[2] as u64) << 16
+        | (p[3] as u64) << 24
+        | (p[4] as u64) << 32
+        | (p[5] as u64) << 40
+        | (p[6] as u64) << 48
+        | (p[7] as u64) << 56
 }
 
 /// Common prefix length of `prev` and `bytes`, at most 258 (`MAX_LENGTH`): 8 bytes per step, the first difference

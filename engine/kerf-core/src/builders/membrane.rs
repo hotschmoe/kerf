@@ -93,7 +93,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let rib = pathgeom::ribbon(&clean, if left { t } else { 0.0 }, if left { 0.0 } else { t });
     let line = pathgeom::offset_open(&clean, if left { t / 2.0 } else { -t / 2.0 });
     let box_ = geom::loop_box(&rib);
-    let info = format!("membrane {} {} thick L={}{}", material, fmt_ft_in(t), fmt_ft_in(path_len(&vs_of(&clean))), until_note);
+    let info =
+        format!("membrane {} {} thick L={}{}", material, fmt_ft_in(t), fmt_ft_in(path_len(&vs_of(&clean))), until_note);
     let prism = Prism {
         material: material.to_string(),
         loops: model::one_loop(rib),

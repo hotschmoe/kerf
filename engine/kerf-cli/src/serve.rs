@@ -316,9 +316,12 @@ impl Server {
     pub fn store_info(&self, name: &str, mtime_ns: i128, size: u64, info: DocInfo) {
         let mut st = lock(&self.scan);
         if let Some(f) = st.find(name)
-            && f.info.is_none() && f.mtime_ns == mtime_ns && f.size == size {
-                f.info = Some(info);
-            }
+            && f.info.is_none()
+            && f.mtime_ns == mtime_ns
+            && f.size == size
+        {
+            f.info = Some(info);
+        }
     }
 
     pub fn read_doc(&self, name: &str) -> io::Result<DocRead> {

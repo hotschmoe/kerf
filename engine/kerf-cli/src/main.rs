@@ -24,7 +24,11 @@ const TOOL: &str = "kerf-cli";
 enum Fail {
     Io(io::Error),
     /// An I/O error on a named file: `cannot read <path>: ...`.
-    File { verb: &'static str, path: String, source: io::Error },
+    File {
+        verb: &'static str,
+        path: String,
+        source: io::Error,
+    },
     FileTooBig,
     StreamTooLong,
     InvalidUtf8,
@@ -410,12 +414,13 @@ fn prepare_ops(raw: &[u8]) -> Option<PreparedOps> {
 /// Print an engine failure `{"error": {code, message}}` as `ERROR <code>: <message>`; falls back to the raw bytes.
 fn print_api_error(bytes: &[u8]) {
     if let Ok(v) = json::parse(bytes)
-        && let Some(e) = v.get("error") {
-            let code = e.get("code").and_then(Value::str).unwrap_or("E_UNKNOWN");
-            let msg = e.get("message").and_then(Value::str).unwrap_or("");
-            stderr(&format!("ERROR {code}: {msg}\n"));
-            return;
-        }
+        && let Some(e) = v.get("error")
+    {
+        let code = e.get("code").and_then(Value::str).unwrap_or("E_UNKNOWN");
+        let msg = e.get("message").and_then(Value::str).unwrap_or("");
+        stderr(&format!("ERROR {code}: {msg}\n"));
+        return;
+    }
     let _ = io::stderr().write_all(bytes);
 }
 
@@ -536,9 +541,9 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
             ));
             return Ok(2);
         }
-        schema::template_text(&workspace::slug(id_src), title).ok_or_else(|| Fail::BadDoc)?
+        schema::template_text(&workspace::slug(id_src), title).ok_or(Fail::BadDoc)?
     } else {
-        workspace::new_doc_text(id_src, title).ok_or_else(|| Fail::BadDoc)?
+        workspace::new_doc_text(id_src, title).ok_or(Fail::BadDoc)?
     };
     let mut final_text = text.clone();
     let mut ops_text: Option<String> = None;

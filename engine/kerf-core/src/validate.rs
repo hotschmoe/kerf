@@ -344,7 +344,13 @@ fn piece_text(pieces: &[Piece], k: usize) -> String {
     let nlegs = pieces.iter().filter(|q| !q.is_bend).count();
     if pc.is_bend {
         let m = pc.segs.get(pc.segs.len() / 2).map_or(pc.p0, |s| s[0]);
-        return format!("the bend after segment {} of {} (near x {}, y {})", pc.leg, nlegs, fmt_ft_in(m.x), fmt_ft_in(m.y));
+        return format!(
+            "the bend after segment {} of {} (near x {}, y {})",
+            pc.leg,
+            nlegs,
+            fmt_ft_in(m.x),
+            fmt_ft_in(m.y)
+        );
     }
     format!(
         "segment {} of {} (x {}, y {} to x {}, y {})",

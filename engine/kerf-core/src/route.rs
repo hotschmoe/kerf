@@ -954,15 +954,7 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
     }
     c.layout();
     let landing: Vec<V2> = (0..n).map(|i| c.landing(i)).collect();
-    Layout {
-        top: c.top,
-        x: c.x,
-        left: c.left,
-        landing,
-        leaders: c.leaders,
-        hits,
-        budget_exhausted: work.spent(),
-    }
+    Layout { top: c.top, x: c.x, left: c.left, landing, leaders: c.leaders, hits, budget_exhausted: work.spent() }
 }
 
 /// A concrete way to clear note i's hits: an alternative landing point (`at`) or a new text position

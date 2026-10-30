@@ -119,18 +119,19 @@ pub fn handle_request(s: &Server, req: &mut Request, rd: &mut In, w: &mut Out) -
         return Ok(ka);
     }
     if route.api
-        && let Some(rej) = check_access(s, req) {
-            if route.kind == Kind::Info && rej.status == 401 {
-                let body = format!(
-                    "{{\"version\":\"{}\",\"token_required\":true,\"authenticated\":false}}\n",
-                    kerf_core::api::VERSION
-                );
-                http::send_json(w, 200, ka, &extra, body.as_bytes())?;
-                return Ok(ka);
-            }
-            http::send_error(w, rej.status, ka, &extra, rej.code, rej.message)?;
+        && let Some(rej) = check_access(s, req)
+    {
+        if route.kind == Kind::Info && rej.status == 401 {
+            let body = format!(
+                "{{\"version\":\"{}\",\"token_required\":true,\"authenticated\":false}}\n",
+                kerf_core::api::VERSION
+            );
+            http::send_json(w, 200, ka, &extra, body.as_bytes())?;
             return Ok(ka);
         }
+        http::send_error(w, rej.status, ka, &extra, rej.code, rej.message)?;
+        return Ok(ka);
+    }
     match route.kind {
         Kind::MethodNotAllowed => {
             let m = if route.api { "method not allowed for this path" } else { "method not allowed" };

@@ -18,8 +18,7 @@ pub fn api_info(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io::Resu
     let mut out = format!("{{\"version\":\"{}\",\"dir\":", api::VERSION).into_bytes();
     out.extend(http::json_string(&s.dir_abs.to_string_lossy()));
     out.extend_from_slice(
-        format!(",\"token_required\":{},\"authenticated\":true,\"agents\":[", s.cfg.token.is_some())
-            .as_bytes(),
+        format!(",\"token_required\":{},\"authenticated\":true,\"agents\":[", s.cfg.token.is_some()).as_bytes(),
     );
     for (i, t) in agents::load_templates(&s.dir_abs, s.cfg.trust_agents).iter().enumerate() {
         if i > 0 {
@@ -231,9 +230,12 @@ pub fn api_apply(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &str
         body.get("why").map_or_else(|| norm.why.clone().unwrap_or_default(), |v| v.str().unwrap_or("").to_string());
     let mut who = "designer".to_string();
     if let Some(ac) = body.get("actor").and_then(Value::str)
-        && !ac.is_empty() && ac.len() <= 32 && ac.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
-            who = ac.to_string();
-        }
+        && !ac.is_empty()
+        && ac.len() <= 32
+        && ac.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+    {
+        who = ac.to_string();
+    }
     let mut if_match = None;
     if let Some(v) = body.get("if_match") {
         match v.str() {

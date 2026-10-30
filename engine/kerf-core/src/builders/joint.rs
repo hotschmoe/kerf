@@ -1,6 +1,6 @@
 //! joint (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, box_of_prisms, fmt_num, fmt_ft_in, material_or, oriented_ccw};
+use super::common::{Ctx, box_of_prisms, fmt_ft_in, fmt_num, material_or, oriented_ccw};
 use crate::geom::{self, Pt, V2};
 use crate::math;
 use crate::model::{self, Built, NamedAnchor, Prism};

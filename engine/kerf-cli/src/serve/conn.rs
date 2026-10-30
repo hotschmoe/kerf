@@ -174,9 +174,11 @@ pub fn check_access(s: &Server, req: &Request) -> Option<Reject> {
         }
         let mut supplied = None;
         if let Some(auth) = req.header("authorization")
-            && auth.len() > 7 && auth[..7].eq_ignore_ascii_case("bearer ") {
-                supplied = Some(auth[7..].trim_matches(' ').to_string());
-            }
+            && auth.len() > 7
+            && auth[..7].eq_ignore_ascii_case("bearer ")
+        {
+            supplied = Some(auth[7..].trim_matches(' ').to_string());
+        }
         if supplied.is_none() {
             supplied = req.param("token");
         }

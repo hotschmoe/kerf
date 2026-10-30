@@ -52,7 +52,8 @@ impl Writer {
         for offset in core::mem::take(&mut self.offsets) {
             self.put(format!("{offset:010} 00000 n \n").as_bytes());
         }
-        let trailer = format!("trailer\n<< /Size {count} /Root {root} 0 R /Info {info} 0 R >>\nstartxref\n{xref_at}\n%%EOF\n");
+        let trailer =
+            format!("trailer\n<< /Size {count} /Root {root} 0 R /Info {info} 0 R >>\nstartxref\n{xref_at}\n%%EOF\n");
         self.put(trailer.as_bytes());
         self.out
     }

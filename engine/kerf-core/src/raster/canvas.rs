@@ -174,7 +174,11 @@ impl Canvas {
                 let take = rem.min(len - pos);
                 if on {
                     let (t0, t1) = (pos / len, (pos + take) / len);
-                    self.capsule(V2 { x: a.x + s.x * t0, y: a.y + s.y * t0 }, V2 { x: a.x + s.x * t1, y: a.y + s.y * t1 }, r);
+                    self.capsule(
+                        V2 { x: a.x + s.x * t0, y: a.y + s.y * t0 },
+                        V2 { x: a.x + s.x * t1, y: a.y + s.y * t1 },
+                        r,
+                    );
                 }
                 pos += take;
                 rem -= take;
@@ -191,9 +195,9 @@ impl Canvas {
     /// per row with exact horizontal coverage, crossings sorted with the stable sort.
     pub fn fill(&mut self, es: &[Edge]) {
         let (wf, hf) = (self.w as f64, self.h as f64);
-        let (ymin, ymax) = es.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), e| {
-            (lo.min(e.y0.min(e.y1)), hi.max(e.y0.max(e.y1)))
-        });
+        let (ymin, ymax) = es
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), e| (lo.min(e.y0.min(e.y1)), hi.max(e.y0.max(e.y1))));
         if es.is_empty() || !(0.0 < ymax && ymin < hf) {
             return;
         }
