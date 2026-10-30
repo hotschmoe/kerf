@@ -9,7 +9,7 @@ use crate::num;
 use alloc::vec::Vec;
 use core::f64::consts::PI;
 
-/// Zig's `std.math.rad_per_deg` / `deg_per_rad` (the literals round to the same doubles).
+/// Radians per degree and back, as full-precision literals.
 pub const RAD_PER_DEG: f64 = 0.017453292519943295769236907684886127134428718885417;
 pub const DEG_PER_RAD: f64 = 57.295779513082320876798154814105170332405472466564;
 
@@ -394,7 +394,7 @@ pub fn seg_box_into(b: &mut Box, p0: V2, p1: V2, bulge: f64) {
     }
 }
 
-/// Floored float modulus, `@mod` of Zig.
+/// Floored float modulus (the result has the sign of `b`).
 fn fmod_floor(a: f64, b: f64) -> f64 {
     if a < 0.0 { ((a % b) + b) % b } else { a % b }
 }

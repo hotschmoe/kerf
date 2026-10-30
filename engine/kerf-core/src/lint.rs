@@ -306,7 +306,7 @@ fn commentary(text: &[u8]) -> &'static str {
     ""
 }
 
-const WS: [u8; 4] = [b' ', b'\t', b'\r', b'\n'];
+const WS: [u8; 4] = *b" \t\r\n";
 
 fn trim_end<'t>(t: &'t [u8], set: &[u8]) -> &'t [u8] {
     let mut e = t.len();
@@ -645,7 +645,7 @@ fn dim_zero(scene: &Scene, doc: &Value, diags: &Diags) {
                     Some(&path),
                     format!(
                         "dim '{aid}' in view {vid} measures {}: 'from' and 'to' are the same point",
-                        units::ftin(m)
+                        units::fmt_ft_in(m)
                     ),
                     "point `from` and `to` at two different anchors, e.g. two corners of the member".to_string(),
                 );
@@ -658,9 +658,9 @@ fn dim_zero(scene: &Scene, doc: &Value, diags: &Diags) {
                     Some(&path),
                     format!(
                         "dim '{aid}' in view {vid} measures {} along dir \"{dir}\" (the points are {} apart horizontally and {} vertically)",
-                        units::ftin(m),
-                        units::ftin(dx),
-                        units::ftin(dy)
+                        units::fmt_ft_in(m),
+                        units::fmt_ft_in(dx),
+                        units::fmt_ft_in(dy)
                     ),
                     format!("set \"dir\": \"{other}\" (or \"aligned\" for the true distance)"),
                 );

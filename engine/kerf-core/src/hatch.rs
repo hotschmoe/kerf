@@ -90,8 +90,7 @@ pub fn generate<L: AsRef<[V2]>>(loops: &[L], pattern: &Pattern, k: f64, rot_deg:
                 continue;
             }
             sort::stable(&mut ts, |a, b| a < b);
-            for pair in ts.chunks_exact(2) {
-                let (ta, tb) = (pair[0], pair[1]);
+            for &[ta, tb] in ts.as_chunks::<2>().0 {
                 if tb - ta < 1e-9 && fam.dashes.is_empty() {
                     continue;
                 }

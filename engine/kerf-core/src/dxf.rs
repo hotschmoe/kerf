@@ -2,7 +2,7 @@
 //! $INSUNITS = 1. Entities: LWPOLYLINE (bulges), HATCH (pattern definitions embedded, or SOLID),
 //! TEXT (style KERF -> romans.shx). Handles are sequential from a fixed seed; no timestamps.
 
-use crate::drawing::{Align, Drawing, Item, VAlign};
+use crate::drawing::{Align, Drawing, FillItem, HatchItem, Item, PathItem, TextItem, VAlign};
 use crate::geom::{self, Pt};
 use crate::json;
 use crate::pen::Pen;
@@ -189,105 +189,121 @@ fn hatch_header(w: &mut Writer, layer: &str, lw: i32, name: &str, solid: bool) {
     w.lit(&[(71, "0")]);
 }
 
-pub fn render(d: &Drawing<'_>) -> Vec<u8> {
-    let st = d.style;
+/// The ENTITIES payload and what the other sections need from it.
+struct Entities {
+    bytes: Vec<u8>,
+    next_handle: u32,
+    ext: geom::Box,
+}
+
+fn entities(d: &Drawing<'_>) -> Entities {
     let mut w = Writer::new();
     let mut ext = geom::Box::default();
-    for it in &d.items {
-        match it {
-            Item::Path(p) => {
-                let lw = lineweight_for(st.pen_width_mm(p.pen));
-                lwpoly(&mut w, &p.layer, lw, pen_lt(st, p.pen).as_deref(), p.closed, &p.pts);
-                ext.add_box(geom::points_box(&p.pts));
-            }
-            Item::Fill(f) => {
-                hatch_header(&mut w, &f.layer, lineweight_for(st.pen_width_mm(Pen::Cut)), "SOLID", true);
-                hatch_boundary(&mut w, &f.loops);
-                w.lit(&[(75, "0"), (76, "1"), (98, "0")]);
-                for l in &f.loops {
-                    ext.add_box(geom::points_box(l));
-                }
-            }
-            Item::Hatch(h) => {
-                let pat = st.pattern(&h.pattern);
-                if h.loops.is_empty() {
-                    continue;
-                }
-                hatch_header(&mut w, &h.layer, lineweight_for(st.pen_width_mm(h.pen)), &h.pattern, false);
-                hatch_boundary(&mut w, &h.loops);
-                w.lit(&[(75, "0"), (76, "1")]);
-                w.f(52, h.angle);
-                w.lit(&[(41, "1"), (77, "0")]);
-                let k = d.scale * h.scale;
-                if let Some(p) = pat {
-                    w.i(78, p.families.len() as i64);
-                    for fam in &p.families {
-                        w.f(53, fam.angle);
-                        w.f(43, fam.x0 * k);
-                        w.f(44, fam.y0 * k);
-                        w.f(45, fam.dx * k);
-                        w.f(46, fam.dy * k);
-                        w.i(79, fam.dashes.len() as i64);
-                        for dd in &fam.dashes {
-                            w.f(49, dd * k);
-                        }
-                    }
-                } else {
-                    w.i(78, 0);
-                }
-                w.lit(&[(98, "0")]);
-                for l in &h.loops {
-                    ext.add_box(geom::points_box(l));
-                }
-            }
+    for item in &d.items {
+        match item {
+            Item::Path(p) => path_entity(&mut w, d.style, p, &mut ext),
+            Item::Fill(f) => fill_entity(&mut w, d.style, f, &mut ext),
+            Item::Hatch(h) => hatch_entity(&mut w, d, h, &mut ext),
+            Item::Text(t) => text_entity(&mut w, d.style, t, &mut ext),
             Item::Region(_) => {}
-            Item::Text(t) => {
-                if t.s.is_empty() {
-                    continue;
-                }
-                entity_header(&mut w, "TEXT", &t.layer, lineweight_for(st.pen_width_mm(t.pen)), None);
-                w.lit(&[(100, "AcDbText")]);
-                w.f(10, t.x);
-                w.f(20, t.y);
-                w.lit(&[(30, "0")]);
-                w.f(40, t.h);
-                w.s(1, &t.s);
-                if t.rot != 0.0 {
-                    w.f(50, t.rot);
-                }
-                w.s(7, &st.dxf_style);
-                let ha = match t.align {
-                    Align::Left => 0,
-                    Align::Center => 1,
-                    Align::Right => 2,
-                };
-                let va = match t.valign {
-                    VAlign::Baseline => 0,
-                    VAlign::Middle => 2,
-                };
-                if ha != 0 || va != 0 {
-                    w.i(72, ha);
-                    w.f(11, t.x);
-                    w.f(21, t.y);
-                    w.lit(&[(31, "0")]);
-                }
-                w.lit(&[(100, "AcDbText")]);
-                if va != 0 {
-                    w.i(73, va);
-                }
-                ext.add_point(t.x, t.y);
-            }
         }
     }
     if ext.is_empty() {
         ext = geom::Box { x0: 0.0, y0: 0.0, x1: 1.0, y1: 1.0 };
     }
-    let entities = w.out;
-    let seed = w.next_handle;
+    Entities { bytes: w.out, next_handle: w.next_handle, ext }
+}
 
-    let mut o = Writer::new();
+fn path_entity(w: &mut Writer, st: &Style, p: &PathItem, ext: &mut geom::Box) {
+    let lw = lineweight_for(st.pen_width_mm(p.pen));
+    lwpoly(w, &p.layer, lw, pen_lt(st, p.pen).as_deref(), p.closed, &p.pts);
+    ext.add_box(geom::points_box(&p.pts));
+}
+
+fn fill_entity(w: &mut Writer, st: &Style, f: &FillItem, ext: &mut geom::Box) {
+    hatch_header(w, &f.layer, lineweight_for(st.pen_width_mm(Pen::Cut)), "SOLID", true);
+    hatch_boundary(w, &f.loops);
+    w.lit(&[(75, "0"), (76, "1"), (98, "0")]);
+    for l in &f.loops {
+        ext.add_box(geom::points_box(l));
+    }
+}
+
+/// A HATCH with its pattern definition embedded, scaled to the drawing.
+fn hatch_entity(w: &mut Writer, d: &Drawing<'_>, h: &HatchItem, ext: &mut geom::Box) {
+    if h.loops.is_empty() {
+        return;
+    }
+    let st = d.style;
+    hatch_header(w, &h.layer, lineweight_for(st.pen_width_mm(h.pen)), &h.pattern, false);
+    hatch_boundary(w, &h.loops);
+    w.lit(&[(75, "0"), (76, "1")]);
+    w.f(52, h.angle);
+    w.lit(&[(41, "1"), (77, "0")]);
+    let k = d.scale * h.scale;
+    if let Some(p) = st.pattern(&h.pattern) {
+        w.i(78, p.families.len() as i64);
+        for fam in &p.families {
+            w.f(53, fam.angle);
+            w.f(43, fam.x0 * k);
+            w.f(44, fam.y0 * k);
+            w.f(45, fam.dx * k);
+            w.f(46, fam.dy * k);
+            w.i(79, fam.dashes.len() as i64);
+            for dash in &fam.dashes {
+                w.f(49, dash * k);
+            }
+        }
+    } else {
+        w.i(78, 0);
+    }
+    w.lit(&[(98, "0")]);
+    for l in &h.loops {
+        ext.add_box(geom::points_box(l));
+    }
+}
+
+fn text_entity(w: &mut Writer, st: &Style, t: &TextItem, ext: &mut geom::Box) {
+    if t.s.is_empty() {
+        return;
+    }
+    entity_header(w, "TEXT", &t.layer, lineweight_for(st.pen_width_mm(t.pen)), None);
+    w.lit(&[(100, "AcDbText")]);
+    w.f(10, t.x);
+    w.f(20, t.y);
+    w.lit(&[(30, "0")]);
+    w.f(40, t.h);
+    w.s(1, &t.s);
+    if t.rot != 0.0 {
+        w.f(50, t.rot);
+    }
+    w.s(7, &st.dxf_style);
+    let ha = match t.align {
+        Align::Left => 0,
+        Align::Center => 1,
+        Align::Right => 2,
+    };
+    let va = match t.valign {
+        VAlign::Baseline => 0,
+        VAlign::Middle => 2,
+    };
+    if ha != 0 || va != 0 {
+        w.i(72, ha);
+        w.f(11, t.x);
+        w.f(21, t.y);
+        w.lit(&[(31, "0")]);
+    }
+    w.lit(&[(100, "AcDbText")]);
+    if va != 0 {
+        w.i(73, va);
+    }
+    ext.add_point(t.x, t.y);
+}
+
+/// HEADER and CLASSES sections.
+fn header(o: &mut Writer, ext: &geom::Box, handle_seed: u32) {
     o.lit(&[(0, "SECTION"), (2, "HEADER"), (9, "$ACADVER"), (1, "AC1015"), (9, "$HANDSEED")]);
-    o.hex(5, seed);
+    o.hex(5, handle_seed);
     o.lit(&[(9, "$INSUNITS"), (70, "1"), (9, "$MEASUREMENT"), (70, "0"), (9, "$LTSCALE"), (40, "1"), (9, "$EXTMIN")]);
     o.f(10, ext.x0);
     o.f(20, ext.y0);
@@ -295,10 +311,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
     o.f(10, ext.x1);
     o.f(20, ext.y1);
     o.lit(&[(30, "0"), (0, "ENDSEC"), (0, "SECTION"), (2, "CLASSES"), (0, "ENDSEC")]);
+}
 
-    // TABLES
-    o.lit(&[(0, "SECTION"), (2, "TABLES")]);
-    // VPORT
+/// VPORT table: one active viewport framing the extents.
+fn table_vport(o: &mut Writer, ext: &geom::Box) {
     o.lit(&[
         (0, "TABLE"),
         (2, "VPORT"),
@@ -354,8 +370,11 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         (78, "0"),
         (0, "ENDTAB"),
     ]);
+}
 
-    // LTYPE
+/// LTYPE table: the standard linetypes plus one per dashed pen that is used.
+fn table_ltype(o: &mut Writer, d: &Drawing<'_>) {
+    let st = d.style;
     let mut lts: Vec<(String, &[f64])> = Vec::new();
     for p in &st.pens {
         let Some(dm) = p.dash_mm.as_deref() else { continue };
@@ -419,8 +438,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         }
     }
     o.lit(&[(0, "ENDTAB")]);
+}
 
-    // LAYER
+/// LAYER table.
+fn table_layer(o: &mut Writer, d: &Drawing<'_>) {
     o.lit(&[(0, "TABLE"), (2, "LAYER"), (5, "2"), (330, "0"), (100, "AcDbSymbolTable")]);
     o.i(70, 1 + d.layers.len() as i64);
     o.lit(&[
@@ -445,8 +466,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         o.i(370, i64::from(lineweight_for(l.lineweight_mm)));
     }
     o.lit(&[(0, "ENDTAB")]);
+}
 
-    // STYLE
+/// STYLE table: the text style that points at the SHX font.
+fn table_style(o: &mut Writer, st: &Style) {
     o.lit(&[
         (0, "TABLE"),
         (2, "STYLE"),
@@ -478,8 +501,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
     o.lit(&[(70, "0"), (40, "0"), (41, "1"), (50, "0"), (71, "0"), (42, "0.2")]);
     o.s(3, &st.dxf_font);
     o.lit(&[(4, ""), (0, "ENDTAB")]);
+}
 
-    // VIEW, UCS (empty)
+/// VIEW and UCS tables (empty).
+fn tables_view_ucs(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
         (2, "VIEW"),
@@ -496,7 +521,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         (70, "0"),
         (0, "ENDTAB"),
     ]);
-    // APPID
+}
+
+/// APPID table.
+fn table_appid(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
         (2, "APPID"),
@@ -513,7 +541,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         (70, "0"),
         (0, "ENDTAB"),
     ]);
-    // DIMSTYLE
+}
+
+/// DIMSTYLE table.
+fn table_dimstyle(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
         (2, "DIMSTYLE"),
@@ -533,7 +564,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         (340, "17"),
         (0, "ENDTAB"),
     ]);
-    // BLOCK_RECORD
+}
+
+/// BLOCK_RECORD table: model and paper space.
+fn table_block_record(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
         (2, "BLOCK_RECORD"),
@@ -562,8 +596,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         (0, "ENDTAB"),
         (0, "ENDSEC"),
     ]);
+}
 
-    // BLOCKS
+/// BLOCKS section.
+fn blocks_section(o: &mut Writer) {
     o.lit(&[
         (0, "SECTION"),
         (2, "BLOCKS"),
@@ -609,13 +645,10 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         (100, "AcDbBlockEnd"),
         (0, "ENDSEC"),
     ]);
+}
 
-    // ENTITIES
-    o.lit(&[(0, "SECTION"), (2, "ENTITIES")]);
-    o.out.extend_from_slice(&entities);
-    o.lit(&[(0, "ENDSEC")]);
-
-    // OBJECTS
+/// OBJECTS section and end of file.
+fn objects_section(o: &mut Writer) {
     o.lit(&[
         (0, "SECTION"),
         (2, "OBJECTS"),
@@ -634,5 +667,25 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
         (0, "ENDSEC"),
         (0, "EOF"),
     ]);
+}
+
+pub fn render(d: &Drawing<'_>) -> Vec<u8> {
+    let ent = entities(d);
+    let mut o = Writer::new();
+    header(&mut o, &ent.ext, ent.next_handle);
+    o.lit(&[(0, "SECTION"), (2, "TABLES")]);
+    table_vport(&mut o, &ent.ext);
+    table_ltype(&mut o, d);
+    table_layer(&mut o, d);
+    table_style(&mut o, d.style);
+    tables_view_ucs(&mut o);
+    table_appid(&mut o);
+    table_dimstyle(&mut o);
+    table_block_record(&mut o);
+    blocks_section(&mut o);
+    o.lit(&[(0, "SECTION"), (2, "ENTITIES")]);
+    o.out.extend_from_slice(&ent.bytes);
+    o.lit(&[(0, "ENDSEC")]);
+    objects_section(&mut o);
     o.out
 }

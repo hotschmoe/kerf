@@ -191,11 +191,6 @@ pub fn fmt_ft_in(x: f64) -> String {
     out
 }
 
-/// Alias of `fmt_ft_in` (the Zig `ftin` swallowed OOM; there is nothing to swallow here).
-pub fn ftin(x: f64) -> String {
-    fmt_ft_in(x)
-}
-
 pub fn append_ft_in(out: &mut String, x: f64) {
     let neg = x < 0.0;
     let Some(sixteenths) = num::to_int::<i64>(math::round(x.abs() * 16.0)) else {

@@ -1,6 +1,6 @@
 //! joint (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, box_of_prisms, fmt_num, ftin, material_or, oriented_ccw};
+use super::common::{Ctx, box_of_prisms, fmt_num, fmt_ft_in, material_or, oriented_ccw};
 use crate::geom::{self, Pt, V2};
 use crate::math;
 use crate::model::{self, Built, NamedAnchor, Prism};
@@ -162,7 +162,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         box_: box_of_prisms(&prisms),
         prisms,
         anchors,
-        info: format!("joint {} {} wide x {} deep", k.tag(), ftin(width), ftin(depth)),
+        info: format!("joint {} {} wide x {} deep", k.tag(), fmt_ft_in(width), fmt_ft_in(depth)),
         ..Built::default()
     })
 }

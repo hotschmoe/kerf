@@ -1,4 +1,4 @@
-//! Float math that `core` lacks, ported from Zig's std.math / compiler_rt (themselves musl) so every
+//! Float math that `core` lacks, ported from musl so every
 //! target produces identical bits. Only what the engine uses.
 
 // The constants are the published musl literals, kept verbatim.

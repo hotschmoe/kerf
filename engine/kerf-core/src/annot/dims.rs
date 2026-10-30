@@ -157,10 +157,9 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, out: &
         ang = 90.0;
     }
     let tn = V2::init(-math::sin(ang * RAD_PER_DEG), math::cos(ang * RAD_PER_DEG));
-    let center;
     let mut valign = VAlign::Baseline;
-    if fits {
-        center = la.mid(lb).add(tn.scale(tgap));
+    let center = if fits {
+        la.mid(lb).add(tn.scale(tgap))
     } else {
         valign = VAlign::Middle;
         let at_far = matches!(variant, 0 | 2 | 4);
@@ -175,8 +174,8 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, out: &
         let q = e.add(u.scale(s * 2.0 * tick)).add(outward.scale(lift));
         out.push(path_item(env, Pen::Dim, d.id, &[e, q], false));
         sh.add(e, q);
-        center = q.add(u.scale(s * (tgap + tw * 0.5)));
-    }
+        q.add(u.scale(s * (tgap + tw * 0.5)))
+    };
     let ti = text_item(env, LayerKey::Dims, Pen::Dim, d.id, &label, center.x, center.y, th, ang, Align::Center, valign);
     if let Item::Text(t) = &ti {
         sh.text = text_poly(env.font, t, 0.015 * sc);

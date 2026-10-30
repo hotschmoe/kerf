@@ -1,6 +1,6 @@
 //! panel (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, ftin, length_or_until, material_ok, one_prism, quad_of};
+use super::common::{Ctx, fmt_ft_in, length_or_until, material_ok, one_prism, quad_of};
 use crate::geom::Box;
 use crate::model::{self, Built, Prism};
 use crate::params::{ParamEnum, param_enum, params};
@@ -50,7 +50,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     Some(Built {
         prisms: one_prism(prism),
         box_: Box { x0: 0.0, y0: 0.0, x1: w, y1: h },
-        info: format!("panel {material} {} x {} run {run}{until_note}", ftin(pp.thickness), ftin(length)),
+        info: format!("panel {material} {} x {} run {run}{until_note}", fmt_ft_in(pp.thickness), fmt_ft_in(length)),
         ..Built::default()
     })
 }

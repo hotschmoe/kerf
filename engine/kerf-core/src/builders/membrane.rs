@@ -8,7 +8,7 @@ use crate::model::fmt_num;
 use crate::model::{self, Built, Kind, Prism};
 use crate::params::{ParamEnum, param_enum, params};
 use crate::pathgeom;
-use crate::units::ftin;
+use crate::units::fmt_ft_in;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -93,7 +93,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let rib = pathgeom::ribbon(&clean, if left { t } else { 0.0 }, if left { 0.0 } else { t });
     let line = pathgeom::offset_open(&clean, if left { t / 2.0 } else { -t / 2.0 });
     let box_ = geom::loop_box(&rib);
-    let info = format!("membrane {} {} thick L={}{}", material, ftin(t), ftin(path_len(&vs_of(&clean))), until_note);
+    let info = format!("membrane {} {} thick L={}{}", material, fmt_ft_in(t), fmt_ft_in(path_len(&vs_of(&clean))), until_note);
     let prism = Prism {
         material: material.to_string(),
         loops: model::one_loop(rib),

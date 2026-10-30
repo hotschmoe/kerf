@@ -44,7 +44,7 @@ pub struct Env<'a, 's> {
     pub font: &'a Font,
     pub scene: &'a Scene<'a>,
     pub spec: &'a ViewSpec<'a>,
-    /// Drawing scale factor (the Zig `S`).
+    /// Drawing scale factor (`S` in the layout notes).
     pub s: f64,
     pub crop: Box,
     pub diags: &'a Diags,

@@ -7,6 +7,7 @@ mod workspace;
 
 use kerf_core::json::{self, Value};
 use kerf_core::{api, canon, model, ops, schema, units};
+use std::fmt;
 use std::fs;
 use std::io::{self, Read, Write};
 use workspace::{DocLock, LogMeta};
@@ -18,31 +19,58 @@ const FULL_MARKER: &str = "<!-- FULL -->";
 const MAX_READ: u64 = 256 << 20;
 const TOOL: &str = "kerf-cli";
 
-/// A failure that ends the process as `kerf: <name>` with exit code 2 (the names are the Zig engine's error names).
-struct Fail(String);
+/// A failure that ends the process as `kerf: <message>` with exit code 2.
+#[derive(Debug)]
+enum Fail {
+    Io(io::Error),
+    /// An I/O error on a named file: `cannot read <path>: ...`.
+    File { verb: &'static str, path: String, source: io::Error },
+    FileTooBig,
+    StreamTooLong,
+    InvalidUtf8,
+    NotDir,
+    BadDoc,
+    BadEngineOutput,
+}
 
 impl From<io::Error> for Fail {
     fn from(e: io::Error) -> Fail {
-        Fail(
-            match e.kind() {
-                io::ErrorKind::NotFound => "FileNotFound",
-                io::ErrorKind::PermissionDenied => "AccessDenied",
-                io::ErrorKind::IsADirectory => "IsDir",
-                io::ErrorKind::AlreadyExists => "PathAlreadyExists",
-                io::ErrorKind::BrokenPipe => "BrokenPipe",
-                io::ErrorKind::InvalidData => "StreamTooLong",
-                _ => "Unexpected",
+        Fail::Io(e)
+    }
+}
+
+fn describe_io(e: &io::Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match e.kind() {
+        // workspace.rs reports a symbolic link as an `other` error carrying this text
+        _ if e.to_string() == "SymLink" => f.write_str("refusing to follow a symbolic link"),
+        io::ErrorKind::NotFound => f.write_str("no such file or directory"),
+        io::ErrorKind::PermissionDenied => f.write_str("permission denied"),
+        io::ErrorKind::IsADirectory => f.write_str("is a directory"),
+        io::ErrorKind::AlreadyExists => f.write_str("path already exists"),
+        io::ErrorKind::BrokenPipe => f.write_str("broken pipe"),
+        _ => write!(f, "unexpected I/O error: {e}"),
+    }
+}
+
+impl fmt::Display for Fail {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Fail::Io(e) => describe_io(e, f),
+            Fail::File { verb, path, source } => {
+                write!(f, "cannot {verb} {path}: ")?;
+                describe_io(source, f)
             }
-            .to_string(),
-        )
+            Fail::FileTooBig => write!(f, "file is larger than {} MiB", MAX_READ >> 20),
+            Fail::StreamTooLong => write!(f, "input is larger than {} MiB", MAX_READ >> 20),
+            Fail::InvalidUtf8 => f.write_str("input is not valid UTF-8"),
+            Fail::NotDir => f.write_str("not a directory"),
+            Fail::BadDoc => f.write_str("could not build the document"),
+            Fail::BadEngineOutput => f.write_str("the engine returned something unexpected (this is a bug)"),
+        }
     }
 }
 
 type Res<T> = Result<T, Fail>;
-
-fn bad_engine_output() -> Fail {
-    Fail("BadEngineOutput".to_string())
-}
 
 fn stderr(text: &str) {
     let _ = io::stderr().write_all(text.as_bytes());
@@ -68,8 +96,8 @@ fn main() {
     let actor = std::env::var("KERF_ACTOR").unwrap_or_else(|_| "agent".to_string());
     let code = match run(&args, &actor) {
         Ok(c) => c,
-        Err(Fail(name)) => {
-            stderr(&format!("kerf: {name}\n"));
+        Err(fail) => {
+            stderr(&format!("kerf: {fail}\n"));
             2
         }
     };
@@ -81,9 +109,11 @@ fn main() {
 
 fn read_file(path: &str) -> Res<Vec<u8>> {
     let mut buf = Vec::new();
-    let n = fs::File::open(path)?.take(MAX_READ + 1).read_to_end(&mut buf)?;
+    let n = fs::File::open(path)
+        .and_then(|f| f.take(MAX_READ + 1).read_to_end(&mut buf))
+        .map_err(|source| Fail::File { verb: "read", path: path.to_string(), source })?;
     if n as u64 > MAX_READ {
-        return Err(Fail("FileTooBig".to_string()));
+        return Err(Fail::FileTooBig);
     }
     Ok(buf)
 }
@@ -92,14 +122,16 @@ fn read_stdin() -> Res<Vec<u8>> {
     let mut buf = Vec::new();
     io::stdin().lock().take(MAX_READ + 1).read_to_end(&mut buf)?;
     if buf.len() as u64 > MAX_READ {
-        return Err(Fail("StreamTooLong".to_string()));
+        return Err(Fail::StreamTooLong);
     }
     Ok(buf)
 }
 
 fn write_out(path: Option<&str>, bytes: &[u8]) -> Res<()> {
     match path {
-        Some(p) => fs::write(p, bytes)?,
+        Some(p) => {
+            fs::write(p, bytes).map_err(|source| Fail::File { verb: "write", path: p.to_string(), source })?;
+        }
         None => {
             let mut o = io::stdout().lock();
             o.write_all(bytes)?;
@@ -127,7 +159,7 @@ fn ops_from_arg(arg: &str) -> Res<Vec<u8>> {
 /// Fold text to pure ASCII for Windows consoles (PowerShell mangles UTF-8): dashes, quotes, x-sign, degree sign,
 /// vulgar fractions and NBSP get readable ASCII; anything else becomes `?`.
 fn ascii_fold(bytes: &[u8]) -> Res<Vec<u8>> {
-    let text = std::str::from_utf8(bytes).map_err(|_| Fail("InvalidUtf8".to_string()))?;
+    let text = std::str::from_utf8(bytes).map_err(|_| Fail::InvalidUtf8)?;
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         if c.is_ascii() {
@@ -274,7 +306,7 @@ fn log_write(
     match res {
         Ok(()) => true,
         Err(e) => {
-            let name = if e.to_string() == "SymLink" { "SymLink".to_string() } else { Fail::from(e).0 };
+            let name = Fail::from(e);
             stderr(&format!(
                 "kerf: error: could not append to op log {lp}: {name}. The document itself WAS written; only the log entry is missing. Exit code 3.\n"
             ));
@@ -419,8 +451,8 @@ fn cmd_schema(o: &Opts) -> Res<u8> {
             failed = true;
             continue;
         }
-        let res = json::parse(&r.bytes).map_err(|_| bad_engine_output())?;
-        let t = res.get("text").and_then(Value::str).ok_or_else(bad_engine_output)?;
+        let res = json::parse(&r.bytes).map_err(|_| Fail::BadEngineOutput)?;
+        let t = res.get("text").and_then(Value::str).ok_or(Fail::BadEngineOutput)?;
         if !text.is_empty() {
             text.push_str("\n----\n\n");
         }
@@ -470,7 +502,7 @@ fn cmd_init(o: &Opts) -> Res<u8> {
     let dir = o.pos.first().map_or(".", String::as_str);
     let _ = fs::create_dir_all(dir);
     if !fs::metadata(dir)?.is_dir() {
-        return Err(Fail("NotDir".to_string()));
+        return Err(Fail::NotDir);
     }
     for name in ["AGENTS.md", "CLAUDE.md"] {
         let p = std::path::Path::new(dir).join(name);
@@ -504,9 +536,9 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
             ));
             return Ok(2);
         }
-        schema::template_text(&workspace::slug(id_src), title).ok_or_else(|| Fail("BadDoc".to_string()))?
+        schema::template_text(&workspace::slug(id_src), title).ok_or_else(|| Fail::BadDoc)?
     } else {
-        workspace::new_doc_text(id_src, title).ok_or_else(|| Fail("BadDoc".to_string()))?
+        workspace::new_doc_text(id_src, title).ok_or_else(|| Fail::BadDoc)?
     };
     let mut final_text = text.clone();
     let mut ops_text: Option<String> = None;
@@ -530,13 +562,13 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
             stderr("nothing written\n");
             return Ok(1);
         }
-        let res = json::parse(&r.bytes).map_err(|_| bad_engine_output())?;
+        let res = json::parse(&r.bytes).map_err(|_| Fail::BadEngineOutput)?;
         let summary = res.get("summary").and_then(Value::str).unwrap_or("");
         if !matches!(res.get("ok"), Some(Value::Bool(true))) {
             print_error_diags(&res);
             return Ok(1);
         }
-        final_text = canon::write(res.get("doc").ok_or_else(bad_engine_output)?);
+        final_text = canon::write(res.get("doc").ok_or(Fail::BadEngineOutput)?);
         for it in res.get("changed").and_then(Value::arr).unwrap_or(&[]) {
             if let Some(c) = it.str() {
                 apply_changed.push(c.to_string());
@@ -676,15 +708,15 @@ fn lock_for_write(cmd: &str, o: &Opts, doc_path: &str) -> Res<Result<Option<DocL
     let lock = match DocLock::acquire(&lp) {
         Ok(l) => l,
         Err(e) => {
-            let name = if e.to_string() == "SymLink" { "SymLink".to_string() } else { Fail::from(e).0 };
+            let name = Fail::from(e);
             stderr(&format!("kerf {cmd}: cannot lock {lp} for writing: {name}\n"));
             return Ok(Err(1));
         }
     };
     if let Some(want) = &o.if_match {
         match if_match_ok(doc_path, want) {
-            Err(Fail(name)) => {
-                stderr(&format!("kerf apply: cannot read {doc_path} to check --if-match: {name}\n"));
+            Err(fail) => {
+                stderr(&format!("kerf apply: cannot read {doc_path} to check --if-match: {fail}\n"));
                 return Ok(Err(1));
             }
             Ok(false) => {
@@ -700,8 +732,8 @@ fn lock_for_write(cmd: &str, o: &Opts, doc_path: &str) -> Res<Result<Option<DocL
 }
 
 fn finish_fmt(o: &Opts, doc_path: &str, bytes: &[u8]) -> Res<u8> {
-    let res = json::parse(bytes).map_err(|_| bad_engine_output())?;
-    let text = res.get("text").and_then(Value::str).ok_or_else(bad_engine_output)?;
+    let res = json::parse(bytes).map_err(|_| Fail::BadEngineOutput)?;
+    let text = res.get("text").and_then(Value::str).ok_or(Fail::BadEngineOutput)?;
     if o.write {
         workspace::write_file_atomic(doc_path, text.as_bytes())?;
     } else {
@@ -720,7 +752,7 @@ fn finish_apply_check(
     call: &DocCall,
     bytes: &[u8],
 ) -> Res<u8> {
-    let res = json::parse(bytes).map_err(|_| bad_engine_output())?;
+    let res = json::parse(bytes).map_err(|_| Fail::BadEngineOutput)?;
     let summary = res.get("summary").and_then(Value::str).unwrap_or("");
     if let Some(txt) = res.get("summary").and_then(Value::str) {
         say(txt)?;

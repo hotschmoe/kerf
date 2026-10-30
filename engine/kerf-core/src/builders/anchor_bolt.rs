@@ -7,7 +7,7 @@ use crate::model::{self, Built, NamedAnchor, Prism};
 use crate::num;
 use crate::params::{ParamEnum, param_enum, params};
 use crate::pathgeom;
-use crate::units::ftin;
+use crate::units::fmt_ft_in;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
@@ -125,8 +125,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         info: format!(
             "anchor_bolt {}\" dia, embed {}, proj {}, {}{}",
             fmt_num(d),
-            ftin(embed),
-            ftin(proj),
+            fmt_ft_in(embed),
+            fmt_ft_in(proj),
             h.tag(),
             if post { "" } else { " hook" }
         ),

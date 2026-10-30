@@ -1,7 +1,7 @@
 //! concrete (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{
-    Ctx, drop_duplicate_points, fmt_num, ftin, material_ok, mirror_built, one_prism, oriented_ccw, parse_cover,
+    Ctx, drop_duplicate_points, fmt_num, fmt_ft_in, material_ok, mirror_built, one_prism, oriented_ccw, parse_cover,
     parse_point_list, zone_rect,
 };
 use crate::geom::{self, Pt, V2};
@@ -75,7 +75,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             zones,
             box_: geom::Box { x0: 0.0, y0: 0.0, x1: w, y1: h },
             host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
-            info: format!("concrete {} {} x {}", sh.tag(), ftin(w), ftin(h)),
+            info: format!("concrete {} {} x {}", sh.tag(), fmt_ft_in(w), fmt_ft_in(h)),
             ..Built::default()
         });
     }
@@ -290,15 +290,15 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         anchors.push(anchor("base_bottom_interior", V2::init(sl, -st - base_t)));
         anchors.push(anchor("base_bottom_footing", V2::init(q2.x, -fd)));
     }
-    let recess_text = if has_recess { format!(", recess {} x {}", ftin(rw), ftin(rd)) } else { String::new() };
-    let base_text = if base_t > 0.0 { format!(", {} {base_mat} base", ftin(base_t)) } else { String::new() };
+    let recess_text = if has_recess { format!(", recess {} x {}", fmt_ft_in(rw), fmt_ft_in(rd)) } else { String::new() };
+    let base_text = if base_t > 0.0 { format!(", {} {base_mat} base", fmt_ft_in(base_t)) } else { String::new() };
     let mut built = Built {
         prisms: prisms_out,
         anchors,
         zones: zones_out,
         box_: geom::loop_box(&lp),
         host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
-        info: format!("concrete slab_edge {} slab, ftg {} x {}{recess_text}{base_text}", ftin(st), ftin(fw), ftin(fd)),
+        info: format!("concrete slab_edge {} slab, ftg {} x {}{recess_text}{base_text}", fmt_ft_in(st), fmt_ft_in(fw), fmt_ft_in(fd)),
         ..Built::default()
     };
     if cp.exterior == Exterior::Right {

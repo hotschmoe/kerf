@@ -48,7 +48,7 @@ pub fn code_basis(doc: &Value) -> String {
     code.to_string()
 }
 
-/// `x` with exactly `dp` decimals, rounded half up on its shortest decimal digits (what Zig's `{d:.N}` prints).
+/// `x` with exactly `dp` decimals, rounded half up on its shortest decimal digits (the engine's fixed-decimal rule for messages).
 fn fixed(x: f64, dp: usize) -> String {
     if !x.is_finite() {
         return "0".to_string();

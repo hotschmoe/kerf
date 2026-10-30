@@ -67,8 +67,7 @@ pub fn label_point(shapes: &[Shape]) -> Option<V2> {
     }
     sort::stable(&mut xs, |a, b| a < b);
     let mut best_mid: Option<(f64, f64)> = None;
-    for pair in xs.chunks_exact(2) {
-        let (x0, x1) = (pair[0], pair[1]);
+    for &[x0, x1] in xs.as_chunks::<2>().0 {
         let mid = (x0 + x1) * 0.5;
         let d = if c.x >= x0 && c.x <= x1 { 0.0 } else { (c.x - mid).abs() };
         if best_mid.is_none_or(|(bd, _)| d < bd) {

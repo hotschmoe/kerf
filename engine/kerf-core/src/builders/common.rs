@@ -46,7 +46,7 @@ pub fn one_prism(prism: Prism) -> Vec<Prism> {
 }
 
 pub use crate::model::fmt_num;
-pub use crate::units::ftin;
+pub use crate::units::fmt_ft_in;
 
 /// Rect quads for cut marks. Corners CCW from bottom-left.
 pub fn quad_of(x0: f64, y0: f64, x1: f64, y1: f64) -> [V2; 4] {

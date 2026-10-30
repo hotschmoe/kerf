@@ -380,7 +380,7 @@ pub fn push_number(out: &mut Vec<u8>, x: f64) {
 /// The one number formatter of the engine: `x` rounded to `decimals` places (at most 9), printed as the shortest decimal
 /// with no exponent, `-0` -> `0`, NaN/inf -> `0`. Integer arithmetic only, so it is identical on every target, never allocates and
 /// can not overflow its buffer: beyond 9e15 / 10^decimals the fraction no longer fits a double and the rounded integer is
-/// printed, saturating at 1e18. Monomorphized per decimal count (Zig's `comptime decimals`), so `10^decimals` divides by a
+/// printed, saturating at 1e18. Monomorphized per decimal count, so `10^decimals` divides by a
 /// constant; the digits are ASCII.
 pub fn fmt_fixed(buf: &mut [u8; 40], x: f64, decimals: u8) -> &str {
     match decimals {
@@ -430,7 +430,7 @@ fn write_fixed(buf: &mut [u8], neg: bool, ip: u64, frac: u64, digits: usize) -> 
     let mut digits = digits;
     let mut i: usize = 40;
     if frac != 0 {
-        while digits > 0 && frac % 10 == 0 {
+        while digits > 0 && frac.is_multiple_of(10) {
             frac /= 10;
             digits -= 1;
         }

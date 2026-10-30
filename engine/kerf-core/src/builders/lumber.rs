@@ -1,7 +1,7 @@
 //! lumber (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{
-    Ctx, ftin, length_or_until, material_ok, material_or, one_prism, parse_actual, parse_sawn, quad_of,
+    Ctx, fmt_ft_in, length_or_until, material_ok, material_or, one_prism, parse_actual, parse_sawn, quad_of,
 };
 use crate::geom::{Box, V2, Xf};
 use crate::model::{self, Built, Prism};
@@ -145,7 +145,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     if lp.run == Run::Z {
         info.push_str(&format!("{size}{pt} {} run z", lp.orient.tag()));
     } else {
-        info.push_str(&format!("{size} {run}{pt} {} run {run} L={}{until_note}", lp.face.tag(), ftin(length)));
+        info.push_str(&format!("{size} {run}{pt} {} run {run} L={}{until_note}", lp.face.tag(), fmt_ft_in(length)));
     }
     if let Some(bk) = lp.barrier {
         let seal_t = 0.125;

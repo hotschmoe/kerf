@@ -60,9 +60,9 @@ impl Section<'_> {
                     continue;
                 }
                 let xs = pathclip::scan(&f, e.c, e.vertical);
-                for pair in xs.chunks_exact(2) {
-                    let lo = pair[0].max(e.lo);
-                    let hi = pair[1].min(e.hi);
+                for &[x0, x1] in xs.as_chunks::<2>().0 {
+                    let lo = x0.max(e.lo);
+                    let hi = x1.min(e.hi);
                     if hi - lo < 1e-6 {
                         continue;
                     }

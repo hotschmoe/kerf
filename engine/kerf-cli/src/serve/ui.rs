@@ -117,10 +117,10 @@ fn sha256(msg: &[u8]) -> [u8; 32] {
         data.push(0);
     }
     data.extend_from_slice(&(msg.len() as u64 * 8).to_be_bytes());
-    for block in data.chunks_exact(64) {
+    for block in data.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
-        for (i, c) in block.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes([c[0], c[1], c[2], c[3]]);
+        for (word, c) in w.iter_mut().zip(block.as_chunks::<4>().0) {
+            *word = u32::from_be_bytes(*c);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
@@ -142,8 +142,8 @@ fn sha256(msg: &[u8]) -> [u8; 32] {
         }
     }
     let mut out = [0u8; 32];
-    for (c, x) in out.chunks_exact_mut(4).zip(h) {
-        c.copy_from_slice(&x.to_be_bytes());
+    for (c, x) in out.as_chunks_mut::<4>().0.iter_mut().zip(h) {
+        *c = x.to_be_bytes();
     }
     out
 }

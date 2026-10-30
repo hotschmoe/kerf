@@ -9,7 +9,7 @@ use crate::math;
 use crate::model::{Cover, Diags, HostInfo, Kind, Level, Prism};
 use crate::scene::{Comp, Scene, State, join_ids};
 use crate::style::Role;
-use crate::units::{self, ftin};
+use crate::units::{self, fmt_ft_in};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -25,7 +25,7 @@ struct Pf<'a> {
 }
 
 fn box_text(b: geom::Box) -> String {
-    format!("x {}..{}, y {}..{}", ftin(b.x0), ftin(b.x1), ftin(b.y0), ftin(b.y1))
+    format!("x {}..{}, y {}..{}", fmt_ft_in(b.x0), fmt_ft_in(b.x1), fmt_ft_in(b.y0), fmt_ft_in(b.y1))
 }
 
 fn two_places(x: f64) -> String {
@@ -162,8 +162,8 @@ fn overlaps(items: &[Pf<'_>], diags: &Diags) {
                     q.comp.id,
                     two_places(area),
                     box_text(b),
-                    ftin(p.prism.z0.max(q.prism.z0)),
-                    ftin(p.prism.z1.min(q.prism.z1)),
+                    fmt_ft_in(p.prism.z0.max(q.prism.z0)),
+                    fmt_ft_in(p.prism.z1.min(q.prism.z1)),
                 ),
                 "move or resize one of them so they only touch, or mark the inner one embedded:true if it is reinforcement or hardware".to_string(),
             );
@@ -344,16 +344,16 @@ fn piece_text(pieces: &[Piece], k: usize) -> String {
     let nlegs = pieces.iter().filter(|q| !q.is_bend).count();
     if pc.is_bend {
         let m = pc.segs.get(pc.segs.len() / 2).map_or(pc.p0, |s| s[0]);
-        return format!("the bend after segment {} of {} (near x {}, y {})", pc.leg, nlegs, ftin(m.x), ftin(m.y));
+        return format!("the bend after segment {} of {} (near x {}, y {})", pc.leg, nlegs, fmt_ft_in(m.x), fmt_ft_in(m.y));
     }
     format!(
         "segment {} of {} (x {}, y {} to x {}, y {})",
         pc.leg,
         nlegs,
-        ftin(pc.p0.x),
-        ftin(pc.p0.y),
-        ftin(pc.p1.x),
-        ftin(pc.p1.y)
+        fmt_ft_in(pc.p0.x),
+        fmt_ft_in(pc.p0.y),
+        fmt_ft_in(pc.p1.x),
+        fmt_ft_in(pc.p1.y)
     )
 }
 
@@ -465,8 +465,8 @@ fn cover(scene: &Scene<'_>, diags: &Diags) {
                                     piece_text(&pieces, min_piece[k]),
                                     names[k],
                                     h.id,
-                                    ftin(min_clear[k]),
-                                    ftin(reqs[k]),
+                                    fmt_ft_in(min_clear[k]),
+                                    fmt_ft_in(reqs[k]),
                                 )
                             } else {
                                 format!(
@@ -474,10 +474,10 @@ fn cover(scene: &Scene<'_>, diags: &Diags) {
                                     bar.built.info,
                                     names[k],
                                     h.id,
-                                    ftin(min_clear[k]),
-                                    ftin(reqs[k]),
-                                    ftin(centre.x),
-                                    ftin(centre.y),
+                                    fmt_ft_in(min_clear[k]),
+                                    fmt_ft_in(reqs[k]),
+                                    fmt_ft_in(centre.x),
+                                    fmt_ft_in(centre.y),
                                 )
                             };
                             diags.add_fix(Level::Warning, "W_COVER", Some(&bar.id), None, message, fix);
@@ -622,10 +622,10 @@ fn near_miss(scene: &Scene<'_>, diags: &Diags) {
                         "'{}' and '{}' leave a {} gap along {} ({}..{}) between facing edges while overlapping along {}; '{}' probably should extend to the {} edge of '{}'",
                         grow.c.id,
                         other.c.id,
-                        ftin(gap),
+                        fmt_ft_in(gap),
                         if on_x { "x" } else { "y" },
-                        ftin(g0),
-                        ftin(g1),
+                        fmt_ft_in(g0),
+                        fmt_ft_in(g1),
                         if on_x { "y" } else { "x" },
                         grow.c.id,
                         edge_name,
@@ -634,7 +634,7 @@ fn near_miss(scene: &Scene<'_>, diags: &Diags) {
                     format!(
                         "set the length of '{}' to {}, or use \"until\": \"{}@{}\" so it follows '{}'; ignore this warning if the gap is intended",
                         grow.c.id,
-                        ftin(grow_len + gap),
+                        fmt_ft_in(grow_len + gap),
                         other.c.id,
                         anchor,
                         other.c.id
@@ -811,10 +811,10 @@ fn short_slope(scene: &Scene<'_>, items: &[Pf<'_>], doc: &Value, diags: &Diags) 
             "W_SHORT_SLOPE",
             Some(&c.id),
             None,
-            format!("'{}' rests on the sloped '{}' (same slope) but its upper end stops {} short of {}", c.id, h.id, ftin(short), what),
+            format!("'{}' rests on the sloped '{}' (same slope) but its upper end stops {} short of {}", c.id, h.id, fmt_ft_in(short), what),
             format!(
                 "replace the literal length of '{}' (it does not follow the pitch) with \"until\": \"{}@{}\" (grows along the slope to the member's end; pair it with \"slope\": \"@{}\"), or lengthen it by {}; acknowledge W_SHORT_SLOPE if it should stop there",
-                c.id, h.id, anchor, h.id, ftin(short)
+                c.id, h.id, anchor, h.id, fmt_ft_in(short)
             ),
         );
     }

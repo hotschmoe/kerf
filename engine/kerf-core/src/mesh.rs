@@ -144,14 +144,14 @@ fn extrude(b: &mut Part, loop_in: &[V2], z0: f64, z1: f64, smooth_deg: f64) {
         for p in &lp {
             b.vert(p.x, p.y, z0, 0.0, 0.0, -1.0);
         }
-        for t in tris.chunks_exact(3) {
-            let (t0, t1, t2) = (base_top + t[0], base_top + t[1], base_top + t[2]);
+        for &[i0, i1, i2] in tris.as_chunks::<3>().0 {
+            let (t0, t1, t2) = (base_top + i0, base_top + i1, base_top + i2);
             if ccw {
                 b.tri(t0, t1, t2);
             } else {
                 b.tri(t0, t2, t1);
             }
-            let (b0, b1, b2) = (base_bot + t[0], base_bot + t[1], base_bot + t[2]);
+            let (b0, b1, b2) = (base_bot + i0, base_bot + i1, base_bot + i2);
             if ccw {
                 b.tri(b0, b2, b1);
             } else {

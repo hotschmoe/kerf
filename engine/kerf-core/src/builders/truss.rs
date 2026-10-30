@@ -1,6 +1,6 @@
 //! truss (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, fmt_num, ftin, mirror_built, parse_sawn, zone_rect};
+use super::common::{Ctx, fmt_num, fmt_ft_in, mirror_built, parse_sawn, zone_rect};
 use crate::geom::{self, Box, Pt, V2};
 use crate::json::Value;
 use crate::math;
@@ -176,7 +176,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             "truss {}:12 {} heel, {top}+{bot} chords, ovh {}",
             fmt_num(math::tan(theta) * 12.0),
             tp.heel.tag(),
-            ftin(tp.overhang)
+            fmt_ft_in(tp.overhang)
         ),
         ..Built::default()
     };

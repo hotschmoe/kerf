@@ -8,7 +8,7 @@ use crate::model::{self, Built, Prism};
 use crate::num;
 use crate::params::{ParamEnum, param_enum, params};
 use crate::pathgeom;
-use crate::units::ftin;
+use crate::units::fmt_ft_in;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
@@ -87,7 +87,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             if model_name.is_empty() { "" } else { " " },
             kind_text,
             gauge_i,
-            ftin(width),
+            fmt_ft_in(width),
             cp.lay.tag()
         ),
         ..Built::default()

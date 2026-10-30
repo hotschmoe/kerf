@@ -10,7 +10,7 @@ use crate::params::{param_enum, params};
 use crate::pathgeom;
 use crate::scene::{Scene, State, join_ids};
 use crate::units;
-use crate::units::ftin;
+use crate::units::fmt_ft_in;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
@@ -107,7 +107,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         nat_z: Some(d),
         points_mode: true,
         bar_d: d,
-        info: format!("rebar {} path L={}{}", size, ftin(path_len(&vs)), note),
+        info: format!("rebar {} path L={}{}", size, fmt_ft_in(path_len(&vs)), note),
         ..Built::default()
     })
 }

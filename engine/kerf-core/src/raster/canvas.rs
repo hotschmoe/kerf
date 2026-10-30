@@ -210,9 +210,9 @@ impl Canvas {
                         .map(|e| e.x0 + (sy - e.y0) * (e.x1 - e.x0) / (e.y1 - e.y0)),
                 );
                 crate::sort::stable(&mut self.xs, |a, b| a < b);
-                for pair in self.xs.chunks_exact(2) {
-                    let xa = 0.0f64.max(pair[0].min(wf));
-                    let xb = 0.0f64.max(pair[1].min(wf));
+                for &[x0, x1] in self.xs.as_chunks::<2>().0 {
+                    let xa = 0.0f64.max(x0.min(wf));
+                    let xb = 0.0f64.max(x1.min(wf));
                     if xb <= xa {
                         continue;
                     }
@@ -238,6 +238,8 @@ impl Canvas {
             let last = last.min(self.w - 1);
             if first <= last {
                 for x in first..=last {
+                    // min/max rather than clamp: a NaN accumulator must give 0 coverage, not propagate
+                    #[allow(clippy::manual_clamp)]
                     let v = round(f64::from(self.acc[x].min(1.0).max(0.0) * 255.0)) as u8;
                     self.raise(y, x, v);
                 }
