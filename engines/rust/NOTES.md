@@ -14,7 +14,7 @@ Performance track: see `PERF.md` (benchmarks, profiles, what was changed and mea
 | 3 wasm | exact SPEC 13.1 ABI, 0 imports; `wasm_golden.mjs`: `24/24 byte-identical`; `wasm_check.mjs` writes an `A.svg` equal to the golden; loaded in the web app (screenshot read, looks right, header shows `ENGINE: KERF-RUST`) |
 | 4 CLI parity | `cli_ergonomics.mjs`: `145 passed, 0 failed`; ~28 invocation pairs (stdout/stderr/exit/files) compared by hand identical except `kerf-rust` in `version` |
 | 5 fuzz | `tests/fuzz.py`: 0 crashes (1000 x 3 release; 1500 x 3 and 12 more seeds on a debug build with overflow checks); `tests/diff_fuzz.py` (same mutants through both CLIs, stdout bytes + exit code): 0 differences in 2000 + 1000 mutants x 3 functions |
-| 6 `kerf serve` | **190/190** `serve_smoke.mjs` checks; web `e2e-serve.mjs --real` 9 passed, 5 mock-only skipped. `POST /api/llm` and the outbound HTTP client were removed (chat is local agent CLIs only; the server makes no outbound connections). Windows is untested (signal handling and the token source are unix-only) |
+| 6 `kerf serve` | **190/190** `serve_smoke.mjs` checks; web `e2e-serve.mjs --real` 9 passed, 5 mock-only skipped. `POST /api/llm` and the outbound HTTP client were removed (chat is local agent CLIs only; the server makes no outbound connections). Windows: see the Windows section below |
 
 Output of the last full run (`tests/` scripts, release binary, same tree as the final commit):
 ```
@@ -140,3 +140,21 @@ rustfmt at width 120 with `Max` heuristics expands struct literals and match arm
 
 ## SPEC ISSUES
 - SPEC 13 says `kerf export` takes `format: "svg"|"dxf"|"pdf"`; the engines (both) also accept `png`, and PDF export frames the drawing on a sheet by default while SVG/DXF/PNG do not. Worth one sentence in 13/13.2.
+
+## Windows
+
+All `unsafe` lives in `kerf-cli/src/sys/` (`unix.rs`, `windows.rs`: safe wrappers, `#![deny(unsafe_op_in_unsafe_fn)]`, a `// SAFETY:` per block); zero crates. Built and run on a Windows 11 x86_64 machine
+(release and debug): `serve_smoke.mjs` 189/189 (190 on Linux: one POSIX-only check), `windows_serve.mjs` 32/32, `cli_ergonomics.mjs` 145/145, `tests/platform_serve.mjs` 16/16,
+`tests/ctrl_break.ps1`, `tests/check_golden.mjs` (101 outputs byte-identical to the Linux goldens, DXF/PDF checkers clean), clippy `-D warnings` clean. aarch64-pc-windows-msvc only type-checks here (CI: `windows-11-arm`).
+- **Agent runs**: the agent is created suspended (`CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP`), assigned to its own job object with `KILL_ON_JOB_CLOSE`, then resumed (`NtResumeProcess`). Stop, timeout, sweep and
+  server exit are `TerminateJobObject` (exit code 1, no SIGTERM stage); a server killed hard closes the job and takes the tree with it. If the job cannot be made the leader alone is terminated (`TerminateProcess`).
+- **Agent CLIs**: std only finds `.exe`, so `sys::resolve_program` walks `PATH` (the agent's PATH has kerf's directory first) with the runnable `PATHEXT` extensions (`.exe .com .cmd .bat`): npm `.cmd` shims work, a
+  `.ps1` or extensionless script is "not found". A `.cmd` goes through cmd.exe, which refuses CR/LF in an argument (`InvalidInput`): the spawn is retried once with line breaks flattened to spaces. A command line
+  over 32 767 characters (`ERROR_FILENAME_EXCED_RANGE`) is the 400 `E_INPUT` as E2BIG is on Linux.
+- **Token**: `ProcessPrng` (bcryptprimitives, `raw-dylib`). **Shutdown**: `SetConsoleCtrlHandler`: Ctrl-C/Ctrl-Break = 2, console close = 1, logoff/shutdown = 15, stored in the same atomic the poller reads (exit `128 + n`,
+  so 130 for Ctrl-C); the close/logoff handlers block 10 s so the poller can stop the agent before the OS ends the process. The agent has its own process group, so the console's Ctrl-C reaches only the server.
+- **Op log**: `LockFileEx` on one byte at offset 2^62 (Windows range locks are mandatory; `File::lock` would cover byte 0 on and block readers), as the Zig engine; a file system without locks is tolerated.
+  Directory fsync does not exist (the open fails and is ignored), file data is `FlushFileBuffers`.
+- **Paths**: `canonicalize` returns `\\?\C:\...`; `sys::plain_path` strips it (banner, `/api/info` `dir`, the agent's `cwd` and `{dir}`). Document names are validated by `workspace::valid_doc_file` (device names, stems
+  ending in dot/space, `:` streams, separators). Links are never followed (`symlink_metadata` reports symlinks and junctions): verified with a file symlink and a junction at `.kerf/attachments`.
+- **Not covered**: console-close events (the handler is the same code as Ctrl-Break), a `windows-11-arm` run, a network share for the op log.

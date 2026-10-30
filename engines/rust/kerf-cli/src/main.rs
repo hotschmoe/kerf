@@ -1,8 +1,11 @@
+#![deny(unsafe_op_in_unsafe_fn)]
+
 mod agents;
 mod events;
 mod hash;
 mod http;
 mod serve;
+mod sys;
 mod workspace;
 
 use kerf_core::json::{self, Value};
