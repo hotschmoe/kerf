@@ -16,7 +16,7 @@ Geometric mean of per-case time ratios over the 126-case set (lower is faster).
 | overflow checks on the native release build | 1.00 | 1.04 | png 1.42 (before the filter rewrite), the rest 1.00-1.02 |
 | overflow checks on the wasm build (not shipped) | 1.00 | 1.14 | apply/drawing/export 1.16-1.17 |
 
-"Before the cleanup" is `engine` at the commit that turned overflow checks on (the Verus-free, Zig-free tree); the cleanup
+"Before the cleanup" is `engine` at the commit that turned overflow checks on (the tree after the engine switch); the cleanup
 rewrote the PNG encoder, the raster canvas, the JSON parser, the sort and the PDF writer as ordinary Rust and split the
 longest functions. The wasm parse-heavy functions (`fmt`, `inspect`) are 3-5% slower at `opt-level = "z"`; everything the
 cleanup could have slowed was checked case by case (the PNG filter first measured 1.12x in wasm as iterator chains and was
