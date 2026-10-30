@@ -146,32 +146,31 @@ fn magnitude(residual: u8) -> u64 {
     u64::from(if residual < 128 { residual } else { residual.wrapping_neg() })
 }
 
-/// The filtered residuals of `row` (`prev` is the row above, all zero for the first), as slices zipped with their
-/// one-pixel-shifted selves so the pixel loop has no index arithmetic. The first pixel has no left or upper-left
-/// neighbour.
+/// Calls `sink(i, residual)` for every pixel of `row` filtered by `P` (`prev` is the row above, all zero for the
+/// first). The first pixel has no left or upper-left neighbour. Both slices are cut to one length first so the pixel
+/// loop needs no bounds checks.
 #[inline(always)]
-fn residuals<'a, P: Predict>(row: &'a [u8], prev: &'a [u8]) -> (u8, impl Iterator<Item = u8> + 'a) {
-    let first = row[0].wrapping_sub(P::at(0, prev[0], 0));
-    let rest = row[1..]
-        .iter()
-        .zip(row)
-        .zip(&prev[1..])
-        .zip(prev)
-        .map(|(((&x, &left), &up), &up_left)| x.wrapping_sub(P::at(left, up, up_left)));
-    (first, rest)
+fn for_each_residual<P: Predict>(row: &[u8], prev: &[u8], mut sink: impl FnMut(usize, u8)) {
+    let n = row.len();
+    let (row, prev) = (&row[..n], &prev[..n]);
+    if n == 0 {
+        return;
+    }
+    sink(0, row[0].wrapping_sub(P::at(0, prev[0], 0)));
+    for i in 1..n {
+        sink(i, row[i].wrapping_sub(P::at(row[i - 1], prev[i], prev[i - 1])));
+    }
 }
 
 fn score<P: Predict>(row: &[u8], prev: &[u8]) -> u64 {
-    let (first, rest) = residuals::<P>(row, prev);
-    magnitude(first) + rest.map(magnitude).sum::<u64>()
+    let mut total = 0;
+    for_each_residual::<P>(row, prev, |_, r| total += magnitude(r));
+    total
 }
 
 fn write<P: Predict>(row: &[u8], prev: &[u8], out: &mut [u8]) {
-    let (first, rest) = residuals::<P>(row, prev);
-    out[0] = first;
-    for (o, r) in out[1..].iter_mut().zip(rest) {
-        *o = r;
-    }
+    let out = &mut out[..row.len()];
+    for_each_residual::<P>(row, prev, |i, r| out[i] = r);
 }
 
 /// The five PNG filters in the order of their type byte.

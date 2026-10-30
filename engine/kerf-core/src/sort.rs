@@ -48,7 +48,9 @@ fn insertion_sort<T>(v: &mut [T], less: &impl Fn(&T, &T) -> bool) {
                 lo = mid + 1;
             }
         }
-        v[lo..=i].rotate_right(1);
+        for j in (lo..i).rev() {
+            v.swap(j, j + 1);
+        }
     }
 }
 

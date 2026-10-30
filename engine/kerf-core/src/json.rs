@@ -111,7 +111,9 @@ impl Parser<'_> {
     }
 
     fn skip_while(&mut self, pred: impl Fn(u8) -> bool) {
-        self.pos += self.src[self.pos..].iter().take_while(|&&c| pred(c)).count();
+        while self.src.get(self.pos).is_some_and(|&c| pred(c)) {
+            self.pos += 1;
+        }
     }
 
     fn skip_ws(&mut self) {
