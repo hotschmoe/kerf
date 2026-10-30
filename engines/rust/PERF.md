@@ -6,7 +6,7 @@ Every number below was measured on this machine for this report; raw per-case re
 
 **Summary** (geometric mean of per-case time ratios over the 126-case set; lower is faster)
 
-| | before | after | final, with the verified kernels |
+| | before | after | final |
 |---|---:|---:|---:|
 | native in-process, Rust release / Zig fast | 1.25 | **0.82** | **0.75** |
 | native in-process, Rust small / Zig small | 1.03 | **0.69** | **0.67** |
@@ -17,14 +17,10 @@ Every number below was measured on this machine for this report; raw per-case re
 | wasm size raw / gzip / brotli | 604,675 / 265,004 / 222,335 | **593,144 / 264,087 / 221,786** (Zig: 699,181 / 288,292 / 236,991) | 588,538 / 263,487 / 222,092 |
 | optimized rebuild after an edit (release / new `fastbuild` profile) | 33.4 s | 33.4 s / **4.1 s** (Zig fast: 96.9 s) | not re-measured |
 
-"Final" is `rust-verus-proofs` at `08f0261`: this track merged with the Verus-verified `json`, `sort`, `png`,
-`pdf/writer` and raster canvas, plus the prototypes of the last section as proven code (`verus/VERUS.md` 9.8). It
-was measured in a later session with the same harness, pinned, load 2.2-2.4. In that session the merged engine
-before the prototypes (`5bc76a5`) measured 0.80 native and 0.77 wasm, so the session-to-session shift is about 0.02.
-The final raw results are `perf/results/verified-*.tsv`. Final CLI sizes: release 1,663,352, small 1,233,192 bytes.
+"Final" is the engine after the PNG/deflate, number-formatting and sort work (commit `08f0261` of the former proof branch), measured in a later session with the same harness, pinned, load 2.2-2.4; the session-to-session shift is about 0.02. The raw results are `perf/results/verified-*.tsv`. Final CLI sizes: release 1,663,352, small 1,233,192 bytes.
 The CLI row compares against a separately built Zig fast CLI, so it is less comparable.
 
-Where Zig is still ahead: JSON-number-heavy outputs (`mesh`, `fmt`; also reserved code), allocation
+Where Zig is still ahead: JSON-number-heavy outputs (`mesh`, `fmt`), allocation
 (Zig allocates from a per-call arena, Rust from glibc malloc), process start-up (dynamic glibc + libgcc_s), and the
 wasm built for speed (Zig fast is 1.21x faster than the size-optimised Rust wasm; Rust built for speed is faster).
 
@@ -42,7 +38,7 @@ wasm built for speed (Zig fast is 1.21x faster than the size-optimised Rust wasm
 - **CLI processes**: `bench/bench_cli.py` spawns `kerf` (posix_spawn, output to /dev/null) 30 times per command.
 - **Machine**: CIX P1, 12 cores of three kinds (cpu0-1 2.6 GHz A720, cpu10-11 2.5 GHz, cpu6-9 2.2-2.3 GHz, cpu2-5
   1.8 GHz A520). Unpinned runs bounce between core types (2-4x spread), so every comparison here is pinned with
-  `taskset -c 1`. A Verus agent was compiling and benchmarking on the same machine (load 2-3.5, one core busy);
+  `taskset -c 1`. Another job was compiling on the same machine (load 2-3.5, one core busy);
   A/B comparisons were run back to back, the final tables in one session (`bench/run_suite.sh`, load 2.0-3.5);
   repeated runs of identical binaries agreed within 1% (geomean), single cases within about 3%.
 - **Engines**: "before" = commit 0fc8753 (the finished port); "after" = this branch's head. Zig 0.17.0 from the same
@@ -178,7 +174,7 @@ After: the native whole-workload profile is PNG encoding (`filter_row` 20.4% sel
 
 Allocation (bench `--count`, truss A svg): 8,898 allocations + 2,281 reallocs per call before, 8,023 + 2,209 after
 (font and parameter-row churn gone). Sites (DHAT): `clip::boolean` (~20 short-lived vectors per call, 97 calls),
-`json::Parser::string` (reserved), per-stroke glyph polylines, `Prism::clone`. Replacing glibc with a per-call bump
+`json::Parser::string`, per-stroke glyph polylines, `Prism::clone`. Replacing glibc with a per-call bump
 arena (measurement only, `bench --arena`) makes the native in-process run **0.77x** (mesh 0.69, inspect 0.63, fmt
 0.64, svg 0.78, png 0.95): that is most of the remaining native gap on the JSON-heavy functions.
 
@@ -271,59 +267,11 @@ Rust dev 1.4 + 31.1 s = 32.5 s; Rust release 33.4 + 10.9 = 44 s; **Rust fastbuil
 dominates). The crate graph was not split: a `geom` edit invalidates nearly every module that would be split off,
 and the 1.4 s incremental dev build leaves little to win.
 
-## For the verified kernels
-
-The modules reserved for the Verus versions (`json.rs`, `sort.rs`, `png.rs` + `png/deflate.rs`, `pdf/writer.rs`,
-`raster::kernels`) were profiled but not edited. Their share of the final profiles (`bench/kernel_share.py`; a
-sample is charged to the innermost reserved frame; inlined helpers are matched by name, so approximate):
-
-| module | native, all cases | native, non-PNG cases | wasm, all cases | wasm size (twiggy, Oz) |
-|---|---:|---:|---:|---:|
-| deflate | 30.9% | - | 34.9% | 8.1 KB for `png` + `deflate` |
-| png filters, CRC, chunks | 26.6% | - | 11.7% | (same) |
-| json writers / number formatting | 1.8% | 4.7% | 2.3% | 10.8 KB `json` total |
-| json parser | 1.0% | 2.6% | 1.4% | + core dec2flt 5 KB code + tables |
-| sort | 0.4% | 1.2% | 0.6% | 11.5 KB (16 instances) |
-| raster kernels | 1.3% | - | inlined | inlined |
-| pdf writer | ~0% | ~0% | ~0% | 0.25 KB |
-
-PNG export is the one function group where Rust trails Zig fast (1.26x natively, 1.06x Zig small in wasm), and it
-is all in these files. Prototypes, measured in a scratch worktree and checked byte-identical against every golden
-(PNG included), are in `perf/` as patches against this branch's files (not applied):
-
-- `perf/proto-png-deflate.patch`: (1) `match_len` compares 8 bytes per step (`u64` XOR + `trailing_zeros`):
-  PNG 0.88x; (2) the filter heuristic scores each of the 5 filter types in one specialised pass without writing the
-  candidate row (`filter_row` + `row_score` were 37% of a PNG export; the chosen row is filtered once): cumulative
-  0.59x; (3) the deflate hash tables as `Box<[u16; N]>` with a masked hash, so the indexing has no bounds checks:
-  cumulative **0.57x native (estimated 0.72-0.75x Zig fast), 0.78x wasm** (in wasm the non-inlined `Vec::index` on those
-  tables is 7% of all samples).
-- `perf/proto-fmt-fixed.patch`: `fmt_fixed` monomorphized on the decimal count (Zig's is `comptime decimals`, so its
-  divisions by `10^d` are multiplications) and no `from_utf8` re-validation of the ASCII it just wrote (5% of a native
-  `mesh` alone): mesh 0.94x, pdf 0.95x, sheet svg 0.95x, all non-PNG 0.98x; +3 KB wasm. `fmt_fixed` is 24% of a
-  native `mesh` and the main reason `mesh` and `fmt` stay above Zig. A verified version can prove the output is ASCII
-  and drop the check without `unsafe`-at-a-distance.
-- `perf/proto-sort-core.patch`: `stable` as a thin generic wrapper over one non-generic sort of a `u32` index
-  permutation (`&mut dyn FnMut`), then the permutation applied in place: wasm -15.5 KB raw (-2.6%), -3.8 KB gzip;
-  time +1% wasm, +3% native. Size is the reason to consider it; the in-place SymMerge (rotations) is otherwise fine at
-  today's sizes once `iso::candidates` stopped sorting.
-- JSON parse: 2.6% of non-PNG native time (documents are ~10 KB); float parsing goes through core's dec2flt (correct
-  rounding), which a verified parser has to match.
-- `pdf/writer.rs` and `raster::kernels` are not worth optimizing (no measurable share).
-
-Outcome (`verus/VERUS.md` 9.8):
-- The PNG and deflate prototypes and `fmt_fixed` went in as proven code. `filter_score`, a specialised `filter_row`
-  and `match_len` are verified, and so is `fmt_fixed`'s digit writer, which proves its output ASCII instead of
-  using a bare `unsafe`. The spec is now stronger: it also fixes which filter each row gets.
-- PNG export is 0.60x the engine before (prototype on this tree: 0.63x).
-- The sort-core prototype is subsumed: the verified sort already sorts an index permutation through one `dyn`
-  comparator, and what remains per type is 1.85 KB.
-
 ## The remaining gap to Zig, and why
 
-- **PNG** (native 1.26x Zig fast; wasm 1.06x Zig small): deflate and the filter heuristic, reserved. With the
-  prototypes in the verified modules (final column): native 0.69x Zig fast, wasm 0.77x Zig small.
-- **`mesh`, `fmt`, `web-mesh`** (1.10-1.33x native): JSON number formatting and JSON writing (reserved, prototype
-  above) plus allocation churn. Zig allocates from a per-call arena; Rust from glibc. The measured bound for an arena
+- **PNG** (native 1.26x Zig fast; wasm 1.06x Zig small): deflate and the filter heuristic. With the
+  final changes (final column): native 0.69x Zig fast, wasm 0.77x Zig small.
+- **`mesh`, `fmt`, `web-mesh`** (1.10-1.33x native): JSON number formatting and JSON writing plus allocation churn. Zig allocates from a per-call arena; Rust from glibc. The measured bound for an arena
   is 0.77x overall (0.64-0.69x on these functions), but a safe one for the threaded `serve` is real allocator work;
   not done.
 - **Process start-up** (0.90 ms vs 0.55 ms): dynamic glibc and libgcc_s (std links libgcc_s for backtraces even with

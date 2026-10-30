@@ -1,6 +1,6 @@
 # engines/rust: Kerf engine in Rust (std-only, zero crates)
 
-Branch `rust-verus`. A faithful port of `engines/zig` (the reference): same SPEC 13 API, CLI, wasm ABI and `kerf serve`.
+A faithful port of `engines/zig` (the reference): same SPEC 13 API, CLI, wasm ABI and `kerf serve`.
 Zero third-party crates (`Cargo.lock` lists only our three packages). Rust 1.96 stable, edition 2024.
 Performance track: see `PERF.md` (benchmarks, profiles, what was changed and measured). In short: native in-process
 0.82x the time of Zig fast (was 1.25x), wasm 0.79x Zig small (was 1.81x), wasm 593,144 B (Zig 699,181).
@@ -44,8 +44,6 @@ One `serve_smoke` run in the S1/S2 work showed `V-4: over 256 open connections .
   ported from Zig's std.math / compiler_rt (sin, cos, tan, atan, atan2, acos, hypot, ldexp, floor, ceil, round, trunc, exact sqrt/fma): identical bits on every target.
 - `kerf-cli`: binary `kerf`; `workspace`, `hash`, `http`, `events`, `agents`, `serve`, `serve/*`. `build.rs` embeds a web UI directory given by `KERF_UI`.
 - `kerf-wasm`: cdylib, SPEC 13.1 ABI, 120 lines + a 90-line size-class allocator (`heap.rs`).
-- Modules written for a later Verus swap (narrow slice APIs, no engine imports except where noted): `json.rs` (parser, `fmt_fixed`/`fmt_number`, writers; uses `math`+`num`), `sort.rs`,
-  `png.rs` + `png/deflate.rs` (CRC-32, Adler-32, chunk framing, exact port of Zig `std.compress.flate` level default, so PNGs are byte-identical), `pdf/writer.rs` (object writer + xref), `raster::kernels` (integer pixel kernels).
 
 ## Build, run, test
 ```sh
@@ -128,7 +126,7 @@ rustfmt at width 120 with `Max` heuristics expands struct literals and match arm
 - Float math only through `crate::math`. Sorting only through `crate::sort::stable`.
 - Typed errors, no `unwrap`/`expect`/panicking index on document-reachable paths.
 - Parameters: `params!` / `param_enum!` macros (doc comment in `params.rs`) generate the typed struct, the parser (all problems in one pass) and the catalog rows; `builders::params_rows` feeds `catalog`.
-- Performance (PERF.md): fixed are the wasm sqrt, `iso::candidates` sorting, the per-call font and style parses and `allowed_key`'s row building. Open: PNG export (deflate and the filter heuristic, reserved for the verified kernels; prototypes in `perf/*.patch` give 0.57x), JSON number formatting (`fmt_fixed`, reserved), allocation churn (glibc; a per-call arena would be 0.77x in-process), process start-up (dynamic glibc + libgcc_s).
+- Performance (PERF.md): fixed are the wasm sqrt, `iso::candidates` sorting, the per-call font and style parses and `allowed_key`'s row building. Open: PNG export (deflate and the filter heuristic), JSON number formatting (`fmt_fixed`, reserved), allocation churn (glibc; a per-call arena would be 0.77x in-process), process start-up (dynamic glibc + libgcc_s).
 
 ## REQUESTS
 - `tools/zig-engine/compare_drawings.py` crashes (`KeyError: 'layer'`) on any current drawing, Zig against Zig included, because `region` items have no `layer`. A fixed copy is `engines/rust/tests/compare_drawings.py` (`it.get('layer', '')`); please port the one-line fix.

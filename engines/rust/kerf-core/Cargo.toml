@@ -14,4 +14,4 @@ name = "bench"
 path = "../bench/bench.rs"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)', 'cfg(kerf_bench_alloc)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kerf_bench_alloc)'] }

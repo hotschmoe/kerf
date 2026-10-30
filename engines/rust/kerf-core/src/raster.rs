@@ -46,7 +46,7 @@ pub struct Image {
     pub pixels: Vec<u8>,
 }
 
-/// The canvas: coverage scratch, per-row dirty spans, strokes and fills (verified with Verus).
+/// The canvas: coverage scratch, per-row dirty spans, strokes and fills.
 pub mod kernels;
 
 use kernels::{Canvas, Edge, V};
