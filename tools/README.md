@@ -12,6 +12,9 @@ Python tools self-re-exec into the venv, so no activation needed. System chromiu
 | Screenshot | `node tools/shot.mjs <url> <out.png> [--wait-ms 1000] [--width 1280 --height 800] [--webgpu] [--wait-for "<js expr>"] [--eval "<js expr>"] [--full-page] [--dpr N] [--no-gpu] [--args "--flag ..."]` |
 | Static server | `node tools/serve.mjs <dir> [port=8080] [--coop] [--host 0.0.0.0]` (run in background: `node tools/serve.mjs dist 8080 &`) |
 | Sizes | `tools/size_report.sh dist/*.wasm dist/*.js` (raw / gzip -9 / brotli -q11 + total) |
+| Build the wasm | `node tools/build_wasm.mjs [--out FILE]` (cargo `small` profile, export pruning, `wasm-opt -Oz` when available) -> `engine/dist/kerf.wasm` |
+| SVG to PNG | `tools/svg2png.sh in.svg out.png [width]` (headless chromium; Read the PNG) |
+| Drawing IR diff | `tools/compare_drawings.py a.json b.json [--tol 1e-3] [-v]` (two `kerf drawing` outputs) |
 | Sample DXF | `tools/.venv/bin/python tools/test/make_sample_dxf.py out.dxf` |
 
 - `dxf_check.py`: exit 1 if unreadable or `doc.audit()` has errors. Prints version, `$INSUNITS`, entities per layer/type, extents, text styles, hatch patterns (ANSI31 / AR-CONC / SOLID), linetypes, warnings (unitless, undefined layers). `--png` renders modelspace on a WHITE bg, black ink, via ezdxf drawing addon (matplotlib). View the PNG with the Read tool.
