@@ -48,7 +48,22 @@ fn stderr(text: &str) {
     let _ = io::stderr().write_all(text.as_bytes());
 }
 
+/// With `panic = "abort"` a panic would otherwise end in SIGABRT and a core dump. A panic is a bug (overflow checks are on
+/// in release builds), so say so, say where, and exit with EX_SOFTWARE.
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let what = info.payload_as_str().unwrap_or("panic");
+        let at = info.location().map_or_else(String::new, |l| format!(" at {}:{}:{}", l.file(), l.line(), l.column()));
+        let _ = writeln!(
+            io::stderr(),
+            "kerf: internal error: {what}{at}\nThis is a bug in kerf. Please report it with the command and the document that caused it."
+        );
+        std::process::exit(70);
+    }));
+}
+
 fn main() {
+    install_panic_hook();
     let args: Vec<String> = std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
     let actor = std::env::var("KERF_ACTOR").unwrap_or_else(|_| "agent".to_string());
     let code = match run(&args, &actor) {
