@@ -32,19 +32,6 @@ pub fn collect_layers(items: &[Item], st: &Style) -> Vec<LayerDef> {
     out
 }
 
-pub fn item_bounds(items: &[Item]) -> Box {
-    let mut b = Box::default();
-    for it in items {
-        match it {
-            Item::Path(p) => b.add_box(geom::points_box(&p.pts)),
-            Item::Fill(f) => f.loops.iter().for_each(|l| b.add_box(geom::points_box(l))),
-            Item::Hatch(h) => h.loops.iter().for_each(|l| b.add_box(geom::points_box(l))),
-            Item::Text(_) | Item::Region(_) => {}
-        }
-    }
-    b
-}
-
 pub fn meta_string<'a>(doc: &'a Value, key: &str) -> &'a str {
     doc.get("meta").and_then(|m| m.get(key)).and_then(Value::str).unwrap_or("")
 }

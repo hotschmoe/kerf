@@ -27,10 +27,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-pub use crate::shape::Shape;
-pub use dims::polys_overlap;
-pub use notes::report_hits;
-pub use text::{ascii_fold, items_box, text_poly};
+pub use text::{ascii_fold, items_box};
 pub use title::{SheetInfo, title_items};
 
 use dims::DimSpec;

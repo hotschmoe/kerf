@@ -1,6 +1,7 @@
-//! DEFLATE compression, an exact port of Zig 0.17's `std.compress.flate.Compress` at level `.default` fed through
-//! one 64 KiB window buffer (the compressed bytes are what the Zig engine emits). `deflate_raw(&[u8]) -> Vec<u8>`; the
-//! zlib header and trailer are added by `png::zlib_frame`.
+//! DEFLATE compression: greedy-lazy LZ77 with hash chains (good 8, nice 128, lazy 16, chain 128 as zlib's default level
+//! 6) fed through one 64 KiB window, then Huffman-coded blocks. The exact token choices are part of the output format:
+//! PNG goldens are byte-compared, so changing a heuristic changes every PNG. `deflate_raw(&[u8]) -> Vec<u8>` is the
+//! raw stream; `png::zlib_frame` adds the zlib header and trailer.
 
 use alloc::boxed::Box;
 use alloc::vec;

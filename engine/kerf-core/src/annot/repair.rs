@@ -13,7 +13,6 @@ use alloc::vec::Vec;
 /// One rendering of the dimensions and labels (stacked, with the repair pushes applied) plus what the router needs.
 pub struct Render<'a> {
     pub per: Vec<Vec<Item>>,
-    pub eff: Vec<f64>,
     pub obstacles: Vec<Obstacle>,
     pub soft: Vec<[V2; 2]>,
     pub knock: Vec<[V2; 4]>,
@@ -96,7 +95,7 @@ pub fn render_dim_labels<'a>(
             }
         }
     }
-    Render { per, eff, obstacles, soft, knock, ext, meta }
+    Render { per, obstacles, soft, knock, ext, meta }
 }
 
 /// Push a dimension out by whole dimension spacings (0.25 paper inch) until its text clears every leader.

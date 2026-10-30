@@ -85,9 +85,6 @@ impl Work {
     pub fn new(limit: u64) -> Work {
         Work { used: Cell::new(0), limit }
     }
-    pub fn used(&self) -> u64 {
-        self.used.get()
-    }
     pub fn spent(&self) -> bool {
         self.used.get() >= self.limit
     }
@@ -157,7 +154,6 @@ pub struct Layout {
     pub landing: Vec<V2>,
     pub leaders: Vec<[V2; 3]>,
     pub hits: Vec<Hit>,
-    pub searched: bool,
     /// The work budget ran out: the notes are placed by the basic rule (plus whatever the search had found) and hits may remain.
     pub budget_exhausted: bool,
 }
@@ -894,9 +890,7 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
     }
     c.layout();
     decross(&mut c);
-    let mut searched = false;
     if c.eval().hits > 0 {
-        searched = true;
         let mut best = c.snapshot();
         c.budget = if p.light { 20 } else { 60 };
         c.eval();
@@ -967,7 +961,6 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
         landing,
         leaders: c.leaders,
         hits,
-        searched,
         budget_exhausted: work.spent(),
     }
 }

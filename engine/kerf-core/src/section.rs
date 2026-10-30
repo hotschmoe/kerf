@@ -7,10 +7,9 @@ mod hardware;
 mod occlusion;
 mod strokes;
 
-pub use cut::{Group, group_region, member_angle_deg};
-pub use hardware::{MIN_METAL_PAPER_IN, is_path_bar};
-pub use occlusion::{Occ, PieceOut, visible_open, visible_pieces};
-pub use strokes::{Stroke, base_id, chain_strokes, dedupe};
+pub use cut::group_region;
+pub use occlusion::Occ;
+pub use strokes::{Stroke, chain_strokes, dedupe};
 
 use crate::clip;
 use crate::drawing::{FillItem, HatchItem, Item, PathItem, RegionItem};

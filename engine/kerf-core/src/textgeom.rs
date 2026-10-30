@@ -19,7 +19,6 @@ pub fn strokes(font: &Font, t: &TextItem) -> Vec<Vec<V2>> {
     let dy = match t.valign {
         VAlign::Baseline => 0.0,
         VAlign::Middle => -t.h / 2.0,
-        VAlign::Top => -t.h,
     };
     let r = t.rot * (math::PI / 180.0);
     let c = math::cos(r);

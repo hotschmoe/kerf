@@ -33,7 +33,6 @@ impl Align {
 pub enum VAlign {
     Baseline,
     Middle,
-    Top,
 }
 
 impl VAlign {
@@ -41,7 +40,6 @@ impl VAlign {
         match self {
             VAlign::Baseline => "baseline",
             VAlign::Middle => "middle",
-            VAlign::Top => "top",
         }
     }
 }

@@ -726,7 +726,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
     let dashed = shown == Some("dashed");
 
     let built = {
-        let mut ctx = Ctx { scene, style: scene.style, p, origin: at.to, run: scene.run, angle };
+        let mut ctx = Ctx { scene, style: scene.style, p, origin: at.to, angle };
         let b = builders::build(ty.ty, &mut ctx);
         p = ctx.p;
         b

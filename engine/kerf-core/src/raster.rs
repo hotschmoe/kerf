@@ -11,10 +11,10 @@
 
 use crate::drawing::{Drawing, Item};
 use crate::font::Font;
-use crate::geom::{self, Pt};
+use crate::geom::{self, Pt, V2};
 use crate::math;
 use crate::pen::Pen;
-use crate::png::{self, ColorType, EncodeError};
+use crate::png::{self, EncodeError};
 use crate::style::Style;
 use crate::svg;
 use crate::textgeom;
@@ -47,14 +47,14 @@ pub struct Image {
 }
 
 /// The canvas: coverage scratch, per-row dirty spans, strokes and fills.
-pub mod kernels;
+mod canvas;
 
-use kernels::{Canvas, Edge, V};
+use canvas::{Canvas, Edge};
 
 /// Flatten a bulge polyline (model units) into `out` in pixel space.
-fn flatten(out: &mut Vec<V>, m: svg::Map, k: f64, pts: &[Pt], closed: bool) {
+fn flatten(out: &mut Vec<V2>, m: svg::Map, k: f64, pts: &[Pt], closed: bool) {
     let Some(first) = pts.first() else { return };
-    out.push(V { x: m.px(first.x) * k, y: m.py(first.y) * k });
+    out.push(V2 { x: m.px(first.x) * k, y: m.py(first.y) * k });
     let nseg = if closed { pts.len() } else { pts.len() - 1 };
     for i in 0..nseg {
         let p = pts[i];
@@ -67,10 +67,10 @@ fn flatten(out: &mut Vec<V>, m: svg::Map, k: f64, pts: &[Pt], closed: bool) {
             let segs = nf.clamp(2.0, 4096.0) as usize;
             for j in 1..segs {
                 let pt = arc.at(j as f64 / segs as f64);
-                out.push(V { x: m.px(pt.x) * k, y: m.py(pt.y) * k });
+                out.push(V2 { x: m.px(pt.x) * k, y: m.py(pt.y) * k });
             }
         }
-        out.push(V { x: m.px(q.x) * k, y: m.py(q.y) * k });
+        out.push(V2 { x: m.px(q.x) * k, y: m.py(q.y) * k });
     }
 }
 
@@ -111,7 +111,7 @@ pub fn layout(d: &Drawing<'_>, opt: &Options) -> Layout {
 pub fn rasterize(d: &Drawing<'_>, font: &Font, opt: &Options) -> Image {
     let lay = layout(d, opt);
     let mut c = Canvas::new(lay.w as usize, lay.h as usize);
-    let mut flat: Vec<V> = Vec::new();
+    let mut flat: Vec<V2> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
     let m = svg::Map { s: d.scale, x0: d.bounds[0], y1: d.bounds[3], ox: lay.margin_in, oy: lay.margin_in };
     let k = lay.ppi / svg::PX_PER_IN;
@@ -149,9 +149,9 @@ pub fn rasterize(d: &Drawing<'_>, font: &Font, opt: &Options) -> Image {
                 let dash = pen_dash_px(st, h.pen, lay.ppi);
                 for ln in &h.lines {
                     flat.clear();
-                    flat.push(V { x: m.px(ln[0]) * k, y: m.py(ln[1]) * k });
+                    flat.push(V2 { x: m.px(ln[0]) * k, y: m.py(ln[1]) * k });
                     if ln[0] != ln[2] || ln[1] != ln[3] {
-                        flat.push(V { x: m.px(ln[2]) * k, y: m.py(ln[3]) * k });
+                        flat.push(V2 { x: m.px(ln[2]) * k, y: m.py(ln[3]) * k });
                     }
                     c.stroke(&flat, r, dash.as_deref());
                 }
@@ -165,7 +165,7 @@ pub fn rasterize(d: &Drawing<'_>, font: &Font, opt: &Options) -> Image {
                         continue;
                     }
                     flat.clear();
-                    flat.extend(pl.iter().map(|p| V { x: m.px(p.x) * k, y: m.py(p.y) * k }));
+                    flat.extend(pl.iter().map(|p| V2 { x: m.px(p.x) * k, y: m.py(p.y) * k }));
                     c.stroke(&flat, r, dash.as_deref());
                 }
             }
@@ -178,5 +178,5 @@ pub fn rasterize(d: &Drawing<'_>, font: &Font, opt: &Options) -> Image {
 /// PNG bytes (gray8) of the drawing.
 pub fn render(d: &Drawing<'_>, font: &Font, opt: &Options) -> Result<Vec<u8>, EncodeError> {
     let img = rasterize(d, font, opt);
-    png::encode(img.width, img.height, ColorType::Gray, &img.pixels)
+    png::encode_gray(img.width, img.height, &img.pixels)
 }

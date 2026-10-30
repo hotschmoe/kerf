@@ -94,7 +94,6 @@ pub fn text_poly(font: &Font, t: &TextItem, pad: f64) -> [V2; 4] {
     };
     let oy = match t.valign {
         VAlign::Middle => -t.h * 0.5,
-        VAlign::Top => -t.h,
         VAlign::Baseline => 0.0,
     };
     let ang = t.rot * RAD_PER_DEG;

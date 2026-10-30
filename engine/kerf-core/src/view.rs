@@ -59,7 +59,6 @@ pub struct ViewSpec<'a> {
     pub notes_side: NotesSide,
     pub annotations: &'a [Value],
     pub omit: Vec<&'a str>,
-    pub node: &'a Value,
 }
 
 pub fn find_view<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
@@ -228,6 +227,5 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         notes_side,
         annotations: anns,
         omit,
-        node,
     })
 }

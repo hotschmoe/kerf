@@ -264,7 +264,6 @@ pub fn render(d: &Drawing<'_>) -> Vec<u8> {
                 let va = match t.valign {
                     VAlign::Baseline => 0,
                     VAlign::Middle => 2,
-                    VAlign::Top => 3,
                 };
                 if ha != 0 || va != 0 {
                     w.i(72, ha);

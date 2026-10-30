@@ -87,8 +87,6 @@ impl Pt {
     }
 }
 
-pub type Loop<'a> = &'a [Pt];
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Box {
     pub x0: f64,
@@ -340,14 +338,6 @@ pub fn flatten_polyline(pts: &[Pt], closed: bool, tol: f64) -> Vec<V2> {
         flatten_seg_into(&mut out, pts[i].v(), q.v(), pts[i].b, tol);
     }
     out
-}
-
-pub fn seg_length(p0: V2, p1: V2, bulge: f64) -> f64 {
-    if bulge == 0.0 {
-        return p0.dist(p1);
-    }
-    let arc = arc_of(p0, p1, bulge);
-    arc.r * arc.sweep.abs()
 }
 
 /// Signed area of a closed bulge loop (CCW positive), exact for arcs.

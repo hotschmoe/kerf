@@ -219,7 +219,6 @@ pub struct Layer {
 
 #[derive(Clone, Debug)]
 pub struct Style {
-    pub id: String,
     pub pens: Vec<PenDef>,
     pub materials: Vec<Material>,
     pub patterns: Vec<Pattern>,
@@ -275,7 +274,6 @@ pub struct Style {
 impl Default for Style {
     fn default() -> Style {
         Style {
-            id: String::new(),
             pens: Vec::new(),
             materials: Vec::new(),
             patterns: Vec::new(),
@@ -713,7 +711,7 @@ pub fn from_value(root: &Value) -> Result<Style, StyleError> {
     let bad = || StyleError::BadStyle(String::new());
     let Some(Value::Object(pens)) = root.get("pens") else { return Err(bad()) };
     let Some(Value::Object(mats)) = root.get("materials") else { return Err(bad()) };
-    let mut s = Style { id: str_or(root.get("id"), "custom"), ..Style::default() };
+    let mut s = Style::default();
 
     for m in pens {
         let dash = match m.value.get("dash_mm") {

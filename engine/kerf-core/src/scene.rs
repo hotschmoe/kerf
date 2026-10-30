@@ -62,10 +62,6 @@ impl<'a> Comp<'a> {
             world: Vec::new(),
         }
     }
-
-    pub fn instances(&self) -> usize {
-        self.xfs.len()
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

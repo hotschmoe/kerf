@@ -50,15 +50,6 @@ impl Font {
         }
     }
 
-    /// Mean advance of A-Z in font units; the reference character width for note wrapping.
-    pub fn mean_cap_advance(&self) -> f64 {
-        let mut s = 0.0;
-        for c in b'A'..=b'Z' {
-            s += self.ascii_at(c).adv;
-        }
-        s / 26.0
-    }
-
     /// Advance width of `text` at cap height `h`.
     pub fn width(&self, text: impl AsRef<[u8]>, h: f64) -> f64 {
         self.width_units(text) * h / self.cap

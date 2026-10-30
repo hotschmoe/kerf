@@ -108,13 +108,6 @@ pub fn read_int(p: &mut Params<'_>, key: &str, default: Option<i64>, min: i64, m
     p.int(key, default, min, max).or(default).unwrap_or(0)
 }
 
-pub fn read_opt_int(p: &mut Params<'_>, key: &str, min: i64, max: i64) -> Option<i64> {
-    if !p.has(key) {
-        return None;
-    }
-    p.int(key, None, min, max)
-}
-
 pub fn read_str(p: &mut Params<'_>, key: &str, default: Option<&str>) -> String {
     if !p.has(key)
         && let Some(d) = default
@@ -122,13 +115,6 @@ pub fn read_str(p: &mut Params<'_>, key: &str, default: Option<&str>) -> String 
         return d.to_string();
     }
     p.str(key, None).map(String::from).or_else(|| default.map(String::from)).unwrap_or_default()
-}
-
-pub fn read_opt_str(p: &mut Params<'_>, key: &str) -> Option<String> {
-    if !p.has(key) {
-        return None;
-    }
-    p.str(key, None).map(String::from)
 }
 
 pub fn read_raw(p: &mut Params<'_>, key: &str, default: Option<Value>) -> Value {
@@ -288,6 +274,8 @@ macro_rules! params {
         }
     ) => {
         $(#[$m])*
+        // Every declared key is parsed (validated and documented in the catalog); a builder reads the ones it draws from.
+        #[allow(dead_code)]
         #[derive(Clone, Debug)]
         $vis struct $S {
             $( pub $name: $crate::params::field_ty!($kind $( ( $($ka)* ) )?), )*

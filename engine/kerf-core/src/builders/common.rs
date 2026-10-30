@@ -19,7 +19,6 @@ pub struct Ctx<'a, 's, 'p> {
     pub p: Params<'p>,
     /// Placement point (world) used as the origin of point-list builders.
     pub origin: V2,
-    pub run: [f64; 2],
     /// Placement rotation (radians CCW): `until` measures along the member's rotated run direction.
     pub angle: f64,
 }
@@ -122,10 +121,6 @@ pub fn parse_actual(size: &str) -> Option<SawnSize> {
 /// the arc flattener), above the maximum it is a near-full circle with an absurd radius.
 pub const MIN_BULGE: f64 = 1e-6;
 pub const MAX_BULGE: f64 = 1e3;
-
-pub fn points_or(ctx: &mut Ctx, key: &str, v: &Value) -> Option<Vec<Pt>> {
-    parse_point_list(ctx, key, v, true)
-}
 
 /// Parse a points list. Literal [x,y(,b)] entries are relative to the placement point; Refs are
 /// absolute. The result is in local coordinates (world - origin for Refs).
