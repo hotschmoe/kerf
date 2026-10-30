@@ -6,7 +6,7 @@ with the CLI. The designer watches and edits in the browser. **The folder is the
 ```
 kerf serve [--dir .] [--host 127.0.0.1] [--port 7700] [--open] [--token T | --no-token]
 ```
-- Serves the web UI, embedded in the binary at build time (`apps/web` zig build), at `/`.
+- Serves the web UI, embedded in the binary at build time (`KERF_UI=../apps/web/dist-serve cargo build --release` in `engine/`), at `/`.
 - `--host 0.0.0.0` (LAN) requires a token. One is auto-generated and printed as
   `http://<lan-ip>:7700/?token=<t>`. On localhost no token is needed. The UI stores the token in
   sessionStorage and sends `Authorization: Bearer <t>` on every `/api` call (SSE: `?token=`).
@@ -46,7 +46,7 @@ Agents are command templates, so new CLIs are config, not code. Built-ins:
 
 The message is prefixed with the workspace context: `You are working in a Kerf details library. Run 'kerf guide' first if you haven't this session. Current document: <file>.`
 Exact flags must be verified against each tool's current docs and `--help` output, not guessed.
-Results go in `engines/zig/NOTES.md`. Users can add or override agents in `<dir>/.kerf/agents.json`
+Results go in `engine/NOTES.md`. Users can add or override agents in `<dir>/.kerf/agents.json`
 (same template shape). One run at a time per server in v0.1.
 
 ## UI modes (apps/web)
@@ -78,7 +78,7 @@ Results go in `engines/zig/NOTES.md`. Users can add or override agents in `<dir>
   --always-approve --cwd <dir> [-r <id>]`; Codex 0.157.1 `codex exec --sandbox workspace-write --skip-git-repo-check
   --cd <dir> --json [resume <id>] <msg>`.
 
-## Security defaults (v0.1.5 hardening, see engines/zig/REVIEW.md §7)
+## Security defaults (v0.1.5 hardening, the server hardening list in `engine/NOTES.md`)
 - **No outbound network.** The server never opens a connection to a third party and holds no API keys; only the agent CLIs it starts talk to their own providers.
 - **Token on by default, loopback included.** The banner prints `http://…/?token=<t>`. Use
   `--token T`, `--token-file F` or `KERF_TOKEN` to pin one, and `--no-token` to opt out (localhost only;

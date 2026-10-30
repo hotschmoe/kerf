@@ -1,4 +1,4 @@
-// Typed, async engine API (SPEC §13) over the raw wasm ABI. Same JS for the rust and zig stacks.
+// Typed, async engine API (SPEC §13) over the raw wasm ABI. The wasm runs in a worker or directly.
 import type { ApplyResult, CheckResult, Drawing, KerfDoc, Mesh, Op, Actor } from './types';
 import { RawEngine, EngineCallError, type CallStat } from './engine-raw';
 import EngineWorker from './engine.worker?worker';

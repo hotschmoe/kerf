@@ -1,5 +1,5 @@
-// Measures one stack: usage  node test/perf/measure.mjs <rust|zig> [--runs 5]
-// Output: JSON on stdout + a markdown table on stderr. Requires apps/web/dist-<engine>.
+// Measures the engine bundle: usage  node test/perf/measure.mjs [--runs 5]
+// Output: JSON on stdout + a markdown table on stderr. Requires apps/web/dist (npm run build).
 import puppeteer from 'puppeteer-core';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -8,16 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const repo = path.resolve(web, '../..');
-const engine = process.argv[2] || 'rust';
 const runs = Number(process.argv[process.argv.indexOf('--runs') + 1] || 5);
-const dist = path.join(web, `dist-${engine}`);
+const dist = path.join(web, 'dist');
 const port = 8800 + Math.floor(Math.random() * 100);
 const server = spawn('node', [path.join(repo, 'tools/serve.mjs'), dist, String(port)], { stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 600));
 const browser = await puppeteer.launch({ executablePath: '/usr/bin/chromium', headless: 'new', args: ['--no-sandbox', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
 const samples = ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-strap'];
 const med = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
-const out = { engine, runs, sizes: {}, startup: {}, calls: {} };
+const out = { runs, sizes: {}, startup: {}, calls: {} };
 
 // sizes (dist JS/CSS/wasm/fonts)
 const files = [];
@@ -85,7 +84,7 @@ for (const worker of [1, 0]) {
 await browser.close(); server.kill();
 console.log(JSON.stringify(out, null, 1));
 const f = (n) => (n === undefined || n === null ? 'n/a' : n.toFixed(n < 10 ? 2 : 1));
-console.error(`\n## ${engine} (median of ${runs} loads; calls median of 10)`);
+console.error(`\n## engine (median of ${runs} loads; calls median of 10)`);
 for (const key of ['worker', 'main']) {
   console.error(`\n### engine on ${key === 'worker' ? 'Web Worker' : 'main thread'}\n| sample | TTFR ms | engine ready | wasm compile | ui ready |\n|---|---|---|---|---|`);
   for (const s of samples) { const x = out.startup[key][s]; console.error(`| ${s} | ${f(x.ttfr_ms)} | ${f(x.engine_ready_ms)} | ${f(x.wasm_compile_ms)} | ${f(x.ui_ready_ms)} |`); }

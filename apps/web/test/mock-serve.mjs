@@ -1,5 +1,5 @@
 // A mock of `kerf serve` (spec/SERVE.md): same HTTP/SSE API over a folder of *.kerf.json, backed by the REAL engine wasm
-// (engines/zig/dist/kerf.wasm), so the web UI's workspace mode can be tested without the Zig server.
+// (engine/dist/kerf.wasm), so the web UI's workspace mode can be tested without `kerf serve`.
 //   node test/mock-serve.mjs [--dir DIR] [--port 7710] [--token T] [--ui apps/web/dist-serve]
 // Test hooks (not part of the spec): GET /__state, POST /__reset, POST /__external {file, ops, why, who?} (an agent edit via the CLI:
 // writes the file and appends a log line, exactly like `kerf apply -w`), POST /__write {file, doc} (raw write, no log).
@@ -15,7 +15,7 @@ const repo = path.resolve(here, '../../..');
 
 // ---------------------------------------------------------------- engine (SPEC §13.1 raw ABI)
 async function loadEngine() {
-  const mod = await WebAssembly.compile(fs.readFileSync(path.join(repo, 'engines/zig/dist/kerf.wasm')));
+  const mod = await WebAssembly.compile(fs.readFileSync(path.join(repo, 'engine/dist/kerf.wasm')));
   const imports = {};
   for (const i of WebAssembly.Module.imports(mod)) (imports[i.module] ??= {})[i.name] = i.kind === 'function' ? () => 0 : new WebAssembly.Memory({ initial: 32 });
   const x = (await WebAssembly.instantiate(mod, imports)).exports;

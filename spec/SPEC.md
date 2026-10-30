@@ -25,14 +25,15 @@ Companion files:
 
 ```
 spec/                 this contract
-engines/zig/          the Kerf engine (Zig 0.16): library module `kerf`, CLI `kerf`, wasm (raw ABI)
-apps/web/             TypeScript + DOM + three.js UI; runs engines/zig/dist/kerf.wasm
-tools/                shared test tooling (dxf_check, pdf_check, shot, serve, size_report)
+engine/               the Kerf engine (Rust): library `kerf-core`, CLI `kerf` (with `kerf serve`), wasm (raw ABI)
+apps/web/             TypeScript + DOM + three.js UI; runs engine/dist/kerf.wasm
+tools/                shared tooling (dxf_check, pdf_check, build_wasm, shot, serve, size_report)
 install.sh / .ps1     one-line installers for the `kerf` CLI (GitHub releases)
 ```
 
-Chosen stack (2026-10-05 bake-off): **zig-ts**. The other stacks (Rust engine + MCP server,
-egui app, teak app) are preserved at tag `archive/bakeoff-2026-10-05`; see `docs/STACKS.md`.
+Stack: a Rust engine (zero crates) with a TypeScript UI. It was chosen in the 2026-10-05 bake-off as Zig and replaced
+by its Rust port on 2026-10-31; the other stacks (egui app, teak app) are preserved at tag
+`archive/bakeoff-2026-10-05`. See `docs/STACKS.md`.
 
 ---
 
@@ -581,14 +582,14 @@ Sheet frame/title block NOT written to DXF unless `--with-sheet`.
 scale inside the frame; title block per `spec/DESIGN.md §Sheet`; text as stroked paths (no font
 embedding needed); deterministic object order; no timestamps.
 
-## 13. Engine API (identical across engines)
+## 13. Engine API
 
-Every engine exposes the same functions to its CLI, its wasm build, and in-process callers.
+The engine exposes the same functions to its CLI, its wasm build, and in-process callers.
 All inputs/outputs are UTF-8 JSON unless noted.
 
 | fn | input | output |
 |---|---|---|
-| `version` | `{}` | `{ "engine": "kerf-rust"|"kerf-zig", "version": "0.1.0", "spec": "0.1" }` |
+| `version` | `{}` | `{ "engine": "kerf", "version": "0.1.0", "spec": "0.1" }` |
 | `catalog` | `{ "format": "json"|"markdown" }` | catalog |
 | `fmt` | `{ doc }` | `{ doc }` canonicalized |
 | `check` | `{ doc, style }` | `{ diagnostics, summary }` |
@@ -610,7 +611,7 @@ Format: one line per component: id (padded 14), type + key params (padded 44), x
 in ft-in. Then diagnostics. Keep it under ~60 columns of params.
 
 ### 13.1 Wasm ABI (raw, no wasm-bindgen / no Emscripten)
-Both engines export exactly:
+The wasm build exports exactly:
 ```
 memory
 kerf_alloc(len: u32) -> u32                      // pointer to len bytes
@@ -620,9 +621,8 @@ kerf_out_ptr() -> u32
 kerf_out_len() -> u32
 ```
 The host writes the fn name and input JSON into allocated buffers, calls `kerf_call`, then
-copies `[kerf_out_ptr, +kerf_out_len)` before the next call. No imports are required (an
-engine MAY import nothing at all). The output buffer is owned by the engine until the next call.
-`apps/web/src/engine.ts` is the single loader for both engines.
+copies `[kerf_out_ptr, +kerf_out_len)` before the next call. The module imports nothing. The output buffer is owned by the engine until the next call.
+`apps/web/src/engine.ts` is the single loader.
 
 ### 13.2 CLI
 ```

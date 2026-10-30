@@ -1,5 +1,5 @@
-// Copies runtime assets into apps/web/public (git-ignored): samples, style, stroke font, the chosen engine's wasm.
-// usage: node scripts/copy-assets.mjs <rust|zig|fixture>
+// Copies runtime assets into apps/web/public (git-ignored): samples, style, stroke font and the engine wasm (or the fixtures).
+// usage: node scripts/copy-assets.mjs <engine|fixture>   (KERF_WASM=<file> overrides engine/dist/kerf.wasm)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const web = path.resolve(here, '..');
 const repo = path.resolve(web, '../..');
 const pub = path.join(web, 'public');
-const engine = process.argv[2] || 'rust';
+const target = process.argv[2] || 'engine';
 
 fs.mkdirSync(path.join(pub, 'samples'), { recursive: true });
 const samples = [];
@@ -21,20 +21,18 @@ for (const f of fs.readdirSync(path.join(repo, 'spec/details')).sort()) {
 fs.writeFileSync(path.join(pub, 'samples/index.json'), JSON.stringify(samples));
 fs.copyFileSync(path.join(repo, 'spec/styles/kerf-standard.kerfstyle.json'), path.join(pub, 'style.json'));
 fs.copyFileSync(path.join(repo, 'spec/fonts/kerf-simplex.json'), path.join(pub, 'kerf-simplex.json'));
-fs.writeFileSync(path.join(pub, 'engine.txt'), engine);
 
-if (engine === 'fixture') {
+if (target === 'fixture') {
   fs.mkdirSync(path.join(pub, 'fixtures'), { recursive: true });
   for (const f of ['drawing-A.json', 'mesh.json', 'sheet-A.svg', 'echo.wasm']) fs.copyFileSync(path.join(web, 'test/fixtures', f), path.join(pub, 'fixtures', f));
   fs.rmSync(path.join(pub, 'kerf.wasm'), { force: true });
 } else {
   fs.rmSync(path.join(pub, 'fixtures'), { recursive: true, force: true });
-  // KERF_WASM overrides the path (e.g. a wasm built into a scratch target dir while the engine is in flux)
-  const src = process.env[`KERF_WASM_${engine.toUpperCase()}`] || path.join(repo, 'engines', engine, 'dist', 'kerf.wasm');
+  const src = process.env.KERF_WASM || path.join(repo, 'engine', 'dist', 'kerf.wasm');
   if (!fs.existsSync(src)) {
-    console.error(`copy-assets: ${src} not found. Build the engine first (engines/${engine}/NOTES.md).`);
+    console.error(`copy-assets: ${src} not found. Build it with: node tools/build_wasm.mjs`);
     process.exit(1);
   }
   fs.copyFileSync(src, path.join(pub, 'kerf.wasm'));
-  console.log(`copy-assets: ${engine} kerf.wasm ${fs.statSync(src).size} bytes`);
+  console.log(`copy-assets: kerf.wasm ${fs.statSync(src).size} bytes`);
 }

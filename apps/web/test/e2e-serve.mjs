@@ -1,6 +1,6 @@
 // Workspace-mode end-to-end tests (puppeteer + system chromium) against a `kerf serve` implementation.
 //   node test/e2e-serve.mjs                       # against test/mock-serve.mjs (real engine wasm, scripted agent)
-//   KERF_SERVE_BIN=../../engines/zig/zig-out/bin/kerf node test/e2e-serve.mjs --real     # against the real server (see runReal below)
+//   KERF_SERVE_BIN=../../engine/target/release/kerf node test/e2e-serve.mjs --real     # against the real server (see runReal below)
 // Needs apps/web/dist-serve (npm run build:serve). Screenshots of every workspace UI state go to $KERF_SHOTS (default: a temp dir).
 import puppeteer from 'puppeteer-core';
 import { spawn, spawnSync } from 'node:child_process';
@@ -28,7 +28,7 @@ if (!fs.existsSync(path.join(dist, 'index.html'))) { console.error('dist-serve m
 /** The server under test: the mock in-process, or the real `kerf serve` binary in a scratch folder. */
 async function server(opts = {}) {
   if (!REAL) return startMock({ ui: dist, ...opts });
-  const bin = path.resolve(process.env.KERF_SERVE_BIN || path.join(repo, 'engines/zig/zig-out/bin/kerf'));
+  const bin = path.resolve(process.env.KERF_SERVE_BIN || path.join(repo, 'engine/target/release/kerf'));
   const dir = opts.dir ?? seedDir(fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-real-')), opts.files);
   const port = 7800 + Math.floor(Math.random() * 400);
   const args = ['serve', '--dir', dir, '--port', String(port), '--trust-agents', ...(opts.token ? ['--token', opts.token] : ['--no-token'])];
@@ -73,7 +73,7 @@ async function open(m, query = '', { w = 1440, h = 900, token } = {}) {
 /** An agent's `kerf apply <file> --ops ... -w --why ...` in a terminal (the real CLI for the real server, a hook for the mock). */
 async function external(m, file, ops, why, who = 'agent') {
   if (!m.real) return post(m, '/__external', { file, ops, why, who });
-  const bin = path.resolve(process.env.KERF_SERVE_BIN || path.join(repo, 'engines/zig/zig-out/bin/kerf'));
+  const bin = path.resolve(process.env.KERF_SERVE_BIN || path.join(repo, 'engine/target/release/kerf'));
   const r = spawnSync(bin, ['apply', file, '--ops', JSON.stringify(ops), '-w', '--why', why], { cwd: m.dir, encoding: 'utf8', env: { ...process.env, KERF_ACTOR: who } });
   if (r.status !== 0) throw new Error('kerf apply failed: ' + r.stdout + r.stderr);
   return { ok: true };

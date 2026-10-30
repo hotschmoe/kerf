@@ -1,5 +1,7 @@
 # Stack history
 
+**2026-10-31: the Rust engine (`engine/`) replaced the Zig engine, which was removed from the tree (it is in git history before that commit). Everything below describes the bake-off as it was.**
+
 Kerf was prototyped in four stacks on 2026-10-05, all built against the same `spec/SPEC.md`.
 The full code of every stack is preserved at tag **`archive/bakeoff-2026-10-05`** (also on branches
 `archive/rust-engine`, `archive/egui-app`, `archive/teak-app`):

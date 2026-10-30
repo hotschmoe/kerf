@@ -1,5 +1,5 @@
-// End-to-end tests (puppeteer-core + system chromium). usage: node test/e2e.mjs [rust|zig|fixture] [--keep]
-// Needs apps/web/dist-<engine> (npm run build:<engine>). Exports are validated with tools/dxf_check.py / pdf_check.py.
+// End-to-end tests (puppeteer-core + system chromium). usage: node test/e2e.mjs [fixture] [--keep]
+// Needs apps/web/dist (npm run build), or dist-fixture (npm run build:fixture) with `fixture`. Exports are validated with tools/dxf_check.py / pdf_check.py.
 import puppeteer from 'puppeteer-core';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url';
 
 const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(web, '../..');
-const engine = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'rust';
-const dist = path.join(web, `dist-${engine}`);
+const fixture = process.argv[2] === 'fixture';
+const dist = path.join(web, fixture ? 'dist-fixture' : 'dist');
 const port = 8300 + Math.floor(Math.random() * 500);
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-e2e-'));
 
@@ -149,7 +149,7 @@ await t('save / open .kerf.json round trip', async () => {
 });
 
 await t('engine loader in a Web Worker: calls, bytes, errors (echo.wasm)', async () => {
-  if (engine !== 'fixture') return; // echo.wasm only ships in the fixture build
+  if (!fixture) return; // echo.wasm only ships in the fixture build
   const page = await open('');
   const r = await page.evaluate(async () => {
     const e = await window.__kerf.loadEngine({ url: './fixtures/echo.wasm', worker: true });
@@ -161,7 +161,7 @@ await t('engine loader in a Web Worker: calls, bytes, errors (echo.wasm)', async
 });
 
 // ---------------------------------------------------------------- exports through the real engine
-if (engine !== 'fixture') {
+if (!fixture) {
   const py = path.join(repo, 'tools/.venv/bin/python');
   for (const [fmt, tool] of [['dxf', 'dxf_check.py'], ['pdf', 'pdf_check.py'], ['svg', null]]) {
     await t(`export ${fmt.toUpperCase()} button downloads <docid>-<view>.${fmt} and validates`, async () => {

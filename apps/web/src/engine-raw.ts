@@ -1,5 +1,5 @@
-// Raw wasm ABI loader (SPEC §13.1). The ONE place that talks to kerf.wasm for either engine
-// (engines/zig/dist/kerf.wasm). Synchronous; wrapped by engine.ts
+// Raw wasm ABI loader (SPEC §13.1). The ONE place that talks to kerf.wasm
+// (engine/dist/kerf.wasm). Synchronous; wrapped by engine.ts
 // (direct, or inside a Web Worker).
 
 interface Exports {

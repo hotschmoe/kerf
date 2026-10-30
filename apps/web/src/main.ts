@@ -20,7 +20,7 @@ const t0 = performance.now();
 interface Pre { wasm?: Promise<ArrayBuffer>; style?: Promise<unknown>; font?: Promise<StrokeFont>; samples?: Promise<SampleInfo[]>; sample?: Promise<KerfDoc> }
 const pre: Pre = (window as unknown as { __pre?: Pre }).__pre ?? {};
 const params = new URLSearchParams(location.search);
-const ENGINE = (import.meta.env.VITE_ENGINE as string | undefined) ?? 'rust';
+const FIXTURE = import.meta.env.VITE_ENGINE === 'fixture';
 
 async function boot() {
   const getJson = async <T>(u: string): Promise<T> => {
@@ -29,7 +29,7 @@ async function boot() {
     return r.json() as Promise<T>;
   };
   const useWorker = params.get('worker') === '1'; // measured: main thread is faster for these call sizes (see NOTES)
-  const enginePromise: Promise<Engine> = ENGINE === 'fixture'
+  const enginePromise: Promise<Engine> = FIXTURE
     ? import('./fixture-engine').then((m) => m.createFixtureEngine())
     : loadEngine({ url: './kerf.wasm', worker: useWorker, preloaded: pre.wasm ?? null });
   // Workspace mode = served by `kerf serve` (GET /api/info answers). Anything else is static mode, exactly as before.

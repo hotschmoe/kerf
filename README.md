@@ -45,8 +45,9 @@ agents only: no API keys and no provider calls from Kerf; the web chat needs `ke
 | path | what |
 |---|---|
 | `spec/` | the contract: [`SPEC.md`](spec/SPEC.md), design language, LLM prompts, reference details, evals |
-| `engines/zig/` | the engine (Zig 0.17): library, `kerf` CLI, wasm for the browser (zero imports) |
+| `engine/` | the engine (Rust, zero crates): library, `kerf` CLI with `kerf serve`, wasm for the browser (zero imports) |
 | `apps/web/` | the web workstation (TypeScript + DOM + three.js) |
-| `docs/STACKS.md` | the 4-stack bake-off and where the archived stacks live |
+| `tools/` | shared checkers and build helpers (DXF/PDF audits, wasm build, screenshots) |
+| `docs/` | history and decisions ([`STACKS.md`](docs/STACKS.md): the bake-off, and why Rust replaced Zig) |
 
 License: MIT. Fonts: IBM Plex Mono (OFL), Hershey Simplex (public domain, NBS).

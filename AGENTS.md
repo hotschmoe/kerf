@@ -6,7 +6,7 @@ You are working on Kerf. When an orchestrator is coordinating, it owns `spec/`. 
 | dir | what |
 |---|---|
 | `spec/` | the contract (SPEC.md, style, LLM prompts, reference details, evals) |
-| `engines/zig/` | the engine: library, CLI (`kerf`), wasm |
+| `engine/` | the engine (Rust): library, CLI (`kerf`, `kerf serve`), wasm |
 | `apps/web/` | the web UI (TypeScript + DOM + three.js) |
 | `tools/` | shared test tooling |
 | `docs/` | history and decisions (`docs/STACKS.md`) |
@@ -39,8 +39,8 @@ If you need a change in another agent's dir, write it under `## REQUESTS` in you
   paper, rules, grids. Code style is normal modern idiomatic code.
 
 ## Environment
-aarch64 Linux, 12 cores. Rust 1.96 stable (edition 2024, `wasm32-unknown-unknown` installed).
-Zig 0.17.0 at `~/tools/zig-aarch64-linux-0.17.0/zig` (0.16 is still at `~/tools/zig-aarch64-linux-0.16.0/zig` for comparisons). Node 22. Python tooling venv: `tools/.venv`
+aarch64 Linux, 12 cores. Rust 1.96 stable (edition 2024, `wasm32-unknown-unknown` installed). Engine: `cd engine && cargo build --release`; all gates: `engine/tests/gates.sh` (see `engine/README.md`).
+`wasm-opt` (binaryen) is optional for the wasm build (`~/.cache/trunk/wasm-opt-version_123/bin` here). Node 22. Python tooling venv: `tools/.venv`
 (run `tools/setup.sh` if missing). Headless chromium with WebGPU (SwiftShader) and WebGL2:
 see `tools/README.md`.
 Chat is local agent CLIs only (claude, codex, grok, pi) through `kerf serve`; there is no direct-to-provider path and no API key in the apps or engines.

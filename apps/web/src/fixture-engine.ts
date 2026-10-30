@@ -1,5 +1,5 @@
 // Dev-only stand-in for a real engine (VITE_ENGINE=fixture): replays hand-written fixtures that match SPEC §10/§11.
-// Lets the UI be developed and screenshot-tested without a wasm build. Not included in rust/zig bundles.
+// Lets the UI be developed and screenshot-tested without a wasm build. Not included in the engine bundles.
 import type { Engine, InspectQuery } from './engine';
 import type { ApplyResult, Drawing, KerfDoc, Mesh, Op } from './types';
 

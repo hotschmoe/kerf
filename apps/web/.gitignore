@@ -1,10 +1,9 @@
 node_modules/
-dist-rust/
-dist-zig/
+dist/
+dist-serve/
 dist-fixture/
 public/samples/
 public/kerf.wasm
 public/style.json
 public/kerf-simplex.json
-public/engine.txt
 .tmp/
