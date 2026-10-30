@@ -137,15 +137,29 @@ geometrically (tolerance 1e-3).
   and `new` write it (who = `$KERF_ACTOR` or `agent`), the server's `who` is the request's `actor`. Timestamps exist only
   in the log. `-w` takes the same `DocLock` as the server, writes atomically, and `--if-match` refuses a stale document.
 
-## Windows (requirements learned from the Zig engine's field report; the Rust port is being brought up separately)
-`kerf serve` on Windows 11 died right after the banner in the first Zig releases because it had only been cross-compiled,
-never run. What it must get right: open documents without following symlinks and with synchronous I/O; hold a real
-byte-range lock on the op log far past EOF (Windows range locks are mandatory, locking byte 0 would break readers);
-start npm-style agent shims (`grok.cmd`, `claude.cmd`) through `cmd.exe`, which rejects CR/LF in arguments, so retry
-with line breaks flattened to spaces; report a `.ps1`-only install as unavailable; kill the agent's whole tree with a job
-object (there is no SIGTERM stage); keep `.gitattributes` forcing LF (CRLF in embedded fixtures broke tests); a 99,000-byte
-agent message is a clean 400 (the command line limit is 32,767). `tests/windows_serve.mjs` + `serve_smoke.mjs` +
-`cli_ergonomics.mjs` run against the shipped build on a real Windows runner in CI.
+## Windows
+
+All `unsafe` lives in `kerf-cli/src/sys/` (`unix.rs`, `windows.rs`: safe wrappers, `#![deny(unsafe_op_in_unsafe_fn)]`, a `// SAFETY:` per block); zero crates. Built and run on a Windows 11 x86_64 machine (2026-10-31)
+(release and debug): `serve_smoke.mjs` 189/189 (190 on Linux: one POSIX-only check), `windows_serve.mjs` 32/32, `cli_ergonomics.mjs` 145/145, `tests/platform_serve.mjs` 16/16,
+`tests/ctrl_break.ps1`, `tests/check_golden.mjs` (101 outputs byte-identical to the Linux goldens, DXF/PDF checkers clean), clippy `-D warnings` clean. aarch64-pc-windows-msvc only type-checks here (CI: `windows-11-arm`).
+- **Agent runs**: the agent is created suspended (`CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP`), assigned to its own job object with `KILL_ON_JOB_CLOSE`, then resumed (`NtResumeProcess`). Stop, timeout, sweep and
+  server exit are `TerminateJobObject` (exit code 1, no SIGTERM stage); a server killed hard closes the job and takes the tree with it. If the job cannot be made the leader alone is terminated (`TerminateProcess`).
+- **Agent CLIs**: std only finds `.exe`, so `sys::resolve_program` walks `PATH` (the agent's PATH has kerf's directory first) with the runnable `PATHEXT` extensions (`.exe .com .cmd .bat`): npm `.cmd` shims work, a
+  `.ps1` or extensionless script is "not found". A `.cmd` goes through cmd.exe, which refuses CR/LF in an argument (`InvalidInput`): the spawn is retried once with line breaks flattened to spaces. A command line
+  over 32 767 characters (`ERROR_FILENAME_EXCED_RANGE`) is the 400 `E_INPUT` as E2BIG is on Linux.
+- **Token**: `ProcessPrng` (bcryptprimitives, `raw-dylib`). **Shutdown**: `SetConsoleCtrlHandler`: Ctrl-C/Ctrl-Break = 2, console close = 1, logoff/shutdown = 15, stored in the same atomic the poller reads (exit `128 + n`,
+  so 130 for Ctrl-C); the close/logoff handlers block 10 s so the poller can stop the agent before the OS ends the process. The agent has its own process group, so the console's Ctrl-C reaches only the server.
+- **Op log**: `LockFileEx` on one byte at offset 2^62 (Windows range locks are mandatory; `File::lock` would cover byte 0 on and block readers), as the Zig engine; a file system without locks is tolerated.
+  Directory fsync does not exist (the open fails and is ignored), file data is `FlushFileBuffers`.
+- **Paths**: `canonicalize` returns `\\?\C:\...`; `sys::plain_path` strips it (banner, `/api/info` `dir`, the agent's `cwd` and `{dir}`). Document names are validated by `workspace::valid_doc_file` (device names, stems
+  ending in dot/space, `:` streams, separators). Links are never followed (`symlink_metadata` reports symlinks and junctions): verified with a file symlink and a junction at `.kerf/attachments`.
+- **Not covered**: console-close events (the handler is the same code as Ctrl-Break), a `windows-11-arm` run, a network share for the op log.
+
+Why (the Zig engine's field report): `kerf serve` on Windows 11 died right after the banner in the first Zig releases
+because it had only been cross-compiled, never run. Requirements kept from that: open documents without following
+symlinks, a byte-range op-log lock far past EOF, `.cmd` shims through `cmd.exe` with the CR/LF retry, `.ps1`-only installs
+unavailable, tree kill by job object, `.gitattributes` forcing LF (CRLF in embedded fixtures broke tests), the 400 for
+over-long command lines. CI runs the Windows gates against the shipped build on real Windows runners.
 
 ## Known gaps
 - `solid` / `polygon` profiles with holes are not supported (profiles are single loops; the mesh ignores holes).

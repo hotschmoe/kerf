@@ -8,6 +8,7 @@
 //! `sessionId` or `thread_id` string in the agent's JSON lines, plus pi's `{"type":"session","id":...}`.
 
 use crate::events::Hub;
+use crate::sys::{self, Group};
 use kerf_core::json::{self, Value};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -37,6 +38,8 @@ const DETECT_TTL: Duration = Duration::from_secs(30);
 const DETECT_TIMEOUT: Duration = Duration::from_secs(8);
 const KILL_GRACE: Duration = Duration::from_millis(3000);
 const MAX_EVENT_BYTES: usize = 1 << 20;
+/// E2BIG, or ERROR_FILENAME_EXCED_RANGE (the 32 767 character command line) on Windows.
+const ARG_TOO_LONG: i32 = if cfg!(windows) { 206 } else { 7 };
 
 fn builtin(id: &str, name: &str, argv: &[&str], resume: &[&str]) -> Template {
     let own = |s: &[&str]| s.iter().map(std::string::ToString::to_string).collect::<Vec<_>>();
@@ -245,14 +248,19 @@ pub fn detect(t: &Template) -> Detected {
         return unavailable(UNTRUSTED_REASON.into());
     }
     let Some((bin, args)) = t.detect.split_first() else { return unavailable("no detect command".into()) };
-    let mut child =
-        match Command::new(bin).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
-            Ok(c) => c,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return unavailable(format!("`{bin}` was not found on PATH"));
-            }
-            Err(e) => return unavailable(format!("could not run `{bin}`: {e}")),
-        };
+    let mut child = match Command::new(sys::resolve_program(bin, &std::env::var_os("PATH").unwrap_or_default()))
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return unavailable(format!("`{bin}` was not found on PATH"));
+        }
+        Err(e) => return unavailable(format!("could not run `{bin}`: {e}")),
+    };
     let out = child.stdout.take().map(|s| drain_limited(s, 8192));
     let err = child.stderr.take().map(|s| drain_limited(s, 8192));
     let start = Instant::now();
@@ -279,30 +287,9 @@ pub fn detect(t: &Template) -> Detected {
     Detected { available: true, version: Some(line), reason: None }
 }
 
-#[cfg(unix)]
-mod group {
-    unsafe extern "C" {
-        fn kill(pid: i32, sig: i32) -> i32;
-    }
-
-    pub fn signal(pgid: u32, hard: bool) {
-        if pgid > 1 {
-            // SAFETY: plain syscall; a negative pid addresses the process group led by the agent.
-            unsafe { kill(-(pgid as i32), if hard { 9 } else { 15 }) };
-        }
-    }
-}
-
-#[cfg(not(unix))]
-mod group {
-    pub fn signal(pid: u32, _hard: bool) {
-        let _ = std::process::Command::new("taskkill").args(["/T", "/F", "/PID", &pid.to_string()]).output();
-    }
-}
-
 #[derive(Default)]
 struct RunState {
-    pid: Option<u32>,
+    group: Option<Arc<Group>>,
     finished: bool,
     stop_requested: bool,
     timed_out: bool,
@@ -441,8 +428,8 @@ impl Manager {
             let mut st = r.lock();
             if !st.finished {
                 st.stop_requested = true;
-                if let (Some(pid), None) = (st.pid, st.term_sent) {
-                    group::signal(pid, false);
+                if let (Some(g), None) = (st.group.clone(), st.term_sent) {
+                    g.signal(false);
                     st.term_sent = Some(Instant::now());
                 }
             }
@@ -466,17 +453,24 @@ impl Manager {
         let argv = expand_argv(p.template, &full, p.session_id, &dir, p.file.unwrap_or(""));
         let Some((bin, args)) = argv.split_first() else { return Err(StartError::SpawnFailed("empty argv".into())) };
 
-        let mut cmd = Command::new(bin);
-        cmd.args(args).current_dir(&self.dir_abs).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let old_path = std::env::var_os("PATH").unwrap_or_default();
         let mut paths = vec![self.exe_dir.clone()];
         paths.extend(std::env::split_paths(&old_path));
-        if let Ok(joined) = std::env::join_paths(paths) {
-            cmd.env("PATH", joined);
-        }
-        cmd.env("KERF_ACTOR", "agent").env_remove("KERF_TOKEN");
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+        let joined = std::env::join_paths(paths).ok();
+        let make_cmd = |args: &[String]| {
+            let mut cmd = Command::new(sys::resolve_program(bin, joined.as_deref().unwrap_or(&old_path)));
+            cmd.args(args)
+                .current_dir(&self.dir_abs)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if let Some(j) = &joined {
+                cmd.env("PATH", j);
+            }
+            cmd.env("KERF_ACTOR", "agent").env_remove("KERF_TOKEN");
+            sys::prepare_agent(&mut cmd);
+            cmd
+        };
 
         let run;
         {
@@ -497,11 +491,22 @@ impl Manager {
             });
             g.active = Some(run.clone());
         }
-        let mut child = match cmd.spawn() {
+        let mut spawned = make_cmd(args).spawn();
+        if cfg!(windows)
+            && let Err(e) = &spawned
+            && e.kind() == std::io::ErrorKind::InvalidInput
+            && args.iter().any(|a| a.contains(['\r', '\n']))
+        {
+            // A `.cmd` shim runs through cmd.exe, which cannot take a line break in an argument: flatten them.
+            let flat: Vec<String> = args.iter().map(|a| a.replace("\r\n", " ").replace(['\r', '\n'], " ")).collect();
+            spawned = make_cmd(&flat).spawn();
+        }
+        let mut child = match spawned {
             Ok(c) => c,
             Err(e) => {
                 self.release_slot(&run);
-                let too_long = e.raw_os_error() == Some(7);
+                let too_long =
+                    e.raw_os_error() == Some(ARG_TOO_LONG) || e.kind() == std::io::ErrorKind::ArgumentListTooLong;
                 return Err(if too_long {
                     StartError::TooLong(format!("the message and arguments exceed the OS limit for starting `{bin}`"))
                 } else {
@@ -509,21 +514,30 @@ impl Manager {
                 });
             }
         };
+        let group = match Group::adopt(&child) {
+            Ok(g) => Arc::new(g),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                self.release_slot(&run);
+                return Err(StartError::SpawnFailed(format!("could not start `{bin}`: {e}")));
+            }
+        };
         let stop_already = {
             let mut st = run.lock();
-            st.pid = Some(child.id());
+            st.group = Some(group.clone());
             if st.stop_requested {
                 st.term_sent = Some(Instant::now());
             }
             st.stop_requested
         };
         if stop_already {
-            group::signal(child.id(), false);
+            group.signal(false);
         }
         let id = run.id.clone();
         let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
         let mgr = self.clone();
-        thread::spawn(move || mgr.supervise(run, child, stdout, stderr));
+        thread::spawn(move || mgr.supervise(run, child, group, stdout, stderr));
         Ok(id)
     }
 
@@ -544,8 +558,8 @@ impl Manager {
             return StopResult::AlreadyFinished;
         }
         st.stop_requested = true;
-        if let (Some(pid), None) = (st.pid, st.term_sent) {
-            group::signal(pid, false);
+        if let (Some(g), None) = (st.group.clone(), st.term_sent) {
+            g.signal(false);
             st.term_sent = Some(Instant::now());
         }
         StopResult::Stopped
@@ -570,7 +584,7 @@ impl Manager {
                     return;
                 }
                 let now = Instant::now();
-                let pid = st.pid.unwrap_or(0);
+                let group = st.group.clone();
                 if st.term_sent.is_none()
                     && self.max_run_s > 0
                     && run.started.elapsed() > Duration::from_secs(self.max_run_s.into())
@@ -578,12 +592,16 @@ impl Manager {
                     st.timed_out = true;
                     st.stop_requested = true;
                     st.term_sent = Some(now);
-                    group::signal(pid, false);
+                    if let Some(g) = &group {
+                        g.signal(false);
+                    }
                     announce = true;
                 } else if let Some(t0) = st.term_sent
                     && t0.elapsed() > KILL_GRACE
                 {
-                    group::signal(pid, true);
+                    if let Some(g) = &group {
+                        g.signal(true);
+                    }
                     st.term_sent = Some(now);
                 }
             }
@@ -614,10 +632,10 @@ impl Manager {
         self: Arc<Self>,
         run: Arc<Run>,
         mut child: Child,
+        group: Arc<Group>,
         stdout: Option<std::process::ChildStdout>,
         stderr: Option<std::process::ChildStderr>,
     ) {
-        let pid = child.id();
         let mut expect = 0;
         let mut pumps = Vec::new();
         if let Some(s) = stdout {
@@ -636,18 +654,18 @@ impl Manager {
         };
 
         let code = match child.wait() {
-            Ok(st) => st.code().unwrap_or_else(|| signal_code(&st)),
+            Ok(st) => st.code().unwrap_or_else(|| sys::exit_code_of_signal(&st)),
             Err(_) => -1,
         };
         run.lock().leader_done = true;
 
         if !Self::pumps_done(&run, expect, Duration::from_millis(100)) {
-            group::signal(pid, false);
+            group.signal(false);
             if !Self::pumps_done(&run, expect, Duration::from_millis(1500)) {
-                group::signal(pid, true);
+                group.signal(true);
             }
         }
-        group::signal(pid, true); // sweep: a stray process that closed its pipes
+        group.signal(true); // sweep: a stray process that closed its pipes
         for p in pumps {
             let _ = p.join();
         }
@@ -736,16 +754,6 @@ impl Manager {
         ev.push(b'}');
         self.publish(&run.id, &ev);
     }
-}
-
-#[cfg(unix)]
-fn signal_code(st: &std::process::ExitStatus) -> i32 {
-    std::os::unix::process::ExitStatusExt::signal(st).map_or(-1, |s| 128 + s)
-}
-
-#[cfg(not(unix))]
-fn signal_code(_: &std::process::ExitStatus) -> i32 {
-    -1
 }
 
 fn capture_session(run: &Run, v: &Value) {

@@ -115,11 +115,7 @@ impl DocLock {
     pub fn acquire(log_path: &str) -> io::Result<DocLock> {
         refuse_symlink(log_path)?;
         let file = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(log_path)?;
-        match file.lock() {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::Unsupported => {}
-            Err(e) => return Err(e),
-        }
+        crate::sys::lock_exclusive(&file)?;
         Ok(DocLock { file })
     }
 

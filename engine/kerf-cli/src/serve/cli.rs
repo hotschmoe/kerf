@@ -4,6 +4,7 @@ use super::conn::{MAX_CONNS, conn_watchdog, serve_conn};
 use super::{Config, POLL_MS, SERVE_USAGE, Server, agent, ui};
 use crate::agents::{self, Manager};
 use crate::events::Hub;
+use crate::sys;
 use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::Path;
@@ -14,41 +15,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 static SHUTDOWN_SIGNAL: AtomicU8 = AtomicU8::new(0);
-
-#[cfg(unix)]
-mod signals {
-    use super::{AtomicU8Ext, SHUTDOWN_SIGNAL};
-
-    unsafe extern "C" {
-        fn signal(signum: i32, handler: usize) -> usize;
-    }
-
-    extern "C" fn on_signal(sig: i32) {
-        SHUTDOWN_SIGNAL.store_sig(sig);
-    }
-
-    pub fn install() {
-        for sig in [1, 2, 15] {
-            // SAFETY: `on_signal` only performs an atomic store, which is async-signal-safe.
-            unsafe { signal(sig, on_signal as extern "C" fn(i32) as usize) };
-        }
-    }
-}
-
-#[cfg(not(unix))]
-mod signals {
-    pub fn install() {}
-}
-
-trait AtomicU8Ext {
-    fn store_sig(&self, sig: i32);
-}
-
-impl AtomicU8Ext for AtomicU8 {
-    fn store_sig(&self, sig: i32) {
-        self.store(u8::try_from(sig).unwrap_or(1), Ordering::Release);
-    }
-}
 
 fn poller(s: Arc<Server>) {
     let mut tick = 0u32;
@@ -138,7 +104,7 @@ fn is_loopback_host(host: &str) -> bool {
 
 fn random_token() -> Option<String> {
     let mut raw = [0u8; 16];
-    std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut raw)).ok()?;
+    sys::random_bytes(&mut raw).then_some(())?;
     Some(raw.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -297,6 +263,7 @@ pub fn cli_main(args: &[String]) -> u8 {
     let dir_abs = match std::fs::metadata(&cfg.dir_path)
         .and_then(|m| if m.is_dir() { Ok(()) } else { Err(io::ErrorKind::NotADirectory.into()) })
         .and_then(|()| std::fs::canonicalize(&cfg.dir_path))
+        .map(sys::plain_path)
     {
         Ok(p) => p,
         Err(e) => {
@@ -358,7 +325,7 @@ pub fn cli_main(args: &[String]) -> u8 {
     });
     server.scan(false);
     agent::cleanup_attachments(&server);
-    signals::install();
+    sys::install_shutdown_handler(&SHUTDOWN_SIGNAL);
 
     let local_host = if loopback { bind_host.as_str() } else { "127.0.0.1" };
     let dir_text = dir_abs.display();
