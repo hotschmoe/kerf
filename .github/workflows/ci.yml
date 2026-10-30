@@ -2,116 +2,137 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [master, dev-hotschmoe]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  PY_PKGS: ezdxf pypdf pypdfium2 pillow numpy
 
 jobs:
   windows:
     uses: ./.github/workflows/windows.yml
 
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain
+        with:
+          key: lint
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --target wasm32-unknown-unknown -p kerf-wasm -- -D warnings
+
   engine:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: engines/zig
+        working-directory: engine
     steps:
       - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
+      - uses: ./.github/actions/toolchain
         with:
-          version: 0.17.0
+          key: engine
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: python tooling for the golden gate (DXF and PDF checkers)
-        run: pip install --quiet ezdxf pypdf pypdfium2 pillow numpy
+      - run: pip install --quiet $PY_PKGS
+      - uses: ./.github/actions/wasm-opt
 
-      - name: zig fmt --check
-        run: zig fmt --check src
+      - run: cargo build --release
+      - name: golden gate (byte-identical exports, DXF and PDF audits)
+        run: tests/check_golden.sh
+      - name: wasm through wasm-opt, golden and ABI
+        run: |
+          node ../tools/build_wasm.mjs --require-wasm-opt
+          node tests/wasm_golden.mjs
+          node tests/wasm_check.mjs dist/kerf.wasm
+      - run: node tests/cli_ergonomics.mjs "$PWD/target/release/kerf"
+      - run: node tests/serve_smoke.mjs "$PWD/target/release/kerf"
+      - run: node tests/platform_serve.mjs "$PWD/target/release/kerf"
 
-      - name: zig build test
-        run: zig build test --summary all
-
-      # Debug = safety-checked: the build the fuzzer, the goldens, the CLI tests and the server smoke test exercise.
-      - name: build the CLI (Debug, all safety checks on)
-        run: zig build
-      - name: golden gate (svg/dxf/pdf/png/drawing byte-identical, DXF and PDF audits)
-        run: bash tests/check_golden.sh
-      - name: CLI ergonomics tests
-        run: node tests/cli_ergonomics.mjs
-      - name: kerf serve smoke test (Debug build)
-        run: node tests/serve_smoke.mjs
-      - name: 'short fuzz run (300 mutated documents, seed 1; no crash, no signal)'
-        run: python3 ../../tools/zig-engine/fuzz.py 300 1
-
-      - name: wasm build + wasm golden (24 byte-identical outputs)
+      # Debug has overflow checks and debug assertions on.
+      - name: mutation fuzz on a debug build
         run: |
-          zig build wasm
-          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
-          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
-      # the module must build and pass the same golden with every safety check compiled in (REVIEW SAF-2, `no_panic` handler)
-      - name: wasm build with safety checks (ReleaseSafe) + golden
-        run: |
-          zig build wasm -Dwasm-optimize=safe
-          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
-          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
-      # what release.yml ships: the small build through binaryen `wasm-opt -Oz` (REVIEW SIZ-1); same golden
-      - name: binaryen wasm-opt (version_123)
-        run: |
-          curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz \
-            | tar xz -C "$RUNNER_TEMP" binaryen-version_123/bin/wasm-opt
-          echo "$RUNNER_TEMP/binaryen-version_123/bin" >> "$GITHUB_PATH"
-      - name: wasm build through wasm-opt + golden
-        run: |
-          zig build wasm -Dwasm-opt
-          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
-          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
-          ls -l dist/kerf.wasm
-
-      # What ships is ReleaseSafe (REVIEW SAF-2): run the server smoke test against exactly that, too.
-      - name: kerf serve smoke test (ReleaseSafe build, the shipped optimisation mode)
-        run: |
-          zig build -Doptimize=safe --prefix "$RUNNER_TEMP/release-safe"
-          node tests/serve_smoke.mjs "$RUNNER_TEMP/release-safe/bin/kerf"
-          node tests/cli_ergonomics.mjs "$RUNNER_TEMP/release-safe/bin/kerf"
-
-      - name: cross-compile smoke (windows, macos, linux-musl; the agent bridge has a Windows job-object path)
-        run: |
-          for t in x86_64-windows-gnu aarch64-windows-gnu aarch64-macos x86_64-linux-musl aarch64-linux-musl; do
-            zig build -Dtarget=$t -Doptimize=safe --prefix "$RUNNER_TEMP/out-$t"
-          done
+          cargo build
+          KERF=$PWD/target/debug/kerf python3 tests/fuzz.py 300 1
 
   web:
     runs-on: ubuntu-latest
-    needs: engine
+    env:
+      KERF_CHROME: /usr/bin/google-chrome
+      KERF_CHROME_ARGS: --use-angle=swiftshader --enable-unsafe-swiftshader
     steps:
       - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
+      - uses: ./.github/actions/toolchain
         with:
-          version: 0.17.0
+          key: web
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - name: wasm (the web build copies it)
-        working-directory: engines/zig
-        run: zig build wasm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            tools/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet $PY_PKGS
+      - uses: ./.github/actions/wasm-opt
+      - name: tools dependencies (the e2e tests validate exports with them)
+        working-directory: tools
+        run: PUPPETEER_SKIP_DOWNLOAD=1 npm ci --no-audit --no-fund
       - name: install, typecheck, unit tests
         working-directory: apps/web
         run: |
-          npm ci
+          npm ci --no-audit --no-fund
           npm run typecheck
           npm run test:unit
-      - name: build the UI and embed it in kerf
+      - name: build the UI for kerf serve and embed it in kerf
+        run: |
+          (cd apps/web && npm run build:serve)
+          cd engine
+          CARGO_TARGET_DIR=target/ui KERF_UI=../apps/web/dist-serve cargo build --release
+      - name: the embedded UI passes the serve smoke test (CSP of the real index.html)
+        run: node engine/tests/serve_smoke.mjs "$PWD/engine/target/ui/release/kerf"
+      - name: browser tests
         working-directory: apps/web
         run: |
-          npm run build:serve
-          cd ../../engines/zig
-          zig build -Doptimize=safe -Dui=../../apps/web/dist-serve
-          ls -l zig-out/bin/kerf
-      - name: the server with the embedded UI passes the smoke test (CSP of the real index.html)
-        working-directory: engines/zig
-        run: node tests/serve_smoke.mjs
+          npm run build
+          npm run test:e2e
+          npm run test:serve
+          KERF_SERVE_BIN=$GITHUB_WORKSPACE/engine/target/ui/release/kerf npm run test:serve -- --real
+
+  macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain
+        with:
+          key: macos
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet $PY_PKGS
+      - run: cargo build --release
+      - run: tests/check_golden.sh
+      - run: node tests/cli_ergonomics.mjs "$PWD/target/release/kerf"
+      - run: node tests/serve_smoke.mjs "$PWD/target/release/kerf"

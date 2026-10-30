@@ -18,8 +18,8 @@ const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-e2e-'));
 const server = spawn('node', [path.join(repo, 'tools/serve.mjs'), dist, String(port)], { stdio: ['ignore', fs.openSync(path.join(outDir, 'serve.log'), 'a'), fs.openSync(path.join(outDir, 'serve.err'), 'a')] });
 await new Promise((r) => setTimeout(r, 600));
 const browser = await puppeteer.launch({
-  executablePath: '/usr/bin/chromium', headless: 'new', protocolTimeout: 120000,
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--window-size=1440,900'],
+  executablePath: process.env.KERF_CHROME ?? '/usr/bin/chromium', headless: 'new', protocolTimeout: 120000,
+  args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--window-size=1440,900', ...(process.env.KERF_CHROME_ARGS?.split(' ') ?? [])],
 });
 const cdp = await browser.target().createCDPSession();
 await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: outDir });
