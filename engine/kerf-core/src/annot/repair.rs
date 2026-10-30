@@ -1,9 +1,9 @@
 //! Layout repair (SPEC 20): re-rendering the dimension labels and the repair moves for a dimension or label that sits on a note leader.
 
 use super::dims::{DimSpec, base_hits, label_items, polys_overlap, stack_dims};
-use super::notes::{LabelSpec, Meta, MetaKind, Obstacle, clear_of_leaders, dirs8};
+use super::notes::{self, LabelSpec, Meta, MetaKind, NotePrep, Obstacle, clear_of_leaders, dirs8};
 use super::text::text_poly;
-use super::{Env, items_box};
+use super::{Env, NoteIn, items_box};
 use crate::drawing::Item;
 use crate::geom::{Box, V2};
 use crate::pen::Pen;
@@ -170,4 +170,74 @@ pub fn repair_label(
 pub struct Best<'a> {
     pub r: route::Layout,
     pub rd: Render<'a>,
+}
+
+/// Routes the notes, then repairs what hits dimension text or labels: pushes those dimensions out and moves those
+/// labels, re-routing after each pass (at most `MAX_REPAIR_PASSES`, stopping when clean or after two passes in a row
+/// that did not get better). The pass with the fewest hits wins.
+/// Passes of re-routing the repair loop makes at most.
+const MAX_REPAIR_PASSES: usize = 8;
+
+pub fn solve<'a>(
+    env: &mut Env<'a, '_>,
+    notes: &[NoteIn<'a>],
+    prep: &NotePrep,
+    dl: &DimLab<'_, 'a>,
+    per: &[Vec<Item>],
+    meta: &[Meta<'a>],
+) -> Option<Best<'a>> {
+    let mut dpush = alloc::vec![0.0f64; dl.dspecs.len()];
+    let mut lpush = alloc::vec![V2::init(0.0, 0.0); dl.lspecs.len()];
+    // route, then repair what hits dimension text or labels (bounded, deterministic)
+    let mut best: Option<Best<'a>> = None;
+    let mut stale = 0usize;
+    for pass in 0..MAX_REPAIR_PASSES {
+        let rd = render_dim_labels(env, dl, per, meta, &dpush, &lpush);
+        let r = notes::route_notes(env, prep, notes, rd.ext, &rd.obstacles, &rd.soft, pass > 0);
+        let better = best.as_ref().is_none_or(|b| r.hits.len() < b.r.hits.len());
+        if better {
+            stale = 0;
+        } else {
+            stale += 1;
+        }
+        // stop when clean, or when two passes in a row did not get better
+        let stop = r.hits.is_empty() || stale >= 2;
+        let mut changed = false;
+        if !stop {
+            let mut touched_d = alloc::vec![false; dl.dspecs.len()];
+            let mut touched_l = alloc::vec![false; dl.lspecs.len()];
+            for ht in &r.hits {
+                if ht.kind != route::HitKind::Dim && ht.kind != route::HitKind::Label {
+                    continue;
+                }
+                let Some(o) = rd.obstacles.get(ht.other) else { continue };
+                if o.kind == route::ObstKind::Dim {
+                    let Some(t) = touched_d.get_mut(o.owner) else { continue };
+                    if *t {
+                        continue;
+                    }
+                    *t = true;
+                    if repair_dim(env, o, &r.leaders, prep.g.h, &mut dpush, dl.dspecs) {
+                        changed = true;
+                    }
+                } else {
+                    let Some(t) = touched_l.get_mut(o.owner) else { continue };
+                    if *t {
+                        continue;
+                    }
+                    *t = true;
+                    if repair_label(o, &rd.obstacles, &r.leaders, prep.g.h, &mut lpush, dl.base_segs) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if better {
+            best = Some(Best { r, rd });
+        }
+        if stop || !changed {
+            break;
+        }
+    }
+    best
 }

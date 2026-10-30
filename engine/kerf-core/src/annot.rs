@@ -32,7 +32,7 @@ pub use title::{SheetInfo, title_items};
 
 use dims::DimSpec;
 use notes::{LabelSpec, Meta, MetaKind, NoteIn};
-use repair::{Best, DimLab};
+use repair::DimLab;
 
 pub enum Landing<'a, 's> {
     Section(&'a mut Section<'s>),
@@ -117,8 +117,6 @@ pub enum DimDir {
 
 pub const DIM_VARIANTS: usize = 6;
 
-const MAX_REPAIR_PASSES: usize = 8;
-
 fn str_member<'v>(an: &'v Value, key: &str) -> Option<&'v str> {
     an.get(key).and_then(Value::str)
 }
@@ -127,246 +125,260 @@ fn non_null<'v>(an: &'v Value, key: &str) -> Option<&'v Value> {
     an.get(key).filter(|v| !v.is_null())
 }
 
-/// Annotate a view. Returns the annotation items (notes interleaved after their annotation's own
-/// items, in view order). Hatch lines in `base_items` are knocked out under dimension text and labels.
-///
-/// SPEC 20: dimensions are stacked (`stack_dims`), notes routed (`route::route`), and when leaders still hit
-/// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
-/// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
-pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
+/// What a view's annotation list yields: the notes, dimensions and labels to lay out, and per annotation (in view order)
+/// its items so far, its note slot and its bookkeeping.
+struct Gathered<'a> {
+    notes: Vec<NoteIn<'a>>,
+    note_slot: Vec<Option<usize>>,
+    per: Vec<Vec<Item>>,
+    meta: Vec<Meta<'a>>,
+    dspecs: Vec<DimSpec<'a>>,
+    lspecs: Vec<LabelSpec<'a>>,
+}
+
+/// The id of annotation `k`, or a diagnostic and `None` when it has none or repeats an earlier one.
+fn annotation_id<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, seen: &mut Vec<&'a str>) -> Option<&'a str> {
+    let vid = env.spec.id;
+    let Some(id) = str_member(an, "id") else {
+        env.diags.add(
+            Level::Error,
+            "E_PARAM",
+            None,
+            Some(&format!("views/{vid}/annotations/{k}")),
+            format!("annotation {k} of view {vid} needs a string \"id\""),
+        );
+        return None;
+    };
+    if seen.contains(&id) {
+        env.diags.add(
+            Level::Error,
+            "E_DUP_ID",
+            Some(id),
+            Some(&format!("views/{vid}/annotations/{id}")),
+            format!("duplicate annotation id '{id}' in view {vid}"),
+        );
+        return None;
+    }
+    seen.push(id);
+    Some(id)
+}
+
+/// A note, or `None` (with a diagnostic) when it cannot be drawn.
+fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) -> Option<NoteIn<'a>> {
+    let vid = env.spec.id;
+    let Some(text0) = str_member(an, "text") else {
+        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(apath), format!("note '{id}' needs a string \"text\""));
+        return None;
+    };
+    if notes::text_too_long(env, "note", id, apath, text0) {
+        return None;
+    }
+    let target = an.get("target").map_or("", |x| x.str().unwrap_or(""));
+    let text = scene::where_occurs_text(env.scene, target, text0);
+    let cites: &[Value] = an.get("cite").and_then(Value::arr).unwrap_or(&[]);
+    let full = notes::note_text(env, &text, cites);
+    let target = str_member(an, "target").unwrap_or("");
+    let mut landing: Option<Vec<V2>> = None;
+    let mut movable = true;
+    let at_v = non_null(an, "at");
+    if let Some(atv) = at_v {
+        if let Some(p) = env.scene.point(atv, id, &format!("{apath}/at")) {
+            landing = Some(alloc::vec![p]);
+        }
+        movable = false;
+    } else if target.is_empty() {
+        env.diags.add(
+            Level::Error,
+            "E_PARAM",
+            Some(id),
+            Some(apath),
+            format!("note '{id}' needs a \"target\" (component id or comp.part) or an \"at\" point"),
+        );
+        return None;
+    } else {
+        let cid = target.find(['.', '#']).map_or(target, |d| &target[..d]);
+        if env.scene.find(cid).is_none() {
+            let ids = env.scene.comp_ids();
+            let hint = match model::nearest(cid, &ids) {
+                Some(n) => format!(" Did you mean '{n}'?"),
+                None => format!(" Components: {}", scene::join_ids(&ids)),
+            };
+            env.diags.add(
+                Level::Error,
+                "E_REF_UNKNOWN",
+                Some(id),
+                Some(&format!("{apath}/target")),
+                format!("note '{id}' target '{target}' is not a component.{hint}"),
+            );
+            return None;
+        }
+        landing = notes::target_landing(env, target);
+    }
+    let mut place: Option<V2> = None;
+    if let Some(pv) = non_null(an, "place") {
+        place = Some(model::offset_pair_or_diag(env.diags, Some(id), &format!("{apath}/place"), "place", pv)?);
+    }
+    let mut column: Option<route::Side> = None;
+    if let Some(cv) = non_null(an, "column") {
+        match cv.str().unwrap_or("") {
+            "left" => column = Some(route::Side::Left),
+            "right" => column = Some(route::Side::Right),
+            _ => {
+                let got = cv.str().map_or_else(|| "a non-string value".to_string(), |sv| format!("\"{sv}\""));
+                env.diags.add_fix(
+                    Level::Warning,
+                    "W_PARAM",
+                    Some(id),
+                    Some(&format!("{apath}/column")),
+                    format!("note '{id}' in view {vid}: \"column\" must be \"left\" or \"right\" (got {got}); ignored"),
+                    "use \"column\": \"left\" or \"right\", or omit it to let the layout choose (view notes_side)"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    if let Some(cands) = landing {
+        return Some(NoteIn { id, text: full, cands, movable, place, column });
+    }
+    if at_v.is_none() {
+        env.diags.add_fix(
+            Level::Warning,
+            "W_NOTE_TARGET",
+            Some(id),
+            Some(apath),
+            format!("note '{id}' in view {vid}: target '{target}' is not visible in this view (outside the crop, behind the cut plane, or hidden). The note was not drawn."),
+            "move the view crop or cut_z so the target is visible, change target, or give the note an explicit \"at\" Ref".to_string(),
+        );
+    }
+    None
+}
+
+fn read_dim<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: &str) -> Option<DimSpec<'a>> {
+    let (Some(fv), Some(tv)) = (an.get("from"), an.get("to")) else {
+        env.diags.add(
+            Level::Error,
+            "E_PARAM",
+            Some(id),
+            Some(apath),
+            format!("dim '{id}' needs \"from\" and \"to\" points (Refs)"),
+        );
+        return None;
+    };
+    let from = env.scene.point(fv, id, &format!("{apath}/from"))?;
+    let to = env.scene.point(tv, id, &format!("{apath}/to"))?;
+    let dir_s = str_member(an, "dir").unwrap_or("h");
+    let dir = match dir_s {
+        "h" => DimDir::H,
+        "v" => DimDir::V,
+        "aligned" => DimDir::Aligned,
+        _ => {
+            env.diags.add(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("{apath}/dir")),
+                format!("dim dir must be \"h\", \"v\" or \"aligned\" (got \"{dir_s}\")"),
+            );
+            return None;
+        }
+    };
+    let off =
+        model::length_or_diag(env.diags, Some(id), &format!("{apath}/offset"), an.get("offset"), "dim offset", 0.0)?;
+    Some(DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text") })
+}
+
+/// A label and its offset from the `at` point.
+fn read_label<'a>(
+    env: &mut Env<'a, '_>,
+    an: &'a Value,
+    k: usize,
+    id: &'a str,
+    apath: &str,
+) -> Option<(LabelSpec<'a>, V2)> {
+    let Some(text) = str_member(an, "text") else {
+        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(apath), format!("label '{id}' needs a string \"text\""));
+        return None;
+    };
+    if notes::text_too_long(env, "label", id, apath, text) {
+        return None;
+    }
+    let Some(atv) = an.get("at") else {
+        env.diags.add(
+            Level::Error,
+            "E_PARAM",
+            Some(id),
+            Some(apath),
+            format!("label '{id}' needs \"at\": a Ref or [x, y]"),
+        );
+        return None;
+    };
+    let mut p = env.scene.point(atv, id, &format!("{apath}/at"))?;
+    let mut off = V2::init(0.0, 0.0);
+    if let Some(ov) = non_null(an, "offset") {
+        off = model::offset_pair_or_diag(env.diags, Some(id), &format!("{apath}/offset"), "label offset", ov)?;
+        p = p.add(off);
+    }
+    let base = match &mut env.landing {
+        Landing::Section(_) => Some(p),
+        Landing::Iso(iso) => iso.project(p),
+    };
+    Some((LabelSpec { k, id, text, base, off }, off))
+}
+
+/// Reads every annotation of the view; the invalid ones are diagnosed and skipped.
+fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
     let spec: &'a ViewSpec<'a> = env.spec;
     let vid = spec.id;
-    let mut notes: Vec<NoteIn<'a>> = Vec::new();
-    let mut note_slot: Vec<Option<usize>> = Vec::new();
-    let mut per: Vec<Vec<Item>> = Vec::new();
-    let mut meta: Vec<Meta<'a>> = Vec::new();
-    let mut dspecs: Vec<DimSpec<'a>> = Vec::new();
-    let mut lspecs: Vec<LabelSpec<'a>> = Vec::new();
+    let mut g = Gathered {
+        notes: Vec::new(),
+        note_slot: Vec::new(),
+        per: Vec::new(),
+        meta: Vec::new(),
+        dspecs: Vec::new(),
+        lspecs: Vec::new(),
+    };
     let mut seen: Vec<&'a str> = Vec::new();
     let types = ["note", "dim", "label"];
     for (k, an) in spec.annotations.iter().enumerate() {
         let mut slot: Option<usize> = None;
         let mut cur_meta = Meta::default();
-        'body: {
-            let Some(id) = str_member(an, "id") else {
-                env.diags.add(
-                    Level::Error,
-                    "E_PARAM",
-                    None,
-                    Some(&format!("views/{vid}/annotations/{k}")),
-                    format!("annotation {k} of view {vid} needs a string \"id\""),
-                );
-                break 'body;
-            };
+        if let Some(id) = annotation_id(env, an, k, &mut seen) {
             let apath = format!("views/{vid}/annotations/{id}");
-            if seen.contains(&id) {
-                env.diags.add(
-                    Level::Error,
-                    "E_DUP_ID",
-                    Some(id),
-                    Some(&apath),
-                    format!("duplicate annotation id '{id}' in view {vid}"),
-                );
-                break 'body;
-            }
-            seen.push(id);
-            let ty = str_member(an, "type").unwrap_or("");
-            match ty {
+            match str_member(an, "type").unwrap_or("") {
                 "note" => {
-                    let Some(text0) = str_member(an, "text") else {
-                        env.diags.add(
-                            Level::Error,
-                            "E_PARAM",
-                            Some(id),
-                            Some(&apath),
-                            format!("note '{id}' needs a string \"text\""),
-                        );
-                        break 'body;
-                    };
-                    if notes::text_too_long(env, "note", id, &apath, text0) {
-                        break 'body;
-                    }
-                    let target = an.get("target").map_or("", |x| x.str().unwrap_or(""));
-                    let text = scene::where_occurs_text(env.scene, target, text0);
-                    let cites: &[Value] = an.get("cite").and_then(Value::arr).unwrap_or(&[]);
-                    let full = notes::note_text(env, &text, cites);
-                    let target = str_member(an, "target").unwrap_or("");
-                    let mut landing: Option<Vec<V2>> = None;
-                    let mut movable = true;
-                    let at_v = non_null(an, "at");
-                    if let Some(atv) = at_v {
-                        if let Some(p) = env.scene.point(atv, id, &format!("{apath}/at")) {
-                            landing = Some(alloc::vec![p]);
-                        }
-                        movable = false;
-                    } else if target.is_empty() {
-                        env.diags.add(
-                            Level::Error,
-                            "E_PARAM",
-                            Some(id),
-                            Some(&apath),
-                            format!("note '{id}' needs a \"target\" (component id or comp.part) or an \"at\" point"),
-                        );
-                        break 'body;
-                    } else {
-                        let cid = target.find(['.', '#']).map_or(target, |d| &target[..d]);
-                        if env.scene.find(cid).is_none() {
-                            let ids = env.scene.comp_ids();
-                            let hint = match model::nearest(cid, &ids) {
-                                Some(n) => format!(" Did you mean '{n}'?"),
-                                None => format!(" Components: {}", scene::join_ids(&ids)),
-                            };
-                            env.diags.add(
-                                Level::Error,
-                                "E_REF_UNKNOWN",
-                                Some(id),
-                                Some(&format!("{apath}/target")),
-                                format!("note '{id}' target '{target}' is not a component.{hint}"),
-                            );
-                            break 'body;
-                        }
-                        landing = notes::target_landing(env, target);
-                    }
-                    let mut place: Option<V2> = None;
-                    if let Some(pv) = non_null(an, "place") {
-                        match model::offset_pair_or_diag(env.diags, Some(id), &format!("{apath}/place"), "place", pv) {
-                            Some(p) => place = Some(p),
-                            None => break 'body,
-                        }
-                    }
-                    let mut column: Option<route::Side> = None;
-                    if let Some(cv) = non_null(an, "column") {
-                        match cv.str().unwrap_or("") {
-                            "left" => column = Some(route::Side::Left),
-                            "right" => column = Some(route::Side::Right),
-                            _ => {
-                                let got =
-                                    cv.str().map_or_else(|| "a non-string value".to_string(), |sv| format!("\"{sv}\""));
-                                env.diags.add_fix(
-                                    Level::Warning,
-                                    "W_PARAM",
-                                    Some(id),
-                                    Some(&format!("{apath}/column")),
-                                    format!("note '{id}' in view {vid}: \"column\" must be \"left\" or \"right\" (got {got}); ignored"),
-                                    "use \"column\": \"left\" or \"right\", or omit it to let the layout choose (view notes_side)".to_string(),
-                                );
-                            }
-                        }
-                    }
-                    if let Some(l) = landing {
-                        slot = Some(notes.len());
-                        notes.push(NoteIn { id, text: full, cands: l, movable, place, column });
-                    } else if at_v.is_none() {
-                        env.diags.add_fix(
-                            Level::Warning,
-                            "W_NOTE_TARGET",
-                            Some(id),
-                            Some(&apath),
-                            format!("note '{id}' in view {vid}: target '{target}' is not visible in this view (outside the crop, behind the cut plane, or hidden). The note was not drawn."),
-                            "move the view crop or cut_z so the target is visible, change target, or give the note an explicit \"at\" Ref".to_string(),
-                        );
+                    if let Some(note) = read_note(env, an, id, &apath) {
+                        slot = Some(g.notes.len());
+                        g.notes.push(note);
                     }
                 }
-                "dim" => {
-                    if spec.kind == Kind::Iso {
-                        break 'body;
-                    }
-                    let (Some(fv), Some(tv)) = (an.get("from"), an.get("to")) else {
-                        env.diags.add(
-                            Level::Error,
-                            "E_PARAM",
-                            Some(id),
-                            Some(&apath),
-                            format!("dim '{id}' needs \"from\" and \"to\" points (Refs)"),
-                        );
-                        break 'body;
-                    };
-                    let Some(from) = env.scene.point(fv, id, &format!("{apath}/from")) else { break 'body };
-                    let Some(to) = env.scene.point(tv, id, &format!("{apath}/to")) else { break 'body };
-                    let dir_s = str_member(an, "dir").unwrap_or("h");
-                    let dir = match dir_s {
-                        "h" => DimDir::H,
-                        "v" => DimDir::V,
-                        "aligned" => DimDir::Aligned,
-                        _ => {
-                            env.diags.add(
-                                Level::Error,
-                                "E_PARAM",
-                                Some(id),
-                                Some(&format!("{apath}/dir")),
-                                format!("dim dir must be \"h\", \"v\" or \"aligned\" (got \"{dir_s}\")"),
-                            );
-                            break 'body;
-                        }
-                    };
-                    let Some(off) = model::length_or_diag(
-                        env.diags,
-                        Some(id),
-                        &format!("{apath}/offset"),
-                        an.get("offset"),
-                        "dim offset",
-                        0.0,
-                    ) else {
-                        break 'body;
-                    };
-                    let ds = DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text") };
-                    cur_meta = Meta { id, kind: MetaKind::Dim, axis: ds.axis(), off, off2: 0.0, owner: dspecs.len() };
-                    dspecs.push(ds);
-                }
-                "label" => {
-                    let Some(text) = str_member(an, "text") else {
-                        env.diags.add(
-                            Level::Error,
-                            "E_PARAM",
-                            Some(id),
-                            Some(&apath),
-                            format!("label '{id}' needs a string \"text\""),
-                        );
-                        break 'body;
-                    };
-                    if notes::text_too_long(env, "label", id, &apath, text) {
-                        break 'body;
-                    }
-                    let Some(atv) = an.get("at") else {
-                        env.diags.add(
-                            Level::Error,
-                            "E_PARAM",
-                            Some(id),
-                            Some(&apath),
-                            format!("label '{id}' needs \"at\": a Ref or [x, y]"),
-                        );
-                        break 'body;
-                    };
-                    let Some(mut p) = env.scene.point(atv, id, &format!("{apath}/at")) else { break 'body };
-                    let mut loff = V2::init(0.0, 0.0);
-                    if let Some(ov) = non_null(an, "offset") {
-                        let Some(o) = model::offset_pair_or_diag(
-                            env.diags,
-                            Some(id),
-                            &format!("{apath}/offset"),
-                            "label offset",
-                            ov,
-                        ) else {
-                            break 'body;
+                "dim" if spec.kind != Kind::Iso => {
+                    if let Some(ds) = read_dim(env, an, k, id, &apath) {
+                        cur_meta = Meta {
+                            id,
+                            kind: MetaKind::Dim,
+                            axis: ds.axis(),
+                            off: ds.off0,
+                            off2: 0.0,
+                            owner: g.dspecs.len(),
                         };
-                        loff = o;
-                        p = p.add(loff);
+                        g.dspecs.push(ds);
                     }
-                    cur_meta = Meta {
-                        id,
-                        kind: MetaKind::Label,
-                        axis: V2::default(),
-                        off: loff.x,
-                        off2: loff.y,
-                        owner: lspecs.len(),
-                    };
-                    let base = match &mut env.landing {
-                        Landing::Section(_) => Some(p),
-                        Landing::Iso(iso) => iso.project(p),
-                    };
-                    lspecs.push(LabelSpec { k, id, text, base, off: loff });
                 }
-                _ => {
+                "dim" => {}
+                "label" => {
+                    if let Some((ls, off)) = read_label(env, an, k, id, &apath) {
+                        cur_meta = Meta {
+                            id,
+                            kind: MetaKind::Label,
+                            axis: V2::default(),
+                            off: off.x,
+                            off2: off.y,
+                            owner: g.lspecs.len(),
+                        };
+                        g.lspecs.push(ls);
+                    }
+                }
+                ty => {
                     env.diags.add(
                         Level::Error,
                         "E_PARAM",
@@ -377,10 +389,21 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
                 }
             }
         }
-        per.push(Vec::new());
-        note_slot.push(slot);
-        meta.push(cur_meta);
+        g.per.push(Vec::new());
+        g.note_slot.push(slot);
+        g.meta.push(cur_meta);
     }
+    g
+}
+
+/// Annotate a view. Returns the annotation items (notes interleaved after their annotation's own
+/// items, in view order). Hatch lines in `base_items` are knocked out under dimension text and labels.
+///
+/// SPEC 20: dimensions are stacked (`stack_dims`), notes routed (`route::route`), and when leaders still hit
+/// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
+/// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
+pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
+    let Gathered { notes, note_slot, per, meta, dspecs, lspecs } = gather(env);
     let mut base_segs: Vec<[V2; 2]> = Vec::new();
     for it in base_items.iter() {
         if let Item::Path(p) = it {
@@ -397,61 +420,9 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         }
     }
     let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs };
-    let mut dpush = alloc::vec![0.0f64; dspecs.len()];
-    let mut lpush = alloc::vec![V2::init(0.0, 0.0); lspecs.len()];
     let prep = notes::prep_notes(env, &notes);
 
-    // route, then repair what hits dimension text or labels (bounded, deterministic)
-    let mut best: Option<Best<'a>> = None;
-    let mut stale = 0usize;
-    for pass in 0..MAX_REPAIR_PASSES {
-        let rd = repair::render_dim_labels(env, &dl, &per, &meta, &dpush, &lpush);
-        let r = notes::route_notes(env, &prep, &notes, rd.ext, &rd.obstacles, &rd.soft, pass > 0);
-        let better = best.as_ref().is_none_or(|b| r.hits.len() < b.r.hits.len());
-        if better {
-            stale = 0;
-        } else {
-            stale += 1;
-        }
-        // stop when clean, or when two passes in a row did not get better
-        let stop = r.hits.is_empty() || stale >= 2;
-        let mut changed = false;
-        if !stop {
-            let mut touched_d = alloc::vec![false; dspecs.len()];
-            let mut touched_l = alloc::vec![false; lspecs.len()];
-            for ht in &r.hits {
-                if ht.kind != route::HitKind::Dim && ht.kind != route::HitKind::Label {
-                    continue;
-                }
-                let Some(o) = rd.obstacles.get(ht.other) else { continue };
-                if o.kind == route::ObstKind::Dim {
-                    let Some(t) = touched_d.get_mut(o.owner) else { continue };
-                    if *t {
-                        continue;
-                    }
-                    *t = true;
-                    if repair::repair_dim(env, o, &r.leaders, prep.g.h, &mut dpush, &dspecs) {
-                        changed = true;
-                    }
-                } else {
-                    let Some(t) = touched_l.get_mut(o.owner) else { continue };
-                    if *t {
-                        continue;
-                    }
-                    *t = true;
-                    if repair::repair_label(o, &rd.obstacles, &r.leaders, prep.g.h, &mut lpush, &base_segs) {
-                        changed = true;
-                    }
-                }
-            }
-        }
-        if better {
-            best = Some(Best { r, rd });
-        }
-        if stop || !changed {
-            break;
-        }
-    }
+    let best = repair::solve(env, &notes, &prep, &dl, &per, &meta);
     let Some(fin) = best else { return Vec::new() };
     let rd = fin.rd;
     notes::report_hits(env, &notes, &rd.obstacles, &fin.r, &prep.g);
