@@ -1,8 +1,8 @@
 //! concrete (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{
-    Ctx, drop_duplicate_points, fmt_ft_in, fmt_num, material_ok, mirror_built, one_prism, oriented_ccw, parse_cover,
-    parse_point_list, zone_rect,
+    Ctx, ParsedCover, drop_duplicate_points, fmt_ft_in, fmt_num, material_ok, mirror_built, one_prism, oriented_ccw,
+    parse_cover, parse_point_list, zone_rect,
 };
 use crate::geom::{self, Pt, V2};
 use crate::math;
@@ -47,65 +47,71 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     if !material_ok(ctx, "material", material) {
         return None;
     }
-    let sh = cp.shape;
-    if sh == Shape::Rect || sh == Shape::Footing {
-        let hint = "rect/footing need width and height";
-        let w = cp.width.unwrap_or_else(|| {
-            ctx.p.missing("width", hint);
-            0.0
-        });
-        let h = cp.height.unwrap_or_else(|| {
-            ctx.p.missing("height", hint);
-            0.0
-        });
-        if !ctx.p.ok {
-            return None;
-        }
-        let lp = model::rect_loop(0.0, 0.0, w, h);
-        let part = if sh == Shape::Footing { "footing" } else { "" };
-        let prism = Prism {
-            part: part.into(),
-            material: material.into(),
-            loops: model::one_loop(lp.clone()),
-            ..Prism::default()
-        };
-        let zones = if part.is_empty() { vec![] } else { vec![zone_rect("footing", 0.0, 0.0, w, h)] };
-        return Some(Built {
-            prisms: one_prism(prism),
-            zones,
-            box_: geom::Box { x0: 0.0, y0: 0.0, x1: w, y1: h },
-            host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
-            info: format!("concrete {} {} x {}", sh.tag(), fmt_ft_in(w), fmt_ft_in(h)),
-            ..Built::default()
-        });
+    match cp.shape {
+        sh @ (Shape::Rect | Shape::Footing) => rect_or_footing(ctx, &cp, sh, material, cov),
+        Shape::Polygon => polygon(ctx, &cp, material, cov),
+        _ => slab_edge(ctx, &cp, material, cov),
     }
-    if sh == Shape::Polygon {
-        let Some(pv) = &cp.points else {
-            ctx.p.fail(
-                "points",
-                "shape polygon needs 'points': [[x, y], ...] (relative to the placement point) or Refs".into(),
-            );
-            return None;
-        };
-        let pts = parse_point_list(ctx, "points", pv, true)?;
-        let clean = drop_duplicate_points(&pts);
-        if clean.len() < 3 {
-            ctx.p.fail("points", format!("polygon needs at least 3 distinct points (got {})", clean.len()));
-            return None;
-        }
-        let lp = oriented_ccw(clean);
-        let box_ = geom::loop_box(&lp);
-        let prism = Prism { material: material.into(), loops: model::one_loop(lp.clone()), ..Prism::default() };
-        return Some(Built {
-            prisms: one_prism(prism),
-            box_,
-            points_mode: true,
-            host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
-            info: "concrete polygon".into(),
-            ..Built::default()
-        });
+}
+
+/// The two plain blocks: a rectangle, or the same with the `footing` part (and its zone).
+fn rect_or_footing(ctx: &mut Ctx, cp: &Params, sh: Shape, material: &str, cov: ParsedCover) -> Option<Built> {
+    let hint = "rect/footing need width and height";
+    let w = cp.width.unwrap_or_else(|| {
+        ctx.p.missing("width", hint);
+        0.0
+    });
+    let h = cp.height.unwrap_or_else(|| {
+        ctx.p.missing("height", hint);
+        0.0
+    });
+    if !ctx.p.ok {
+        return None;
     }
-    // slab_edge
+    let lp = model::rect_loop(0.0, 0.0, w, h);
+    let part = if sh == Shape::Footing { "footing" } else { "" };
+    let prism =
+        Prism { part: part.into(), material: material.into(), loops: model::one_loop(lp.clone()), ..Prism::default() };
+    let zones = if part.is_empty() { vec![] } else { vec![zone_rect("footing", 0.0, 0.0, w, h)] };
+    return Some(Built {
+        prisms: one_prism(prism),
+        zones,
+        box_: geom::Box { x0: 0.0, y0: 0.0, x1: w, y1: h },
+        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
+        info: format!("concrete {} {} x {}", sh.tag(), fmt_ft_in(w), fmt_ft_in(h)),
+        ..Built::default()
+    });
+}
+
+fn polygon(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Option<Built> {
+    let Some(pv) = &cp.points else {
+        ctx.p.fail(
+            "points",
+            "shape polygon needs 'points': [[x, y], ...] (relative to the placement point) or Refs".into(),
+        );
+        return None;
+    };
+    let pts = parse_point_list(ctx, "points", pv, true)?;
+    let clean = drop_duplicate_points(&pts);
+    if clean.len() < 3 {
+        ctx.p.fail("points", format!("polygon needs at least 3 distinct points (got {})", clean.len()));
+        return None;
+    }
+    let lp = oriented_ccw(clean);
+    let box_ = geom::loop_box(&lp);
+    let prism = Prism { material: material.into(), loops: model::one_loop(lp.clone()), ..Prism::default() };
+    return Some(Built {
+        prisms: one_prism(prism),
+        box_,
+        points_mode: true,
+        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
+        info: "concrete polygon".into(),
+        ..Built::default()
+    });
+}
+
+/// A slab with an optional footing, haunch and recess along its edge.
+fn slab_edge(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Option<Built> {
     let st = cp.slab_thickness;
     let sl = cp.slab_length;
     let fw = cp.footing_width;

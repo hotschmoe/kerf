@@ -587,6 +587,66 @@ fn edge_key(ea: [f64; 3], eb: [f64; 3]) -> EdgeKey {
 }
 
 /// Build the iso view. `iso` is initialised here and stays alive for annotation landing/projection.
+/// Which 3D edges to draw: of edges with identical endpoints the heavier pen wins.
+fn unique_edges(iso: &Iso, style: &Style) -> Vec<bool> {
+    let ne = iso.edges.len();
+    let mut keep = vec![true; ne];
+    let mut ents: Vec<(EdgeKey, usize)> = iso.edges.iter().enumerate().map(|(i, e)| (edge_key(e.a, e.b), i)).collect();
+    sort::stable(&mut ents, |x, y| x.0 < y.0 || (x.0 == y.0 && x.1 < y.1));
+    let mut i = 0;
+    while i < ne {
+        let mut j = i + 1;
+        while j < ne && ents[i].0 == ents[j].0 {
+            j += 1;
+        }
+        let mut best = ents[i].1;
+        for en in &ents[i + 1..j] {
+            if style.pen_width_mm(iso.edges[en.1].pen) > style.pen_width_mm(iso.edges[best].pen) {
+                best = en.1;
+            }
+        }
+        for en in &ents[i..j] {
+            if en.1 != best {
+                keep[en.1] = false;
+            }
+        }
+        i = j;
+    }
+    keep
+}
+
+/// The visible segments of one kept edge.
+struct Piece {
+    edge: usize,
+    segs: Vec<[V2; 2]>,
+}
+
+/// The visible parts of every kept edge that borders a front-facing face, projected.
+fn visible_pieces(iso: &Iso, keep: &[bool]) -> Vec<Piece> {
+    let (sx, sz) = (iso.sx, iso.sz);
+    let mut pieces: Vec<Piece> = Vec::new();
+    for (ei, e) in iso.edges.iter().enumerate() {
+        if !keep[ei] {
+            continue;
+        }
+        if !iso.faces[e.f1].front && !iso.faces[e.f2].front {
+            continue;
+        }
+        let pa = proj(sx, sz, e.a);
+        let pb = proj(sx, sz, e.b);
+        if pa.dist(pb) < 1e-9 {
+            continue;
+        }
+        let vis = iso.visible(pa, pb, depth_of(sx, sz, e.a), depth_of(sx, sz, e.b), &[e.f1, e.f2]);
+        if vis.is_empty() {
+            continue;
+        }
+        let segs = vis.iter().map(|v| [V2::lerp(pa, pb, v[0]), V2::lerp(pa, pb, v[1])]).collect();
+        pieces.push(Piece { edge: ei, segs });
+    }
+    pieces
+}
+
 pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale_override: f64) -> Result {
     let q = quadrant(spec.from);
     iso.sx = q[0];
@@ -634,58 +694,8 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
     };
     let (sx, sz) = (iso.sx, iso.sz);
 
-    // dedupe identical 3D edges (heavier pen wins)
-    let ne = iso.edges.len();
-    let mut keep = vec![true; ne];
-    {
-        let mut ents: Vec<(EdgeKey, usize)> =
-            iso.edges.iter().enumerate().map(|(i, e)| (edge_key(e.a, e.b), i)).collect();
-        sort::stable(&mut ents, |x, y| x.0 < y.0 || (x.0 == y.0 && x.1 < y.1));
-        let mut i = 0;
-        while i < ne {
-            let mut j = i + 1;
-            while j < ne && ents[i].0 == ents[j].0 {
-                j += 1;
-            }
-            let mut best = ents[i].1;
-            for en in &ents[i + 1..j] {
-                if style.pen_width_mm(iso.edges[en.1].pen) > style.pen_width_mm(iso.edges[best].pen) {
-                    best = en.1;
-                }
-            }
-            for en in &ents[i..j] {
-                if en.1 != best {
-                    keep[en.1] = false;
-                }
-            }
-            i = j;
-        }
-    }
-
-    struct Piece {
-        edge: usize,
-        segs: Vec<[V2; 2]>,
-    }
-    let mut pieces: Vec<Piece> = Vec::new();
-    for (ei, e) in iso.edges.iter().enumerate() {
-        if !keep[ei] {
-            continue;
-        }
-        if !iso.faces[e.f1].front && !iso.faces[e.f2].front {
-            continue;
-        }
-        let pa = proj(sx, sz, e.a);
-        let pb = proj(sx, sz, e.b);
-        if pa.dist(pb) < 1e-9 {
-            continue;
-        }
-        let vis = iso.visible(pa, pb, depth_of(sx, sz, e.a), depth_of(sx, sz, e.b), &[e.f1, e.f2]);
-        if vis.is_empty() {
-            continue;
-        }
-        let segs = vis.iter().map(|v| [V2::lerp(pa, pb, v[0]), V2::lerp(pa, pb, v[1])]).collect();
-        pieces.push(Piece { edge: ei, segs });
-    }
+    let keep = unique_edges(iso, style);
+    let pieces = visible_pieces(iso, &keep);
 
     let mut items: Vec<Item> = Vec::new();
     // hatch on cutaway caps (front-facing only)
