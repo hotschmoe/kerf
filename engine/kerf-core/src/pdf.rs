@@ -1,7 +1,7 @@
 //! PDF exporter (SPEC 12): PDF 1.7, one page at the style's sheet size, vector only, text as stroked
 //! paths (no fonts), deterministic object order, no timestamps.
 
-pub mod writer;
+mod writer;
 
 use crate::drawing::{Drawing, Item};
 use crate::font::Font;
@@ -16,7 +16,6 @@ use alloc::vec::Vec;
 
 const PT_PER_IN: f64 = 72.0;
 
-/// Byte-identical to the Zig goldens, which carry the Zig engine name.
 const INFO: &[u8] = b"<< /Title (Kerf detail) /Producer (kerf) >>";
 
 fn push_num(out: &mut Vec<u8>, x: f64) {
