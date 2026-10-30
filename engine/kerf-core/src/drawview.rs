@@ -170,20 +170,21 @@ fn dim_offset_fix(fit: &FitInfo, big: &Culprit, need: f64, nfix: &mut usize, fix
     }
 }
 
-/// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
-#[allow(clippy::too_many_arguments)]
-fn view_fit(
-    st: &Style,
-    spec: &ViewSpec,
-    scale_text: &str,
+/// The scale and extents a view was laid out at, and the sheet area it has to fit.
+#[derive(Clone, Copy)]
+struct Frame<'a> {
+    scale_text: &'a str,
     scale: f64,
     crop: Box,
     bounds: Box,
-    fit: &FitInfo,
+    /// Sheet area (paper inches) inside the margins and above the title block.
     aw: f64,
     ah: f64,
-    diags: &Diags,
-) {
+}
+
+/// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
+fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &Diags) {
+    let Frame { scale_text, scale, crop, bounds, aw, ah } = *frame;
     let view_id = spec.id;
     let pw = (bounds.x1 - bounds.x0) / scale;
     let ph = (bounds.y1 - bounds.y0) / scale;
@@ -325,17 +326,20 @@ struct SecPass {
 
 const GLYPH_INFO: &str = "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)";
 
-#[allow(clippy::too_many_arguments)]
-fn section_pass(
-    st: &Style,
-    scene: &Scene,
-    spec: &ViewSpec,
-    prisms: &[Prism],
-    font: &Font,
-    doc: &Value,
-    diags: &Diags,
-    work: &Work,
-) -> SecPass {
+/// What every pass over a section view shares.
+#[derive(Clone, Copy)]
+struct SectionInputs<'a> {
+    st: &'a Style,
+    scene: &'a Scene<'a>,
+    prisms: &'a [Prism],
+    font: &'a Font,
+    doc: &'a Value,
+    diags: &'a Diags,
+    work: &'a Work,
+}
+
+fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
+    let SectionInputs { st, scene, prisms, font, doc, diags, work } = inp;
     let scale = spec.scale;
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
@@ -417,23 +421,14 @@ struct SecResolved {
 /// Resolve an omitted crop and/or scale (SPEC 19) and run the section pass. The scale is the first of the
 /// standard scales (largest first) at which view + notes + dimensions + title fit the sheet frame; every
 /// candidate is evaluated in order, so the result is stable. Explicit crop and scale are used as given.
-#[allow(clippy::too_many_arguments)]
-fn resolve_section(
-    st: &Style,
-    scene: &Scene,
-    spec: &ViewSpec,
-    prisms: &[Prism],
-    font: &Font,
-    doc: &Value,
-    diags: &Diags,
-    work: &Work,
-) -> SecResolved {
+fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
+    let SectionInputs { st, prisms, diags, .. } = inp;
     let mut rs = spec.clone();
     if !spec.has_crop {
         rs.crop = auto_crop(prisms, spec.cut_z);
     }
     if spec.has_scale {
-        let pass = section_pass(st, scene, &rs, prisms, font, doc, diags, work);
+        let pass = section_pass(inp, &rs);
         return SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass };
     }
     let aw = st.sheet_w_in - 2.0 * st.margin_in;
@@ -448,7 +443,7 @@ fn resolve_section(
         }
         rs.scale = sc;
         let td = Diags::new();
-        let pass = section_pass(st, scene, &rs, prisms, font, doc, &td, work);
+        let pass = section_pass(SectionInputs { diags: &td, ..inp }, &rs);
         last_diags = td.take();
         let pw = (pass.bounds.x1 - pass.bounds.x0) / sc;
         let ph = (pass.bounds.y1 - pass.bounds.y0) / sc;
@@ -462,7 +457,7 @@ fn resolve_section(
     if let Some(r) = last {
         r
     } else {
-        let pass = section_pass(st, scene, &rs, prisms, font, doc, diags, work);
+        let pass = section_pass(inp, &rs);
         SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass }
     }
 }
@@ -484,7 +479,7 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
     let font = font::embedded();
     let d = Diags::new();
     let work = Work::new(DEFAULT_WORK_LIMIT);
-    let r = resolve_section(st, scene, spec, &prisms, font, doc, &d, &work);
+    let r = resolve_section(SectionInputs { st, scene, prisms: &prisms, font, doc, diags: &d, work: &work }, spec);
     Resolved { crop: r.crop, scale: r.scale }
 }
 
@@ -546,7 +541,7 @@ pub fn build_from_scene<'a>(
     let fit: FitInfo;
     let scale_text: String;
     if spec.kind == Kind::Section {
-        let rs = resolve_section(st, scene, spec, &prisms, font, doc, diags, &work);
+        let rs = resolve_section(SectionInputs { st, scene, prisms: &prisms, font, doc, diags, work: &work }, spec);
         scale = rs.scale;
         crop_out = rs.crop;
         scale_text = rs.scale_text;
@@ -625,7 +620,7 @@ pub fn build_from_scene<'a>(
         let aw = st.sheet_w_in - 2.0 * st.margin_in;
         let ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
         if pw > aw + 1e-6 || ph > ah + 1e-6 {
-            view_fit(st, spec, &scale_text, scale, crop_out, bounds, &fit, aw, ah, diags);
+            view_fit(st, spec, &Frame { scale_text: &scale_text, scale, crop: crop_out, bounds, aw, ah }, &fit, diags);
         }
     }
     let layers = collect_layers(&items, st);
