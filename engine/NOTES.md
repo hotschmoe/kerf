@@ -1,140 +1,162 @@
-# engines/rust: Kerf engine in Rust (std-only, zero crates)
+# engine: the Kerf engine (Rust, zero crates)
 
-A faithful port of `engines/zig` (the reference): same SPEC 13 API, CLI, wasm ABI and `kerf serve`.
-Zero third-party crates (`Cargo.lock` lists only our three packages). Rust 1.96 stable, edition 2024.
-Performance track: see `PERF.md` (benchmarks, profiles, what was changed and measured). In short: native in-process
-0.82x the time of Zig fast (was 1.25x), wasm 0.79x Zig small (was 1.81x), wasm 593,144 B (Zig 699,181).
-
-## Status
-
-| gate | result |
-|---|---|
-| 1 goldens (drawing JSON, SVG, sheet SVG, DXF, PDF, PNG, mesh, check summary vs `engines/zig/tests/golden`) | **byte-identical**, `kerf check` 0 errors, dxf_check + pdf_check pass: `golden: OK` |
-| 2 cross-engine IR | **13/13 views byte-identical**, `compare_drawings` 0 differences (see "tools" below) |
-| 3 wasm | exact SPEC 13.1 ABI, 0 imports; `wasm_golden.mjs`: `24/24 byte-identical`; `wasm_check.mjs` writes an `A.svg` equal to the golden; loaded in the web app (screenshot read, looks right, header shows `ENGINE: KERF-RUST`) |
-| 4 CLI parity | `cli_ergonomics.mjs`: `145 passed, 0 failed`; ~28 invocation pairs (stdout/stderr/exit/files) compared by hand identical except `kerf-rust` in `version` |
-| 5 fuzz | `tests/fuzz.py`: 0 crashes (1000 x 3 release; 1500 x 3 and 12 more seeds on a debug build with overflow checks); `tests/diff_fuzz.py` (same mutants through both CLIs, stdout bytes + exit code): 0 differences in 2000 + 1000 mutants x 3 functions |
-| 6 `kerf serve` | **190/190** `serve_smoke.mjs` checks; web `e2e-serve.mjs --real` 9 passed, 5 mock-only skipped. `POST /api/llm` and the outbound HTTP client were removed (chat is local agent CLIs only; the server makes no outbound connections). Windows is untested (signal handling and the token source are unix-only) |
-
-Output of the last full run (`tests/` scripts, release binary, same tree as the final commit):
-```
-golden: OK
-views=13 byte-identical=13 ir-diffs=0
-wasm vs native goldens: 24/24 byte-identical
-ABI OK: 0 imports, exports = kerf_alloc:function kerf_call:function kerf_free:function kerf_out_len:function kerf_out_ptr:function memory:memory
-145 passed, 0 failed                                  (cli_ergonomics.mjs)
-1000 mutations x 3 fns: 0 crashes                     (fuzz.py, release)
-1500 mutations x 3 fns: 0 crashes                     (fuzz.py, debug build)
-1000 mutations x 3 fns: 0 differences                 (diff_fuzz.py vs the Zig CLI)
-215 passed, 0 failed                                  (serve_smoke.mjs)
-```
-One `serve_smoke` run in the S1/S2 work showed `V-4: over 256 open connections ... got [200,259]` once and `214/1` once; both passed on rerun (looks like timing under CPU load, not proven).
-
-### Not identical / deliberate differences
-- `version` prints `"engine":"kerf-rust"` (SPEC 13).
-- PDF `Producer` still says `kerf-zig`: the committed goldens contain it and the gate is byte equality. Fixing it needs new goldens (REQUESTS).
-- Messages that Zig formats with `{d}`/`{d:.N}` use `json::fmt_number` / small integer-based fixed formatters instead of float `{}`; they can differ from Zig only on exact rounding ties or values with more than 4 decimals. No such case occurs in the goldens or the hostile-input tests; `diff_fuzz.py 1000 1` (rerun in the performance track, same output from the port's original binary) hits one: `z range must have z0 < z1 (got [99.9888, 11.25])`, Zig `99.98875`. The single use of Rust float formatting is `model::num_text` (`{:e}` for tiny/huge numbers, like Zig's `{e}`) and a `format!("{}", x)` digit source in `drawview` (`view_fit` message, Zig's `{d:.N}` rounding rule).
-- Sort is binary insertion + in-place SymMerge (no buffer, safe, no `Copy` bound), not Zig's buffered merge; stable, so results are identical for any strict weak ordering. Slower than Zig's; candidate for the performance track.
-- `kerf serve`: symlink check uses `symlink_metadata` before open, not `O_NOFOLLOW`.
-- Unsafe code (all with a SAFETY note): `math.rs` 4 blocks (NEON/SSE2 sqrt and fma intrinsics, core has no sqrt; on wasm the libm `sqrt` symbol, which LLVM lowers to `f64.sqrt`), `style.rs` 3 (the once-per-process default style tree behind an `AtomicPtr`), `kerf-wasm` (allocator, ABI pointers), `kerf-cli` 7 (`libc` `signal`/`kill` declared via `extern "C"`, no `libc` crate). `kerf-core` has no other unsafe, no `unwrap`/`expect`/`panic!`, no HashMap.
+The one engine of the repo: the SPEC 13 API as a library (`kerf-core`), the `kerf` CLI with `kerf serve` (`kerf-cli`) and
+the raw-ABI wasm module the web app loads (`kerf-wasm`). Std only: `Cargo.lock` lists the three workspace packages and
+nothing else. Rust 1.96 stable, edition 2024. It replaced the Zig engine on 2026-10-31 (feature parity: the goldens, the
+Drawing IR on every view, the CLI ergonomics and the `kerf serve` smoke tests were identical; the Zig tree is in git
+history). `README.md` is the short version of this file, `PERF.md` has the numbers.
 
 ## Layout
-- `kerf-core`: `#![no_std]` + `alloc`, the whole engine, one module per Zig file (snake_case). `build.rs` compiles `spec/fonts/kerf-simplex.json` into static glyph tables
-  (it runs the engine's own `json.rs` via `#[path]`; coordinates must stay small integers). `math.rs` carries the float functions `core` lacks,
-  ported from Zig's std.math / compiler_rt (sin, cos, tan, atan, atan2, acos, hypot, ldexp, floor, ceil, round, trunc, exact sqrt/fma): identical bits on every target.
-- `kerf-cli`: binary `kerf`; `workspace`, `hash`, `http`, `events`, `agents`, `serve`, `serve/*`. `build.rs` embeds a web UI directory given by `KERF_UI`.
-- `kerf-wasm`: cdylib, SPEC 13.1 ABI, 120 lines + a 90-line size-class allocator (`heap.rs`).
+- `kerf-core`: `#![no_std]` + `alloc`, the whole engine. Public: `api` (the SPEC 13 dispatcher, `api::call(name, input)`),
+  `json`, `canon`, `model`, `ops`, `schema`, `units`; every other module is private, so the compiler finds dead code.
+  Pipeline: `load` -> `compile` (components -> `scene`) -> `section`/`iso` -> `drawview` + `annot` + `route` (notes,
+  dimensions, leaders) -> `drawing` (the IR) -> exporters `svg`, `dxf`, `pdf`, `raster` + `png`; `mesh` for 3D;
+  `validate`, `lint`, `coverage`, `crop`, `thinland` for the checks. `builders/` has one file per component type.
+  `params!`/`param_enum!` (`params.rs`) declare a builder's parameters once: the typed struct, the parser (all problems
+  in one pass) and the catalog rows. `build.rs` compiles `spec/fonts/kerf-simplex.json` into static glyph tables (it runs
+  the engine's own `json.rs` through `#[path]`; coordinates must stay small integers). `math.rs` carries the float
+  functions `core` lacks (ported from musl, identical bits on every target); `sort.rs` is the one stable sort.
+- `kerf-cli`: binary `kerf`. `main.rs` (commands, options, typed `Fail`), `workspace` (op log, atomic writes, `DocLock`),
+  `hash` (wyhash for ETags), `http`, `events`, `agents` (the agent templates and process control) and `serve` +
+  `serve/*` (routes, connections, SSE, UI hashing). `build.rs` embeds the web UI named by `KERF_UI` (relative to the
+  workspace root; empty means a page that says the UI is missing).
+- `kerf-wasm`: cdylib, the SPEC 13.1 ABI, 120 lines plus a 90-line size-class allocator (`heap.rs`); a panic traps.
+- `tests/`: `docs/` + `golden/` (see Gates), the Node/Python/bash gates, `tests/gates.sh` runs them all. `bench/`:
+  the benchmark and profiling scripts (`PERF.md`). `../tools/build_wasm.mjs` builds `dist/kerf.wasm`.
 
 ## Build, run, test
 ```sh
-cd engines/rust
-cargo build --release                       # CLI -> target/release/kerf (default-members: kerf-core, kerf-cli)
-KERF_UI=../../apps/web/dist-serve cargo build --release   # CLI with the web UI embedded for `kerf serve`
-cargo build --profile small                 # opt-level z CLI
-cargo build --profile fastbuild             # optimized, no LTO, incremental: ~4 s after an edit (release: 33 s), runs 1.02x release
-node bench/gen_cases.mjs && cargo run --release --example bench -- target/bench-cases   # in-process benchmark (PERF.md)
-tests/build_wasm.sh                         # -> dist/kerf.wasm (profile small, export section pruned to the ABI by tests/wasm_prune.py, wasm-opt -Oz if on PATH)
-tests/check_golden.sh                       # gate 1 (needs the tools python venv on PATH: PATH=<repo>/tools/.venv/bin:$PATH)
-tests/compare_all.sh                        # gate 2 (Rust vs Zig CLI drawing IR on every view)
-(cd ../zig && node ../../tools/zig-engine/wasm_golden.mjs ../rust/dist/kerf.wasm)       # gate 3
-node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm ../../spec/details/truss-bearing-cmu.kerf.json A /tmp/a.svg
-node ../zig/tests/cli_ergonomics.mjs $PWD/target/release/kerf                          # gate 4
-KERF=$PWD/target/release/kerf python3 tests/fuzz.py 1000 1                              # gate 5 (use a debug binary for overflow checks)
-KERF=... KERF_ZIG=../zig/zig-out/bin/kerf python3 tests/diff_fuzz.py 1000 1             # differential fuzz
-(cd ../zig && node tests/serve_smoke.mjs ../rust/target/release/kerf)                   # gate 6
-# web app with this engine (apps/web has no rust mode any more; its copy-assets honors an override):
-(cd ../../apps/web && KERF_WASM_ZIG=$PWD/../../engines/rust/dist/kerf.wasm npm run build:zig)   # then tools/serve.mjs apps/web/dist-zig + tools/shot.mjs
-cargo clippy --release                      # clean: 0 warnings (kerf-wasm: add --target wasm32-unknown-unknown)
+cd engine
+cargo build --release                      # target/release/kerf
+CARGO_TARGET_DIR=target/ui KERF_UI=../apps/web/dist-serve cargo build --release   # with the web UI (npm run build:serve first)
+node ../tools/build_wasm.mjs               # dist/kerf.wasm (profile small, export section pruned to the ABI, wasm-opt -Oz if on PATH)
+cargo build --profile fastbuild            # optimized, no LTO, incremental: ~4 s after an edit, runs ~1.02x release
+PATH=<repo>/tools/.venv/bin:$PATH tests/gates.sh [fuzz cases] [--serve]
 ```
-`rustfmt.toml`: `max_width = 120`, `use_small_heuristics = "Max"`; run `cargo fmt --all`.
+`rustfmt.toml`: `max_width = 120`, `use_small_heuristics = "Max"`. `cargo clippy --all-targets -- -D warnings` is clean;
+the few `allow`s left are a long-argument list or two with no better shape, and the libm constants in `math.rs`.
+
+## Gates (all green on this tree)
+| gate | what it proves |
+|---|---|
+| `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
+| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 5 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
+| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (24 files); the module has 0 imports and exactly the six ABI exports |
+| `tests/cli_ergonomics.mjs` | 145 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
+| `tests/serve_smoke.mjs` | 190 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
+| `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
+
+Golden PNGs for human review (`A.png`, `A-dxf.png`, `A-pdf.png` per view) come from `tests/make_golden.sh --png`; look at
+them after a visual change (`tools/svg2png.sh`, `tools/dxf_check.py --png`, `tools/pdf_check.py --png`), a drawing that
+passes the byte gate can still look wrong. `tools/compare_drawings.py a.json b.json` diffs two `kerf drawing` outputs
+geometrically (tolerance 1e-3).
+
+## Rules that hold for every input (document, style, ops)
+- No raw float-to-int casts on untrusted data: `num::to_int*`. Numbers are validated where they enter: `json::parse`
+  rejects non-finite and > 9e15 numbers, invalid UTF-8, leading zeros and nesting over 200; `units::parse_*` is the one
+  float parser for strings (no `nan`/`inf`); lengths are limited to +-`limits::MAX_COORD_IN`, scales to 0.1..10000,
+  polygon bulges to 0 or 1e-6..1e3; the style is validated once in `style::load` (E_STYLE lists every bad key with its
+  range and default).
+- `limits.rs` holds the global caps (input bytes, components, instances, annotations per view, views, points, note
+  characters), each reported as `E_LIMIT` with found / maximum / what to do.
+- Layout effort is bounded: `route::Work` is shared by every pass and trial of one view build; when it is spent the notes
+  keep the basic layout and one aggregate `W_LEADER_HIT` says so.
+- No silent defaults: a malformed offset, `place`, `array`, `recess` or `cover` is `E_PARAM` with a fix hint.
+- Errors are values: no `unwrap`/`expect`/`panic!`/panicking index on a document-reachable path. Debug and the native
+  release profile have overflow checks, so an arithmetic bug is a panic, which the CLI reports as
+  `kerf: internal error: ... at file:line:col` with exit 70 (a hook; `panic = "abort"` would otherwise end in SIGABRT).
+- Determinism is a feature: no HashMap iteration order, timestamps or randomness in outputs; float math only through
+  `crate::math`; sorting only through `sort::stable` (never panics, same result on every target); numbers are printed by
+  `json::fmt_number`/`fmt_fixed` (integer arithmetic, no `{}` of an `f64`, except two message paths that need the
+  shortest round-trip digits). The version is never in an export: the PDF `Producer` is `(kerf)`.
+- Text: the CLI folds its text output to ASCII for Windows consoles (`ascii_fold`); the stroke font folds dashes, quotes,
+  the x-sign and fractions and replaces anything else with `?` plus `I_GLYPH`.
 
 ## Decisions, with measurements
-- **`no_std` core: yes.** The wasm crate with `std` (default allocator + panic machinery) was 648,690 bytes after `wasm-opt -Oz`; `no_std` + own 90-line allocator + trap-on-panic is 604,251 (-6.9%). The core being `no_std` also forces every float function through `math.rs`.
-- **Wasm profile `small` = `opt-level = "z"`:** 604 KB vs 717 KB with `s` (both after pruning + wasm-opt -Oz). `panic = "abort"`, LTO, 1 codegen unit.
-- **Sqrt on wasm**: `f64::sqrt` is std-only and `core::arch::wasm32::f64_sqrt` / `core::f64::math` are unstable, so the port used an exact software sqrt (a float Newton estimate plus one integer correction and exact fix-ups, checked bit-for-bit against the hardware sqrt on 302 million inputs); it was 40% of the wasm time. Now `math::sqrt` calls the libm symbol `sqrt`, which compiler-builtins defines on wasm32-unknown-unknown and LLVM lowers to the `f64.sqrt` instruction (0 imports; NaN/negative inputs keep the canonical NaN): truss A `export` 39 -> 11 ms in node (Zig small 13.7 ms, Zig fast 9.2 ms). The software sqrt remains for other targets.
-- rustc always adds `--export=__heap_base --export=__data_end` for a cdylib, which the exact-ABI check rejects; `tests/wasm_prune.py` rewrites the export section (stdlib python, 40 lines) instead of a linker shim.
+- **`no_std` core.** With std (default allocator + panic machinery) the wasm was 648,690 bytes after `wasm-opt -Oz`;
+  `no_std` + the 90-line allocator + trap-on-panic was 604,251 (-6.9%). It also forces every float function through
+  `math.rs`.
+- **Wasm profile `small` = `opt-level = "z"`:** 604 KB vs 717 KB with `s`. `panic = "abort"`, LTO, 1 codegen unit.
+  The wasm has overflow checks off (measured: +14% time, +1% size on the 126-case set); native release has them on
+  (+4% time, png +42% before the filter rewrite, +0.7% size).
+- **Wasm sqrt:** `math::sqrt` calls the libm symbol `sqrt`, which compiler-builtins defines on wasm32-unknown-unknown and
+  LLVM lowers to `f64.sqrt` (0 imports); the software version it replaced was 40% of the wasm time.
+- **rustc exports `__heap_base` and `__data_end`** from a cdylib, which the exact-ABI check rejects; `tools/build_wasm.mjs`
+  rewrites the export section (40 lines of Node) instead of a linker shim.
+- **PNG** is a gray8 encoder: per-row adaptive filters picked by minimum sum of absolute residuals (earliest filter on
+  ties), a deflate at zlib level-6 parameters through one 64 KiB window, zlib framing, IDAT chunks of 64 KiB. The exact
+  token choices are part of the golden bytes. `px` is the output width (default 1600, clamped 200-6000; a page taller
+  than 8192 reduces the scale instead). Pen widths are true mm at the chosen scale, minimum 1 px.
+- **Unsafe** (each with a SAFETY note): `math.rs` 4 (NEON/SSE2 sqrt, wasm libm `sqrt`), `style.rs` 4 (the default style
+  tree parsed once per process behind an `AtomicPtr`), `kerf-wasm` (allocator, ABI pointers), `kerf-cli` (`signal`/`kill`
+  declared through `extern "C"`, no `libc` crate).
 
-## Measurements (aarch64, 12 cores; from the performance track, PERF.md has the method, all tables and raw results in `perf/results/`)
-Sizes (`tools/size_report.sh`; Zig 0.17 from the same tree, `-Doptimize=small|fast`, wasm via `zig build wasm -Dwasm-opt`, binaryen version_123 for both):
+## Behavior worth knowing (decisions that are not in the SPEC text)
+- Note wrap: `wrap_chars` counts characters (greedy, words longer than a line split); text widths come from the stroke
+  font. `lumber.plies` stack along the thickness direction. Canonical `fmt` key order: common fields first (`id type label
+  material at rotate slope mirror z array embedded visible`), then type params in catalog order.
+- Arc flattening for iso and mesh uses the finer of 0.22 rad and 0.004" sagitta. Iso uses the isometric drawing
+  projection (axes at true length). Section X marks and ply lines use the `beyond` pen. Vapor retarder lines stay at least
+  0.03 paper inch off the host edge. `src` of array instances is `id#k`.
+- Warnings: `W_NEAR_MISS` looks at axis-aligned `lumber` only (panels are excluded: the reference details leave small gaps
+  there); `W_FLOATING` / `W_UNTREATED_CONTACT` use 3D proximity (plan distance and z gap both <= 1/32"); `W_COVER` host is
+  the concrete/cmu outline containing the bar.
+- Lengths print as `3'-0 1/4"` (feet with zero inches keep the `0`). Keynote mode (`notes.mode: "keynote"`) puts a hexagonal
+  tag with the note number at the leader and the texts in a `KEYNOTES` legend.
+- Exports: `format` is `svg|dxf|pdf|png`; PDF frames the drawing on the sheet by default, SVG/DXF/PNG do not (`sheet`).
+  Materials accept an optional `role`; a material `pen` must be an engine pen.
 
-| file | raw | gzip -9 | brotli -11 |
-|---|---:|---:|---:|
-| Zig CLI small | 1,260,792 | 702,023 | 581,788 |
-| Zig CLI fast | 2,637,456 | 1,201,143 | 921,502 |
-| Rust CLI `--release` (opt-level 3, fat LTO, stripped) | 1,672,952 | 874,789 | 687,525 |
-| Rust CLI `--profile small` (opt-level z) | 1,237,760 | 648,955 | 532,083 |
-| Zig `kerf.wasm` | 699,181 | 288,292 | 236,991 |
-| Rust `kerf.wasm` | 593,144 | 264,087 | 221,786 |
+## kerf serve (spec/SERVE.md)
+- The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
+  picks a free port). A token is the default, also on loopback; `--token-file F` / `KERF_TOKEN` keep it out of `ps`;
+  `--no-token` opts out (the Host/Origin checks then still apply on loopback). Exit 1 with a hint when the port is busy.
+- One thread per connection; SSE streams never block requests. Keep-alive with idle (30 s), head (10 s), body and write
+  deadlines enforced by a watchdog; at most 256 connections (503 beyond), 32 SSE streams, 1000 requests per connection;
+  per-route body caps (stop 4 KiB, create 64 KiB, apply 16 MiB, agent/run 64 MiB, GET routes 0).
+- A 500 ms poller scans the folder: per `*.kerf.json` (mtime, size), per `<file>.log.jsonl` the byte offset reported; it
+  emits `doc_added/doc_changed/doc_removed` and one `log` event per complete line. Designer writes update the scan state
+  themselves so nothing is reported twice. `apply` serializes writers, re-reads the document, checks `if_match` (quoted
+  or bare), calls the engine, writes atomically (temp + rename, fsync) and appends the log. Invalid ops are HTTP 200 with
+  `ok:false` and the engine's diagnostics, nothing written. ETag = `"<mtime_ms>-<size>-<wyhash of the bytes>"`.
+- Security: no CORS unless `--allow-origin`; any `/api` request whose `Origin` is not the server's gets 403; constant-time
+  token compare (`Authorization: Bearer` or `?token=`); CSP, `X-Frame-Options`, `Referrer-Policy` on every response (the UI
+  gets a CSP with the SHA-256 of each inline script of the embedded `index.html`); file names are `[A-Za-z0-9._ ()-]+.kerf.json`
+  and Windows device names are refused; symlinks are never served, listed or written through; the server makes no
+  outbound connection and holds no API key. Strict request parsing (bare CR/LF, duplicate or conflicting
+  `Content-Length`/`Transfer-Encoding`/`Host`, obs-fold, over 100 headers, chunk sizes over 8 hex digits are 400).
+- Agent bridge: templates for claude, grok, codex and pi (`agents.rs`) plus `<dir>/.kerf/agents.json`, which is executed
+  only when trusted (`--trust-agents` or a yes at the prompt) and otherwise listed `untrusted`. Placeholders `{message}
+  {session_id} {dir} {file}` and a `{resume}` element. cwd = `--dir`, stdin ignored, stdout/stderr piped, the server
+  binary's directory prepended to PATH, `KERF_ACTOR=agent`, `KERF_TOKEN` removed. stdout lines become SSE `agent` events (JSON lines
+  verbatim, others `{type:"text"}`); `session_id`/`sessionId`/`thread_id` is captured for resume; at the end the folder is scanned once
+  so `doc_changed`/`log` precede `exit`. One run at a time (409 `E_BUSY`); stop/timeout/shutdown signal the whole process
+  group, then kill after 3 s; `--agent-timeout` defaults to 1800 s. Claude gets only `Bash(kerf)`, Read, Write and Edit
+  pre-approved plus `acceptEdits`; Grok runs `--always-approve`; Codex runs the `workspace-write` sandbox.
+- Op log: `<file>.log.jsonl`, one object per line `{ts, who, tool, why, ops, changed, summary_head}`; the CLI's `apply -w`
+  and `new` write it (who = `$KERF_ACTOR` or `agent`), the server's `who` is the request's `actor`. Timestamps exist only
+  in the log. `-w` takes the same `DocLock` as the server, writes atomically, and `--if-match` refuses a stale document.
 
-These sizes predate the `/api/llm` proxy removal, which also dropped the Zig CLI's outbound TLS client (`std.http`); the Rust CLI release binary is now 1,635,664 bytes (was 1,663,352).
+## Windows (requirements learned from the Zig engine's field report; the Rust port is being brought up separately)
+`kerf serve` on Windows 11 died right after the banner in the first Zig releases because it had only been cross-compiled,
+never run. What it must get right: open documents without following symlinks and with synchronous I/O; hold a real
+byte-range lock on the op log far past EOF (Windows range locks are mandatory, locking byte 0 would break readers);
+start npm-style agent shims (`grok.cmd`, `claude.cmd`) through `cmd.exe`, which rejects CR/LF in arguments, so retry
+with line breaks flattened to spaces; report a `.ps1`-only install as unavailable; kill the agent's whole tree with a job
+object (there is no SIGTERM stage); keep `.gitattributes` forcing LF (CRLF in embedded fixtures broke tests); a 99,000-byte
+agent message is a clean 400 (the command line limit is 32,767). `tests/windows_serve.mjs` + `serve_smoke.mjs` +
+`cli_ergonomics.mjs` run against the shipped build on a real Windows runner in CI.
 
-Build times, edit = one constant in `geom` changed (mean of change and revert), Zig global cache warm:
-
-| build | clean | incremental |
-|---|---:|---:|
-| Rust `cargo check` | 4.2 s | 0.8 s |
-| Rust dev CLI | 7.4 s | 1.4 s |
-| Rust fastbuild CLI | 10.6 s | 4.1 s |
-| Rust release CLI (LTO, 1 cgu) | 33.2 s | 33.4 s |
-| Rust small CLI | 21.4 s | 21.0 s |
-| Rust wasm (cargo + prune + wasm-opt) | 14.0 s | 13.4 s |
-| Zig debug CLI | 32.8 s | 22.5 s |
-| Zig fast CLI | 104.6 s | 96.9 s |
-| Zig small CLI | 54.0 s | 46.2 s |
-| Zig wasm (small + wasm-opt) | 31.3 s | 21.1 s |
-
-Run time (126-case set, pinned to one 2.6 GHz core, geometric mean of per-case ratios): native in-process Rust release
-0.82x Zig fast (slower only on png 1.26x, mesh 1.10x, fmt 1.30x, web-mesh 1.33x), Rust small 0.69x Zig small; wasm in
-node 22 Rust 0.79x Zig small (1.21x Zig fast); whole CLI processes Rust release 1.17x Zig fast (start-up 0.90 vs 0.55 ms).
-Truss A `export` svg: native Rust 4.87 ms, Zig fast 4.89; wasm Rust 11.05 ms, Zig small 13.74, Zig fast 9.19.
-
-Lines of code (non-blank, non-comment; Zig test files and inline `test` blocks excluded; the Zig numbers do not count its std dependencies such as `std.math`, `std.compress.flate`, `std.http`, `std.json` helpers, which the Rust side had to write: `math.rs` 1,012 lines, `png/deflate.rs` 700 lines):
-
-| | Zig | Rust |
-|---|---:|---:|
-| engine (core) | 17,277 | 22,923 |
-| CLI + serve (+ http, agents, workspace) | 3,954 | 4,729 |
-| wasm entry | 48 | 120 |
-| total | 21,279 | 27,772 |
-
-rustfmt at width 120 with `Max` heuristics expands struct literals and match arms; the macro DSL for parameters (`params.rs`) replaces Zig comptime reflection.
-
-## Port conventions (kept for the next tracks)
-- Zig `fooBar` -> `foo_bar`; types and fields keep their names; enum tags are CamelCase variants. Module APIs are the mechanical translation of the Zig ones.
-- No allocator parameters, no arenas: owned `Vec`/`String`. JSON is an owned `json::Value`, consumers take `&Value`.
-- Never format an `f64` with `{}`/`{:?}`/`{:.N}`: use `json::fmt_number`/`fmt_fixed` (float formatting is large and not our number rule).
-- Float math only through `crate::math`. Sorting only through `crate::sort::stable`.
-- Typed errors, no `unwrap`/`expect`/panicking index on document-reachable paths.
-- Parameters: `params!` / `param_enum!` macros (doc comment in `params.rs`) generate the typed struct, the parser (all problems in one pass) and the catalog rows; `builders::params_rows` feeds `catalog`.
-- Performance (PERF.md): fixed are the wasm sqrt, `iso::candidates` sorting, the per-call font and style parses and `allowed_key`'s row building. Open: PNG export (deflate and the filter heuristic), JSON number formatting (`fmt_fixed`, reserved), allocation churn (glibc; a per-call arena would be 0.77x in-process), process start-up (dynamic glibc + libgcc_s).
-
-## REQUESTS
-- `tools/zig-engine/compare_drawings.py` crashes (`KeyError: 'layer'`) on any current drawing, Zig against Zig included, because `region` items have no `layer`. A fixed copy is `engines/rust/tests/compare_drawings.py` (`it.get('layer', '')`); please port the one-line fix.
-- `tools/zig-engine/fuzz.py` hardcodes `engines/zig/zig-out/bin/kerf`; `engines/rust/tests/fuzz.py` is a copy honoring `KERF=`. An env override upstream would remove the copy.
-- `tools/zig-engine/wasm_golden.mjs` only works with cwd `engines/zig` (relative `../../spec/...` paths); resolve relative to the script.
-- PDF `Producer (kerf-zig)` is part of the goldens; an engine-neutral producer string (and regenerated goldens) would let each engine say its own name.
-- `apps/web`: `build:zig` with `KERF_WASM_ZIG=<wasm>` loads the Rust wasm, but there is no `rust` engine mode (`npm run build:rust`) any more; add one if both engines should stay selectable. The `tools/*` Python checkers need `tools/.venv` on PATH (their shebang is `python3`).
-- `tools/` and `apps/web` need `node_modules`; the worktree has none (I symlinked the main checkout's during testing and removed the links).
+## Known gaps
+- `solid` / `polygon` profiles with holes are not supported (profiles are single loops; the mesh ignores holes).
+- Hatch under dimension/label text is knocked out in SVG/PDF only (the DXF HATCH uses the pattern, not lines).
+- PDF content streams are uncompressed (about 150 KB per sheet).
+- Allocation churn: glibc malloc, not a per-call arena (the measured bound is 0.77x in-process; a safe arena for the
+  threaded server is real allocator work). Process start-up is dynamic glibc + libgcc_s (0.9 ms). See `PERF.md`.
+- The Zig test suite's unit tests (hostile-input table, OOM sweep, layout and view tests) were not ported: tests here are
+  end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
 
 ## SPEC ISSUES
-- SPEC 13 says `kerf export` takes `format: "svg"|"dxf"|"pdf"`; the engines (both) also accept `png`, and PDF export frames the drawing on a sheet by default while SVG/DXF/PNG do not. Worth one sentence in 13/13.2.
+- SPEC 13 says `kerf export` takes `format: "svg"|"dxf"|"pdf"`; the engine also accepts `png`, and PDF export frames the
+  drawing on a sheet by default while SVG/DXF/PNG do not. Worth one sentence in 13/13.2.
+- SPEC 12 `3'-0 1/4"` versus `3'-1/4"` for feet with zero whole inches and a fraction: the engine prints the former.
