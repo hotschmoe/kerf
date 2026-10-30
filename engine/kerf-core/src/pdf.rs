@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 const PT_PER_IN: f64 = 72.0;
 
 /// Byte-identical to the Zig goldens, which carry the Zig engine name.
-const INFO: &[u8] = b"<< /Title (Kerf detail) /Producer (kerf-zig) >>";
+const INFO: &[u8] = b"<< /Title (Kerf detail) /Producer (kerf) >>";
 
 fn push_num(out: &mut Vec<u8>, x: f64) {
     let mut b = [0u8; 40];

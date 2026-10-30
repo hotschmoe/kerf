@@ -25,7 +25,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const ENGINE_NAME: &str = "kerf-rust";
+pub const ENGINE_NAME: &str = "kerf";
 
 /// `ok` false means `bytes` is `{"error":{code,message}}`.
 pub struct Output {

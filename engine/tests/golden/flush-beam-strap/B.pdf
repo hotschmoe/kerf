@@ -2558,7 +2558,7 @@ S
 endstream
 endobj
 5 0 obj
-<< /Title (Kerf detail) /Producer (kerf-zig) >>
+<< /Title (Kerf detail) /Producer (kerf) >>
 endobj
 xref
 0 6
@@ -2571,5 +2571,5 @@ xref
 trailer
 << /Size 6 /Root 1 0 R /Info 5 0 R >>
 startxref
-40246
+40242
 %%EOF
