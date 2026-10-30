@@ -226,7 +226,7 @@ pub fn boolean<LA: AsRef<[V2]>, LB: AsRef<[V2]>>(a: &[LA], b: &[LB], op: Op) -> 
         }
     }
 
-    for s in subs.iter_mut() {
+    for s in &mut subs {
         let pa = pos[s.from];
         let pb = pos[s.to];
         let m = pa.mid(pb);
@@ -257,7 +257,7 @@ pub fn boolean<LA: AsRef<[V2]>, LB: AsRef<[V2]>>(a: &[LA], b: &[LB], op: Op) -> 
         };
     }
     if op == Op::Diff {
-        for s in subs.iter_mut() {
+        for s in &mut subs {
             if s.src == 1 {
                 let m = pos[s.from].mid(pos[s.to]);
                 let loc = geom::locate(m, a, SNAP);

@@ -34,18 +34,18 @@ pub fn static_file(s: &Server, req: &Request, w: &mut Out, path: &str) -> io::Re
             ..Head::default()
         };
         if head_only {
-            http::send_head_only(w, h, data.len())?
+            http::send_head_only(w, h, data.len())?;
         } else {
-            http::send(w, h, data)?
+            http::send(w, h, data)?;
         }
         return Ok(ka);
     }
     if assets::FILES.is_empty() && rel == "index.html" {
         let h = Head { status: 200, content_type: Some("text/html; charset=utf-8"), keep_alive: ka, ..Head::default() };
         if head_only {
-            http::send_head_only(w, h, NO_UI_PAGE.len())?
+            http::send_head_only(w, h, NO_UI_PAGE.len())?;
         } else {
-            http::send(w, h, NO_UI_PAGE.as_bytes())?
+            http::send(w, h, NO_UI_PAGE.as_bytes())?;
         }
         return Ok(ka);
     }

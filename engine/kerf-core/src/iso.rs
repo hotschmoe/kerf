@@ -82,7 +82,7 @@ pub struct OwnedShape {
 
 impl OwnedShape {
     pub fn as_shape(&self) -> Shape<'_> {
-        Shape { outer: &self.outer, holes: self.holes.iter().map(|h| h.as_slice()).collect() }
+        Shape { outer: &self.outer, holes: self.holes.iter().map(alloc::vec::Vec::as_slice).collect() }
     }
 }
 
@@ -838,7 +838,7 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
         let mut shapes: Vec<OwnedShape> = Vec::new();
         for &fi in &faces {
             let f = &iso.faces[fi];
-            let sh = Shape { outer: &f.outer, holes: f.holes.iter().map(|h| h.as_slice()).collect() };
+            let sh = Shape { outer: &f.outer, holes: f.holes.iter().map(alloc::vec::Vec::as_slice).collect() };
             if let Some(lp) = shape::label_point(core::slice::from_ref(&sh)) {
                 let mut bb = Box::default();
                 bb.add_point(lp.x, lp.y);
@@ -858,8 +858,8 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
                 for gx in 0..7 {
                     for gy in 0..7 {
                         let qp = V2::init(
-                            f.bbox.x0 + f.bbox.width() * (gx as f64 + 0.5) / 7.0,
-                            f.bbox.y0 + f.bbox.height() * (gy as f64 + 0.5) / 7.0,
+                            f.bbox.x0 + f.bbox.width() * (f64::from(gx) + 0.5) / 7.0,
+                            f.bbox.y0 + f.bbox.height() * (f64::from(gy) + 0.5) / 7.0,
                         );
                         if !face_contains(f, qp) {
                             continue;

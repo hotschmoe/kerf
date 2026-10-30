@@ -153,9 +153,8 @@ pub fn wrap(text: &str, chars_in: usize) -> Vec<String> {
                 cur.push(' ');
                 cur.push_str(w);
                 break;
-            } else {
-                lines.push(core::mem::take(&mut cur));
             }
+            lines.push(core::mem::take(&mut cur));
         }
     }
     if !cur.is_empty() {

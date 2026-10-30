@@ -139,7 +139,7 @@ pub fn with_sheet<'a>(d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     c.text(Pen::Title, "KERF", m, fy, fth * 1.1);
     let kw = font.width("KERF", fth * 1.1);
     for k in 0..3 {
-        let bx = m + kw + 0.06 + k as f64 * 0.045;
+        let bx = m + kw + 0.06 + f64::from(k) * 0.045;
         c.fill_rect(bx, fy, bx + 0.025, fy + fth * 1.1);
     }
     let mut foot = String::new();

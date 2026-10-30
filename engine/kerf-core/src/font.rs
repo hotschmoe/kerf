@@ -74,7 +74,7 @@ impl Font {
                 out.push(
                     (0..9)
                         .map(|i| {
-                            let ang = (i as f64) * PI / 4.0;
+                            let ang = f64::from(i) * PI / 4.0;
                             let p = V2::init(5.0 + 3.2 * math::cos(ang), 17.5 + 3.2 * math::sin(ang));
                             V2::init((x + p.x) * k, p.y * k)
                         })
@@ -114,33 +114,30 @@ impl Iterator for Utf8Iter<'_> {
             self.i = self.s.len();
             return Some('?' as u32);
         }
-        match decode(&self.s[self.i..self.i + n]) {
-            Some(cp) => {
-                self.i += n;
-                Some(cp)
-            }
-            None => {
-                self.i += 1;
-                Some('?' as u32)
-            }
+        if let Some(cp) = decode(&self.s[self.i..self.i + n]) {
+            self.i += n;
+            Some(cp)
+        } else {
+            self.i += 1;
+            Some('?' as u32)
         }
     }
 }
 
 fn decode(b: &[u8]) -> Option<u32> {
-    let cont = |x: u8| (x & 0xC0 == 0x80).then_some((x & 0x3F) as u32);
+    let cont = |x: u8| (x & 0xC0 == 0x80).then_some(u32::from(x & 0x3F));
     match *b {
-        [a] => Some(a as u32),
+        [a] => Some(u32::from(a)),
         [a, b1] => {
-            let cp = ((a & 0x1F) as u32) << 6 | cont(b1)?;
+            let cp = u32::from(a & 0x1F) << 6 | cont(b1)?;
             (cp >= 0x80).then_some(cp)
         }
         [a, b1, b2] => {
-            let cp = ((a & 0x0F) as u32) << 12 | cont(b1)? << 6 | cont(b2)?;
+            let cp = u32::from(a & 0x0F) << 12 | cont(b1)? << 6 | cont(b2)?;
             (cp >= 0x800 && !(0xD800..=0xDFFF).contains(&cp)).then_some(cp)
         }
         [a, b1, b2, b3] => {
-            let cp = ((a & 0x07) as u32) << 18 | cont(b1)? << 12 | cont(b2)? << 6 | cont(b3)?;
+            let cp = u32::from(a & 0x07) << 18 | cont(b1)? << 12 | cont(b2)? << 6 | cont(b3)?;
             (0x10000..=0x10FFFF).contains(&cp).then_some(cp)
         }
         _ => None,

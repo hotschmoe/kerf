@@ -387,7 +387,7 @@ pub fn seg_box_into(b: &mut Box, p0: V2, p1: V2, bulge: f64) {
     }
     let arc = arc_of(p0, p1, bulge);
     for k in 0..4 {
-        let ang = k as f64 * PI / 2.0;
+        let ang = f64::from(k) * PI / 2.0;
         if angle_in_sweep(ang, arc.a0, arc.sweep) {
             b.add_point(arc.c.x + arc.r * math::cos(ang), arc.c.y + arc.r * math::sin(ang));
         }

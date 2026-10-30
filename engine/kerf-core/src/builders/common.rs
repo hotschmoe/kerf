@@ -199,12 +199,11 @@ pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Opt
                     Some(w) => {
                         let mut q = w;
                         if let Some(off) = e.get("offset").filter(|o| !o.is_null()) {
-                            match ctx.p.offset_pair(&format!("{path}/offset"), off) {
-                                Some(o) => q = q.add(o),
-                                None => {
-                                    ok = false;
-                                    continue;
-                                }
+                            if let Some(o) = ctx.p.offset_pair(&format!("{path}/offset"), off) {
+                                q = q.add(o)
+                            } else {
+                                ok = false;
+                                continue;
                             }
                         }
                         if local {

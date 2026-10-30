@@ -186,7 +186,7 @@ pub fn render(topic: &str) -> Option<String> {
 
 fn first_sentence(s: &str) -> &str {
     match s.find(". ") {
-        Some(i) => &s[..i + 1],
+        Some(i) => &s[..=i],
         None => s,
     }
 }

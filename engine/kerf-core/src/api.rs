@@ -101,18 +101,19 @@ fn help_fn() -> Output {
 fn schema_fn(inp: &Value) -> Output {
     let topic = inp.get("topic").and_then(Value::str);
     let text = match topic {
-        Some(tp) => match schema::render(tp) {
-            Some(t) => t,
-            None => {
+        Some(tp) => {
+            if let Some(t) = schema::render(tp) {
+                t
+            } else {
                 let mut names: Vec<&str> = schema_fields::OBJECTS.iter().map(|o| o.name).collect();
-                names.extend(catalog::ENTRIES.iter().map(|e| e.name()));
+                names.extend(catalog::ENTRIES.iter().map(super::catalog::Entry::name));
                 let hint = model::nearest(tp, &names).map(|n| format!(" Did you mean \"{n}\"?")).unwrap_or_default();
                 return fail(
                     "E_TOPIC",
                     &format!("unknown schema topic \"{tp}\".{hint} Topics: {}", schema::TOPICS_HINT),
                 );
             }
-        },
+        }
         None => schema::index(),
     };
     let mut out = Vec::from(&b"{\"topic\":"[..]);
@@ -296,7 +297,7 @@ fn export_fn(inp: &Value) -> Output {
                     );
                 };
                 let n = if n.is_nan() { 1600.0 } else { n };
-                opt.px = crate::math::round(n).clamp(raster::MIN_PX as f64, raster::MAX_PX as f64) as u32;
+                opt.px = crate::math::round(n).clamp(f64::from(raster::MIN_PX), f64::from(raster::MAX_PX)) as u32;
             }
             match raster::render(&maybe_sheet(dr, font, want_sheet), font, &opt) {
                 Ok(b) => done(b),
@@ -360,24 +361,21 @@ fn apply_fn(inp: &Value) -> Output {
     let mut changed: &[String] = &[];
     let summary_text;
     let after_diags = Diags::new();
-    match &applied {
-        Some(ap) => {
-            let prior = load::load(d, &st, &prior_diags, false);
-            let l = load::load_after_edit(&ap.doc, &st, &after_diags, true, Some(&prior));
-            all.extend(after_diags.to_vec());
-            if all.iter().all(|x| x.level != Level::Error) {
-                ok = true;
-                final_doc = &ap.doc;
-                changed = &ap.changed;
-                summary_text = load::summary_with(&l, &all);
-            } else {
-                summary_text = load::summary(&prior);
-            }
+    if let Some(ap) = &applied {
+        let prior = load::load(d, &st, &prior_diags, false);
+        let l = load::load_after_edit(&ap.doc, &st, &after_diags, true, Some(&prior));
+        all.extend(after_diags.to_vec());
+        if all.iter().all(|x| x.level != Level::Error) {
+            ok = true;
+            final_doc = &ap.doc;
+            changed = &ap.changed;
+            summary_text = load::summary_with(&l, &all);
+        } else {
+            summary_text = load::summary(&prior);
         }
-        None => {
-            let before = load::load(d, &st, &prior_diags, false);
-            summary_text = load::summary(&before);
-        }
+    } else {
+        let before = load::load(d, &st, &prior_diags, false);
+        summary_text = load::summary(&before);
     }
     let mut out = Vec::from(if ok { &b"{\"ok\":true,\"doc\":"[..] } else { &b"{\"ok\":false,\"doc\":"[..] });
     let text = canon::write(final_doc);

@@ -360,27 +360,38 @@ pub fn offset_pair_or_diag(diags: &Diags, id: Option<&str>, path: &str, what: &s
     }
     let mut out = [0.0; 2];
     for (i, e) in arr.iter().enumerate() {
-        match units::parse_length(e) {
-            Some(x) => out[i] = x,
-            None => {
-                if let Some(x) = units::parse_length_any(e) {
-                    diags.add_fix(Level::Error, "E_PARAM", id, Some(path), format!("{what}[{i}] is out of range: a length must be within +-{} inches (got {}, which is {} inches)", fmt_num(limits::MAX_COORD_IN), kind_or_text(e), num_text(x)), fix);
-                } else {
-                    diags.add_fix(
-                        Level::Error,
-                        "E_PARAM",
-                        id,
-                        Some(path),
-                        format!(
-                            "{what}[{i}] must be a length (got {}); lengths are {}",
-                            kind_or_text(e),
-                            units::LENGTH_FORMS
-                        ),
-                        fix,
-                    );
-                }
-                return None;
+        if let Some(x) = units::parse_length(e) {
+            out[i] = x
+        } else {
+            if let Some(x) = units::parse_length_any(e) {
+                diags.add_fix(
+                    Level::Error,
+                    "E_PARAM",
+                    id,
+                    Some(path),
+                    format!(
+                        "{what}[{i}] is out of range: a length must be within +-{} inches (got {}, which is {} inches)",
+                        fmt_num(limits::MAX_COORD_IN),
+                        kind_or_text(e),
+                        num_text(x)
+                    ),
+                    fix,
+                );
+            } else {
+                diags.add_fix(
+                    Level::Error,
+                    "E_PARAM",
+                    id,
+                    Some(path),
+                    format!(
+                        "{what}[{i}] must be a length (got {}); lengths are {}",
+                        kind_or_text(e),
+                        units::LENGTH_FORMS
+                    ),
+                    fix,
+                );
             }
+            return None;
         }
     }
     Some(V2::init(out[0], out[1]))

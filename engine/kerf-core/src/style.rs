@@ -639,7 +639,7 @@ fn validate_materials(c: &mut Check, root: &Value) {
                     }
                 }
                 None => {
-                    c.bad(format!("style key 'materials.{k}.pen' must be a pen name string (got {})", pv.kind_name()))
+                    c.bad(format!("style key 'materials.{k}.pen' must be a pen name string (got {})", pv.kind_name()));
                 }
             }
         }
@@ -654,7 +654,10 @@ fn validate_materials(c: &mut Check, root: &Value) {
                     }
                 }
                 None => {
-                    c.bad(format!("style key 'materials.{k}.role' must be a role name string (got {})", rv.kind_name()))
+                    c.bad(format!(
+                        "style key 'materials.{k}.role' must be a role name string (got {})",
+                        rv.kind_name()
+                    ));
                 }
             }
         }

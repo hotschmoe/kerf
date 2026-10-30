@@ -48,13 +48,14 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             return None;
         }
         let bx = match part {
-            Some(pt) => match Scene::part_box(host, pt) {
-                Some(b) => b,
-                None => {
+            Some(pt) => {
+                if let Some(b) = Scene::part_box(host, pt) {
+                    b
+                } else {
                     ctx.p.fail("in", format!("component '{hid}' has no part '{pt}'"));
                     return None;
                 }
-            },
+            }
             None => host.built.box_,
         };
         host_h = bx.height();

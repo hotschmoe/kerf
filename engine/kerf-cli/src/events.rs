@@ -28,7 +28,7 @@ pub struct Hub {
 
 impl Hub {
     fn lock(&self) -> MutexGuard<'_, State> {
-        self.state.lock().unwrap_or_else(|e| e.into_inner())
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn publish(&self, name: &str, data_json: &str) {
@@ -56,7 +56,7 @@ impl Hub {
     pub fn wait(&self, last: &mut u64, out: &mut Vec<u8>) -> bool {
         let mut st = self.lock();
         while st.seq == *last && !st.closed {
-            st = self.cond.wait(st).unwrap_or_else(|e| e.into_inner());
+            st = self.cond.wait(st).unwrap_or_else(std::sync::PoisonError::into_inner);
         }
         if st.closed && st.seq == *last {
             return false;

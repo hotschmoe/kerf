@@ -109,7 +109,7 @@ pub fn api_agent_run(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io:
         Err(StartError::TooLong(why)) => http::send_error(w, 400, ka, extra, "E_INPUT", &why)?,
         Err(StartError::Unavailable(why)) => {
             let code = if t.untrusted { "E_UNTRUSTED" } else { "E_UNAVAILABLE" };
-            http::send_error(w, 409, ka, extra, code, &format!("agent '{agent_id}' is not available: {why}"))?
+            http::send_error(w, 409, ka, extra, code, &format!("agent '{agent_id}' is not available: {why}"))?;
         }
         Err(StartError::SpawnFailed(why)) => http::send_error(w, 500, ka, extra, "E_SPAWN", &why)?,
     }
@@ -205,14 +205,14 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
         return None;
     }
     let val = |c: u8| -> Option<u32> {
-        Some(match c {
+        Some(u32::from(match c {
             b'A'..=b'Z' => c - b'A',
             b'a'..=b'z' => c - b'a' + 26,
             b'0'..=b'9' => c - b'0' + 52,
             b'+' => 62,
             b'/' => 63,
             _ => return None,
-        } as u32)
+        }))
     };
     let body = &b[..b.len() - pad];
     let mut out = Vec::with_capacity(body.len() / 4 * 3 + 3);
@@ -228,7 +228,7 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
         if bytes[1 + produced..4].iter().any(|&x| x != 0) {
             return None;
         }
-        out.extend_from_slice(&bytes[1..1 + produced]);
+        out.extend_from_slice(&bytes[1..=produced]);
     }
     Some(out)
 }

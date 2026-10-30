@@ -459,12 +459,11 @@ fn resolve_section(
         }
     }
     diags.extend(last_diags);
-    match last {
-        Some(r) => r,
-        None => {
-            let pass = section_pass(st, scene, &rs, prisms, font, doc, diags, work);
-            SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass }
-        }
+    if let Some(r) = last {
+        r
+    } else {
+        let pass = section_pass(st, scene, &rs, prisms, font, doc, diags, work);
+        SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass }
     }
 }
 

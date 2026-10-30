@@ -73,14 +73,14 @@ fn rect_or_footing(ctx: &mut Ctx, cp: &Params, sh: Shape, material: &str, cov: P
     let prism =
         Prism { part: part.into(), material: material.into(), loops: model::one_loop(lp.clone()), ..Prism::default() };
     let zones = if part.is_empty() { vec![] } else { vec![zone_rect("footing", 0.0, 0.0, w, h)] };
-    return Some(Built {
+    Some(Built {
         prisms: one_prism(prism),
         zones,
         box_: geom::Box { x0: 0.0, y0: 0.0, x1: w, y1: h },
         host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
         info: format!("concrete {} {} x {}", sh.tag(), fmt_ft_in(w), fmt_ft_in(h)),
         ..Built::default()
-    });
+    })
 }
 
 fn polygon(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Option<Built> {
@@ -100,14 +100,14 @@ fn polygon(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Opti
     let lp = oriented_ccw(clean);
     let box_ = geom::loop_box(&lp);
     let prism = Prism { material: material.into(), loops: model::one_loop(lp.clone()), ..Prism::default() };
-    return Some(Built {
+    Some(Built {
         prisms: one_prism(prism),
         box_,
         points_mode: true,
         host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
         info: "concrete polygon".into(),
         ..Built::default()
-    });
+    })
 }
 
 /// A slab with an optional footing, haunch and recess along its edge.

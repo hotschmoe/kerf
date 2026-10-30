@@ -210,7 +210,7 @@ impl<'a> Scene<'a> {
                 "E_PARAM",
                 Some(from_id),
                 Some(path),
-                format!("'{}' is not a valid Ref; use \"<component>@<anchor>\", \"<component>.<part>@<anchor>\" or \"@origin\"", r#ref),
+                format!("'{ref}' is not a valid Ref; use \"<component>@<anchor>\", \"<component>.<part>@<anchor>\" or \"@origin\""),
                 "e.g. \"sill_plate@top_left\"".to_string(),
             );
             return None;

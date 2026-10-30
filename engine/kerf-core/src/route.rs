@@ -613,7 +613,7 @@ impl Ctx<'_> {
                         if jj == 0 && sgn == -1 {
                             continue;
                         }
-                        let y = land.y + (jj * sgn) as f64 * step;
+                        let y = land.y + f64::from(jj * sgn) * step;
                         let tp = y + nt.hgt * 0.5;
                         if tp > hi || y - nt.hgt * 0.5 < lo {
                             continue;
@@ -992,7 +992,7 @@ fn propose_fix(c: &mut Ctx, i: usize) -> (Option<V2>, Option<V2>) {
     let mut k = 1;
     while k <= 24 && fix_place.is_none() {
         for sg in [1.0f64, -1.0] {
-            let t = top0 + sg * k as f64 * step;
+            let t = top0 + sg * f64::from(k) * step;
             c.leaders[i] = leader_of(c.left[i], c.x[i], t, nt.w, nt.hgt, c.landing(i), &c.p.geo);
             c.boxes[i] = box_poly(c.x[i], t, nt.w, nt.hgt);
             let mut ok = c.hits_of(i) == 0;

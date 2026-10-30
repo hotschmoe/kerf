@@ -387,24 +387,24 @@ fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &
     }
     let mut spec = AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0) };
     if let Some(anc) = av.get("anchor") {
-        match anc.str() {
-            Some(s) => spec.anchor = s,
-            None => {
-                p.fail("at/anchor", "at.anchor must be an anchor name string".into());
-                return None;
-            }
+        if let Some(s) = anc.str() {
+            spec.anchor = s
+        } else {
+            p.fail("at/anchor", "at.anchor must be an anchor name string".into());
+            return None;
         }
     }
     let base = format!("components/{comp_id}/at/to");
     if let Some(to) = av.get("to").filter(|t| !t.is_null()) {
         match to {
-            Value::String(s) => match scene.resolve_ref_str(s, comp_id, &base) {
-                Some(pt) => spec.to = pt,
-                None => {
+            Value::String(s) => {
+                if let Some(pt) = scene.resolve_ref_str(s, comp_id, &base) {
+                    spec.to = pt
+                } else {
                     p.ok = false;
                     return None;
                 }
-            },
+            }
             Value::Array(xy) => {
                 let pt = (xy.len() == 2)
                     .then(|| Some(V2::init(units::parse_length(&xy[0])?, units::parse_length(&xy[1])?)))

@@ -678,14 +678,14 @@ impl Compressor {
 fn load64(s: &[u8], i: usize) -> u64 {
     let _len = s.len();
     let p = &s[i..i + 8];
-    p[0] as u64
-        | (p[1] as u64) << 8
-        | (p[2] as u64) << 16
-        | (p[3] as u64) << 24
-        | (p[4] as u64) << 32
-        | (p[5] as u64) << 40
-        | (p[6] as u64) << 48
-        | (p[7] as u64) << 56
+    u64::from(p[0])
+        | u64::from(p[1]) << 8
+        | u64::from(p[2]) << 16
+        | u64::from(p[3]) << 24
+        | u64::from(p[4]) << 32
+        | u64::from(p[5]) << 40
+        | u64::from(p[6]) << 48
+        | u64::from(p[7]) << 56
 }
 
 /// Common prefix length of `prev` and `bytes`, at most 258 (`MAX_LENGTH`): 8 bytes per step, the first difference

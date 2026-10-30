@@ -234,7 +234,7 @@ pub fn chain_strokes(input: Vec<Stroke>) -> Vec<Stroke> {
             i += 1;
         }
     }
-    for st in list.iter_mut() {
+    for st in &mut list {
         let n = st.pts.len();
         if !st.closed && n >= 4 && st.pts[0].v().eql(st.pts[n - 1].v(), 1e-7) && st.pts[n - 1].b == 0.0 {
             st.pts.truncate(n - 1);

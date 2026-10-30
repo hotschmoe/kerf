@@ -39,7 +39,7 @@ const KILL_GRACE: Duration = Duration::from_millis(3000);
 const MAX_EVENT_BYTES: usize = 1 << 20;
 
 fn builtin(id: &str, name: &str, argv: &[&str], resume: &[&str]) -> Template {
-    let own = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    let own = |s: &[&str]| s.iter().map(std::string::ToString::to_string).collect::<Vec<_>>();
     Template {
         id: id.into(),
         name: name.into(),
@@ -321,7 +321,7 @@ struct Run {
 
 impl Run {
     fn lock(&self) -> MutexGuard<'_, RunState> {
-        self.state.lock().unwrap_or_else(|e| e.into_inner())
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -396,7 +396,7 @@ impl Manager {
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+        self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Detection results are cached for 30 s per template; concurrent callers share one probe.
@@ -408,7 +408,7 @@ impl Manager {
         let mut g = self.lock();
         loop {
             match g.cache.iter().find(|c| c.key == key) {
-                Some(c) if c.busy => g = self.cond.wait(g).unwrap_or_else(|e| e.into_inner()),
+                Some(c) if c.busy => g = self.cond.wait(g).unwrap_or_else(std::sync::PoisonError::into_inner),
                 Some(c) if c.at.is_some_and(|at| at.elapsed() < DETECT_TTL) => return c.det.clone(),
                 _ => break,
             }

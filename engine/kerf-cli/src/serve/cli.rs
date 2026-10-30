@@ -75,12 +75,11 @@ fn refuse(mut stream: TcpStream) {
 
 fn accept_loop(s: &Arc<Server>, listener: &TcpListener) {
     for stream in listener.incoming() {
-        let stream = match stream {
-            Ok(st) => st,
-            Err(_) => {
-                thread::sleep(Duration::from_millis(50));
-                continue;
-            }
+        let stream = if let Ok(st) = stream {
+            st
+        } else {
+            thread::sleep(Duration::from_millis(50));
+            continue;
         };
         if s.active_conns.fetch_add(1, Ordering::AcqRel) >= MAX_CONNS {
             s.active_conns.fetch_sub(1, Ordering::AcqRel);

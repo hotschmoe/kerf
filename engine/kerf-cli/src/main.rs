@@ -132,15 +132,12 @@ fn read_stdin() -> Res<Vec<u8>> {
 }
 
 fn write_out(path: Option<&str>, bytes: &[u8]) -> Res<()> {
-    match path {
-        Some(p) => {
-            fs::write(p, bytes).map_err(|source| Fail::File { verb: "write", path: p.to_string(), source })?;
-        }
-        None => {
-            let mut o = io::stdout().lock();
-            o.write_all(bytes)?;
-            o.flush()?;
-        }
+    if let Some(p) = path {
+        fs::write(p, bytes).map_err(|source| Fail::File { verb: "write", path: p.to_string(), source })?;
+    } else {
+        let mut o = io::stdout().lock();
+        o.write_all(bytes)?;
+        o.flush()?;
     }
     Ok(())
 }

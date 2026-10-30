@@ -140,18 +140,17 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     }
     let mut cut_z = 0.0;
     if let Some(cz) = node.get("cut_z").filter(|v| !v.is_null()) {
-        match units::parse_length(cz) {
-            Some(z) => cut_z = z,
-            None => {
-                diags.add(
-                    Level::Error,
-                    "E_PARAM",
-                    Some(id),
-                    Some(&format!("{base}/cut_z")),
-                    "cut_z must be a length".to_string(),
-                );
-                ok = false;
-            }
+        if let Some(z) = units::parse_length(cz) {
+            cut_z = z
+        } else {
+            diags.add(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("{base}/cut_z")),
+                "cut_z must be a length".to_string(),
+            );
+            ok = false;
         }
     }
     let mut from = From::FrontRight;

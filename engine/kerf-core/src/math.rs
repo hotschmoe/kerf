@@ -101,9 +101,9 @@ fn sqrt_soft(x: f64) -> f64 {
         m <<= 1;
         e2 -= 1;
     }
-    let n = (m as u128) << 56;
+    let n = u128::from(m) << 56;
     let r = isqrt(n, m);
-    let sticky = n != (r as u128) * (r as u128);
+    let sticky = n != u128::from(r) * u128::from(r);
     let mut q = r >> 2;
     let rem = r & 3;
     if rem > 2 || (rem == 2 && (sticky || q & 1 == 1)) {
@@ -125,13 +125,13 @@ fn isqrt(n: u128, m: u64) -> u64 {
         y = 0.5 * (y + nf / y);
     }
     let mut r = y as u64;
-    let diff = n as i128 - (r as u128 * r as u128) as i128;
+    let diff = n as i128 - (u128::from(r) * u128::from(r)) as i128;
     let step = diff as f64 / (2.0 * r as f64);
     r = (r as i64 + step as i64) as u64;
-    while (r as u128) * (r as u128) > n {
+    while u128::from(r) * u128::from(r) > n {
         r -= 1;
     }
-    while (r as u128 + 1) * (r as u128 + 1) <= n {
+    while (u128::from(r) + 1) * (u128::from(r) + 1) <= n {
         r += 1;
     }
     r
@@ -147,10 +147,10 @@ pub fn ldexp(x: f64, n: i32) -> f64 {
     if !x.is_finite() {
         return x;
     }
-    let n = n as i64;
+    let n = i64::from(n);
     let mut exponent = ((repr << 1) >> (MANT + 1)) as i64;
     if exponent == 0 {
-        exponent += 11 - (repr << 1).leading_zeros() as i64;
+        exponent += 11 - i64::from((repr << 1).leading_zeros());
     }
     if n >= 0 {
         if n > MAX_BIASED - exponent {
@@ -165,15 +165,15 @@ pub fn ldexp(x: f64, n: i32) -> f64 {
         return f64::from_bits(repr + ((n as u64) << MANT));
     }
     if n <= -exponent {
-        if n < -(MANT as i64 + exponent) {
+        if n < -(i64::from(MANT) + exponent) {
             return f64::from_bits(sign);
         }
         let shift = (-n).min(-(exponent + n) + 1) as u32;
         let exact_tie = repr.trailing_zeros() == shift - 1;
         let mut result = repr & mask;
-        result |= ((exponent > 0) as u64) << MANT;
+        result |= u64::from(exponent > 0) << MANT;
         result >>= shift - 1;
-        result = ((result + 1) >> 1) & !(exact_tie as u64);
+        result = ((result + 1) >> 1) & !u64::from(exact_tie);
         return f64::from_bits(result | sign);
     }
     f64::from_bits(repr - (((-n) as u64) << MANT))
@@ -563,7 +563,7 @@ fn rem_pio2(x: f64, y: &mut [f64; 2]) -> i32 {
     let mut ty = [0.0f64; 2];
     let mut i = 0usize;
     while i < 2 {
-        tx[i] = (z as i32) as f64;
+        tx[i] = f64::from(z as i32);
         z = (z - tx[i]) * 16777216.0;
         i += 1;
     }
@@ -615,7 +615,7 @@ fn rem_pio2_large(x: &[f64; 3], y: &mut [f64; 2], e0: i32, nx: i32) -> i32 {
     let m = jx + jk;
     let mut i = 0;
     while i <= m {
-        f[u(i)] = if j < 0 { 0.0 } else { IPIO2[u(j)] as f64 };
+        f[u(i)] = if j < 0 { 0.0 } else { f64::from(IPIO2[u(j)]) };
         i += 1;
         j += 1;
     }
@@ -636,7 +636,7 @@ fn rem_pio2_large(x: &[f64; 3], y: &mut [f64; 2], e0: i32, nx: i32) -> i32 {
         j = jz;
         let mut z = q[u(jz)];
         while j > 0 {
-            let fw = ((TWOM24 * z) as i32) as f64;
+            let fw = f64::from((TWOM24 * z) as i32);
             iq[u(i)] = (z - TWO24 * fw) as i32;
             z = q[u(j - 1)] + fw;
             i += 1;
@@ -645,7 +645,7 @@ fn rem_pio2_large(x: &[f64; 3], y: &mut [f64; 2], e0: i32, nx: i32) -> i32 {
         z = ldexp(z, q0);
         z -= 8.0 * floor(z * 0.125);
         let mut n = z as i32;
-        z -= n as f64;
+        z -= f64::from(n);
         let mut ih = 0;
         if q0 > 0 {
             i = iq[u(jz - 1)] >> (24 - q0);
@@ -701,7 +701,7 @@ fn rem_pio2_large(x: &[f64; 3], y: &mut [f64; 2], e0: i32, nx: i32) -> i32 {
                 }
                 i = jz + 1;
                 while i <= jz + k {
-                    f[u(jx + i)] = IPIO2[u(jv + i)] as f64;
+                    f[u(jx + i)] = f64::from(IPIO2[u(jv + i)]);
                     j = 0;
                     let mut fw = 0.0;
                     while j <= jx {
@@ -725,7 +725,7 @@ fn rem_pio2_large(x: &[f64; 3], y: &mut [f64; 2], e0: i32, nx: i32) -> i32 {
         } else {
             z = ldexp(z, -q0);
             if z >= TWO24 {
-                let fw = ((TWOM24 * z) as i32) as f64;
+                let fw = f64::from((TWOM24 * z) as i32);
                 iq[u(jz)] = (z - TWO24 * fw) as i32;
                 jz += 1;
                 q0 += 24;
@@ -737,7 +737,7 @@ fn rem_pio2_large(x: &[f64; 3], y: &mut [f64; 2], e0: i32, nx: i32) -> i32 {
         let mut fw = ldexp(1.0, q0);
         i = jz;
         while i >= 0 {
-            q[u(i)] = fw * iq[u(i)] as f64;
+            q[u(i)] = fw * f64::from(iq[u(i)]);
             fw *= TWOM24;
             i -= 1;
         }

@@ -38,7 +38,7 @@ fn keys_of(o: &Object) -> Vec<String> {
 }
 
 fn strs(keys: &[&str]) -> Vec<String> {
-    keys.iter().map(|k| k.to_string()).collect()
+    keys.iter().map(alloc::string::ToString::to_string).collect()
 }
 
 fn type_of(ctx: &KeyCtx) -> String {
@@ -50,7 +50,7 @@ fn component_keys(ctx: &KeyCtx) -> Vec<String> {
     let mut keys = strs(&COMMON_KEYS);
     if let Some(e) = catalog::find(&type_of(ctx)) {
         for p in e.params() {
-            keys.extend(p.names.iter().map(|n| n.to_string()));
+            keys.extend(p.names.iter().map(alloc::string::ToString::to_string));
         }
     }
     keys
