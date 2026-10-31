@@ -1,6 +1,6 @@
 //! fill (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, drop_duplicate_points, one_prism, oriented_ccw, parse_point_list};
+use super::common::{Ctx, drop_duplicate_points, one_prism, oriented_ccw, parse_point_list, vertex_anchors};
 use crate::geom;
 use crate::model::{self, Built, OutlineMode, Prism};
 use crate::params::{ParamEnum, param_enum, params};
@@ -33,6 +33,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail("points", format!("a fill polygon needs at least 3 distinct points (got {})", clean.len()));
         return None;
     }
+    let anchors = vertex_anchors(&clean, true);
     let lp = oriented_ccw(clean);
     let outline = match fp.outline {
         Outline::Top => OutlineMode::Top,
@@ -43,6 +44,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let prism = Prism { material: fp.material.tag().into(), loops: model::one_loop(lp), outline, ..Prism::default() };
     Some(Built {
         prisms: one_prism(prism),
+        anchors,
         box_,
         points_mode: true,
         info: format!("fill {}", fp.material.tag()),

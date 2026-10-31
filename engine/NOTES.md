@@ -126,6 +126,19 @@ geometrically (tolerance 1e-3).
   bolt's z and cast rays perpendicular to the axis; z distance to the ply's z extent counts too. Wasm: +70 KB raw,
   +22 KB brotli (588,023 -> 658,168 raw; 224,965 -> 246,938 brotli); about 21 KB is strings and tables, the rest the
   builders, the parser and the checks (no float formatting was pulled in).
+- Cut fill and rebar placement (issues #15, #16, SPEC 25.1). `clip::boolean` splits an edge pair at every endpoint
+  within `SNAP` of the other edge (`split_pair`), so near-coincident edges (a bolt rotated 180: 5e-17 instead of 0) share
+  vertices and classify as boundary instead of crossing at a stray point; before, a W under a rotated bolt lost all or
+  part of its fill (a stress doc of 168 W12x26 + bolts at 15-degree steps on 7 anchors: 61 fills lost area before; after,
+  all 168 keep 7.05-7.55 sq in of the 7.65 and none warns;
+  goldens unchanged). `section/cut.rs` checks every hole subtraction against the hole's area and records a `FillFault`;
+  `drawview::fill_fault_diags` turns them into `W_CUT_FILL`. `rebar::place_rebar` builds the zone from the host outline
+  (`zone_region`), picks the face run (`face_run`) or the face under a station (`face_at`) and errors
+  `E_PLACE_OUTSIDE` for a centre outside the zone; a rectangle reproduces the old box placement bit for bit.
+  `validate::cover` collects unhosted bars for `W_BAR_OUTSIDE` (`bar_outside`, `path_outside`). Anchors:
+  `builders/common.rs::vertex_anchors` (polygons and point lists), `rebar.rs::path_anchors`, cmu cell anchors and `cell`
+  zone. On the 47 MASS details: warnings 152 -> 152, errors 0 -> 0, no fill area changed (S-80-03's weld studs had been
+  faked as anchor bolts; with `bolt rotate: 180` its view A now draws the filled W).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -220,6 +233,12 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   behind them but things in front of the cut plane are still dropped (an elevation detail sets `cut_z` in front of
   everything and gives in-plane members `z` explicitly, see `tests/docs/steel-beam-cap-plate.kerf.json`); weld symbols
   are not obstacles for the note layout; no plate-on-flange fit check yet.
+- Rebar `place` (issue #16 leftovers): `face: "center"` still uses the zone box (an L zone's box centre can be outside;
+  that is `E_PLACE_OUTSIDE` now, not a silent bar); side cover on a run whose neighbouring edges lean inward is measured
+  along the run, not perpendicular to those edges (`W_COVER` reports it); there is no `place` for path bars and no
+  `zone: "<part>"` on hand-drawn polygons (use `in: "comp.part"` on builders with parts, or anchors + Ref offsets).
+  `bend_k` / `seg_k_mid` count the corner points as given; a collinear interior point still counts as a bend (its
+  `bend_k` is the point itself).
 - The Zig test suite's unit tests (hostile-input table, OOM sweep, layout and view tests) were not ported: tests here are
   end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
 
@@ -234,3 +253,13 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   keeps the first section view's explicit crop for every view (per-view crops would be a separate behaviour change).
   The view list is printed only when a finding is absent from some view, so single-view and omit-free documents read
   as before.
+- Issue #15 asks for "an internal assertion in debug builds" when a Diff removes more than the hole's area. Chosen: no
+  panic (a debug build would abort a user's drawing); the subtraction is skipped and `W_CUT_FILL` reports it in every
+  build, which is visible to agents and tests alike.
+- Issue #16 proposes `place: {"in": "cmu.cell", "cell": 2}`. In a wall cross-section there is one cell, and the bars in it
+  are path bars (`place` places along-z dots). Chosen: a `cell` part (between the face shells) for along-z bars and the
+  anchors `cell_left/center/right(_top)` that path points reference with an offset. Issue #16 item 4 (`{ref, offset}` path
+  points) already existed (SPEC 3.3); `start`/`bend_k` anchors make it useful for laps.
+- `W_BAR_OUTSIDE` is a new code rather than a `W_COVER` variant: `W_COVER` is about cover in a host, this is about having
+  no host. A path bar only warns when a bend is outside or no point is inside, because a straight leg out of the concrete
+  is common (dowels into future work, S-80-01's lap bar welded to a column between two pours).

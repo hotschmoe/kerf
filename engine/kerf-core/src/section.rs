@@ -7,7 +7,7 @@ mod hardware;
 mod occlusion;
 mod strokes;
 
-pub use cut::group_region;
+pub use cut::{FillFault, group_region};
 pub use occlusion::Occ;
 pub use strokes::{Stroke, chain_strokes, dedupe};
 
@@ -60,6 +60,7 @@ pub struct Section<'s> {
     pub breaks: Vec<PathItem>,
     pub seq: u32,
     pub truncated_hatch: bool,
+    pub fill_faults: Vec<FillFault>,
     pub crop_loop: Vec<V2>,
 }
 
@@ -104,6 +105,7 @@ impl<'s> Section<'s> {
             breaks: Vec::new(),
             seq: 0,
             truncated_hatch: false,
+            fill_faults: Vec::new(),
             crop_loop,
         }
     }

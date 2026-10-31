@@ -13,7 +13,7 @@ use crate::num;
 use crate::pen;
 use crate::route::{DEFAULT_WORK_LIMIT, Work};
 use crate::scene::{self, Scene};
-use crate::section::Section;
+use crate::section::{FillFault, Section};
 use crate::style::{Role, Style};
 use crate::units;
 use crate::view::{self, Kind, NotesSide, NotesStyle, ViewSpec};
@@ -357,11 +357,41 @@ struct SectionInputs<'a> {
     work: &'a Work,
 }
 
+/// `W_CUT_FILL` (SPEC 25.1): a cut part that lost its fill to an embedded part's hole, once per host and hole.
+fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
+    let mut seen: Vec<(&str, &str)> = Vec::new();
+    for f in faults {
+        let key = (f.host.as_str(), f.hole.as_str());
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        let (host, hole) = key;
+        let (msg, fix) = if f.lost {
+            (
+                format!(
+                    "'{host}': subtracting embedded '{hole}' from its cut fill in view {view_id} removed more area than '{hole}' has (a polygon boolean fault), so '{host}' keeps its whole fill and '{hole}' draws over it"
+                ),
+                format!(
+                    "nothing is missing from the drawing; please report this file. If '{hole}' must read as a hole in '{host}', move '{hole}' 1/64\" off the edge it shares with '{host}'"
+                ),
+            )
+        } else {
+            (
+                format!("'{host}' draws no cut fill in view {view_id}: embedded '{hole}' covers all of its cut"),
+                format!("move or resize '{host}' or '{hole}' so '{host}' shows, or delete '{host}' if '{hole}' replaces it"),
+            )
+        };
+        diags.add_fix(Level::Warning, "W_CUT_FILL", Some(host), Some(&format!("views/{view_id}")), msg, fix);
+    }
+}
+
 fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let SectionInputs { st, scene, prisms, font, doc, diags, work } = inp;
     let scale = spec.scale;
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
+    fill_fault_diags(&sec.fill_faults, spec.id, diags);
     let mut base_items = sec.finish();
     let regions = sec.region_items();
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));

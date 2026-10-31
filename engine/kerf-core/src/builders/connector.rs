@@ -1,6 +1,6 @@
 //! connector (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, drop_duplicate_points, gauge_thickness, parse_point_list};
+use super::common::{Ctx, drop_duplicate_points, gauge_thickness, parse_point_list, vertex_anchors};
 use crate::catalog::{HARDWARE, Hardware};
 use crate::geom;
 use crate::model::fmt_num;
@@ -68,6 +68,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         pathgeom::ribbon(&clean, width / 2.0, width / 2.0)
     };
     let box_ = geom::loop_box(&rib);
+    let anchors = vertex_anchors(&clean, false);
     let prism = Prism {
         material: "steel".to_string(),
         loops: model::one_loop(rib),
@@ -78,6 +79,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let kind_text = hw.map_or_else(alloc::string::String::new, |h| format!("{} ", h.kind));
     Some(Built {
         prisms: vec![prism],
+        anchors,
         box_,
         nat_z: Some(if edge { width } else { thickness }),
         points_mode: true,

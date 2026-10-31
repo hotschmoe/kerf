@@ -1,0 +1,33 @@
+{
+  "kerf": "0.1",
+  "id": "rebar-polygon-place",
+  "title": "REBAR PLACED IN POLYGONS AND CMU CELLS",
+  "components": [
+    {"id": "slab", "type": "concrete", "shape": "polygon", "cover": {"bottom": 1.5, "sides": 3, "top": 0.75},
+     "points": [[0, 0], [60, 0], [60, -12], [76, -12], [76, 4], [0, 4]], "at": {"to": [0, 0]}},
+    {"id": "ftg_bars", "type": "rebar", "size": "#4", "place": {"in": "slab", "face": "bottom", "cover": 3, "count": 2}},
+    {"id": "slab_bar", "type": "rebar", "size": "#4", "place": {"in": "slab", "face": "bottom", "cover": 1.5, "station": 30}},
+    {"id": "corner", "type": "rebar", "size": "#4", "mode": "path",
+     "points": [{"ref": "slab@vertex_6", "offset": [12, -2]}, {"ref": "slab@vertex_5", "offset": [-3.25, -2]}, {"ref": "slab@vertex_4", "offset": [-3.25, 3.25]}, {"ref": "slab@vertex_3", "offset": [6, 3.25]}]},
+    {"id": "footing", "type": "concrete", "shape": "footing", "width": 24, "height": 12, "at": {"anchor": "top_center", "to": [104, 0]}},
+    {"id": "wall", "type": "cmu_wall", "width": 8, "courses": 4, "cover": {"sides": 1, "top": 1.5, "bottom": 0.5}, "at": {"anchor": "bottom_center", "to": "footing@top_center"}},
+    {"id": "ftg_long", "type": "rebar", "size": "#5", "place": {"in": "footing", "face": "bottom", "cover": 3, "count": 3}},
+    {"id": "vert", "type": "rebar", "size": "#5", "mode": "path",
+     "points": [{"ref": "wall@cell_right", "offset": [-1.5, 2]}, {"ref": "wall@cell_right_top", "offset": [-1.5, -1.5]}]},
+    {"id": "dowel", "type": "rebar", "size": "#5", "mode": "path",
+     "points": [{"ref": "footing@bottom_center", "offset": [-8, 3.3125]}, {"ref": "wall@cell_left", "offset": [1.5, -8.6875]}, {"ref": "wall@cell_left", "offset": [1.5, 22]}]},
+    {"id": "bb_bar", "type": "rebar", "size": "#5", "place": {"in": "wall.cell", "face": "top", "cover": 2}}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "title": "REBAR PLACED IN POLYGONS AND CMU CELLS", "annotations": [
+      {"id": "n_ftg", "type": "note", "text": "(2) #4 CONT. IN THICKENED EDGE", "target": "ftg_bars"},
+      {"id": "n_corner", "type": "note", "text": "#4 CORNER BAR", "at": "corner@bend_1"},
+      {"id": "n_hook", "type": "note", "text": "HOOK", "at": "corner@seg_3_mid"},
+      {"id": "n_dowel", "type": "note", "text": "#5 DOWEL, LAP W/ VERT.", "at": "dowel@seg_2_mid"},
+      {"id": "n_vert", "type": "note", "text": "#5 VERT. IN GROUTED CELL", "at": "vert@seg_1_mid"},
+      {"id": "d_edge", "type": "dim", "from": "slab@vertex_3", "to": "slab@vertex_4", "offset": -6},
+      {"id": "d_depth", "type": "dim", "from": "slab@vertex_4", "to": "slab@vertex_5", "dir": "v", "offset": 4},
+      {"id": "d_lap", "type": "dim", "from": "dowel@end", "to": "vert@start", "dir": "v", "offset": -10, "text": "LAP"}
+    ]}
+  ]
+}

@@ -13,6 +13,14 @@ use crate::pen::Pen;
 use crate::style::CutMark;
 use alloc::vec::Vec;
 
+/// A cut part whose fill an embedded part's hole emptied: `lost` when the subtraction removed more than the hole's
+/// own area (a boolean failure; the hole is skipped and the part keeps its fill), else the hole covers the whole cut.
+pub struct FillFault {
+    pub host: alloc::string::String,
+    pub hole: alloc::string::String,
+    pub lost: bool,
+}
+
 /// A visible region split into outer loops with their holes: exact loops (with bulges) and the flattened ones.
 pub struct Group {
     pub loops: Vec<Vec<Pt>>,
@@ -126,7 +134,21 @@ impl Section<'_> {
                 if !hb.overlaps(bx, 1e-9) {
                     continue;
                 }
-                region = clip::boolean(&region, &hf, Op::Diff);
+                let before = clip::total_area(&region);
+                let next = clip::boolean(&region, &hf, Op::Diff);
+                let after = clip::total_area(&next);
+                let tol = 1e-9 + 1e-6 * before.abs();
+                let removed = before - after;
+                if after < -tol || removed < -tol || removed > clip::total_area(&hf).abs() + tol {
+                    let hole = self.src_name(&self.prisms[h]);
+                    self.fill_faults.push(FillFault { host: src.clone(), hole, lost: true });
+                    continue;
+                }
+                if after <= tol && before > tol && (is_fill_mat || is_thin) {
+                    let hole = self.src_name(&self.prisms[h]);
+                    self.fill_faults.push(FillFault { host: src.clone(), hole, lost: false });
+                }
+                region = next;
                 changed = true;
             }
             if changed {

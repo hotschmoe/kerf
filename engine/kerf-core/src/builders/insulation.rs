@@ -1,6 +1,6 @@
 //! insulation (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, drop_duplicate_points, oriented_ccw, parse_point_list};
+use super::common::{Ctx, drop_duplicate_points, oriented_ccw, parse_point_list, vertex_anchors};
 use crate::geom::{self, Pt};
 use crate::math;
 use crate::model::{self, Built, Kind, Prism};
@@ -27,6 +27,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let ip = ctx.p.parse::<Params>()?;
     let lp: Vec<Pt>;
     let mut points_mode = false;
+    let mut anchors = Vec::new();
     if let Some(pv) = ip.points.as_ref() {
         let pts = parse_point_list(ctx, "points", pv, true)?;
         let clean = drop_duplicate_points(&pts);
@@ -34,6 +35,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ctx.p.fail("points", "insulation polygon needs at least 3 points".to_string());
             return None;
         }
+        anchors = vertex_anchors(&clean, true);
         lp = oriented_ccw(clean);
         points_mode = true;
     } else {
@@ -61,6 +63,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     Some(Built {
         prisms: vec![prism],
+        anchors,
         box_: bx,
         points_mode,
         info: format!("insulation {}", ip.form.tag()),
