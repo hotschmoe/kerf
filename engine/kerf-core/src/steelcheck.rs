@@ -57,6 +57,7 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
 }
 
 /// ACI 318-19 17.9.2 / 20.5.1.3: an anchor's shaft keeps at least this clear distance to the concrete or masonry edge.
+/// Measured along the deeper 60% of the embedded shaft, so a grout bed or topping at the top does not count.
 const ANCHOR_EDGE_CLEAR: f64 = 1.5;
 
 /// The straight embedded shaft of one anchor bolt instance: from the top of its centerline to the bend (or its end).
@@ -123,12 +124,13 @@ fn anchors(scene: &Scene<'_>, diags: &Diags) {
         }
         let perp = s.b.sub(s.a).norm().perp();
         let steps = 32;
+        let inside: Vec<V2> = (0..=steps)
+            .map(|i| s.a.lerp(s.b, i as f64 / steps as f64))
+            .filter(|m| geom::locate(*m, &region, 0.0) == Loc::Inside)
+            .collect();
+        let skip = inside.len() * 2 / 5;
         let mut worst: Option<(f64, V2)> = None;
-        for i in 0..=steps {
-            let m = s.a.lerp(s.b, i as f64 / steps as f64);
-            if geom::locate(m, &region, 0.0) != Loc::Inside {
-                continue;
-            }
+        for &m in &inside[skip..] {
             let e = ray_to_edge(m, perp, &region).min(ray_to_edge(m, perp.scale(-1.0), &region));
             if worst.is_none_or(|w| e < w.0) {
                 worst = Some((e, m));
