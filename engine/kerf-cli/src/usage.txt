@@ -25,5 +25,5 @@ usage:
   kerf drawing <doc> --view A [-o out.json]
   kerf mesh <doc> [-o mesh.json]
   kerf call <fn> < input.json      raw engine API (JSON in, JSON/bytes out); `kerf call help` lists functions + input shapes
-  kerf version
+  kerf version                     engine + spec version and the build (git describe of the source tree)
 common: [--style file.kerfstyle.json]

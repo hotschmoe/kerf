@@ -116,14 +116,14 @@ pub static VIEW: Object = Object {
         Field {
             name: "scale",
             ty: "string",
-            desc: "section: 3\"=1'-0\" | 1-1/2\"=1'-0\" | 1\"=1'-0\" | 3/4\"=1'-0\" | 1/2\"=1'-0\" | 3/8\"=1'-0\" | 1/4\"=1'-0\" | \"1:N\"; iso: \"NTS\". When omitted the engine picks the largest standard scale at which the view + notes + title fit the frame",
+            desc: "section: 3\"=1'-0\" | 1-1/2\"=1'-0\" | 1\"=1'-0\" | 3/4\"=1'-0\" | 1/2\"=1'-0\" | 3/8\"=1'-0\" | 1/4\"=1'-0\" | 3/16\"=1'-0\" | 1/8\"=1'-0\" (any <paper>\"=1'-0\") | \"1:N\"; iso: \"NTS\". When omitted the engine picks the largest of 3\"..1/4\"=1'-0\" at which the view + notes + title fit the frame",
             ..Field::NONE
         },
         Field {
             name: "cut_z",
             ty: "length",
             def: "0",
-            desc: "section: z of the cut plane; members whose z range contains it are cut (hatched/marked), others are beyond or hidden. Also the default z of in-plane members and anchor bolts",
+            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn. A section used as an elevation therefore needs cut_z in front of (greater than) every member to show. Also the default z of in-plane members and anchor bolts",
             ..Field::NONE
         },
         Field {

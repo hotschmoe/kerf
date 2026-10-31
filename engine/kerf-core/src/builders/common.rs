@@ -88,7 +88,7 @@ pub fn sawn_thickness(nt: u32) -> Option<f64> {
         3 => Some(2.5),
         4 => Some(3.5),
         6 => Some(5.5),
-        8 => Some(7.25),
+        8 => Some(7.5),
         _ => None,
     }
 }
