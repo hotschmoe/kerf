@@ -157,7 +157,7 @@ pub fn compile<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags) -> Scene<'a>
 
 /// Stage 1: `run` (default z extent) and the first section view's `cut_z` (default z of in-plane members). False when the
 /// document is not an object (reported).
-fn read_settings(scene: &mut Scene, doc: &Value) -> bool {
+fn read_settings<'a>(scene: &mut Scene<'a>, doc: &'a Value) -> bool {
     let diags = scene.diags;
     if !matches!(doc, Value::Object(_)) {
         diags.add(
@@ -198,6 +198,7 @@ fn read_settings(scene: &mut Scene, doc: &Value) -> bool {
     }
     let views = doc.get("views").and_then(Value::arr);
     if let Some(va) = views {
+        scene.views = va.iter().take(limits::MAX_VIEWS).map(crate::view::Members::of).filter(|m| !m.none).collect();
         if va.len() > limits::MAX_VIEWS {
             diags.add_fix(
                 Level::Error,

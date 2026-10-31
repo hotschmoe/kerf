@@ -158,11 +158,19 @@ pub struct Scene<'a> {
     pub run: [f64; 2],
     pub default_z: Option<f64>,
     pub instances_total: usize,
+    /// Which components each view draws (SPEC 25.4), schedule views left out.
+    pub views: Vec<crate::view::Members<'a>>,
 }
 
 impl<'a> Scene<'a> {
     pub fn new(style: &'a Style, diags: &'a Diags, run: [f64; 2]) -> Scene<'a> {
-        Scene { style, comps: Vec::new(), diags, run, default_z: None, instances_total: 0 }
+        Scene { style, comps: Vec::new(), diags, run, default_z: None, instances_total: 0, views: Vec::new() }
+    }
+
+    /// Some view draws both components (always, in a document without views): a search for a neighbour to name in
+    /// a fix stays inside the scenario (SPEC 28.1).
+    pub fn together(&self, a: &Comp<'_>, b: &Comp<'_>) -> bool {
+        self.views.is_empty() || self.views.iter().any(|m| m.draws(a) && m.draws(b))
     }
 
     pub fn find(&self, id: &str) -> Option<&Comp<'a>> {

@@ -506,6 +506,7 @@ pub fn scene<'a>(src: &Scene<'a>) -> Scene<'a> {
     let mut s = Scene::new(src.style, src.diags, src.run);
     s.default_z = src.default_z;
     s.instances_total = src.instances_total;
+    s.views = src.views.clone();
     s.comps = src
         .comps
         .iter()

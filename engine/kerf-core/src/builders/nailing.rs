@@ -472,6 +472,9 @@ impl Job<'_> {
             if c.state != State::Ok || c.index == a.comp || listed.contains(&c.index) || c.built.prisms.is_empty() {
                 continue;
             }
+            if self.scene.comps.get(a.comp as usize).is_some_and(|ac| !self.scene.together(ac, c)) {
+                continue;
+            }
             if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
                 continue;
             }
@@ -495,6 +498,9 @@ impl Job<'_> {
         let mut out: Vec<String> = Vec::new();
         for c in &self.scene.comps {
             if c.state != State::Ok || c.index == a.comp || listed.contains(&c.index) || c.built.prisms.is_empty() {
+                continue;
+            }
+            if self.scene.comps.get(a.comp as usize).is_some_and(|ac| !self.scene.together(ac, c)) {
                 continue;
             }
             if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {

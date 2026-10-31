@@ -18,11 +18,18 @@ pub fn run(scene: &Scene<'_>, diags: &Diags) {
                 diags.push(d.clone());
             }
         }
+    }
+}
+
+/// The checks against the members under or around a hardware piece, over the components one or more views draw
+/// (SPEC 9, 28.1).
+pub fn drawn(comps: &[&Comp<'_>], diags: &Diags) {
+    for c in comps {
         if let Some(b) = &c.built.hw.bears {
-            bearing(scene, c, b, diags);
+            bearing(comps, c, b, diags);
         }
         if let Some(r) = &c.built.hw.rod {
-            rod_anchor(scene, c, r, diags);
+            rod_anchor(comps, c, r, diags);
         }
     }
 }
@@ -33,15 +40,11 @@ fn plan_overlap(p: &crate::model::Prism, x: [f64; 2], z: [f64; 2]) -> Option<geo
     ok.then_some(b)
 }
 
-fn bearing(scene: &Scene<'_>, c: &Comp<'_>, b: &Bears, diags: &Diags) {
+fn bearing(comps: &[&Comp<'_>], c: &Comp<'_>, b: &Bears, diags: &Diags) {
     let tol = 1.0 / 32.0;
     let (x, z) = ([b.plan[0], b.plan[1]], [b.plan[2], b.plan[3]]);
     let mut below: Option<(f64, &str)> = None;
-    for o in scene
-        .comps
-        .iter()
-        .filter(|o| o.state == State::Ok && o.index != c.index && !b.post.contains(&o.id) && !o.ty.traits.hardware)
-    {
+    for o in comps.iter().filter(|o| o.index != c.index && !b.post.contains(&o.id) && !o.ty.traits.hardware) {
         for p in o.world.iter().filter(|p| p.kind == Kind::Body && p.role != Role::Soil && !p.embedded) {
             let Some(pb) = plan_overlap(p, x, z) else { continue };
             if (pb.y1 - b.y).abs() <= tol {
@@ -93,8 +96,8 @@ fn bearing(scene: &Scene<'_>, c: &Comp<'_>, b: &Bears, diags: &Diags) {
     diags.add_fix(Level::Warning, "W_POST_BASE", Some(id), Some(&format!("components/{id}/standoff")), msg, fix);
 }
 
-fn rod_anchor(scene: &Scene<'_>, c: &Comp<'_>, rod: &str, diags: &Diags) {
-    let Some(r) = scene.find(rod).filter(|r| r.state == State::Ok) else { return };
+fn rod_anchor(comps: &[&Comp<'_>], c: &Comp<'_>, rod: &str, diags: &Diags) {
+    let Some(r) = comps.iter().find(|r| r.id == rod) else { return };
     let mut bx = geom::Box::default();
     let (mut z0, mut z1) = (f64::INFINITY, f64::NEG_INFINITY);
     for p in r.world.iter().filter(|p| p.instance == 0 && p.part == "shank") {
@@ -107,8 +110,7 @@ fn rod_anchor(scene: &Scene<'_>, c: &Comp<'_>, rod: &str, diags: &Diags) {
     }
     let tip = V2::init((bx.x0 + bx.x1) / 2.0, bx.y0 + 0.25);
     let zc = (z0 + z1) / 2.0;
-    let anchored =
-        scene.comps.iter().filter(|o| o.state == State::Ok && o.index != r.index && !o.ty.traits.hardware).any(|o| {
+    let anchored = comps.iter().filter(|o| o.index != r.index && !o.ty.traits.hardware).any(|o| {
             o.world.iter().any(|p| {
                 p.kind == Kind::Body
                     && (p.role.is_masonry() || p.role == Role::Steel)

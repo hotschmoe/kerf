@@ -28,6 +28,7 @@ fn len_of(node: &Value, key: &str, default: f64) -> f64 {
     node.get(key).and_then(units::parse_length).unwrap_or(default)
 }
 
+/// The checks of one component or one annotation: bolt group spacing and weld sizes.
 pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     weld_sizes(scene, doc, diags);
     for b in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Bolt) {
@@ -51,9 +52,16 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
                 format!("set \"spacing\" to at least {} (e.g. {})", fmt_ft_in(8.0 / 3.0 * d), fmt_ft_in(3.0 * d)),
             );
         }
-        edge_distance(scene, b, d, diags);
     }
-    anchors(scene, diags);
+}
+
+/// The checks between components, over the components one or more views draw (SPEC 9, 28.1): bolt edge distance to
+/// the steel it passes through, anchor edge distance to its host and spacing between anchors.
+pub fn drawn(comps: &[&Comp<'_>], diags: &Diags) {
+    for b in comps.iter().filter(|c| c.ty.ty == Type::Bolt) {
+        edge_distance(comps, b, len_of(b.node, "diameter", 0.75), diags);
+    }
+    anchors(comps, diags);
 }
 
 /// ACI 318-19 17.9.2 / 20.5.1.3: an anchor's shaft keeps at least this clear distance to the concrete or masonry edge.
@@ -71,11 +79,9 @@ struct Shaft<'a> {
     post: bool,
 }
 
-fn shafts<'a>(scene: &'a Scene<'a>) -> Vec<Shaft<'a>> {
+fn shafts<'a>(comps: &[&'a Comp<'a>]) -> Vec<Shaft<'a>> {
     let mut out = Vec::new();
-    for c in
-        scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::AnchorBolt && c.visible && !c.dashed)
-    {
+    for c in comps.iter().copied().filter(|c| c.ty.ty == Type::AnchorBolt && c.visible && !c.dashed) {
         let d = len_of(c.node, "diameter", 0.5);
         let post = matches!(c.node.get("hook").and_then(Value::str), Some("wedge" | "screw"));
         for p in c.world.iter().filter(|p| p.part == "shank" && p.centerline.len() >= 2) {
@@ -97,17 +103,17 @@ fn anchor_name(s: &Shaft<'_>) -> String {
     if s.c.arr_count > 1 { format!("'{}' (instance {})", s.c.id, s.instance) } else { format!("'{}'", s.c.id) }
 }
 
-fn anchors(scene: &Scene<'_>, diags: &Diags) {
-    let list = shafts(scene);
+fn anchors(comps: &[&Comp<'_>], diags: &Diags) {
+    let list = shafts(comps);
     let mut reported: Vec<u32> = Vec::new();
     for s in &list {
         if reported.contains(&s.c.index) {
             continue;
         }
-        let hosts: Vec<(&Comp<'_>, Vec<Vec<V2>>)> = scene
-            .comps
+        let hosts: Vec<(&Comp<'_>, Vec<Vec<V2>>)> = comps
             .iter()
-            .filter(|h| h.state == State::Ok && h.visible && !h.dashed)
+            .copied()
+            .filter(|h| h.visible && !h.dashed)
             .flat_map(|h| {
                 h.world
                     .iter()
@@ -295,11 +301,11 @@ fn dist_to_boundary(m: V2, loops: &[Vec<V2>]) -> f64 {
     best
 }
 
-fn edge_distance(scene: &Scene<'_>, bc: &Comp<'_>, d: f64, diags: &Diags) {
+fn edge_distance(comps: &[&Comp<'_>], bc: &Comp<'_>, d: f64, diags: &Diags) {
     let grip = len_of(bc.node, "grip", 1.0);
     let need = edge_min(d);
     let bolts = bolts_of(bc, grip);
-    for s in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Steel && !c.dashed) {
+    for s in comps.iter().filter(|c| c.ty.ty == Type::Steel && !c.dashed) {
         let mut worst: Option<(f64, &Bolt, &'static str)> = None;
         let n_inst = s.world.iter().map(|p| p.instance + 1).max().unwrap_or(0);
         for bolt in &bolts {
