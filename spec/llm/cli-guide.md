@@ -48,8 +48,6 @@ kerf guide --full
 - A warning that is right for this detail is acknowledged on the component, with a logged reason:
   `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]` (I_* codes are accepted and ignored). Wood on concrete
   or CMU usually wants `"barrier":"sill_seal"` instead. Do not add fake geometry to silence a warning.
-- Scenarios A/B/C in one document: one view per scenario, `omit` the other scenarios' members. Geometry checks run per
-  view (a finding seen in only some views ends with `(in views A, C)`), so never acknowledge cross-scenario overlaps.
 - Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one: `citations` -> `cite`, `side` -> `notes_side`, `point` -> `at`,
   `kind` -> `type`, `pos` -> `place`). `kerf schema <topic>` before guessing a field name.
 
@@ -103,6 +101,8 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   sandbox prefer an ops file. `kerf call help` lists the raw API functions with their input shapes.
 - `kerf fmt <doc> -w` canonicalizes a document; `kerf drawing` / `kerf mesh` print the drawing IR / mesh JSON.
 - `acknowledge` prints an `I_ACK` line per suppressed warning, logged by `kerf apply -w`.
+- Scenarios A/B/C in one document: one view per scenario, `omit` the other scenarios' members. Geometry checks run per
+  view (a finding seen in only some views ends with `(in views A, C)`), so never acknowledge cross-scenario overlaps.
 - Dimension offset sign, example: below a footing `{"from":"ftg@bottom_left","to":"ftg@bottom_right","dir":"h","offset":-6}`;
   its depth on the outside (left) face `{"from":"ftg@bottom_left","to":"ftg@top_left","dir":"v","offset":-6}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/main/spec/SPEC.md.
