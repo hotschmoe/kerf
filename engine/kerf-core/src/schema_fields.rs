@@ -303,7 +303,7 @@ pub static NOTE: Object = Object {
 pub static DIM: Object = Object {
     name: "dim",
     brief: "linear dimension",
-    summary: "Linear dimension between two points (annotation of type dim). Section views only.",
+    summary: "Linear dimension between two points (annotation of type dim), in a section, plan or elevation view, measured in that view's plane (plan: [x, -z], so v is along model z). Dims on one side whose spans meet end to end chain on one line.",
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"dim\"", required: true, desc: "annotation type", ..Field::NONE },
@@ -319,14 +319,14 @@ pub static DIM: Object = Object {
             name: "dir",
             ty: "h|v|aligned",
             def: "dominant axis",
-            desc: "h measures |dx|, v measures |dy|, aligned the true distance. When omitted: h if |dx| >= |dy|, else v. W_DIM_ZERO fires when the dimension measures under 1/16\"",
+            desc: "h measures |dx|, v measures |dy| (in a plan: along model z), aligned the true distance. When omitted: h if |dx| >= |dy|, else v. W_DIM_ZERO fires when the dimension measures under 1/16\"",
             ..Field::NONE
         },
         Field {
             name: "offset",
             ty: "length",
             def: "0",
-            desc: "distance of the dimension line from the points, model inches. h: > 0 puts it above the higher point, < 0 below the lower; v: > 0 right of the rightmost point, < 0 left of the leftmost; aligned: perpendicular, sign = side",
+            desc: "distance of the dimension line from the points, model inches. h: > 0 puts it above the higher point, < 0 below the lower; v: > 0 right of the rightmost point, < 0 left of the leftmost; aligned: perpendicular, sign = side. h/v dims on the same side that share an end point (a chain: E / EQ. / E, rod spacing) draw on the outermost of their lines and move together",
             ..Field::NONE
         },
         Field { name: "text", ty: "string", desc: "replaces the measured text (e.g. \"VERIFY\")", ..Field::NONE },

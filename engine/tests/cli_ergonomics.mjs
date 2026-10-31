@@ -1868,5 +1868,46 @@ section('#11. framing hardware');
   check('schema connector: kind, on, carried/carrying, post, rod and the hardware families', /^- kind: /m.test(r.out) && /^- on: /m.test(r.out) && /^- carried: /m.test(r.out) && /^- rod: /m.test(r.out) && /Hardware families .*HDU holdown 10/.test(r.out), r.out.slice(0, 400));
 }
 
+// ---------------------------------------------------------------------------------------------------
+// issue #23: dimensions in plan and elevation views, chain dimensions, dim text off its own line (SPEC 28.3)
+section('#23. dimensions in plan and elevation, chain dims, dim text off its own line');
+{
+  const DPE = path.join(DOCS, 'dims-plan-elevation.kerf.json');
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const text = (d, src) => d.items.find((i) => i.t === 'text' && i.src === src);
+  const close = (a, b) => Math.abs(a - b) < 1e-6;
+  let r = kerf(['check', DPE]);
+  check('plan dims between rods that differ only in z: no W_DIM_ZERO, 0 warnings', /0 errors  0 warnings/.test(r.out) && !/W_DIM_ZERO/.test(r.out), r.out);
+  const p = items(DPE, 'P');
+  check('plan: a v dim between rods measures the plan vertical (-z), dir defaults to the plan axis', text(p, 'v2')?.s === '9"' && text(p, 'h2')?.s === '9"', p.err);
+  const hy = ['h1', 'h2', 'h3'].map((id) => text(p, id)?.y);
+  check('plan chain E / 9" / E with Refs at different heights draws on one line', hy.every((y) => y !== undefined && close(y, hy[0])), hy);
+  const vx = ['v1', 'v2', 'v3'].map((id) => text(p, id)?.x);
+  check('plan vertical chain lines up too', vx.every((x) => x !== undefined && close(x, vx[0])), vx);
+  check('an overall dim over the chain is not part of it (stacked outside)', text(p, 'h_all') && text(p, 'h_all').y > hy[0] + 1, text(p, 'h_all'));
+  const e = items(DPE, 'E');
+  check('elevation: dims with Refs draw in the elevation plane', text(e, 'e1')?.s === '1\'-0"' && text(e, 'e3')?.s === '1\'-6"' && text(e, 'w2')?.s === '9"', e.err);
+  const ex = ['e1', 'e3'].map((id) => text(e, id)?.x);
+  check('elevation chain: members whose text fits share one line', ex.every((x) => x !== undefined && close(x, ex[0])), ex);
+  const e2 = text(e, 'e2');
+  check('a chain member whose text does not fit is centred on its own span, a row out (not beside a neighbour)', e2 && e2.y > 0 && e2.y < 2.25 && e2.x > ex[0], e2);
+  const s = items(DPE, 'S');
+  const t = text(s, 's_plate');
+  const vlines = s.items.filter((i) => i.t === 'path' && i.src === 's_plate' && close(i.pts[0][0], i.pts[1][0])).map((i) => i.pts[0][0]);
+  check('vertical dim text that does not fit sits beside its extended line, never on it', t && vlines.length > 0 && vlines.every((x) => Math.abs(t.x - x) >= 0.04 * s.scale), { t, vlines });
+  r = kerf(['schema', 'dim']);
+  check('schema dim: section, plan and elevation views; chains', /plan/.test(r.out) && /elevation/.test(r.out) && /chain/.test(r.out) && !/Section views only/.test(r.out), r.out.slice(0, 400));
+  write('chain_moved.kerf.json', { kerf: '0.1', id: 'cm', title: 'CM', components: [
+    { id: 'ftg', type: 'concrete', shape: 'rect', width: 24, height: 12, at: { anchor: 'top_center', to: [0, 0] } }],
+  views: [{ id: 'A', kind: 'section', annotations: [
+    { id: 'l1', type: 'label', text: 'GRADE', at: 'ftg@bottom_center', offset: [-6, -3] },
+    { id: 'a', type: 'dim', from: 'ftg@bottom_left', to: 'ftg@bottom_center', dir: 'h', offset: -3 },
+    { id: 'b', type: 'dim', from: 'ftg@bottom_center', to: 'ftg@bottom_right', dir: 'h', offset: -3 }] }] });
+  const m = items('chain_moved.kerf.json', 'A');
+  check('a chain that must clear a label moves as one', close(text(m, 'a').y, text(m, 'b').y) && text(m, 'a').y < -15, [text(m, 'a'), text(m, 'b')]);
+  r = kerf(['check', 'chain_moved.kerf.json']);
+  check('I_ANNOT_MOVED names the label for the blocked member and the chain for its partner', /^INFO I_ANNOT_MOVED a: .*to clear label 'l1'/m.test(r.out) && /^INFO I_ANNOT_MOVED b: .*outward together with its chain \('a'\)/m.test(r.out), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

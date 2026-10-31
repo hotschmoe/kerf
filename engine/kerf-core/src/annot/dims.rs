@@ -126,6 +126,14 @@ impl DimShape {
 
 /// The outside-text place only chain members get: centred on the own span, a text row out (see `dim_build`).
 const CENTRED_OUT: usize = 6;
+/// Beside the extended line past the far / near end like 0/1, but on the side away from the object (where that is not
+/// the reading side): for text that would land on the object.
+const BESIDE_OUT: usize = 7;
+
+/// Text placed beside the dimension line extended past an end (0/1 and the BESIDE_OUT pair).
+fn beside(variant: usize) -> bool {
+    !(2..=CENTRED_OUT).contains(&variant)
+}
 
 /// Two chain ends meet when their measured coordinates agree to this (model inches).
 const CHAIN_EPS: f64 = 1.0 / 64.0;
@@ -152,7 +160,11 @@ pub fn chain_dims(specs: &mut [DimSpec], near: f64) {
     for i in 0..n {
         for j in i + 1..n {
             let (a, b) = (&specs[i], &specs[j]);
-            if a.dir != b.dir || a.dir == DimDir::Aligned || a.sgn() != b.sgn() || a.span() < CHAIN_EPS || b.span() < CHAIN_EPS
+            if a.dir != b.dir
+                || a.dir == DimDir::Aligned
+                || a.sgn() != b.sgn()
+                || a.span() < CHAIN_EPS
+                || b.span() < CHAIN_EPS
             {
                 continue;
             }
@@ -196,7 +208,11 @@ pub fn chain_dims(specs: &mut [DimSpec], near: f64) {
             continue;
         }
         let lines = members.iter().map(|&i| specs[i].line_at());
-        let line = if specs[r].sgn() > 0.0 { lines.fold(f64::NEG_INFINITY, f64::max) } else { lines.fold(f64::INFINITY, f64::min) };
+        let line = if specs[r].sgn() > 0.0 {
+            lines.fold(f64::NEG_INFINITY, f64::max)
+        } else {
+            lines.fold(f64::INFINITY, f64::min)
+        };
         for &i in &members {
             let base = specs[i].base();
             specs[i].off0 = line - base;
@@ -208,8 +224,9 @@ pub fn chain_dims(specs: &mut [DimSpec], near: f64) {
 /// between the extension lines it goes outside (SPEC 20), never smaller and never dropped, and never on its own line
 /// (SPEC 28.3). `variant` picks where: 0/1 beside the dimension line extended past the far / near end, 2-5 raised out
 /// of the axis (outward / inward of the object) at the far / near end, joined to the line by a short leader, 6 (chain
-/// members) centred on its own span a text row out on the side away from the object, joined by a leader. `slide` moves text that fits
-/// along the line from its middle (the layout repair slides it off a note leader, SPEC 25.2).
+/// members) centred on its own span a text row out on the side away from the object, joined by a leader, 7/8 as 0/1
+/// on the side of the line away from the object. `slide` moves text that fits along the line from its middle (the
+/// layout repair slides it off a note leader, SPEC 25.2).
 pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide: f64, out: &mut Vec<Item>) -> DimShape {
     let st = env.style;
     let sc = env.s;
@@ -304,7 +321,7 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide:
     let center = if fits {
         la.mid(lb).add(u.scale(slide)).add(tn.scale(tgap))
     } else {
-        let at_far = matches!(variant, 0 | 2 | 4);
+        let at_far = matches!(variant, 0 | 2 | 4 | BESIDE_OUT);
         let e = if at_far { lb } else { la };
         let s = if at_far { 1.0 } else { -1.0 };
         if variant == CENTRED_OUT {
@@ -315,11 +332,13 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide:
             out.push(path_item(env, Pen::Dim, d.id, &[m, q], false));
             sh.add(m, q);
             m.add(out_n.scale(1.5 * th + 2.0 * tgap))
-        } else if variant < 2 {
+        } else if beside(variant) {
             let q = e.add(u.scale(s * (2.0 * tick + tw + tgap)));
             out.push(path_item(env, Pen::Dim, d.id, &[e, q], false));
             sh.add(e, q);
-            e.add(u.scale(s * (2.0 * tick + tw * 0.5))).add(tn.scale(tgap))
+            let outer_below = d.axis().scale(d.sgn()).dot(tn) < 0.0;
+            let side = if variant > CENTRED_OUT && outer_below { -(tgap + th) } else { tgap };
+            e.add(u.scale(s * (2.0 * tick + tw * 0.5))).add(tn.scale(side))
         } else {
             valign = VAlign::Middle;
             let outward = nrm.scale(d.sgn());
@@ -446,9 +465,9 @@ fn conflicts_of(sh: &DimShape, placed: &[(usize, DimShape)], labels: &[(&str, [V
 /// inch (outside text first tries the other places before the dimension line moves). A chain (SPEC 28.3) is placed
 /// and moved as one, by its overall span; text that does not fit goes past a free end of the chain before a shared
 /// one. `pushes` is the extra outward distance chosen by the layout repair (a chain takes its largest), `slides` the
-/// text slides. A pinned dimension (or a chain with a pinned member) stays at its offset. Fills the effective offsets
-/// `eff`, the items, and per dimension `blockers`: what it collides with at its authored offset (pushes included),
-/// named for the diagnostics (SPEC 25.2).
+/// text slides (for text that does not fit: +1 / -1, the end the repair moved it away from). A pinned dimension (or a
+/// chain with a pinned member) stays at its offset. Fills the effective offsets `eff`, the items, and per dimension
+/// `blockers`: what it collides with at its authored offset (pushes included), named for the diagnostics (SPEC 25.2).
 #[allow(clippy::too_many_arguments)]
 pub fn stack_dims(
     env: &mut Env,
@@ -505,15 +524,17 @@ pub fn stack_dims(
                     let mut its = Vec::new();
                     let sh = dim_build(env, d, off, v, slide, &mut its);
                     let sib: usize = picks.iter().map(|(_, p)| dim_conflicts(&sh, &p.shape, tol)).sum();
-                    let at_shared = v != CENTRED_OUT && d.shared[usize::from(matches!(v, 0 | 2 | 4))];
-                    let beside_sibling = !sh.fits && at_shared && v < 2;
+                    let at_far = matches!(v, 0 | 2 | 4 | BESIDE_OUT);
+                    let at_shared = v != CENTRED_OUT && d.shared[usize::from(at_far)];
+                    let beside_sibling = !sh.fits && at_shared && beside(v);
                     let c = conflicts_of(&sh, &placed, labels, tol) + sib + usize::from(beside_sibling);
+                    let avoided = v != CENTRED_OUT && (slide > 0.0) == at_far && slide != 0.0;
                     let pen = match (sh.fits, v) {
                         (true, _) => 0,
                         (false, CENTRED_OUT) => 1,
                         _ if at_shared => 2,
                         _ => 0,
-                    };
+                    } + if !sh.fits && avoided { 3 } else { 0 };
                     let bh = if sh.fits { 0 } else { base_hits(base_segs, &sh.text) };
                     let rank = (c, pen, bh);
                     let fits = sh.fits;

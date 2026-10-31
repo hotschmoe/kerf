@@ -488,7 +488,8 @@ literal text; words of `section` that hold a digit (`1926.755(a)(1)`, `R602.3(5)
 Extension lines from the two points (gap `ext_gap`, overshoot `ext_over`), dimension line at
 `offset`, terminators per style (`tick` = 45° heavy slash, default), text centered above the
 dimension line, feet-inch format, rotated for vertical dims (reading from the right). If text
-does not fit between the extension lines it moves outside to the right/top. Colliding dimensions stack outward and
+does not fit between the extension lines it moves outside to the right/top, beside the dimension line extended past the
+end, never on the line (§28.3). Collinear dimensions sharing end points chain on one line (§28.3). Colliding dimensions stack outward and
 a dimension text on a note leader first slides along its line (§20, §25.2); a dimension drawn more than 1/8" (paper)
 from its `offset` reports `I_ANNOT_MOVED`, and `"pin": true` keeps it at its `offset`.
 
@@ -1722,8 +1723,8 @@ drawn member, fills excluded).
 nearer members in elevation) as dashed lines in the `hidden` pen, and lets a note land on a member that is hidden
 everywhere (on its hidden outline). Without it, a note targeting a member hidden everywhere is `W_NOTE_TARGET`, whose
 fix names `cut_y` (plan) or `hidden_lines`. `hidden_lines` on a section or iso view warns `W_PARAM` and is ignored.
-Dimensions, labels, welds, keyed notes and the title work as in a section view; `inspect at` takes plan coordinates in a
-plan view. Auto crop and auto scale (§19) work on the plan or elevation geometry.
+Dimensions, labels, welds, keyed notes and the title work as in a section view, in the view's own plane (§28.3);
+`inspect at` takes plan coordinates in a plan view. Auto crop and auto scale (§19) work on the plan or elevation geometry.
 
 **Titles.** The printed title (view title and title block) of a plan view is the style's `text.plan_title` with
 `{title}` replaced by the view's `title` (default `"PLAN - {title}"`, the MASS house form "PLAN - CORNER REINFORCING"),
@@ -2152,3 +2153,43 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   outside 5..85, more than 5000 fasteners (`E_LIMIT`). `E_REF_UNKNOWN`: a member that is not a component (nearest id).
 - A nailing has no solid: it takes no part in `W_OVERLAP`, `W_FLOATING` or any other geometry check, and the mesh has
   no nails (2.5D viewers show none).
+
+## 28. v0.2.0-beta.2 round-2 fixes
+
+### 28.3 beta.2: dimensions in plan and elevation
+
+From the round-2 MASS dogfood run (issue #23): rod spacing in plan needed typed plan coordinates because the checks
+measured plan dims in model x/y (`W_DIM_ZERO` on two rods that differ only in z), elevations were believed to take no
+dims (an extra section carried a clear-span dim), dims sharing end points stacked instead of chaining, and vertical dim
+text that did not fit was drawn on the axis of its own line.
+
+**Every flat view kind.** `dim` works in section, plan and elevation views (not iso or schedule), measured in that view's
+drawing plane: section and elevation [x, y] (model x, y), plan [x, −z] (§26.3). Refs and anchors resolve in that plane
+(plan: box anchors on the plan footprint, named anchors at their x and the instance's z), literal points are in it, `h`
+measures along its x and `v` along its y (in a plan: along model z). Everything that measures a dim does it in the view's
+plane: the drawing, the default `dir` (dominant axis), `W_DIM_ZERO`, and the length coverage offers for a dim without
+`text` (§21).
+
+**Chains.** Two `h` (or two `v`) dims of one view whose `offset`s have the same sign are linked when their spans follow
+each other end to end along the measured axis (the end coordinates agree to 1/64") and either the two meeting ends are the
+same point (to 1/64") or their dimension lines at the written offsets are within 1/4" (paper) of each other. Linked dims
+form a chain (transitively), except that a link that would put two overlapping spans in one chain is dropped, so an overall
+dim over a chain stays its own dim and stacks outside it. Every member of a chain is drawn on the chain's outermost written
+line: for a positive offset the largest of (higher point + offset) over its members, for a negative one the smallest of
+(lower point + offset), the same for x with `v`. So `plate@top_left` → `rod_1@center` → `rod_2@center` →
+`plate@top_right` with one `offset` draws E / EQ. / E on one line although the rods sit lower than the plate edge.
+`aligned` dims do not chain.
+- A chain stacks as one: it is placed by its overall span among the other dims (shortest first), it moves out in whole
+  steps together, and a layout-repair push on any member moves the whole chain (the largest push wins). `pin` on any
+  member pins the chain at its line. Chaining alone is not a move: `I_ANNOT_MOVED` compares the drawn offset with the
+  chain line, and for a member whose written offset differs it names the chain and the written value; a member that only
+  follows its chain says "together with its chain (...)".
+- Text of a chain member that does not fit between its extension lines goes past a free end of the chain first. Placing it
+  beside the line past an end shared with another member counts as a collision (it would read as that member's value);
+  when both ends are shared it is centred on its own span one text row out, on the side away from the object, joined to
+  the line by a short leader, before the raised places at a shared end are tried.
+
+**Text never on its own line.** Text that does not fit between the extension lines and goes past an end sits beside the
+dimension line, which is extended under it (to the text's end plus the text gap), on the same side and at the same gap as
+text that fits (above an `h` line, left of a `v` line read from the right), never centred on the line's axis. The raised
+places (a text row out at either end, on a short leader) are unchanged.

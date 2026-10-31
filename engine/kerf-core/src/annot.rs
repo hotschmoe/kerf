@@ -137,7 +137,7 @@ pub enum DimDir {
     Aligned,
 }
 
-pub const DIM_VARIANTS: usize = 7;
+pub const DIM_VARIANTS: usize = 9;
 
 fn str_member<'v>(an: &'v Value, key: &str) -> Option<&'v str> {
     an.get(key).and_then(Value::str)

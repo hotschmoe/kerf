@@ -1,0 +1,52 @@
+{
+  "kerf": "0.1",
+  "id": "dims-plan-elevation",
+  "title": "DIMENSIONS IN PLAN, ELEVATION AND SECTION",
+  "components": [
+    { "id": "ftg", "type": "concrete", "shape": "rect", "width": 30, "height": 12, "z": [-15, 15], "at": { "anchor": "top_center", "to": [0, 0] } },
+    { "id": "plate", "type": "steel", "shape": "PL3/4x12", "z": [-6, 6], "at": { "anchor": "face_bottom", "to": { "ref": "@origin", "offset": [0, 1.5] } } },
+    { "id": "col", "type": "steel", "shape": "HSS6x6x1/4", "orient": "elevation", "run": "y", "length": 18, "at": { "anchor": "bottom_center", "to": "plate@top_center" } },
+    { "id": "rod_1", "type": "anchor_bolt", "diameter": 0.75, "embed": 7, "hook": "headed", "plate": "plate", "leveling_nut": true, "at": { "to": { "ref": "@origin", "offset": [-4.5, 0] } }, "z": -4.5 },
+    { "id": "rod_2", "type": "anchor_bolt", "diameter": 0.75, "embed": 7, "hook": "headed", "plate": "plate", "leveling_nut": true, "at": { "to": { "ref": "@origin", "offset": [4.5, 0] } }, "z": -4.5 },
+    { "id": "rod_3", "type": "anchor_bolt", "diameter": 0.75, "embed": 7, "hook": "headed", "plate": "plate", "leveling_nut": true, "at": { "to": { "ref": "@origin", "offset": [-4.5, 0] } }, "z": 4.5 },
+    { "id": "rod_4", "type": "anchor_bolt", "diameter": 0.75, "embed": 7, "hook": "headed", "plate": "plate", "leveling_nut": true, "at": { "to": { "ref": "@origin", "offset": [4.5, 0] } }, "z": 4.5 }
+  ],
+  "views": [
+    {
+      "id": "P", "kind": "plan", "number": "1", "title": "BASE PLATE", "scale": "1-1/2\"=1'-0\"", "cut_y": 6,
+      "crop": { "x": [-10, 10], "z": [-10, 10] },
+      "annotations": [
+        { "id": "n_plate", "type": "note", "text": "PL 3/4\" BASE PLATE", "target": "plate" },
+        { "id": "h1", "type": "dim", "from": "plate@top_left", "to": "rod_1@center", "dir": "h", "offset": 2, "text": "E" },
+        { "id": "h2", "type": "dim", "from": "rod_1@center", "to": "rod_2@center", "dir": "h", "offset": 2 },
+        { "id": "h3", "type": "dim", "from": "rod_2@center", "to": "plate@top_right", "dir": "h", "offset": 2, "text": "E" },
+        { "id": "h_all", "type": "dim", "from": "plate@top_left", "to": "plate@top_right", "dir": "h", "offset": 4.5 },
+        { "id": "v1", "type": "dim", "from": "plate@top_right", "to": "rod_2@center", "dir": "v", "offset": 2, "text": "E" },
+        { "id": "v2", "type": "dim", "from": "rod_2@center", "to": "rod_4@center" },
+        { "id": "v3", "type": "dim", "from": "rod_4@center", "to": "plate@bottom_right", "dir": "v", "offset": 2, "text": "E" }
+      ]
+    },
+    {
+      "id": "E", "kind": "elevation", "number": "2", "title": "COLUMN BASE", "scale": "3/4\"=1'-0\"",
+      "annotations": [
+        { "id": "n_col", "type": "note", "text": "HSS6X6X1/4 COLUMN", "target": "col" },
+        { "id": "e1", "type": "dim", "from": "ftg@bottom_right", "to": "ftg@top_right", "dir": "v", "offset": 4 },
+        { "id": "e2", "type": "dim", "from": "ftg@top_right", "to": "plate@top_right", "dir": "v", "offset": 4 },
+        { "id": "e3", "type": "dim", "from": "plate@top_right", "to": "col@top_right", "dir": "v", "offset": 4 },
+        { "id": "w1", "type": "dim", "from": "ftg@bottom_left", "to": "rod_1@bottom_center", "dir": "h", "offset": -3 },
+        { "id": "w2", "type": "dim", "from": "rod_1@bottom_center", "to": "rod_2@bottom_center", "dir": "h", "offset": -3 },
+        { "id": "w3", "type": "dim", "from": "rod_2@bottom_center", "to": "ftg@bottom_right", "dir": "h", "offset": -3 }
+      ]
+    },
+    {
+      "id": "S", "kind": "section", "number": "3", "title": "SECTION AT ANCHOR RODS", "scale": "1-1/2\"=1'-0\"", "cut_z": -4.5,
+      "crop": { "x": [-16, 16], "y": [-13, 8] },
+      "annotations": [
+        { "id": "n_rod", "type": "note", "text": "3/4\" DIA. HEADED ANCHOR ROD", "target": "rod_2" },
+        { "id": "s_grout", "type": "dim", "from": "ftg@top_right", "to": "plate@bottom_right", "dir": "v", "offset": 3 },
+        { "id": "s_plate", "type": "dim", "from": "plate@bottom_right", "to": "plate@top_right", "dir": "v", "offset": 3 },
+        { "id": "s_embed", "type": "dim", "from": "rod_1@bottom_center", "to": "ftg@top_left", "dir": "v", "offset": -4 }
+      ]
+    }
+  ]
+}
