@@ -350,13 +350,27 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
             format!("move the note to a view that draws '{}', target a member of view {vid}, or include '{}' in view {vid}", c.id, c.id),
         );
     } else if at_v.is_none() {
+        let (why, fix) = match env.spec.kind {
+            Kind::Plan => (
+                "outside the crop, above the cut plane cut_y, or hidden under higher members",
+                "move the view crop or cut_y so the target shows, set \"hidden_lines\": true on the view to draw (and note) hidden members, change target, or give the note an explicit \"at\" Ref",
+            ),
+            Kind::Elevation => (
+                "outside the crop, or hidden behind nearer members",
+                "set \"hidden_lines\": true on the view to draw (and note) hidden members, move the view crop, change target, or give the note an explicit \"at\" Ref",
+            ),
+            _ => (
+                "outside the crop, behind the cut plane, or hidden",
+                "move the view crop or cut_z so the target is visible, change target, or give the note an explicit \"at\" Ref",
+            ),
+        };
         env.diags.add_fix(
             Level::Warning,
             "W_NOTE_TARGET",
             Some(id),
             Some(apath),
-            format!("note '{id}' in view {vid}: target '{target}' is not visible in this view (outside the crop, behind the cut plane, or hidden). The note was not drawn."),
-            "move the view crop or cut_z so the target is visible, change target, or give the note an explicit \"at\" Ref".to_string(),
+            format!("note '{id}' in view {vid}: target '{target}' is not visible in this view ({why}). The note was not drawn."),
+            fix.to_string(),
         );
     }
     None

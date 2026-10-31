@@ -259,6 +259,10 @@ fn bar_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
                 out.push(dot_prism(p, plan_pt(x, zc), r, cut_y));
             }
         }
+        if ya && yb && (b.x - a.x).abs() < EPS && (b.y - a.y).abs() > r && !dots.iter().any(|&d| (d - a.x).abs() < r) {
+            dots.push(a.x);
+            out.push(dot_prism(p, plan_pt(a.x, zc), r, cut_y));
+        }
         let (lo, hi) = match (ya, yb) {
             (true, true) => (a, b),
             (true, false) | (false, true) => {
@@ -365,7 +369,8 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
             Kind::Ghost => {
                 let flat = clip::from_region(&p.loops, FLAT_TOL);
                 for s in merge_all(strips(&flat, f64::INFINITY)) {
-                    let mut q = rect_prism(p, s.x0, s.x1, p.z0, p.z1, s.lo, s.top);
+                    let d1 = s.top.min(cut_y);
+                    let mut q = rect_prism(p, s.x0, s.x1, p.z0, p.z1, s.lo.min(d1 - 1e-6), d1);
                     q.pen = Some(p.pen.unwrap_or(Pen::Hidden));
                     out.push(q);
                 }

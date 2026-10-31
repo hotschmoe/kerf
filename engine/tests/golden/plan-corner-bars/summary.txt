@@ -1,0 +1,10 @@
+DOC plan-corner-bars  9 components  4 views  0 errors  0 warnings  0 acknowledged
+ ftg_x         concrete rect 4'-6" x 10" "footing"         x -6"..4'-0"      y 0"..10"
+ ftg_z         concrete rect 1'-8" x 10" "footing"         x -6"..1'-2"      y 0"..10"
+ wall_x        concrete rect 4'-0" x 2'-6" "stem wall"     x 0"..4'-0"       y 10"..3'-4"
+ wall_z        concrete rect 8" x 2'-6" "stem wall"        x 0"..8"          y 10"..3'-4"
+ dowel         rebar #5 path L=2'-3" [x3 z @ -1'-4"]       x 3 11/16"..4 5/16" y 3"..2'-6"
+ ftg_bar       rebar #4 along z                            x 6 3/4"..7 1/4"  y 3 1/4"..3 3/4"
+ corner_out    rebar #4 xz path at y 2'-6" L=4'-11"        x 2 1/4"..2'-6"   y 2'-5 3/4"..2'-6 1/4"
+ corner_in     rebar #4 xz path at y 2'-6" L=4'-5"         x 5 1/4"..2'-6"   y 2'-5 3/4"..2'-6 1/4"
+ sill          lumber 2x6 PT flat run z "sill plate"       x 1 1/4"..6 3/4"  y 3'-4"..3'-5 1/2"

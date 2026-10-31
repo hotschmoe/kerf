@@ -427,6 +427,23 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
     }
 }
 
+/// The title a view prints: a plan or elevation view's title through the style's `text.plan_title` /
+/// `text.elevation_title` (default "PLAN - {title}" / "{title}"), unless it already names its kind (SPEC 26.3).
+pub fn view_title(st: &Style, spec: &ViewSpec) -> String {
+    let (template, words): (&str, &[&str]) = match spec.kind {
+        Kind::Plan => (&st.plan_title, &["PLAN", "PLANS"]),
+        Kind::Elevation => (&st.elevation_title, &["ELEVATION", "ELEVATIONS", "ELEV."]),
+        _ => return spec.title.to_string(),
+    };
+    let upper = spec.title.to_ascii_uppercase();
+    let named = upper.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.')).any(|w| words.contains(&w));
+    if named || !template.contains("{title}") {
+        return spec.title.to_string();
+    }
+    let out = template.replace("{title}", spec.title);
+    out.trim_matches(|c: char| c == ' ' || c == '-').to_string()
+}
+
 fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let SectionInputs { st, scene, prisms, font, doc, diags, work } = inp;
     let scale = spec.scale;
@@ -449,9 +466,10 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
         tcrop.y0 = ab.y0;
     }
     let scale_text = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
+    let shown_title = view_title(st, spec);
     let info = SheetInfo {
         number: &spec.number,
-        title: spec.title,
+        title: &shown_title,
         scale_text: &scale_text,
         sheet: meta_string(doc, "sheet"),
         unverified,
@@ -807,9 +825,10 @@ pub fn build_from_scene<'a>(
                 tcrop.y0 = ab.y0;
             }
             let label = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
+            let shown_title = view_title(st, spec);
             let info = SheetInfo {
                 number: &spec.number,
-                title: spec.title,
+                title: &shown_title,
                 scale_text: &label,
                 sheet: meta_string(doc, "sheet"),
                 unverified: un,
@@ -879,7 +898,7 @@ pub fn build_from_scene<'a>(
     d.layers = layers;
     d.diagnostics = diags.to_vec();
     d.number = spec.number.clone();
-    d.title = spec.title.to_string();
+    d.title = view_title(st, spec);
     d.scale_label = label;
     d.sheet_no = meta_string(doc, "sheet").to_string();
     d.date = meta_string(doc, "date").to_string();

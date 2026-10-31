@@ -242,6 +242,10 @@ pub struct Style {
     pub line_spacing: f64,
     pub dxf_style: String,
     pub dxf_font: String,
+    /// `text.plan_title` / `text.elevation_title`: the title of a plan / elevation view, `{title}` standing for the view's
+    /// own title (SPEC 26.3). Not applied when the title already names the kind (PLAN, ELEVATION).
+    pub plan_title: String,
+    pub elevation_title: String,
 
     /// `notes.mode`: the notes style of views without `notes_style` ("keynote" is the old name of keyed).
     pub notes_mode: NotesStyle,
@@ -303,6 +307,8 @@ impl Default for Style {
             line_spacing: 1.6,
             dxf_style: "KERF".to_string(),
             dxf_font: "romans.shx".to_string(),
+            plan_title: "PLAN - {title}".to_string(),
+            elevation_title: "{title}".to_string(),
             notes_mode: NotesStyle::Leader,
             wrap_chars: 28.0,
             gutter_in: 0.375,
@@ -597,6 +603,16 @@ fn validate(root: &Value) -> Option<String> {
     }
     if let Some(sec) = c.section(root, "text") {
         validate_keep_case(&mut c, sec.get("keep_case"));
+        for (key, def) in [("plan_title", "PLAN - {title}"), ("elevation_title", "{title}")] {
+            match sec.get(key) {
+                None | Some(Value::Null) => {}
+                Some(Value::String(s)) if s.contains("{title}") && s.len() <= 80 => {}
+                Some(v) => c.bad(format!(
+                    "style key 'text.{key}' must be a string of at most 80 characters that contains {{title}} (the view's own title), default \"{def}\" (got {})",
+                    Check::got_text(v)
+                )),
+            }
+        }
     }
     validate_pens(&mut c, root);
     validate_materials(&mut c, root);
@@ -916,6 +932,8 @@ pub fn from_value(root: &Value) -> Result<Style, StyleError> {
             .collect();
         s.dxf_style = str_or(t.get("dxf_style"), &s.dxf_style);
         s.dxf_font = str_or(t.get("dxf_font"), &s.dxf_font);
+        s.plan_title = str_or(t.get("plan_title"), &s.plan_title);
+        s.elevation_title = str_or(t.get("elevation_title"), &s.elevation_title);
     }
     if let Some(t) = root.get("notes") {
         s.notes_mode = match t.get("mode").and_then(Value::str) {

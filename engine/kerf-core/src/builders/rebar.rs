@@ -42,9 +42,9 @@ params! {
         size: Str = "#4" => { desc: "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
         mode: Enum(Mode) = Mode::AlongZ => { desc: "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
         plane: Enum(Plane) = Plane::Xy => { desc: "path: xy = the bar lies in the section plane (points [x, y]); xz = the bar lies flat at height `y` (points [x, z]: corner and intersection bars, bars around an opening). A plan view draws an xz bar as its path, a section as a dot where it crosses the cut and a line where it runs behind it" },
-        y: OptRaw => { def: "plane xz: required", desc: "plane xz: height of the bar's centreline, a length or a Ref (its y), e.g. {\"ref\": \"ftg@bottom_left\", \"offset\": [0, 3.25]}" },
+        y: OptRaw => { def: "plane xz: required", desc: "height of the bar's centreline, a length or a Ref (its y), e.g. {\"ref\": \"ftg@bottom_left\", \"offset\": [0, 3.25]}" },
         place: OptRaw => { desc: "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face of the host's outline (cut to the part for comp.part; in a polygon, the outermost run of edges facing that way, e.g. the lowest bottom run = a thickened footing), spread evenly along it at `side_cover` from its ends (count 1 centers); a bar centre outside the zone is E_PLACE_OUTSIDE. center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position)" },
-        points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs; bends get radius bend_radius, drawn as fillets" },
+        points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs (plane xz: [x, z] pairs); bends get radius bend_radius, drawn as fillets" },
         bend_radius: OptLenPos => { def: "3*d_b", desc: "inside bend radius for path bars" },
         spacing_note: Str = "" => { def: "null", desc: "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
     }

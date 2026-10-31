@@ -38,5 +38,15 @@ for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-s
     n++; if (!rev.equals(fs.readFileSync(path.join(here, `golden/${d}/${v}-review.svg`)))) { bad++; console.log('DIFF', d, `${v}-review.svg`); }
   }
 }
+// Issue #9: plan and elevation views, rebar plane xz, shown hidden / where_occurs.
+for (const [d, views] of [['plan-corner-bars', ['A', 'B', 'C', 'E']], ['elevation-stud-strap', ['A', 'P']]]) {
+  const doc = JSON.parse(fs.readFileSync(path.join(here, `docs/${d}.kerf.json`), 'utf8'));
+  for (const v of views) {
+    const out = call('drawing', JSON.stringify({ doc, view: v }));
+    n++; if (!out.equals(fs.readFileSync(path.join(here, `golden/${d}/drawing-${v}.json`)))) { bad++; console.log('DIFF', d, 'drawing', v); }
+    const svg = call('export', JSON.stringify({ doc, view: v, format: 'svg', sheet: true }));
+    n++; if (!svg.equals(fs.readFileSync(path.join(here, `golden/${d}/${v}-sheet.svg`)))) { bad++; console.log('DIFF', d, `${v}-sheet.svg`); }
+  }
+}
 console.log(`wasm vs native goldens: ${n - bad}/${n} byte-identical`);
 if (bad) process.exitCode = 1; // a CI gate: a mismatch must fail the step
