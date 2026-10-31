@@ -284,6 +284,24 @@ geometrically (tolerance 1e-3).
   `until rafter@end_top`) bears on the plate; the full 5 1/2" seat put the heel 1/4" into the CMU (plate set back 1 1/4"
   from the face): W_OVERLAP printed `heel: 1.9375`, which clears it. W_UNTREATED_CONTACT then (rightly) notes the rafter
   tail touching the CMU corner.
+- Nailing (issue #13, SPEC 27.4). `builders/nailing.rs` builds no prisms: it resolves `members` (placement
+  dependencies through `compile::collect_deps`, so a listed member cannot be removed), treats every member instance as its
+  builder box times its z range in the frame of the first member's instance, and stores the fasteners in world 3D
+  (`Built::nails`, `Built::nail_stack` = the member component indices). Views draw them in their own pass:
+  `section/nails.rs` for section, plan and elevation (dot when the projected length is under 0.3 of the length, else
+  shank + head bar, screws with thread ticks; a row seen end-on counts as cut within half its spacing; own members never
+  hide a nail, cut solids and nearer foreign solids do; `nail_marks` feed note landing, `nails_hidden` the
+  W_NAIL_HIDDEN diagnostic in `drawview::section_pass`), `iso::nail_dots` for iso (dot where the head passes the iso
+  occlusion test). `Scene::nails_shown`: a view draws a nailing only with its first member. A note targeting a nailing
+  without `text` uses `nailing::node_text` (also the coverage candidate text), computed from the document node so the
+  lint, coverage and the drawing agree without a compiled scene. Components with no prisms are skipped by W_FLOATING
+  (`validate::floating`) and report the fasteners' extent in the summary (`load::comp_box`). 47 MASS details:
+  `kerf check --strict` 0 errors / 829 warnings before and after (none uses the type yet). Proofs on copies: s-50-02 A
+  (plates turned flat, view A elevation, 3 x (8) 16d staggered splice groups + 16d @ 16" typ.) draws like ref 1248;
+  s-50-06 A gets 8d edge nailing on all four edges of both panels and 8d @ 12" field nailing on the intermediate studs
+  (iso dots like refs 1087/0019) and a new elevation D "SHEAR PANEL LAYOUT AND NAILING" (with hidden_lines) like the
+  0019 panel layout; both keep their `--strict` warning counts (10: acknowledged scenario-B/C overlaps and stale
+  acknowledgements; 8: stale acknowledgements). No new warning on either.
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -427,6 +445,12 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   not to the space its neighbours leave; a shared-key note still needs its text in its own view (the standalone view
   build reads it there); reference bubbles are not obstacles for the note router (like welds); `--review` is per view
   only; the 3D view and the inspector know nothing of layouts (the web UI lists and renders them, nothing more).
+- Nailing (#13): members are boxes (builder box x z range), so a joint between members rotated against each other (a
+  sloped rafter on a flat plate) is found only where their boxes in the first member's frame meet face to face; a
+  rafter-to-plate toenail on a slope gets W_NAIL_MEMBERS. The mesh and the web 3D view have no nails. Iso draws heads as
+  dots only (a toenail is a dot where its head is visible). Edge nailing checks framing behind each nail position, not
+  the 3x framing SDPWS asks for at close edge nailing. No BN/EN/FN zone labels: the text form says EDGE NAILING /
+  FIELD NAILING, `text` overrides it (boundary nailing: `"text": "10d @ 4\" O.C. B.N."`).
 
 - I-joists and truss profiles (issue #10, SPEC 27.1): the series table is generic (no brand names, one flange depth per
   width), so a series whose flange is 1 1/2 deep at 2 5/16 draws 1/8 thin unless `flange_depth` says so; stiffeners and
@@ -608,6 +632,17 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   flush-beam-strap and flush-psl-2x6 goldens (their PSL beams in elevation).
 - `pitch_angle` (what `slope: "@truss"` follows) came from re-reading `pitch`/`exterior` in compile; it is now
   `Built::pitch`, set by the builder (negative for mono, zero for parallel chord and end-on).
+- Issue #13 proposed `on`, `edges`, `from`/`into` per pattern. Chosen one `members` list in driving order for every
+  pattern (the first member holds the heads), because the brief asks for placement from the members a fastener joins
+  and it doubles as the dependency and the removal guard. `from: "blk@bottom_left"` (an anchor) became `faces` (the side
+  faces of the first member) since toenails start on a face, not a point.
+- Issue #13 `symbol: dot | tick | toenail`: not a param. The view decides: end-on nails are dots, nails in the drawing
+  plane are shanks, toenails come out angled because they are; a param would let the two disagree.
+- "Nails longer than the plies when that's wrong": IRC face nails at a plate splice (16d through 3") do come out of the
+  far face, so W_NAIL_LENGTH warns on any exit and `through: true` says it is intended; the fix also names the longest
+  size of the same kind that stays inside with 6D penetration. Too-short nails (under 6D into the last member) warn too.
+- Minimums: 3/8" edge distance (SDPWS, the 0019 reference note 6), 10D spacing within a row, 2" o.c. for panel nailing;
+  no NDS end/edge-distance tables (the drawings are schematic).
 
 ## REQUESTS
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,

@@ -197,5 +197,16 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   (`plies` for girders). Roof: `"profile": "scissor"` (`bottom_pitch`), `"mono"` (`heel_height` = the high end;
   sheathing `slope: "@truss"` falls with it). Full-height eave blocking: `"until": "truss@heel_block_top"`.
   `W_BEARING` warns when an I-joist bears under 1 3/4" at an end (3 1/2" inside) and prints the length to add.
+- Nailing (SPEC 27.4): draw fasteners with a `nailing` component, never notes alone. It is placed from `members` (the
+  member the heads are on first), so it moves with them: plate splice `{"type":"nailing","members":["upper_plate",
+  "lower_plate"],"size":"16d","count":8,"rows":2,"through":true}` (staggered rows over the joint; `range` limits them),
+  toenails `{"pattern":"toenail","members":["blocking","plate"],"size":"8d","count":2}`, sheathing
+  `{"pattern":"edge","members":["shtg","sill","stud_end","top_plate"],"size":"8d","spacing":6}` (kept where framing lies
+  behind; a bare edge is W_NAIL_EDGE) and `{"pattern":"field","members":["shtg","stud"],"size":"8d","spacing":12}`. Nails in the
+  drawing plane draw as a shank with a head (toenails angled), end-on as dots; iso shows dots on the face. A note
+  targeting it may omit `text` (it prints `(8) 16d NAILS STAGGERED`, `8d @ 6" O.C. EDGE NAILING`, or the `text` param),
+  and coverage reads that text. In a section only nails at or behind the cut and outside cut solids show: an elevation
+  (or `cut_z` in front) shows splice nails, W_NAIL_HIDDEN says when a view shows none. W_NAIL_MEMBERS (no touching
+  joint), W_NAIL_LENGTH (points out of the far face: `through` or a shorter size), W_NAIL_SPACING print their fixes.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

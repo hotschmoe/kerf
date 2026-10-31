@@ -141,6 +141,9 @@ fn pad_to(out: &mut String, s: &str, n: usize) {
 }
 
 pub fn comp_box(c: &Comp<'_>) -> Box {
+    if c.world.is_empty() && !c.built.nails.is_empty() {
+        return c.built.box_;
+    }
     let mut b = Box::default();
     for p in &c.world {
         for l in &p.loops {

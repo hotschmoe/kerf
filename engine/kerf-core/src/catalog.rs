@@ -95,11 +95,12 @@ pub enum Type {
     Sleeve,
     Steel,
     Bolt,
+    Nailing,
     Solid,
 }
 
 impl Type {
-    pub const ALL: [Type; 18] = [
+    pub const ALL: [Type; 19] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -117,6 +118,7 @@ impl Type {
         Type::Sleeve,
         Type::Steel,
         Type::Bolt,
+        Type::Nailing,
         Type::Solid,
     ];
 
@@ -139,6 +141,7 @@ impl Type {
             Type::Sleeve => "sleeve",
             Type::Steel => "steel",
             Type::Bolt => "bolt",
+            Type::Nailing => "nailing",
             Type::Solid => "solid",
         }
     }
@@ -322,7 +325,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 18] = [
+pub static ENTRIES: [Entry; 19] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -494,6 +497,15 @@ pub static ENTRIES: [Entry; 18] = [
         draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
         example: "{\"id\":\"cap_bolts\",\"type\":\"bolt\",\"diameter\":0.75,\"grip\":0.875,\"count\":2,\"spacing\":3.5,\"at\":{\"to\":[0,0]}}",
         traits: Traits { default_anchor: "head_bearing", ..Traits::NONE },
+    },
+    Entry {
+        ty: Type::Nailing,
+        summary: "Nails/screws from their `members`: face, toenail, panel edge, field.",
+        parts: "none",
+        anchors: "the 9 box anchors of the fasteners' extent",
+        draws: "Section, plan, elevation: a nail lying in the drawing plane is its shank with a head bar (toenails angled), one seen end-on is a dot (screws: a circle with a cross); in iso a dot on the face the heads are on. Placement comes from `members` (the first holds the heads): face finds the joint face of the first two and lays `rows` x `count` (or @ `spacing`) on it; edge rows run at `edge_distance` inside each panel edge and keep only nails with framing behind; field rows follow the intermediate framing. Own members never hide the nails; a section draws the nails at or behind its cut that no cut solid covers, and a row seen end-on where it crosses the cut. A note targeting it without `text` prints its text form. Checks: W_NAIL_MEMBERS (members do not touch), W_NAIL_EDGE (edge distance, edges without framing), W_NAIL_SPACING, W_NAIL_LENGTH (points out the far face, short penetration), W_NAIL_HIDDEN (a view draws none of them).",
+        example: "{\"id\":\"splice_nails\",\"type\":\"nailing\",\"members\":[\"upper_plate\",\"lower_plate\"],\"size\":\"16d\",\"count\":8,\"rows\":2,\"through\":true}",
+        traits: Traits::NONE,
     },
     Entry {
         ty: Type::Solid,

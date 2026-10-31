@@ -71,6 +71,13 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
     if !spec.members.draws(comp) {
         return None;
     }
+    if !comp.built.nails.is_empty() {
+        let marks: Vec<V2> = match &env.landing {
+            Landing::Section(sec) => sec.nail_marks.iter().filter(|m| m.0 == comp.index).map(|m| m.1).collect(),
+            Landing::Iso(iso) => iso.nail_marks.iter().filter(|m| m.0 == comp.index).map(|m| m.1).collect(),
+        };
+        return nail_candidates(&marks, env.crop);
+    }
     let mut shapes_src: Vec<Vec<V2>> = Vec::new();
     let h = env.style.text_height_in * env.s;
     match &mut env.landing {
@@ -139,6 +146,21 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
         return Some(c);
     }
     Some(shape::candidates_for(&shapes, lp.inset, lp.p, h))
+}
+
+/// Landing candidates on drawn fasteners (SPEC 27.4): the one nearest their middle first, then the others outward.
+fn nail_candidates(marks: &[V2], crop: crate::geom::Box) -> Option<Vec<V2>> {
+    let inside: Vec<V2> = marks.iter().copied().filter(|m| crop.contains(*m)).collect();
+    if inside.is_empty() {
+        return None;
+    }
+    let n = inside.len() as f64;
+    let c = inside.iter().fold(V2::init(0.0, 0.0), |a, m| a.add(m.scale(1.0 / n)));
+    let mut out = inside;
+    crate::sort::stable(&mut out, |a, b| a.dist(c) < b.dist(c));
+    out.dedup_by(|a, b| a.eql(*b, 1e-6));
+    out.truncate(12);
+    Some(out)
 }
 
 #[derive(Clone, Debug)]

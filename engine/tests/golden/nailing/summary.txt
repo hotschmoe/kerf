@@ -1,0 +1,36 @@
+DOC nailing  28 components  4 views  0 errors  0 warnings  0 acknowledged
+ a_stud        lumber 2x4 y narrow run y L=1'-0" [x7 x @ 1'-4"] x 8"..8'-9 1/2"   y 0"..1'-0"
+ a_lo_l        lumber 2x4 x narrow run x L=6'-0"           x 0"..6'-0"       y 1'-0"..1'-1 1/2"
+ a_lo_r        lumber 2x4 x narrow run x L=3'-4"           x 6'-0"..9'-4"    y 1'-0"..1'-1 1/2"
+ a_up_l        lumber 2x4 x narrow run x L=2'-0"           x 0"..2'-0"       y 1'-1 1/2"..1'-3"
+ a_up_r        lumber 2x4 x narrow run x L=7'-4"           x 2'-0"..9'-4"    y 1'-1 1/2"..1'-3"
+ a_nail_l      nailing face (8) 16d NAILS EA. SIDE OF SPLICE: 8 nails (0.162 x 3 1/2"), a_up_l -> a_lo_l x 1 5/8"..1'-10 3/8" y 11 1/2"..1'-3"
+ a_nail_lap    nailing face (8) 16d NAILS EA. SIDE OF SPLICE: 8 nails (0.162 x 3 1/2"), a_up_r -> a_lo_l x 2'-1 5/8"..5'-10 3/8" y 11 1/2"..1'-3"
+ a_nail_r      nailing face (8) 16d NAILS STAGGERED: 8 nails (0.162 x 3 1/2"), a_up_r -> a_lo_r x 6'-1 5/8"..7'-10 3/8" y 11 1/2"..1'-3"
+ a_toe         nailing toenail (2) 8d TOENAILS: 8 nails (0.131 x 2 1/2"), a_stud -> a_lo_l x 8"..4'-9 1/2"   y 11 3/16"..1'-1 5/16"
+ b_rim         lumber 3x10 upright run z                   x 0"..2 1/2"      y -9 1/4"..0"
+ b_blk         lumber 2x10 upright run z L=1'-2 1/2"       x 2 1/2"..4"      y -9 1/4"..0"
+ b_plate       lumber 2x6 flat run z                       x 0"..5 1/2"      y 0"..1 1/2"
+ b_wblk        lumber 2x4 upright run z L=1'-2 1/2"        x 2"..3 1/2"      y 1 1/2"..5"
+ b_shtg        panel osb 7/16" x 1'-4" run y               x -7/16"..0"      y -9 1/4"..6 3/4"
+ b_sill_nails  nailing face 16d SILL NAILING @ 8" O.C. STAGGERED: 12 nails (0.162 x 3 1/2"), b_plate -> b_rim -> b_blk x 13/16"..1 11/16" y -2"..1 1/2"
+ b_toe         nailing toenail (2) 8d TOENAILS: 2 nails (0.131 x 2 1/2"), b_wblk -> b_plate x 2"..3 1/2"      y 3/16"..2 5/16"
+ b_en          nailing edge 6d @ 6" O.C. EDGE NAILING: 9 nails (0.113 x 2"), b_shtg -> b_rim x -7/16"..1 9/16" y -8 7/8"..-8 7/8"
+ b_sds         nailing face (2) SDS25300 SCREWS: 2 screws (0.25 x 3"), b_blk -> b_rim x 1"..4"          y -6 3/4"..-2 1/2"
+ c_sill        lumber 2x6 x PT narrow run x L=8'-0"        x 0"..8'-0"       y 0"..1 1/2"
+ c_chord       lumber 2x6 y narrow run y L=7'-9" [x2 x @ 7'-10 1/2"] x 0"..8'-0"       y 1 1/2"..7'-10 1/2"
+ c_stud        lumber 2x6 y narrow run y L=7'-9" [x5 x @ 1'-4"] x 1'-3 1/4"..6'-8 3/4" y 1 1/2"..7'-10 1/2"
+ c_tp          lumber 2x6 x narrow run x L=8'-0"           x 0"..8'-0"       y 7'-10 1/2"..8'-0"
+ c_shtg_l      panel plywood 8'-0" x 4'-0" run x           x 0"..4'-0"       y 0"..8'-0"
+ c_shtg_r      panel plywood 8'-0" x 4'-0" run x           x 4'-0"..8'-0"    y 0"..8'-0"
+ c_en_l        nailing edge 8d @ 6" O.C. EDGE NAILING: 48 nails (0.131 x 2 1/2"), c_shtg_l -> c_sill -> c_chord#0 -> c_stud#2 -> c_tp x 3/8"..3'-11 5/8" y 3/8"..7'-11 5/8"
+ c_fn_l        nailing field 8d @ 12" O.C. FIELD NAILING: 18 nails (0.131 x 2 1/2"), c_shtg_l -> c_stud x 1'-4"..2'-8"    y 1 1/2"..7'-10 1/2"
+ c_en_r        nailing edge 8d @ 6" O.C. EDGE NAILING: 48 nails (0.131 x 2 1/2"), c_shtg_r -> c_sill -> c_stud#2 -> c_chord#1 -> c_tp x 4'-0 3/8"..7'-11 5/8" y 3/8"..7'-11 5/8"
+ c_fn_r        nailing field 8d @ 12" O.C. FIELD NAILING: 18 nails (0.131 x 2 1/2"), c_shtg_r -> c_stud x 5'-4"..6'-8"    y 1 1/2"..7'-10 1/2"
+COVERAGE  6/6 requested elements covered
+ ok       (8) 16d each side of splice a_nail_l, a_nail_lap
+ ok       8d toenails               a_toe, b_toe
+ ok       edge nailing              b_en, c_en_l, c_en_r, view C
+ ok       8d @ 12" field nailing    c_fn_l, c_fn_r
+ ok       SDS screws                b_sds
+ ok       sill nailing              b_sill_nails, view B

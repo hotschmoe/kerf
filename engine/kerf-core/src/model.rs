@@ -322,6 +322,23 @@ pub struct Built {
     pub abs_z: bool,
     /// Angle (radians, CCW) of the top surface that `slope: "@id"` follows (types with `has_pitch`).
     pub pitch: f64,
+    /// Fasteners of a `nailing` component, in world coordinates (SPEC 27.4).
+    pub nails: Vec<Nail>,
+    /// Indices of the components a `nailing` joins: its own members never hide its nails.
+    pub nail_stack: Vec<u32>,
+}
+
+/// One nail or screw in world [x, y, z]: the head on the face it is driven through, the tip where the shank ends.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Nail {
+    pub head: [f64; 3],
+    pub tip: [f64; 3],
+    pub dia: f64,
+    pub screw: bool,
+    /// Unit direction of the nail's row and the o.c. spacing along it (zero for a lone nail): a section counts a row it
+    /// sees end-on as cut within half a spacing of the plane.
+    pub row: [f64; 3],
+    pub pitch: f64,
 }
 
 pub const BOX_ANCHOR_NAMES: [&str; 9] = [
