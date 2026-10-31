@@ -102,6 +102,15 @@ geometrically (tolerance 1e-3).
 - Warnings: `W_NEAR_MISS` looks at axis-aligned `lumber` only (panels are excluded: the reference details leave small gaps
   there); `W_FLOATING` / `W_UNTREATED_CONTACT` use 3D proximity (plan distance and z gap both <= 1/32"); `W_COVER` host is
   the concrete/cmu outline containing the bar.
+- Per-view geometry checks (issue #5, SPEC 9): `validate::run` groups the views by the components they draw (compiled,
+  `visible`, not omitted) and runs overlap, floating, untreated, cover, near-miss and short-slope once per group;
+  `each_set` merges identical diagnostics and appends ` (in view(s) ...)` only when a finding misses some views, so
+  documents without `omit` print exactly what they printed before (goldens unchanged). On the 36 MASS details that use
+  `omit`, with their W_OVERLAP/W_NEAR_MISS acknowledgements stripped, warnings went 628 -> 267 (W_OVERLAP 573 -> 200,
+  W_NEAR_MISS 39 -> 50, W_FLOATING 0 -> 1); what is left is within one scenario (100 are S-50.07's 0.01-0.02 sq in grid
+  overlaps), plus near-misses that another scenario's lumber used to hide and two real misses the global check could
+  not see (S-60.03 view D: the parallel joist floats; S-40.02 view B: bottom chord 3" short of the ledger). Near-miss
+  blockers are still lumber only, so a panel in the gap (subfloor under a wall plate) does not block.
 - Lengths print as `3'-0 1/4"` (feet with zero inches keep the `0`). Keyed notes (SPEC 24, view `notes_style` or style
   `notes.mode`) route the number tags through the same column layout as leader text, then place the DETAIL NOTES list
   outside everything else (`list_items`), so leader output is unchanged by the feature.
@@ -203,3 +212,10 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - SPEC 13 says `kerf export` takes `format: "svg"|"dxf"|"pdf"`; the engine also accepts `png`, and PDF export frames the
   drawing on a sheet by default while SVG/DXF/PNG do not. Worth one sentence in 13/13.2.
 - SPEC 12 `3'-0 1/4"` versus `3'-1/4"` for feet with zero whole inches and a fraction: the engine prints the former.
+- Issue #5 asks for checks over the components a view draws, "not omitted and not out of `shown`". Read as: compiled,
+  `visible: true`, not in the view's `omit` (`shown: "dashed"` members are already exempt). Fills stay in iso sets
+  (an iso hides them for drawing reasons, not because they are absent). A document without views keeps today's set,
+  invisible components included. W_UNTREATED_CONTACT and W_COVER run per view too (same pair logic); `W_SHORT_SLOPE`
+  keeps the first section view's explicit crop for every view (per-view crops would be a separate behaviour change).
+  The view list is printed only when a finding is absent from some view, so single-view and omit-free documents read
+  as before.
