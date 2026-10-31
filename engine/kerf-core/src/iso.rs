@@ -6,6 +6,7 @@
 //! side face per profile segment); edges are tested against front-facing faces on a uniform grid.
 
 use crate::clip;
+use crate::compile;
 use crate::drawing::{HatchItem, Item, PathItem, RegionItem};
 use crate::geom::{self, Box, Pt, V2};
 use crate::hatch;
@@ -19,6 +20,7 @@ use crate::shape::{self, Shape};
 use crate::sort;
 use crate::style::{Role, Style};
 use crate::view::{self, ViewSpec};
+use crate::voids;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -70,6 +72,9 @@ struct IsoPrism {
     embedded: bool,
     is_fill: bool,
     outline: OutlineMode,
+    /// Per cap (z0, z1): the outline of the touching slab of the same member where a void split it (SPEC 26.4); the
+    /// cap's edges along it are not drawn.
+    seam: [Vec<[V2; 2]>; 2],
 }
 
 /// A visible face: outer loop and holes in paper-projected model units.
@@ -406,6 +411,13 @@ fn src_of(c: &Comp, instance: u32) -> String {
 fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPrism>) {
     let crop_loop: Option<Vec<V2>> =
         crop.map(|c| vec![V2::init(c.x0, c.y0), V2::init(c.x1, c.y0), V2::init(c.x1, c.y1), V2::init(c.x0, c.y1)]);
+    let cropped = |mut region: Vec<Vec<V2>>| {
+        if let Some(cl) = &crop_loop {
+            region = clip::boolean(&region, core::slice::from_ref(cl), clip::Op::Intersect);
+        }
+        region
+    };
+    let fills = spec.cutaway.then(|| voids::fill_cutters(&compile::view_prisms(scene, &spec.members), spec.cut_z));
     for c in &scene.comps {
         if c.state != State::Ok || !c.visible {
             continue;
@@ -421,6 +433,9 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
             if fill_mat && !spec.cutaway {
                 continue;
             }
+            let clipped = if fill_mat { fills.as_ref().and_then(|fc| voids::clip_fill(scene, fc, p)) } else { None };
+            let seams = [false, true]
+                .map(|hi| voids::seam_neighbors(&c.world, p, hi, |q| cropped(clip::from_region(&q.loops, 0.003))));
             let segs = if p.cmu_unit && p.role != Role::Grout {
                 mesh::cmu_split(p)
             } else {
@@ -446,10 +461,14 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
                 if fill_mat && !cap {
                     continue;
                 }
-                let mut region = clip::from_region(&p.loops, 0.003);
-                if let Some(cl) = &crop_loop {
-                    region = clip::boolean(&region, core::slice::from_ref(cl), clip::Op::Intersect);
-                }
+                let region = cropped(match &clipped {
+                    Some(pieces) => pieces.iter().flat_map(|q| clip::from_region(&q.loops, 0.003)).collect(),
+                    None => clip::from_region(&p.loops, 0.003),
+                });
+                let seam = [
+                    if (z0 - p.z0).abs() < 1e-9 { seams[0].clone() } else { Vec::new() },
+                    if !cap && (z1 - p.z1).abs() < 1e-9 { seams[1].clone() } else { Vec::new() },
+                ];
                 for (oi, outer) in region.iter().enumerate() {
                     if geom::signed_area_v(outer) <= 0.0 {
                         continue;
@@ -476,6 +495,7 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
                         embedded: p.embedded,
                         is_fill: fill_mat,
                         outline: p.outline,
+                        seam: seam.clone(),
                     });
                 }
             }
@@ -511,6 +531,7 @@ fn mk_face(iso: &mut Iso, n: [f64; 3], verts: &[[f64; 3]], holes3: &[Vec<[f64; 3
 fn add_prism(iso: &mut Iso, pi: usize) {
     let Some(ip) = iso.prisms.get(pi) else { return };
     let (z0, z1, cap_cut, ip_pen) = (ip.z0, ip.z1, ip.cap_cut, ip.pen);
+    let seam = ip.seam.clone();
     let loops: Vec<FLoop> = ip.loops.iter().map(|l| flatten_sharp(l)).collect();
     let Some(first) = loops.first() else { return };
     let lift = |pts: &[V2], z: f64| -> Vec<[f64; 3]> { pts.iter().map(|p| [p.x, p.y, z]).collect() };
@@ -538,25 +559,31 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             let q = fl.pts[(i + 1) % n];
             let sf = side_faces[i];
             let top_pen = pen_of(iso, ip_pen, ftop, sf, cap_cut);
-            iso.edges.push(Edge {
-                a: [p.x, p.y, z1],
-                b: [q.x, q.y, z1],
-                pen: top_pen,
-                prism: pi,
-                f1: ftop,
-                f2: sf,
-                chain,
-            });
+            for [t0, t1] in cap_pieces(p, q, &seam[1]) {
+                let (a, b) = (p.lerp(q, t0), p.lerp(q, t1));
+                iso.edges.push(Edge {
+                    a: [a.x, a.y, z1],
+                    b: [b.x, b.y, z1],
+                    pen: top_pen,
+                    prism: pi,
+                    f1: ftop,
+                    f2: sf,
+                    chain,
+                });
+            }
             let bot_pen = pen_of(iso, ip_pen, fbot, sf, false);
-            iso.edges.push(Edge {
-                a: [p.x, p.y, z0],
-                b: [q.x, q.y, z0],
-                pen: bot_pen,
-                prism: pi,
-                f1: fbot,
-                f2: sf,
-                chain: chain + 8,
-            });
+            for [t0, t1] in cap_pieces(p, q, &seam[0]) {
+                let (a, b) = (p.lerp(q, t0), p.lerp(q, t1));
+                iso.edges.push(Edge {
+                    a: [a.x, a.y, z0],
+                    b: [b.x, b.y, z0],
+                    pen: bot_pen,
+                    prism: pi,
+                    f1: fbot,
+                    f2: sf,
+                    chain: chain + 8,
+                });
+            }
         }
         for i in 0..n {
             let p = fl.pts[i];
@@ -572,6 +599,11 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             iso.edges.push(Edge { a: [p.x, p.y, z0], b: [p.x, p.y, z1], pen, prism: pi, f1: prev, f2: cur, chain });
         }
     }
+}
+
+/// The parts of the cap edge p-q to draw: all of it, or where it is a seam, what the touching slab does not continue.
+fn cap_pieces(p: V2, q: V2, seam: &[[V2; 2]]) -> Vec<[f64; 2]> {
+    if seam.is_empty() { vec![[0.0, 1.0]] } else { geom::uncovered(p, q, seam) }
 }
 
 fn pen_of(iso: &Iso, pen: Option<Pen>, f1: usize, f2: usize, cut_cap_edge: bool) -> Pen {

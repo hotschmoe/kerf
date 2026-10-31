@@ -20,6 +20,7 @@ use crate::validate;
 use crate::view;
 use alloc::borrow::Cow;
 use alloc::format;
+use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -470,7 +471,8 @@ fn inspect_at(l: &Loaded, q: &Value) -> Result<Value, InspectError> {
     let mut sec = Section::new(&l.scene, &spec, &prisms);
     sec.build();
     let mut hits = Vec::new();
-    for (i, p) in prisms.iter().enumerate() {
+    let drawn = Rc::clone(&sec.prisms);
+    for (i, p) in drawn.iter().enumerate() {
         if sec.cls[i] == Class::Drop || p.kind != model::Kind::Body {
             continue;
         }

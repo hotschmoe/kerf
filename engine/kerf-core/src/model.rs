@@ -194,6 +194,11 @@ pub struct Prism {
     pub face_tie: bool,
     /// Seen lengthwise (steel in elevation or plan): a section cut through it draws as an elevation (outlines, no fill).
     pub lengthwise: bool,
+    /// The cap at z0 / z1 is where a void split the member along z (SPEC 26.4), not a face: iso and mesh draw only the
+    /// part of that cap's outline the touching slab of the same member does not continue.
+    pub seam: [bool; 2],
+    /// Where the CMU running bond starts along z when a void split the wall into slabs (None: at z0).
+    pub bond_z0: Option<f64>,
 }
 
 impl Default for Prism {
@@ -225,6 +230,8 @@ impl Default for Prism {
             dashed: false,
             face_tie: false,
             lengthwise: false,
+            seam: [false; 2],
+            bond_z0: None,
         }
     }
 }

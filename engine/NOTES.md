@@ -212,6 +212,30 @@ geometrically (tolerance 1e-3).
   sketches and the table at `at`): 143 -> 2 components, 144 -> 2 warnings under --strict (the two acknowledged
   W_FLOATING hook sketches; W_ACK_UNUSED and the 141 cell solids gone), coverage 14/14, 91 KB -> 12 KB of JSON. Wasm
   (wasm-opt -Oz): 788,276 -> 837,511 raw, 347,996 -> 368,624 gzip -9 (layout code and the diagnostic/schema text).
+- Subtracted solids (issue #14, SPEC 26.4): `voids.rs`. `apply` runs at the end of `compile` (after every placement, so a
+  void never adds a placement dependency or a cycle): it collects each host's `voids` entries and the sleeves whose
+  `through` names it, cuts the host's world prisms (z-split at the void ends, `Prism.seam` marks the internal caps,
+  `Prism.bond_z0` keeps the CMU bond) and keeps the flattened cutters on `Comp.voids` for W_COVER. A void wholly inside
+  a region adds its exact loop as a hole (sleeve circles stay arcs in DXF); anything else is the flattened boolean, and
+  then every slab of that prism is flattened the same way so seams match along arcs. Iso (`IsoPrism.seam`) and the mesh
+  (`extrude(.., seam)`) draw a seam cap edge only where `geom::uncovered` finds it is not on the touching slab
+  (`voids::seam_neighbors`). The mesh now extrudes holes: `bridge_holes` joins each hole to the outer loop (rightmost
+  hole vertex to the nearest visible outer vertex) and `ear_clip` skips vertices that coincide with the ear's corners;
+  loops without holes give byte-identical meshes. Fill clipping is per view: `voids::clip_fills` in `Section::new`
+  (so any 2D view that builds a `Section` gets it) and `clip_fill` per prism in iso `gather` (cutaway caps); `load.rs`
+  (`inspect at`) now walks `sec.prisms` because a clipped fill can be several prisms. `shape::shapes_of` gives a hole
+  to the innermost outer loop only (nested sleeve rings used to hand the bore to the sleeve ring and the note found no
+  landing). Mesh volumes check out exactly (closure pour 434 sq in x 24 less column, plate and grout = 9437.25 cu in; a
+  stem less a 5 1/2" sleeve within the flattening). The 47 MASS details as drawn: unchanged except s-10-08 (the
+  shoring strut inside the backfill no longer overlaps: its acknowledgement is now W_ACK_UNUSED) and the W_OVERLAP
+  fixes in s-80-01 that now print the voids op; 47 docs `kerf check --strict` 0 errors / 790 warnings before and after.
+  Rebuilt on copies: s-10-02 A-C and s-10-04 A/B/D with plain earth and base rectangles draw the same as the
+  hand-notched polygons (warnings unchanged: 5 and 0); s-80-01 A as one closure polygon `voids: [a_column,
+  a_base_plate, a_grout]` draws as the two traced halves did, follows an HSS10x10 with no edit, and the B2 leave-outs
+  with `voids: [pm_col]` drop both acknowledged W_OVERLAPs (7 warnings incl. 2 acknowledged -> 5); s-10-08 with three
+  `sleeve` components (pipe 4", packing joint_filler) instead of nine nested `solid` circles reads like the reference
+  (sleeve and pipe rings, open bore) and has 0 warnings (was 1 acknowledged). Time on the 47: noise (5.04 s -> 4.86 s for
+  every view's `kerf drawing` + `check`).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -296,7 +320,14 @@ unavailable, tree kill by job object, `.gitattributes` forcing LF (CRLF in embed
 over-long command lines. CI runs the Windows gates against the shipped build on real Windows runners.
 
 ## Known gaps
-- `solid` / `polygon` profiles with holes are not supported (profiles are single loops; the mesh ignores holes).
+- `solid` / `polygon` profiles with holes are not supported (profiles are single loops); holes come from `voids` and
+  sleeves (SPEC 26.4).
+- Subtracted solids (#14): the mesh does not clip fills (`mesh` with `include_fills` still shows earth through a footing; only
+  section and cutaway-iso caps are clipped); iso fills still do not occlude what is behind them; `rebar.place` and the
+  W_COVER host test use the host outline without its voids (a bar placed into a void is not reported as outside; its
+  cover is measured to the void edge); a component void is the member's envelope with holes filled, so concrete between
+  the flanges of an encased W needs the flanges and web named as parts (`"beam.top_flange"`, ...) or shapes; sleeves
+  seen lengthwise (run x/y) are rectangular tubes in 3D (2.5D, like pipe in elevation).
 - Hatch under dimension/label text is knocked out in SVG/PDF only (the DXF HATCH uses the pattern, not lines).
 - PDF content streams are uncompressed (about 150 KB per sheet).
 - Allocation churn: glibc malloc, not a per-call arena (the measured bound is 0.77x in-process; a safe arena for the
@@ -412,6 +443,17 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - "Compact by-code listing" read as: group by (code, reason), one line each with the count and up to six components;
   per-warning I_ACK lines left the summary (they are still in the JSON and in `--strict`). The DOC line always shows
   `N acknowledged`, so every golden summary.txt changed by that suffix.
+- Issue #14 `fill.except: [ids]` "restricts the clipping to named components": read as "these components do not clip
+  the fill" (the fill keeps its hatch under them); W_OVERLAP stays exempt for them (fill vs solid is never an overlap).
+- Issue #14 fills are clipped by the solids the view's plane cuts (z0 < cut_z < z1 of the member's envelope), not by
+  beyond members: a fill is a cut region, and a beyond member behind it is hidden by it as before. Fills never clip
+  fills (gravel on earth meets edge to edge as drawn).
+- Issue #14 voids are geometry, not view membership: a host loses its voids in every view, also where the void member
+  is omitted or `visible: false` (the hole is in the concrete).
+- Issue #14 proposes `concrete.sleeves: [...]` or "a small `pipe` type". Chose a `sleeve` component (own id, notes target
+  `s.sleeve` / `s.fill` / `s.pipe`, normal placement) with `through` naming hosts, which is the same mechanism as host
+  `voids` (one code path); a block-out without a sleeve is a `voids` shape. Sizes from the drafting phrase "pipe to
+  clear sleeve by 1/2" all around": `pipe` + `clearance` 0.5 + `wall` 0.25, or `od`.
 - The drawing IR's `acknowledged` is per view: acknowledged warnings whose acknowledging component that view draws.
   It is omitted (not `[]`) for documents without `acknowledge`, so no existing drawing golden changed.
 - Issue #6 proposes `kind: "sheet"` for a geometry-free view. Chosen: `kind: "schedule"` (what the view holds; "sheet"

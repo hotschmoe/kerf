@@ -66,7 +66,8 @@ pub struct Section<'s> {
 
 impl<'s> Section<'s> {
     pub fn new(scene: &'s Scene<'s>, spec: &'s ViewSpec<'s>, prisms_in: &[Prism]) -> Section<'s> {
-        let prisms: Rc<[Prism]> = hardware::thicken_thin_hardware(prisms_in, spec.scale).into();
+        let clipped = crate::voids::clip_fills(scene, prisms_in, spec.cut_z);
+        let prisms: Rc<[Prism]> = hardware::thicken_thin_hardware(&clipped, spec.scale).into();
         let eps = 1e-9;
         let reaches_behind = |p: &Prism| {
             prisms

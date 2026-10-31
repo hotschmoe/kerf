@@ -209,6 +209,9 @@ fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
             if p.comp.index == q.comp.index && p.prism.instance == q.prism.instance {
                 continue;
             }
+            if (p.prism.role == Role::Soil) != (q.prism.role == Role::Soil) {
+                continue;
+            }
             if z_gap(p.prism, q.prism) > 0.0 || (p.prism.z1.min(q.prism.z1) - p.prism.z0.max(q.prism.z0)) < 1e-6 {
                 continue;
             }
@@ -240,10 +243,40 @@ fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
                     fmt_ft_in(p.prism.z0.max(q.prism.z0)),
                     fmt_ft_in(p.prism.z1.min(q.prism.z1)),
                 ),
-                "move or resize one of them so they only touch, or mark the inner one embedded:true if it is reinforcement or hardware".to_string(),
+                overlap_fix(p, q),
             );
         }
     }
+}
+
+/// The fix for an overlap: a member cast into concrete or masonry is subtracted from it (`voids`, or a sleeve's
+/// `through`, SPEC 26.4); otherwise the pieces should only touch.
+fn overlap_fix(p: &Pf<'_>, q: &Pf<'_>) -> String {
+    const PLAIN: &str = "move or resize one of them so they only touch, or mark the inner one embedded:true if it is reinforcement or hardware";
+    let (host, inner) = match (p.comp.ty.traits.takes_voids, q.comp.ty.traits.takes_voids) {
+        (true, false) => (p.comp, q.comp),
+        (false, true) => (q.comp, p.comp),
+        (true, true) if q.prism.role == Role::Grout && p.prism.role != Role::Grout => (p.comp, q.comp),
+        (true, true) if p.prism.role == Role::Grout && q.prism.role != Role::Grout => (q.comp, p.comp),
+        _ => return PLAIN.to_string(),
+    };
+    if inner.ty.traits.passes_through {
+        return format!(
+            "if '{}' passes through '{}', cut its hole: {{\"op\": \"update\", \"path\": \"components/{}\", \"value\": {{\"through\": \"{}\"}}}}; else {PLAIN}",
+            inner.id, host.id, inner.id, host.id
+        );
+    }
+    let mut list: Vec<Value> = host.node.get("voids").and_then(Value::arr).map(<[Value]>::to_vec).unwrap_or_default();
+    list.push(Value::String(inner.id.clone()));
+    let mut buf = Vec::new();
+    crate::json::write_compact(&mut buf, &Value::Array(list));
+    format!(
+        "if '{}' is cast into '{}', subtract it (the hole follows the member): {{\"op\": \"update\", \"path\": \"components/{}\", \"value\": {{\"voids\": {}}}}}; else {PLAIN}",
+        inner.id,
+        host.id,
+        host.id,
+        String::from_utf8_lossy(&buf)
+    )
 }
 
 /// Concrete and masonry pieces facing each other across less than this (a construction, control or keyed joint) are
@@ -380,6 +413,29 @@ fn host_edges(outline: &[Pt], xf: &Xf) -> Vec<Edge> {
         let class = if nrm.y < -0.5 {
             0
         } else if nrm.y > 0.5 {
+            1
+        } else {
+            2
+        };
+        out.push(Edge { a: p, b: q, class });
+    }
+    out
+}
+
+/// The edges of a void outline (CCW) as faces of the concrete around it: the concrete's outward normal points into the void.
+fn void_edges(l: &[V2]) -> Vec<Edge> {
+    let mut out = Vec::new();
+    for (i, &p) in l.iter().enumerate() {
+        let q = l[(i + 1) % l.len()];
+        let d = q.sub(p);
+        let len = d.len();
+        if len < 1e-9 {
+            continue;
+        }
+        let ny = d.x / len;
+        let class = if ny < -0.5 {
+            0
+        } else if ny > 0.5 {
             1
         } else {
             2
@@ -571,7 +627,12 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                         }
                     }
                     found = true;
-                    let edges = host_edges(&host.outline, xf);
+                    let mut edges = host_edges(&host.outline, xf);
+                    for v in h.voids.iter().filter(|v| v.z[0] < bp.z1 && v.z[1] > bp.z0) {
+                        for l in &v.loops {
+                            edges.extend(void_edges(l));
+                        }
+                    }
                     let zw: Vec<ZoneBox<'_>> =
                         h.built.zones.iter().map(|z| ZoneBox { name: &z.name, box_: world_box(xf, z.box_) }).collect();
                     let (req, part) = cover_for(host, &zw, centre);
