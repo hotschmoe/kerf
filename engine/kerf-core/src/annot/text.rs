@@ -130,12 +130,57 @@ pub fn items_box(font: &Font, items: &[Item]) -> Box {
     b
 }
 
-/// Greedy word wrap at `chars_in` characters; words longer than a line are split.
+/// Qualifiers that stay on the line of the dimension before them (`24" MIN.`, `16" O.C.`).
+const QUALIFIERS: [&str; 14] =
+    ["MIN", "MIN.", "MAX", "MAX.", "O.C.", "OC", "TYP", "TYP.", "CLR", "CLR.", "EA.", "EMBED", "EMBED.", "LAP"];
+
+fn is_measure(w: &str) -> bool {
+    w.bytes().any(|b| b.is_ascii_digit()) && (w.ends_with('"') || w.ends_with('\''))
+}
+
+fn is_fraction(w: &str) -> bool {
+    let b = w.as_bytes();
+    b.first().is_some_and(u8::is_ascii_digit) && w.contains('/')
+}
+
+/// The words of `text`, with the pieces of one value kept together: a whole number and its fraction (`1 1/2"`), `@`
+/// and the spacing after it, and a dimension and its qualifier (`24" MIN.`).
+fn wrap_words(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut glue_next = false;
+    for w in text.split([' ', '\t', '\r', '\n']).filter(|w| !w.is_empty()) {
+        let join = match out.last() {
+            Some(prev) => {
+                glue_next
+                    || (prev.bytes().all(|b| b.is_ascii_digit()) && is_fraction(w))
+                    || (is_measure(prev) && QUALIFIERS.iter().any(|q| w.eq_ignore_ascii_case(q)))
+            }
+            None => false,
+        };
+        match out.last_mut() {
+            Some(prev) if join => {
+                prev.push(' ');
+                prev.push_str(w);
+            }
+            _ => out.push(String::from(w)),
+        }
+        glue_next = w == "@";
+    }
+    out
+}
+
+/// Greedy word wrap at `chars_in` characters; words longer than a line are split. The pieces of one value stay on
+/// one line when it fits (`wrap_words`).
 pub fn wrap(text: &str, chars_in: usize) -> Vec<String> {
     let chars = chars_in.max(1);
     let mut lines: Vec<String> = Vec::new();
     let mut cur = String::new();
-    for word in text.split([' ', '\t', '\r', '\n']).filter(|w| !w.is_empty()) {
+    let tokens = wrap_words(text);
+    let words = tokens.iter().flat_map(|t| {
+        let parts: Vec<&str> = if t.chars().count() > chars { t.split(' ').collect() } else { alloc::vec![t.as_str()] };
+        parts
+    });
+    for word in words {
         let mut w = word;
         loop {
             let wl = w.chars().count();
