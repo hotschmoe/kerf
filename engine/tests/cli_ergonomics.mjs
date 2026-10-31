@@ -406,5 +406,50 @@ section('11. writers: parallel apply -w loses no edit, --if-match, atomic fmt -w
   check('--px must be a number', r.code === 2 && /--px must be a number/.test(r.err), r);
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('12. steel shapes, bolts and weld symbols: table errors, W_BOLT_EDGE, W_BOLT_SPACING, W_WELD_SIZE');
+{
+  const steelDoc = (extra, annotations = []) => ({
+    kerf: '0.1', id: 'stl', title: 'STEEL',
+    components: [
+      { id: 'plate', type: 'steel', shape: 'PL3/4x10', length: 10, at: { to: [0, 0] } },
+      { id: 'col', type: 'steel', shape: 'HSS4x4x1/4', orient: 'elevation', run: 'y', length: 24, at: { anchor: 'bottom_center', to: 'plate@face_top' } },
+      ...extra,
+    ],
+    views: [{ id: 'A', kind: 'section', number: '1', title: 'STEEL', cut_z: 0, annotations }],
+  });
+  let r = kerf(['schema', 'steel']);
+  check('schema steel lists the shape table and the anchors', r.code === 0 && /Shape table: W: W4x13/.test(r.out) && /HSS4x4x\(/.test(r.out) && /top_flange/.test(r.out) && /inner_top/.test(r.out) && !/[^\x00-\x7f]/.test(r.out), r.out.slice(0, 200));
+  r = kerf(['schema', 'bolt', 'weld']);
+  check('schema bolt and weld', r.code === 0 && /^bolt: /m.test(r.out) && /head_bearing/.test(r.out) && /^weld: /m.test(r.out) && /all_around/.test(r.out), r.err);
+  write('stl.kerf.json', steelDoc([{ id: 'bad', type: 'steel', shape: 'W8x19' }, { id: 'bad2', type: 'steel', shape: 'HSS5x3x5/8' }]));
+  r = kerf(['check', 'stl.kerf.json']);
+  check('unknown W size: E_PARAM names the sizes of that depth', /ERROR E_PARAM bad: W8x19 is not in the table\. W8 sizes: W8x10, .*W8x18/.test(r.out), r.out);
+  check('unknown HSS wall: E_PARAM lists the walls', /ERROR E_PARAM bad2: HSS5x3 has no 5\/8" wall in the table\. Walls: 1\/8, 3\/16/.test(r.out), r.out);
+  const bolts = { id: 'rods', type: 'bolt', diameter: 0.75, grip: 0.75, count: 2, spacing: 1.5, at: { to: { ref: 'plate@top_left', offset: [0.75, 0] } } };
+  write('stl.kerf.json', steelDoc([bolts]));
+  r = kerf(['check', 'stl.kerf.json']);
+  check('W_BOLT_EDGE: 3/4" from the plate edge < 1" (AISC J3.4)', /WARN W_BOLT_EDGE rods: .*edge distance to steel 'plate' is 3\/4" in the drawing plane, below the AISC 360 Table J3\.4 minimum of 1" for a 3\/4" bolt/.test(r.out), r.out);
+  check('W_BOLT_SPACING: 1 1/2" < 2 2/3 d', /WARN W_BOLT_SPACING rods: .*spacing 1 1\/2" is below the AISC 360 J3\.3 minimum/.test(r.out), r.out);
+  write('stl.kerf.json', steelDoc([{ ...bolts, spacing: 3, at: { to: { ref: 'plate@top_left', offset: [1.5, 0] } } }]));
+  r = kerf(['check', 'stl.kerf.json']);
+  check('bolts 1 1/2" from the edge at 3" spacing: no bolt warning', r.code === 0 && !/W_BOLT/.test(r.out), r.out);
+  const weld = { id: 'w1', type: 'weld', at: 'col@bottom_right', offset: [6, 6], size: '5/16', all_around: true, members: ['col', 'plate'] };
+  write('stl.kerf.json', steelDoc([], [weld]));
+  r = kerf(['check', 'stl.kerf.json']);
+  check('W_WELD_SIZE: 5/16 fillet on a 0.233" HSS wall', /WARN W_WELD_SIZE w1: weld 'w1': fillet size 5\/16" is larger than the 0\.2325" maximum along the edge of 'col'/.test(r.out), r.out);
+  write('stl.kerf.json', steelDoc([], [{ ...weld, size: '3/16' }]));
+  r = kerf(['check', 'stl.kerf.json']);
+  check('3/16 fillet: no weld warning', !/W_WELD_SIZE/.test(r.out), r.out);
+  r = kerf(['drawing', 'stl.kerf.json', '--view', 'A']);
+  const items = r.code === 0 ? JSON.parse(r.out).items : [];
+  check('weld symbol drawn: leader, reference line, symbol, size text, all-around circle', items.filter((i) => i.src === 'w1' && i.t === 'path').length >= 4 && items.some((i) => i.src === 'w1' && i.t === 'text' && i.s === '3/16') && items.some((i) => i.src === 'w1' && i.t === 'path' && i.closed), r.err);
+  check('HSS in elevation: hidden wall lines, never filled', items.some((i) => i.src === 'col' && i.pen === 'hidden') && !items.some((i) => i.src === 'col' && i.t === 'fill'), r.err);
+  check('plate cut in section: solid steel fill', items.some((i) => i.src === 'plate' && i.t === 'fill'), r.err);
+  write('stl.kerf.json', steelDoc([], [{ id: 'w2', type: 'weld', at: 'col@bottom_right' }]));
+  r = kerf(['check', 'stl.kerf.json']);
+  check('fillet weld without size: E_PARAM with a fix', /ERROR E_PARAM w2: weld 'w2': a fillet weld needs "size".*Fix: e\.g\. "size": "3\/16"/.test(r.out), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

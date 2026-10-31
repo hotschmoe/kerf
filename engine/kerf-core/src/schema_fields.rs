@@ -159,9 +159,9 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "annotations",
-            ty: "[note|dim|label]",
+            ty: "[note|dim|label|weld]",
             def: "[]",
-            desc: "notes, dimensions, labels in drawing order (`kerf schema note|dim|label`)",
+            desc: "notes, dimensions, labels and weld symbols in drawing order (`kerf schema note|dim|label|weld`)",
             ..Field::NONE
         },
     ],
@@ -277,6 +277,72 @@ pub static LABEL: Object = Object {
         Field { name: "offset", ty: "[dx, dy]", def: "[0, 0]", desc: "model inches added to `at`", ..Field::NONE },
     ],
     example: "{\"id\":\"l_ext\",\"type\":\"label\",\"text\":\"EXTERIOR\",\"at\":\"sill@top_left\",\"offset\":[-6,6]}",
+    ..Object::NONE
+};
+
+pub static WELD: Object = Object {
+    name: "weld",
+    brief: "AWS weld symbol at a joint",
+    summary: "AWS weld symbol (annotation of type weld): arrow to the joint, reference line, fillet / CJP / PJP symbol with its size (below the line = arrow side, above = other side), all-around circle, field-weld flag, tail text. Placed exactly where you put it (not moved by the note layout). Section views only.",
+    fields: &[
+        Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
+        Field { name: "type", ty: "\"weld\"", required: true, desc: "annotation type", ..Field::NONE },
+        Field {
+            name: "at",
+            ty: "point",
+            required: true,
+            desc: "the joint the arrow touches: \"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y], e.g. the corner where a column meets its base plate",
+            ..Field::NONE
+        },
+        Field {
+            name: "offset",
+            ty: "[dx, dy]",
+            def: "1/2\" paper up and right",
+            desc: "model inches from `at` to the elbow where the reference line starts; the reference line runs away from the arrow (dx < 0 puts it on the left)",
+            ..Field::NONE
+        },
+        Field {
+            name: "weld",
+            ty: "fillet|cjp|pjp",
+            def: "fillet",
+            desc: "fillet: triangle; cjp / pjp: bevel groove with CJP / PJP in the tail",
+            ..Field::NONE
+        },
+        Field {
+            name: "size",
+            ty: "length",
+            desc: "fillet leg or PJP groove depth, e.g. \"3/16\" (required for fillet)",
+            ..Field::NONE
+        },
+        Field {
+            name: "sides",
+            ty: "arrow|other|both",
+            def: "arrow",
+            desc: "arrow side (symbol below the line), other side (above) or both",
+            ..Field::NONE
+        },
+        Field {
+            name: "all_around",
+            ty: "bool",
+            def: "false",
+            desc: "circle at the elbow: weld all around the joint",
+            ..Field::NONE
+        },
+        Field { name: "field", ty: "bool", def: "false", desc: "field-weld flag at the elbow", ..Field::NONE },
+        Field {
+            name: "tail",
+            ty: "string",
+            desc: "tail text, e.g. \"TYP.\", \"3 SIDES\" (cjp/pjp default to CJP/PJP)",
+            ..Field::NONE
+        },
+        Field {
+            name: "members",
+            ty: "[id, id]",
+            desc: "the two steel components joined; W_WELD_SIZE then checks a fillet against the thinner part (AISC 360 J2.2b: at most t, or t - 1/16 when t >= 1/4; at least Table J2.4)",
+            ..Field::NONE
+        },
+    ],
+    example: "{\"id\":\"w_base\",\"type\":\"weld\",\"at\":\"col@bottom_right\",\"offset\":[6,6],\"weld\":\"fillet\",\"size\":\"3/16\",\"all_around\":true,\"members\":[\"col\",\"base_plate\"]}",
     ..Object::NONE
 };
 
@@ -414,7 +480,7 @@ impl Object {
 }
 
 /// Every non-component topic, in listing order.
-pub static OBJECTS: [&Object; 10] = [&DOC, &VIEW, &NOTE, &DIM, &LABEL, &CITE, &OPS, &AT, &ARRAY, &ACK];
+pub static OBJECTS: [&Object; 11] = [&DOC, &VIEW, &NOTE, &DIM, &LABEL, &WELD, &CITE, &OPS, &AT, &ARRAY, &ACK];
 
 pub fn find_object(name: &str) -> Option<&'static Object> {
     if let Some(o) = OBJECTS.iter().find(|o| o.name == name) {

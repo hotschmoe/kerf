@@ -1,6 +1,8 @@
 //! Steel connection checks over a compiled scene (warnings, never errors): bolt edge distance against AISC 360 Table J3.4
-//! (W_BOLT_EDGE) and bolt spacing against J3.3 (W_BOLT_SPACING).
+//! (W_BOLT_EDGE), bolt spacing against J3.3 (W_BOLT_SPACING) and fillet weld size against the thinner joined part, J2.2b
+//! and Table J2.4 (W_WELD_SIZE).
 
+use crate::builders::steel_shapes;
 use crate::catalog::Type;
 use crate::clip::{self, Op};
 use crate::geom::{self, FLAT_TOL, Loc, V2};
@@ -24,7 +26,8 @@ fn len_of(node: &Value, key: &str, default: f64) -> f64 {
     node.get(key).and_then(units::parse_length).unwrap_or(default)
 }
 
-pub fn run(scene: &Scene<'_>, diags: &Diags) {
+pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
+    weld_sizes(scene, doc, diags);
     for b in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Bolt) {
         let d = len_of(b.node, "diameter", 0.75);
         let count = b.node.get("count").and_then(Value::num).unwrap_or(1.0);
@@ -204,6 +207,83 @@ fn edge_distance(scene: &Scene<'_>, bc: &Comp<'_>, d: f64, diags: &Diags) {
                     s.id,
                     fmt_ft_in(need)
                 ),
+            );
+        }
+    }
+}
+
+/// A thickness as a sixteenth fraction when it is one (`1/4"`), else three decimals (`0.24"`).
+fn thk(x: f64) -> alloc::string::String {
+    let n = crate::math::round(x * 16.0);
+    if (x * 16.0 - n).abs() < 1e-6 { fmt_ft_in(x) } else { format!("{}\"", crate::model::fmt_num(x)) }
+}
+
+/// AISC 360-16 Table J2.4: minimum fillet weld size by the thinner part joined.
+fn fillet_min(t: f64) -> f64 {
+    match t {
+        t if t <= 0.25 + 1e-9 => 0.125,
+        t if t <= 0.5 + 1e-9 => 0.1875,
+        t if t <= 0.75 + 1e-9 => 0.25,
+        _ => 0.3125,
+    }
+}
+
+/// AISC 360-16 J2.2b: maximum fillet along an edge of material t thick.
+fn fillet_max(t: f64) -> f64 {
+    if t < 0.25 { t } else { t - 0.0625 }
+}
+
+fn weld_sizes(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
+    for v in doc.get("views").and_then(Value::arr).unwrap_or(&[]) {
+        let vid = v.get("id").and_then(Value::str).unwrap_or("");
+        for an in v.get("annotations").and_then(Value::arr).unwrap_or(&[]) {
+            if an.get("type").and_then(Value::str) != Some("weld")
+                || an.get("weld").and_then(Value::str).is_some_and(|k| k != "fillet")
+            {
+                continue;
+            }
+            let (Some(id), Some(size)) =
+                (an.get("id").and_then(Value::str), an.get("size").and_then(units::parse_length))
+            else {
+                continue;
+            };
+            let mut thin: Option<(f64, &str)> = None;
+            for m in an.get("members").and_then(Value::arr).unwrap_or(&[]).iter().filter_map(Value::str) {
+                let Some(c) = scene.find(m).filter(|c| c.state == State::Ok && c.ty.ty == Type::Steel) else {
+                    continue;
+                };
+                let Some(t) = c.node.get("shape").and_then(Value::str).and_then(|s| steel_shapes::lookup(s).ok())
+                else {
+                    continue;
+                };
+                if thin.is_none_or(|(tt, _)| t.t_min < tt) {
+                    thin = Some((t.t_min, m));
+                }
+            }
+            let Some((t, part)) = thin else { continue };
+            let (lo, hi) = (fillet_min(t), fillet_max(t));
+            let problem = if size > hi + 1e-6 {
+                format!(
+                    "is larger than the {} maximum along the edge of '{part}' ({} thick, AISC 360 J2.2b)",
+                    thk(hi),
+                    thk(t)
+                )
+            } else if size < lo - 1e-6 {
+                format!(
+                    "is smaller than the {} minimum for a {} thinner part (AISC 360 Table J2.4)",
+                    fmt_ft_in(lo),
+                    thk(t)
+                )
+            } else {
+                continue;
+            };
+            diags.add_fix(
+                Level::Warning,
+                "W_WELD_SIZE",
+                Some(id),
+                Some(&format!("views/{vid}/annotations/{id}/size")),
+                format!("weld '{id}': fillet size {} {problem}", fmt_ft_in(size)),
+                format!("use a fillet from {} to {}, or check the joined parts in \"members\"", fmt_ft_in(lo), thk(hi)),
             );
         }
     }

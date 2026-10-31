@@ -40,9 +40,9 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 | gate | what it proves |
 |---|---|
 | `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
-| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 5 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
-| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (24 files); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 145 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 7 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
+| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (32 files); the module has 0 imports and exactly the six ABI exports |
+| `tests/cli_ergonomics.mjs` | 159 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
 | `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
 | `tests/serve_smoke.mjs` | 190 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
 | `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
@@ -106,6 +106,16 @@ geometrically (tolerance 1e-3).
   tag with the note number at the leader and the texts in a `KEYNOTES` legend.
 - Exports: `format` is `svg|dxf|pdf|png`; PDF frames the drawing on the sheet by default, SVG/DXF/PNG do not (`sheet`).
   Materials accept an optional `role`; a material `pen` must be an engine pen.
+- Steel (SPEC 5.13, 5.14, weld in 6.2): `builders/steel_shapes.rs` is the AISC table and the designation parser,
+  `builders/steel.rs` lays the (u, v) cross-section out per orient, `builders/bolt.rs` the bolt groups, `annot/weld.rs`
+  the weld symbol, `steelcheck.rs` W_BOLT_EDGE / W_BOLT_SPACING / W_WELD_SIZE (called from `validate::run`). Two prism
+  fields carry it through the pipeline: `zoff` (a slab's z center relative to the component's, applied in
+  `compile::world_prisms`) and `lengthwise` (section: a member that reaches behind the cut is beyond, never cut; its slab
+  edges on a nearer slab of the same member are dropped in `section/beyond.rs`). Ghost prisms with `line_pts` draw open
+  hidden lines. Edge distance: side bolts sample the grip axis through the union of the ply's prisms that contain the
+  bolt's z and cast rays perpendicular to the axis; z distance to the ply's z extent counts too. Wasm: +70 KB raw,
+  +22 KB brotli (588,023 -> 658,168 raw; 224,965 -> 246,938 brotli); about 21 KB is strings and tables, the rest the
+  builders, the parser and the checks (no float formatting was pulled in).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -188,6 +198,11 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - PDF content streams are uncompressed (about 150 KB per sheet).
 - Allocation churn: glibc malloc, not a per-call arena (the measured bound is 0.77x in-process; a safe arena for the
   threaded server is real allocator work). Process start-up is dynamic glibc + libgcc_s (0.9 ms). See `PERF.md`.
+- Steel: no WT, S, HP or double angles; channel flanges draw parallel (no 2:12 inner slope); angle/channel root radii
+  are by size, not tabulated; pipe and round HSS seen lengthwise are boxes in 3D; elevation/plan members hide what is
+  behind them but things in front of the cut plane are still dropped (an elevation detail sets `cut_z` in front of
+  everything and gives in-plane members `z` explicitly, see `tests/docs/steel-beam-cap-plate.kerf.json`); weld symbols
+  are not obstacles for the note layout; no plate-on-flange fit check yet.
 - The Zig test suite's unit tests (hostile-input table, OOM sweep, layout and view tests) were not ported: tests here are
   end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
 

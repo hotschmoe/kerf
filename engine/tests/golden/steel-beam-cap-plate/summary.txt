@@ -1,0 +1,9 @@
+DOC steel-beam-cap-plate  8 components  2 views  0 errors  0 warnings
+ column        steel HSS4x4x1/4 elevation run y L=2'-6"    x -2"..2"         y -2'-6"..0"
+ cap           steel PL3/4x8 elevation run x L=10"         x -5"..5"         y 0"..3/4"
+ beam          steel W10x22 A992 elevation run x L=4'-0"   x -2'-0"..2'-0"   y 3/4"..10 15/16"
+ stiffener     steel PL1/4x2-1/2 elevation run y L=9 1/2" (until beam@top_flange_bottom) x -1/8"..1/8"     y 1 1/8"..10 9/16"
+ cap_bolts     bolt 0.75" dia. A325, grip 1 1/8", side, (2) @ 7" along x [x2 z @ 2 3/4"] x -4 1/4"..4 1/4" y -1 5/16"..1 9/16"
+ nailer        lumber 2x6 x narrow run x L=4'-0"           x -2'-0"..2'-0"   y 10 15/16"..1'-0 7/16"
+ nailer_bolts  bolt 0.5" dia. A307, grip 1 7/8", side, (2) @ 2'-0" along x x -1'-0 1/2"..1'-0 1/2" y 9 11/16"..1'-0 3/4"
+ tab_bolts     bolt 0.75" dia. A325, grip 5/8", end, (3) @ 2" along y x 1'-3 1/4"..1'-4 3/4" y 3 1/8"..8 5/8"
