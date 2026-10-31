@@ -71,8 +71,10 @@ pub static DOC: Object = Object {
     notes: concat!(
         "First build: one op {\"op\":\"set\",\"path\":\"doc\",\"value\":<whole document>}. Then small add/update/remove ops (`kerf schema ops`).\n",
         "meta.requested: [\"cmu wall\", \"bond beam\", \"H2.5A ties\"]: the designer's asks, one short phrase each, written on the first build. `kerf check` and `kerf apply` print a COVERAGE block ",
-        "(`ok <component ids>` or `MISSING` per item) and W_REQUESTED_MISSING for each missing item. An item is covered when all its words (case-insensitive, plural s ignored) appear in one component's ",
-        "id/type/label/model/size or in one note/label text, so name components and write notes with the designer's words. Finish only at full coverage; remove an item only if the designer dropped it.\n",
+        "(`ok <component ids>` or `MISSING` with the closest candidate per item) and W_REQUESTED_MISSING for each missing item. An item is covered when all its words appear in one component's ",
+        "id/type/label/model/size or in one annotation: note or label text (with its cites), dim text (or the length it measures), a weld (`3/16 fillet weld all around`, `cjp`), a view title. ",
+        "Words match ignoring case, punctuation and a plural s, through the house abbreviations both ways (`each` = `EA.`, `clear` = `CLR.`, `on center` = `O.C.`) and as lengths (`15 ft` = `15'-0\"`), ",
+        "so write the designer's own words and draw or note them in house style. Finish only at full coverage; remove an item only if the designer dropped it.\n",
         "meta.references: [{\"path\": \"refs/0123_exterior_wall_at_stem.png\", \"caption\": \"EXTERIOR WALL AT STEM\"}]: the 1-3 snips of real drawings the detail is redrawn from, shown next to the drawing in `kerf serve`. ",
         "path* is relative to the document's folder (forward slashes, no `..`, no absolute paths or URLs) and names a png, jpg, jpeg, webp, gif, svg or pdf; caption is optional text. ",
         "`kerf check` warns W_REFERENCE_FILE when a path is not usable or the file does not exist."
@@ -196,7 +198,7 @@ pub static NOTE: Object = Object {
             name: "text",
             ty: "string",
             required: true,
-            desc: "keyed views: optional on a note whose `key` another note already has. House format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOTT. CONC. GYP. BD. REINF. PT (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
+            desc: "keyed views: optional on a note whose `key` another note already has. House format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOTT. CONC. GYP. BD. REINF. PT; penny sizes `16d` and ACI symbols `db` `ld` `ldh` `f'c` `fy` keep their case, a house abbreviation may end the text (`PER ARCH.`) (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
             ..Field::NONE
         },
         Field {

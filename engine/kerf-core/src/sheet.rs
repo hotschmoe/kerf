@@ -5,8 +5,9 @@
 
 use crate::annot;
 use crate::drawing::{Drawing, FillItem, Item, PathItem, TextItem};
-use crate::font::{self, Font};
+use crate::font::Font;
 use crate::geom::{Pt, V2};
+use crate::house;
 use crate::pen::{LayerKey, Pen};
 use crate::style::Style;
 use alloc::format;
@@ -75,8 +76,8 @@ fn fit_h(font: &Font, s: &str, h: f64, maxw: f64) -> f64 {
     if w <= maxw { h } else { (h * maxw / w).max(h * 0.6) }
 }
 
-fn upper(s: &str) -> String {
-    String::from_utf8_lossy(&font::upper_ascii(s.as_bytes())).into_owned()
+fn upper(s: &str, st: &Style) -> String {
+    house::upper(s, st)
 }
 
 pub fn with_sheet<'a>(d: Drawing<'a>, font: &Font) -> Drawing<'a> {
@@ -104,15 +105,15 @@ pub fn with_sheet<'a>(d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     let ratios = [3.4, 2.0, 1.2, 1.15, 1.2, 1.3];
     let sum: f64 = ratios.iter().sum();
     let detail_no = if d.sheet_no.is_empty() { d.number.clone() } else { format!("{}/{}", d.number, d.sheet_no) };
-    let author = if d.author.is_empty() { String::from("KERF") } else { upper(&d.author) };
+    let author = if d.author.is_empty() { String::from("KERF") } else { upper(&d.author, st) };
     let project = if !d.project.is_empty() {
-        upper(&d.project)
+        upper(&d.project, st)
     } else if !st.project.is_empty() {
-        upper(&st.project)
+        upper(&st.project, st)
     } else {
         String::new()
     };
-    let title = upper(if d.title.is_empty() { &d.doc_title } else { &d.title });
+    let title = upper(if d.title.is_empty() { &d.doc_title } else { &d.title }, st);
     let labels = ["DETAIL", "PROJECT", "SCALE", "DRAWN", "DATE", "DETAIL NO"];
     let values = [
         annot::ascii_fold(&title),
@@ -145,7 +146,7 @@ pub fn with_sheet<'a>(d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     let mut foot = String::new();
     if !d.code_basis.is_empty() {
         foot.push_str("CODE BASIS: ");
-        foot.push_str(&upper(&d.code_basis));
+        foot.push_str(&upper(&d.code_basis, st));
     }
     if d.has_unverified {
         if !foot.is_empty() {

@@ -16,6 +16,7 @@ mod dxf;
 mod font;
 mod geom;
 mod hatch;
+mod house;
 mod iso;
 pub mod json;
 mod limits;

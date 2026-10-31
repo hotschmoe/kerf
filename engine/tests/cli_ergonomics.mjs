@@ -359,7 +359,7 @@ section('8. v0.1.5 (SPEC 21): meta.requested coverage');
   write('req.json', { ops: [{ op: 'update', path: 'meta', value: { requested: ['stud wall', 'bond beam', 'H2.5A ties', 'sill'] } }], why: 'record the request' });
   r = kerf(['apply', 'c.kerf.json', 'req.json', '-w']);
   check('apply prints the COVERAGE block: ok with component ids, MISSING for the rest', r.code === 0 && /^COVERAGE  \d\/4 requested elements covered/m.test(r.out) && /^ MISSING  bond beam$/m.test(r.out) && /^ ok       sill\s+sill/m.test(r.out), r.out);
-  check('one W_REQUESTED_MISSING per missing item, with a fix', (r.out.match(/^WARN W_REQUESTED_MISSING/gm) || []).length >= 2 && /requested element "bond beam" \(meta\.requested\) matches no component id, type, label, model or note text.* Fix: build it/.test(r.out), r.out);
+  check('one W_REQUESTED_MISSING per missing item, with a fix', (r.out.match(/^WARN W_REQUESTED_MISSING/gm) || []).length >= 2 && /requested element "bond beam" \(meta\.requested\) matches no component \(id, type, label, model, size\) or annotation \(note, label, dim text, weld, view title\).* Fix: build it/.test(r.out), r.out);
   const chk = kerf(['check', 'c.kerf.json']);
   check('check prints the same COVERAGE block', /^COVERAGE  /m.test(chk.out) && /^ MISSING  H2\.5A ties$/m.test(chk.out) && chk.code === 0, chk.out);
   write('req2.json', [{ op: 'add', path: 'components', value: { id: 'bond_beam', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'sill@top_left' } } },
@@ -710,6 +710,79 @@ section('15. #15 cut fill under rotated bolts; #16 rebar place in polygons, E_PL
   check('unknown vertex anchor: the error lists vertex_1..vertex_6 and edge_k_mid', /vertex_6/.test(r.out) && /edge_6_mid/.test(r.out), r.out);
   r = kerf(['schema', 'cmu_wall', 'rebar']);
   check('schema documents cmu cell anchors and path bar anchors', /cell_left/.test(r.out) && /bend_k/.test(r.out) && /seg_k_mid/.test(r.out) && /E_PLACE_OUTSIDE/.test(r.out), r.out.slice(0, 300));
+}
+
+// ---------------------------------------------------------------------------------------------------
+// issue #18: house-style lint false positives, case on the drawing, coverage through house abbreviations (SPEC 25.3)
+section('#18. house style lint, kept case, requested coverage normalization');
+{
+  kerf(['new', 'hs.kerf.json', '--template', 'section']);
+  const note = (id, text, extra = {}) => ({ op: 'add', path: 'views/A/annotations', value: { id, type: 'note', text, target: 'stud', ...extra } });
+  const ok = [
+    note('n_penny', '(2) 16d NAILS EA. SIDE, 8d @ 6" O.C.'),
+    note('n_aci', 'LAP 48 db MIN., ldh PER ACI, fy = 60 KSI, f\'c = 3,000 psi'),
+    note('n_model', 'SIMPSON HU212-2/HUC212-2 HANGER'),
+    note('n_arch', 'FINISH PER ARCH.'),
+    note('n_type', 'TYPE I CEMENT GROUT'),
+    note('n_cfr', 'GUARDRAIL PER OSHA', { cite: [{ code: 'OSHA', section: '1926.755(a)(1)', status: 'suggested' }] }),
+  ];
+  let r = kerf(['apply', 'hs.kerf.json', '--ops', JSON.stringify(ok), '-w', '--why', 'house exceptions']);
+  check('16d/8d, db/ldh/fy/f\'c/psi, HU212-2/HUC212-2, PER ARCH., TYPE I: no W_NOTE_STYLE', r.code === 0 && !/W_NOTE_STYLE/.test(r.out), r.out);
+  r = kerf(['drawing', 'hs.kerf.json', '--view', 'A']);
+  const texts = r.code === 0 ? JSON.parse(r.out).items.filter((i) => i.t === 'text').map((i) => i.s).join(' | ') : '';
+  check('the drawing keeps 16d, 8d, db, ldh, f\'c, psi as written and upper-cases the rest', /\(2\) 16d NAILS EA\. SIDE/.test(texts) && /8d @/.test(texts) && /LAP 48 db MIN\., ldh PER ACI,/.test(texts) && /fy = 60 KSI/.test(texts) && /f'c = 3,000 psi/.test(texts), texts);
+  check('a citation section prints as written: 1926.755(a)(1)', /\(OSHA[ |]+1926\.755\(a\)\(1\)\)\*/.test(texts), texts);
+  check('the model number prints unchanged', /SIMPSON HU212-2\/HUC212-2/.test(texts), texts);
+
+  const bad = [
+    note('b_lower', '(2) 16d nails each side'),
+    note('b_frac', 'SIMPSON HU212-2 W/ 1-1/2" MIN. BEARING'),
+    note('b_period', 'STUD EACH.'),
+    note('b_trail', 'SHEATHING EDGE.'),
+  ];
+  r = kerf(['apply', 'hs.kerf.json', '--ops', JSON.stringify(bad), '-w', '--why', 'still wrong']);
+  check('lower-case words are still flagged, and the fix keeps 16d', /WARN W_NOTE_STYLE b_lower: .*lowercase letters.*Fix: set text to "\(2\) 16d NAILS EA\. SIDE"$/m.test(r.out), r.out);
+  check('a real dashed fraction is still flagged; the fix leaves HU212-2 alone', /WARN W_NOTE_STYLE b_frac: .*dashed fraction.*Fix: set text to "SIMPSON HU212-2 W\/ 1 1\/2" MIN\. BEARING"$/m.test(r.out), r.out);
+  check('EACH. becomes EA. (no doubled period)', /WARN W_NOTE_STYLE b_period: .*Fix: set text to "STUD EA\."$/m.test(r.out), r.out);
+  check('a period after a plain word is still a trailing period, and the message names the style escape', /WARN W_NOTE_STYLE b_trail: .*trailing period \(notes are not sentences; if "EDGE\." is an abbreviation, add it to the style's notes\.abbreviations\).*Fix: set text to "SHEATHING EDGE"$/m.test(r.out), r.out);
+
+  kerf(['new', 'cov.kerf.json', '--template', 'section']);
+  const cov = [
+    { op: 'update', path: 'meta', value: { requested: ['bars each face', 'clear span', 'clr. span', 'single mat', 't-intersection', '3/16 fillet weld all around', 'stud 2 ft long', '(8) 16d each side', 'masonry wall opening', "6'-0in chord lap"] } },
+    { op: 'update', path: 'views/A', value: { title: 'SINGLE MAT T-INTERSECTION' } },
+    note('c1', '(2) #5 BARS EA. FACE CONT. UNDER OPENING'),
+    note('c2', '(2) 16d NAILS EA. SIDE'),
+    note('c3', '6\'-0" MIN. CHORD LAP'),
+    { op: 'add', path: 'views/A/annotations', value: { id: 'd_span', type: 'dim', from: 'stud@bottom_left', to: 'stud@top_left', offset: -4, text: 'CLR. SPAN' } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'd_len', type: 'dim', from: 'stud@bottom_right', to: 'stud@top_right', offset: 4 } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'w1', type: 'weld', at: 'stud@bottom_right', offset: [6, 6], size: '3/16', all_around: true } },
+  ];
+  r = kerf(['apply', 'cov.kerf.json', '--ops', JSON.stringify(cov), '-w', '--why', 'coverage repro']);
+  check('EA. = EACH: "bars each face" is covered by the note', /^ ok       bars each face\s+stud/m.test(r.out), r.out);
+  check('dim text counts, both ways: "clear span" and "clr. span"', /^ ok       clear span\s+dim d_span/m.test(r.out) && /^ ok       clr\. span\s+dim d_span/m.test(r.out), r.out);
+  check('view titles count, case and hyphen ignored: "single mat", "t-intersection"', /^ ok       single mat\s+view A/m.test(r.out) && /^ ok       t-intersection\s+view A/m.test(r.out), r.out);
+  check('a weld counts as "<size> fillet weld all around"', /^ ok       3\/16 fillet weld all around\s+weld w1/m.test(r.out), r.out);
+  check('a dim\'s measured 2\'-0" alone does not cover "stud 2 ft long" (one candidate must hold every word)', /^ MISSING  stud 2 ft long\s+closest: /m.test(r.out), r.out);
+  check('(8) 16d each side is not covered by a (2) 16d note: MISSING names the closest note and the lacking word', /^ MISSING  \(8\) 16d each side\s+closest: note 'c2' in view A \(lacks "8"\)$/m.test(r.out), r.out);
+  check('W_REQUESTED_MISSING quotes the closest candidate text', /WARN W_REQUESTED_MISSING: requested element "masonry wall opening" .*closest: note 'c1' in view A "\(2\) #5 BARS EA\. FACE CONT\. UNDER OPENING" \(1 of 3 words; lacks "masonry", "wall"\)/.test(r.out), r.out);
+  check('feet-inches with a unit word: "6\'-0in" = 6\'-0"', /^ ok       6'-0in chord lap\s+stud/m.test(r.out), r.out);
+  r = kerf(['apply', 'cov.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/stud', value: { label: 'stud 24in long' } }), '--dry-run']);
+  check('lengths compare across units: "2 ft" = "24in"', /^ ok       stud 2 ft long\s+stud/m.test(r.out), r.out);
+
+  write('house.kerfstyle.json', { text: { keep_case: ['kN'] }, notes: { abbreviations: { 'SHR.': 'SHEAR' } } });
+  kerf(['new', 'st.kerf.json', '--template', 'section']);
+  const st = [
+    { op: 'update', path: 'meta', value: { requested: ['stud shear'] } },
+    note('s1', 'STUD 25 kN SHR.'),
+  ];
+  kerf(['apply', 'st.kerf.json', '--ops', JSON.stringify(st), '-w', '--why', 'style house list']);
+  r = kerf(['check', 'st.kerf.json', '--style', 'house.kerfstyle.json']);
+  check('style text.keep_case and notes.abbreviations: no W_NOTE_STYLE, SHR. covers "shear"', !/W_NOTE_STYLE s1/.test(r.out) && /^ ok       stud shear\s+stud/m.test(r.out), r.out);
+  r = kerf(['check', 'st.kerf.json']);
+  check('without the style the same note is flagged (kN lower case, SHR. a trailing period) and shear is MISSING', /WARN W_NOTE_STYLE s1: .*lowercase letters.*trailing period/.test(r.out) && /^ MISSING  stud shear/m.test(r.out), r.out);
+  write('badhouse.kerfstyle.json', { notes: { abbreviations: ['BRG.'] } });
+  r = kerf(['check', 'st.kerf.json', '--style', 'badhouse.kerfstyle.json']);
+  check('a malformed notes.abbreviations is E_STYLE with an example', r.code !== 0 && /notes\.abbreviations' must be an object/.test(r.out + r.err), r.out + r.err);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

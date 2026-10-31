@@ -4,6 +4,7 @@ use super::Env;
 use crate::drawing::{Align, Item, PathItem, TextItem, VAlign};
 use crate::font::Font;
 use crate::geom::{self, Box, Pt, V2};
+use crate::house;
 use crate::math;
 use crate::pen::{LayerKey, Pen};
 use alloc::borrow::Cow;
@@ -80,8 +81,9 @@ pub fn path_item(env: &Env, pen: Pen, src: &str, pts: &[V2], closed: bool) -> It
     Item::Path(PathItem { layer: String::from(env.style.layer_for_pen(pen)), pen, src: String::from(src), closed, pts })
 }
 
+/// The style's case transform: upper case, except the tokens whose case is significant (SPEC 25.3: `16d`, `db`, `f'c`, ...).
 pub fn upper_if<'s>(env: &Env, s: &'s str) -> Cow<'s, str> {
-    if env.style.text_case_upper { Cow::Owned(s.to_ascii_uppercase()) } else { Cow::Borrowed(s) }
+    if env.style.text_case_upper { Cow::Owned(house::upper(s, env.style)) } else { Cow::Borrowed(s) }
 }
 
 /// Text box polygon (rotated) with padding.

@@ -27,6 +27,8 @@ pub struct Loaded<'a> {
     pub scene: Scene<'a>,
     pub diags: &'a Diags,
     pub nviews: usize,
+    /// `meta.requested` coverage (SPEC 21, 25.3), computed once with the compiled scene.
+    pub coverage: Vec<coverage::Item>,
 }
 
 pub fn load<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags, with_views: bool) -> Loaded<'a> {
@@ -44,9 +46,10 @@ pub fn load_after_edit<'a>(
 ) -> Loaded<'a> {
     let scene = compile::compile(doc, st, diags);
     let is_obj = matches!(doc, Value::Object(_));
+    let coverage = if is_obj { coverage::compute(doc, st, Some(&scene)) } else { Vec::new() };
     if is_obj {
         validate::run(&scene, doc, diags);
-        lint::run(&scene, doc, diags);
+        lint::run(&scene, doc, &coverage, diags);
         let prior = before.map(|b| Before { scene: &b.scene, doc: b.doc });
         crop::run(&scene, doc, prior.as_ref(), diags);
     }
@@ -81,7 +84,7 @@ pub fn load_after_edit<'a>(
     if is_obj {
         lint::apply_acknowledge(doc, diags);
     }
-    Loaded { doc, style: st, scene, diags, nviews }
+    Loaded { doc, style: st, scene, diags, nviews, coverage }
 }
 
 fn pad_to(out: &mut String, s: &str, n: usize) {
@@ -125,19 +128,26 @@ pub fn diag_line(d: &Diag) -> String {
     out
 }
 
-fn coverage_block(out: &mut String, doc: &Value) {
-    let items = coverage::compute(doc);
+fn coverage_block(out: &mut String, l: &Loaded) {
+    let items = &l.coverage;
     if items.is_empty() {
         return;
     }
     let covered = items.iter().filter(|it| !it.found.is_empty()).count();
     let tail = if covered == items.len() { "" } else { "  (finish only at full coverage)" };
     out.push_str(&format!("COVERAGE  {covered}/{} requested elements covered{tail}\n", items.len()));
-    for it in &items {
+    for it in items {
         out.push(' ');
         pad_to(out, if it.found.is_empty() { "MISSING" } else { "ok" }, 9);
         if it.found.is_empty() {
-            out.push_str(&it.text);
+            match &it.closest {
+                Some(c) => {
+                    pad_to(out, &it.text, 26);
+                    let lacks: Vec<&str> = c.missing.iter().map(String::as_str).collect();
+                    out.push_str(&format!("closest: {} (lacks {})", c.source, model::join_quoted(&lacks)));
+                }
+                None => out.push_str(&it.text),
+            }
             out.push('\n');
             continue;
         }
@@ -211,7 +221,7 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
         out.push('\n');
     }
     if matches!(l.doc, Value::Object(_)) {
-        coverage_block(&mut out, l.doc);
+        coverage_block(&mut out, l);
     }
     for d in diags {
         if d.level == Level::Info
