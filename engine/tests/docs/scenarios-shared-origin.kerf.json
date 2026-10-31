@@ -1,0 +1,181 @@
+{
+  "kerf": "0.1",
+  "id": "scenarios-shared-origin",
+  "title": "STUD WALL AT STEM, SILL ALTERNATES",
+  "meta": {
+    "author": "kerf test",
+    "discipline": "structural",
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "tags": [
+      "scenarios",
+      "views",
+      "acknowledge"
+    ]
+  },
+  "components": [
+    {
+      "id": "shared_ftg",
+      "type": "concrete",
+      "shape": "footing",
+      "width": 16,
+      "height": 10
+    },
+    {
+      "id": "shared_stem",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "shared_ftg@top_left",
+        "offset": [4, 0]
+      },
+      "shape": "rect",
+      "width": 8,
+      "height": 24
+    },
+    {
+      "id": "a_sill",
+      "type": "lumber",
+      "label": "2X8 PT SILL",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "shared_stem@top_left"
+      },
+      "size": "2x8",
+      "orient": "flat",
+      "treated": true
+    },
+    {
+      "id": "a_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "a_sill@top_center"
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 8
+    },
+    {
+      "id": "b_sill",
+      "type": "lumber",
+      "label": "2X6 SILL",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "shared_stem@top_left",
+        "offset": [1, 0]
+      },
+      "views": [
+        "B",
+        "C"
+      ],
+      "acknowledge": [
+        {
+          "code": "W_UNTREATED_CONTACT",
+          "reason": "borate-treated sill on sill sealer per owner spec"
+        },
+        {
+          "code": "W_OVERLAP",
+          "reason": "left over from an earlier layout"
+        }
+      ],
+      "size": "2x6",
+      "orient": "flat"
+    },
+    {
+      "id": "b_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "b_sill@top_center"
+      },
+      "views": [
+        "B",
+        "C"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 8
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "PT SILL",
+      "cut_z": 0,
+      "notes_side": "right",
+      "only": [
+        "shared_*",
+        "a_*"
+      ],
+      "annotations": [
+        {
+          "id": "n_a_sill",
+          "type": "note",
+          "text": "2X8 PT SILL PLATE",
+          "target": "a_sill"
+        },
+        {
+          "id": "n_a_stud",
+          "type": "note",
+          "text": "2X6 STUDS @ 16\" O.C.",
+          "target": "a_stud"
+        },
+        {
+          "id": "n_a_stem",
+          "type": "note",
+          "text": "CONC. STEM WALL",
+          "target": "shared_stem"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "number": "2",
+      "title": "BORATE SILL ALTERNATE",
+      "cut_z": 0,
+      "notes_side": "right",
+      "omit": [
+        "a_*"
+      ],
+      "annotations": [
+        {
+          "id": "n_b_sill",
+          "type": "note",
+          "text": "2X6 BORATE-TREATED SILL ON SILL SEALER",
+          "target": "b_sill"
+        },
+        {
+          "id": "n_b_stud",
+          "type": "note",
+          "text": "2X6 STUDS @ 16\" O.C.",
+          "target": "b_stud"
+        },
+        {
+          "id": "n_b_stem",
+          "type": "note",
+          "text": "CONC. STEM WALL",
+          "target": "shared_stem"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "kind": "iso",
+      "number": "3",
+      "title": "BORATE SILL ALTERNATE",
+      "from": "front_right",
+      "omit": [
+        "a_*"
+      ],
+      "annotations": []
+    }
+  ]
+}

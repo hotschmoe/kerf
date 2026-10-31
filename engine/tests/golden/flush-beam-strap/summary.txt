@@ -1,4 +1,4 @@
-DOC flush-beam-strap  7 components  2 views  0 errors  0 warnings
+DOC flush-beam-strap  7 components  2 views  0 errors  0 warnings  0 acknowledged
  beam          lumber (2) 1.75x9.25 x wide run x L=3'-6"   x -3"..3'-3"      y 7'-3 7/8"..8'-1 1/8"
  jack_studs    lumber 2x4 y narrow run y L=7'-2 3/8" [x2 x @ 1 1/2"] x -3"..0"         y 1 1/2"..7'-3 7/8"
  king_studs    lumber 2x4 y narrow run y L=7'-8 5/8" [x2 x @ -1 1/2"] x -6"..-3"        y 1 1/2"..7'-10 1/8"

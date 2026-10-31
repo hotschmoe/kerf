@@ -34,6 +34,7 @@ mod pen;
 mod png;
 mod raster;
 pub mod references;
+mod review;
 mod route;
 mod scene;
 pub mod schema;

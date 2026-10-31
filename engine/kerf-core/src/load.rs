@@ -8,10 +8,11 @@ use crate::drawview;
 use crate::geom::{self, Box, V2};
 use crate::json::{self, Member, Value};
 use crate::limits;
-use crate::lint;
+use crate::lint::{self, AckMode, Acked};
 use crate::model::{self, Diag, Diags, Level};
 use crate::scene::{self, Comp, Scene, State};
 use crate::section::{Class, Section};
+use crate::sort;
 use crate::style::Style;
 use crate::units;
 use crate::validate;
@@ -27,20 +28,25 @@ pub struct Loaded<'a> {
     pub scene: Scene<'a>,
     pub diags: &'a Diags,
     pub nviews: usize,
+    /// The warnings `acknowledge` entries suppressed (in strict mode they are also still in `diags`).
+    pub acked: Vec<Acked>,
+    pub strict: bool,
 }
 
 pub fn load<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags, with_views: bool) -> Loaded<'a> {
-    load_after_edit(doc, st, diags, with_views, None)
+    load_after_edit(doc, st, diags, with_views, None, false)
 }
 
 /// Compile, validate and lint `doc`; with `with_views` also build every view so view diagnostics are included.
-/// `before` is the loaded document prior to an edit (the crop check compares against it).
+/// `before` is the loaded document prior to an edit (the crop check compares against it). `strict` keeps
+/// acknowledged warnings as warnings (`kerf check --strict`).
 pub fn load_after_edit<'a>(
     doc: &'a Value,
     st: &'a Style,
     diags: &'a Diags,
     with_views: bool,
     before: Option<&Loaded<'_>>,
+    strict: bool,
 ) -> Loaded<'a> {
     let scene = compile::compile(doc, st, diags);
     let is_obj = matches!(doc, Value::Object(_));
@@ -78,10 +84,30 @@ pub fn load_after_edit<'a>(
             diags.extend(vd.into_vec());
         }
     }
+    let mut acked = Vec::new();
     if is_obj {
-        lint::apply_acknowledge(doc, diags);
+        let complete = with_views && nviews <= limits::MAX_VIEWS && diags.err_count() == 0;
+        acked = lint::apply_acknowledge(doc, diags, AckMode { strict, complete });
     }
-    Loaded { doc, style: st, scene, diags, nviews }
+    Loaded { doc, style: st, scene, diags, nviews, acked, strict }
+}
+
+/// The acknowledged warnings on components view `view_id` draws: the document-level checks plus `view_diags` (that
+/// view's own build diagnostics), through `acknowledge`.
+pub fn view_acked(doc: &Value, st: &Style, view_id: &str, view_diags: &[Diag]) -> Vec<Acked> {
+    let diags = Diags::new();
+    let scene = compile::compile(doc, st, &diags);
+    validate::run(&scene, doc, &diags);
+    lint::run(&scene, doc, &diags);
+    crop::run(&scene, doc, None, &diags);
+    diags.extend(view_diags.iter().cloned());
+    let acked = lint::apply_acknowledge(doc, &diags, AckMode { strict: false, complete: false });
+    let Some(node) = view::find_view(doc, view_id) else { return Vec::new() };
+    let members = view::Members::of(node);
+    acked
+        .into_iter()
+        .filter(|a| scene.find(&a.comp).is_some_and(|c| c.state == State::Ok && c.visible && members.draws(c)))
+        .collect()
 }
 
 fn pad_to(out: &mut String, s: &str, n: usize) {
@@ -170,13 +196,15 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
     let w = diags.iter().filter(|d| d.level == Level::Warning).count();
     let id = l.doc.get("id").map_or("", |x| x.str().unwrap_or(""));
     let nc = l.scene.comps.len();
+    let a = l.acked.len();
     let mut out = format!(
-        "DOC {id}  {nc} component{}  {} view{}  {e} error{}  {w} warning{}\n",
+        "DOC {id}  {nc} component{}  {} view{}  {e} error{}  {w} warning{}  {a} acknowledged{}\n",
         plural(nc),
         l.nviews,
         plural(l.nviews),
         plural(e),
-        plural(w)
+        plural(w),
+        if l.strict && a > 0 { " (--strict: listed as warnings)" } else { "" }
     );
     for c in &l.scene.comps {
         out.push(' ');
@@ -214,15 +242,59 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
         coverage_block(&mut out, l.doc);
     }
     for d in diags {
-        if d.level == Level::Info
-            && !matches!(d.code, "I_SOLID_USED" | "I_UNVERIFIED_CITE" | "I_CITE_DOWNGRADED" | "I_ACK")
-        {
+        if d.level == Level::Info && !matches!(d.code, "I_SOLID_USED" | "I_UNVERIFIED_CITE" | "I_CITE_DOWNGRADED") {
             continue;
         }
         out.push_str(&diag_line(d));
         out.push('\n');
     }
+    if !l.strict {
+        acked_block(&mut out, &l.acked);
+    }
     out
+}
+
+/// The suppressed warnings grouped by code and reason: one line each with the count and the components.
+fn acked_block(out: &mut String, acked: &[Acked]) {
+    if acked.is_empty() {
+        return;
+    }
+    let mut groups: Vec<(&str, &str, usize, Vec<&str>)> = Vec::new();
+    for a in acked {
+        match groups.iter_mut().find(|g| g.0 == a.warning.code && g.1 == a.reason) {
+            Some(g) => {
+                g.2 += 1;
+                if !g.3.contains(&a.comp.as_str()) {
+                    g.3.push(&a.comp);
+                }
+            }
+            None => groups.push((a.warning.code, &a.reason, 1, alloc::vec![a.comp.as_str()])),
+        }
+    }
+    sort::stable(&mut groups, |x, y| x.0 < y.0);
+    out.push_str(&format!(
+        "ACKNOWLEDGED  {} warning{} suppressed by `acknowledge` (kerf check --strict prints each in full)\n",
+        acked.len(),
+        plural(acked.len())
+    ));
+    for (code, reason, n, comps) in &groups {
+        out.push(' ');
+        pad_to(out, code, 20);
+        pad_to(out, &format!("x{n}"), 5);
+        for (i, id) in comps.iter().enumerate() {
+            if i == 6 {
+                out.push_str(&format!(", +{} more", comps.len() - 6));
+                break;
+            }
+            if i > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(id);
+        }
+        out.push_str(": \"");
+        out.push_str(reason);
+        out.push_str("\"\n");
+    }
 }
 
 pub fn diags_json(list: &[Diag]) -> Value {
