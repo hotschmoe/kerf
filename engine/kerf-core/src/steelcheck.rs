@@ -1,6 +1,7 @@
 //! Steel connection checks over a compiled scene (warnings, never errors): bolt edge distance against AISC 360 Table J3.4
 //! (W_BOLT_EDGE), bolt spacing against J3.3 (W_BOLT_SPACING) and fillet weld size against the thinner joined part, J2.2b
-//! and Table J2.4 (W_WELD_SIZE).
+//! and Table J2.4 (W_WELD_SIZE); anchor bolts against ACI 318-19 17.9: clear distance from the shaft to the concrete or
+//! masonry edge (W_BOLT_EDGE) and spacing between anchors (W_BOLT_SPACING).
 
 use crate::builders::steel_shapes;
 use crate::catalog::Type;
@@ -11,7 +12,7 @@ use crate::model::{Diags, Kind, Level, Prism};
 use crate::scene::{Comp, Scene, State};
 use crate::units::{self, fmt_ft_in};
 use alloc::format;
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 /// AISC 360-16 Table J3.4: minimum edge distance from the center of a standard hole, by bolt diameter.
@@ -52,6 +53,168 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
         }
         edge_distance(scene, b, d, diags);
     }
+    anchors(scene, diags);
+}
+
+/// ACI 318-19 17.9.2 / 20.5.1.3: an anchor's shaft keeps at least this clear distance to the concrete or masonry edge.
+const ANCHOR_EDGE_CLEAR: f64 = 1.5;
+
+/// The straight embedded shaft of one anchor bolt instance: from the top of its centerline to the bend (or its end).
+struct Shaft<'a> {
+    c: &'a Comp<'a>,
+    instance: u32,
+    a: V2,
+    b: V2,
+    zc: f64,
+    d: f64,
+    post: bool,
+}
+
+fn shafts<'a>(scene: &'a Scene<'a>) -> Vec<Shaft<'a>> {
+    let mut out = Vec::new();
+    for c in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::AnchorBolt && c.visible && !c.dashed) {
+        let d = len_of(c.node, "diameter", 0.5);
+        let post = matches!(c.node.get("hook").and_then(Value::str), Some("wedge" | "screw"));
+        for p in c.world.iter().filter(|p| p.part == "shank" && p.centerline.len() >= 2) {
+            out.push(Shaft {
+                c,
+                instance: p.instance,
+                a: p.centerline[0].v(),
+                b: p.centerline[1].v(),
+                zc: (p.z0 + p.z1) / 2.0,
+                d,
+                post,
+            });
+        }
+    }
+    out
+}
+
+fn anchor_name(s: &Shaft<'_>) -> String {
+    if s.c.arr_count > 1 { format!("'{}' (instance {})", s.c.id, s.instance) } else { format!("'{}'", s.c.id) }
+}
+
+fn anchors(scene: &Scene<'_>, diags: &Diags) {
+    let list = shafts(scene);
+    let mut reported: Vec<u32> = Vec::new();
+    for s in &list {
+        if reported.contains(&s.c.index) {
+            continue;
+        }
+        let hosts: Vec<(&Comp<'_>, Vec<Vec<V2>>)> = scene
+            .comps
+            .iter()
+            .filter(|h| h.state == State::Ok && h.visible && !h.dashed)
+            .flat_map(|h| {
+                h.world
+                    .iter()
+                    .filter(|p| {
+                        p.role.is_masonry() && p.kind == Kind::Body && !p.embedded && p.z0 <= s.zc && p.z1 >= s.zc
+                    })
+                    .map(move |p| (h, clip::from_region(&p.loops, FLAT_TOL)))
+            })
+            .collect();
+        if hosts.is_empty() {
+            continue;
+        }
+        let mut region: Vec<Vec<V2>> = Vec::new();
+        for (_, f) in &hosts {
+            region = if region.is_empty() { f.clone() } else { clip::boolean(&region, f, Op::Unite) };
+        }
+        let perp = s.b.sub(s.a).norm().perp();
+        let steps = 32;
+        let mut worst: Option<(f64, V2)> = None;
+        for i in 0..=steps {
+            let m = s.a.lerp(s.b, i as f64 / steps as f64);
+            if geom::locate(m, &region, 0.0) != Loc::Inside {
+                continue;
+            }
+            let e = ray_to_edge(m, perp, &region).min(ray_to_edge(m, perp.scale(-1.0), &region));
+            if worst.is_none_or(|w| e < w.0) {
+                worst = Some((e, m));
+            }
+        }
+        let Some((e, m)) = worst else { continue };
+        let clear = e - s.d / 2.0;
+        if clear >= ANCHOR_EDGE_CLEAR - 1.0 / 32.0 {
+            continue;
+        }
+        let host = hosts
+            .iter()
+            .find(|(_, f)| geom::locate(m, f, 1e-9) != Loc::Outside)
+            .map_or("the concrete", |(h, _)| h.id.as_str());
+        reported.push(s.c.index);
+        diags.add_fix(
+            Level::Warning,
+            "W_BOLT_EDGE",
+            Some(&s.c.id),
+            Some(&format!("components/{}", s.c.id)),
+            format!(
+                "anchor bolt {}: the shaft is {} clear of the edge of '{host}' ({} from its center) near x {}, y {}, below the {} clear cover ACI 318-19 17.9.2 requires for an anchor (20.5.1.3)",
+                anchor_name(s),
+                fmt_ft_in(clear),
+                fmt_ft_in(e),
+                fmt_ft_in(m.x),
+                fmt_ft_in(m.y),
+                fmt_ft_in(ANCHOR_EDGE_CLEAR)
+            ),
+            format!(
+                "move the anchor at least {} into '{host}' (shaft center {} from the edge), or acknowledge W_BOLT_EDGE if a product evaluation (ESR) allows less",
+                fmt_ft_in(ANCHOR_EDGE_CLEAR - clear),
+                fmt_ft_in(ANCHOR_EDGE_CLEAR + s.d / 2.0)
+            ),
+        );
+    }
+    let mut pairs: Vec<[u32; 2]> = Vec::new();
+    for (i, s) in list.iter().enumerate() {
+        for t in &list[i + 1..] {
+            if s.c.index == t.c.index && s.instance == t.instance {
+                continue;
+            }
+            let plane = seg_seg(s.a, s.b, t.a, t.b);
+            let dz = s.zc - t.zc;
+            let dist = crate::math::sqrt(plane * plane + dz * dz);
+            let d = s.d.max(t.d);
+            let k = if s.post || t.post { 6.0 } else { 4.0 };
+            if dist >= k * d - 1.0 / 32.0 {
+                continue;
+            }
+            let key = [s.c.index.min(t.c.index), s.c.index.max(t.c.index)];
+            if pairs.contains(&key) {
+                continue;
+            }
+            pairs.push(key);
+            diags.add_fix(
+                Level::Warning,
+                "W_BOLT_SPACING",
+                Some(&s.c.id),
+                Some(&format!("components/{}", s.c.id)),
+                format!(
+                    "anchor bolts {} and {} are {} apart (center to center, {} in the drawing plane, {} along z), below the ACI 318-19 17.9.2 minimum of {}d = {} for {} anchors",
+                    anchor_name(s),
+                    anchor_name(t),
+                    fmt_ft_in(dist),
+                    fmt_ft_in(plane),
+                    fmt_ft_in(dz.abs()),
+                    if k == 6.0 { 6 } else { 4 },
+                    fmt_ft_in(k * d),
+                    if k == 6.0 { "post-installed" } else { "cast-in" }
+                ),
+                format!("space them at least {} apart (move one in x/y, or in z with \"z\")", fmt_ft_in(k * d)),
+            );
+        }
+    }
+}
+
+fn seg_seg(p: V2, q: V2, r: V2, s: V2) -> f64 {
+    let mut ta = [0.0; 2];
+    let mut tb = [0.0; 2];
+    if geom::seg_seg(p, q, r, s, &mut ta, &mut tb) > 0 {
+        return 0.0;
+    }
+    geom::dist_point_seg(p, r, s)
+        .min(geom::dist_point_seg(q, r, s))
+        .min(geom::dist_point_seg(r, p, q).min(geom::dist_point_seg(s, p, q)))
 }
 
 /// One bolt: its axis segment through the grip (side) or its center (end), and the grip's z range.
