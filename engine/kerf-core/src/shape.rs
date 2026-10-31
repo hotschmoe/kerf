@@ -41,7 +41,7 @@ fn shape_area(s: &Shape) -> f64 {
     a
 }
 
-fn shape_contains(s: &Shape, p: V2) -> bool {
+pub fn shape_contains(s: &Shape, p: V2) -> bool {
     geom::point_in_loop_eo(p, s.outer) && !s.holes.iter().any(|h| geom::point_in_loop_eo(p, h))
 }
 

@@ -146,7 +146,12 @@ fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
     }
     let te = side_ext(fit.title, crop, side);
     if te > best.ext + 1e-9 {
-        best = Culprit { name: "the view title (bubble, title, scale)".to_string(), ext: te, kind: None, id: "title".to_string() };
+        best = Culprit {
+            name: "the view title (bubble, title, scale)".to_string(),
+            ext: te,
+            kind: None,
+            id: "title".to_string(),
+        };
     }
     best
 }
