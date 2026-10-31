@@ -278,7 +278,11 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     let Some(text0) =
         str_member(an, "text").or_else(|| shared.and_then(|sn| str_member(sn, "text"))).or(nail_text.as_deref())
     else {
-        let alt = if style == NotesStyle::Leader { "" } else { " (or a \"key\" shared with a note in any view that has one)" };
+        let alt = if style == NotesStyle::Leader {
+            ""
+        } else {
+            " (or a \"key\" shared with a note in any view that has one)"
+        };
         env.diags.add(
             Level::Error,
             "E_PARAM",

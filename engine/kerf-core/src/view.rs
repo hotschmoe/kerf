@@ -144,9 +144,10 @@ impl<'a> Members<'a> {
 /// A "see other detail" view (SPEC 28.2): its annotations are all `ref`s and it has no `only`, so it draws no model.
 pub fn ref_only(node: &Value) -> bool {
     node.get("only").is_none_or(Value::is_null)
-        && node.get("annotations").and_then(Value::arr).is_some_and(|a| {
-            !a.is_empty() && a.iter().all(|an| an.get("type").and_then(Value::str) == Some("ref"))
-        })
+        && node
+            .get("annotations")
+            .and_then(Value::arr)
+            .is_some_and(|a| !a.is_empty() && a.iter().all(|an| an.get("type").and_then(Value::str) == Some("ref")))
 }
 
 pub fn is_schedule_kind(kind: &str) -> bool {

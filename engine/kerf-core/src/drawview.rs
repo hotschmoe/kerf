@@ -462,8 +462,6 @@ pub struct ViewOpts<'a> {
     pub fit: Option<(f64, f64)>,
     /// An iso view drawn at this scale factor instead of fitted (a layout's common scale over its `iso_ratio`).
     pub iso_factor: Option<f64>,
-    /// The view is exported on its own sheet: it is fit-checked against the style's sheet even when a layout names it.
-    pub own_sheet: bool,
 }
 
 /// The width a view title may take in a layout: the drawing with its notes, less the bubble, and at least 3" (paper).
@@ -597,7 +595,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     if !ab.is_empty() && ab.y0 < tcrop.y0 {
         tcrop.y0 = ab.y0;
     }
-    let scale_text = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
+    let scale_text = units::scale_label(if spec.scale == 0.0 || spec.members.none { 0.0 } else { scale });
     let shown_title = view_title(st, spec);
     let info = SheetInfo {
         number: &spec.number,
@@ -943,9 +941,8 @@ pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
     }
 }
 
-/// Build the Drawing for `view_id` (`own_sheet`: it is exported on its own sheet). Returns None (with diagnostics) if
-/// the view does not exist or is invalid.
-pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, own_sheet: bool, diags: &Diags) -> Option<Drawing<'a>> {
+/// Build the Drawing for `view_id`. Returns None (with diagnostics) if the view does not exist or is invalid.
+pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Option<Drawing<'a>> {
     let Some(vnode) = view::find_view(doc, view_id) else {
         let ids = view::view_ids(doc);
         diags.add(
@@ -964,7 +961,7 @@ pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, own_sheet: bool, dia
         .unwrap_or(0);
     let spec = crate::layout::view_spec(doc, vnode, idx, diags)?;
     let scene = compile::compile(doc, st, diags);
-    build_with(doc, st, &scene, &spec, diags, ViewOpts { own_sheet, ..ViewOpts::default() })
+    build_from_scene(doc, st, &scene, &spec, diags)
 }
 
 /// Build a view's Drawing from an already compiled scene. `diags` receives view-level diagnostics.
@@ -1138,7 +1135,7 @@ pub fn build_with<'a>(
         let pw = (bounds.x1 - bounds.x0) / scale;
         let ph = (bounds.y1 - bounds.y0) / scale;
         let (aw, ah) = fit_area(st);
-        let checked = !opts.in_layout && (opts.own_sheet || !crate::layout::names_view(doc, view_id));
+        let checked = !opts.in_layout && !crate::layout::names_view(doc, view_id);
         if checked && (pw > aw + 1e-6 || ph > ah + 1e-6) {
             let culprits = if spec.kind.is_flat() && !spec.has_crop {
                 crop_culprits(scene, prisms, &fv.spec, crop_out)
@@ -1154,7 +1151,7 @@ pub fn build_with<'a>(
         }
     }
     let layers = collect_layers(&items, st);
-    let label = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
+    let label = units::scale_label(if spec.scale == 0.0 || spec.members.none { 0.0 } else { scale });
     let mut d = Drawing::new(
         doc.get("id").and_then(Value::str).unwrap_or("").to_string(),
         spec.id.to_string(),

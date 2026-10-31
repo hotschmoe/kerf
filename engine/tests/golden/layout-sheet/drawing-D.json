@@ -13,6 +13,6 @@
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:D","s":"S-10.01","x":3.75,"y":-10.8771,"h":0.8438,"rot":0,"align":"center","valign":"middle"},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","s":"NON-BEARING PARTITION","x":9.3,"y":-8.7621,"h":1.875,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","closed":false,"pts":[[9.3,-9.6021],[44.1214,-9.6021]]},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:D","s":"SCALE: 1\" = 1'-0\"","x":9.3,"y":-11.4471,"h":1.125,"rot":0,"align":"left","valign":"baseline"}
+{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:D","s":"SCALE: NTS","x":9.3,"y":-11.4471,"h":1.125,"rot":0,"align":"left","valign":"baseline"}
 ],
 "diagnostics":[]}

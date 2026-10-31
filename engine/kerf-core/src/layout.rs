@@ -29,13 +29,8 @@ const MIN_SHEET_IN: f64 = 5.0;
 const MAX_SHEET_IN: f64 = 60.0;
 /// The standard sheets, smallest first (ANSI A, ANSI B, ANSI C, ARCH C, ARCH D landscape): `sheet: "auto"` picks one
 /// and a `W_VIEW_FIT` fix may suggest a larger one.
-const SHEETS: [(f64, f64, &str); 5] = [
-    (11.0, 8.5, "11x8.5"),
-    (17.0, 11.0, "17x11"),
-    (22.0, 17.0, "22x17"),
-    (24.0, 18.0, "24x18"),
-    (36.0, 24.0, "36x24"),
-];
+const SHEETS: [(f64, f64, &str); 5] =
+    [(11.0, 8.5, "11x8.5"), (17.0, 11.0, "17x11"), (22.0, 17.0, "22x17"), (24.0, 18.0, "24x18"), (36.0, 24.0, "36x24")];
 /// `sheet: "auto"` with a common scale takes the smallest sheet at which the views reach this scale (1" = 1'-0"), or
 /// the largest scale any sheet reaches when none reaches it.
 const AUTO_TARGET_SCALE: f64 = 12.0;
@@ -799,7 +794,7 @@ fn build_view<'a>(
     iso_factor: Option<f64>,
 ) -> Option<Built<'a>> {
     let vd = Diags::new();
-    let opts = ViewOpts { keys, in_layout: true, fit: Some(c.share), iso_factor, own_sheet: false };
+    let opts = ViewOpts { keys, in_layout: true, fit: Some(c.share), iso_factor };
     let d = drawview::build_with(c.doc, c.st, c.scene, spec, &vd, opts)?;
     Some(Built { d, diags: vd.into_vec() })
 }
@@ -838,8 +833,8 @@ fn merge_entries(lay: &Layout, built: &[Built], diags: &Diags) -> Vec<KeyedEntry
                             lay.id, e.first, b.d.view, e.num, o.first, o.first
                         ),
                         format!(
-                            "drop the text and cite of '{}' and keep its key (it then takes them from '{}'), or give '{}' its own \"key\"",
-                            e.first, o.first, e.first
+                            "write the text and cite once: remove \"text\" and \"cite\" from note '{}' in view {} and keep its \"key\" (it then prints the entry of note '{}' in view {v}); or give '{}' its own \"key\"",
+                            e.first, b.d.view, o.first, e.first
                         ),
                     );
                 }
@@ -1056,7 +1051,8 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
         && let Some((w, h)) = l.sheet
     {
         let name = SHEETS.iter().find(|s| s.0 == w && s.1 == h).map_or("", |s| s.2);
-        let at = if common > 0.0 { format!(" with the views at {}", units::scale_label(common)) } else { String::new() };
+        let at =
+            if common > 0.0 { format!(" with the views at {}", units::scale_label(common)) } else { String::new() };
         let why = if !fits {
             "no standard sheet holds it, so the largest is used"
         } else if reached(common) {
@@ -1070,7 +1066,8 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
             Some(lay.id),
             Some(&format!("layouts/{}", lay.id)),
             format!("layout {}: \"sheet\": \"auto\" picked {name}{at} ({why})", lay.id),
-            "nothing to do; set \"sheet\" (e.g. \"22x17\") or a numeric layout \"scale\" to choose yourself".to_string(),
+            "nothing to do; set \"sheet\" (e.g. \"22x17\") or a numeric layout \"scale\" to choose yourself"
+                .to_string(),
         );
     }
     compose(&c, &l, common, built, diags)
@@ -1099,9 +1096,7 @@ fn trial<'a, 'k>(
     for (k, s) in specs.iter().enumerate() {
         let b = match &fixed[k] {
             Some(f) => f.clone(),
-            None if s.kind == Kind::Iso => {
-                build_view(c, s, key_of(k), (sc > 0.0).then(|| sc / lay.iso_ratio))?
-            }
+            None if s.kind == Kind::Iso => build_view(c, s, key_of(k), (sc > 0.0).then(|| sc / lay.iso_ratio))?,
             None if s.kind.is_flat() && sc > 0.0 => build_view(c, &with_scale(s, sc, &label), key_of(k), None)?,
             None => build_view(c, s, key_of(k), None)?,
         };

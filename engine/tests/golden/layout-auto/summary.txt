@@ -1,0 +1,11 @@
+DOC layout-auto  8 components  6 views  0 errors  0 warnings  0 acknowledged
+ ftg           concrete footing 1'-4" x 10"                x 0"..1'-4"       y 0"..10"
+ stem          concrete rect 8" x 2'-0"                    x 4"..1'-0"       y 10"..2'-10"
+ a_sill        lumber 2x8 PT flat run z                    x 4"..11 1/4"     y 2'-10"..2'-11 1/2"
+ a_stud        lumber 2x6 y wide run y L=1'-0"             x 4 7/8"..10 3/8" y 2'-11 1/2"..3'-11 1/2"
+ b_sill        lumber 2x6 PT flat run z                    x 5"..10 1/2"     y 2'-10"..2'-11 1/2"
+ b_stud        lumber 2x6 y wide run y L=1'-0"             x 5"..10 1/2"     y 2'-11 1/2"..3'-11 1/2"
+ p_stem        concrete rect 4'-0" x 8"                    x 0"..4'-0"       y 0"..8"
+ p_bolt        solid steel (escape hatch)                  x 1'-11 11/16"..2'-0 5/16" y 3 11/16"..4 5/16"
+INFO I_SOLID_USED p_bolt: p_bolt uses the `solid` escape hatch (material steel); a reviewer should confirm no typed component fits.
+INFO I_LAYOUT_SHEET S1: layout S1: "sheet": "auto" picked 24x18 with the views at 1 1/2" = 1'-0" (the smallest standard sheet that holds it) Fix: nothing to do; set "sheet" (e.g. "22x17") or a numeric layout "scale" to choose yourself

@@ -795,7 +795,7 @@ pub static LAYOUT: Object = Object {
             name: "notes",
             ty: "shared|per_view",
             def: "shared",
-            desc: "shared: one DETAIL NOTES list for the keyed notes of every view, numbered 1..N without gaps over the layout (same `key` = one entry; an unkeyed note with the same text and cite as an earlier one joins it); per_view: each keyed view keeps its own list",
+            desc: "shared: one DETAIL NOTES list for the keyed notes of every view and the notes of schedule views, numbered 1..N without gaps over the layout (same `key` = one entry; write its text and cite once, a note with only the key takes them from any view; an unkeyed note with the same text and cite as an earlier one joins it); per_view: each keyed view keeps its own list",
             ..Field::NONE
         },
         Field {
@@ -815,9 +815,16 @@ pub static LAYOUT: Object = Object {
         Field { name: "gap", ty: "number", def: "0.5", desc: "paper inches between views (0-4)", ..Field::NONE },
         Field {
             name: "sheet",
-            ty: "\"WxH\"",
+            ty: "\"auto\"|\"WxH\"",
             def: "the style's sheet",
-            desc: "paper size in inches, e.g. \"17x11\" (ANSI B) or \"36x24\": four scenarios with a list rarely fit a letter sheet at a useful scale",
+            desc: "paper size in inches, e.g. \"17x11\" (ANSI B) or \"36x24\"; \"auto\": the smallest of 11x8.5, 17x11, 22x17, 24x18, 36x24 that holds the views at a numeric `scale`, or with `common` at 1\"=1'-0\" (else at the largest scale any of them reaches); I_LAYOUT_SHEET says which",
+            ..Field::NONE
+        },
+        Field {
+            name: "iso_ratio",
+            ty: "number",
+            def: "1",
+            desc: "iso views without their own scale are drawn at the layout's scale over this ratio (0.1-4; 0.5 = half the sections' size); with no scale to share they fit their share of the sheet",
             ..Field::NONE
         },
         Field { name: "title", ty: "string", def: "doc title", desc: "title block DETAIL text", ..Field::NONE },
@@ -825,7 +832,7 @@ pub static LAYOUT: Object = Object {
     ],
     notes: concat!(
         "Ops: {\"op\":\"add\",\"path\":\"layouts\",\"value\":{...}}, {\"op\":\"update\",\"path\":\"layouts/S1\",\"value\":{...}}, {\"op\":\"remove\",\"path\":\"layouts/S1\"}; the document default scale: {\"op\":\"set\",\"path\":\"scale\",\"value\":\"3/4\\\"=1'-0\\\"\"}.\n",
-        "A layout is always drawn as one sheet; single-view export (`--view`) is unchanged. `kerf check` builds every layout: W_VIEW_FIT (path layouts/<id>) when the sheet cannot hold it, with each view's size and the fixes that fit (scale, arrangement, list side); I_KEY_RENUMBERED when the shared numbers differ from the notes' keys."
+        "A layout is always drawn as one sheet; single-view export (`--view`) is unchanged. `kerf check` builds every layout: W_VIEW_FIT (path layouts/<id>) when the sheet cannot hold it, with each view's size and the fixes that fit (scale, arrangement, list side); I_KEY_RENUMBERED when the shared numbers differ from the notes' keys; W_PARAM names the field (text or cite) in which two notes under one number differ. A view a layout names is fit-checked only as part of it (no letter-sheet W_VIEW_FIT of its own)."
     ),
     example: "{\"id\":\"S1\",\"views\":[\"A\",\"B\",\"C\",\"D\"],\"arrange\":\"grid\",\"columns\":2,\"notes\":\"shared\",\"scale\":\"common\"}",
 };
@@ -833,7 +840,7 @@ pub static LAYOUT: Object = Object {
 pub static REF: Object = Object {
     name: "ref",
     brief: "reference bubble: SEE detail/sheet",
-    summary: "A reference bubble (annotation of type ref): the detail number over the sheet number in a split circle, with an optional leader and text beside it. Placed exactly (not moved by the note layout). Points at another detail (`SEE 3/S-50.01`); a view whose only content is a ref is a \"see other detail\" scenario.",
+    summary: "A reference bubble (annotation of type ref): the detail number over the sheet number in a split circle, with an optional leader and text beside it. Placed exactly (not moved by the note layout). Points at another detail (`SEE 3/S-50.01`); a view whose annotations are all refs (and no `only`) is a \"see other detail\" scenario: it draws no model and prints SCALE: NTS.",
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"ref\"", required: true, desc: "annotation type", ..Field::NONE },

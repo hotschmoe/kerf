@@ -267,7 +267,7 @@ fn trim_newlines(b: &[u8]) -> &[u8] {
     &b[..n]
 }
 
-fn build_view<'s>(inp: &Value, d: &Value, st: &'s Style, own_sheet: bool) -> Result<drawing::Drawing<'s>, Output> {
+fn build_view<'s>(inp: &Value, d: &Value, st: &'s Style) -> Result<drawing::Drawing<'s>, Output> {
     let diags = Diags::new();
     let vdoc = lint::with_dim_dirs_from_doc(d, st);
     if let Some(lv) = inp.get("layout") {
@@ -295,7 +295,7 @@ fn build_view<'s>(inp: &Value, d: &Value, st: &'s Style, own_sheet: bool) -> Res
             "missing \"view\": the id of a view in the document (or \"layout\": the id of a layout)",
         ));
     };
-    let mut dr = drawview::build(&vdoc, st, view_id, own_sheet, &diags).ok_or_else(|| {
+    let mut dr = drawview::build(&vdoc, st, view_id, &diags).ok_or_else(|| {
         let msg = diags.list().first().map_or_else(|| "view could not be built".to_string(), |x| x.message.clone());
         fail("E_VIEW", &msg)
     })?;
@@ -308,7 +308,7 @@ fn build_view<'s>(inp: &Value, d: &Value, st: &'s Style, own_sheet: bool) -> Res
 
 fn drawing_fn(inp: &Value) -> Output {
     let (d, st) = doc_and_style!(inp);
-    match build_view(inp, d, &st, false) {
+    match build_view(inp, d, &st) {
         Ok(dr) => done(drawing::to_json(&dr)),
         Err(e) => e,
     }
@@ -318,7 +318,7 @@ fn export_fn(inp: &Value) -> Output {
     let (d, st) = doc_and_style!(inp);
     let format = inp.get("format").and_then(Value::str).unwrap_or("svg");
     let want_sheet = matches!(inp.get("sheet"), Some(Value::Bool(true)));
-    let dr = match build_view(inp, d, &st, want_sheet || format == "pdf") {
+    let dr = match build_view(inp, d, &st) {
         Ok(dr) => dr,
         Err(e) => return e,
     };
