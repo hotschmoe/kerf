@@ -115,7 +115,9 @@ jobs:
           npm run build
           npm run test:e2e
           npm run test:serve
-          KERF_SERVE_BIN=$GITHUB_WORKSPACE/engine/target/ui/release/kerf npm run test:serve -- --real
+          # the real-server test expects `claude` to be detected: a stub that answers --version is enough (no run uses it)
+          mkdir -p "$RUNNER_TEMP/stub" && printf '#!/bin/sh\necho "1.0.0 (Claude Code)"\n' > "$RUNNER_TEMP/stub/claude" && chmod +x "$RUNNER_TEMP/stub/claude"
+          PATH="$RUNNER_TEMP/stub:$PATH" KERF_SERVE_BIN=$GITHUB_WORKSPACE/engine/target/ui/release/kerf npm run test:serve -- --real
 
   macos:
     runs-on: macos-latest

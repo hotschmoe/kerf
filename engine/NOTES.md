@@ -137,11 +137,32 @@ geometrically (tolerance 1e-3).
   and `new` write it (who = `$KERF_ACTOR` or `agent`), the server's `who` is the request's `actor`. Timestamps exist only
   in the log. `-w` takes the same `DocLock` as the server, writes atomically, and `--if-match` refuses a stale document.
 
+## CI and release (`.github/workflows/`, `.github/actions/`)
+- Toolchain: `engine/rust-toolchain.toml` pins one stable (components rustfmt + clippy, target wasm32). CI, release and local
+  builds use it; the `toolchain` composite action runs `rustup toolchain install` (plain rustup, no third-party actions)
+  and restores `~/.cargo` + `engine/target` keyed on `Cargo.lock`, the toolchain file, runner and job shape.
+  Raise the pin together with `rust-version` when a newer language feature is needed.
+- `ci.yml` (push to `master` and `dev-hotschmoe`, PR, manual): `lint` (fmt, clippy native and wasm32), `engine` (release
+  build, `check_golden.sh`, wasm through binaryen version_123 `wasm-opt` + `wasm_golden` + `wasm_check`, `cli_ergonomics`,
+  `serve_smoke`, `platform_serve`, `fuzz.py 300 1` on a debug build), `web` (typecheck, unit, UI embedded in a release
+  build for `serve_smoke`, `test:e2e`, `test:serve` mock and `--real`, `build`), `macos` (golden, `cli_ergonomics`,
+  `serve_smoke` on `macos-latest`) and `windows` (`windows.yml`).
+- `release.yml` (tag `v*`): `version` refuses a tag that differs from `[workspace.package] version`; the Windows gate and
+  the Linux gates (wasm-opt required, the UI is built from that wasm) must pass; then six native builds with
+  `KERF_UI` set (musl static on `ubuntu-24.04` / `ubuntu-24.04-arm`, MSVC `+crt-static` on `windows-latest` /
+  `windows-11-arm`, `macos-15-intel` / `macos-latest`), each smoke-run on its own runner (`kerf version` equals the
+  manifest version, `check_golden.mjs`, `serve_smoke.mjs`); `publish` writes `SHA256SUMS` and creates the release
+  (`--prerelease` when the version has a `-`) with `kerf-<arch>-<os>[.exe]` assets, the names `install.sh` / `install.ps1`
+  download. `workflow_dispatch` is a dry run: same jobs, assets uploaded as the `release-assets` workflow artifact, no release.
+- `tools/release.sh <version>` bumps the manifest and `Cargo.lock`, commits, tags and pushes.
+- Cross-platform test notes: `serve_smoke.mjs` reads process data from `/proc` where it exists and from `ps` elsewhere
+  (macOS); the web e2e tests take `KERF_CHROME`, `KERF_CHROME_ARGS` and `KERF_PYTHON` for runners that are not this machine.
+
 ## Windows
 
 All `unsafe` lives in `kerf-cli/src/sys/` (`unix.rs`, `windows.rs`: safe wrappers, `#![deny(unsafe_op_in_unsafe_fn)]`, a `// SAFETY:` per block); zero crates. Built and run on a Windows 11 x86_64 machine (2026-10-31)
 (release and debug): `serve_smoke.mjs` 189/189 (190 on Linux: one POSIX-only check), `windows_serve.mjs` 32/32, `cli_ergonomics.mjs` 145/145, `tests/platform_serve.mjs` 16/16,
-`tests/ctrl_break.ps1`, `tests/check_golden.mjs` (101 outputs byte-identical to the Linux goldens, DXF/PDF checkers clean), clippy `-D warnings` clean. aarch64-pc-windows-msvc only type-checks here (CI: `windows-11-arm`).
+`tests/ctrl_break.ps1`, `tests/check_golden.mjs` (101 outputs byte-identical to the Linux goldens, DXF/PDF checkers clean), clippy `-D warnings` clean. `windows.yml` runs the same gates on every push against the shipped configuration (release, `+crt-static`, UI embedded) on `windows-latest` (x86_64) and the native `windows-11-arm` (aarch64-pc-windows-msvc); both are required and green, including `ctrl_break.ps1` (exit 130, tree gone) and the 101 goldens byte-identical, with no engine change needed for aarch64. The runners' `%TEMP%` is an 8.3 short path (`RUNNER~1`) while the engine reports the long one, so the tests compare `fs.realpathSync.native`.
 - **Agent runs**: the agent is created suspended (`CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP`), assigned to its own job object with `KILL_ON_JOB_CLOSE`, then resumed (`NtResumeProcess`). Stop, timeout, sweep and
   server exit are `TerminateJobObject` (exit code 1, no SIGTERM stage); a server killed hard closes the job and takes the tree with it. If the job cannot be made the leader alone is terminated (`TerminateProcess`).
 - **Agent CLIs**: std only finds `.exe`, so `sys::resolve_program` walks `PATH` (the agent's PATH has kerf's directory first) with the runnable `PATHEXT` extensions (`.exe .com .cmd .bat`): npm `.cmd` shims work, a
@@ -153,7 +174,7 @@ All `unsafe` lives in `kerf-cli/src/sys/` (`unix.rs`, `windows.rs`: safe wrapper
   Directory fsync does not exist (the open fails and is ignored), file data is `FlushFileBuffers`.
 - **Paths**: `canonicalize` returns `\\?\C:\...`; `sys::plain_path` strips it (banner, `/api/info` `dir`, the agent's `cwd` and `{dir}`). Document names are validated by `workspace::valid_doc_file` (device names, stems
   ending in dot/space, `:` streams, separators). Links are never followed (`symlink_metadata` reports symlinks and junctions): verified with a file symlink and a junction at `.kerf/attachments`.
-- **Not covered**: console-close events (the handler is the same code as Ctrl-Break), a `windows-11-arm` run, a network share for the op log.
+- **Not covered**: console-close events (the handler is the same code as Ctrl-Break), a network share for the op log.
 
 Why (the Zig engine's field report): `kerf serve` on Windows 11 died right after the banner in the first Zig releases
 because it had only been cross-compiled, never run. Requirements kept from that: open documents without following

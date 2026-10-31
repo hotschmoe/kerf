@@ -137,16 +137,18 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install --quiet $PY_PKGS
+      # The server puts its own directory on the agents' PATH and they call `kerf`, so the asset is run under that name.
       - name: smoke-run the binary on its own runner
         working-directory: engine
-        env:
-          KERF: ${{ github.workspace }}/release/${{ matrix.asset }}
         run: |
-          expected='${{ needs.version.outputs.version }}'
-          chmod +x "$KERF"
-          "$KERF" version | tee /dev/stderr | grep -q "\"version\":\"$expected\""
-          node tests/check_golden.mjs
-          node tests/serve_smoke.mjs "$KERF"
+          mkdir -p "$RUNNER_TEMP/smoke"
+          kerf="$RUNNER_TEMP/smoke/kerf"
+          case "${{ matrix.asset }}" in *.exe) kerf="$kerf.exe" ;; esac
+          cp "../release/${{ matrix.asset }}" "$kerf"
+          chmod +x "$kerf"
+          "$kerf" version | tee /dev/stderr | grep -q '"version":"${{ needs.version.outputs.version }}"'
+          KERF="$kerf" node tests/check_golden.mjs
+          node tests/serve_smoke.mjs "$kerf"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
