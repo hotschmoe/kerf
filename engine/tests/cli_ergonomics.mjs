@@ -1981,5 +1981,96 @@ section('22. #22 shared notes and layout sizing');
   check('...and is as large as its bubble and title', (dd.bounds[2] - dd.bounds[0]) / dd.scale < 6 && (dd.bounds[3] - dd.bounds[1]) / dd.scale < 2, dd.bounds);
 }
 
+// Issues #20 (pair checks per view set) and #21 (at.anchor on point-list shapes), SPEC 28.1
+section('#20/#21. scenario-aware pair checks and anchored point lists');
+{
+  const doc = (components, views) => ({ kerf: '0.1', id: 'sc', title: 'SCENARIOS', components, views: views ?? [{ id: 'A', kind: 'section' }, { id: 'B', kind: 'section' }] });
+  const ftg = { id: 'ftg', type: 'concrete', shape: 'rect', width: 30, height: 12, z: [-12, 12], at: { anchor: 'top_center', to: [0, 0] } };
+  const rod = (id, x, views) => ({ id, type: 'anchor_bolt', diameter: 0.75, embed: 8, hook: 'headed', at: { to: [x, 0] }, ...(views ? { views } : {}) });
+  const rods = [ftg, rod('a_rod', -6, ['A']), rod('b_rod', -6, ['B']), rod('a_rod2', 4, ['A']), rod('a_rod3', 5, ['A'])];
+  write('sc1.kerf.json', doc(rods));
+  let r = kerf(['check', 'sc1.kerf.json']);
+  check('scenarios at one origin: anchor rods of two scenarios on the same spot are not compared (no W_BOLT_SPACING)', !/W_BOLT_SPACING a_rod: anchor bolts 'a_rod' and 'b_rod'/.test(r.out), r.out);
+  check('a rod pair inside one scenario still warns, with the view it occurs in', /^WARN W_BOLT_SPACING a_rod2: anchor bolts 'a_rod2' and 'a_rod3' are 1" apart .* \(in view A\) Fix: /m.test(r.out), r.out);
+  write('sc2.kerf.json', doc(rods, []));
+  r = kerf(['check', 'sc2.kerf.json']);
+  check('a document without views checks every component together: the coinciding rods warn', /^WARN W_BOLT_SPACING a_rod: anchor bolts 'a_rod' and 'b_rod' are 0" apart/m.test(r.out) && !/\(in view/.test(r.out), r.out);
+
+  const plate = (id, w, views) => ({ id, type: 'steel', shape: `PL1/2x${w}`, length: 6, at: { anchor: 'face_bottom', to: [0, 0] }, views });
+  const bolt = { id: 'a_bolt', type: 'bolt', diameter: 0.75, grip: 0.5, at: { to: [1.5, 0.5] }, views: ['A'] };
+  write('sc3.kerf.json', doc([plate('a_pl', 10, ['A']), plate('b_pl', 4, ['B']), bolt]));
+  r = kerf(['check', 'sc3.kerf.json']);
+  check('a bolt is not checked against the steel of another scenario (no W_BOLT_EDGE to b_pl)', !/W_BOLT_EDGE a_bolt/.test(r.out), r.out);
+  write('sc4.kerf.json', doc([plate('a_pl', 10, ['A']), plate('b_pl', 4, ['A', 'B']), bolt]));
+  r = kerf(['check', 'sc4.kerf.json']);
+  check('the same bolt and plate drawn together: W_BOLT_EDGE in view A', /^WARN W_BOLT_EDGE a_bolt: bolt 'a_bolt' \(bolt 1\): edge distance to steel 'b_pl' is 1\/2" in the drawing plane.* \(in view A\) Fix: /m.test(r.out), r.out);
+
+  const post = { id: 'post', type: 'lumber', size: '4x4', run: 'y', length: 36, z: [-1.75, 1.75], at: { anchor: 'bottom_center', to: [0, 0] } };
+  const pad = { id: 'a_pad', type: 'concrete', shape: 'rect', width: 16, height: 10, z: [-8, 8], at: { anchor: 'top_center', to: [0, -1] }, views: ['A'] };
+  write('sc5.kerf.json', doc([post, pad, { id: 'pb', type: 'connector', model: 'ABU44', post: 'post' }]));
+  r = kerf(['check', 'sc5.kerf.json']);
+  check('a post base over the pad of another scenario bears on nothing in its own view: W_POST_BASE (in view B)', /^WARN W_POST_BASE pb: post base 'pb' bears on nothing.* \(in view B\) Fix: /m.test(r.out) && !/W_POST_BASE pb: .*\(in views? A/.test(r.out), r.out);
+  const hp = { id: 'hp', type: 'lumber', size: '4x6', run: 'y', face: 'narrow', length: 24, at: { anchor: 'bottom_left', to: [4, 1.5] } };
+  const hrod = (views) => ({ id: 'hrod', type: 'anchor_bolt', diameter: 0.625, embed: 12, projection: 3, hook: 'none', at: { to: [2.5, 0] }, views });
+  write('sc6.kerf.json', doc([ftg, hp, hrod(['B']), { id: 'hd', type: 'connector', model: 'HDU5', post: 'hp', views: ['A'] }]));
+  r = kerf(['check', 'sc6.kerf.json']);
+  check('W_HOLDOWN_ROD fix does not offer a rod of another scenario', /^WARN W_HOLDOWN_ROD hd: holdown 'hd' has no rod.*Fix: add an anchor_bolt/m.test(r.out), r.out);
+  write('sc6.kerf.json', doc([ftg, hp, hrod(['A']), { id: 'hd', type: 'connector', model: 'HDU5', post: 'hp', views: ['A'] }]));
+  r = kerf(['check', 'sc6.kerf.json']);
+  check('W_HOLDOWN_ROD fix names the rod drawn with the holdown', /^WARN W_HOLDOWN_ROD hd: holdown 'hd' has no rod.*Fix: name the rod through the seat: .*"rod":"hrod"/m.test(r.out), r.out);
+
+  const stem = { id: 'stem', type: 'concrete', shape: 'rect', width: 8, height: 24, at: { anchor: 'bottom_left', to: [0, 0] } };
+  const key = (at, points) => ({ id: 'key', type: 'concrete', shape: 'polygon', points: points ?? [[-10, 0], [0, 0], [0, -6], [-10, -4]], at });
+  const line = (out, id) => (new RegExp(`^ ${id} .*$`, 'm').exec(out) ?? [''])[0];
+  write('an1.kerf.json', doc([stem, key({ anchor: 'top_left', to: 'stem@top_right' })], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an1.kerf.json']);
+  check('polygon with at.anchor top_left: the shape\'s top left corner lands on the Ref', r.code === 0 && /x 8"\.\.1'-6" +y 1'-6"\.\.2'-0"$/.test(line(r.out, 'key')), line(r.out, 'key') + r.out);
+  write('an2.kerf.json', doc([stem, key({ to: 'stem@top_right' })], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an2.kerf.json']);
+  check('polygon without at.anchor: the literal points are measured from at.to (unchanged)', /x -2"\.\.8" +y 1'-6"\.\.2'-0"$/.test(line(r.out, 'key')), line(r.out, 'key'));
+  write('an3.kerf.json', doc([stem, key({ anchor: 'origin', to: 'stem@top_right' })], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an3.kerf.json']);
+  check('at.anchor "origin" names that point explicitly', /x -2"\.\.8" +y 1'-6"\.\.2'-0"$/.test(line(r.out, 'key')), line(r.out, 'key'));
+  write('an4.kerf.json', doc([stem, key({ anchor: 'vertex_3', to: 'stem@top_right' })], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an4.kerf.json']);
+  check('a named anchor of the point list (vertex_3) lands on the Ref', /x -2"\.\.8" +y 2'-0"\.\.2'-6"$/.test(line(r.out, 'key')), line(r.out, 'key'));
+  write('an5.kerf.json', doc([stem, key({ anchor: 'top_left', to: [20, 0] }, ['stem@top_right', [10, 0], [10, -6]])], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an5.kerf.json']);
+  check('an anchor on points with a Ref: E_PARAM naming the Ref, fix is the update op that drops the anchor', r.code === 1 && /^ERROR E_PARAM key: at\.anchor "top_left" cannot apply to 'key' \(concrete\): point 0 of 'points' is the Ref "stem@top_right", an absolute point, so moving the shape to put its top_left on at\.to would pull it off Fix: remove the anchor .*\{"op":"update","path":"components\/key","value":\{"at":\{"anchor":null\}\}\}/m.test(r.out), r.out);
+  const fixOp = /(\{"op":"update","path":"components\/key","value":\{"at":\{"anchor":null\}\}\})/.exec(r.out);
+  write('an5-fix.json', fixOp ? [JSON.parse(fixOp[1])] : []);
+  r = kerf(['apply', 'an5.kerf.json', 'an5-fix.json', '-w', '--why', 'drop the anchor']);
+  check('applying that fix places the polygon from at.to', r.code === 0 && !/ERROR/.test(r.out), r.out + r.err);
+  write('an6.kerf.json', doc([stem, key({ anchor: 'top_middle', to: [0, 0] })], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an6.kerf.json']);
+  check('an unknown anchor on a polygon: E_ANCHOR_UNKNOWN listing origin and the vertex anchors', /^ERROR E_ANCHOR_UNKNOWN key: 'top_middle' is not an anchor of 'key' \(concrete\).*origin \(the point \[0, 0\].*vertex_1/m.test(r.out), r.out);
+
+  const shapes = [
+    { id: 'so', type: 'solid', material: 'steel', profile: { points: [[1, 1], [5, 1], [5, 4]] } },
+    { id: 'fi', type: 'fill', material: 'gravel', points: [[1, 1], [5, 1], [5, 4], [1, 4]] },
+    { id: 'in', type: 'insulation', points: [[1, 1], [5, 1], [5, 4], [1, 4]] },
+    { id: 'me', type: 'membrane', points: [[1, 1], [5, 4]] },
+    { id: 'co', type: 'connector', model: 'MSTA24', points: [[1, 1], [1, 10]] },
+    { id: 'rb', type: 'rebar', size: '#4', mode: 'path', points: [[1, 1], [10, 1], [10, 8]] },
+    { id: 'fl', type: 'flashing', points: [[1, 4], [1, 1], [5, 1]] },
+  ];
+  for (const s of shapes) {
+    write(`an-${s.id}.kerf.json`, doc([{ ...s, at: { anchor: 'top_right', to: [-20, 30] } }], [{ id: 'A', kind: 'section' }]));
+    r = kerf(['check', `an-${s.id}.kerf.json`]);
+    check(`${s.type} points with at.anchor top_right: the shape's top right corner lands on at.to`, r.code === 0 && /x -[^y]+\.\.-1'-8" +y [^y]+\.\.2'-6"$/.test(line(r.out, s.id)), line(r.out, s.id) + r.out);
+  }
+  const mem = { id: 'me', type: 'membrane', points: [[0, 0], [5, 0]], until: 'stem@top_right', at: { anchor: 'top_left', to: [0, 30] } };
+  write('an7.kerf.json', doc([stem, mem], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an7.kerf.json']);
+  check('membrane with until and an anchor: E_PARAM (until ends at an absolute point)', /^ERROR E_PARAM me: at\.anchor "top_left" cannot apply to 'me' \(membrane\): 'until' runs the last segment to the Ref "stem@top_right"/m.test(r.out), r.out);
+  const post2 = { ...post, id: 'p2' };
+  write('an8.kerf.json', doc([post2, { id: 'cs', type: 'connector', model: 'CS20', on: 'p2.face_left', points: [[0, 6], [0, 30]], at: { anchor: 'top_left', to: [0, 0] } }], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an8.kerf.json']);
+  check('a strap on a face with an anchor: E_PARAM (the face places it)', /^ERROR E_PARAM cs: at\.anchor "top_left" cannot apply to 'cs' \(connector\): a strap 'on' a face takes its place from the face of 'p2'/m.test(r.out), r.out);
+  write('an9.kerf.json', doc([stem, { ...key({ to: [0, 0] }), mirror: true }], [{ id: 'A', kind: 'section' }]));
+  r = kerf(['check', 'an9.kerf.json']);
+  check('mirror on a point list: E_PARAM with the op that removes it (it was ignored)', /^ERROR E_PARAM key: 'key' \(concrete\): mirror does not apply to a shape drawn from a point list Fix: write the mirrored points .*"value":\{"mirror":null\}\}$/m.test(r.out), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

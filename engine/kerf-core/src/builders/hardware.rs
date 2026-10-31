@@ -736,7 +736,7 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
     let mut warns = Vec::new();
     match (&rod, rod_axis) {
         (None, _) => {
-            let near = nearest_rod(scene, p.bx, p.zc());
+            let near = scene.find(&id).and_then(|me| nearest_rod(scene, me, p.bx, p.zc()));
             let fix = match near {
                 Some(r) => format!("name the rod through the seat: {}", update_op(&id, "rod", &format!("\"{r}\""))),
                 None => "add an anchor_bolt (or a threaded rod as a bolt) under the seat beside the post and set \"rod\" to its id".to_string(),
@@ -780,11 +780,12 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat_top".into(), p: seat_pt }], info, hw))
 }
 
-/// The anchor bolt or bolt nearest to a post (within 8" in plan and z), for the W_HOLDOWN_ROD fix.
-fn nearest_rod(scene: &Scene, post: Box, zc: f64) -> Option<String> {
+/// The anchor bolt or bolt nearest to a post (within 8" in plan and z, drawn in a view with the holdown), for the
+/// W_HOLDOWN_ROD fix.
+fn nearest_rod(scene: &Scene, holdown: &crate::scene::Comp, post: Box, zc: f64) -> Option<String> {
     let mut best: Option<(f64, String)> = None;
     for c in &scene.comps {
-        if c.state != State::Ok || !matches!(c.ty.name(), "anchor_bolt" | "bolt") {
+        if c.state != State::Ok || !matches!(c.ty.name(), "anchor_bolt" | "bolt") || !scene.together(holdown, c) {
             continue;
         }
         let Some(q) = c.world.first() else { continue };
@@ -854,6 +855,7 @@ pub fn build_on(
     if !ctx.p.ok {
         return None;
     }
+    ctx.fixed = Some(format!("a strap 'on' a face takes its place from the face of '{mname}'"));
     let origin = ctx.origin;
     let pts: Option<Vec<Pt>> = match cp.points.as_ref() {
         Some(pv) => {

@@ -109,8 +109,12 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   anchors between shared and scenario members stay meaningful). Shared members get no `views`; a scenario's members get
   `"views":["B"]` (or several). A view can instead list `"only":["shared_*","b_*"]` or `"omit":["a_*","c_*"]` (ids or
   `*` globs; one that matches nothing warns `W_REF_UNKNOWN`, so ops can arrive in any order). Excluded members are not
-  drawn (not even as beyond outlines) and skip that view's checks, so never acknowledge cross-scenario overlaps; a
-  finding seen in only some views ends with `(in views A, C)`.
+  drawn (not even as beyond outlines) and skip that view's checks (overlaps, contact, cover, bolt edge and spacing, post
+  bases), so rods of two scenarios may share a spot; never acknowledge cross-scenario findings; a finding seen in only
+  some views ends with `(in views A, C)`.
+- Point lists (polygon, fill, membrane, solid points, path bar, strap points) place like boxes: without `at.anchor` the
+  literal points are measured from `at.to`; with one (`"anchor":"top_left"`, `"vertex_2"`) that point of the shape lands
+  on `at.to`, so points can start anywhere. Points that are Refs are absolute: no anchor then (E_PARAM).
 - One sheet for the scenarios (`kerf schema layout`): `"layouts":[{"id":"S1","views":["A","B","C","D"],"arrange":"grid",
   "columns":2,"sheet":"auto"}]`, then `kerf export x.kerf.json --layout S1 --format png --sheet -o x-S1.png` (the PNG
   is 90 px per sheet inch, at least 1600). Each view keeps its bubble, title and scale; the keyed notes of all views

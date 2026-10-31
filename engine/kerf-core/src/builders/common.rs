@@ -23,6 +23,9 @@ pub struct Ctx<'a, 's, 'p> {
     pub angle: f64,
     /// The length of a two-point member (`from`/`to`, SPEC 27.3): it replaces `length`/`until`.
     pub span: Option<f64>,
+    /// Why the built geometry sits at absolute positions (a Ref point, a strap on a face), so an `at.anchor` cannot
+    /// move it (SPEC 28.1).
+    pub fixed: Option<String>,
 }
 
 pub fn box_of_prisms(prisms: &[Prism]) -> Box {
@@ -183,6 +186,8 @@ pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Opt
                 Some(w) => {
                     let q = if local { w.sub(ctx.origin) } else { w };
                     out.push(Pt::new(q.x, q.y));
+                    ctx.fixed
+                        .get_or_insert_with(|| format!("point {i} of '{key}' is the Ref \"{s}\", an absolute point"));
                 }
                 None => ok = false,
             },
@@ -212,6 +217,9 @@ pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Opt
                             q = q.sub(ctx.origin);
                         }
                         out.push(Pt::new(q.x, q.y));
+                        ctx.fixed.get_or_insert_with(|| {
+                            format!("point {i} of '{key}' is the Ref \"{rstr}\", an absolute point")
+                        });
                     }
                     None => ok = false,
                 }
