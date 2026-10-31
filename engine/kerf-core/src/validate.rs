@@ -261,15 +261,51 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
         if c.dashed {
             continue;
         }
-        let touches = s.items.iter().filter(|p| p.comp.index == c.index).any(|p| {
+        let touching_in = |p: &&&Pf<'_>, any_instance: bool| {
             s.items.iter().any(|q| {
                 let reach = if p.prism.role.is_masonry() && q.prism.role.is_masonry() { JOINT_GAP - 1e-9 } else { gap };
-                q.comp.index != c.index
+                let other = q.comp.index != c.index || (any_instance && q.prism.instance != p.prism.instance);
+                other
                     && z_gap(p.prism, q.prism) <= gap
                     && p.box_.expand(reach).overlaps(q.box_, 0.0)
                     && region_dist(&p.flat, &q.flat, reach) <= reach
             })
-        });
+        };
+        let touching = |p: &&&Pf<'_>| touching_in(p, false);
+        let mine: Vec<&&Pf<'_>> = s.items.iter().filter(|p| p.comp.index == c.index).collect();
+        let touches = mine.iter().any(touching);
+        if touches && c.arr_count > 1 {
+            let mut loose: Vec<u32> = Vec::new();
+            for p in &mine {
+                if !loose.contains(&p.prism.instance)
+                    && !mine.iter().filter(|q| q.prism.instance == p.prism.instance).any(|q| touching_in(q, true))
+                {
+                    loose.push(p.prism.instance);
+                }
+            }
+            if !loose.is_empty() {
+                loose.sort_unstable();
+                let ids: Vec<String> = loose.iter().map(|k| format!("{}#{k}", c.id)).collect();
+                let zs: Vec<String> = loose
+                    .iter()
+                    .filter_map(|k| mine.iter().find(|p| p.prism.instance == *k))
+                    .map(|p| format!("{}..{}", fmt_ft_in(p.prism.z0), fmt_ft_in(p.prism.z1)))
+                    .collect();
+                diags.add_fix(
+                    Level::Warning,
+                    "W_FLOATING",
+                    Some(&c.id),
+                    None,
+                    format!(
+                        "array instance(s) {} of '{}' touch nothing (z {}) while instance 0 or others do; the array runs past the members it should sit on",
+                        join_ids(&ids),
+                        c.id,
+                        zs.join(", ")
+                    ),
+                    "an array starts at instance 0 (where `at` and `z` put it) and steps by spacing: lower array.count, or for n instances centered on z = c set \"z\" to c - (n-1)*spacing/2".to_string(),
+                );
+            }
+        }
         if !touches {
             diags.add_fix(
                 Level::Warning,

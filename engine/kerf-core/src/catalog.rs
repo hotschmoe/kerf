@@ -279,7 +279,7 @@ const COMMON: [(&[&str], &str, &str); 13] = [
     (
         &["array"],
         "null",
-        "{axis: x|y|z, count, spacing}: instance k offset by k*spacing; instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k",
+        "{axis: x|y|z, count, spacing}: instance k offset by k*spacing from instance 0 (a numeric `z` places instance 0, it does not center the group: for n instances centered on c use z = c - (n-1)*spacing/2); instances are id#0..id#n-1, refs to `id` mean instance 0, `id#k@anchor` addresses instance k. Instances that touch nothing while others do get W_FLOATING",
     ),
     (&["embedded"], "type default", "drawn over cut solids and never occluded (rebar, anchor bolts)"),
     (&["visible"], "true", "false hides the component from views and mesh"),

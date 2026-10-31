@@ -466,7 +466,7 @@ pub static AT: Object = Object {
 pub static ARRAY: Object = Object {
     name: "array",
     brief: "repeat a component",
-    summary: "Repeat a component (`array`): instance k is translated by k*spacing. Instances are id#0..id#n-1; a ref to `id` means instance 0, `id#k@anchor` addresses instance k.",
+    summary: "Repeat a component (`array`): instance k is translated by k*spacing from instance 0, which sits where `at` and `z` put it (a numeric `z` places instance 0, it does not center the group). Instances are id#0..id#n-1; a ref to `id` means instance 0, `id#k@anchor` addresses instance k.",
     fields: &[
         Field {
             name: "axis",
