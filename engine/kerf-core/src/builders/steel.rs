@@ -86,7 +86,8 @@ fn mirror_u(lp: &[Pt], w: f64) -> Vec<Pt> {
 fn w_geo(d: f64, bf: f64, tw: f64, tf: f64, k: f64, fillets: bool) -> Geo {
     let xl = (bf - tw) / 2.0;
     let xr = (bf + tw) / 2.0;
-    let r = if fillets { (k - tf).clamp(0.0, 0.9 * xl).min(0.45 * (d - 2.0 * tf)) } else { 0.0 };
+    let rk = (k - tf).clamp(0.0, 0.9 * xl).min(0.45 * (d - 2.0 * tf));
+    let r = if fillets { rk } else { 0.0 };
     let lp = if r > 1e-9 {
         vec![
             p(0.0, 0.0),
@@ -147,6 +148,10 @@ fn w_geo(d: f64, bf: f64, tw: f64, tf: f64, k: f64, fillets: bool) -> Geo {
             ("top_flange_tip_right", bf, d - tf),
             ("bottom_flange_tip_left", 0.0, tf),
             ("bottom_flange_tip_right", bf, tf),
+            ("web_left_top", xl - rk, d - tf),
+            ("web_right_top", xr + rk, d - tf),
+            ("web_left_bottom", xl - rk, tf),
+            ("web_right_bottom", xr + rk, tf),
         ],
         elev_levels: vec![
             ("top_flange", d),

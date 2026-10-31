@@ -26,6 +26,7 @@ params! {
         spacing: LenPos = 3.0 => { desc: "center-to-center spacing along `line` (AISC minimum 2 2/3 d, 3d preferred; W_BOLT_SPACING)" },
         line: Enum(Line) = Line::X => { desc: "direction of the row from bolt 1: x or z for side bolts, x or y for end bolts" },
         washer: Bool = true => { desc: "draw the hardened washer under the nut" },
+        counterbore: Bool = false => { desc: "weld_stud: washer and nut sit in a bored pocket in the top ply, the stud end flush with the top of the grip, so nothing projects above the plies (sheathing or joists bear flat); draws the pocket (washer OD + 1/8\", part `counterbore`). Needs grip >= washer + nut + d/2" },
     }
 }
 
@@ -84,7 +85,22 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ctx.p.fail("orient", format!("a {} is welded to a face and drawn side-on: use orient side and rotate the component to point it (e.g. rotate 90 for a stud on a column flange seen in plan)", bp.kind.tag()));
             return None;
         }
+        if bp.counterbore {
+            let need = if bp.washer { WASHER_T } else { 0.0 } + 1.5 * d;
+            if bp.kind != BoltKind::WeldStud {
+                ctx.p.fail("counterbore", "counterbore is for a weld_stud (its nut and washer recessed into the top ply); remove it or set kind \"weld_stud\"".into());
+                return None;
+            }
+            if bp.grip < need - 1e-9 {
+                ctx.p.fail("counterbore", format!("a counterbore holds the washer, nut and d/2 of stud ({}), deeper than the grip {}: set grip to the plies' thickness (at least {}) or remove counterbore", fmt_ft_in(need), fmt_ft_in(bp.grip), fmt_ft_in(need)));
+                return None;
+            }
+        }
         return Some(stud(&bp));
+    }
+    if bp.counterbore {
+        ctx.p.fail("counterbore", "counterbore is for a weld_stud (its nut and washer recessed into the top ply); remove it or set kind \"weld_stud\"".into());
+        return None;
     }
     let f = hex_flats(d);
     let head_h = 0.625 * d;
@@ -184,7 +200,17 @@ fn stud(bp: &Params) -> Built {
         prisms.push(Prism { zhalf: 0.8 * d, zoff: zo, ..steel("weld", model::one_loop(weld(o))) });
         if bp.kind == BoltKind::WeldStud {
             let wt = if bp.washer { WASHER_T } else { 0.0 };
-            let top = grip + wt + d + 0.5 * d;
+            let seat = if bp.counterbore { grip - wt - 1.5 * d } else { grip };
+            let top = seat + wt + d + 0.5 * d;
+            if bp.counterbore {
+                let hr = d + 0.0625;
+                prisms.push(Prism {
+                    zhalf: hr,
+                    zoff: zo,
+                    material: "void".to_string(),
+                    ..steel("counterbore", model::one_loop(model::rect_loop(o.x - hr, seat, o.x + hr, grip)))
+                });
+            }
             prisms.push(Prism {
                 centerline: vec![Pt::new(o.x, 0.0), Pt::new(o.x, top)],
                 sweep_r: d / 2.0,
@@ -195,7 +221,7 @@ fn stud(bp: &Params) -> Built {
                 prisms.push(Prism {
                     zhalf: d,
                     zoff: zo,
-                    ..steel("washer", model::one_loop(model::rect_loop(o.x - d, grip, o.x + d, grip + wt)))
+                    ..steel("washer", model::one_loop(model::rect_loop(o.x - d, seat, o.x + d, seat + wt)))
                 });
             }
             prisms.push(Prism {
@@ -203,7 +229,7 @@ fn stud(bp: &Params) -> Built {
                 zoff: zo,
                 ..steel(
                     "nut",
-                    model::one_loop(model::rect_loop(o.x - f / 2.0, grip + wt, o.x + f / 2.0, grip + wt + d)),
+                    model::one_loop(model::rect_loop(o.x - f / 2.0, seat + wt, o.x + f / 2.0, seat + wt + d)),
                 )
             });
         } else {
@@ -222,18 +248,20 @@ fn stud(bp: &Params) -> Built {
         }
         anchors.push(NamedAnchor { name: format!("bolt_{}", k + 1), p: o });
     }
-    anchors.push(NamedAnchor { name: "nut_bearing".to_string(), p: V2::init(0.0, grip) });
+    let seat = if bp.counterbore { grip - if bp.washer { WASHER_T } else { 0.0 } - 1.5 * d } else { grip };
+    anchors.push(NamedAnchor { name: "nut_bearing".to_string(), p: V2::init(0.0, seat) });
     let bx = box_of_prisms(&prisms);
     let n = bp.count;
     let row =
         if n > 1 { format!(", ({n}) @ {} along {}", fmt_ft_in(bp.spacing), bp.line.tag()) } else { String::new() };
     let what = if bp.kind == BoltKind::WeldStud { "grip" } else { "length" };
+    let cb = if bp.counterbore { ", nut in counterbore" } else { "" };
     Built {
         prisms,
         anchors,
         box_: bx,
         nat_z: Some(d),
-        info: format!("bolt {} {}\" dia., {what} {}{row}", bp.kind.tag(), fmt_num(d), fmt_ft_in(grip)),
+        info: format!("bolt {} {}\" dia., {what} {}{cb}{row}", bp.kind.tag(), fmt_num(d), fmt_ft_in(grip)),
         ..Built::default()
     }
 }

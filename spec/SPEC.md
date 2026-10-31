@@ -370,7 +370,9 @@ flanges as lines). Hidden faces (HSS/pipe inside walls, back flanges, the web in
 the same member draws once in the member's pen (not as a same-component shared edge). Where the crop cuts a lengthwise
 member off, it gets a break line (§16 break symbol), merged with the break lines of adjacent cut members.
 Named anchors: section — W `top_flange`, `bottom_flange`, `web_center`, `web_left`, `web_right`,
-`top_flange_tip_left/right` (underside), `bottom_flange_tip_left/right` (top face); HSS/pipe `inner_top`, `inner_bottom`,
+`top_flange_tip_left/right` (underside), `bottom_flange_tip_left/right` (top face), `web_left_top`/`web_right_top`
+(top flange underside at the toe of the root fillet, `k - tf` out from the web face: a nailer's corner tight in the
+flange pocket, §28.8), `web_left_bottom`/`web_right_bottom` (the same on the bottom flange's top face); HSS/pipe `inner_top`, `inner_bottom`,
 `inner_left`, `inner_right`; angle `heel`, `heel_inside`, `toe_vertical`, `toe_horizontal`, `vertical_leg_face`,
 `horizontal_leg_top`; channel `web_back`, `web_face`, `top_flange`, `bottom_flange`, `top_flange_tip`, `bottom_flange_tip`;
 plate `edge_left`, `edge_right`, `face_top`, `face_bottom`. Elevation/plan — the levels across the member at mid-length,
