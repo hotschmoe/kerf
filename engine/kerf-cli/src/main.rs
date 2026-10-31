@@ -209,6 +209,7 @@ fn guide_split(text: &str) -> (&str, &str) {
 #[derive(Default)]
 struct Opts {
     view: Option<String>,
+    layout: Option<String>,
     format: Option<String>,
     style: Option<String>,
     out: Option<String>,
@@ -239,6 +240,7 @@ fn parse_opts(args: &[String]) -> Result<Opts, ()> {
         };
         match a.as_str() {
             "--view" => o.view = Some(value(a)?),
+            "--layout" => o.layout = Some(value(a)?),
             "--format" => o.format = Some(value(a)?),
             "--style" => o.style = Some(value(a)?),
             "-o" => o.out = Some(value(a)?),
@@ -647,27 +649,35 @@ fn prepare_doc_call(cmd: &str, o: &Opts, call: &mut DocCall) -> Res<Option<u8>> 
             return Ok(Some(2));
         }
     }
+    if o.layout.is_some() && !matches!(cmd, "drawing" | "export") {
+        stderr(&format!("kerf {cmd}: --layout only applies to `kerf drawing` and `kerf export`\n"));
+        return Ok(Some(2));
+    }
+    let target = || -> Option<String> {
+        match (&o.view, &o.layout) {
+            (Some(_), Some(_)) => {
+                stderr(&format!(
+                    "kerf {cmd}: give --view <id> (one view) or --layout <id> (a sheet of views), not both\n"
+                ));
+                None
+            }
+            (Some(v), None) => Some(format!("\"view\":{}", json_string(v))),
+            (None, Some(l)) => Some(format!("\"layout\":{}", json_string(l))),
+            (None, None) => {
+                stderr(&format!("kerf {cmd}: --view <id> is required (or --layout <id> for a sheet layout)\n"));
+                None
+            }
+        }
+    };
     match cmd {
         "drawing" => {
-            let Some(v) = &o.view else {
-                stderr("kerf drawing: --view <id> is required\n");
-                return Ok(Some(2));
-            };
-            call.extra = format!("\"view\":{}", json_string(v));
+            let Some(t) = target() else { return Ok(Some(2)) };
+            call.extra = t;
         }
         "export" => {
-            let Some(v) = &o.view else {
-                stderr("kerf export: --view <id> is required\n");
-                return Ok(Some(2));
-            };
+            let Some(t) = target() else { return Ok(Some(2)) };
             let f = o.format.as_deref().unwrap_or("svg");
-            call.extra = format!(
-                "\"view\":{},\"format\":{},\"sheet\":{},\"review\":{}",
-                json_string(v),
-                json_string(f),
-                o.sheet,
-                o.review
-            );
+            call.extra = format!("{t},\"format\":{},\"sheet\":{},\"review\":{}", json_string(f), o.sheet, o.review);
             if let Some(px) = &o.px {
                 let Some(pxn) = units::parse_finite(px) else {
                     stderr(&format!("kerf export: --px must be a number (got \"{px}\")\n"));

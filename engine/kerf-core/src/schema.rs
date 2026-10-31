@@ -163,7 +163,8 @@ const REFS_TEXT: &str = concat!(
     "- Coordinates: inches, X right, Y up, Z toward the viewer; sections look along -Z.\n",
 );
 
-pub const TOPICS_HINT: &str = "doc view note dim label cite ops at array acknowledge common refs <component type>";
+pub const TOPICS_HINT: &str =
+    "doc view layout note dim label ref cite ops at array acknowledge common refs <component type>";
 
 pub fn render(topic: &str) -> Option<String> {
     if let Some(o) = fields::find_object(topic) {

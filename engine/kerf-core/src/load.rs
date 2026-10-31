@@ -7,6 +7,7 @@ use crate::crop::{self, Before};
 use crate::drawview;
 use crate::geom::{self, Box, V2};
 use crate::json::{self, Member, Value};
+use crate::layout;
 use crate::limits;
 use crate::lint::{self, AckMode, Acked};
 use crate::model::{self, Diag, Diags, Level};
@@ -56,6 +57,7 @@ pub fn load_after_edit<'a>(
     if is_obj {
         validate::run(&scene, doc, diags);
         lint::run(&scene, doc, &coverage, diags);
+        layout::check(doc, diags);
         let prior = before.map(|b| Before { scene: &b.scene, doc: b.doc });
         crop::run(&scene, doc, prior.as_ref(), diags);
     }
@@ -79,12 +81,20 @@ pub fn load_after_edit<'a>(
             }
             seen.push(vid);
             let vd = Diags::new();
-            if let Some(spec) = view::parse(v, i, &vd)
+            if let Some(spec) = layout::view_spec(&vdoc, v, i, &vd)
                 && with_views
             {
                 drawview::build_from_scene(&vdoc, st, &scene, &spec, &vd);
             }
             diags.extend(vd.into_vec());
+        }
+        if with_views && views.len() == va.len() {
+            for lid in layout::layout_ids(&vdoc) {
+                let ld = Diags::new();
+                layout::build_from_scene(&vdoc, st, &scene, lid, &ld);
+                let known = diags.to_vec();
+                diags.extend(ld.into_vec().into_iter().filter(|x| !known.contains(x)));
+            }
         }
     }
     let mut acked = Vec::new();
@@ -445,7 +455,7 @@ fn inspect_at(l: &Loaded, q: &Value) -> Result<Value, InspectError> {
         ));
     };
     let vd = Diags::new();
-    let Some(spec_v) = view::parse(vnode, 0, &vd) else {
+    let Some(spec_v) = crate::layout::view_spec(l.doc, vnode, 0, &vd) else {
         let msg = vd.list().first().map_or_else(|| "view is invalid".to_string(), |d| d.message.clone());
         return Err(ierr("E_PARAM", msg));
     };

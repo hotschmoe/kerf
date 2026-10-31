@@ -175,6 +175,30 @@ pub struct Drawing<'a> {
     /// Page size in paper inches when `bounds` is a full sheet (0 = not a sheet).
     pub page_w: f64,
     pub page_h: f64,
+    /// The DETAIL NOTES entries of a view built for a layout with shared notes (SPEC 26.2); the view draws no list.
+    pub keyed: Vec<KeyedEntry>,
+    /// A sheet layout (SPEC 26.2): the views placed on it; empty for a single view.
+    pub cells: Vec<Cell>,
+    /// A layout's own sheet size (paper inches); None = the style's.
+    pub sheet_size: Option<(f64, f64)>,
+}
+
+/// One DETAIL NOTES entry: its number, the text (with citations) and the text alone, and the first note with it.
+#[derive(Clone, Debug)]
+pub struct KeyedEntry {
+    pub num: u32,
+    pub text: String,
+    pub body: String,
+    pub first: String,
+}
+
+/// A view placed on a layout: its id, its own scale and its extents in the layout's coordinates.
+#[derive(Clone, Debug)]
+pub struct Cell {
+    pub view: String,
+    pub scale: f64,
+    pub scale_label: String,
+    pub bounds: [f64; 4],
 }
 
 impl<'a> Drawing<'a> {
@@ -204,6 +228,9 @@ impl<'a> Drawing<'a> {
             doc_title: String::new(),
             page_w: 0.0,
             page_h: 0.0,
+            keyed: Vec::new(),
+            cells: Vec::new(),
+            sheet_size: None,
         }
     }
 }
@@ -261,7 +288,7 @@ pub fn to_json(d: &Drawing) -> Vec<u8> {
     raw(&mut out, "{\"kerf_drawing\":\"0.1\",\"doc\":");
     json::write_string(&mut out, &d.doc);
     key_str(&mut out, ",\"view\":", &d.view);
-    key_str(&mut out, ",\"kind\":", d.kind.name());
+    key_str(&mut out, ",\"kind\":", if d.cells.is_empty() { d.kind.name() } else { "layout" });
     key_num(&mut out, ",\"scale\":", d.scale);
     raw(&mut out, ",\"bounds\":[");
     for (i, b) in d.bounds.iter().enumerate() {
@@ -270,7 +297,28 @@ pub fn to_json(d: &Drawing) -> Vec<u8> {
         }
         json::push_number(&mut out, *b);
     }
-    raw(&mut out, "],\n\"pens\":{");
+    raw(&mut out, "]");
+    if !d.cells.is_empty() {
+        raw(&mut out, ",\n\"cells\":[");
+        for (i, c) in d.cells.iter().enumerate() {
+            if i > 0 {
+                out.push(b',');
+            }
+            key_str(&mut out, "{\"view\":", &c.view);
+            key_num(&mut out, ",\"scale\":", c.scale);
+            key_str(&mut out, ",\"scale_label\":", &c.scale_label);
+            raw(&mut out, ",\"bounds\":[");
+            for (k, b) in c.bounds.iter().enumerate() {
+                if k > 0 {
+                    out.push(b',');
+                }
+                json::push_number(&mut out, *b);
+            }
+            raw(&mut out, "]}");
+        }
+        raw(&mut out, "]");
+    }
+    raw(&mut out, ",\n\"pens\":{");
     for (i, p) in d.style.pens.iter().enumerate() {
         if i > 0 {
             out.push(b',');

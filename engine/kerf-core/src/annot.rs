@@ -6,6 +6,7 @@
 //! dimension and the stacking of colliding ones), `repair` (the bounded repair loop), `knockout` (hatch under text) and
 //! `title` (the title bubble). `shape` has the landing geometry shared with the iso view.
 
+pub mod callout;
 pub mod dims;
 pub mod knockout;
 pub mod notes;
@@ -14,7 +15,7 @@ pub mod text;
 pub mod title;
 pub mod weld;
 
-use crate::drawing::Item;
+use crate::drawing::{Item, KeyedEntry};
 use crate::font::Font;
 use crate::geom::{Box, V2};
 use crate::iso::Iso;
@@ -62,6 +63,10 @@ pub struct Env<'a, 's> {
     pub ann_boxes: Vec<AnnBox>,
     /// Layout effort shared by every pass and trial of one view build (None: each routing call gets its own default budget).
     pub work: Option<&'a route::Work>,
+    /// A layout with shared notes (SPEC 26.2): each keyed note's number by note id. The view then draws no DETAIL NOTES
+    /// list and leaves its entries in `keyed_out`.
+    pub shared_keys: Option<&'a [(String, u32)]>,
+    pub keyed_out: Vec<KeyedEntry>,
 }
 
 impl<'a, 's> Env<'a, 's> {
@@ -92,6 +97,8 @@ impl<'a, 's> Env<'a, 's> {
             labels_box: Box::default(),
             ann_boxes: Vec::new(),
             work: None,
+            shared_keys: None,
+            keyed_out: Vec::new(),
         }
     }
 
@@ -144,6 +151,7 @@ struct Gathered<'a> {
     meta: Vec<Meta<'a>>,
     dspecs: Vec<DimSpec<'a>>,
     lspecs: Vec<LabelSpec<'a>>,
+    /// Items placed exactly where the author put them (welds, reference bubbles), after their annotation index.
     welds: Vec<(usize, Vec<Item>)>,
 }
 
@@ -489,7 +497,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
         welds: Vec::new(),
     };
     let mut seen: Vec<&'a str> = Vec::new();
-    let types = ["note", "dim", "label", "weld"];
+    let types = ["note", "dim", "label", "weld", "ref"];
     for (k, an) in spec.annotations.iter().enumerate() {
         let mut slot: Option<usize> = None;
         let mut cur_meta = Meta::default();
@@ -524,6 +532,13 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
                     }
                 }
                 "weld" => {}
+                "ref" => {
+                    if let Some(rs) = callout::read(env, an, id, &apath) {
+                        let its = callout::items(env, &rs);
+                        env.labels_box.add_box(items_box(env.font, &its));
+                        g.welds.push((k, its));
+                    }
+                }
                 "label" => {
                     if let Some((ls, off)) = read_label(env, an, k, id, &apath) {
                         cur_meta = Meta {
@@ -575,7 +590,11 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
             "set \"notes_style\": \"keyed\" on the view, or notes_side to right, left or both".to_string(),
         );
     }
-    let numbers = if style == NotesStyle::Leader { Vec::new() } else { notes::key_numbers(&notes) };
+    let numbers = match env.shared_keys {
+        _ if style == NotesStyle::Leader => Vec::new(),
+        Some(keys) => notes::shared_numbers(&notes, keys),
+        None => notes::key_numbers(&notes),
+    };
     let routed: &[NoteIn<'a>] = if style == NotesStyle::List { &[] } else { &notes };
     let mut base_segs: Vec<[V2; 2]> = Vec::new();
     for it in base_items.iter() {
@@ -636,7 +655,18 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
             result.append(o);
         }
     }
-    if !numbers.is_empty() {
+    if !numbers.is_empty() && env.shared_keys.is_some() {
+        let entries = notes::list_entries(env, &notes, &numbers);
+        env.keyed_out = entries
+            .iter()
+            .map(|e| KeyedEntry {
+                num: e.num,
+                text: e.text.to_string(),
+                body: e.body.to_string(),
+                first: e.first.to_string(),
+            })
+            .collect();
+    } else if !numbers.is_empty() {
         let entries = notes::list_entries(env, &notes, &numbers);
         let mut ext = items_box(env.font, &result);
         ext.add_box(env.crop);

@@ -24,6 +24,7 @@ pub fn run(scene: &Scene, doc: &Value, cov: &[coverage::Item], diags: &Diags) {
         return;
     }
     unknown_keys(doc, diags);
+    layout_keys(doc, diags);
     note_style(doc, scene.style, diags);
     dim_zero(scene, doc, diags);
     ack_shape(doc, diags);
@@ -207,6 +208,7 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
                 "dim" => &schema::DIM,
                 "label" => &schema::LABEL,
                 "weld" => &schema::WELD,
+                "ref" => &schema::REF,
                 _ => &schema::NOTE,
             };
             let apath = format!("{vbase}/annotations/{aid}");
@@ -214,6 +216,15 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
             for (i, ci) in arr_of(an, "cite").unwrap_or(&[]).iter().enumerate() {
                 lint_object(diags, ci, &schema::CITE, &format!("{apath}/cite/{i}"), Some(aid));
             }
+        }
+    }
+}
+
+fn layout_keys(doc: &Value, diags: &Diags) {
+    for l in arr_of(doc, "layouts").unwrap_or(&[]) {
+        let lid = str_of(l, "id");
+        if matches!(l, Value::Object(_)) && !lid.is_empty() {
+            lint_object(diags, l, &schema::LAYOUT, &format!("layouts/{lid}"), Some(lid));
         }
     }
 }

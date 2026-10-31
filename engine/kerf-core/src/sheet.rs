@@ -106,7 +106,8 @@ fn upper(s: &str, st: &Style) -> String {
 pub fn with_sheet<'a>(d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     let st = d.style;
     let s = d.scale;
-    let (w, h, m, tbh) = (st.sheet_w_in, st.sheet_h_in, st.margin_in, st.title_block_h_in);
+    let (w, h) = d.sheet_size.unwrap_or((st.sheet_w_in, st.sheet_h_in));
+    let (m, tbh) = (st.margin_in, st.title_block_h_in);
     let bw = (d.bounds[2] - d.bounds[0]) / s;
     let bh = (d.bounds[3] - d.bounds[1]) / s;
     let fw = w - 2.0 * m;
@@ -127,7 +128,11 @@ pub fn with_sheet<'a>(d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     let total = fx1 - m;
     let ratios = [3.4, 2.0, 1.2, 1.15, 1.2, 1.3];
     let sum: f64 = ratios.iter().sum();
-    let detail_no = if d.sheet_no.is_empty() { d.number.clone() } else { format!("{}/{}", d.number, d.sheet_no) };
+    let detail_no = match (d.number.is_empty(), d.sheet_no.is_empty()) {
+        (_, true) => d.number.clone(),
+        (true, false) => d.sheet_no.clone(),
+        (false, false) => format!("{}/{}", d.number, d.sheet_no),
+    };
     let author = if d.author.is_empty() { String::from("KERF") } else { upper(&d.author, st) };
     let project = if !d.project.is_empty() {
         upper(&d.project, st)

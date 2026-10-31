@@ -54,6 +54,12 @@ pub static DOC: Object = Object {
             ..Field::NONE
         },
         Field {
+            name: "scale",
+            ty: "string",
+            desc: "default scale of every view without its own `scale` (iso views stay NTS), e.g. \"3/4\\\"=1'-0\\\"\", so scenarios print at one scale",
+            ..Field::NONE
+        },
+        Field {
             name: "components",
             ty: "[component]",
             def: "[]",
@@ -65,6 +71,13 @@ pub static DOC: Object = Object {
             ty: "[view]",
             def: "[]",
             desc: "drawings of the components (see `kerf schema view`)",
+            ..Field::NONE
+        },
+        Field {
+            name: "layouts",
+            ty: "[layout]",
+            def: "[]",
+            desc: "sheets of several views with one shared DETAIL NOTES list (see `kerf schema layout`)",
             ..Field::NONE
         },
     ],
@@ -539,12 +552,116 @@ impl Field {
     const NONE: Field = Field { name: "", ty: "", def: "", required: false, desc: "" };
 }
 
+pub static LAYOUT: Object = Object {
+    name: "layout",
+    brief: "several views on one sheet with one shared DETAIL NOTES list",
+    summary: "A sheet of several views (goes in the document's `layouts[]`; export with `--layout <id>`). Each view keeps its bubble, title and scale line; keyed notes of all its views share one DETAIL NOTES list.",
+    fields: &[
+        Field {
+            name: "id",
+            ty: "string",
+            required: true,
+            desc: "layout id, e.g. \"S1\"; used by `kerf export --layout S1` and op paths `layouts/S1`",
+            ..Field::NONE
+        },
+        Field {
+            name: "views",
+            ty: "[view id | [view id]]",
+            required: true,
+            desc: "the views in reading order; a nested list stacks views across the arrangement (a column inside a row or grid, a row inside a column), e.g. a main section beside two small plan insets: [\"A\", [\"P1\", \"P2\"]]",
+            ..Field::NONE
+        },
+        Field {
+            name: "arrange",
+            ty: "row|column|grid",
+            def: "row (grid when columns is set)",
+            desc: "row: side by side, titles on one line; column: one above the other; grid: rows of `columns` entries",
+            ..Field::NONE
+        },
+        Field { name: "columns", ty: "number", def: "2", desc: "entries per grid row (1-12)", ..Field::NONE },
+        Field {
+            name: "notes",
+            ty: "shared|per_view",
+            def: "shared",
+            desc: "shared: one DETAIL NOTES list for the keyed notes of every view, numbered 1..N without gaps over the layout (same `key` = one entry; an unkeyed note with the same text and cite as an earlier one joins it); per_view: each keyed view keeps its own list",
+            ..Field::NONE
+        },
+        Field {
+            name: "notes_side",
+            ty: "right|left|below|above",
+            def: "right",
+            desc: "where the shared list goes, beside or under the arranged views",
+            ..Field::NONE
+        },
+        Field {
+            name: "scale",
+            ty: "string",
+            def: "common",
+            desc: "common: the largest standard scale (3\" ... 1/4\" = 1'-0\") at which the whole sheet fits, for every view without its own scale (or the document `scale`); or a scale for those views. A view's own `scale` wins: a plan inset at 1/2\"=1'-0\" beside a 1\"=1'-0\" section",
+            ..Field::NONE
+        },
+        Field { name: "gap", ty: "number", def: "0.5", desc: "paper inches between views (0-4)", ..Field::NONE },
+        Field { name: "title", ty: "string", def: "doc title", desc: "title block DETAIL text", ..Field::NONE },
+        Field { name: "number", ty: "string", def: "\"\"", desc: "title block DETAIL NO", ..Field::NONE },
+    ],
+    notes: concat!(
+        "Ops: {\"op\":\"add\",\"path\":\"layouts\",\"value\":{...}}, {\"op\":\"update\",\"path\":\"layouts/S1\",\"value\":{...}}, {\"op\":\"remove\",\"path\":\"layouts/S1\"}; the document default scale: {\"op\":\"set\",\"path\":\"scale\",\"value\":\"3/4\\\"=1'-0\\\"\"}.\n",
+        "A layout is always drawn as one sheet; single-view export (`--view`) is unchanged. `kerf check` builds every layout: W_VIEW_FIT (path layouts/<id>) when the sheet cannot hold it, with each view's size and the fixes that fit (scale, arrangement, list side); I_KEY_RENUMBERED when the shared numbers differ from the notes' keys."
+    ),
+    example: "{\"id\":\"S1\",\"views\":[\"A\",\"B\",\"C\",\"D\"],\"arrange\":\"grid\",\"columns\":2,\"notes\":\"shared\",\"scale\":\"common\"}",
+};
+
+pub static REF: Object = Object {
+    name: "ref",
+    brief: "reference bubble: SEE detail/sheet",
+    summary: "A reference bubble (annotation of type ref): the detail number over the sheet number in a split circle, with an optional leader and text beside it. Placed exactly (not moved by the note layout). Points at another detail (`SEE 3/S-50.01`); a view whose only content is a ref is a \"see other detail\" scenario.",
+    fields: &[
+        Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
+        Field { name: "type", ty: "\"ref\"", required: true, desc: "annotation type", ..Field::NONE },
+        Field {
+            name: "detail",
+            ty: "string",
+            required: true,
+            desc: "detail number, top half of the bubble",
+            ..Field::NONE
+        },
+        Field {
+            name: "sheet",
+            ty: "string",
+            desc: "sheet number, bottom half (omitted: a plain bubble)",
+            ..Field::NONE
+        },
+        Field {
+            name: "at",
+            ty: "point",
+            desc: "where the leader arrow points: \"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y] (omitted: no leader)",
+            ..Field::NONE
+        },
+        Field {
+            name: "place",
+            ty: "[x, y]",
+            def: "at + 3/4\" paper up and right",
+            desc: "model position of the bubble centre (needed without `at`)",
+            ..Field::NONE
+        },
+        Field {
+            name: "text",
+            ty: "string",
+            desc: "text beside the bubble, e.g. \"SEE\", \"SIM.\" or \"NON-BEARING PARTITION\"",
+            ..Field::NONE
+        },
+    ],
+    example: "{\"id\":\"r_see\",\"type\":\"ref\",\"detail\":\"3\",\"sheet\":\"S-50.01\",\"at\":\"beam@top_right\",\"text\":\"SIM.\"}",
+    ..Object::NONE
+};
+
 impl Object {
     const NONE: Object = Object { name: "", brief: "", summary: "", fields: &[], notes: "", example: "" };
 }
 
 /// Every non-component topic, in listing order.
-pub static OBJECTS: [&Object; 11] = [&DOC, &VIEW, &NOTE, &DIM, &LABEL, &WELD, &CITE, &OPS, &AT, &ARRAY, &ACK];
+pub static OBJECTS: [&Object; 13] =
+    [&DOC, &VIEW, &LAYOUT, &NOTE, &DIM, &LABEL, &WELD, &REF, &CITE, &OPS, &AT, &ARRAY, &ACK];
 
 pub fn find_object(name: &str) -> Option<&'static Object> {
     if let Some(o) = OBJECTS.iter().find(|o| o.name == name) {

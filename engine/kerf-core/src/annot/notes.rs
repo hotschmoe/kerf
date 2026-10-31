@@ -1,11 +1,13 @@
 //! Leader notes (SPEC 6.3) and keyed notes (SPEC 24): landing points, obstacles, routing of the note column, key tags and
 //! the DETAIL NOTES list, hit reporting, and note text with citations.
 
-use super::text::{ascii_fold, layer_name, path_item, text_item, upper_if, wrap};
+use super::text::{ascii_fold, ascii_fold_flag, layer_name, path_item, text_item, upper_if, wrap};
 use super::{Env, Landing};
 use crate::clip;
-use crate::drawing::{Align, FillItem, Item, PathItem, VAlign};
+use crate::drawing::{Align, FillItem, Item, PathItem, TextItem, VAlign};
+use crate::font::Font;
 use crate::geom::{self, Box, Pt, V2};
+use crate::house;
 use crate::json::{self, Value};
 use crate::limits;
 use crate::math;
@@ -16,6 +18,7 @@ use crate::scene::Scene;
 use crate::shape;
 use crate::sort;
 use crate::style::KeyTag;
+use crate::style::Style;
 use crate::thinland;
 use crate::view::NotesSide;
 use alloc::format;
@@ -634,6 +637,26 @@ pub fn key_numbers(notes: &[NoteIn]) -> Vec<u32> {
         .collect()
 }
 
+/// Layout numbering (SPEC 26.2): each note takes the number the layout gave its id; a note the layout did not number
+/// (none should remain) takes the lowest number no other note uses.
+pub fn shared_numbers(notes: &[NoteIn], keys: &[(String, u32)]) -> Vec<u32> {
+    let mut used: Vec<u32> = keys.iter().map(|k| k.1).collect();
+    let mut next = 1u32;
+    notes
+        .iter()
+        .map(|n| match keys.iter().find(|k| k.0 == n.id) {
+            Some(k) => k.1,
+            None => {
+                while used.contains(&next) {
+                    next += 1;
+                }
+                used.push(next);
+                next
+            }
+        })
+        .collect()
+}
+
 /// The list entries in number order; notes sharing a key share the first one's text (a different text warns).
 pub fn list_entries<'a>(env: &Env, notes: &'a [NoteIn], numbers: &[u32]) -> Vec<ListEntry<'a>> {
     let vid = env.spec.id;
@@ -679,25 +702,37 @@ pub fn list_entries<'a>(env: &Env, notes: &'a [NoteIn], numbers: &[u32]) -> Vec<
 /// Lines a list keeps in one column (above the drawing, or beside one shorter than that).
 const ONE_COLUMN_LINES: usize = 8;
 
+/// How a DETAIL NOTES list is drawn: style, font, scale factor and where it goes relative to the drawing.
+pub struct ListLook<'a> {
+    pub st: &'a Style,
+    pub font: &'a Font,
+    pub sc: f64,
+    pub side: NotesSide,
+}
+
+/// The DETAIL NOTES list (SPEC 24) of a view.
+pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
+    let look = ListLook { st: env.style, font: env.font, sc: env.s, side: env.spec.notes_side };
+    list_block(&look, entries, ext, &mut env.unknown_glyph)
+}
+
 /// The DETAIL NOTES list (SPEC 24): heading, rule, then `<n>.` and the wrapped text with a hanging indent. It sits beside
 /// (`notes_side` left/right) or above (`above`, `both`) `ext`, the drawing with its tags, dimensions and labels, and
 /// splits into two columns past 8 lines, or beside a taller drawing, once one column would be taller than the drawing.
-pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
-    let st = env.style;
-    let sc = env.s;
+/// `unknown` is set when a character is not in the stroke font.
+pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mut bool) -> Vec<Item> {
+    let ListLook { st, font, sc, side } = *look;
     let h = st.text_height_in * sc;
     let pitch = h * st.line_spacing;
     let gap = st.gutter_in * sc;
     let wrap_n = num::to_int_clamped::<usize>(st.wrap_chars * 1.25, 5, 250);
-    let font = env.font;
     let widest = entries.iter().map(|e| font.width(format!("{}.", e.num), h)).fold(0.0, f64::max);
     let indent = widest + font.width("  ", h);
     let wrapped: Vec<Vec<String>> = entries.iter().map(|e| wrap(e.text, wrap_n)).collect();
     let text_w = wrapped.iter().flatten().map(|l| font.width(ascii_fold(l), h)).fold(0.0, f64::max);
-    let title = upper_if(env, &st.list_title).into_owned();
+    let title = if st.text_case_upper { house::upper(&st.list_title, st) } else { st.list_title.clone() };
     let col_w = (indent + text_w).max(font.width(ascii_fold(&title), h));
     let total: usize = wrapped.iter().map(Vec::len).sum();
-    let side = env.spec.notes_side;
     let beside = matches!(side, NotesSide::Left | NotesSide::Right);
     let two = total > ONE_COLUMN_LINES && (!beside || total as f64 * pitch > ext.height());
     // the first column ends at the entry that makes the taller column shortest (ties: the longer first column)
@@ -728,61 +763,30 @@ pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
     };
     let rule_y = top - rule_drop;
     let col_x = |c: usize| x0 + c as f64 * (col_w + gap);
+    let layer = String::from(st.layer_name(LayerKey::Notes));
+    let mut text = |src: &str, s: &str, x: f64, y: f64| {
+        let folded = ascii_fold_flag(s, Some(&mut *unknown)).into_owned();
+        Item::Text(TextItem::new(layer.clone(), Pen::Anno, String::from(src), folded, x, y, h))
+    };
     let mut out = Vec::new();
-    out.push(text_item(
-        env,
-        LayerKey::Notes,
-        Pen::Anno,
-        "notes_list",
-        &title,
-        x0,
-        top - h,
-        h,
-        0.0,
-        Align::Left,
-        VAlign::Baseline,
-    ));
+    out.push(text("notes_list", &title, x0, top - h));
     for c in 0..ncols as usize {
-        out.push(path_item(
-            env,
-            Pen::Anno,
-            "notes_list",
-            &[V2::init(col_x(c), rule_y), V2::init(col_x(c) + col_w, rule_y)],
-            false,
-        ));
+        out.push(Item::Path(PathItem {
+            layer: String::from(st.layer_for_pen(Pen::Anno)),
+            pen: Pen::Anno,
+            src: String::from("notes_list"),
+            closed: false,
+            pts: alloc::vec![Pt::at(V2::init(col_x(c), rule_y), 0.0), Pt::at(V2::init(col_x(c) + col_w, rule_y), 0.0)],
+        }));
     }
     let mut y = [rule_y - lead; 2];
     for (i, (e, lines)) in entries.iter().zip(&wrapped).enumerate() {
         let c = usize::from(i >= split);
         let cx = col_x(c);
         let label = format!("{}.", e.num);
-        out.push(text_item(
-            env,
-            LayerKey::Notes,
-            Pen::Anno,
-            e.first,
-            &label,
-            cx,
-            y[c],
-            h,
-            0.0,
-            Align::Left,
-            VAlign::Baseline,
-        ));
+        out.push(text(e.first, &label, cx, y[c]));
         for line in lines {
-            out.push(text_item(
-                env,
-                LayerKey::Notes,
-                Pen::Anno,
-                e.first,
-                line,
-                cx + indent,
-                y[c],
-                h,
-                0.0,
-                Align::Left,
-                VAlign::Baseline,
-            ));
+            out.push(text(e.first, line, cx + indent, y[c]));
             y[c] -= pitch;
         }
     }

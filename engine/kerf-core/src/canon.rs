@@ -91,6 +91,9 @@ pub fn order(ctx: &KeyCtx) -> Vec<String> {
     if p.len() == 2 && p[0] == "views" && last == "[]" {
         return keys_of(&schema::VIEW);
     }
+    if p.len() == 2 && p[0] == "layouts" && last == "[]" {
+        return keys_of(&schema::LAYOUT);
+    }
     if p.len() == 3 && p[0] == "components" {
         match last {
             "at" => return keys_of(&schema::AT),
@@ -122,6 +125,7 @@ pub fn order(ctx: &KeyCtx) -> Vec<String> {
                 "dim" => keys_of(&schema::DIM),
                 "label" => keys_of(&schema::LABEL),
                 "weld" => keys_of(&schema::WELD),
+                "ref" => keys_of(&schema::REF),
                 _ => keys_of(&schema::NOTE),
             };
         }
