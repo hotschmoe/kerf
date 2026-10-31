@@ -35,8 +35,6 @@ kerf apply truss-cmu.kerf.json ops.json -w --why "Add HETA20 anchors at 16 in o.
 kerf apply truss-cmu.kerf.json ops.json --dry-run
 kerf check truss-cmu.kerf.json
 kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
-kerf export truss-cmu.kerf.json --view A --format dxf -o truss-cmu-A.dxf
-kerf new x.kerf.json --template section
 kerf schema note dim cite
 kerf schema lumber
 kerf guide --full
@@ -45,7 +43,7 @@ kerf guide --full
 - A failed apply prints `ERROR <code> <path>: <message>  Fix: <fix>` for every error, then `nothing written` (exit 1).
 - Ops: `add` (path `components` | `views` | `views/<id>/annotations`), `update` (path `components/<id>` | `views/<id>` |
   `views/<id>/annotations/<id>` | `meta`; value = merge patch, null deletes a key), `remove` (path), `set` (path `doc`).
-- Fix warnings; acknowledge one only if it is right for this detail, on the component, with a reason:
+- Fix warnings; acknowledge one only if it is right for this detail, on the element it names, with a reason:
   `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]`. The summary counts and lists them (`kerf check --strict`
   prints each). Wood on CMU wants `"barrier":"sill_seal"`. No fake geometry.
 - Scenarios: one view each, all at one origin; scenario members get `"views":["B"]`, shared members none.
@@ -55,7 +53,7 @@ kerf guide --full
 ## Diagnostics you will meet (each prints its own fix)
 W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
 W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
-W_NOTE_STYLE (house style: no sentences, `?`, `NOTE:`, trailing `W/` or `AND`), W_UNKNOWN_KEY (misspelled field),
+W_NOTE_STYLE (no sentences, `?`, `NOTE:`, trailing `W/`), W_ABBREV (abbreviation form), W_UNKNOWN_KEY (misspelled field),
 W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit moved a member out of an
 explicit `crop`: remove `crop` and `scale` to re-fit), W_REFERENCE_FILE (bad or missing `meta.references` image),
 W_ACK_UNUSED (stale `acknowledge`: remove it), I_* (info only).
@@ -83,9 +81,9 @@ panel/membrane stops short of the member it rests on and prints this fix.
 
 ## Notes: one engineer's voice
 UPPERCASE, no trailing period, no sentences: `<SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>`, e.g.
-`2X6 PT SILL PLATE W/ 5/8" DIA. ANCHOR BOLTS @ 48" O.C.`, `(2) #5 CONT. BOT.`. Fractions `1 1/2"`, ` X ` between sizes,
-abbreviations W/ O.C. EA. CONT. TYP. PT MIN. DIA. BOT. CONC. GYP. BD. SHTG. REINF. MFR. U.N.O. (`W_NOTE_STYLE` lints this;
-`16d`, `db`, `f'c` keep case).
+`2X6 P.T. SILL PLATE W/ 5/8" DIA. ANCHOR BOLTS @ 48" O.C.`, `(2) #5 CONT. BOT.`. Fractions `1 1/2"`, ` X ` between sizes.
+Spell out or abbreviate; abbreviations in approved form (`TYP.` `U.N.O.` `CMU` `REQ'D`; `kerf schema abbreviations`).
+`16d`, `db`, `f'c` keep case.
 6-12 notes per detail: every structural element and connection, hardware model in the note, `INSTALL PER MFR.`.
 Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you are sure exist, always `"status":"suggested"`;
 the designer verifies. Never present a design as engineered: capacities, spacing and nailing are the manufacturer's / EOR's.
@@ -106,8 +104,8 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - `kerf fmt <doc> -w` canonicalizes a document; `kerf drawing` / `kerf mesh` print the drawing IR / mesh JSON.
 - Acknowledged warnings stay visible: the DOC line counts them (`0 errors  1 warning  3 acknowledged`) and an
   `ACKNOWLEDGED` block lists them by code with components and reasons (logged by `kerf apply -w`). `kerf check --strict`
-  prints each as a warning and exits 1 on any warning; `kerf export ... --review` boxes the acknowledged components and
-  stamps the sheet `N ACKNOWLEDGED WARNINGS`. `W_ACK_UNUSED` names entries that suppress nothing and prints the op that
+  prints each as a warning and exits 1 on any warning; `kerf export ... --review` boxes the acknowledged components,
+  annotations and titles and stamps the sheet `N ACKNOWLEDGED WARNINGS`. `W_ACK_UNUSED` names entries that suppress nothing and prints the op that
   removes them. Never acknowledge a warning you have not read in this check.
 - Scenarios A/B/C in one document: one view per scenario, every scenario at the same origin (no model-space offsets, so
   anchors between shared and scenario members stay meaningful). Shared members get no `views`; a scenario's members get
@@ -122,7 +120,16 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   candidate and the words it lacks; never stuff a component `label` with words to pass.
 - Note case: penny sizes (`16d`), ACI symbols (`db`, `ld`, `ldh`, `f'c`, `fy`) and units like `psi` print as written, and a
   citation's numbered section (`1926.755(a)(1)`) keeps its case. A note may end on a house abbreviation (`PER ARCH.`).
-  A style adds tokens with `text.keep_case` and abbreviations with `notes.abbreviations` (`{"BRG.": "BEARING"}`).
+  A style adds tokens with `text.keep_case` and abbreviations with `notes.abbreviations.approved` (`{"BRG.": "BEARING"}`).
+- Abbreviations (W_ABBREV, one per token): spelling out is always fine; an abbreviation must be the approved form:
+  `TYP` -> `TYP.`, `OC`/`UNO`/`EOR`/`NTS` -> `O.C.`/`U.N.O.`/`E.O.R.`/`N.T.S.`, `C.M.U.` -> `CMU`, `BOTT.`/`BTM.` -> `BOT.`,
+  `PT` -> `P.T.`, `REQD` -> `REQ'D`, `PL.` -> `PL`. Its fix is the update op that rewrites only the flagged tokens of that
+  text (model numbers, `16d`, `f'c` and quoted text are never touched). Where a deviation is right (PT = post-tensioned),
+  add `"acknowledge":[{"code":"W_ABBREV","reason":"..."}]` to that note, label, dim, weld or view (title); it is counted
+  and listed like a component's. `kerf schema abbreviations` prints the list in force.
+- The company style is `kerf.kerfstyle.json` in the document's folder or above (`--style` overrides; `check`/`apply` print
+  a `STYLE` line naming it). Its `notes.abbreviations` can approve, remap or remove entries, switch rules off and list
+  words always abbreviated. It is the designer's: never edit it to silence a warning.
 - Annotation layout (SPEC 25.2): an iso `at` Ref lies on its component's face nearest the viewer (W_NOTE_LANDING when an
   arrow lands on empty paper); dims the stacking or the leader repair move more than 1/8" (paper) and labels the repair
   moves print I_ANNOT_MOVED with the offset that keeps them there; W_LABEL_OVERLAP: labels, dim text or note text that

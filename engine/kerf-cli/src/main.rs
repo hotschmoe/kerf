@@ -472,12 +472,23 @@ fn cmd_schema(o: &Opts) -> Res<u8> {
     let mut failed = false;
     let topics: Vec<Option<&str>> =
         if o.pos.is_empty() { vec![None] } else { o.pos.iter().map(|s| Some(s.as_str())).collect() };
+    let style = match &o.style {
+        Some(p) => Some(std::path::PathBuf::from(p)),
+        None => workspace::find_style(std::path::Path::new(".")),
+    };
     for topic in topics {
-        let input = match topic {
-            Some(t) => format!("{{\"topic\":{}}}", json_string(t)),
-            None => "{}".to_string(),
+        let mut input = match topic {
+            Some(t) => format!("{{\"topic\":{}", json_string(t)).into_bytes(),
+            None => b"{".to_vec(),
         };
-        let r = api::call(b"schema", input.as_bytes());
+        if topic.is_some_and(|t| t.starts_with("abbrev")) {
+            input.extend(workspace::style_member(style.as_deref()));
+            if input.starts_with(b"{,") {
+                input.remove(1);
+            }
+        }
+        input.push(b'}');
+        let r = api::call(b"schema", &input);
         if !r.ok {
             print_api_error(&r.bytes);
             failed = true;

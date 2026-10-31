@@ -43,7 +43,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_recess","s":"SILL","x":35.5656,"y":-2.3912,"h":1.0972,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_recess","closed":false,"pts":[[35.0974,-0.9649],[33.6346,-0.9649],[12.3914,-0.9649]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_recess","loops":[[[11.2943,-0.9649],[12.3914,-1.3307],[12.3914,-0.5992]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg_bars","s":"(2) #5 CONT. BOTT.","x":35.5656,"y":-13.5798,"h":1.0972,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg_bars","s":"(2) #5 CONT. BOT.","x":35.5656,"y":-13.5798,"h":1.0972,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg_bars","closed":false,"pts":[[35.0974,-13.0312],[33.6346,-13.0312],[3.9659,-13.0312]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_ftg_bars","loops":[[[2.8687,-13.0312],[3.9659,-13.397],[3.9659,-12.6655]]]},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","closed":true,"pts":[[-25.9808,-42.3384,1],[-18.6664,-42.3384,1]]},

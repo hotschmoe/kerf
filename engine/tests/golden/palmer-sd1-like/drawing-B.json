@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"palmer-sd1-like","view":"B","kind":"section","scale":16,"bounds":[53.1429,-40.4,207.1429,6],
+{"kerf_drawing":"0.1","doc":"palmer-sd1-like","view":"B","kind":"section","scale":16,"bounds":[53.2143,-40.4,207.1429,6],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-PATT","lineweight_mm":0.09},{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-DETL-REBR","lineweight_mm":0.5},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -52,7 +52,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ctl","s":"SLAB DEPTH","x":172,"y":-2.2833,"h":1.5,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ctl","closed":false,"pts":[[171.36,-0.3333],[169.36,-0.3333],[158,-0.3333]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_ctl","loops":[[[156.5,-0.3333],[158,-0.8333],[158,0.1667]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"(2) #5 CONT. BOTT., 3\" CLR.","x":53.1429,"y":-15.4375,"h":1.5,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"(2) #5 CONT. BOT., 3\" CLR.","x":54.2857,"y":-15.4375,"h":1.5,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","closed":false,"pts":[[86.64,-14.6875],[88.64,-14.6875],[107.1875,-14.6875]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_ftg","loops":[[[108.6875,-14.6875],[107.1875,-14.1875],[107.1875,-15.1875]]]},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","closed":true,"pts":[[92,-35.4,1],[102,-35.4,1]]},

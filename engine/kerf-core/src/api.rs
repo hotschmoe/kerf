@@ -64,7 +64,7 @@ const HELP_ROWS: [[&str; 3]; 11] = [
     ["catalog", "{format?: \"json\"|\"markdown\"}", "the component catalog (json default)"],
     [
         "schema",
-        "{topic?: \"view\"|\"note\"|\"dim\"|\"label\"|\"cite\"|\"ops\"|\"doc\"|<component type>}",
+        "{topic?: \"view\"|\"note\"|\"dim\"|\"label\"|\"cite\"|\"ops\"|\"doc\"|\"abbreviations\"|<component type>, style?}",
         "{topic, text}: field reference text; no topic lists the topics",
     ],
     ["fmt", "{doc}", "{doc, text}: canonical key order and indentation"],
@@ -114,6 +114,13 @@ fn help_fn() -> Output {
 fn schema_fn(inp: &Value) -> Output {
     let topic = inp.get("topic").and_then(Value::str);
     let text = match topic {
+        Some("abbreviations" | "abbreviation" | "abbrev") => {
+            let st = match get_style(inp) {
+                Ok(st) => st,
+                Err(e) => return e,
+            };
+            format!("{}{}", schema::ABBREV_HEAD, crate::house::abbreviations_markdown(&st))
+        }
         Some(tp) => {
             if let Some(t) = schema::render(tp) {
                 t

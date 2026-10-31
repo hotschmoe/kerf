@@ -14,7 +14,8 @@ Where it says SHOULD, deviate only with a note in your stack's `NOTES.md`.
 Companion files:
 - `spec/DESIGN.md` — UI design language (1970s IBM engineering) shared by all four apps.
 - `spec/llm/` — the agent guide (`cli-guide.md`) and system prompt (`system.md`) embedded by `kerf guide`.
-- `spec/styles/kerf-standard.kerfstyle.json` — the default style.
+- `spec/styles/kerf-standard.kerfstyle.json` — the default style; `example-company.kerfstyle.json` — a company style
+  (§25.6); `ABBREVIATIONS.md` — the built-in abbreviation list (generated, §25.3).
 - `spec/details/*.kerf.json` — reference documents (golden inputs).
 - `spec/details/REFERENCE-CONTENT.md` — domain research for the reference details.
 - `spec/fonts/kerf-simplex.json` — the stroke font (Hershey Simplex derivative).
@@ -406,7 +407,7 @@ Accepted: `3"=1'-0"` (factor 4), `1-1/2"=1'-0"` (8), `1"=1'-0"` (12), `3/4"=1'-0
 **note** — leader note (or keyed note, §24):
 ```jsonc
 { "id": "n1", "type": "note",
-  "text": "2X8 PT SILL PLATE W/ 5/8\" DIA. ANCHOR BOLTS @ 48\" O.C.",
+  "text": "2X8 P.T. SILL PLATE W/ 5/8\" DIA. ANCHOR BOLTS @ 48\" O.C.",
   "target": "sill_plate",                // component id (or "comp.part"); arrow lands inside its visible region
   "at": null,                            // optional Ref: exact arrow landing point
   "place": null,                         // optional [x, y] model-space position of text (designer override)
@@ -492,7 +493,8 @@ full default):
              "keep_case": [] },                   // extra tokens printed as written under "upper" (§25.3)
   "notes": { "mode": "leader", "wrap_chars": 28, "gutter_in": 0.375, "shoulder_in": 0.125, "note_gap_in": 0.0625, "arrow": "closed_filled", "arrow_len_in": 0.09375,
              "key_tag": "plain", "list_title": "DETAIL NOTES",    // mode leader | keyed | list; key_tag plain | circle | hex
-             "abbreviations": {} },               // extra house abbreviations, {"BRG.": "BEARING"} (§25.3)
+             "abbreviations": { "extends": "us-structural", "rules": {...}, "approved": {"BRG.": "BEARING"},
+                               "variants": {"BTM.": "BOT."}, "remove": [], "always": [] } },  // company abbreviation rules (§25.6)
   "dims":  { "terminator": "tick", "tick_len_in": 0.0625, "ext_gap_in": 0.0625, "ext_over_in": 0.0625, "text_gap_in": 0.0469, "precision": 16 },
   "citations": { "format": " ({code} {section})", "unverified": "flag", "flag": "*",
                  "footnote": "* CODE REFERENCE NOT VERIFIED BY DESIGNER" },
@@ -735,7 +737,8 @@ kerf export <doc> --view A --format svg|dxf|pdf [--style S] [--sheet] [--review]
 kerf mesh <doc> [-o mesh.json]
 kerf call <fn> < input.json         # raw API access, used by conformance tests
 ```
-Default style: the embedded copy of `spec/styles/kerf-standard.kerfstyle.json` (compiled in).
+Default style: the embedded copy of `spec/styles/kerf-standard.kerfstyle.json` (compiled in), merged with the company
+style: `--style S`, else the nearest `kerf.kerfstyle.json` in the document's folder or an ancestor (§25.6).
 
 ## 14. Ops (what the LLM's `kerf_apply` tool sends)
 
@@ -961,13 +964,14 @@ whose metrics are close; minor differences in CAD are acceptable.
 - `dim.dir` defaults to the dominant axis between `from` and `to` (|dx| ≥ |dy| ⇒ `h`, else `v`).
   `W_DIM_ZERO` fires when a dim measures under 1/16".
 - `acknowledge: [{ "code": "W_UNTREATED_CONTACT", "reason": "truss seat moisture barrier by mfr." }]`
-  on any component suppresses that warning for it. The summary counts it and lists it with the reason (§25.4), and
+  on any component suppresses that warning for it (on a view or an annotation, a warning about that view or annotation,
+  §25.6). The summary counts it and lists it with the reason (§25.4), and
   `kerf apply` logs it. `lumber.barrier: "sill_seal" | "membrane"` draws a 1/8" sill-sealer strip under
   the member and also clears `W_UNTREATED_CONTACT`.
 - `W_NOTE_STYLE` (lint): note text containing lowercase letters (before the case transform; the case-significant
-  tokens of §25.3 excepted), a trailing period (not after a house abbreviation, §25.3), ` x ` as a dimension separator (use ` X `), `1-1/2"` style fractions (house style is
-  `1 1/2"`), or one of five words spelled out that US practice abbreviates (`GYPSUM BOARD → GYP. BD.`,
-  `ON CENTER → O.C.`, `MINIMUM → MIN.`, `MAXIMUM → MAX.`, `DIAMETER → DIA.`; §25.3). A dashed fraction is
+  tokens of §25.3 excepted), a trailing period (not after a house abbreviation, §25.3), ` x ` as a dimension separator (use ` X `), or `1-1/2"` style fractions (house style is
+  `1 1/2"`). Abbreviation forms (`TYP` for `TYP.`, `BOTT.` for `BOT.`) and spelled-out words the company style always
+  abbreviates are `W_ABBREV` (§25.6), not `W_NOTE_STYLE`; no word is forced by default. A dashed fraction is
   `<whole>-<num>/<den>` with the whole number starting a token and a 2..64 power-of-two denominator ending it, so
   `HU212-2/HUC212-2` is not one. The fix text never changes a model number (§25.3).
 
@@ -1221,22 +1225,24 @@ transform and coverage.
   nails`) are still flagged.
 - **Citations.** The note text and the citation code take the case transform; the words of `section` that hold a digit
   print as written (`OSHA 1926.755(a)(1)`, not `1926.755(A)(1)`); plain words of `section` (`Table`) take the transform.
-- **House abbreviations.** A built-in table of 156 entries (engine `house::ABBREVIATIONS`) maps each abbreviation to its
-  words (the first is canonical). It is US structural practice as written in the MASS reference set (32 US Southwest
-  drawing sets): periods on shortened words (`TYP.`, `CONT.`, `REINF.`, `REQ'D`), dotted initials for phrases (`O.C.`,
-  `U.N.O.`, `E.N.`, `T.O.F.`, `A.B.`), no periods on material and product initialisms (`CMU`, `LVL`, `PSL`, `HSS`, `OSB`,
-  `GLB`, `PT`). Variants in use are accepted (`BOT.`/`BOTT.`/`BTM.`, `REQ'D`/`REQD.`, `U.N.O.`/`UNO`, `P.T.`/`PT`). The
-  full list with meanings is `spec/styles/ABBREVIATIONS.md`. The style's `notes.abbreviations` (object, up to 500
-  entries: abbreviation -> a string or an array of up to 8 strings) adds to it. A note may end on any listed abbreviation
-  with its period (`FINISH PER ARCH.`); `NO.`, `NOS.` too. Any other trailing period still warns, and the message says to
-  add the word to `notes.abbreviations` if it is an abbreviation.
+- **House abbreviations.** The built-in list `us-structural` (engine `house::ABBREVIATIONS`, 140 approved forms, and
+  `house::VARIANTS`, 17 other spellings in use with the approved form each maps to) maps each abbreviation to its words
+  (the first is canonical). It is US structural practice as written in the MASS reference set (32 US Southwest drawing
+  sets), with the forms the MASS principal engineer chose (§25.6): periods on shortened words (`TYP.`, `CONT.`,
+  `REINF.`), contractions with the apostrophe (`REQ'D`, `ADD'L`), dotted initials for phrases (`O.C.`, `U.N.O.`, `E.N.`,
+  `T.O.F.`, `A.B.`, `N.T.S.`, `E.O.R.`, `P.T.`), no periods on material and product acronyms (`CMU`, `LVL`, `PSL`, `HSS`,
+  `OSB`, `GLB`, `PL`). The full list with meanings, counts and the spellings each approved form replaces is
+  `spec/styles/ABBREVIATIONS.md` (generated from the table; `kerf schema abbreviations` prints the list in force). The
+  style's `notes.abbreviations` changes it (§25.6). A note may end on any listed spelling with its period (`FINISH PER
+  ARCH.`); `NO.`, `NOS.` too. Any other trailing period still warns, and the message says to add the word to
+  `notes.abbreviations.approved` if it is an abbreviation.
 - **Spelled out or abbreviated.** In the reference sets most words appear spelled out about as often as abbreviated
-  (CONCRETE 228 : CONC. 61, BOTTOM 103 : BOT. 11, EACH 132 : EA. 122), so both are house style. `W_NOTE_STYLE` asks for the
-  abbreviation only where it outnumbers the word 3:1 or more: `O.C.` (16:1), `MIN.`, `MAX.`, `GYP. BD.`, `DIA.` (about
-  4:1). Consistency within a sheet is the author's call.
-- **Fix safety.** The mechanical fix (abbreviate, upper-case, `1-1/2"` -> `1 1/2"`, drop a trailing period) is computed
-  on whole words (letters and digits are word characters), does not double a period (`EACH.` -> `EA.`), checks the
-  trailing period after abbreviating, and is offered only if every model number of the text (a token with a letter and a
+  (CONCRETE 228 : CONC. 61, BOTTOM 103 : BOT. 11, EACH 132 : EA. 122), so both are house style and nothing is forced by
+  default (alpha.5 forced `O.C.`, `MIN.`, `MAX.`, `DIA.`, `GYP. BD.`; that is now the company style's `always` list,
+  empty in kerf-standard). An abbreviation, when used, must be the approved form (`W_ABBREV`, §25.6). Consistency within a
+  sheet is the author's call.
+- **Fix safety.** The mechanical fix of `W_NOTE_STYLE` (upper-case, `1-1/2"` -> `1 1/2"`, drop a trailing period) is
+  computed on whole words (letters and digits are word characters) and is offered only if every model number of the text (a token with a letter and a
   digit, e.g. `HU212-2`, `H2.5A`) appears unchanged, upper-cased, in the fixed text; otherwise the fix says to edit by
   hand. `TYPE I`, `CLASS I` (and after GRADE, CATEGORY, ZONE, GROUP, PHASE, LEVEL, TIER, STAGE, OPTION, CASE, PART) is a
   numeral, not first-person commentary.
@@ -1246,8 +1252,10 @@ transform and coverage.
   `15 ft`, `2.5 in.` (to the nearest 1/16"). On the item side a length with units counts only as the length (`15 ft` =
   `15'-0"` = `180"`); a bare proper fraction (`3/16`) counts as its digits, and a candidate offers both. Then every
   abbreviation and every spelling of its words is rewritten to the canonical words, longest match first, on both sides
-  (`EA. FACE` = `each face` = `E.F.`; `CLR.` = `clear`). An abbreviation that is also a plain word (ALT. ARCH. COL. DIM. EXP.
-  FIN. INT. SIM.) is rewritten only when written with its period, and a candidate then offers the written word as well:
+  (`EA. FACE` = `each face` = `E.F.`; `CLR.` = `clear`). Every variant reads as the words of its approved form (`BOTT.` = `bottom`), and a dotted-initials
+  form also reads without its periods (`oc`, `uno`, `eor`). An abbreviation that is also a plain word (ALT. ARCH. COL. DIM.
+  EXP. FIN. INT. SIM. SPA. STAG. STIFF. EMBED. EXIST. SECT. T.O. I.D. S.A.D. T.O.W. T.O.M., the variant PLY.) is rewritten
+  only when written with its period(s), and a candidate then offers the written word as well:
   `alt` asks for `ALT`/`ALT.`, `alt.` also matches `ALTERNATE`.
 - **Coverage sources.** A candidate is one component (id, type, label, model, size; it reports the id) or one
   annotation: note or label text plus its citations' code, section and title (it reports the target component, else
@@ -1319,11 +1327,11 @@ members get no `views`; each scenario's members get `views: ["B"]`; no `omit` li
   component the view draws gets a dashed (`hidden` pen) box 0.08 paper inch outside its drawn extent and an `ACK n` tag
   on the box's top edge (tags never overprint each other: a colliding tag moves right); a stamp `N ACKNOWLEDGED
   WARNING(S)` (title pen, 1.6 text heights; N counts warnings) heads a legend of one line per tag, `ACK n  <ID>: <CODE>
-  X<count> <REASON>; ...` (upper case, at most 110 characters, at most 10 lines, the last then reading `+K MORE
-  COMPONENTS: ...`). Without a sheet the stamp and legend sit 0.25 paper inch above everything and the bounds grow; on a
+  X<count> <REASON>; ...` (upper case, at most 110 characters, at most 10 lines, the last then reading `+K MORE: ...`). Without a sheet the stamp and legend sit 0.25 paper inch above everything and the bounds grow; on a
   sheet they go to the first free spot of the frame, scanning from the top left in 0.1 paper inch steps and keeping
   0.15 paper inch from every drawn item, at text height 1, 0.8 or 0.65 x the style's, dropping legend lines from the end
-  until it fits (last resort: the frame's top left). The default export is unchanged; `review` with no acknowledged
+  until it fits (last resort: the frame's top left). Annotations and views that acknowledge a warning are marked the
+  same way (§25.6). The default export is unchanged; `review` with no acknowledged
   warning stamps `0 ACKNOWLEDGED WARNINGS`.
 
 ### 25.5 alpha.5: check and CLI papercuts (#19, from the MASS details dogfood run)
@@ -1382,3 +1390,79 @@ members get no `views`; each scenario's members get `views: ["B"]`; no `omit` li
 - `array`: a numeric `z` places instance 0; it does not center the group.
 - `kerf version` adds `"build"`: `git describe --tags --always --dirty` of the source tree at build time (`KERF_BUILD`
   overrides; `unknown` outside a checkout). The core API `version` is unchanged (exports never carry it).
+
+### 25.6 company abbreviation rules and annotation acknowledgements
+From the MASS principal engineer's review of the alpha.5 house list: spelling out or abbreviating is the author's choice,
+but an abbreviation is written one way; the rules and lists belong to the company, and every rule can be overridden
+visibly.
+
+**W_ABBREV** (warning, lint, one per offending token). It reads the text of every note, label, dim (`text`), weld (`tail`)
+and view `title`. A token is a run of letters, digits, `.`, `'` (`’`), `&` and `-`, with leading `. ' - &` and trailing
+`' - &` stripped. Never read: a token with a digit (`HU212-2`, `16d`, `2X6`, `H2.5A`, `#4`), a case-significant token
+(§25.3: `f'c`, `db`, `psi`), text inside double quotes (`"..."`, `“...”`; a `"` or `”` right after a digit is an inch
+mark). A token with a `-` that is not itself a listed spelling (`DF-L`) is read part by part (`PT-DF`). Tokens compare
+case-insensitively; their "letters" are the token without periods. Against the style's list (below) a token is:
+- an approved form as written: fine;
+- a listed variant as written (`BOTT.`, `REQD`, `PLY.`): flagged with that variant's rule;
+- else, when its letters are those of a listed spelling (approved forms preferred), a deviation from that entry. An entry
+  whose bare letters are an ordinary word (`dot`: ALT. ARCH. COL. DIM. EXP. FIN. INT. SIM. SPA. STAG. STIFF. EMBED. EXIST.
+  SECT. T.O. I.D. S.A.D. T.O.W. T.O.M., the variant PLY.) counts only when the token has a period, and for dotted initials
+  a period inside it (`T.O` yes, `TO.` and `TO` no): the ordinary word is never flagged.
+The rule a deviation breaks, from the approved form it should be: a shortened word (`TYP.`) → `period_on_shortened`
+(`TYP`); dotted initials (`O.C.`) → `dotted_initials` (`OC`, `O.C`, `UNO`, `NTS`, `EOR`, `PT`); no periods (`CMU`, `PL`,
+`THRU`) → `bare_acronyms` (`C.M.U.`, `PL.`); a spelling with other letters (`BOTT.` → `BOT.`, `REQD` → `REQ'D`,
+`ADDL.` → `ADD'L`, `BLK'G` → `BLKG.`, `EXIST'G` → `EXIST.`, `MFR'S` → `MFR.`, `PLY.` → `PLYWD.`, `ELEV.` → `EL.`, `GRD.` →
+`GR.`, `STRUC.` → `STRUCT.`) or a deviation from a contraction → `variants`. A fifth rule, `always`: a spelled-out
+spelling of the words of an approved form the style lists in `always` (whole words, case-insensitive, outside quotes,
+longest first; a following period is absorbed when the abbreviation ends with one) asks for the abbreviation.
+Message: `<note 'n1' in view A | label ... | dim ... | weld ... | the title of view A> (<path>): "<token>" breaks rule
+<rule> (<what the rule says>): write "<approved>" (<meaning>)<extra>. Text: "<text>"` (`always`: `"<words>" is spelled out,
+and the company style always abbreviates it (rule always): write "<approved>"`); `PT` adds that PT also reads as
+post-tensioned. Path: `views/<v>/annotations/<id>/text` (`.../tail`, `views/<v>/title`); id: the annotation or view.
+Fix: the exact op `{"op":"update","path":"<owner>","value":{"<field>":"<text>"}}` whose text replaces every flagged token
+of that field by its approved form and changes nothing else (so the fixes of one text are the same op and may be applied
+in any number), then the overrides: `acknowledge` W_ABBREV on that owner with a reason, or in the company style the
+switch (`notes.abbreviations.rules.<rule>: false`, add the variant to `approved`, or remove the entry from `always`).
+Coverage (§25.3) still reads every variant as its words.
+
+**Company style: `notes.abbreviations`.** An object; every key is optional:
+- `extends`: `"us-structural"` (the built-in list, default) or `"none"` (start empty);
+- `rules`: `{"period_on_shortened", "dotted_initials", "bare_acronyms", "variants"}` booleans, default all true;
+- `approved`: abbreviation → word(s) (string or up to 8 strings, 1-60 characters), added as approved forms; one that is
+  already listed (approved or a variant) replaces that entry and keeps its ordinary-word mark;
+- `variants`: spelling → the approved form it is written as;
+- `remove`: spellings (approved or variants) dropped from the built-in list;
+- `always`: approved forms whose spelled-out words warn;
+- any other key: an approved abbreviation → word(s), the alpha.5 form (`{"BRG.": "BEARING"}` keeps working).
+The list is built in that order (built-in, less `remove`, plus `approved`, plus `variants`) and checked when the style
+loads: a variant whose target is not approved, an `always` entry that is not approved (with "did you mean" by letters), a
+non-boolean or unknown rule, a bad `extends` or a wrong shape is `E_STYLE` naming the key. Up to 500 entries per list.
+`kerf-standard` spells out the defaults (`extends: "us-structural"`, all rules on, `always: []`).
+`spec/styles/example-company.kerfstyle.json` shows every key. `kerf schema abbreviations` prints the list in force (rules,
+`always`, one row per approved form with its meaning, form, reference-set count and the spellings flagged to it);
+`spec/styles/ABBREVIATIONS.md` is that output for `kerf-standard`.
+
+**Workspace style.** Without `--style`, every CLI document command (`check`, `apply`, `new --ops`, `export`, `drawing`,
+`mesh`) applies the nearest `kerf.kerfstyle.json` in the document's folder or an ancestor; `--style` wins. `check`
+and `apply` (and `new --ops`) print a first line `STYLE <path> (workspace style; --style overrides)` or `STYLE <path>
+(--style)` when a style file applies (none without one). `kerf schema abbreviations` takes `--style` or the one found from
+the current folder. `kerf serve` applies the one found from its `--dir` to every check, apply and export, serves it merged
+over the default as `style.json` (so the browser engine and the header's STYLE name use it) and names it in its banner
+(document info is cached per document, so a style edit shows on the next document change). `kerf init` writes a starter
+`kerf.kerfstyle.json` (the defaults, `id: "company"`) unless one already applies from a folder above, and AGENTS.md
+says it is the designer's.
+
+**Acknowledgements on annotations and views.** Notes, dims, labels, welds and views take `acknowledge` (same entries as
+components, §25.4). An annotation's entry matches a warning whose path is `views/<v>/annotations/<id>` or below it and
+whose id (if any) is the annotation's (W_ABBREV, W_NOTE_STYLE, W_LEADER_HIT, W_LABEL_OVERLAP, W_NOTE_LANDING,
+W_NOTE_TARGET, W_DIM_ZERO, W_WELD_SIZE, W_UNKNOWN_KEY ...); a view's matches a warning whose path is `views/<v>` or below it
+but not under `annotations`, and whose id (if any) is the view's (W_ABBREV on the title, W_VIEW_FIT, a view-level
+W_LEADER_HIT); a component's entry no longer matches a warning on an annotation path. Everything else is as for components:
+I_ACK (`on '<label>'`), the DOC count, the ACKNOWLEDGED block (owners listed as `<id>` for components, `<view>/<id>` for
+annotations, `view <v>` for views), `--strict` (` [acknowledged on '<label>': <reason>]`), W_ACK_UNUSED (path
+`<owner path>/acknowledge`, "no CODE (#k) is about annotation 'n1' in view A", fix = the update op on the owner), shape
+errors (`E_PARAM` at `<owner path>/acknowledge/<i>`), unknown keys. `acknowledged` entries of an annotation or view add
+`"view"` and `"on"` (the owner path); component entries are unchanged. The drawing IR of a view lists the acknowledged
+warnings of the components it draws and of its own annotations and title. `export --review` boxes an acknowledging
+annotation's text items (else all its items) or a view's title block, tags it `ACK n` and lists it in the legend like a
+component.
