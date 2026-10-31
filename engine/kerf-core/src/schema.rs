@@ -145,6 +145,9 @@ fn render_component(e: &catalog::Entry) -> String {
         }
         out.push_str(" (`kerf catalog` lists widths and gauges)\n");
     }
+    if e.traits.shape_table {
+        out.push_str(&format!("Shape table: {}\n", crate::builders::steel_shapes::catalog_text()));
+    }
     append_example(&mut out, e.example);
     out
 }

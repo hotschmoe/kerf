@@ -106,6 +106,7 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     cover(scene, diags);
     near_miss(scene, diags);
     short_slope(scene, &items, doc, diags);
+    crate::steelcheck::run(scene, diags);
     for c in &scene.comps {
         if c.state == State::Ok && c.ty.traits.escape_hatch {
             let mat = c.world.first().map_or("?", |p| p.material.as_str());

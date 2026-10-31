@@ -1,0 +1,152 @@
+//! bolt (structural bolt group): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
+//! Heavy hex head and nut (across flats 1.5d + 1/8, head 0.625d tall, nut d tall), F436 washer (2d OD, 5/32 thick) under
+//! the nut, thread stick-out 0.5d. The head bears at the local origin; the grip runs down (side) or back along -z (end).
+
+use super::common::{Ctx, box_of_prisms, fmt_ft_in, fmt_num};
+use crate::geom::{Pt, V2};
+use crate::model::{self, Built, NamedAnchor, Prism};
+use crate::params::{ParamEnum, param_enum, params};
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
+
+param_enum! { pub enum Orient { Side = "side", End = "end" } }
+param_enum! { pub enum Line { X = "x", Y = "y", Z = "z" } }
+
+params! {
+    pub struct Params {
+        diameter: LenPos = 0.75 => { desc: "bolt diameter: 0.5, 0.625, 0.75 (typical), 0.875, 1" },
+        grade: Str = "A325" => { desc: "free text for notes and the summary: A307, A325, A490, F1554 ..." },
+        grip: LenPos = 1.0 => { desc: "thickness of the plies clamped between head and nut (sum of plate and flange thicknesses); the head bears at the placement point" },
+        orient: Enum(Orient) = Orient::Side => { desc: "side: the axis lies in the drawing plane, head up (+y) at the placement point, grip downward (bolts through a base plate or a flange seen in section; rotate 180 for head down); end: the axis runs along z, seen end-on as the hex head, washer and shank circle (bolts through a shear tab or web seen face-on), head toward the viewer" },
+        count: Int(u16, 1, 50) = 1 => { desc: "bolts in the row (a gauge line)" },
+        spacing: LenPos = 3.0 => { desc: "center-to-center spacing along `line` (AISC minimum 2 2/3 d, 3d preferred; W_BOLT_SPACING)" },
+        line: Enum(Line) = Line::X => { desc: "direction of the row from bolt 1: x or z for side bolts, x or y for end bolts" },
+        washer: Bool = true => { desc: "draw the hardened washer under the nut" },
+    }
+}
+
+pub const WASHER_T: f64 = 0.15625;
+
+/// Across-flats width of the heavy hex head and nut.
+pub fn hex_flats(d: f64) -> f64 {
+    1.5 * d + 0.125
+}
+
+fn steel(part: &str, loops: Vec<Vec<Pt>>) -> Prism {
+    Prism { part: part.to_string(), material: "steel".to_string(), loops, embedded: true, ..Prism::default() }
+}
+
+fn hex_loop(c: V2, flats: f64) -> Vec<Pt> {
+    let r = flats / crate::math::sqrt(3.0);
+    let h = flats / 2.0;
+    vec![
+        Pt::new(c.x + r, c.y),
+        Pt::new(c.x + r / 2.0, c.y + h),
+        Pt::new(c.x - r / 2.0, c.y + h),
+        Pt::new(c.x - r, c.y),
+        Pt::new(c.x - r / 2.0, c.y - h),
+        Pt::new(c.x + r / 2.0, c.y - h),
+    ]
+}
+
+/// The bolt axis positions in local XY, in bolt order (the same for every bolt of a z row).
+pub fn offsets(count: usize, spacing: f64, line: Line) -> Vec<(V2, f64)> {
+    (0..count)
+        .map(|k| {
+            let s = k as f64 * spacing;
+            match line {
+                Line::X => (V2::init(s, 0.0), 0.0),
+                Line::Y => (V2::init(0.0, s), 0.0),
+                Line::Z => (V2::init(0.0, 0.0), s),
+            }
+        })
+        .collect()
+}
+
+pub fn build(ctx: &mut Ctx) -> Option<Built> {
+    let bp = ctx.p.parse::<Params>()?;
+    let d = bp.diameter;
+    let side = bp.orient == Orient::Side;
+    if side && bp.line == Line::Y {
+        ctx.p.fail("line", "line y runs along the axis of a side bolt: use line x (row across the drawing) or z (row into the drawing)".into());
+        return None;
+    }
+    if !side && bp.line == Line::Z {
+        ctx.p.fail("line", "line z runs along the axis of an end bolt: use line x or y".into());
+        return None;
+    }
+    let f = hex_flats(d);
+    let head_h = 0.625 * d;
+    let nut_h = d;
+    let wt = if bp.washer { WASHER_T } else { 0.0 };
+    let stick = 0.5 * d;
+    let grip = bp.grip;
+    let tail = grip + wt + nut_h + stick;
+    let mut prisms: Vec<Prism> = Vec::new();
+    let mut anchors = vec![NamedAnchor { name: "head_bearing".to_string(), p: V2::init(0.0, 0.0) }];
+    let offs = offsets(usize::from(bp.count), bp.spacing, bp.line);
+    for (k, &(o, zo)) in offs.iter().enumerate() {
+        if side {
+            let cl = vec![Pt::new(o.x, o.y), Pt::new(o.x, o.y - tail)];
+            prisms.push(Prism {
+                centerline: cl,
+                sweep_r: d / 2.0,
+                zoff: zo,
+                ..steel("shank", model::one_loop(model::rect_loop(o.x - d / 2.0, -tail, o.x + d / 2.0, 0.0)))
+            });
+            prisms.push(Prism {
+                zhalf: f / 2.0,
+                zoff: zo,
+                ..steel("head", model::one_loop(model::rect_loop(o.x - f / 2.0, 0.0, o.x + f / 2.0, head_h)))
+            });
+            if bp.washer {
+                prisms.push(Prism {
+                    zhalf: d,
+                    zoff: zo,
+                    ..steel("washer", model::one_loop(model::rect_loop(o.x - d, -grip - wt, o.x + d, -grip)))
+                });
+            }
+            let nb = -grip - wt;
+            prisms.push(Prism {
+                zhalf: f / 2.0,
+                zoff: zo,
+                ..steel("nut", model::one_loop(model::rect_loop(o.x - f / 2.0, nb - nut_h, o.x + f / 2.0, nb)))
+            });
+        } else {
+            let place = |pr: Prism, z0: f64, z1: f64| Prism {
+                zoff: (z0 + z1) / 2.0 + grip / 2.0,
+                zhalf: (z1 - z0) / 2.0,
+                ..pr
+            };
+            prisms.push(place(steel("head", model::one_loop(hex_loop(o, f))), 0.0, head_h));
+            prisms.push(place(steel("shank", model::one_loop(model::circle_loop(o.x, o.y, d / 2.0))), -tail, 0.0));
+            if bp.washer {
+                prisms.push(place(
+                    steel("washer", model::one_loop(model::circle_loop(o.x, o.y, d))),
+                    -grip - wt,
+                    -grip,
+                ));
+            }
+            prisms.push(place(steel("nut", model::one_loop(hex_loop(o, f))), -grip - wt - nut_h, -grip - wt));
+        }
+        anchors.push(NamedAnchor { name: format!("bolt_{}", k + 1), p: o });
+    }
+    anchors.push(NamedAnchor {
+        name: "nut_bearing".to_string(),
+        p: if side { V2::init(0.0, -grip) } else { V2::init(0.0, 0.0) },
+    });
+    let bx = box_of_prisms(&prisms);
+    let n = bp.count;
+    let row =
+        if n > 1 { format!(", ({n}) @ {} along {}", fmt_ft_in(bp.spacing), bp.line.tag()) } else { String::new() };
+    Some(Built {
+        prisms,
+        anchors,
+        box_: bx,
+        nat_z: Some(if side { d } else { grip }),
+        info: format!("bolt {}\" dia. {}, grip {}, {}{row}", fmt_num(d), bp.grade, fmt_ft_in(grip), bp.orient.tag()),
+        ..Built::default()
+    })
+}
