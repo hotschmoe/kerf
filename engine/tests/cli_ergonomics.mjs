@@ -1908,6 +1908,22 @@ section('#28. round-2 papercuts');
   write('u28.kerf.json', { kerf: '0.1', id: 'u28', title: 'U', components: [cmu, { ...ptPlate, treated: false }, rafter(1.9375)], views: [{ id: 'A', kind: 'section' }] });
   r = kerf(['check', 'u28.kerf.json']);
   check('an untreated plate bearing on the CMU still warns', /^WARN W_UNTREATED_CONTACT plate: untreated wood 'plate' touches cmu 'cmu'/m.test(r.out) && !/W_UNTREATED_CONTACT rafter/.test(r.out), r.out);
+
+  const se = { id: 'slab', type: 'concrete', shape: 'slab_edge', at: { anchor: 'top_exterior', to: [0, 0] }, base: { material: 'gravel', thickness: 4 } };
+  const earth = { id: 'earth', type: 'fill', material: 'earth', points: [[-30, -40], [60, -40], [60, -4], [-30, -4]] };
+  write('se28.kerf.json', { kerf: '0.1', id: 'se28', title: 'SE', components: [se, earth], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'se28.kerf.json']);
+  check('an earth rectangle under a slab_edge with a gravel base: no W_OVERLAP (the base clips the fill like the slab)', !/W_OVERLAP/.test(r.out) && /0 errors/.test(r.out), r.out);
+  let dr = kerf(['drawing', 'se28.kerf.json', '--view', 'A']);
+  const regions = dr.code === 0 ? JSON.parse(dr.out).items.filter((it) => it.t === 'region') : [];
+  const inside = (pt, loop) => loop.reduce((c, a, k) => { const b = loop[(k + 1) % loop.length]; return ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < a[0] + (pt[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])) ? !c : c; }, false);
+  const baseLoop = regions.find((it) => it.src === 'slab' && it.part === 'base')?.loops[0] ?? [];
+  const mid = [40, -6];
+  const earthLoops = regions.filter((it) => it.src === 'earth').flatMap((it) => it.loops);
+  check('the earth region stops at the gravel base (a point of the base is not inside the earth)', baseLoop.length > 0 && inside(mid, baseLoop) && earthLoops.length > 0 && !earthLoops.some((l) => inside(mid, l)), { mid, earthLoops });
+  write('se28.kerf.json', { kerf: '0.1', id: 'se28', title: 'SE', components: [se, earth, { id: 'gr', type: 'fill', material: 'gravel', points: [[-30, -10], [60, -10], [60, -6], [-30, -6]] }], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'se28.kerf.json']);
+  check('fill against fill is still W_OVERLAP', /^WARN W_OVERLAP .*'earth' and 'gr'|^WARN W_OVERLAP .*'gr' and 'earth'/m.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

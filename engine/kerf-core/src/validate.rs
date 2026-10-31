@@ -234,6 +234,12 @@ fn each_set<'p, 'a>(sets: &[Drawn<'p, 'a>], ids: &[&str], diags: &Diags, check: 
     }
 }
 
+/// A component with a body that is not soil: its soil parts (a `slab_edge` `base`) clip fills like its solids do
+/// (SPEC 26.4, 28.8), so a fill overlapping them is not `W_OVERLAP`.
+fn has_solid_body(c: &Comp<'_>) -> bool {
+    c.world.iter().any(|p| p.kind == Kind::Body && !matches!(p.role, Role::Soil | Role::Void))
+}
+
 fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut reported: Vec<[u32; 2]> = Vec::new();
     for (i, p) in s.items.iter().enumerate() {
@@ -248,6 +254,9 @@ fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
                 continue;
             }
             if (p.prism.role == Role::Soil) != (q.prism.role == Role::Soil) {
+                continue;
+            }
+            if p.prism.role == Role::Soil && (has_solid_body(p.comp) || has_solid_body(q.comp)) {
                 continue;
             }
             if z_gap(p.prism, q.prism) > 0.0 || (p.prism.z1.min(q.prism.z1) - p.prism.z0.max(q.prism.z0)) < 1e-6 {

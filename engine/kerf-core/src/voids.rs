@@ -780,13 +780,21 @@ pub fn fill_cutters(prisms: &[Prism], z: f64) -> FillCutters {
         outers: Vec<Vec<V2>>,
         z: [f64; 2],
     }
+    let mut solid: Vec<(u32, u32)> = prisms
+        .iter()
+        .filter(|q| q.kind == Kind::Body && !matches!(q.role, Role::Soil | Role::Void))
+        .map(|q| (q.comp, q.instance))
+        .collect();
+    solid.sort_unstable();
+    solid.dedup();
     let mut groups: Vec<Group> = Vec::new();
     for q in prisms {
         if q.kind != Kind::Body
             || q.dashed
             || q.embedded
             || q.loops.is_empty()
-            || matches!(q.role, Role::Soil | Role::Void)
+            || q.role == Role::Void
+            || (q.role == Role::Soil && solid.binary_search(&(q.comp, q.instance)).is_err())
         {
             continue;
         }
