@@ -517,6 +517,8 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
         }
         let r = bar.built.bar_d / 2.0;
         let mut outside: Vec<(V2, &str)> = Vec::new();
+        let xz = bar.world.iter().any(|p| p.xz_bar);
+        let mut worst: Vec<(u32, usize, f64, String, String)> = Vec::new();
         for bp in &bar.world {
             let centre;
             let mut dir = V2::init(0.0, 0.0);
@@ -661,7 +663,15 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                                     fmt_ft_in(centre.y),
                                 )
                             };
-                            diags.add_fix(Level::Warning, "W_COVER", Some(&bar.id), None, message, fix);
+                            if xz {
+                                match worst.iter_mut().find(|w| w.0 == h.index && w.1 == k) {
+                                    Some(w) if w.2 <= min_clear[k] => {}
+                                    Some(w) => *w = (h.index, k, min_clear[k], message, fix),
+                                    None => worst.push((h.index, k, min_clear[k], message, fix)),
+                                }
+                            } else {
+                                diags.add_fix(Level::Warning, "W_COVER", Some(&bar.id), None, message, fix);
+                            }
                         }
                     }
                     break;
@@ -678,6 +688,9 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
             } else if let Some(o) = path_outside(s, bp, &pieces, centre) {
                 outside.push(o);
             }
+        }
+        for (_, _, _, message, fix) in worst {
+            diags.add_fix(Level::Warning, "W_COVER", Some(&bar.id), None, message, fix);
         }
         bar_outside(s, bar, &outside, diags);
     }

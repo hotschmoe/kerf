@@ -32,6 +32,7 @@ mod pathclip;
 mod pathgeom;
 mod pdf;
 mod pen;
+mod plan;
 mod png;
 mod raster;
 pub mod references;

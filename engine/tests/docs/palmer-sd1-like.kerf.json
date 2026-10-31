@@ -129,7 +129,7 @@
       "at": {
         "to": "stem@bottom_left"
       },
-      "shown": "dashed",
+      "shown": "where_occurs",
       "model": "STHD14",
       "points": [
         [5, 3],

@@ -28,20 +28,26 @@ fn push_unique(ts: &mut Vec<f64>, t: f64) {
 
 /// Visible parts of a closed loop; the first and last piece are joined when the loop start is visible.
 pub fn visible_pieces(lp: &[Pt], occ: &[&Occ]) -> Vec<PieceOut> {
-    visible_impl(lp, true, true, occ)
+    visible_impl(lp, true, true, occ, true)
 }
 
 pub fn visible_open(pts: &[Pt], closed: bool, occ: &[&Occ]) -> Vec<PieceOut> {
-    visible_impl(pts, closed, false, occ)
+    visible_impl(pts, closed, false, occ, true)
 }
 
-fn visible_impl(pts: &[Pt], closed: bool, join_wrap: bool, occ: &[&Occ]) -> Vec<PieceOut> {
+/// The parts of a path that the occluders hide (the complement of `visible_open`), drawn as hidden lines.
+pub fn hidden_pieces(pts: &[Pt], closed: bool, occ: &[&Occ]) -> Vec<PieceOut> {
+    visible_impl(pts, closed, closed, occ, false)
+}
+
+/// Splits a path at the occluder outlines and keeps the visible parts (`keep_visible`) or the hidden ones.
+fn visible_impl(pts: &[Pt], closed: bool, join_wrap: bool, occ: &[&Occ], keep_visible: bool) -> Vec<PieceOut> {
     let mut out: Vec<PieceOut> = Vec::new();
     let n = pts.len();
     let nseg = if closed { n } else { n.saturating_sub(1) };
     let mut cur: Vec<Pt> = Vec::new();
-    let mut any_hidden = false;
-    let mut starts_visible_at_0 = false;
+    let mut any_dropped = false;
+    let mut starts_kept_at_0 = false;
     let mut ts: Vec<f64> = Vec::new();
     for i in 0..nseg {
         let p0 = pts[i].v();
@@ -82,8 +88,8 @@ fn visible_impl(pts: &[Pt], closed: bool, join_wrap: bool, occ: &[&Occ]) -> Vec<
             let mid = geom::seg_point(p0, p1, bulge, (t_prev + t_next) / 2.0);
             let hidden =
                 occ.iter().any(|o| o.bx.contains(mid) && geom::locate(mid, &o.loops, 1e-7) == geom::Loc::Inside);
-            if hidden {
-                any_hidden = true;
+            if hidden == keep_visible {
+                any_dropped = true;
                 if let Some(last) = cur.last_mut() {
                     last.b = 0.0;
                     out.push(PieceOut { pts: core::mem::take(&mut cur), closed: false });
@@ -100,7 +106,7 @@ fn visible_impl(pts: &[Pt], closed: bool, join_wrap: bool, occ: &[&Occ]) -> Vec<
                     cur.clear();
                     cur.push(Pt { x: sub.a.x, y: sub.a.y, b: sub.bulge });
                     if i == 0 && t_prev == 0.0 {
-                        starts_visible_at_0 = true;
+                        starts_kept_at_0 = true;
                     }
                 } else if let Some(last) = cur.last_mut() {
                     last.b = sub.bulge;
@@ -110,11 +116,11 @@ fn visible_impl(pts: &[Pt], closed: bool, join_wrap: bool, occ: &[&Occ]) -> Vec<
             t_prev = t_next;
         }
     }
-    if !any_hidden {
+    if !any_dropped {
         return alloc::vec![PieceOut { pts: pts.to_vec(), closed }];
     }
     if cur.len() > 1 {
-        if join_wrap && starts_visible_at_0 && out.first().is_some_and(|p| !p.pts.is_empty()) {
+        if join_wrap && starts_kept_at_0 && out.first().is_some_and(|p| !p.pts.is_empty()) {
             let head = out.remove(0);
             let mut joined = cur;
             if let Some(last) = joined.last_mut() {

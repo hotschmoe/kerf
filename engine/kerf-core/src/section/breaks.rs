@@ -31,6 +31,7 @@ struct Iv {
 impl Section<'_> {
     pub fn break_lines(&mut self) {
         let crop = self.spec.crop;
+        let elevation = self.spec.kind == crate::view::Kind::Elevation;
         let edges = [
             Edge { vertical: true, c: crop.x0, lo: crop.y0, hi: crop.y1, out_sign: -1.0 },
             Edge { vertical: true, c: crop.x1, lo: crop.y0, hi: crop.y1, out_sign: 1.0 },
@@ -48,7 +49,11 @@ impl Section<'_> {
                     continue;
                 }
                 let seen_lengthwise = lengthwise && self.cls[i] == Class::Beyond;
-                if !seen_lengthwise
+                if elevation {
+                    if role == Role::Soil || self.prisms[i].dashed {
+                        continue;
+                    }
+                } else if !seen_lengthwise
                     && (self.cls[i] != Class::Cut
                         || role == Role::Soil
                         || self.style.material(&self.prisms[i].material).is_some_and(|m| m.fill))
@@ -64,7 +69,12 @@ impl Section<'_> {
                 } else if bx.y0 > e.c + 1e-9 || bx.y1 < e.c - 1e-9 {
                     continue;
                 }
-                let xs = pathclip::scan(&f, e.c, e.vertical);
+                let xs = if elevation {
+                    let vis = self.visible_region(i);
+                    pathclip::scan(&vis, e.c - e.out_sign * 1e-6, e.vertical)
+                } else {
+                    pathclip::scan(&f, e.c, e.vertical)
+                };
                 for &[x0, x1] in xs.as_chunks::<2>().0 {
                     let lo = x0.max(e.lo);
                     let hi = x1.min(e.hi);

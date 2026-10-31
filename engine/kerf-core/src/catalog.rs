@@ -291,7 +291,7 @@ const COMMON: [(&[&str], &str, &str); 14] = [
     (
         &["shown"],
         "solid",
-        "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)",
+        "solid | hidden | where_occurs. hidden = a member behind or below the others (e.g. a base plate under a closure pour in plan, a stiffener behind a web): all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP. where_occurs = the same graphics, and notes targeting it get \" (WHERE OCCURS)\" appended. The old \"dashed\" means where_occurs and warns W_SHOWN_DASHED. Section, plan and elevation views (iso omits it)",
     ),
     (
         &["acknowledge"],

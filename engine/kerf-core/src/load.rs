@@ -453,8 +453,10 @@ fn inspect_at(l: &Loaded, q: &Value) -> Result<Value, InspectError> {
     let mut spec = spec_v.clone();
     spec.crop = resolved.crop;
     spec.scale = resolved.scale;
-    let prisms = compile::view_prisms(&l.scene, &spec.members);
-    let mut sec = Section::new(&l.scene, &spec, &prisms);
+    let fv = drawview::flat_view(&l.scene, &spec);
+    let scene = fv.scene.as_ref().unwrap_or(&l.scene);
+    let prisms = &fv.prisms;
+    let mut sec = Section::new(scene, &fv.spec, prisms);
     sec.build();
     let mut hits = Vec::new();
     for (i, p) in prisms.iter().enumerate() {
@@ -465,7 +467,7 @@ fn inspect_at(l: &Loaded, q: &Value) -> Result<Value, InspectError> {
         if reg.is_empty() || geom::locate_even_odd(pt, &reg, 1e-9) == geom::Loc::Outside {
             continue;
         }
-        let Some(c) = l.scene.comps.get(p.comp as usize) else { continue };
+        let Some(c) = scene.comps.get(p.comp as usize) else { continue };
         let src = if c.arr_count > 1 && !c.xfs.is_empty() {
             format!("{}#{}", c.id, p.instance as usize / (c.xfs.len() / c.arr_count).max(1))
         } else {

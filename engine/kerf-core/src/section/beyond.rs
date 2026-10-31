@@ -1,12 +1,18 @@
 //! Beyond prisms: outlines hidden by nearer bodies, visible regions, top edges of `top` outlines.
 
+use super::cut::group_region;
 use super::hardware::is_path_bar;
-use super::occlusion::{Occ, PieceOut, visible_pieces};
+use super::occlusion::{Occ, PieceOut, hidden_pieces, visible_open, visible_pieces};
 use super::{Class, Section, Target};
 use crate::clip::{self, Op};
+use crate::drawing::HatchItem;
 use crate::geom::{self, Pt, V2};
-use crate::model::{Kind, Prism};
+use crate::hatch;
+use crate::model::{Kind, OutlineMode, Prism};
 use crate::pen::Pen;
+use crate::style::{CutMark, Role};
+use crate::view::Kind as ViewKind;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 impl Section<'_> {
@@ -28,23 +34,115 @@ impl Section<'_> {
             return self.add_clipped(Target::Strokes, &p.centerline, false, pen, &src, true);
         }
         let mat = self.style.material(&p.material);
-        let pen = if mat.is_some_and(|m| m.fill) { self.pen_for_role(p.role) } else { Pen::Beyond };
+        let elevation = self.spec.kind == ViewKind::Elevation;
+        let pen = if mat.is_some_and(|m| m.fill) {
+            self.pen_for_role(p.role)
+        } else if elevation {
+            self.pen_for(Pen::Profile)
+        } else {
+            Pen::Beyond
+        };
+        let top_only = elevation && p.outline == OutlineMode::Top;
+        if elevation && p.outline == OutlineMode::None {
+            return;
+        }
+        let paths: Vec<(Vec<Pt>, bool)> = if top_only {
+            p.loops.iter().flat_map(|l| top_runs(l)).map(|r| (r, false)).collect()
+        } else {
+            p.loops.iter().map(|l| (l.clone(), true)).collect()
+        };
         let mut pieces = Vec::new();
+        let mut hidden = Vec::new();
         {
             let occ: Vec<&Occ> = if p.embedded {
                 Vec::new()
             } else {
                 self.occs.iter().filter(|o| o.prism != i && (o.cut || o.z1 > p.z1 + 1e-9)).collect()
             };
-            for lp in &p.loops {
-                pieces.extend(visible_pieces(lp, &occ));
+            for (pts, closed) in &paths {
+                if *closed {
+                    pieces.extend(visible_pieces(pts, &occ));
+                } else {
+                    pieces.extend(visible_open(pts, false, &occ));
+                }
+                if self.spec.hidden_lines && !occ.is_empty() {
+                    hidden.extend(hidden_pieces(pts, *closed, &occ));
+                }
             }
         }
-        if p.lengthwise {
+        if p.lengthwise && !elevation {
             pieces = self.off_nearer_slabs(i, p, pieces);
         }
         for pc in pieces {
             self.add_clipped(Target::Strokes, &pc.pts, pc.closed, pen, &src, p.embedded);
+        }
+        let hidden_pen = self.pen_for(Pen::Hidden);
+        for pc in hidden {
+            self.add_clipped(Target::Ghosts, &pc.pts, pc.closed, hidden_pen, &src, false);
+        }
+        if elevation {
+            self.end_grain_marks(i, p, &src);
+        }
+        if elevation && p.role == Role::Soil {
+            self.soil_hatch(i, p, &src);
+        }
+    }
+
+    /// Elevation: members seen end-on (lumber with a cut mark, e.g. joists running toward the viewer) keep their X or
+    /// diagonal, cut away where nearer members hide it.
+    fn end_grain_marks(&mut self, i: usize, p: &Prism, src: &str) {
+        let st = self.style;
+        let Some(m) = st.material(&p.material) else { return };
+        let mark = if p.blocking && m.cut_mark != CutMark::None { CutMark::Diagonal } else { m.cut_mark };
+        if mark == CutMark::None || p.quads.is_empty() {
+            return;
+        }
+        let mut segs: Vec<Vec<Pt>> = Vec::new();
+        for q in &p.quads {
+            segs.push(alloc::vec![Pt::at(q[0], 0.0), Pt::at(q[2], 0.0)]);
+            if mark == CutMark::X {
+                segs.push(alloc::vec![Pt::at(q[1], 0.0), Pt::at(q[3], 0.0)]);
+            }
+        }
+        let occ: Vec<&Occ> = self.occs.iter().filter(|o| o.prism != i && o.z1 > p.z1 + 1e-9).collect();
+        let mut out = Vec::new();
+        for s in &segs {
+            out.extend(visible_open(s, false, &occ));
+        }
+        for pc in out {
+            self.add_clipped(Target::Strokes, &pc.pts, false, Pen::Beyond, src, false);
+        }
+    }
+
+    /// Elevation: earth and other loose fill keep their hatch on the part no nearer member hides.
+    fn soil_hatch(&mut self, i: usize, p: &Prism, src: &str) {
+        let st = self.style;
+        let Some(m) = st.material(&p.material) else { return };
+        if m.hatch.is_empty() {
+            return;
+        }
+        let region = self.visible_region(i);
+        if region.is_empty() {
+            return;
+        }
+        for g in group_region(&region, None) {
+            for hs in &m.hatch {
+                let Some(pat) = st.pattern(&hs.pattern) else { continue };
+                let res = hatch::generate(&g.flat, pat, self.spec.scale * hs.scale, hs.angle);
+                if res.truncated {
+                    self.truncated_hatch = true;
+                }
+                self.hatches.push(HatchItem {
+                    layer: self.layer_for(Pen::Hatch),
+                    pen: Pen::Hatch,
+                    src: src.to_string(),
+                    pattern: hs.pattern.clone(),
+                    scale: hs.scale,
+                    angle: hs.angle,
+                    loops: g.loops.clone(),
+                    lines: res.lines,
+                });
+            }
         }
     }
 
@@ -110,34 +208,42 @@ impl Section<'_> {
     }
 
     pub fn top_edges(&mut self, lp: &[Pt], pen: Pen, src: &str) {
-        let ccw = geom::signed_area(lp) >= 0.0;
-        let mut cur: Vec<Pt> = Vec::new();
-        let n = lp.len();
-        let mut start = 0;
-        for k in 0..n {
-            if !edge_is_top(lp, (k + n - 1) % n, ccw) {
-                start = k;
-                break;
-            }
-        }
-        for idx in 0..n {
-            let i = (start + idx) % n;
-            let q = lp[(i + 1) % n];
-            if edge_is_top(lp, i, ccw) {
-                match cur.last_mut() {
-                    None => cur.push(lp[i]),
-                    Some(last) => last.b = lp[i].b,
-                }
-                cur.push(Pt::at(q.v(), 0.0));
-            } else if !cur.is_empty() {
-                self.add_clipped(Target::Strokes, &cur, false, pen, src, false);
-                cur.clear();
-            }
-        }
-        if !cur.is_empty() {
-            self.add_clipped(Target::Strokes, &cur, false, pen, src, false);
+        for run in top_runs(lp) {
+            self.add_clipped(Target::Strokes, &run, false, pen, src, false);
         }
     }
+}
+
+/// The runs of a loop's edges whose outward normal points up the page, as open polylines.
+pub fn top_runs(lp: &[Pt]) -> Vec<Vec<Pt>> {
+    let ccw = geom::signed_area(lp) >= 0.0;
+    let mut out = Vec::new();
+    let mut cur: Vec<Pt> = Vec::new();
+    let n = lp.len();
+    let mut start = 0;
+    for k in 0..n {
+        if !edge_is_top(lp, (k + n - 1) % n, ccw) {
+            start = k;
+            break;
+        }
+    }
+    for idx in 0..n {
+        let i = (start + idx) % n;
+        let q = lp[(i + 1) % n];
+        if edge_is_top(lp, i, ccw) {
+            match cur.last_mut() {
+                None => cur.push(lp[i]),
+                Some(last) => last.b = lp[i].b,
+            }
+            cur.push(Pt::at(q.v(), 0.0));
+        } else if !cur.is_empty() {
+            out.push(core::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 /// An outline edge whose outward normal points up the page.

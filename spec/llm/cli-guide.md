@@ -2,7 +2,7 @@
 
 You build construction details with the `kerf` command-line engine. A detail is one JSON file
 (`<id>.kerf.json`) in the current folder. The designer reviews it in
-the Kerf web UI (`kerf serve`), edits notes, verifies citations and exports DXF/PDF. You describe construction
+the Kerf web UI (`kerf serve`) and verifies citations. You describe construction
 with typed components; the engine places, draws, lays out notes and checks.
 
 ## Shell rules (the sandbox rejects compound commands)
@@ -49,8 +49,7 @@ kerf guide --full
   `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]`. The summary counts and lists them (`kerf check --strict`
   prints each). Wood on CMU wants `"barrier":"sill_seal"`. No fake geometry.
 - Scenarios: one view each, all at one origin; scenario members get `"views":["B"]`, shared members none.
-- Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one: `citations` -> `cite`, `side` -> `notes_side`, `point` -> `at`,
-  `kind` -> `type`, `pos` -> `place`). `kerf schema <topic>` before guessing a field name.
+- Unknown keys warn (`W_UNKNOWN_KEY` names the right one). `kerf schema <topic>` before guessing a field name.
 
 ## Diagnostics you will meet (each prints its own fix)
 W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
@@ -91,12 +90,13 @@ Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you a
 the designer verifies. Never present a design as engineered: capacities, spacing and nailing are the manufacturer's / EOR's.
 
 ## Views and annotations
-`crop` and `scale` are optional on a section view (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
+`crop` and `scale` are optional (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
 set them only to frame deliberately (`W_VIEW_FIT` then checks). The layout places notes and clears leader collisions
 (`column` on a note forces a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed notes:
 view `"notes_style":"keyed"` (numbered leaders + DETAIL NOTES list; `notes_side` above|left|right; same `key` = one
 entry). Dim `dir` default: dominant axis; `offset` > 0 is above (h) / right of (v) the points, < 0 below / left.
-Beam in a wall (flush beam, header): draw the elevation along the wall unless asked for the end-on section; say which you drew.
+Plans/elevations: view `kind` `plan` (cut at `cut_y`; plan [x,y] = model [x,-z]) or `elevation` (no cut), same members in
+their real orientation; never a faked section. Beam in a wall: draw the elevation unless asked otherwise.
 Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
 
 <!-- FULL -->

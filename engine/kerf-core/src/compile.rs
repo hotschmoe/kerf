@@ -156,7 +156,7 @@ fn read_settings(scene: &mut Scene, doc: &Value) -> bool {
         }
         for v in va {
             let kind = v.get("kind").map_or("section", |k| k.str().unwrap_or("section"));
-            if kind == "iso" {
+            if kind == "iso" || kind == "plan" {
                 continue;
             }
             if let Some(z) = v.get("cut_z").and_then(units::parse_length) {
@@ -543,7 +543,7 @@ fn resolve_z(scene: &Scene, p: &mut Params, built: &Built) -> Option<[f64; 2]> {
         }
     }
     if !z_explicit && let Some(th) = built.nat_z {
-        let mid = scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0);
+        let mid = if built.abs_z { 0.0 } else { scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0) };
         zbase = [mid - th / 2.0, mid + th / 2.0];
     }
     Some(zbase)
@@ -693,6 +693,9 @@ fn world_prisms(
                 q.z0 = zc - half;
                 q.z1 = zc + half;
             }
+            for c in &mut q.path3 {
+                c[2] += (z[0] + z[1]) / 2.0;
+            }
             if let Some(e) = emb_override {
                 q.embedded = e;
             }
@@ -721,11 +724,22 @@ fn place_component(scene: &mut Scene, idx: usize) {
     let Some(angle) = resolve_angle(scene, index, &id, &mut p) else { return };
     let mirror = p.boolean("mirror", false);
     let visible = p.boolean("visible", true);
-    let shown = p.choice("shown", Some("solid"), &["solid", "dashed"]);
+    let shown = p.choice("shown", Some("solid"), &["solid", "hidden", "where_occurs", "dashed"]);
     if !p.ok {
         return;
     }
-    let dashed = shown == Some("dashed");
+    let dashed = shown != Some("solid");
+    let where_occurs = matches!(shown, Some("where_occurs" | "dashed"));
+    if shown == Some("dashed") {
+        diags.add_fix(
+            Level::Warning,
+            "W_SHOWN_DASHED",
+            Some(&id),
+            Some(&format!("components/{id}/shown")),
+            format!("'{id}': shown \"dashed\" is the old name of \"where_occurs\" (dashed, and notes that target it end in (WHERE OCCURS)); a member that is only hidden behind or below others wants \"hidden\" (dashed, no suffix)"),
+            format!("{{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"shown\":\"where_occurs\"}}}} or {{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"shown\":\"hidden\"}}}}"),
+        );
+    }
 
     let built = {
         let mut ctx = Ctx { scene, style: scene.style, p, origin: at.to, angle };
@@ -768,6 +782,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
     comp.world = world;
     comp.visible = visible;
     comp.dashed = dashed;
+    comp.where_occurs = where_occurs;
     comp.arr_count = arr.count;
     comp.state = State::Ok;
 }
