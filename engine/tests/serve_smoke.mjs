@@ -663,8 +663,15 @@ async function main() {
   const R = await startServer(dirQ);
   const socks = [];
   for (let i = 0; i < 270; i++) { const s2 = net.connect(R.port, '127.0.0.1'); s2.on('error', () => {}); socks.push(s2); }
-  for (let i = 0; i < 40; i++) { if (WIN) { await sleep(100); continue; } if (threadsOf(R.proc.pid) >= 256) break; await sleep(100); }
-  await sleep(200);
+  // wait until the server has accepted every socket: the thread count has reached the cap and stopped growing
+  let seen = -1;
+  for (let i = 0; i < 40; i++) {
+    await sleep(WIN ? 100 : 150);
+    if (WIN) continue;
+    const now = threadsOf(R.proc.pid);
+    if (now >= 256 && now === seen) break;
+    seen = now;
+  }
   const threads = WIN ? 0 : threadsOf(R.proc.pid);
   const refused = await rawSocket(R.port, 'GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n', { ms: 800 });
   check('V-4: over 256 open connections the next one gets 503 (and the thread count is bounded)', (refused.status === 503 || (WIN && refused.status === 0 /* Windows drops a reply that is followed by an RST */)) && threads < 330, [refused.status, threads]);
