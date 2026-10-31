@@ -415,6 +415,9 @@ impl Out {
     }
 
     fn push(&mut self, n: Nail) {
+        if self.nails.len() > crate::limits::MAX_POINTS {
+            return;
+        }
         let dup = self
             .nails
             .iter()
@@ -461,6 +464,29 @@ impl Job<'_> {
     }
 
     /// Components (other than the nailing's members) whose boxes touch `a` face to face, for a fix.
+    /// Components not in the member list that lie against panel `a`'s face (thin axis `k`) behind any of `pts`.
+    fn backing(&self, a: &Member, k: usize, pts: &[[f64; 3]]) -> Vec<String> {
+        let listed: Vec<u32> = self.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
+        let mut out: Vec<String> = Vec::new();
+        for c in &self.scene.comps {
+            if c.state != State::Ok || c.index == a.comp || listed.contains(&c.index) || c.built.prisms.is_empty() {
+                continue;
+            }
+            if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
+                continue;
+            }
+            let backs = members_of(c, None).iter().any(|b| {
+                let (lo, hi) = box_in(a, b);
+                let touches = (a.lo[k] - hi[k]).abs() <= TOL || (a.hi[k] - lo[k]).abs() <= TOL;
+                touches && pts.iter().any(|p| (0..3).filter(|&o| o != k).all(|o| p[o] > lo[o] + 1e-6 && p[o] < hi[o] - 1e-6))
+            });
+            if backs && !out.contains(&c.id) {
+                out.push(c.id.clone());
+            }
+        }
+        out
+    }
+
     fn touching(&self, a: &Member) -> Vec<String> {
         let listed: Vec<u32> = self.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
         let mut out: Vec<String> = Vec::new();
@@ -1026,7 +1052,11 @@ fn toenail_pattern(job: &Job, out: &mut Out, faces_in: &[String]) {
                 dir[k] = ct_cos * ct.side;
                 dir[n_axis] = -ct_sin * n_sign;
                 let tip = [h[0] + dir[0] * len, h[1] + dir[1] * len, h[2] + dir[2] * len];
-                let inside_b = (0..3).all(|o| tip[o] >= blo[o] - TOL && tip[o] <= bhi[o] + TOL);
+                let inside_b = (0..3).all(|o| tip[o] >= blo[o] - TOL && tip[o] <= bhi[o] + TOL)
+                    || job.groups.iter().skip(2).flatten().any(|m| {
+                        let (lo, hi) = box_in(a, m);
+                        (0..3).all(|o| tip[o] >= lo[o] - TOL && tip[o] <= hi[o] + TOL)
+                    });
                 if !inside_b && !job.through {
                     let fit = shorter_toenail(job.size, a, &blo, &bhi, h, dir);
                     let mut fix = String::new();
@@ -1192,6 +1222,7 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                     let pos = fill_span(a.lo[p] + e, a.hi[p] - e, s);
                     let step = if pos.len() > 1 { pos[1] - pos[0] } else { 0.0 };
                     let mut gaps: Vec<[f64; 2]> = Vec::new();
+                    let mut gap_pts: Vec<[f64; 3]> = Vec::new();
                     for x in pos {
                         let mut h = [0.0; 3];
                         h[k] = head_k;
@@ -1199,21 +1230,25 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                         h[p] = x;
                         match backed(h) {
                             Some(fr) => emit(out, h, p, step, fr),
-                            None => match gaps.last_mut() {
-                                Some(g) if (x - g[1] - step).abs() < 1e-6 => g[1] = x,
-                                _ => gaps.push([x, x]),
-                            },
+                            None => {
+                                gap_pts.push(h);
+                                match gaps.last_mut() {
+                                    Some(g) if (x - g[1] - step).abs() < 1e-6 => g[1] = x,
+                                    _ => gaps.push([x, x]),
+                                }
+                            }
                         }
                     }
                     if !gaps.is_empty() {
                         let an = member_name(job.scene, a);
                         let pw = to_world(a, {
                             let mut v = [0.0; 3];
+                            v[k] = head_k;
                             v[q] = qc;
                             v[p] = gaps[0][0];
                             v
                         });
-                        let near = job.touching(a);
+                        let near = job.backing(a, k, &gap_pts);
                         let mut fix =
                             format!("put blocking or framing under the {name} edge of '{an}' and list it in members");
                         if !near.is_empty() {
@@ -1224,7 +1259,7 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                                 }
                             }
                             fix = format!(
-                                "'{}' also touch the panel: {}; or {fix}",
+                                "'{}' lie behind that edge: {}; or {fix}",
                                 scene::join_ids(&near),
                                 op_update(job.id, "members", &quoted_list(&m))
                             );

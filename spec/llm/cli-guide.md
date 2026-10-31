@@ -50,12 +50,12 @@ kerf guide --full
 - Unknown keys warn (`W_UNKNOWN_KEY` names the right one). `kerf schema <topic>` before guessing a field name.
 
 ## Diagnostics you will meet (each prints its own fix)
-W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
+W_NEAR_MISS (stops short of a neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
 W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
 W_NOTE_STYLE (house style: no sentences, `?`, `NOTE:`, trailing `W/` or `AND`), W_UNKNOWN_KEY (misspelled field),
-W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit moved a member out of an
-explicit `crop`: remove `crop` and `scale` to re-fit), W_REFERENCE_FILE (bad or missing `meta.references` image),
-W_ACK_UNUSED (stale `acknowledge`: remove it), I_* (info only).
+W_REQUESTED_MISSING (an uncovered `meta.requested` item), W_CROP_STALE (a member left the explicit `crop`: remove
+`crop` and `scale`), W_REFERENCE_FILE (bad reference image),
+W_ACK_UNUSED (stale `acknowledge`), I_* (info only).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.
@@ -172,5 +172,16 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   filleted). The plan draws the bent bar; a section shows a dot where it crosses `cut_z` and a line where it runs behind.
 - `shown`: `"hidden"` = dashed, no suffix (a base plate under a pour, a stiffener behind a web); `"where_occurs"` =
   dashed and notes end in (WHERE OCCURS). The old `"dashed"` warns `W_SHOWN_DASHED`: pick one of the two.
+- Nailing (SPEC 27.4): draw fasteners with a `nailing` component, never notes alone. It is placed from `members` (the
+  member the heads are on first), so it moves with them: plate splice `{"type":"nailing","members":["upper_plate",
+  "lower_plate"],"size":"16d","count":8,"rows":2,"through":true}` (staggered rows over the joint; `range` limits them),
+  toenails `{"pattern":"toenail","members":["blocking","plate"],"size":"8d","count":2}`, sheathing
+  `{"pattern":"edge","members":["shtg","sill","stud_end","top_plate"],"size":"8d","spacing":6}` (kept where framing lies
+  behind; a bare edge is W_NAIL_EDGE) and `{"pattern":"field","members":["shtg","stud"],"size":"8d","spacing":12}`. Nails in the
+  drawing plane draw as a shank with a head (toenails angled), end-on as dots; iso shows dots on the face. A note
+  targeting it may omit `text` (it prints `(8) 16d NAILS STAGGERED`, `8d @ 6" O.C. EDGE NAILING`, or the `text` param),
+  and coverage reads that text. In a section only nails at or behind the cut and outside cut solids show: an elevation
+  (or `cut_z` in front) shows splice nails, W_NAIL_HIDDEN says when a view shows none. W_NAIL_MEMBERS (no touching
+  joint), W_NAIL_LENGTH (points out of the far face: `through` or a shorter size), W_NAIL_SPACING print their fixes.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

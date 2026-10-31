@@ -1,0 +1,571 @@
+{
+  "kerf": "0.1",
+  "id": "nailing",
+  "title": "NAILING AND FASTENER SYMBOLS",
+  "meta": {
+    "requested": [
+      "(8) 16d each side of splice",
+      "8d toenails",
+      "edge nailing",
+      "8d @ 12\" field nailing",
+      "SDS screws",
+      "sill nailing"
+    ]
+  },
+  "components": [
+    {
+      "id": "a_stud",
+      "type": "lumber",
+      "at": {
+        "to": [8, 0]
+      },
+      "z": [-1.75, 1.75],
+      "array": {
+        "axis": "x",
+        "count": 7,
+        "spacing": 16
+      },
+      "views": [
+        "A",
+        "D"
+      ],
+      "size": "2x4",
+      "run": "y",
+      "face": "narrow",
+      "length": 12
+    },
+    {
+      "id": "a_lo_l",
+      "type": "lumber",
+      "at": {
+        "to": "a_stud@top_left",
+        "offset": [-8, 0]
+      },
+      "z": [-1.75, 1.75],
+      "views": [
+        "A",
+        "D"
+      ],
+      "size": "2x4",
+      "run": "x",
+      "face": "narrow",
+      "length": 72
+    },
+    {
+      "id": "a_lo_r",
+      "type": "lumber",
+      "at": {
+        "to": "a_lo_l@bottom_right"
+      },
+      "z": [-1.75, 1.75],
+      "views": [
+        "A",
+        "D"
+      ],
+      "size": "2x4",
+      "run": "x",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "a_up_l",
+      "type": "lumber",
+      "at": {
+        "to": "a_lo_l@top_left"
+      },
+      "z": [-1.75, 1.75],
+      "views": [
+        "A",
+        "D"
+      ],
+      "size": "2x4",
+      "run": "x",
+      "face": "narrow",
+      "length": 24
+    },
+    {
+      "id": "a_up_r",
+      "type": "lumber",
+      "at": {
+        "to": "a_up_l@bottom_right"
+      },
+      "z": [-1.75, 1.75],
+      "views": [
+        "A",
+        "D"
+      ],
+      "size": "2x4",
+      "run": "x",
+      "face": "narrow",
+      "length": 88
+    },
+    {
+      "id": "a_nail_l",
+      "type": "nailing",
+      "views": [
+        "A",
+        "D"
+      ],
+      "members": [
+        "a_up_l",
+        "a_lo_l"
+      ],
+      "size": "16d",
+      "count": 8,
+      "rows": 2,
+      "through": true,
+      "text": "(8) 16d NAILS EA. SIDE OF SPLICE"
+    },
+    {
+      "id": "a_nail_lap",
+      "type": "nailing",
+      "views": [
+        "A",
+        "D"
+      ],
+      "members": [
+        "a_up_r",
+        "a_lo_l"
+      ],
+      "size": "16d",
+      "count": 8,
+      "rows": 2,
+      "through": true,
+      "text": "(8) 16d NAILS EA. SIDE OF SPLICE"
+    },
+    {
+      "id": "a_nail_r",
+      "type": "nailing",
+      "views": [
+        "A",
+        "D"
+      ],
+      "members": [
+        "a_up_r",
+        "a_lo_r"
+      ],
+      "size": "16d",
+      "count": 8,
+      "rows": 2,
+      "range": [
+        "a_lo_r@top_left",
+        {
+          "ref": "a_lo_r@top_left",
+          "offset": [24, 0]
+        }
+      ],
+      "through": true
+    },
+    {
+      "id": "a_toe",
+      "type": "nailing",
+      "views": [
+        "A"
+      ],
+      "members": [
+        "a_stud",
+        "a_lo_l"
+      ],
+      "pattern": "toenail",
+      "size": "8d",
+      "count": 2
+    },
+    {
+      "id": "b_rim",
+      "type": "lumber",
+      "at": {
+        "to": [0, -9.25]
+      },
+      "views": [
+        "B"
+      ],
+      "size": "3x10",
+      "run": "z",
+      "orient": "upright"
+    },
+    {
+      "id": "b_blk",
+      "type": "lumber",
+      "at": {
+        "to": "b_rim@bottom_right"
+      },
+      "z": 0,
+      "views": [
+        "B"
+      ],
+      "size": "2x10",
+      "run": "z",
+      "orient": "upright",
+      "length": 14.5,
+      "blocking": true
+    },
+    {
+      "id": "b_plate",
+      "type": "lumber",
+      "at": {
+        "to": "b_rim@top_left"
+      },
+      "views": [
+        "B"
+      ],
+      "size": "2x6",
+      "run": "z",
+      "orient": "flat"
+    },
+    {
+      "id": "b_wblk",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "b_plate@top_center"
+      },
+      "z": 0,
+      "views": [
+        "B"
+      ],
+      "size": "2x4",
+      "run": "z",
+      "orient": "upright",
+      "length": 14.5,
+      "blocking": true
+    },
+    {
+      "id": "b_shtg",
+      "type": "panel",
+      "material": "osb",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "b_rim@bottom_left"
+      },
+      "views": [
+        "B"
+      ],
+      "thickness": 0.4375,
+      "length": 16,
+      "run": "y"
+    },
+    {
+      "id": "b_sill_nails",
+      "type": "nailing",
+      "views": [
+        "B"
+      ],
+      "members": [
+        "b_plate",
+        "b_rim",
+        "b_blk"
+      ],
+      "size": "16d",
+      "spacing": 8,
+      "rows": 2,
+      "text": "16d SILL NAILING @ 8\" O.C. STAGGERED"
+    },
+    {
+      "id": "b_toe",
+      "type": "nailing",
+      "views": [
+        "B"
+      ],
+      "members": [
+        "b_wblk",
+        "b_plate"
+      ],
+      "pattern": "toenail",
+      "size": "8d",
+      "count": 2
+    },
+    {
+      "id": "b_en",
+      "type": "nailing",
+      "views": [
+        "B"
+      ],
+      "members": [
+        "b_shtg",
+        "b_rim"
+      ],
+      "pattern": "edge",
+      "size": "6d",
+      "spacing": 6,
+      "edges": [
+        "bottom"
+      ]
+    },
+    {
+      "id": "b_sds",
+      "type": "nailing",
+      "views": [
+        "B"
+      ],
+      "members": [
+        "b_blk",
+        "b_rim"
+      ],
+      "size": "SDS25300",
+      "count": 2,
+      "along": "y"
+    },
+    {
+      "id": "c_sill",
+      "type": "lumber",
+      "at": {
+        "to": [0, 0]
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 96,
+      "treated": true
+    },
+    {
+      "id": "c_chord",
+      "type": "lumber",
+      "at": {
+        "to": "c_sill@top_left"
+      },
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 94.5
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 93
+    },
+    {
+      "id": "c_stud",
+      "type": "lumber",
+      "at": {
+        "to": "c_sill@top_left",
+        "offset": [15.25, 0]
+      },
+      "array": {
+        "axis": "x",
+        "count": 5,
+        "spacing": 16
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 93
+    },
+    {
+      "id": "c_tp",
+      "type": "lumber",
+      "at": {
+        "to": "c_sill@top_left",
+        "offset": [0, 93]
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 96
+    },
+    {
+      "id": "c_shtg_l",
+      "type": "panel",
+      "material": "plywood",
+      "at": {
+        "to": [0, 0]
+      },
+      "z": [2.75, 3.1875],
+      "views": [
+        "C"
+      ],
+      "thickness": 96,
+      "length": 48,
+      "run": "x"
+    },
+    {
+      "id": "c_shtg_r",
+      "type": "panel",
+      "material": "plywood",
+      "at": {
+        "to": [48, 0]
+      },
+      "z": [2.75, 3.1875],
+      "views": [
+        "C"
+      ],
+      "thickness": 96,
+      "length": 48,
+      "run": "x"
+    },
+    {
+      "id": "c_en_l",
+      "type": "nailing",
+      "views": [
+        "C"
+      ],
+      "members": [
+        "c_shtg_l",
+        "c_sill",
+        "c_chord#0",
+        "c_stud#2",
+        "c_tp"
+      ],
+      "pattern": "edge",
+      "size": "8d",
+      "spacing": 6
+    },
+    {
+      "id": "c_fn_l",
+      "type": "nailing",
+      "views": [
+        "C"
+      ],
+      "members": [
+        "c_shtg_l",
+        "c_stud"
+      ],
+      "pattern": "field",
+      "size": "8d",
+      "spacing": 12
+    },
+    {
+      "id": "c_en_r",
+      "type": "nailing",
+      "views": [
+        "C"
+      ],
+      "members": [
+        "c_shtg_r",
+        "c_sill",
+        "c_stud#2",
+        "c_chord#1",
+        "c_tp"
+      ],
+      "pattern": "edge",
+      "size": "8d",
+      "spacing": 6
+    },
+    {
+      "id": "c_fn_r",
+      "type": "nailing",
+      "views": [
+        "C"
+      ],
+      "members": [
+        "c_shtg_r",
+        "c_stud"
+      ],
+      "pattern": "field",
+      "size": "8d",
+      "spacing": 12
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "elevation",
+      "title": "DOUBLE TOP PLATE SPLICE",
+      "scale": "3/4\"=1'-0\"",
+      "notes_side": "above",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_l",
+          "type": "note",
+          "target": "a_nail_l",
+          "key": 1
+        },
+        {
+          "id": "n_lap",
+          "type": "note",
+          "target": "a_nail_lap",
+          "key": 1
+        },
+        {
+          "id": "n_toe",
+          "type": "note",
+          "target": "a_toe"
+        },
+        {
+          "id": "n_pl",
+          "type": "note",
+          "text": "DOUBLE 2X4 TOP PLATE",
+          "target": "a_up_r"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "title": "SILL AND RIM NAILING",
+      "scale": "1-1/2\"=1'-0\"",
+      "cut_z": 0,
+      "notes_side": "left",
+      "annotations": [
+        {
+          "id": "n_sill",
+          "type": "note",
+          "target": "b_sill_nails"
+        },
+        {
+          "id": "n_toe",
+          "type": "note",
+          "target": "b_toe"
+        },
+        {
+          "id": "n_en",
+          "type": "note",
+          "target": "b_en"
+        },
+        {
+          "id": "n_sds",
+          "type": "note",
+          "target": "b_sds"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "kind": "iso",
+      "title": "SHEAR PANEL EDGE AND FIELD NAILING",
+      "notes_side": "left",
+      "annotations": [
+        {
+          "id": "n_en",
+          "type": "note",
+          "target": "c_en_l"
+        },
+        {
+          "id": "n_fn",
+          "type": "note",
+          "target": "c_fn_l"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "kind": "plan",
+      "title": "SPLICE NAILING",
+      "scale": "1-1/2\"=1'-0\"",
+      "cut_y": 16,
+      "crop": {
+        "x": [-2, 40],
+        "z": [-6, 6]
+      },
+      "annotations": [
+        {
+          "id": "n_l",
+          "type": "note",
+          "target": "a_nail_l"
+        }
+      ]
+    }
+  ]
+}

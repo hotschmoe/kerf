@@ -479,7 +479,7 @@ pub static ENTRIES: [Entry; 18] = [
     },
     Entry {
         ty: Type::Nailing,
-        summary: "Nails and screws placed from the members they join: face nails, toenails, panel edge and field nailing.",
+        summary: "Nails/screws from their `members`: face, toenail, panel edge, field.",
         parts: "none",
         anchors: "the 9 box anchors of the fasteners' extent",
         draws: "Section, plan, elevation: a nail lying in the drawing plane is its shank with a head bar (toenails angled), one seen end-on is a dot (screws: a circle with a cross); in iso a dot on the face the heads are on. Placement comes from `members` (the first holds the heads): face finds the joint face of the first two and lays `rows` x `count` (or @ `spacing`) on it; edge rows run at `edge_distance` inside each panel edge and keep only nails with framing behind; field rows follow the intermediate framing. Own members never hide the nails; a section draws the nails at or behind its cut that no cut solid covers, and a row seen end-on where it crosses the cut. A note targeting it without `text` prints its text form. Checks: W_NAIL_MEMBERS (members do not touch), W_NAIL_EDGE (edge distance, edges without framing), W_NAIL_SPACING, W_NAIL_LENGTH (points out the far face, short penetration), W_NAIL_HIDDEN (a view draws none of them).",

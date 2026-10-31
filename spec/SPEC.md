@@ -1278,7 +1278,7 @@ transform and coverage.
   (`EA. FACE` = `each face` = `E.F.`; `CLR.` = `clear`). An abbreviation that is also a plain word (ALT. ARCH. COL. DIM. EXP.
   FIN. INT. SIM.) is rewritten only when written with its period, and a candidate then offers the written word as well:
   `alt` asks for `ALT`/`ALT.`, `alt.` also matches `ALTERNATE`.
-- **Coverage sources.** A candidate is one component (id, type, label, model, size; it reports the id) or one
+- **Coverage sources.** A candidate is one component (id, type, label, model, size, and a `nailing` its text form, §27.4; it reports the id) or one
   annotation: note or label text plus its citations' code, section and title (it reports the target component, else
   `note <id>`/`label <id>`), a dim's `text` or, without text, the length it measures in a section view (`dim <id>`), a
   weld as `<size> fillet weld` (`cjp`/`pjp` complete/partial joint penetration groove weld), plus `all around`, `field
@@ -1706,3 +1706,98 @@ the wall thickness), packing as two strips, natural z thickness od (2.5D, like p
 - `W_OVERLAP` between a concrete/cmu host and a non-masonry solid (or grout) prints, before the usual fix, the op that
   subtracts it: `{"op": "update", "path": "components/<host>", "value": {"voids": [..., "<id>"]}}`, or for a sleeve
   `{"op": "update", "path": "components/<sleeve>", "value": {"through": "<host>"}}`.
+
+## 27. v0.2.0-beta.2 wood framing
+
+### 27.4 beta.2: nailing and fastener symbols
+From the MASS details dogfood run (issue #13): nailing is the main graphic of shear wall, diaphragm, splice and blocking
+details, and kerf could not draw it, so agents wrote the schedule into notes and left the drawing bare. Component type
+`nailing` draws nails and screws, placed from the members they join.
+
+**Params.**
+| param | default | notes |
+|---|---|---|
+| `members` | required | component ids in driving order: the first holds the heads (face, toenail: the piece nailed; edge, field: the panel), the rest take the points. `id#k` names one array instance; otherwise every instance takes part. They are placement dependencies (§3.2) and cannot be removed while listed (§14) |
+| `pattern` | `face` | `face` \| `toenail` \| `edge` \| `field` |
+| `size` | required | nail: penny size `4d`..`60d` (common; `"16d box"`, `"16d sinker"`), or shank x length `"0.131x3"`; screw: `SDS25xyz` (1/4" SDS, length code 112 200 212 300 312 412 500 600 800), `"#10x3"`. Unknown: `E_PARAM` listing the forms |
+| `fastener` | `nail` | `nail` \| `screw` (SDS and `#N` sizes are screws) |
+| `count` | null | face, toenail: fasteners per joint, over all rows and faces (toenail default 2) |
+| `spacing` | edge 6, field 12 | o.c. along a row; with `stagger` within each row, the rows offset by spacing / rows |
+| `rows` | 1 | face: rows across the joint at (r+1)/(rows+1) of its width |
+| `stagger` | true | rows > 1: nails alternate between rows (false: the rows line up, `count` is the total) |
+| `along` | longer side | face: world axis (`x` `y` `z`) the rows run along; the drive axis is `W_PARAM` |
+| `range` | null | face, toenail: `[from, to]` limits the rows along their axis: Refs or `[x, y]` points (projected on the row) or z values for a row along z |
+| `edges` | all | edge: panel edges by direction `left right top bottom front back` (the outward normal's dominant world axis) |
+| `faces` | in-plane sides | toenail: side faces of the first member the nails start on; default both side faces whose normal lies in the XY plane |
+| `edge_distance` | edge, field 3/8; face 10D | edge, field: from the panel edge to the row; face: from each end of the joint to the first nail |
+| `angle` | 30 | toenail: degrees between the nail and the member |
+| `through` | false | the points may come out of the far face (plate splice face nails, clinched nails) |
+| `text` | generated | note text form override |
+`at`, `rotate`, `slope`, `mirror`, `array` and `z` are `E_PARAM` on a nailing (it is placed from its members).
+Sizes: common 6d .113 x 2, 8d .131 x 2 1/2, 10d .148 x 3, 12d .148 x 3 1/4, 16d .162 x 3 1/2, 20d .192 x 4 (box and
+sinker per the usual tables); screws #6..#14 .138..242, SDS 1/4.
+
+**Placement.** Every member instance is a box: its builder box times its z range, in the frame of the first member's
+instance (other members' boxes are the bounding boxes of their corners in that frame). Nails are stored in world
+[x, y, z] (head on the face driven through, tip = head + length along the drive direction).
+- `face`: for each instance pair (first, second) the joint is the face where the boxes touch (within 0.01") with the
+  largest shared area. Heads go on the first member's opposite face, driven square to the joint. Rows run along `along`
+  or the joint's longer side, inset `edge_distance` from its ends; `count` alone spreads the nails over that length,
+  `spacing` alone fits floor(length / spacing) + 1 centered, both center `count` at `spacing`. Members after the second
+  extend the stack when they continue it face to face (length check only).
+- `toenail`: the joint as for `face`, direction t from the first member into the second; each nail starts on a side face
+  (normal n, perpendicular to t) min(L/3, 3/4 of the member) back from the joint and runs at `angle` to the member:
+  d = cos(angle)·t − sin(angle)·n. `count` nails go round-robin over `faces`, evenly spaced across the joint on each face
+  ((q+1)/(c+1)); with `spacing`, positions at that spacing along the joint, faces alternating.
+- `edge`: the panel's thin axis is the drive axis; the framing is every instance of members[1..] touching that face (the
+  side of the first one found; instances on the other side are ignored). One row per edge at `edge_distance` inside it,
+  from `edge_distance` to `edge_distance` from the corners at a step of at most `spacing` (both ends included, so corner
+  nails coincide and are drawn once). A nail is kept where a framing box lies behind it.
+- `field`: one row per framing member behind the panel along the member's longer side on its centerline, at most
+  `spacing` apart, without the nails at the panel edge band; a member that carries an edge row, or whose centerline is
+  within 3" of a panel edge (the second ply of a chord, a doubled stud at a joint), gets none.
+
+**Drawing.** Pen `steel` (layer of the steel pen), drawn over everything like embedded members.
+- Section, plan, elevation: view coordinates are (x, y, depth z), or in a plan (x, −z, depth y). A nail whose projected
+  length is under 0.3 of its length is end-on: a filled dot of radius 0.016 paper inch at the head (screws: a circle of
+  radius 0.03" with a cross). Otherwise it is its shank from just outside the head to the tip with a head bar across it
+  (half width min(0.04", 0.4 × projected length)), a screw adds four thread ticks; toenails come out angled. Identical
+  dots draw once and identical strokes are deduplicated.
+- Which nails a section shows: a nail is **cut** when the plane passes through its depth range widened, for a row seen
+  end-on (row direction within ~45° of the view axis), by half its row spacing (so a row of sill nails along a wall
+  that a section crosses shows as one tick per row); it always draws. A nail wholly in front of the plane is dropped. A
+  nail behind it draws unless a cut solid covers it (at its head when end-on, at its shank midpoint otherwise) or a solid
+  that is not one of its members lies wholly in front of it. Its own members never hide it (splice nails show through
+  the plates). Elevations cut nothing: only non-member solids in front hide nails. Nails show only in views that draw
+  the nailing and its first member.
+- Iso: a dot (radius 0.014 paper inch; screws a circle and cross) where the head is visible (the face it sits on is not
+  behind another face); cutaway views drop heads in front of `cut_z`; a crop drops heads outside it.
+- Notes: a note targeting a nailing lands on its drawn fasteners (the one nearest their middle first). A note without
+  `text` targeting a nailing prints its text form: `text`, else face `(8) 16d NAILS` / `16d NAILS @ 12" O.C.` (+
+  ` STAGGERED` for staggered rows, ` IN n ROWS` otherwise), toenail `(2) 16d TOENAILS` / `16d TOENAILS @ 10" O.C.`, edge
+  `8d @ 6" O.C. EDGE NAILING`, field `8d @ 12" O.C. FIELD NAILING` (screws: `SCREWS`, `TOE SCREWS`, `EDGE SCREWS`,
+  `FIELD SCREWS`). The same text is the nailing's coverage candidate (§25.3), so `meta.requested` items like
+  `edge nailing`, `8d @ 6"` or `(2) 16d toenails` are covered by the component. The summary line reads
+  `nailing <pattern> <text>: <n> nails (<dia> x <length>), a -> b -> ...` with the fasteners' extent.
+
+**Diagnostics** (warnings, id = the nailing, path `components/<id>`, each with the exact fix; each distinct message once):
+- `W_NAIL_MEMBERS`: no instance of the second member touches the first face to face (gap per axis, or overlap); the fix
+  lists components that do touch the first member and the `members` update; also when no framing touches an edge/field
+  panel, when `range` misses the joint, and when every framing member behind a field panel lies under an edge.
+- `W_NAIL_EDGE`: `edge_distance` under 3/8"; outer rows of a face joint closer than max(3/8", 2.5D) to its edges (fix:
+  fewer rows); a panel edge with positions that have no framing behind it (length unbacked and the first gap in world
+  coordinates; fix: components not in `members` that lie behind the gap, blocking, or the `edges` update leaving it out).
+- `W_NAIL_SPACING`: nails of one row closer than 10D (panels: max(2", 10D)); `count` at `spacing` longer than the joint
+  (fix: the count that fits).
+- `W_NAIL_LENGTH`: the nail stops before the last member; penetrates it less than 6D (fix: the shortest size of the same
+  kind that reaches 6D); points come out of the far face of the stack without `through` (fix: the longest size that stays
+  inside and reaches 6D, or `through: true`); a toenail whose point ends outside the second member (fix: a shorter size,
+  or `angle: 45`).
+- `W_NAIL_HIDDEN` (path `views/<id>`): a view that draws the nailing shows none of its fasteners although some lie in its
+  crop: in a section or plan the fix puts the cut plane just in front of the members (`cut_z` / `cut_y`, or kind
+  `elevation`), in an elevation it names the members in front; both offer `omit`.
+- `W_PARAM`: `along` naming the drive axis, a `faces` entry that is the joint face. `E_PARAM`: bad size, fewer than two
+  members, a member that is a nailing, an instance out of range, face nailing without `count` or `spacing`, `angle`
+  outside 5..85, more than 5000 fasteners (`E_LIMIT`). `E_REF_UNKNOWN`: a member that is not a component (nearest id).
+- A nailing has no solid: it takes no part in `W_OVERLAP`, `W_FLOATING` or any other geometry check, and the mesh has
+  no nails (2.5D viewers show none).
