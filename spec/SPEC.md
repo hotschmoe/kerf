@@ -290,6 +290,7 @@ carries the model; geometry shows location and path. If `model` is in the hardwa
 (engine embeds a small table: model → width, gauge, length, kind) unspecified params fill in.
 
 ### 5.8 `truss` — prefab wood truss heel (side view)
+Profiles (scissor, mono, parallel chord), bearings (top chord, face) and end-on trusses: §27.1.
 | param | default | notes |
 |---|---|---|
 | `exterior` | `"left"` | side of the heel/overhang |
@@ -634,6 +635,7 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_BOLT_SPACING` | warning | bolt spacing < 2 2/3 d (AISC 360 J3.3); two anchor bolts closer than 4d (cast-in) or 6d (wedge/screw) center to center, in plane and z (ACI 318-19 17.9.2) |
 | `W_BOLT_EDGE` (anchor bolt) | warning | an `anchor_bolt` shaft (its deeper 60% inside concrete/masonry) < 1 1/2" clear of the host edge (ACI 318-19 17.9.2, cover per 20.5.1.3) |
 | `W_WELD_SIZE` | warning | a fillet weld symbol with `members` is larger than the thinner part allows (t, or t − 1/16 when t ≥ 1/4; AISC 360 J2.2b) or smaller than Table J2.4 (1/8, 3/16, 1/4, 5/16 by thinner part ≤ 1/4, 1/2, 3/4, over). Thickness of a W or channel is its thinner element, of an HSS or pipe the design wall |
+| `W_BEARING` | warning | an `ijoist` laid along x bears less than 1 3/4" on what is under one of its ends, or less than 3 1/2" on an intermediate support; the fix gives the length to add and the x to reach (§27.1) |
 | `I_SOLID_USED` | info | `solid` escape hatch used |
 | `W_REF_UNKNOWN` | warning | a view `omit` / `only` entry (id or `*` glob) that matches no component; it has no effect (§25.4) |
 | `W_ACK_UNUSED` | warning | `acknowledge` entries of a component that suppressed nothing in any view (stale, repeated, or an `I_*` code); one per component, the fix is the `update` op that removes them. Only when every view was built and the document has no errors (§25.4) |
@@ -1706,3 +1708,92 @@ the wall thickness), packing as two strips, natural z thickness od (2.5D, like p
 - `W_OVERLAP` between a concrete/cmu host and a non-masonry solid (or grout) prints, before the usual fix, the op that
   subtracts it: `{"op": "update", "path": "components/<host>", "value": {"voids": [..., "<id>"]}}`, or for a sleeve
   `{"op": "update", "path": "components/<sleeve>", "value": {"through": "<host>"}}`.
+
+## 27. v0.2.0-beta.2 wood framing
+
+### 27.1 beta.2: I-joists and truss profiles
+From the MASS details dogfood run (issue #10): floor and roof framing in the S-40/60/70/80 families is mostly I-joists,
+open-web floor trusses and trusses seen end-on. Agents built I-joists from three engineered `lumber` pieces (the web drew
+as a block of lamination lines), floor trusses from rotated lumber (webs swept across the chords, `W_OVERLAP` acks) and
+end-on trusses from loose rectangles; scissor, mono and top-chord-bearing trusses had no profile.
+
+**`ijoist`** (catalog type after `truss`). Generic series table, no brand names: `size` is `"depth x flange width"` in
+either order (`"11-7/8 x 2-5/16"`, `"2-5/16 x 11-7/8"`, `"11.875x2.3125"`).
+
+| flange width | flange depth | depths |
+|---|---|---|
+| 1 3/4, 2 1/16 | 1 3/8 | 9 1/2, 11 7/8, 14, 16 |
+| 2 5/16 | 1 3/8 | 9 1/2, 11 7/8, 14, 16, 18, 20, 22, 24 |
+| 2 1/2 | 1 1/2 | 9 1/2, 11 7/8, 14, 16 |
+| 3 1/2 | 1 3/8 | 11 7/8, 14, 16, 18, 20, 22, 24 |
+
+Web 3/8 (7/16 for 3 1/2 flanges and depths over 16); `flange_depth` and `web` override. A size off the table is `E_PARAM`
+listing the table and the nearest entry as `{"size": "..."}`; a size with a brand series name (`TJI 230`) says to give
+that series' depth and flange width.
+
+| param | default | notes |
+|---|---|---|
+| `run` | `"x"` | `x`: along x, seen from the side; `z`: cut end-on |
+| `length` / `until` | — | run x: as lumber (§17); run z: optional `length` as lumber run z (§25.5), `until` is `E_PARAM` |
+| `stiffeners` | `"none"` | `none` `left` `right` `both`: a web stiffener pair (part `stiffener`) at that end: one each side of the web, flush with the flange edges, 3 1/2 along the joist, on the bottom flange with 1/8 under the top flange |
+| `squash_blocks` | `"none"` | the same ends: a 2x pair (part `squash_block`) beside the flanges, 1 1/2 thick, full joist depth, 3 1/2 along it |
+| `blocking` | false | run z: the flanges get the single diagonal (I-joist blocking or rim cut end-on) |
+
+Geometry: the cross-section in (u, v) with the box (0,0)–(flange width, depth). Run z draws it as it is: flanges
+material `wood` with the X cut mark, web material `osb` (a thin unhatched strip), stiffeners and squash blocks cut beside
+it at the joist's z centre (the first section view's cut when the joist spans the run). Run x lays every piece along x as
+a slab at its true z (flanges `bf` deep in z, the web `t_w`, stiffeners and squash blocks at their offsets), natural z
+thickness = flange width; the slabs are `lengthwise` (§26.4, as steel in elevation), so a section plane through the joist
+draws it as an elevation: flange lines and the web outline, never hatch or grain. Iso, plan and the mesh see the real I.
+Parts `top_flange`, `web`, `bottom_flange`, `stiffener`, `squash_block`. Anchors: the 9 box anchors of the joist alone;
+run x: `top_flange`, `top_flange_bottom`, `web_center`, `bottom_flange_top`, `bottom_flange` at mid-length, each with
+`_start` and `_end`, and `bearing_left` / `bearing_right` (underside at the ends); run z: `top_flange`, `bottom_flange`,
+`web_center`, `web_left`, `web_right`, `top_flange_tip_left/right`, `bottom_flange_tip_left/right` (as steel W §5.13).
+Traits: near-miss checks like framing lumber; a slope host (`slope: "@j"` on its top flange).
+
+**`W_BEARING`** (per-view geometry check, §9). For an axis-aligned run x `ijoist` and each instance: the members whose
+top is within 1/32 of the bottom flange's underside, overlapping it in x and z (not hardware, line-like members, fills,
+embedded or dashed parts) are its supports; touching supports merge. A support reaching an end of the joist must give
+1 3/4 of bearing, any other 3 1/2 (manufacturer minimums, `Traits::min_bearing`). The message gives the bearing and the
+support ids; the fix at an end is the length to add and the x the end must reach, at an intermediate support to widen it
+or add squash blocks. A support under both ends at once (a joist shorter than its bearing) is not reported.
+
+**`truss` additions** (§5.8 stays the default: `profile: "pitched"`, `orient: "side"`, `bearing: "bottom_chord"`).
+- `profile: "scissor"`: the bottom chord is flat over `bearing_width`, then rises at `bottom_pitch` (default half the
+  pitch; one at or above `pitch`, or `bottom_pitch` on another profile, is `E_PARAM`); its vertical thickness is depth / cos(bottom pitch); the
+  top chord's lower edge passes through the bottom chord's top at the bearing (raised: `heel_height` above it).
+- `profile: "mono"`: the high end of a mono truss. `heel_height` (required) is the end height above the bottom chord at
+  the bearing; an end vertical (part `end_vertical`, 3 1/2 wide) stands at the bearing and the top chord falls inward at
+  `pitch`. `overhang` defaults to 0 (a tail continues the top chord up and out). If the top chord meets the bottom chord
+  before `span_shown`, `E_PARAM` gives the largest `span_shown`.
+- `profile: "parallel_chord"` (floor or flat truss): `depth` (required) from the bottom of the bottom chord to the top of
+  the top chord; chords default to `"4x2"` (a 2x4 laid flat: 1 1/2 in-plane, 3 1/2 thick; any `"AxB"` whose swap is a
+  sawn size reads flat); webs as wide in-plane as the flat chord (3 1/2 for upright chords). An end vertical at the bearing,
+  then diagonals alternating down and up from the top chord at the end vertical, every `web_spacing` (default: the clear
+  height, 45°), edges meeting the chords on horizontal cuts and touching at the panel points, while one fits before
+  `span_shown`. `pitch`, `heel`, `heel_height`, `bottom_pitch` are `E_PARAM` here. Too little clear height (< 3) or too
+  tight a `web_spacing` is `E_PARAM` with the minimum.
+- `bearing: "top_chord"` (parallel_chord only, else `E_PARAM`): the top chord runs over the support (`bearing_outer` and
+  `bearing_inner` are at its underside, `bearing_width` apart); the end vertical and the bottom chord start at
+  `bearing_inner`.
+- `bearing: "face"`: hung at a beam or ledger face: no overhang (a nonzero `overhang` is `E_PARAM`); pitched, scissor and
+  mono need `heel_height` (the end height) and draw an `end_vertical` instead of the heel web.
+- Anchors added: `heel_block_top` (top of the top chord above the bearing's outer edge: `until` target for full-height
+  eave blocking between trusses, the standard heel included), `end_vertical`, `end_top`, `end_bottom` (end vertical's
+  outer face middle, top, bottom: mono, face, parallel_chord), `bottom_chord_end` (parallel_chord).
+- `slope: "@truss"` follows the top chord the builder reports (`Built::pitch`): the pitch, negative for mono, mirrored for
+  `exterior: "right"`, zero for parallel chord and end-on.
+- `orient: "end_on"`: the truss runs along z, cut across. `depth` (required) is its height at the cut; the chords are cut
+  per ply (`plies` 1–4 side by side along x, ply lines, wood X), the top chord depth / cos(pitch) tall for a pitched
+  profile; between them a web strip one web thick along z every `web_spacing` (default 24) along the truss, the nearest
+  half a spacing behind the cut, so a section draws it beyond and iso/3D show the webs as verticals (2.5D: diagonals in
+  the truss plane are not modelled). `length` as lumber run z (default: the doc run). Anchors `top_chord`,
+  `top_chord_bottom`, `bottom_chord`, `bottom_chord_top`, `web_center` (across the plies' middle). `plies` and `length`
+  on a side view are `E_PARAM`.
+
+**Engineered lumber seen lengthwise.** A `lumber` member cut along its length (run x/y in a section, a plan cut through
+any lumber) draws no material hatch: the `wood_engineered` lamination lines appear only where the member is cut end-on
+(drafting practice; §5.1 already said "run x/y cut lengthwise => outline only").
+
+**Compile.** A prism's `zhalf`/`zoff` now apply whether or not the component has a natural z thickness (relative to the
+instance's z centre), so a run z member that spans the doc run can carry pieces at the section (stiffeners, end-on webs).
