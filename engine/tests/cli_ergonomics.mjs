@@ -1951,6 +1951,50 @@ section('#28. round-2 papercuts');
   check('material stone exists (masonry: untreated wood against it warns)', /^ ven +solid stone/m.test(r.out) && !/E_PARAM/.test(r.out) && /^WARN W_UNTREATED_CONTACT stud: untreated wood 'stud' touches stone 'ven'/m.test(r.out), r.out);
   dr = kerf(['drawing', 'sto28.kerf.json', '--view', 'A']);
   check('stone is hatched ANSI33', dr.code === 0 && JSON.parse(dr.out).items.some((it) => it.t === 'hatch' && it.src === 'ven' && it.pattern === 'ANSI33'), dr.err);
+
+  const ftg = { id: 'ftg', type: 'concrete', shape: 'rect', width: 24, height: 12, at: { anchor: 'top_center', to: [0, 0] } };
+  const stem = { id: 'stem', type: 'concrete', shape: 'rect', width: 8, height: 24, at: { anchor: 'bottom_center', to: 'ftg@top_center' } };
+  const dowel = { id: 'dowel', type: 'rebar', size: '#5', mode: 'path', points: [[0, 20], [0, -9], [9, -9]] };
+  write('ld28.kerf.json', { kerf: '0.1', id: 'ld28', title: 'LD', components: [ftg, stem, dowel], views: [{ id: 'A', kind: 'section', notes_style: 'keyed', annotations: [
+    { id: 'n1', type: 'note', text: '#5 DOWEL', target: 'dowel' }, { id: 'n3', type: 'note', text: 'FOOTING', target: 'ftg' }] }] });
+  dr = kerf(['drawing', 'ld28.kerf.json', '--view', 'A']);
+  const tipOf = (items, id) => { const f = items.find((it) => it.src === id && it.t === 'fill'); return f ? f.loops[0][0] : null; };
+  let tip = dr.code === 0 ? tipOf(JSON.parse(dr.out).items, 'n3') : null;
+  check('a note on the footing does not land on the dowel through its middle (arrow tip clear of the bar by half a text height)', tip !== null && Math.abs(tip[0]) > 0.3125 + 0.5 && tip[1] < 0 && tip[1] > -12, { tip, err: dr.err });
+  tip = dr.code === 0 ? tipOf(JSON.parse(dr.out).items, 'n1') : null;
+  check('a note on the dowel still lands on it', tip !== null && Math.abs(tip[0]) <= 0.3125 + 1e-6, tip);
+
+  const block = { id: 'blk', type: 'concrete', shape: 'rect', width: 40, height: 12, at: { anchor: 'top_left', to: [0, 0] } };
+  const rod = (id, x) => ({ id, type: 'anchor_bolt', diameter: 0.75, embed: 8, projection: 3, hook: 'headed', at: { to: [x, 0] } });
+  write('ab28.kerf.json', { kerf: '0.1', id: 'ab28', title: 'AB', components: [block, rod('ab1', 10), rod('ab2', 30)], views: [{ id: 'A', kind: 'section', notes_style: 'keyed', crop: { x: [-2, 44], y: [-6, 2] }, annotations: [
+    { id: 'n1', type: 'note', text: 'ANCHOR 1', target: 'ab1', place: [46, -1] }, { id: 'n2', type: 'note', text: 'ANCHOR 2', target: 'ab2' }] }] });
+  r = kerf(['check', 'ab28.kerf.json']);
+  check('a leader (text placed right of both rods) that crosses the neighbouring anchor rod: W_LEADER_HIT names the rod and the note on it', /^WARN W_LEADER_HIT n1: view A: the leader \(or arrowhead\) of note 'n1' crosses anchor_bolt 'ab2' \(the target of note 'n2'\); a leader that crosses another note's member reads as pointing at it/m.test(r.out), r.out);
+  write('ab28.kerf.json', { kerf: '0.1', id: 'ab28', title: 'AB', components: [block, rod('ab1', 10), rod('ab2', 30)], views: [{ id: 'A', kind: 'section', notes_style: 'keyed', annotations: [
+    { id: 'n1', type: 'note', text: 'ANCHOR 1', target: 'ab1' }, { id: 'n2', type: 'note', text: 'ANCHOR 2', target: 'ab2' }] }] });
+  r = kerf(['check', 'ab28.kerf.json']);
+  check('free to choose columns, the same two rods route without crossing', !/W_LEADER_HIT/.test(r.out), r.out);
+
+  const w10 = { id: 'beam', type: 'steel', shape: 'W10x26', at: { anchor: 'top_center', to: [0, 0] } };
+  write('st28w.kerf.json', { kerf: '0.1', id: 'st28w', title: 'W', components: [w10,
+    { id: 'wn', type: 'lumber', size: '4x10', at: { anchor: 'top_right', to: 'beam@web_left_top' } }], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'st28w.kerf.json']);
+  check('W anchor web_left_top: a nailer tight under the top flange and clear of the root fillet, no W_OVERLAP', /^ wn +lumber 4x10 upright run z +x -3 15\/16"\.\.-7\/16" y -9 11\/16"\.\.-7\/16"/m.test(r.out) && !/W_OVERLAP/.test(r.out), r.out);
+
+  const wb = { id: 'w', type: 'steel', shape: 'W12x26', at: { anchor: 'top_flange', to: [0, 0] } };
+  const nl = { id: 'n', type: 'lumber', size: '3x8', orient: 'flat', at: { anchor: 'bottom_center', to: 'w@top_flange' } };
+  const stud = (extra) => ({ id: 'ws', type: 'bolt', kind: 'weld_stud', diameter: 0.5, grip: 2.5, at: { to: 'w@top_flange' }, ...extra });
+  write('cb28.kerf.json', { kerf: '0.1', id: 'cb28', title: 'CB', components: [wb, nl, stud({ counterbore: true })], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'cb28.kerf.json']);
+  check('weld stud counterbore: summary says so, the stud ends flush with the top of the nailer', /^ ws +bolt weld_stud 0.5" dia., grip 2 1\/2", nut in counterbore +x -9\/16"\.\.9\/16" +y 0"\.\.2 1\/2"/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+  dr = kerf(['drawing', 'cb28.kerf.json', '--view', 'A']);
+  check('the counterbore pocket is drawn (part counterbore)', dr.code === 0 && JSON.parse(dr.out).items.some((it) => it.t === 'region' && it.src === 'ws' && it.part === 'counterbore'), dr.err);
+  write('cb28.kerf.json', { kerf: '0.1', id: 'cb28', title: 'CB', components: [wb, nl, stud({ counterbore: true, grip: 0.75 })], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'cb28.kerf.json']);
+  check('a counterbore deeper than the grip: E_PARAM with the depth it needs', /^ERROR E_PARAM ws: a counterbore holds the washer, nut and d\/2 of stud \(15\/16"\), deeper than the grip 3\/4"/m.test(r.out + r.err), r.out + r.err);
+  write('cb28.kerf.json', { kerf: '0.1', id: 'cb28', title: 'CB', components: [wb, nl, stud({ kind: 'bolt', counterbore: true })], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'cb28.kerf.json']);
+  check('counterbore on a plain bolt: E_PARAM naming weld_stud', /^ERROR E_PARAM ws: counterbore is for a weld_stud/m.test(r.out + r.err), r.out + r.err);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

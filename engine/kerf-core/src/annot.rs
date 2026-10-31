@@ -143,6 +143,16 @@ fn str_member<'v>(an: &'v Value, key: &str) -> Option<&'v str> {
     an.get(key).and_then(Value::str)
 }
 
+/// The component a note points at: its `target`, else the component of its `at` Ref ("" for none).
+fn note_member(an: &Value) -> &str {
+    let at = non_null(an, "at");
+    let s = str_member(an, "target")
+        .or_else(|| at.and_then(Value::str))
+        .or_else(|| at.and_then(|a| a.get("ref")).and_then(Value::str))
+        .unwrap_or("");
+    &s[..s.find(['.', '#', '@']).unwrap_or(s.len())]
+}
+
 fn non_null<'v>(an: &'v Value, key: &str) -> Option<&'v Value> {
     an.get(key).filter(|v| !v.is_null())
 }
@@ -300,6 +310,7 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
             place: None,
             column: None,
             key,
+            member: "",
         });
     }
     let target = str_member(an, "target").unwrap_or("");
@@ -363,7 +374,7 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
         }
     }
     if let Some(cands) = landing {
-        return Some(NoteIn { id, text: full, body, cands, movable, place, column, key });
+        return Some(NoteIn { id, text: full, body, cands, movable, place, column, key, member: note_member(an) });
     }
     let base = target.split(['.', '#']).next().unwrap_or("");
     if at_v.is_none()
@@ -669,14 +680,15 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         }
     }
     let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs };
-    let prep = notes::prep_notes(env, routed, &routed_numbers);
+    let mut prep = notes::prep_notes(env, routed, &routed_numbers);
+    notes::member_obstacles(env, routed, &mut prep);
 
     let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
     let Some(fin) = best else { return Vec::new() };
     repair::report_moves(env, routed, &dl, &fin);
     repair::report_overlaps(env, routed, &prep, &dl, &fin);
     let rd = fin.rd;
-    notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep.g);
+    notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep);
     notes::check_landings(env, routed, &fin.r, &base_segs);
     for (its, m) in rd.per.iter().zip(&rd.meta) {
         let bx = items_box(env.font, its);

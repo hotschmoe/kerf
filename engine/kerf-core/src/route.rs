@@ -55,18 +55,24 @@ pub struct NoteIn<'a> {
     pub place: Option<V2>,
     /// Per-note column hint (`column` on the note): the note never leaves that column.
     pub column: Option<Side>,
+    /// The member the note points at (`Obst::group` of its `Member` obstacles; `usize::MAX` for none).
+    pub group: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ObstKind {
     Dim,
     Label,
+    /// A drawn member another note points at (a bar, an anchor rod): a leader must not cross it.
+    Member,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Obst {
     pub kind: ObstKind,
     pub poly: [V2; 4],
+    /// `Member`: which member it is; the notes with the same `NoteIn::group` point at it and may cross it.
+    pub group: usize,
 }
 
 /// Layout effort counter: one unit per leader/leader, leader/box or leader/obstacle penalty evaluation. The search
@@ -128,6 +134,7 @@ pub enum HitKind {
     Note,
     Dim,
     Label,
+    Member,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -338,6 +345,8 @@ struct Ctx<'a> {
     /// Remaining column solves (bounds the work on dense views).
     budget: usize,
     work: &'a Work,
+    /// `Member` obstacles count in the search (see `route`); they are always reported.
+    members: bool,
 }
 
 impl Ctx<'_> {
@@ -448,6 +457,23 @@ impl Ctx<'_> {
         self.near(poly_box_dist(a, b)).unwrap_or(0.0)
     }
 
+    /// Leader `a` of note `i` against obstacle `k`: dimension text and labels want a text height of clearance; a member
+    /// counts only when crossed, and never for the notes that point at it.
+    fn obst_pen(&self, i: usize, a: &[V2; 3], ab: &BB, k: usize) -> f64 {
+        let o = &self.obst[k];
+        if o.kind != ObstKind::Member {
+            return self.box_pen(a, ab, &o.poly, &self.obst_bb[k]);
+        }
+        if !self.members || o.group == self.notes[i].group {
+            return 0.0;
+        }
+        if ab.apart(&self.obst_bb[k], 0.0) {
+            return 0.0;
+        }
+        self.work.add(1);
+        if poly_box_dist(a, &o.poly) > 1e-9 { 0.0 } else { W_CROSS }
+    }
+
     fn soft_pen(&self, l: &[V2; 3], lb: &BB) -> f64 {
         let h = self.p.geo.h;
         let mut c = 0.0;
@@ -507,8 +533,8 @@ impl Ctx<'_> {
                     hard += 1;
                 }
             }
-            for (k, o) in self.obst.iter().enumerate() {
-                let w = self.box_pen(li, &lb, &o.poly, &self.obst_bb[k]);
+            for k in 0..self.obst.len() {
+                let w = self.obst_pen(i, li, &lb, k);
                 if w > 0.0 {
                     c += w;
                     hits += 1;
@@ -541,8 +567,8 @@ impl Ctx<'_> {
                 k += 1;
             }
         }
-        for (m, o) in self.obst.iter().enumerate() {
-            if self.box_pen(li, &lb, &o.poly, &self.obst_bb[m]) > 0.0 {
+        for m in 0..self.obst.len() {
+            if self.obst_pen(i, li, &lb, m) > 0.0 {
                 k += 1;
             }
         }
@@ -621,8 +647,8 @@ impl Ctx<'_> {
                         let lead = leader_of(col_left, xi, tp, nt.w, nt.hgt, land, &g);
                         let lb = BB::of_leader(&lead);
                         let mut u = self.shape_pen(&lead, land, pref) + self.soft_pen(&lead, &lb);
-                        for (m, o) in self.obst.iter().enumerate() {
-                            u += self.box_pen(&lead, &lb, &o.poly, &self.obst_bb[m]);
+                        for m in 0..self.obst.len() {
+                            u += self.obst_pen(i, &lead, &lb, m);
                         }
                         #[allow(clippy::needless_range_loop)]
                         for j in 0..nn {
@@ -903,7 +929,25 @@ fn untangle(c: &mut Ctx) {
 
 // ---- entry point -------------------------------------------------------------------------------------
 
+/// Route the notes. The search first ignores `Member` obstacles, so a layout that crosses no member is the one the
+/// rules always gave; when its leaders cross members, a second search counts them too, and its layout is taken when it
+/// crosses fewer members without more of the other hits. Member crossings left over are reported either way.
 pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> Layout {
+    let plain = route_with(p, notes, obst, soft, false);
+    let tally = |l: &Layout| {
+        let m = l.hits.iter().filter(|h| h.kind == HitKind::Member).count();
+        (l.hits.len() - m, m)
+    };
+    let (other, crossed) = tally(&plain);
+    if crossed == 0 || p.work.is_some_and(Work::spent) {
+        return plain;
+    }
+    let aware = route_with(p, notes, obst, soft, true);
+    let (other2, crossed2) = tally(&aware);
+    if other2 <= other && crossed2 < crossed { aware } else { plain }
+}
+
+fn route_with(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]], members: bool) -> Layout {
     let n = notes.len();
     let local_work = Work::default();
     let work = p.work.unwrap_or(&local_work);
@@ -927,6 +971,7 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
         cnt: vec![0; n],
         budget: 60,
         work,
+        members,
     };
     for (i, nt) in notes.iter().enumerate() {
         let l = nt.cands.first().copied().unwrap_or_default();
@@ -974,6 +1019,7 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
         c.eval();
     }
 
+    c.members = true;
     let mut hits: Vec<Hit> = Vec::new();
     let mk = |note, kind, other, dist| Hit {
         note,
@@ -1003,8 +1049,15 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
         }
         for (j, o) in obst.iter().enumerate() {
             let d = poly_box_dist(&c.leaders[i], &o.poly);
-            if c.near(d).is_some() {
-                hits.push(mk(i, if o.kind == ObstKind::Dim { HitKind::Dim } else { HitKind::Label }, j, d));
+            match o.kind {
+                ObstKind::Member => {
+                    if o.group != notes[i].group && d <= 1e-9 {
+                        hits.push(mk(i, HitKind::Member, j, d));
+                    }
+                }
+                ObstKind::Dim if c.near(d).is_some() => hits.push(mk(i, HitKind::Dim, j, d)),
+                ObstKind::Label if c.near(d).is_some() => hits.push(mk(i, HitKind::Label, j, d)),
+                _ => {}
             }
         }
     }
