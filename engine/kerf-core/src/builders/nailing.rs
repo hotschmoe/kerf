@@ -217,6 +217,8 @@ const TOL: f64 = 0.01;
 /// Framing whose centerline is this close to a panel edge carries edge nailing (a built-up chord, a doubled stud at a
 /// joint), not field nailing.
 const EDGE_ZONE: f64 = 3.0;
+/// Field nails stop this far short of an edge row (the 2" minimum spacing of panel nails).
+const FIELD_CLEAR: f64 = 2.0;
 
 /// One member instance: its local box and the transforms between its local frame and the world.
 #[derive(Clone, Copy)]
@@ -1558,10 +1560,13 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                 }
                 rows_found += 1;
                 let rp = r(p);
-                let pos = fill_span(rp[0].max(a.lo[p] + e), rp[1].min(a.hi[p] - e), s);
+                let (lo_row, hi_row) = (a.lo[p] + e, a.hi[p] - e);
+                let from = if rp[0] < lo_row + FIELD_CLEAR { lo_row } else { rp[0] };
+                let to = if rp[1] > hi_row - FIELD_CLEAR { hi_row } else { rp[1] };
+                let pos = fill_span(from, to, s);
                 let step = if pos.len() > 1 { pos[1] - pos[0] } else { 0.0 };
                 for x in pos {
-                    if x < a.lo[p] + e + 1e-6 || x > a.hi[p] - e - 1e-6 {
+                    if x < a.lo[p] + e + FIELD_CLEAR - 1e-6 || x > a.hi[p] - e - FIELD_CLEAR + 1e-6 {
                         continue;
                     }
                     let mut h = [0.0; 3];

@@ -1,0 +1,64 @@
+{
+  "kerf": "0.1",
+  "id": "sheathing",
+  "title": "FACE-ON SHEATHING AND NAILING",
+  "meta": {
+    "requested": [
+      "shear wall sheathing",
+      "8d @ 6\" edge nailing",
+      "8d @ 12\" field nailing",
+      "unblocked floor diaphragm",
+      "(2) 16d end nails",
+      "16d toenails"
+    ]
+  },
+  "components": [
+    {"id": "w_sill", "type": "lumber", "views": ["A", "B", "P"], "size": "2x4", "run": "x", "face": "narrow", "length": 96, "z": [0, 3.5], "treated": true, "at": {"to": [0, 0]}},
+    {"id": "w_stud", "type": "lumber", "views": ["A", "B", "P"], "size": "2x4", "run": "y", "face": "narrow", "length": 93, "z": [0, 3.5], "at": {"to": "w_sill@top_left"}, "array": {"axis": "x", "count": 7, "spacing": 15.75}},
+    {"id": "w_tp", "type": "lumber", "views": ["A", "B", "P"], "size": "2x4", "run": "x", "face": "narrow", "length": 96, "z": [0, 3.5], "at": {"to": "w_stud@top_left"}},
+    {"id": "w_sh1", "type": "panel", "views": ["A", "B", "P"], "lay": "face", "material": "osb", "thickness": 0.4375, "length": 48, "height": 96, "on": "w_stud.face_front", "at": {"to": [0, 0]}},
+    {"id": "w_sh2", "type": "panel", "views": ["A", "B", "P"], "lay": "face", "material": "osb", "thickness": 0.4375, "length": 48, "height": 96, "on": "w_stud.face_front", "at": {"to": [48, 0]}},
+    {"id": "w_en", "type": "nailing", "views": ["A", "B", "P"], "pattern": "edge", "members": ["w_sh1", "w_sh2", "w_stud", "w_sill", "w_tp"], "size": "8d", "spacing": 6},
+    {"id": "w_fn", "type": "nailing", "views": ["A", "B", "P"], "pattern": "field", "members": ["w_sh1", "w_sh2", "w_stud"], "size": "8d", "spacing": 12},
+
+    {"id": "f_j", "type": "lumber", "views": ["C"], "size": "2x10", "run": "z", "z": [-48, 48], "at": {"to": [0, 0]}, "array": {"axis": "x", "count": 5, "spacing": 16}},
+    {"id": "f_p1", "type": "panel", "views": ["C"], "material": "plywood", "thickness": 0.75, "length": 32.75, "z": [-48, 0], "at": {"to": "f_j@top_left"}},
+    {"id": "f_p2", "type": "panel", "views": ["C"], "material": "plywood", "thickness": 0.75, "length": 32.75, "z": [-48, 0], "at": {"to": "f_p1@bottom_right"}},
+    {"id": "f_p3", "type": "panel", "views": ["C"], "material": "plywood", "thickness": 0.75, "length": 65.5, "z": [0, 48], "at": {"to": "f_j@top_left"}},
+    {"id": "f_en", "type": "nailing", "views": ["C"], "pattern": "edge", "members": ["f_p1", "f_p2", "f_p3", "f_j"], "size": "10d", "spacing": 6, "blocked": false},
+    {"id": "f_fn", "type": "nailing", "views": ["C"], "pattern": "field", "members": ["f_p1", "f_p2", "f_p3", "f_j"], "size": "10d", "spacing": 12},
+
+    {"id": "d_pl1", "type": "lumber", "views": ["D"], "size": "2x4", "run": "z", "orient": "flat", "length": 24, "z": 0, "at": {"to": [0, 0]}},
+    {"id": "d_pl2", "type": "lumber", "views": ["D"], "size": "2x4", "run": "z", "orient": "flat", "length": 24, "z": 0, "at": {"to": "d_pl1@top_left"}},
+    {"id": "d_j", "type": "lumber", "views": ["D"], "size": "2x10", "run": "x", "face": "wide", "length": 24, "z": [-8.75, -7.25], "at": {"to": "d_pl2@top_left"}, "array": {"axis": "z", "count": 2, "spacing": 16}},
+    {"id": "d_blk", "type": "lumber", "views": ["D"], "size": "2x10", "run": "z", "z": [-7.25, 7.25], "blocking": true, "at": {"anchor": "bottom_center", "to": "d_pl2@top_center"}},
+    {"id": "d_end", "type": "nailing", "views": ["D"], "members": ["d_j", "d_blk"], "size": "16d", "count": 2},
+    {"id": "d_toe", "type": "nailing", "views": ["D"], "pattern": "toenail", "members": ["d_blk", "d_pl2", "d_pl1"], "size": "16d", "count": 2}
+  ],
+  "views": [
+    {"id": "A", "kind": "elevation", "title": "SHEAR WALL ELEVATION", "scale": "1/2\"=1'-0\"", "hidden_lines": true, "notes_side": "right",
+      "annotations": [
+        {"id": "n_sh", "type": "note", "target": "w_sh1", "text": "7/16\" OSB SHEAR WALL SHTG."},
+        {"id": "n_en", "type": "note", "target": "w_en"},
+        {"id": "n_fn", "type": "note", "target": "w_fn"}
+      ]},
+    {"id": "B", "kind": "iso", "title": "SHEAR WALL", "notes_side": "left",
+      "annotations": [
+        {"id": "n_sh", "type": "note", "target": "w_sh2", "text": "7/16\" OSB SHEAR WALL SHTG."},
+        {"id": "n_en", "type": "note", "target": "w_en"}
+      ]},
+    {"id": "P", "kind": "plan", "title": "SHEAR WALL", "scale": "1\"=1'-0\"", "cut_y": 48, "crop": {"x": [-4, 52], "z": [-6, 4]}, "omit": ["w_fn"],
+      "annotations": [{"id": "n_sh", "type": "note", "target": "w_sh1", "text": "OSB, NAILED TO STUDS"}]},
+    {"id": "C", "kind": "plan", "title": "FLOOR SHEATHING, UNBLOCKED", "scale": "1/2\"=1'-0\"", "cut_y": 12, "hidden_lines": true,
+      "annotations": [
+        {"id": "n_p", "type": "note", "target": "f_p3", "text": "3/4\" PLYWOOD, UNBLOCKED FLOOR DIAPHRAGM"},
+        {"id": "n_en", "type": "note", "target": "f_en"},
+        {"id": "n_fn", "type": "note", "target": "f_fn"}
+      ]},
+    {"id": "D", "kind": "section", "title": "BLOCKING BETWEEN JOISTS", "scale": "1 1/2\"=1'-0\"", "cut_z": 0,
+      "annotations": [
+        {"id": "n_end", "type": "note", "target": "d_end", "text": "(2) 16d END NAILS EA. END"},
+        {"id": "n_toe", "type": "note", "target": "d_toe", "text": "(2) 16d TOENAILS"}
+      ]}
+  ]
+}
