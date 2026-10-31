@@ -250,6 +250,26 @@ geometrically (tolerance 1e-3).
   elevation (326 views): 0 crashes, slowest 0.34 s. Their 198 existing views draw byte-identical drawing IR (diagnostics
   aside). Wasm 788,276 -> 825,316 bytes (+4.7%; gzip 347,996 -> 363,164).
 
+- Lumber cuts and two-point members (#12, SPEC 27.3) live in `cuts.rs`. Placement runs in two passes around the
+  builder: `cuts::two_point` (before: points, length = `Ctx::span`, angle; lumber without `run` runs x) and
+  `cuts::prepare` (after the build: reads `cuts` in the member's frame, adds the birdmouth anchors, which `at` may use)
+  then `compile::base_transform` (the first instance's transform), then `cuts::apply` (resolves trims and bevel lines
+  through the inverse transform, stretches the prisms affinely along u to reach both end lines, clips each prism to the
+  strip between them minus the notches, clips ply lines and steel hidden lines, adds the cut-corner anchors, checks the
+  seat). Because it all happens on the builder's prisms in local coordinates, section, plan, elevation, iso, mesh and
+  every check see the cut member with no change to those modules. `notch.by` goes through `voids::apply` (a `Void` with
+  `notch: Some(k)`), so it is z-aware and not a placement dependency (no cycle when the notching plate is placed from
+  the beam); its miss is W_CUT_MISS. A birdmouth with `on` and no `at` is placed at `seat_outer` -> the outer top corner of
+  `on` (`cuts::auto_seat`). `W_OVERLAP` between a birdmouth member and something other than its `on` prints the heel that
+  lifts it clear (`cuts::birdmouth_overlap_fix`: heel minus the overlap height, at most the depth of `on`).
+  Proof on copies of two MASS details: S-70.09 A (gable brace, `from: tie@top_left+[0.5,0]`, `to: blk@bottom_left`,
+  `align: top`, new 2x4 blocking under the sheathing as in ref 1207) has no warning and no ack on the brace (the
+  original's brace overlapped the gable vertical by 3.01 sq in under an acknowledgement); S-40.03 D (2x10 rafter at 6:12
+  on the 3x plate, birdmouth `on: plate_d`, `tail: 14`, plumb tail, sheathing `slope: @rafter` from `rafter@start_top`
+  `until rafter@end_top`) bears on the plate; the full 5 1/2" seat put the heel 1/4" into the CMU (plate set back 1 1/4"
+  from the face): W_OVERLAP printed `heel: 1.9375`, which clears it. W_UNTREATED_CONTACT then (rightly) notes the rafter
+  tail touching the CMU corner.
+
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
   picks a free port). A token is the default, also on loopback; `--token-file F` / `KERF_TOKEN` keep it out of `ps`;
@@ -341,6 +361,11 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   cover is measured to the void edge); a component void is the member's envelope with holes filled, so concrete between
   the flanges of an encased W needs the flanges and web named as parts (`"beam.top_flange"`, ...) or shapes; sleeves
   seen lengthwise (run x/y) are rectangular tubes in 3D (2.5D, like pipe in elevation).
+- Cuts (#12): a `notch.by` (voids machinery) leaves ply lines unclipped through the notch (end cuts and rectangular
+  notches clip them); a trim at a Ref on a vertex picks the more head-on of the two edges there (prefer a face anchor such as
+  `top_center`); a birdmouth needs `slope`/`rotate` (or from/to) and the bottom face looking down; mirror with cuts is
+  E_PARAM; box anchors stay those of the uncut member (use `start_top` ... and the seat anchors). No `cuts` on panels,
+  trusses or run z members. The default `tail` is 0 (seat at the low end); a rafter usually wants its overhang.
 - Hatch under dimension/label text is knocked out in SVG/PDF only (the DXF HATCH uses the pattern, not lines).
 - PDF content streams are uncompressed (about 150 KB per sheet).
 - Allocation churn: glibc malloc, not a per-call arena (the measured bound is 0.77x in-process; a safe arena for the
@@ -525,6 +550,15 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   instead of a full 3D path: the 2.5D model keeps XY prisms, and only views that can draw the true path (plan; section
   dots and projections) use the centreline. `along_y` from the issue's wording is not a new mode: a vertical bar is a
   two-point path bar, which a plan draws as a dot.
+- #12 birdmouth depth: the issue says "W_BIRDMOUTH_DEPTH when the cut exceeds 1/3 of the depth". Chosen: depth measured
+  perpendicular to the member (seat · sin(slope)), threshold 1/3 + 1e-6; the message cites the common framing rule and IRC
+  R802.7.1 (notching of sawn lumber) without claiming the code sets 1/3. The fix is the seat that keeps 2/3, rounded down
+  to 1/16".
+- #12 `trim: "to_contact"` from the issue became the default for ends at a Ref (no key), and the explicit form is a cut
+  `{"type": "trim", "end", "to"}`; the issue's `miter` became `bevel` with `angle` or `line` (a miter is a bevel to the
+  other member's line). `align` top/bottom: the face left/right of from->to (for a brace rising to the right, top is the
+  upper face). `tail` is measured horizontally at the center line; a plumb end cut passes through the end of that line,
+  so with a plumb tail `tail` is the horizontal overhang past the wall face.
 
 ## REQUESTS
 - Sheet layouts (#7): print view titles through `drawview::view_title(st, spec)` (it applies `text.plan_title` /
