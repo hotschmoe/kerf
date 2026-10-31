@@ -385,6 +385,17 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   build reads it there); reference bubbles are not obstacles for the note router (like welds); `--review` is per view
   only; the 3D view and the inspector know nothing of layouts (the web UI lists and renders them, nothing more).
 
+- I-joists and truss profiles (issue #10, SPEC 27.1): the series table is generic (no brand names, one flange depth per
+  width), so a series whose flange is 1 1/2 deep at 2 5/16 draws 1/8 thin unless `flange_depth` says so; stiffeners and
+  squash blocks are ends-only (a squash block pair under a point load mid-span is a second short `ijoist` or a note);
+  squash blocks are drawn at the joist depth, not 1/16 over; `W_BEARING` reads supports by box (axis-aligned run x
+  joists only, a sloped I-joist rafter on a birdsmouth plate is not checked) and does not know hangers (a joist end in a
+  hanger has no support under it, which is not reported); parallel-chord webs are a Warren pattern from the bearing end
+  (no verticals at panel points, no ribbon notch, no cantilever or dropped bottom chord); end-on webs are vertical
+  strips along z (2.5D: diagonals in the truss plane cannot be XY prisms); mono and scissor draw only the bearing end
+  (no peak); a pitched truss cannot bear on its top chord (only parallel_chord); there is no `hanger` (issue #11) or
+  truss-plate detail; iso shows sloped chords at their 2D slope (the known 2.5D limit).
+
 ## SPEC ISSUES
 - Sheet layouts (#7) follow the issue's design with these choices: `notes_side` (right|left|below|above) for where the
   shared list goes; a layout `sheet` size (`"17x11"`), because four scenarios and a list do not fit a letter sheet at a
@@ -526,7 +537,31 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   dots and projections) use the centreline. `along_y` from the issue's wording is not a new mode: a vertical bar is a
   two-point path bar, which a plan draws as a dot.
 
+- Issue #10 proposed `series` (e.g. `TJI 230`) and `flange: "2.5x1.5"`. Chose one `size: "depth x flange width"` against
+  a generic table (the brief asks for generic names); brand names are rejected with the fix "give the series' depth and
+  flange width". `stiffener` became `stiffeners` and takes none|left|right|both (ends of a run x joist), as `squash_blocks`;
+  `bearing_left/right` are the underside at the ends. `blocking: true` on a run z joist gives the single diagonal; an
+  I-joist blocking panel or rim in side view is just a short run x `ijoist`.
+- Issue #10 listed `profile: "top_chord_bearing"` and `bearing: top_chord` both; kept only `bearing: "top_chord"` (a
+  bearing, not a shape) and allowed it for `parallel_chord` only (a pitched truss bearing on its top chord is rare in the
+  MASS set and has no settled geometry). `chord: "4x2"` became the existing `top_chord` / `bottom_chord` accepting
+  `"4x2"` (flat), defaulting to 4x2 for parallel_chord. Mono is the HIGH end (the issue's S-70.01 case: low roof falling
+  away from a taller wall); its low end is a pitched heel.
+- Standard-heel blocking: `top_chord_bottom_at_bearing` is where the top chord's underside meets the bearing plane (3 1/2
+  above the plate for a 2x4 standard heel, by §5.8's geometry), so `until` on it gives a stub. Added `heel_block_top` =
+  the top of the top chord above the bearing's outer edge (blocking between trusses reaches the sheathing, refs
+  1209/0699) instead of changing that anchor.
+- SPEC 5.1 already said lumber cut lengthwise draws an outline only, but `wood_engineered` drew its lamination hatch on
+  every cut region. Followed the spec (issue #10 item 4): no material hatch on lengthwise lumber; this changes the
+  flush-beam-strap and flush-psl-2x6 goldens (their PSL beams in elevation).
+- `pitch_angle` (what `slope: "@truss"` follows) came from re-reading `pitch`/`exterior` in compile; it is now
+  `Built::pitch`, set by the builder (negative for mono, zero for parallel chord and end-on).
+
 ## REQUESTS
+- Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,
+  `web_left/right` (run z); `truss` parallel_chord exposes `end_top`, `end_bottom`, `end_vertical` and
+  `bearing: "face"`. A hanger that seats a joist end would also let `W_BEARING` count the seat as the support (today a
+  hung end is simply not checked).
 - Sheet layouts (#7): print view titles through `drawview::view_title(st, spec)` (it applies `text.plan_title` /
   `text.elevation_title`), and treat `kind` plan/elevation views like sections (they are flat, numeric-scale views; their
   Drawing `kind` is "plan" / "elevation").
