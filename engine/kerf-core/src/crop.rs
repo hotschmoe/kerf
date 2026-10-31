@@ -1,4 +1,6 @@
-//! W_CROP_STALE: a component whose visible extent mostly falls outside an explicit section crop.
+//! W_CROP_STALE: a component whose visible extent mostly falls outside an explicit section crop. A crop that cuts a
+//! member on purpose (break lines) is not stale: the warning needs an edit that moved or resized the member out of a
+//! crop it sat in, or a member of which less than 10% stays inside every view that draws it.
 
 use crate::geom::{self, Box};
 use crate::json::{self, Value};
@@ -11,6 +13,8 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 
 const STALE_FRACTION: f64 = 0.25;
+/// Outside fraction past which a member is lost from the view rather than cut by it.
+const LOST_FRACTION: f64 = 0.9;
 
 /// The scene and document as they were before an edit, so an edit that newly pushes a component out of the crop is reported.
 pub struct Before<'a> {
@@ -71,11 +75,12 @@ fn shown_somewhere(c: &Comp<'_>, vs: &[Value], max_outside: f64) -> bool {
     false
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 enum Prior {
     None,
     Added,
-    Inside,
+    /// Mostly inside the crop before the edit, with this extent.
+    Inside(Box),
     Cut,
 }
 
@@ -86,8 +91,13 @@ fn prior(before: Option<&Before<'_>>, c: &Comp<'_>, spec: &ViewSpec<'_>) -> Prio
     if old_ext.is_empty() || view::find_view(bf.doc, spec.id).is_none() {
         return Prior::None;
     }
-    let Some(old_crop) = explicit_crop(bf.doc, spec.id) else { return Prior::Inside };
-    if outside_fraction(old_ext, old_crop) > STALE_FRACTION { Prior::Cut } else { Prior::Inside }
+    let Some(old_crop) = explicit_crop(bf.doc, spec.id) else { return Prior::Inside(old_ext) };
+    if outside_fraction(old_ext, old_crop) > STALE_FRACTION { Prior::Cut } else { Prior::Inside(old_ext) }
+}
+
+fn same_box(a: Box, b: Box) -> bool {
+    let e = 1e-6;
+    (a.x0 - b.x0).abs() < e && (a.x1 - b.x1).abs() < e && (a.y0 - b.y0).abs() < e && (a.y1 - b.y1).abs() < e
 }
 
 fn num(x: f64) -> String {
@@ -115,15 +125,13 @@ pub fn run(scene: &Scene<'_>, doc: &Value, before: Option<&Before<'_>>, diags: &
                 continue;
             }
             let was = reported.get(c.index as usize).copied().unwrap_or(false);
-            match prior(before, c, &spec) {
+            let moved = match prior(before, c, &spec) {
                 Prior::Cut => continue,
-                Prior::Inside => {}
-                p @ (Prior::Added | Prior::None) => {
-                    let max_outside = if p == Prior::Added { STALE_FRACTION } else { 1.0 - 1e-6 };
-                    if was || shown_somewhere(c, vs, max_outside) {
-                        continue;
-                    }
-                }
+                Prior::Inside(old) => !same_box(old, ext),
+                Prior::Added | Prior::None => false,
+            };
+            if !moved && (was || frac <= LOST_FRACTION || shown_somewhere(c, vs, LOST_FRACTION)) {
+                continue;
             }
             if let Some(r) = reported.get_mut(c.index as usize) {
                 *r = true;

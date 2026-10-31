@@ -247,6 +247,10 @@ fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
     }
 }
 
+/// Concrete and masonry pieces facing each other across less than this (a construction, control or keyed joint) are
+/// not floating.
+const JOINT_GAP: f64 = 1.0;
+
 fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
     let gap = 1.0 / 32.0;
     let n_comps = s.comps.iter().filter(|c| !c.dashed).count();
@@ -259,10 +263,11 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
         }
         let touches = s.items.iter().filter(|p| p.comp.index == c.index).any(|p| {
             s.items.iter().any(|q| {
+                let reach = if p.prism.role.is_masonry() && q.prism.role.is_masonry() { JOINT_GAP - 1e-9 } else { gap };
                 q.comp.index != c.index
                     && z_gap(p.prism, q.prism) <= gap
-                    && p.box_.expand(gap).overlaps(q.box_, 0.0)
-                    && region_dist(&p.flat, &q.flat, gap) <= gap
+                    && p.box_.expand(reach).overlaps(q.box_, 0.0)
+                    && region_dist(&p.flat, &q.flat, reach) <= reach
             })
         });
         if !touches {
@@ -670,13 +675,19 @@ fn unverified_count(doc: &Value, diags: &Diags) {
     }
 }
 
+/// One instance of a component (an `array` copy is its own box: o.c. framing is spaced, not short).
 #[derive(Clone, Copy)]
 struct CompBox<'a> {
     c: &'a Comp<'a>,
+    instance: u32,
     box_: geom::Box,
     z0: f64,
     z1: f64,
 }
+
+/// Side-by-side members (both see the gap with a long face, e.g. studs at 16" o.c. next to a jack stud, stacked
+/// plates) leave framing spaces at this gap and more; only a smaller gap is a near miss for them.
+const SIDE_BY_SIDE_GAP: f64 = 1.0;
 
 fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut boxes: Vec<CompBox<'_>> = Vec::new();
@@ -684,29 +695,39 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
         if !c.ty.traits.near_miss || !axis_aligned(c) {
             continue;
         }
-        let mut b = geom::Box::default();
-        let mut z0 = f64::INFINITY;
-        let mut z1 = f64::NEG_INFINITY;
+        let first = boxes.len();
         for p in &c.world {
             if p.kind == Kind::Ghost {
                 continue;
             }
+            let mut b = geom::Box::default();
             for l in &p.loops {
                 b.add_box(geom::loop_box(l));
             }
-            z0 = z0.min(p.z0);
-            z1 = z1.max(p.z1);
+            if b.is_empty() {
+                continue;
+            }
+            match boxes[first..].iter_mut().find(|cb| cb.instance == p.instance) {
+                Some(cb) => {
+                    cb.box_.add_box(b);
+                    cb.z0 = cb.z0.min(p.z0);
+                    cb.z1 = cb.z1.max(p.z1);
+                }
+                None => boxes.push(CompBox { c, instance: p.instance, box_: b, z0: p.z0, z1: p.z1 }),
+            }
         }
-        if b.is_empty() {
-            continue;
-        }
-        boxes.push(CompBox { c, box_: b, z0, z1 });
     }
+    let mut reported: Vec<[u32; 3]> = Vec::new();
     let min_gap = 1.0 / 32.0;
     let max_gap = 3.0;
     for (i, &ca) in boxes.iter().enumerate() {
         for &cb in &boxes[i + 1..] {
-            if ca.z1.min(cb.z1) - ca.z0.max(cb.z0) <= 1e-6 {
+            if ca.c.index == cb.c.index {
+                continue;
+            }
+            let zlo = ca.z0.max(cb.z0);
+            let zhi = ca.z1.min(cb.z1);
+            if zhi - zlo <= 1e-6 {
                 continue;
             }
             for on_x in [false, true] {
@@ -722,11 +743,15 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                 let g1 = a0.max(b0);
                 let lo = o0.max(q0);
                 let hi = o1.min(q1);
-                let blocked = boxes.iter().any(|cc| {
-                    if cc.c.index == ca.c.index || cc.c.index == cb.c.index {
+                let blocked = s.items.iter().any(|it| {
+                    let own = |b: &CompBox<'_>| it.comp.index == b.c.index && it.prism.instance == b.instance;
+                    if own(&ca) || own(&cb) || it.comp.dashed {
                         return false;
                     }
-                    let [c0, c1, d0, d1] = sel(cc.box_);
+                    if it.prism.z1.min(zhi) - it.prism.z0.max(zlo) <= 1e-6 {
+                        return false;
+                    }
+                    let [c0, c1, d0, d1] = sel(it.box_);
                     c1.min(g1) - c0.max(g0) > 1e-6 && d1.min(hi) - d0.max(lo) > 1e-6
                 });
                 if blocked {
@@ -736,9 +761,18 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                 let b_len = b1 - b0;
                 let a_across = o1 - o0;
                 let b_across = q1 - q0;
+                let side_by_side = a_len < a_across && b_len < b_across;
+                if side_by_side && gap >= SIDE_BY_SIDE_GAP - 1e-9 {
+                    continue;
+                }
+                let key = [ca.c.index.min(cb.c.index), ca.c.index.max(cb.c.index), u32::from(on_x)];
+                if reported.contains(&key) {
+                    continue;
+                }
+                reported.push(key);
                 let (grow, other) =
                     if b_len / b_across.max(1e-9) > a_len / a_across.max(1e-9) { (cb, ca) } else { (ca, cb) };
-                let grow_is_a = grow.c.index == ca.c.index;
+                let grow_is_a = grow.c.index == ca.c.index && grow.instance == ca.instance;
                 let grow_len = if grow_is_a { a_len } else { b_len };
                 let grow_below_other = if grow_is_a { a1 <= b0 } else { b1 <= a0 };
                 let edge_name = if on_x {
@@ -755,6 +789,38 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                 } else {
                     "top_left"
                 };
+                if side_by_side {
+                    let toward = if on_x {
+                        if grow_below_other { "right" } else { "left" }
+                    } else if grow_below_other {
+                        "up"
+                    } else {
+                        "down"
+                    };
+                    diags.add_fix(
+                        Level::Warning,
+                        "W_NEAR_MISS",
+                        Some(&grow.c.id),
+                        None,
+                        format!(
+                            "'{}' and '{}' sit side by side with a {} gap along {} ({}..{}); they probably should bear on each other",
+                            grow.c.id,
+                            other.c.id,
+                            fmt_ft_in(gap),
+                            if on_x { "x" } else { "y" },
+                            fmt_ft_in(g0),
+                            fmt_ft_in(g1),
+                        ),
+                        format!(
+                            "move '{}' {} {} (its `at` offset) or place it against '{}' with an anchor Ref; ignore this warning if the gap is intended",
+                            grow.c.id,
+                            fmt_ft_in(gap),
+                            toward,
+                            other.c.id
+                        ),
+                    );
+                    continue;
+                }
                 diags.add_fix(
                     Level::Warning,
                     "W_NEAR_MISS",
