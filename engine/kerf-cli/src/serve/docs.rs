@@ -395,8 +395,21 @@ pub fn api_log(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &str) 
 
 pub fn api_export(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &str) -> io::Result<bool> {
     let ka = req.keep_alive;
-    let Some(view) = req.param("view") else {
-        return bad_request(req, w, extra, "E_INPUT", "missing ?view=<view id>, for example view=A");
+    let (key, view) = match (req.param("view"), req.param("layout")) {
+        (Some(v), None) => ("view", v),
+        (None, Some(l)) => ("layout", l),
+        (Some(_), Some(_)) => {
+            return bad_request(req, w, extra, "E_INPUT", "give ?view=<view id> or ?layout=<layout id>, not both");
+        }
+        (None, None) => {
+            return bad_request(
+                req,
+                w,
+                extra,
+                "E_INPUT",
+                "missing ?view=<view id>, for example view=A (or ?layout=<layout id> for a sheet layout)",
+            );
+        }
     };
     let format = req.param("format").unwrap_or_else(|| "png".into());
     let Some((mime, ext)) =
@@ -415,7 +428,7 @@ pub fn api_export(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &st
     };
     let mut input = b"{\"doc\":".to_vec();
     input.extend_from_slice(rd.bytes.trim_ascii());
-    input.extend_from_slice(b",\"view\":");
+    input.extend_from_slice(format!(",\"{key}\":").as_bytes());
     input.extend(http::json_string(&view));
     input.extend_from_slice(format!(",\"format\":\"{format}\",\"sheet\":{sheet}").as_bytes());
     if let Some(px) = req.param("px") {
