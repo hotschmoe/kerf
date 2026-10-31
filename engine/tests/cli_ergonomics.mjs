@@ -1435,5 +1435,115 @@ section('#9. plan and elevation views, shown hidden / where_occurs, rebar plane 
   check('plan: studs (lumber run y) cut by the plane get the end-grain X', d.items.filter((i) => i.t === 'path' && /^stud/.test(i.src) && i.pen === 'beyond' && i.pts.length === 2).length >= 6, d.items.filter((i) => /^stud/.test(i.src ?? '')).length);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #11: framing hardware (SPEC 27.2): hangers, post caps and bases, holdowns, straps on a member face, model
+// families and W_UNKNOWN_MODEL, leveling nuts and plate washers, adhesive anchors, weld and headed studs.
+section('#11. framing hardware');
+{
+  const doc = (components, views) => ({ kerf: '0.1', id: 'hw', title: 'HARDWARE', components, views: views ?? [{ id: 'A', kind: 'section' }] });
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const texts = (d, src) => d.items.filter((i) => i.t === 'text' && (src === undefined || i.src === src)).map((i) => i.s);
+  const post = { id: 'post', type: 'lumber', size: '4x4', run: 'y', length: 36, z: [-1.75, 1.75], at: { anchor: 'bottom_center', to: [0, 0] } };
+  const beam = { id: 'beam', type: 'lumber', size: '4x10', run: 'x', length: 30, z: [-1.75, 1.75], at: { anchor: 'bottom_center', to: 'post@top_center' } };
+
+  write('hw1.kerf.json', doc([post, beam,
+    { id: 'hd', type: 'connector', model: 'HDU5', post: 'post' },
+    { id: 's1', type: 'connector', model: 'XYZ1', points: [[-1.75, 4], [-1.75, 20]], side: 'right' },
+    { id: 's2', type: 'connector', model: 'XYZ1', gauge: 16, width: 1.5, points: [[1.75, 4], [1.75, 20]] },
+    { id: 's3', type: 'connector', model: 'MSTA3', points: [[1.75, 22], [1.75, 30]] }]));
+  let r = kerf(['check', 'hw1.kerf.json']);
+  check('model HDU5 resolves to the holdown family (kind from the model, no W_UNKNOWN_MODEL)', /hd +connector HDU5 holdown 10 ga/m.test(r.out) && !/W_UNKNOWN_MODEL hd/.test(r.out), r.out);
+  check('unknown model XYZ1 without gauge/width: W_UNKNOWN_MODEL with the fix', /^WARN W_UNKNOWN_MODEL s1: connector 's1': model "XYZ1" is not in the hardware table nor a known family.*Fix: .*give "gauge" and "width"/m.test(r.out), r.out);
+  check('unknown model with gauge and width given: no warning', !/W_UNKNOWN_MODEL s2/.test(r.out), r.out);
+  check('a family prefix with a size resolves (MSTA3 -> MSTA family)', !/W_UNKNOWN_MODEL s3/.test(r.out), r.out);
+  check('holdown without rod: W_HOLDOWN_ROD with the fix', /^WARN W_HOLDOWN_ROD hd: holdown 'hd' has no rod.*Fix: /m.test(r.out), r.out);
+
+  const strapViews = [
+    { id: 'L', kind: 'iso', from: 'front_left', annotations: [{ id: 'n1', type: 'note', text: 'CS20 STRAP', target: 'cs' }] },
+    { id: 'R', kind: 'iso', from: 'front_right', annotations: [{ id: 'n1', type: 'note', text: 'CS20 STRAP', target: 'cs' }] }];
+  write('hw2.kerf.json', doc([post, beam, { id: 'cs', type: 'connector', model: 'CS20', on: 'post.face_left', points: [[0, 6], [0, 30]] }], strapViews));
+  r = kerf(['check', 'hw2.kerf.json']);
+  check('CS20 on post.face_left: no z arithmetic, 0 warnings', /0 errors  0 warnings/.test(r.out), r.out);
+  let d = items('hw2.kerf.json', 'L');
+  check('front_left iso: the strap on the near face draws solid', d.items.some((i) => i.t === 'path' && i.src === 'cs' && i.pen !== 'hidden') && texts(d, 'n1').length > 0, d.err);
+  d = items('hw2.kerf.json', 'R');
+  check('front_right iso: the strap on the far face draws dashed and keeps its note', d.items.some((i) => i.t === 'path' && i.src === 'cs' && i.pen === 'hidden') && !d.items.some((i) => i.t === 'path' && i.src === 'cs' && i.pen !== 'hidden') && texts(d, 'n1').length > 0, d.items.filter((i) => i.src === 'cs'));
+  write('hw2.kerf.json', doc([post, { id: 'cs', type: 'connector', model: 'CS20', on: 'post.face_side', side: 'left' }]));
+  r = kerf(['check', 'hw2.kerf.json']);
+  check('on with an unknown face: E_PARAM listing the faces', /^ERROR E_PARAM cs: 'on' must be "<member>.<face>" with face one of face_left, face_right, face_top, face_bottom, face_front, face_back/m.test(r.out), r.out);
+  write('hw2.kerf.json', doc([post, { id: 'tie', type: 'connector', model: 'ST22', lay: 'face', points: [[0, 6], [0, 30]], z: [1.8, 1.85] }]));
+  r = kerf(['check', 'hw2.kerf.json']);
+  check('a face strap floating off a member face: W_FLOATING whose fix mounts it with on', /^WARN W_FLOATING tie: .*floats .* off the face_front of 'post'.*Fix: mount it on that face: \{"op":"update","path":"components\/tie","value":\{"on":"post.face_front","z":null\}\}/m.test(r.out), r.out);
+
+  const hdr = { id: 'hdr', type: 'lumber', size: '4x12', at: { anchor: 'bottom_left', to: [0, 0] } };
+  const joist = { id: 'joist', type: 'lumber', size: '2x8', run: 'x', length: 30, at: { anchor: 'top_left', to: 'hdr@top_right' } };
+  write('hw3.kerf.json', doc([hdr, joist, { id: 'hgr', type: 'connector', model: 'LUS28', carried: 'joist', carrying: 'hdr' }],
+    [{ id: 'A', kind: 'section', annotations: [{ id: 'n1', type: 'note', text: 'LUS28 HANGER', target: 'hgr' }] }, { id: 'I', kind: 'iso' }, { id: 'E', kind: 'elevation' }, { id: 'P', kind: 'plan' }]));
+  r = kerf(['check', 'hw3.kerf.json']);
+  check('face-mount hanger from carried/carrying: one component, sized from the joist, 0 warnings', /hgr +connector LUS28 hanger \(face\) 18 ga, 6 1\/8" tall x 1 1\/2" seat, carries joist from hdr/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  d = items('hw3.kerf.json', 'A');
+  check('section: the hanger side behind the cut joist draws dashed and the note lands on it', d.items.some((i) => i.t === 'path' && i.src === 'hgr' && i.pen === 'hidden') && texts(d, 'n1').length > 0, d.items.filter((i) => i.src === 'hgr').length);
+  r = kerf(['mesh', 'hw3.kerf.json']);
+  check('mesh: the hanger plates are in the 3D mesh', r.code === 0 && /"hgr"/.test(r.out), r.err);
+  write('hw3.kerf.json', doc([hdr, joist, { id: 'hgr', type: 'connector', model: 'HU210', carried: 'joist', carrying: 'hdr' }]));
+  r = kerf(['check', 'hw3.kerf.json']);
+  check('hanger model sized for another member depth: W_HANGER_SIZE', /^WARN W_HANGER_SIZE hgr: hanger 'hgr': model HU210 is made for a member 9 1\/4" deep; 'joist' is 7 1\/4" deep/m.test(r.out), r.out);
+  write('hw3.kerf.json', doc([hdr, joist, { id: 'hgr', type: 'connector', kind: 'hanger', height: 3, carried: 'joist', carrying: 'hdr' }]));
+  r = kerf(['check', 'hw3.kerf.json']);
+  check('hanger under 60% of the joist depth: W_HANGER_SIZE with the height op', /^WARN W_HANGER_SIZE hgr: hanger 'hgr' is 3" tall .* under 60% of the depth.*Fix: use a deeper hanger: \{"op":"update","path":"components\/hgr","value":\{"height":/m.test(r.out), r.out);
+  write('hw3.kerf.json', doc([hdr, { ...joist, at: { anchor: 'top_left', to: { ref: 'hdr@top_right', offset: [4, 0] } } }, { id: 'hgr', type: 'connector', kind: 'hanger', carried: 'joist', carrying: 'hdr' }]));
+  r = kerf(['check', 'hw3.kerf.json']);
+  check('carried member not at a face of the carrying one: E_PARAM with the fix', /^ERROR E_PARAM hgr: hanger: 'joist' does not end at a face of 'hdr'.*Fix: run the carried member up to the carrying member's face/m.test(r.out), r.out);
+  write('hw3.kerf.json', doc([hdr, joist, { id: 'hgr', type: 'connector', kind: 'hanger', carried: 'joist', carrying: 'hdr', at: { to: [0, 0] }, z: 2 }]));
+  r = kerf(['check', 'hw3.kerf.json']);
+  check('a hanger takes no at or z (E_PARAM: remove)', /^ERROR E_PARAM hgr: 'at' is not used by kind hanger: it is placed from its members; remove 'at'/m.test(r.out) && /'z' is not used by kind hanger: its z comes from the members/.test(r.out), r.out);
+
+  const stem = { id: 'stem', type: 'concrete', shape: 'rect', width: 30, height: 16, z: [-4, 4], at: { anchor: 'top_left', to: [-10, 0] } };
+  const sill = { id: 'sill', type: 'lumber', size: '2x6', run: 'x', face: 'narrow', length: 30, treated: true, at: { anchor: 'bottom_left', to: [-10, 0] } };
+  const hpost = { id: 'hp', type: 'lumber', size: '4x6', run: 'y', face: 'narrow', length: 24, at: { anchor: 'bottom_left', to: [4, 1.5] } };
+  const rod = (proj, embed) => ({ id: 'rod', type: 'anchor_bolt', diameter: 0.625, embed, projection: proj, hook: 'none', at: { to: [2.5, 0] } });
+  write('hw4.kerf.json', doc([stem, sill, hpost, rod(2, 12), { id: 'hd', type: 'connector', model: 'HDU5', post: 'hp', rod: 'rod' }]));
+  r = kerf(['check', 'hw4.kerf.json']);
+  check('holdown rod ending below its seat: W_HOLDOWN_ROD with the projection op', /^WARN W_HOLDOWN_ROD hd: holdown 'hd': rod 'rod' ends at y 2", below the seat top.*Fix: make the rod reach through the seat: \{"op":"update","path":"components\/rod","value":\{"projection":2.75\}\}/m.test(r.out), r.out);
+  write('hw4.kerf.json', doc([sill, hpost, rod(3, 1), { id: 'hd', type: 'connector', model: 'HDU5', post: 'hp', rod: 'rod' }]));
+  r = kerf(['check', 'hw4.kerf.json']);
+  check('holdown rod anchored in no concrete or steel: W_HOLDOWN_ROD', /^WARN W_HOLDOWN_ROD hd: holdown 'hd': rod 'rod' ends at y -1" in no concrete, masonry or steel member/m.test(r.out), r.out);
+  write('hw4.kerf.json', doc([stem, sill, hpost, rod(3, 12), { id: 'hd', type: 'connector', model: 'HDU5', post: 'hp', rod: 'rod' }],
+    [{ id: 'A', kind: 'section', annotations: [{ id: 'n1', type: 'note', text: 'HDU5', target: 'hd' }] }]));
+  r = kerf(['check', 'hw4.kerf.json']);
+  check('holdown on the post face toward its rod: 0 warnings', /hd +connector HDU5 holdown 10 ga, 10" tall, left face of hp, rod rod/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+
+  const pad = { id: 'pad', type: 'concrete', shape: 'rect', width: 16, height: 10, z: [-8, 8], at: { anchor: 'top_center', to: [0, -2] } };
+  write('hw5.kerf.json', doc([post, beam, pad, { id: 'pb', type: 'connector', model: 'ABU44', post: 'post' }, { id: 'cap', type: 'connector', model: 'CCQ44', post: 'post', beam: 'beam' }]));
+  r = kerf(['check', 'hw5.kerf.json']);
+  check('post base off its footing: W_POST_BASE with the standoff op', /^WARN W_POST_BASE pb: post base 'pb' bears on nothing.*Fix: make the standoff match: \{"op":"update","path":"components\/pb","value":\{"standoff":2\}\}/m.test(r.out), r.out);
+  check('post cap from post + beam (beam along x): built, no error', /cap +connector CCQ44 post cap 10 ga/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+
+  const plate = { id: 'bp', type: 'steel', shape: 'PL3/4x10', length: 10, at: { anchor: 'face_bottom', to: [0, 1.5] } };
+  const ftg = { id: 'ftg', type: 'concrete', shape: 'rect', width: 20, height: 12, z: [-10, 10], at: { anchor: 'top_center', to: [0, 0] } };
+  write('hw6.kerf.json', doc([ftg, plate, { id: 'r1', type: 'anchor_bolt', diameter: 0.75, embed: 8, hook: 'headed', plate: 'bp', leveling_nut: true, plate_washer: '3x3x1/4', at: { to: [-3, 0] } },
+    { id: 'r2', type: 'anchor_bolt', diameter: 0.75, embed: 6, hook: 'adhesive', plate: 'bp', at: { to: [3, 0] } }],
+  [{ id: 'A', kind: 'section', annotations: [{ id: 'n1', type: 'note', text: 'LEVELING NUT', target: 'r1.leveling_nut' }] }]));
+  r = kerf(['check', 'hw6.kerf.json']);
+  check('anchor rod through a base plate with a leveling nut and plate washer: projection fitted, 0 warnings', /r1 +anchor_bolt 0.75" dia, embed 8", proj 3 3\/8", headed hook, through bp, leveling nut, plate washer 3x3x1\/4/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  check('adhesive anchor: drilled hole drawn, summary says adhesive', /r2 +anchor_bolt 0.75" dia, embed 6", proj .*, adhesive, through bp/m.test(r.out), r.out);
+  d = items('hw6.kerf.json', 'A');
+  check('a note lands on the leveling nut part', texts(d, 'n1').length > 0, d.err);
+  write('hw6.kerf.json', doc([ftg, { id: 'r1', type: 'anchor_bolt', leveling_nut: true, at: { to: [0, 0] } }, { id: 'r2', type: 'anchor_bolt', projection: 0, at: { to: [4, 0] } }, { id: 'r3', type: 'anchor_bolt', projection: 0, nut_washer: false, hook: 'headed', at: { to: [-4, 0] } }]));
+  r = kerf(['check', 'hw6.kerf.json']);
+  check('leveling_nut without plate: E_PARAM naming plate', /^ERROR E_PARAM r1: leveling_nut needs "plate"/m.test(r.out), r.out);
+  check('projection 0 with a nut: E_PARAM; with nut_washer false: allowed', /^ERROR E_PARAM r2: projection must be greater than 0 for a rod with a nut/m.test(r.out) && !/ERROR E_PARAM r3/.test(r.out), r.out);
+
+  const wbeam = { id: 'w', type: 'steel', shape: 'W12x26', at: { anchor: 'top_flange', to: [0, 0] } };
+  const nailer = { id: 'n', type: 'lumber', size: '3x8', orient: 'flat', at: { anchor: 'bottom_center', to: 'w@top_flange' } };
+  write('hw7.kerf.json', doc([wbeam, nailer, { id: 'ws', type: 'bolt', kind: 'weld_stud', diameter: 0.5, grip: 2.5, at: { to: 'w@top_flange' } },
+    { id: 'hs', type: 'bolt', kind: 'headed_stud', orient: 'end', at: { to: [0, -6] } }]));
+  r = kerf(['check', 'hw7.kerf.json']);
+  check('weld stud through a nailer: no head, nut on top of the grip', /ws +bolt weld_stud 0.5" dia., grip 2 1\/2"/m.test(r.out), r.out);
+  check('a stud seen end-on: E_PARAM (studs are side only, rotate them)', /^ERROR E_PARAM hs: a headed_stud is welded to a face and drawn side-on/m.test(r.out), r.out);
+  r = kerf(['schema', 'connector']);
+  check('schema connector: kind, on, carried/carrying, post, rod and the hardware families', /^- kind: /m.test(r.out) && /^- on: /m.test(r.out) && /^- carried: /m.test(r.out) && /^- rod: /m.test(r.out) && /Hardware families .*HDU holdown 10/.test(r.out), r.out.slice(0, 400));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
