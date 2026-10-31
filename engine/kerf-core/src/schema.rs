@@ -207,6 +207,10 @@ pub fn index() -> String {
     }
     out.push_str(&format!("  {:<12} {}\n", "common", "fields every component accepts"));
     out.push_str(&format!("  {:<12} {}\n", "refs", "how to name points and anchors"));
+    out.push_str(&format!(
+        "  {:<12} {}\n",
+        "abbreviations", "approved abbreviation forms of the style in force (W_ABBREV)"
+    ));
     for e in &catalog::ENTRIES {
         out.push_str(&format!("  {:<12} {}\n", e.name(), first_sentence(e.summary)));
     }
