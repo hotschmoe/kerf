@@ -27,6 +27,9 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The embedded default style (spec/styles/kerf-standard.kerfstyle.json, minified); a user style merges over it.
+pub const DEFAULT_STYLE: &[u8] = crate::style::DEFAULT_JSON;
 pub const ENGINE_NAME: &str = "kerf";
 
 /// `ok` false means `bytes` is `{"error":{code,message}}`.

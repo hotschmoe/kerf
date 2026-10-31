@@ -110,6 +110,13 @@ pub struct Server {
     pub ui_csp: String,
 }
 
+impl Server {
+    /// `,"style":<file>` of the served folder's company style (`kerf.kerfstyle.json` there or above, SPEC 25.6), or "".
+    pub fn style_member(&self) -> Vec<u8> {
+        workspace::style_member(workspace::find_style(&self.dir_abs).as_deref())
+    }
+}
+
 pub struct DocRead {
     pub bytes: Vec<u8>,
     pub mtime_ns: i128,
@@ -372,7 +379,7 @@ pub fn etag_of(mtime_ns: i128, size: u64, bytes: &[u8]) -> String {
     format!("\"{}-{}-{:016x}\"", mtime_ns / 1_000_000, size, hash::wyhash(0, bytes))
 }
 
-pub fn compute_info(text: &[u8]) -> DocInfo {
+pub fn compute_info(text: &[u8], style: &[u8]) -> DocInfo {
     let hash = hash::wyhash(0, text);
     let Ok(parsed) = json::parse(text) else {
         return DocInfo { title: "(invalid JSON)".into(), errors: 1, hash, ..DocInfo::default() };
@@ -382,6 +389,7 @@ pub fn compute_info(text: &[u8]) -> DocInfo {
     let (mut errors, mut warnings) = (0, 0);
     let mut input = b"{\"doc\":".to_vec();
     input.extend_from_slice(text.trim_ascii());
+    input.extend_from_slice(style);
     input.push(b'}');
     let r = kerf_core::api::call(b"check", &input);
     if r.ok {

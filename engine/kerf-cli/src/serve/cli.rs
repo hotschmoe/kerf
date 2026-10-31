@@ -348,6 +348,9 @@ pub fn cli_main(args: &[String]) -> u8 {
             )),
         }
     }
+    if let Some(st) = crate::workspace::find_style(&dir_abs) {
+        out.push_str(&format!("style: {} (company style for every document served)\n", st.display()));
+    }
     if !ui::has_ui() {
         out.push_str(
             "note: this binary has no embedded web UI (build with KERF_UI=<dist dir>); the API is available.\n",

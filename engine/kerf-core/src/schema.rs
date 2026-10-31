@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub const EXAMPLE_DOC: &str = concat!(
-    r#"{"kerf":"0.1","id":"wall-at-sill","title":"WALL AT PT SILL","meta":{"jurisdiction":{"code":"IRC","edition":2021}},"run":[-24,24],"#,
+    r#"{"kerf":"0.1","id":"wall-at-sill","title":"WALL AT P.T. SILL","meta":{"jurisdiction":{"code":"IRC","edition":2021}},"run":[-24,24],"#,
     "\n",
     r#""components":["#,
     "\n",
@@ -18,11 +18,11 @@ pub const EXAMPLE_DOC: &str = concat!(
     "\n",
     r#"{"id":"stud","type":"lumber","size":"2x6","run":"y","length":24,"at":{"anchor":"bottom_left","to":"sill@top_left"}}],"#,
     "\n",
-    r#""views":[{"id":"A","kind":"section","number":"1","title":"WALL AT PT SILL","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-12,18],"y":[-8,30]},"notes_side":"both","#,
+    r#""views":[{"id":"A","kind":"section","number":"1","title":"WALL AT P.T. SILL","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-12,18],"y":[-8,30]},"notes_side":"both","#,
     "\n",
     r#""annotations":["#,
     "\n",
-    r#"{"id":"n_sill","type":"note","text":"2X6 PT SILL PLATE","target":"sill","cite":[{"code":"IRC","edition":2021,"section":"R317.1","title":"Location required","status":"suggested"}]},"#,
+    r#"{"id":"n_sill","type":"note","text":"2X6 P.T. SILL PLATE","target":"sill","cite":[{"code":"IRC","edition":2021,"section":"R317.1","title":"Location required","status":"suggested"}]},"#,
     "\n",
     r#"{"id":"n_stud","type":"note","text":"2X6 STUDS @ 16\" O.C.","target":"stud"},"#,
     "\n",

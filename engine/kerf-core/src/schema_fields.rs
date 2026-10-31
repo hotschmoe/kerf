@@ -82,6 +82,22 @@ pub static DOC: Object = Object {
     ..Object::NONE
 };
 
+/// `acknowledge` on an annotation (SPEC 25.6).
+const ACK_FIELD: Field = Field {
+    name: "acknowledge",
+    ty: "[ack]",
+    desc: "[{code, reason}]: keep a warning about this annotation (W_ABBREV, W_LEADER_HIT, W_NOTE_STYLE, ...) with a reason that stays visible like a component's (`kerf schema acknowledge`)",
+    ..Field::NONE
+};
+
+/// `acknowledge` on a view (SPEC 25.6).
+const VIEW_ACK_FIELD: Field = Field {
+    name: "acknowledge",
+    ty: "[ack]",
+    desc: "[{code, reason}]: keep a warning about the view itself (W_ABBREV on its title, W_VIEW_FIT, ...) with a reason that stays visible (`kerf schema acknowledge`)",
+    ..Field::NONE
+};
+
 pub static VIEW: Object = Object {
     name: "view",
     brief: "a drawing view (crop, scale, cut_z, notes_side, annotations)",
@@ -183,6 +199,7 @@ pub static VIEW: Object = Object {
             desc: "notes, dimensions, labels and weld symbols in drawing order (`kerf schema note|dim|label|weld`)",
             ..Field::NONE
         },
+        VIEW_ACK_FIELD,
     ],
     example: "{\"id\":\"A\",\"kind\":\"section\",\"number\":\"1\",\"title\":\"WALL AT SILL\",\"scale\":\"1\\\"=1'-0\\\"\",\"cut_z\":0,\"crop\":{\"x\":[-12,18],\"y\":[-8,30]},\"notes_side\":\"both\",\"annotations\":[]}",
     ..Object::NONE
@@ -205,7 +222,7 @@ pub static NOTE: Object = Object {
             name: "text",
             ty: "string",
             required: true,
-            desc: "keyed views: optional on a note whose `key` another note already has. House format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOT. CONC. GYP. BD. REINF. PT (always O.C. MIN. MAX. DIA. GYP. BD.; other words may be spelled out); penny sizes `16d` and ACI symbols `db` `ld` `ldh` `f'c` `fy` keep their case, a house abbreviation may end the text (`PER ARCH.`) (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
+            desc: "keyed views: optional on a note whose `key` another note already has. House format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, any word spelled out or abbreviated, an abbreviation in its approved form (shortened words take a period: `TYP.` `CONT.` `MIN.`; phrases dotted initials: `O.C.` `U.N.O.` `E.N.`; acronyms none: `CMU` `LVL` `HSS`; `BOT.` `P.T.` `REQ'D`; W_ABBREV lints it, spec/styles/ABBREVIATIONS.md lists them); penny sizes `16d` and ACI symbols `db` `ld` `ldh` `f'c` `fy` keep their case, a house abbreviation may end the text (`PER ARCH.`) (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
             ..Field::NONE
         },
         Field {
@@ -244,8 +261,9 @@ pub static NOTE: Object = Object {
             desc: "code citations printed after the text, e.g. (IRC R403.1.6)* (`kerf schema cite`). The key is `cite`, not citations",
             ..Field::NONE
         },
+        ACK_FIELD,
     ],
-    example: "{\"id\":\"n_sill\",\"type\":\"note\",\"text\":\"2X6 PT SILL PLATE\",\"target\":\"sill\",\"cite\":[{\"code\":\"IRC\",\"edition\":2021,\"section\":\"R317.1\",\"title\":\"Location required\",\"status\":\"suggested\"}]}",
+    example: "{\"id\":\"n_sill\",\"type\":\"note\",\"text\":\"2X6 P.T. SILL PLATE\",\"target\":\"sill\",\"cite\":[{\"code\":\"IRC\",\"edition\":2021,\"section\":\"R317.1\",\"title\":\"Location required\",\"status\":\"suggested\"}]}",
     ..Object::NONE
 };
 
@@ -286,6 +304,7 @@ pub static DIM: Object = Object {
             desc: "true: drawn exactly at `offset`, never stacked or pushed off a leader (overlaps then warn W_LABEL_OVERLAP). Without it a colliding dimension moves out and I_ANNOT_MOVED says where",
             ..Field::NONE
         },
+        ACK_FIELD,
     ],
     example: "{\"id\":\"d_sill\",\"type\":\"dim\",\"from\":\"sill@bottom_left\",\"to\":\"sill@bottom_right\",\"dir\":\"h\",\"offset\":-3}",
     ..Object::NONE
@@ -327,6 +346,7 @@ pub static LABEL: Object = Object {
             desc: "which part of each line sits on `at`: its start (left), middle or end (right)",
             ..Field::NONE
         },
+        ACK_FIELD,
     ],
     example: "{\"id\":\"l_ext\",\"type\":\"label\",\"text\":\"EXTERIOR\",\"at\":\"sill@top_left\",\"offset\":[-6,6]}",
     ..Object::NONE
@@ -405,6 +425,7 @@ pub static WELD: Object = Object {
             desc: "the two steel components joined; W_WELD_SIZE then checks a fillet against the thinner part (AISC 360 J2.2b: at most t, or t - 1/16 when t >= 1/4; at least Table J2.4). An entry that is not a steel component warns (W_PARAM)",
             ..Field::NONE
         },
+        ACK_FIELD,
     ],
     example: "{\"id\":\"w_base\",\"type\":\"weld\",\"at\":\"col@bottom_right\",\"offset\":[6,6],\"weld\":\"fillet\",\"size\":\"3/16\",\"all_around\":true,\"members\":[\"col\",\"base_plate\"]}",
     ..Object::NONE
@@ -514,13 +535,13 @@ pub static ARRAY: Object = Object {
 pub static ACK: Object = Object {
     name: "acknowledge",
     brief: "suppress a warning with a logged reason",
-    summary: "`acknowledge` on a component: suppress a warning for that component with a reason that is logged and stays visible (counted in the summary).",
+    summary: "`acknowledge` on a component, a view or an annotation (note, dim, label, weld): suppress a warning about it with a reason that is logged and stays visible (counted in the summary).",
     fields: &[
         Field {
             name: "code",
             ty: "string",
             required: true,
-            desc: "the warning code, e.g. W_UNTREATED_CONTACT, W_OVERLAP, W_NEAR_MISS, W_SHORT_SLOPE, W_COVER",
+            desc: "the warning code, e.g. W_UNTREATED_CONTACT, W_OVERLAP, W_NEAR_MISS, W_SHORT_SLOPE, W_COVER (components), W_ABBREV, W_LEADER_HIT (annotations)",
             ..Field::NONE
         },
         Field {
@@ -531,7 +552,7 @@ pub static ACK: Object = Object {
             ..Field::NONE
         },
     ],
-    notes: "Usage: \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}] on the component the warning names. Errors (E_*) cannot be acknowledged; an I_* info code is accepted but suppresses nothing (W_ACK_UNUSED). The DOC line counts acknowledged warnings (`0 errors  0 warnings  3 acknowledged`), `kerf check --strict` reports them as warnings (exit 1), `kerf export --review` marks them on the drawing, and an entry that suppresses nothing in any view is W_ACK_UNUSED (its fix is the update op that removes it). Prefer fixing the cause; for wood on masonry use `\"barrier\": \"sill_seal\"` (lumber) instead.",
+    notes: "Usage: \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}] on the component the warning names; on a note, dim, label or weld for a warning whose path is that annotation (W_ABBREV, W_NOTE_STYLE, W_LEADER_HIT, W_LABEL_OVERLAP, ...), e.g. [{\"code\": \"W_ABBREV\", \"reason\": \"PT = post-tensioned here\"}]; on a view for its title and view-level warnings (W_VIEW_FIT). Errors (E_*) cannot be acknowledged; an I_* info code is accepted but suppresses nothing (W_ACK_UNUSED). The DOC line counts acknowledged warnings (`0 errors  0 warnings  3 acknowledged`), `kerf check --strict` reports them as warnings (exit 1), `kerf export --review` marks them on the drawing, and an entry that suppresses nothing in any view is W_ACK_UNUSED (its fix is the update op that removes it). Prefer fixing the cause; for wood on masonry use `\"barrier\": \"sill_seal\"` (lumber) instead.",
     example: "[{\"code\":\"W_UNTREATED_CONTACT\",\"reason\":\"truss seat moisture barrier by mfr.\"}]",
 };
 

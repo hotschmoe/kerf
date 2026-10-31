@@ -2,7 +2,7 @@ kerf: conversational construction details (https://github.com/hotschmoe/kerf)
 
 usage:
   kerf guide [--full]              instructions for LLM agents (short, ~12 KB; --full adds the full schema, drafting rules and catalog)
-  kerf init [dir]                  make a details folder agent-ready (AGENTS.md + CLAUDE.md)
+  kerf init [dir]                  make a details folder agent-ready (AGENTS.md, CLAUDE.md, kerf.kerfstyle.json)
   kerf schema [topic ...]          field reference: doc view note dim label cite ops <component type> (several topics at once; none: list)
   kerf new <file> [--id ID] [--title "TITLE"] [--template section] [--ops ops.json] [--why "REASON"]
       --ops creates the file and applies the ops in one command (nothing is written if an op fails; both steps are logged)
@@ -28,4 +28,5 @@ usage:
   kerf mesh <doc> [-o mesh.json]
   kerf call <fn> < input.json      raw engine API (JSON in, JSON/bytes out); `kerf call help` lists functions + input shapes
   kerf version                     engine + spec version and the build (git describe of the source tree)
-common: [--style file.kerfstyle.json]
+common: [--style file.kerfstyle.json]   default: the nearest kerf.kerfstyle.json in the document's folder or above
+      (the company style; check/apply print a STYLE line naming it; kerf serve uses the one of its --dir)

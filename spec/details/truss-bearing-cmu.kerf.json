@@ -283,7 +283,7 @@
         {
           "id": "n_truss",
           "type": "note",
-          "text": "PRE-ENGINEERED WOOD TRUSS @ 24\" O.C. PER MFR. DWGS",
+          "text": "PRE-ENGINEERED WOOD TRUSS @ 24\" O.C. PER MFR. DWGS.",
           "target": "truss",
           "cite": [
             {
@@ -319,7 +319,7 @@
         {
           "id": "n_plate",
           "type": "note",
-          "text": "2X8 PT SILL PLATE W/ 5/8\" DIA. J-BOLTS @ 48\" O.C., 7\" MIN. EMBED.",
+          "text": "2X8 P.T. SILL PLATE W/ 5/8\" DIA. J-BOLTS @ 48\" O.C., 7\" MIN. EMBED.",
           "target": "sill_plate",
           "cite": [
             {
@@ -367,7 +367,7 @@
         {
           "id": "n_soffit",
           "type": "note",
-          "text": "3/8\" PLY. VENTED SOFFIT",
+          "text": "3/8\" PLYWD. VENTED SOFFIT",
           "target": "soffit"
         },
         {

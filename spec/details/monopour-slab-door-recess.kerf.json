@@ -316,7 +316,7 @@
         {
           "id": "n_ftg",
           "type": "note",
-          "text": "MONOLITHIC TURNED-DOWN FTG. 12\" W X 18\" DEEP BELOW T.O. SLAB, BOTT. 12\" MIN. BELOW UNDISTURBED GRADE & BELOW FROST DEPTH",
+          "text": "MONOLITHIC TURNED-DOWN FTG. 12\" W X 18\" DEEP BELOW T.O. SLAB, BOT. 12\" MIN. BELOW UNDISTURBED GRADE & BELOW FROST DEPTH",
           "target": "slab",
           "cite": [
             {
@@ -331,7 +331,7 @@
         {
           "id": "n_ftg_bars",
           "type": "note",
-          "text": "(2) #5 CONT. BOTT., 3\" CLR.",
+          "text": "(2) #5 CONT. BOT., 3\" CLR.",
           "target": "ftg_bars"
         },
         {
@@ -459,7 +459,7 @@
         {
           "id": "n_ftg_bars",
           "type": "note",
-          "text": "(2) #5 CONT. BOTT.",
+          "text": "(2) #5 CONT. BOT.",
           "target": "ftg_bars"
         }
       ]

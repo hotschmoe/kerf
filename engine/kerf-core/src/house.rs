@@ -2,7 +2,7 @@
 //! the abbreviation table, the tokens whose case is significant, the dashed-fraction test, and the normalized word list
 //! coverage matches on.
 
-use crate::style::Style;
+use crate::style::{AbbrevRules, Style};
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -22,14 +22,13 @@ const fn ab_dot(abbr: &'static str, words: &'static [&'static str]) -> Abbr {
     Abbr { abbr, words, dot: true }
 }
 
-/// The house abbreviation list: US structural practice as written in the MASS reference sets (US Southwest firms, 2014-2024),
-/// periods on shortened words, dotted initials for phrases, none on material/product initialisms. A note may end on any of
-/// these with its period; coverage reads each as its words.
-pub static ABBREVIATIONS: [Abbr; 156] = [
+/// The approved forms of the built-in list `us-structural`: US structural practice as written in the MASS reference sets
+/// (US Southwest firms, 2014-2024), periods on shortened words, dotted initials for phrases, none on material/product
+/// acronyms (SPEC 25.3, 25.6). A note may end on any of these with its period; coverage reads each as its words.
+pub static ABBREVIATIONS: [Abbr; 140] = [
     ab("A.B.", &["ANCHOR BOLT"]),
     ab("ABV.", &["ABOVE"]),
     ab("ADD'L", &["ADDITIONAL"]),
-    ab("ADDL.", &["ADDITIONAL"]),
     ab("ADJ.", &["ADJACENT"]),
     ab("A.F.F.", &["ABOVE FINISH FLOOR"]),
     ab_dot("ALT.", &["ALTERNATE", "ALTERNATIVE"]),
@@ -38,16 +37,13 @@ pub static ABBREVIATIONS: [Abbr; 156] = [
     ab("BD.", &["BOARD"]),
     ab("BLDG.", &["BUILDING"]),
     ab("BLK.", &["BLOCK"]),
-    ab("BLK'G", &["BLOCKING"]),
     ab("BLKG.", &["BLOCKING"]),
     ab("BM.", &["BEAM"]),
     ab("B.N.", &["BOUNDARY NAILING", "BOUNDARY NAIL"]),
     ab("B.O.", &["BOTTOM OF"]),
     ab("B.O.F.", &["BOTTOM OF FOOTING"]),
     ab("BOT.", &["BOTTOM"]),
-    ab("BOTT.", &["BOTTOM"]),
     ab("BRG.", &["BEARING"]),
-    ab("BTM.", &["BOTTOM"]),
     ab("BTWN.", &["BETWEEN"]),
     ab("C.I.P.", &["CAST IN PLACE"]),
     ab("C.J.", &["CONTROL JOINT"]),
@@ -75,16 +71,13 @@ pub static ABBREVIATIONS: [Abbr; 156] = [
     ab("E.J.", &["EXPANSION JOINT"]),
     ab("EL.", &["ELEVATION"]),
     ab("ELEC.", &["ELECTRICAL"]),
-    ab("ELEV.", &["ELEVATION"]),
-    ab("EMBED.", &["EMBEDMENT"]),
+    ab_dot("EMBED.", &["EMBEDMENT"]),
     ab("E.N.", &["EDGE NAILING", "EDGE NAIL"]),
     ab("ENGR.", &["ENGINEER"]),
     ab("E.O.R.", &["ENGINEER OF RECORD"]),
-    ab("EOR", &["ENGINEER OF RECORD"]),
     ab("EQ.", &["EQUAL"]),
     ab("E.W.", &["EACH WAY"]),
-    ab("EXIST.", &["EXISTING"]),
-    ab("EXIST'G", &["EXISTING"]),
+    ab_dot("EXIST.", &["EXISTING"]),
     ab_dot("EXP.", &["EXPANSION"]),
     ab("EXT.", &["EXTERIOR"]),
     ab("FDN.", &["FOUNDATION"]),
@@ -97,7 +90,6 @@ pub static ABBREVIATIONS: [Abbr; 156] = [
     ab("GALV.", &["GALVANIZED"]),
     ab("GLB", &["GLUED LAMINATED BEAM", "GLULAM BEAM"]),
     ab("GR.", &["GRADE"]),
-    ab("GRD.", &["GRADE"]),
     ab("GYP.", &["GYPSUM"]),
     ab("HD", &["HOLDOWN", "HOLD-DOWN"]),
     ab("HDR.", &["HEADER"]),
@@ -106,7 +98,7 @@ pub static ABBREVIATIONS: [Abbr; 156] = [
     ab("HSS", &["HOLLOW STRUCTURAL SECTION"]),
     ab("HT.", &["HEIGHT"]),
     ab("ICF", &["INSULATED CONCRETE FORM"]),
-    ab("I.D.", &["INSIDE DIAMETER"]),
+    ab_dot("I.D.", &["INSIDE DIAMETER"]),
     ab("INSUL.", &["INSULATION"]),
     ab_dot("INT.", &["INTERIOR"]),
     ab("JST.", &["JOIST"]),
@@ -121,14 +113,12 @@ pub static ABBREVIATIONS: [Abbr; 156] = [
     ab("M.B.", &["MACHINE BOLT"]),
     ab("MECH.", &["MECHANICAL"]),
     ab("MFR.", &["MANUFACTURER"]),
-    ab("MFR'S", &["MANUFACTURER"]),
     ab("MIN.", &["MINIMUM"]),
     ab("MISC.", &["MISCELLANEOUS"]),
     ab("MTL.", &["METAL"]),
     ab("NOM.", &["NOMINAL"]),
     ab("N.S.", &["NON-SHRINK"]),
     ab("N.T.S.", &["NOT TO SCALE"]),
-    ab("NTS", &["NOT TO SCALE"]),
     ab("O.C.", &["ON CENTER"]),
     ab("O.D.", &["OUTSIDE DIAMETER"]),
     ab("OPNG.", &["OPENING"]),
@@ -137,19 +127,15 @@ pub static ABBREVIATIONS: [Abbr; 156] = [
     ab("P.A.F.", &["POWER-ACTUATED FASTENER"]),
     ab("PERP.", &["PERPENDICULAR"]),
     ab("PL", &["PLATE"]),
-    ab("PL.", &["PLATE"]),
-    ab("PLY.", &["PLYWOOD"]),
     ab("PLYWD.", &["PLYWOOD"]),
     ab("PSL", &["PARALLEL STRAND LUMBER"]),
     ab("P.T.", &["PRESSURE TREATED"]),
-    ab("PT", &["PRESSURE TREATED"]),
     ab("REF.", &["REFERENCE"]),
     ab("REINF.", &["REINFORCING", "REINFORCEMENT", "REINFORCED"]),
     ab("REQ'D", &["REQUIRED"]),
-    ab("REQD.", &["REQUIRED"]),
-    ab("S.A.D.", &["SEE ARCHITECTURAL DRAWINGS"]),
+    ab_dot("S.A.D.", &["SEE ARCHITECTURAL DRAWINGS"]),
     ab("SCHED.", &["SCHEDULE"]),
-    ab("SECT.", &["SECTION"]),
+    ab_dot("SECT.", &["SECTION"]),
     ab("SHT.", &["SHEET"]),
     ab("SHTG.", &["SHEATHING"]),
     ab_dot("SIM.", &["SIMILAR"]),
@@ -163,25 +149,62 @@ pub static ABBREVIATIONS: [Abbr; 156] = [
     ab("STD.", &["STANDARD"]),
     ab_dot("STIFF.", &["STIFFENER"]),
     ab("STL.", &["STEEL"]),
-    ab("STRUC.", &["STRUCTURAL"]),
     ab("STRUCT.", &["STRUCTURAL"]),
     ab("T&B", &["TOP AND BOTTOM"]),
     ab("T&G", &["TONGUE AND GROOVE"]),
     ab("THK.", &["THICK", "THICKNESS"]),
     ab("THRU", &["THROUGH"]),
-    ab("T.O.", &["TOP OF"]),
+    ab_dot("T.O.", &["TOP OF"]),
     ab("T.O.C.", &["TOP OF CONCRETE"]),
     ab("T.O.F.", &["TOP OF FOOTING"]),
-    ab("T.O.M.", &["TOP OF MASONRY"]),
+    ab_dot("T.O.M.", &["TOP OF MASONRY"]),
     ab("T.O.S.", &["TOP OF SLAB"]),
-    ab("T.O.W.", &["TOP OF WALL"]),
+    ab_dot("T.O.W.", &["TOP OF WALL"]),
     ab("TYP.", &["TYPICAL"]),
     ab("U.N.O.", &["UNLESS NOTED OTHERWISE"]),
-    ab("UNO", &["UNLESS NOTED OTHERWISE"]),
     ab("VERT.", &["VERTICAL"]),
     ab("V.I.F.", &["VERIFY IN FIELD"]),
     ab("WD.", &["WOOD"]),
     ab("WWR", &["WELDED WIRE REINFORCEMENT"]),
+];
+
+/// A spelling in use that is not the approved form: W_ABBREV (rule `variants`) asks for `to`; coverage reads it as the words
+/// of `to`.
+pub struct Variant {
+    pub from: &'static str,
+    pub to: &'static str,
+    /// The bare letters are an ordinary word (`PLY`): only the spelling with its period is the variant.
+    pub dot: bool,
+    /// Added to the W_ABBREV message ("" = nothing to add).
+    pub why: &'static str,
+}
+
+const fn var(from: &'static str, to: &'static str) -> Variant {
+    Variant { from, to, dot: false, why: "" }
+}
+
+/// The variants of `us-structural`: each maps to the form the reference sets use most, or the one the MASS principal
+/// engineer chose (`BOT.`, `P.T.`). Forms that differ from an approved one only in periods (`TYP`, `OC`, `UNO`, `NTS`,
+/// `C.M.U.`, `PL.`) need no entry: the period rules catch them.
+pub static VARIANTS: [Variant; 13] = [
+    var("ADDL.", "ADD'L"),
+    var("BLK'G", "BLKG."),
+    var("BOTT.", "BOT."),
+    var("BTM.", "BOT."),
+    var("ELEV.", "EL."),
+    var("EXIST'G", "EXIST."),
+    var("GRD.", "GR."),
+    var("MFR'S", "MFR."),
+    Variant { from: "PLY.", to: "PLYWD.", dot: true, why: "" },
+    Variant {
+        from: "PT",
+        to: "P.T.",
+        dot: false,
+        why: "; PT also reads as post-tensioned, so pressure treated is P.T. (for post-tensioned, acknowledge it)",
+    },
+    var("REQD", "REQ'D"),
+    var("REQD.", "REQ'D"),
+    var("STRUC.", "STRUCT."),
 ];
 
 /// Abbreviations that end a note with their period although they stand for no word coverage should expand.
@@ -304,15 +327,389 @@ pub fn has_dash_fraction(t: &[u8]) -> bool {
     (0..t.len()).any(|k| dash_fraction_at(t, k))
 }
 
-/// `base` (a note's last word without its period) is a house abbreviation, or one the style adds.
-pub fn is_period_abbr(base: &[u8], st: &Style) -> bool {
-    let same = |a: &str| {
-        let a = a.trim_end_matches('.');
-        a.as_bytes().eq_ignore_ascii_case(base)
-    };
-    ABBREVIATIONS.iter().any(|a| same(a.abbr))
-        || PERIOD_ONLY.iter().any(|a| same(a))
-        || st.abbreviations.iter().any(|(a, _)| same(a))
+// ---- the style's abbreviation table and W_ABBREV (SPEC 25.6) ----------------------------------------------------
+
+/// How an approved abbreviation is written, which decides the rule a deviation from it breaks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Form {
+    /// A shortened word with its period: `TYP.`, `CONC.`.
+    Shortened,
+    /// Dotted initials of a phrase: `O.C.`, `U.N.O.`.
+    Initials,
+    /// No periods: material and product acronyms and symbols (`CMU`, `LVL`, `T&B`, `THRU`).
+    Bare,
+    /// An apostrophe contraction: `REQ'D`, `ADD'L`.
+    Contraction,
+}
+
+pub fn form_of(abbr: &str) -> Form {
+    if abbr.contains('\'') {
+        Form::Contraction
+    } else if abbr.trim_end_matches('.').contains('.') {
+        Form::Initials
+    } else if abbr.ends_with('.') {
+        Form::Shortened
+    } else {
+        Form::Bare
+    }
+}
+
+/// The W_ABBREV rules: the four form rules a style can switch off (`notes.abbreviations.rules`) and the style's
+/// `always` list.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Rule {
+    PeriodOnShortened,
+    DottedInitials,
+    BareAcronyms,
+    Variants,
+    Always,
+}
+
+impl Rule {
+    pub fn name(self) -> &'static str {
+        match self {
+            Rule::PeriodOnShortened => "period_on_shortened",
+            Rule::DottedInitials => "dotted_initials",
+            Rule::BareAcronyms => "bare_acronyms",
+            Rule::Variants => "variants",
+            Rule::Always => "always",
+        }
+    }
+
+    pub fn what(self) -> &'static str {
+        match self {
+            Rule::PeriodOnShortened => "a shortened word takes a period",
+            Rule::DottedInitials => "a phrase takes dotted initials",
+            Rule::BareAcronyms => "a material or product acronym takes no periods",
+            Rule::Variants => "a variant spelling takes the approved form",
+            Rule::Always => "the company style always abbreviates these words",
+        }
+    }
+}
+
+/// One spelling of the table: an approved form (`to` empty) or a variant of one.
+pub struct Entry<'s> {
+    pub abbr: &'s str,
+    pub words: Vec<&'s str>,
+    /// The bare letters are an ordinary word (`SIM`, `TO`): they count as this entry only when written with its periods.
+    pub dot: bool,
+    /// A variant: the approved form it is written as.
+    pub to: &'s str,
+    pub why: &'s str,
+}
+
+/// The abbreviations of a style: the built-in list (`extends`), less `remove`, plus `approved` and `variants`.
+pub struct Table<'s> {
+    pub entries: Vec<Entry<'s>>,
+    pub always: Vec<&'s str>,
+    pub rules: AbbrevRules,
+}
+
+/// One abbreviation of a text not written as the style wants (W_ABBREV): the byte span, the rule, and the approved form.
+pub struct Hit<'s> {
+    pub start: usize,
+    pub end: usize,
+    pub rule: Rule,
+    pub approved: &'s str,
+    pub meaning: &'s str,
+    pub why: &'s str,
+}
+
+/// `a` and `b` spell the same letters, ignoring periods and case.
+fn same_key(a: &str, b: &str) -> bool {
+    let mut x = a.bytes().filter(|&c| c != b'.');
+    let mut y = b.bytes().filter(|&c| c != b'.');
+    loop {
+        match (x.next(), y.next()) {
+            (None, None) => return true,
+            (Some(p), Some(q)) if p.eq_ignore_ascii_case(&q) => {}
+            _ => return false,
+        }
+    }
+}
+
+impl<'s> Table<'s> {
+    pub fn new(st: &'s Style) -> Table<'s> {
+        let cfg = &st.abbrev;
+        let mut entries: Vec<Entry<'s>> = Vec::new();
+        if cfg.builtin {
+            entries.extend(ABBREVIATIONS.iter().map(|a| Entry {
+                abbr: a.abbr,
+                words: a.words.to_vec(),
+                dot: a.dot,
+                to: "",
+                why: "",
+            }));
+            entries.extend(VARIANTS.iter().map(|v| Entry {
+                abbr: v.from,
+                words: Vec::new(),
+                dot: v.dot,
+                to: v.to,
+                why: v.why,
+            }));
+        }
+        entries.retain(|e| !cfg.remove.iter().any(|r| r.eq_ignore_ascii_case(e.abbr)));
+        for (a, ws) in &cfg.approved {
+            let dot = entries.iter().any(|e| e.dot && e.abbr.eq_ignore_ascii_case(a));
+            entries.retain(|e| !e.abbr.eq_ignore_ascii_case(a));
+            entries.push(Entry { abbr: a, words: ws.iter().map(String::as_str).collect(), dot, to: "", why: "" });
+        }
+        for (f, t) in &cfg.variants {
+            entries.retain(|e| !e.abbr.eq_ignore_ascii_case(f));
+            entries.push(Entry { abbr: f, words: Vec::new(), dot: false, to: t, why: "" });
+        }
+        for i in 0..entries.len() {
+            if entries[i].to.is_empty() {
+                continue;
+            }
+            if let Some(j) = entries.iter().position(|e| e.to.is_empty() && e.abbr.eq_ignore_ascii_case(entries[i].to)) {
+                entries[i].words = entries[j].words.clone();
+                entries[i].to = entries[j].abbr;
+            }
+        }
+        Table { entries, always: cfg.always.iter().map(String::as_str).collect(), rules: cfg.rules }
+    }
+
+    /// The approved entry spelled `a` (case-insensitive).
+    pub fn approved(&self, a: &str) -> Option<&Entry<'s>> {
+        self.entries.iter().find(|e| e.to.is_empty() && e.abbr.eq_ignore_ascii_case(a))
+    }
+
+    /// Style mistakes the table reveals: a variant of no approved form, an `always` entry that is not approved.
+    pub fn problems(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for e in self.entries.iter().filter(|e| !e.to.is_empty() && e.words.is_empty()) {
+            out.push(alloc::format!(
+                "style key 'notes.abbreviations': the variant \"{}\" maps to \"{}\", which is not an approved abbreviation: add \"{}\" to notes.abbreviations.approved, or add \"{}\" to notes.abbreviations.remove",
+                e.abbr, e.to, e.to, e.abbr
+            ));
+        }
+        for a in self.always.iter().filter(|a| self.approved(a).is_none()) {
+            let near = self
+                .entries
+                .iter()
+                .find(|e| e.to.is_empty() && same_key(e.abbr, a))
+                .map(|e| alloc::format!("; did you mean \"{}\"?", e.abbr))
+                .unwrap_or_default();
+            out.push(alloc::format!(
+                "style key 'notes.abbreviations.always': \"{a}\" is not an approved abbreviation (built in, or in notes.abbreviations.approved){near}"
+            ));
+        }
+        out
+    }
+
+    /// `base` (a note's last word without its period) is an abbreviation of the table, `NO` or `NOS`.
+    pub fn is_period_abbr(&self, base: &[u8]) -> bool {
+        let same = |a: &str| a.trim_end_matches('.').as_bytes().eq_ignore_ascii_case(base);
+        self.entries.iter().any(|e| same(e.abbr)) || PERIOD_ONLY.iter().any(|a| same(a))
+    }
+
+    fn known(&self, tok: &str) -> bool {
+        self.entries.iter().any(|e| same_key(e.abbr, tok))
+    }
+
+    /// The rule `tok` (one token as written, `’` read as `'`) breaks, with the approved entry it should be written as.
+    fn check(&self, tok: &str) -> Option<(Rule, &Entry<'s>)> {
+        if let Some(e) = self.entries.iter().find(|e| e.abbr.eq_ignore_ascii_case(tok)) {
+            return if e.to.is_empty() { None } else { Some((Rule::Variants, e)) };
+        }
+        let has_dot = tok.contains('.');
+        let inner = tok.trim_end_matches('.').contains('.');
+        let mut best: Option<&Entry<'s>> = None;
+        for e in self.entries.iter().filter(|e| same_key(e.abbr, tok)) {
+            let written_as_abbr = !e.dot || if form_of(e.abbr) == Form::Initials { inner } else { has_dot };
+            if written_as_abbr && best.is_none_or(|b| !b.to.is_empty() && e.to.is_empty()) {
+                best = Some(e);
+            }
+        }
+        let e = best?;
+        if !e.to.is_empty() {
+            self.approved(e.to)?;
+        }
+        let rule = if !e.to.is_empty() {
+            Rule::Variants
+        } else {
+            match form_of(e.abbr) {
+                Form::Shortened => Rule::PeriodOnShortened,
+                Form::Initials => Rule::DottedInitials,
+                Form::Bare => Rule::BareAcronyms,
+                Form::Contraction => Rule::Variants,
+            }
+        };
+        Some((rule, e))
+    }
+
+    fn hit(&self, start: usize, end: usize, rule: Rule, e: &Entry<'s>) -> Option<Hit<'s>> {
+        let a = if e.to.is_empty() { e } else { self.approved(e.to)? };
+        Some(Hit { start, end, rule, approved: a.abbr, meaning: a.words.first().copied().unwrap_or(""), why: e.why })
+    }
+}
+
+const CURLY_APOS: [u8; 3] = [0xE2, 0x80, 0x99];
+const CURLY_OPEN1: [u8; 3] = [0xE2, 0x80, 0x98];
+
+/// Length of the token character at `i` (ASCII letter, digit, `.`, `'`, `&`, `-`, or a curly apostrophe), if any.
+fn abbr_char(b: &[u8], i: usize) -> Option<usize> {
+    let c = b[i];
+    if c.is_ascii_alphanumeric() || matches!(c, b'.' | b'\'' | b'&' | b'-') {
+        return Some(1);
+    }
+    let t = b.get(i..i + 3)?;
+    (t == CURLY_APOS || t == CURLY_OPEN1).then_some(3)
+}
+
+/// Bytes inside double quotes (`"..."`, `“...”`); a `"` or `”` right after a digit is an inch mark, not a quote.
+fn quoted_bytes(b: &[u8]) -> Vec<bool> {
+    let mut m = alloc::vec![false; b.len()];
+    let mut inq = false;
+    let mut i = 0;
+    while i < b.len() {
+        let (len, kind) = if b[i] == b'"' {
+            (1, 0)
+        } else if b[i] == 0xE2 && b.get(i + 1) == Some(&0x80) && matches!(b.get(i + 2), Some(0x9C | 0x9D)) {
+            (3, if b[i + 2] == 0x9C { 1 } else { 2 })
+        } else {
+            m[i] = inq;
+            i += 1;
+            continue;
+        };
+        let inch = kind != 1 && i > 0 && b[i - 1].is_ascii_digit();
+        if !inch {
+            inq = match kind {
+                1 => true,
+                2 => false,
+                _ => !inq,
+            };
+        }
+        i += len;
+    }
+    m
+}
+
+/// `phrase` at `i` of `b` as whole words, case-insensitive.
+fn word_at(b: &[u8], i: usize, phrase: &str) -> bool {
+    let p = phrase.as_bytes();
+    i + p.len() <= b.len()
+        && b[i..i + p.len()].eq_ignore_ascii_case(p)
+        && !(i > 0 && b[i - 1].is_ascii_alphanumeric())
+        && !(i + p.len() < b.len() && b[i + p.len()].is_ascii_alphanumeric())
+}
+
+/// The abbreviations of `text` the style wants written otherwise (W_ABBREV, SPEC 25.6), in text order. Tokens with a
+/// digit (`HU212-2`, `16d`, `H2.5A`), case-significant tokens (`f'c`) and text inside double quotes are never read.
+pub fn abbrev_hits<'s>(text: &str, st: &Style, t: &Table<'s>) -> Vec<Hit<'s>> {
+    let b = text.as_bytes();
+    let quoted = quoted_bytes(b);
+    let on = |r: Rule| t.rules.get(r.name());
+    let mut out: Vec<Hit<'s>> = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if abbr_char(b, i).is_none() {
+            i += 1;
+            continue;
+        }
+        let mut s = i;
+        while i < b.len()
+            && let Some(l) = abbr_char(b, i)
+        {
+            i += l;
+        }
+        let mut e = i;
+        loop {
+            if s < e && matches!(b[s], b'.' | b'\'' | b'-' | b'&') {
+                s += 1;
+            } else if b[s..e].starts_with(&CURLY_APOS) || b[s..e].starts_with(&CURLY_OPEN1) {
+                s += 3;
+            } else {
+                break;
+            }
+        }
+        loop {
+            if e > s && matches!(b[e - 1], b'\'' | b'-' | b'&') {
+                e -= 1;
+            } else if b[s..e].ends_with(&CURLY_APOS) {
+                e -= 3;
+            } else {
+                break;
+            }
+        }
+        let span = &b[s..e];
+        if span.is_empty()
+            || quoted[s..e].iter().any(|&q| q)
+            || span.iter().any(u8::is_ascii_digit)
+            || !span.iter().any(u8::is_ascii_alphabetic)
+            || keep_case_token(span, st)
+        {
+            continue;
+        }
+        let tok = tok_core(span);
+        let parts: Vec<(usize, usize)> = if tok.contains('-') && !t.known(&tok) {
+            let mut v = Vec::new();
+            let mut a = s;
+            for (k, &c) in span.iter().enumerate() {
+                if c == b'-' {
+                    v.push((a, s + k));
+                    a = s + k + 1;
+                }
+            }
+            v.push((a, e));
+            v
+        } else {
+            alloc::vec![(s, e)]
+        };
+        for (ps, pe) in parts {
+            if ps >= pe {
+                continue;
+            }
+            let pt = tok_core(&b[ps..pe]);
+            if let Some((rule, ent)) = t.check(&pt)
+                && on(rule)
+                && let Some(h) = t.hit(ps, pe, rule, ent)
+            {
+                out.push(h);
+            }
+        }
+    }
+    for a in &t.always {
+        let Some(ent) = t.approved(a) else { continue };
+        let mut words: Vec<&str> = ent.words.clone();
+        crate::sort::stable(&mut words, |x, y| x.len() > y.len());
+        for w in words {
+            let mut k = 0;
+            while k < b.len() {
+                if !word_at(b, k, w) || quoted[k] || out.iter().any(|h| k < h.end && k + w.len() > h.start) {
+                    k += 1;
+                    continue;
+                }
+                let mut end = k + w.len();
+                if ent.abbr.ends_with('.') && b.get(end) == Some(&b'.') {
+                    end += 1;
+                }
+                if let Some(h) = t.hit(k, end, Rule::Always, ent) {
+                    out.push(h);
+                }
+                k = end;
+            }
+        }
+    }
+    crate::sort::stable(&mut out, |x, y| x.start < y.start);
+    out
+}
+
+/// `text` with every hit replaced by its approved form and nothing else changed.
+pub fn apply_hits(text: &str, hits: &[Hit]) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    let mut at = 0;
+    for h in hits {
+        if h.start < at || !text.is_char_boundary(h.start) || !text.is_char_boundary(h.end) {
+            continue;
+        }
+        out.push_str(&text[at..h.start]);
+        out.push_str(h.approved);
+        at = h.end;
+    }
+    out.push_str(&text[at..]);
+    out
 }
 
 // ---- coverage words ---------------------------------------------------------------------------------------------
@@ -519,7 +916,7 @@ fn raw_tokens(text: &str) -> Vec<Tok> {
 /// One rewrite of the coverage normalization: these words (an abbreviation, or one spelling of its words) read as `to`.
 /// A `dot` rule (the abbreviation is also a plain word) applies only to the abbreviation written with its period, and a
 /// candidate then offers the written word too, so `alt` asks for `ALT.` and `alt.` asks for `ALTERNATE` or `ALT.`.
-struct Rule {
+struct Rewrite {
     from: Vec<String>,
     to: Vec<String>,
     dot: bool,
@@ -527,7 +924,7 @@ struct Rule {
 
 /// The abbreviation table (built in, plus the style's `notes.abbreviations`) as word rewrites.
 pub struct Words {
-    rules: Vec<Rule>,
+    rules: Vec<Rewrite>,
 }
 
 fn plain_words(s: &str) -> Vec<String> {
@@ -547,20 +944,27 @@ impl Words {
             if to.is_empty() {
                 return;
             }
-            rules.push(Rule { from: alloc::vec![key_of(abbr)], to: to.clone(), dot });
+            rules.push(Rewrite { from: alloc::vec![key_of(abbr)], to: to.clone(), dot });
             for w in words {
                 let from = plain_words(w);
                 if !from.is_empty() && from != to {
-                    rules.push(Rule { from, to: to.clone(), dot: false });
+                    rules.push(Rewrite { from, to: to.clone(), dot: false });
                 }
             }
         };
-        for a in &ABBREVIATIONS {
-            add(a.abbr, a.words, a.dot);
-        }
-        for (a, ws) in &st.abbreviations {
-            let ws: Vec<&str> = ws.iter().map(String::as_str).collect();
-            add(a, &ws, false);
+        let table = Table::new(st);
+        for e in &table.entries {
+            if e.to.is_empty() {
+                add(e.abbr, &e.words, e.dot);
+            } else if let Some(first) = e.words.first() {
+                add(e.abbr, &[first], e.dot);
+            }
+            if !e.dot && form_of(e.abbr) == Form::Initials {
+                let bare: String = e.abbr.chars().filter(|&c| c != '.').collect();
+                if let Some(first) = e.words.first() {
+                    add(&bare, &[first], false);
+                }
+            }
         }
         Words { rules }
     }
@@ -569,7 +973,7 @@ impl Words {
         let mut out = Vec::with_capacity(toks.len());
         let mut i = 0;
         while i < toks.len() {
-            let mut best: Option<&Rule> = None;
+            let mut best: Option<&Rewrite> = None;
             for r in &self.rules {
                 let n = r.from.len();
                 if i + n > toks.len() || best.is_some_and(|b| b.from.len() >= n) {

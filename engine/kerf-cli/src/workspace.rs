@@ -234,9 +234,10 @@ pub fn doc_stem(file: &str) -> &str {
 }
 
 /// Summary text of the document (`check`), or "" when the engine rejects it.
-pub fn check_summary(doc_text: &[u8]) -> String {
+pub fn check_summary(doc_text: &[u8], style: Option<&Path>) -> String {
     let mut input = b"{\"doc\":".to_vec();
     input.extend_from_slice(trim_ws(doc_text));
+    input.extend(style_member(style));
     input.push(b'}');
     let r = kerf_core::api::call(b"check", &input);
     if !r.ok {
@@ -302,6 +303,45 @@ pub fn reference_files_member(doc: &Value, folder: &Path) -> String {
     out.push(b'}');
     String::from_utf8_lossy(&out).into_owned()
 }
+
+/// The company style `kerf` applies without `--style` (SPEC 25.6).
+pub const WORKSPACE_STYLE: &str = "kerf.kerfstyle.json";
+
+/// The nearest `kerf.kerfstyle.json` in `dir` or one of its ancestors (absolute path).
+pub fn find_style(dir: &Path) -> Option<PathBuf> {
+    let start = fs::canonicalize(if dir.as_os_str().is_empty() { Path::new(".") } else { dir }).ok()?;
+    start.ancestors().map(|d| d.join(WORKSPACE_STYLE)).find(|f| f.is_file())
+}
+
+/// The workspace style of the document at `doc_path` (its folder or an ancestor).
+pub fn style_for_doc(doc_path: &str) -> Option<PathBuf> {
+    find_style(Path::new(doc_path).parent().unwrap_or(Path::new(".")))
+}
+
+/// `,"style":<file>` for an engine input, or "" when there is no workspace style or it cannot be read.
+pub fn style_member(style: Option<&Path>) -> Vec<u8> {
+    let Some(text) = style.and_then(|p| fs::read(p).ok()) else { return Vec::new() };
+    let mut out = b",\"style\":".to_vec();
+    out.extend_from_slice(trim_ws(&text));
+    out
+}
+
+/// What `kerf init` writes as `kerf.kerfstyle.json`: the company style with the abbreviation rules at their defaults.
+pub const STARTER_STYLE: &str = r#"{
+  "kerfstyle": "0.1",
+  "id": "company",
+  "notes": {
+    "abbreviations": {
+      "extends": "us-structural",
+      "rules": { "period_on_shortened": true, "dotted_initials": true, "bare_acronyms": true, "variants": true },
+      "approved": {},
+      "variants": {},
+      "remove": [],
+      "always": []
+    }
+  }
+}
+"#;
 
 pub fn trim_ws(b: &[u8]) -> &[u8] {
     let is = |c: &u8| matches!(c, b' ' | b'\t' | b'\r' | b'\n');

@@ -272,6 +272,24 @@ fn parse_opts(args: &[String]) -> Result<Opts, ()> {
     Ok(o)
 }
 
+/// The style file a document command uses: `--style`, else the nearest `kerf.kerfstyle.json` in the document's folder or
+/// an ancestor (SPEC 25.6). The flag tells whether it was found rather than given.
+fn style_path(o: &Opts, doc_path: &str) -> Option<(String, bool)> {
+    if let Some(s) = &o.style {
+        return Some((s.clone(), false));
+    }
+    workspace::style_for_doc(doc_path).map(|p| (p.to_string_lossy().into_owned(), true))
+}
+
+/// The `STYLE` line `check` and `apply` print first when a style file applies.
+fn style_line(style: Option<&(String, bool)>) -> String {
+    match style {
+        Some((p, true)) => format!("STYLE {p} (workspace style; --style overrides)\n"),
+        Some((p, false)) => format!("STYLE {p} (--style)\n"),
+        None => String::new(),
+    }
+}
+
 /// `{"doc": <file>, "style": <file>?, ...extra}` from raw document text.
 fn build_input(doc: &[u8], style_path: Option<&str>, extra: &str) -> Res<Vec<u8>> {
     let mut out = b"{\"doc\":".to_vec();
@@ -510,6 +528,8 @@ workflow, drafting rules, note grammar, and component catalog. Edit details only
 (`kerf export <file> --view A --format png -o <file>-A.png`) and look at it before reporting.
 Shell rules: ONE kerf command per tool call (no `&&`, `;`, pipes or heredocs); create ops files with your file-writing tool.
 The designer reviews and exports in the Kerf web UI.
+`kerf.kerfstyle.json` here is the company style (abbreviation rules, W_ABBREV): every kerf command in this folder and
+below applies it. It belongs to the designer: do not edit it to silence a warning.
 ";
 
 fn cmd_init(o: &Opts) -> Res<u8> {
@@ -518,12 +538,27 @@ fn cmd_init(o: &Opts) -> Res<u8> {
     if !fs::metadata(dir)?.is_dir() {
         return Err(Fail::NotDir);
     }
-    for name in ["AGENTS.md", "CLAUDE.md"] {
+    let inherited = fs::canonicalize(dir)?
+        .parent()
+        .and_then(workspace::find_style)
+        .filter(|_| !std::path::Path::new(dir).join(workspace::WORKSPACE_STYLE).exists());
+    for name in ["AGENTS.md", "CLAUDE.md", workspace::WORKSPACE_STYLE] {
         let p = std::path::Path::new(dir).join(name);
+        if name == workspace::WORKSPACE_STYLE
+            && let Some(up) = &inherited
+        {
+            say(&format!("company style: {} (found above; kerf applies it here)\n", up.display()))?;
+            continue;
+        }
         if p.exists() {
             say(&format!("kept existing {name}\n"))?;
         } else {
-            fs::write(&p, if name == "CLAUDE.md" { "@AGENTS.md\n" } else { AGENTS_MD })?;
+            let text = match name {
+                "CLAUDE.md" => "@AGENTS.md\n",
+                "AGENTS.md" => AGENTS_MD,
+                _ => workspace::STARTER_STYLE,
+            };
+            fs::write(&p, text)?;
             say(&format!("wrote {name}\n"))?;
         }
     }
@@ -554,6 +589,7 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
     } else {
         workspace::new_doc_text(id_src, title).ok_or(Fail::BadDoc)?
     };
+    let style = style_path(o, path);
     let mut final_text = text.clone();
     let mut ops_text: Option<String> = None;
     let mut why = String::new();
@@ -568,7 +604,7 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
         };
         let Some(prep) = prepare_ops(&raw) else { return Ok(1) };
         why = o.why.clone().or(prep.why).unwrap_or_default();
-        let input = build_input(&text, o.style.as_deref(), &format!("\"ops\":{}", prep.text))?;
+        let input = build_input(&text, style.as_ref().map(|s| s.0.as_str()), &format!("\"ops\":{}", prep.text))?;
         ops_text = Some(prep.text);
         let r = api::call(b"apply", &input);
         if !r.ok {
@@ -589,6 +625,7 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
             }
         }
         apply_summary = summary.to_string();
+        say(&style_line(style.as_ref()))?;
         say(summary)?;
     }
     workspace::write_file_atomic(path, &final_text)?;
@@ -600,7 +637,7 @@ fn cmd_new(actor: &str, o: &Opts) -> Res<u8> {
         &LogMeta { who: actor, tool: TOOL, why: "create" },
         &create,
         &[],
-        &workspace::check_summary(&text),
+        &workspace::check_summary(&text, style.as_ref().map(|s| std::path::Path::new(s.0.as_str()))),
     );
     if let Some(ot) = &ops_text {
         logged &=
@@ -852,7 +889,8 @@ fn cmd_doc(actor: &str, cmd: &str, o: &Opts) -> Res<u8> {
             call.extra.push_str(if call.extra.is_empty() { "\"strict\":true" } else { ",\"strict\":true" });
         }
     }
-    let input = build_input(&doc, o.style.as_deref(), &call.extra)?;
+    let style = style_path(o, doc_path);
+    let input = build_input(&doc, style.as_ref().map(|s| s.0.as_str()), &call.extra)?;
     let r = api::call(cmd.as_bytes(), &input);
     if !r.ok {
         print_api_error(&r.bytes);
@@ -863,7 +901,10 @@ fn cmd_doc(actor: &str, cmd: &str, o: &Opts) -> Res<u8> {
     }
     match cmd {
         "fmt" => finish_fmt(o, doc_path, &r.bytes),
-        "apply" | "check" => finish_apply_check(actor, cmd, o, doc_path, lock.as_mut(), &call, &r.bytes),
+        "apply" | "check" => {
+            say(&style_line(style.as_ref()))?;
+            finish_apply_check(actor, cmd, o, doc_path, lock.as_mut(), &call, &r.bytes)
+        }
         _ => {
             write_out(o.out.as_deref(), &r.bytes)?;
             Ok(0)

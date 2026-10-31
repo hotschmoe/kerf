@@ -1,5 +1,5 @@
-//! Review overlay of an export (SPEC 25.4, `export` `review: true`): every component with an acknowledged warning
-//! gets a dashed box and an `ACK n` tag, and the sheet (or the space above the detail) gets a stamp
+//! Review overlay of an export (SPEC 25.4, 25.6, `export` `review: true`): every component, annotation or view title
+//! with an acknowledged warning gets a dashed box and an `ACK n` tag, and the sheet (or the space above the detail) gets a stamp
 //! `N ACKNOWLEDGED WARNINGS` with one legend line per tag. The default export never carries it.
 
 use crate::annot;
@@ -7,7 +7,7 @@ use crate::drawing::{Drawing, Item, PathItem, TextItem};
 use crate::drawview;
 use crate::font::Font;
 use crate::geom::{self, Box, Pt, V2};
-use crate::lint::Acked;
+use crate::lint::{AckOwner, Acked};
 use crate::pen::Pen;
 use alloc::format;
 use alloc::string::String;
@@ -22,8 +22,23 @@ fn is_of(src: &str, id: &str) -> bool {
     src == id || src.strip_prefix(id).is_some_and(|r| r.starts_with('#'))
 }
 
+/// The model-space extent of what the drawing draws for an acknowledging owner: a component's geometry, an
+/// annotation's items (text included), a view's title.
+fn extent(d: &Drawing<'_>, font: &Font, owner: &AckOwner) -> Box {
+    let src = match owner {
+        AckOwner::Component(id) => return comp_extent(d, id),
+        AckOwner::Annotation { id, .. } => id.clone(),
+        AckOwner::View(v) => format!("title:{v}"),
+    };
+    let text = matches!(owner, AckOwner::Annotation { .. })
+        && d.items.iter().any(|it| it.src() == src && matches!(it, Item::Text(_)));
+    let mine: Vec<Item> =
+        d.items.iter().filter(|it| it.src() == src && (!text || matches!(it, Item::Text(_)))).cloned().collect();
+    annot::items_box(font, &mine)
+}
+
 /// The model-space extent of what the drawing draws for component `id`.
-fn extent(d: &Drawing<'_>, id: &str) -> Box {
+fn comp_extent(d: &Drawing<'_>, id: &str) -> Box {
     let mut b = Box::default();
     let mut add = |pts: &[Pt]| b.add_box(geom::points_box(pts));
     for it in &d.items {
@@ -54,7 +69,7 @@ fn clip_chars(mut s: String, n: usize) -> String {
     s
 }
 
-/// One legend line per acknowledged component: its tag, id and the codes with counts and reasons.
+/// One legend line per acknowledging owner: its tag, label and the codes with counts and reasons.
 fn legend_line(tag: usize, comp: &str, acked: &[&Acked]) -> String {
     let mut groups: Vec<(&str, &str, usize)> = Vec::new();
     for a in acked {
@@ -73,33 +88,33 @@ fn legend_line(tag: usize, comp: &str, acked: &[&Acked]) -> String {
     clip_chars(upper(&s), LEGEND_CHARS)
 }
 
-fn comps_of(acked: &[Acked]) -> Vec<&str> {
-    let mut comps: Vec<&str> = Vec::new();
+fn owners_of(acked: &[Acked]) -> Vec<&AckOwner> {
+    let mut owners: Vec<&AckOwner> = Vec::new();
     for a in acked {
-        if !comps.contains(&a.comp.as_str()) {
-            comps.push(&a.comp);
+        if !owners.contains(&&a.owner) {
+            owners.push(&a.owner);
         }
     }
-    comps
+    owners
 }
 
 /// The stamp and the legend lines (at most LEGEND_LINES).
 fn legend(acked: &[Acked]) -> (String, Vec<String>) {
     let n = acked.len();
     let stamp = format!("{n} ACKNOWLEDGED WARNING{}", if n == 1 { "" } else { "S" });
-    let comps = comps_of(acked);
-    let mut lines: Vec<String> = comps
+    let owners = owners_of(acked);
+    let mut lines: Vec<String> = owners
         .iter()
         .enumerate()
-        .map(|(k, comp)| {
-            let mine: Vec<&Acked> = acked.iter().filter(|a| a.comp == *comp).collect();
-            legend_line(k + 1, comp, &mine)
+        .map(|(k, owner)| {
+            let mine: Vec<&Acked> = acked.iter().filter(|a| a.owner == **owner).collect();
+            legend_line(k + 1, &owner.label(), &mine)
         })
         .collect();
     if lines.len() > LEGEND_LINES {
         let more = lines.len() - (LEGEND_LINES - 1);
         lines.truncate(LEGEND_LINES - 1);
-        lines.push(format!("+{more} MORE COMPONENTS: KERF CHECK LISTS EVERY ACKNOWLEDGED WARNING"));
+        lines.push(format!("+{more} MORE: KERF CHECK LISTS EVERY ACKNOWLEDGED WARNING"));
     }
     (stamp, lines)
 }
@@ -121,8 +136,8 @@ fn marks(d: &Drawing<'_>, font: &Font, pens: &Pens) -> Vec<Item> {
     let acked = d.acknowledged.as_deref().unwrap_or(&[]);
     let mut items: Vec<Item> = Vec::new();
     let mut tags: Vec<Box> = Vec::new();
-    for (k, comp) in comps_of(acked).iter().enumerate() {
-        let b = extent(d, comp);
+    for (k, owner) in owners_of(acked).iter().enumerate() {
+        let b = extent(d, font, owner);
         if b.is_empty() {
             continue;
         }

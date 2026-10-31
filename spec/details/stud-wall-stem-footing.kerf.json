@@ -284,7 +284,7 @@
         {
           "id": "n_sill",
           "type": "note",
-          "text": "2X6 PT SILL PLATE W/ 1/2\" DIA. X 10\" ANCHOR BOLTS @ 48\" O.C. U.N.O., 12\" MAX. FROM PLATE ENDS",
+          "text": "2X6 P.T. SILL PLATE W/ 1/2\" DIA. X 10\" ANCHOR BOLTS @ 48\" O.C. U.N.O., 12\" MAX. FROM PLATE ENDS",
           "target": "sill"
         },
         {
@@ -323,7 +323,7 @@
           "id": "n_sill",
           "type": "note",
           "key": 1,
-          "text": "2X6 PT SILL PLATE",
+          "text": "2X6 P.T. SILL PLATE",
           "target": "sill"
         },
         {

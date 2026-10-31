@@ -630,7 +630,17 @@
     "arrow_len_in": 0.09375,
     "arrow_width_in": 0.03125,
     "key_tag": "plain",
-    "list_title": "DETAIL NOTES"
+    "list_title": "DETAIL NOTES",
+    "abbreviations": {
+      "extends": "us-structural",
+      "rules": {
+        "period_on_shortened": true,
+        "dotted_initials": true,
+        "bare_acronyms": true,
+        "variants": true
+      },
+      "always": []
+    }
   },
   "dims": {
     "terminator": "tick",
