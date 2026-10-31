@@ -1430,7 +1430,8 @@ layout only. A view's own `W_VIEW_FIT` against the whole sheet is not checked in
 **Scale.** Precedence for each view: its own `scale` > the layout's numeric `scale` > the document `scale` > `common`.
 `common` builds the remaining views at each standard scale, 3" ... 1/4" = 1'-0" (largest first), and takes the first at
 which the arranged views and the list fit the sheet area (frame interior above the title block, 1/8" clear, §25.2); none
-fits: 1/4" and `W_VIEW_FIT`. The document `scale` (numeric, else `E_PARAM` path `scale`) applies to every view without its
+fits: 1/4" and `W_VIEW_FIT`. An iso view without a scale stays NTS, fitted to its share of the sheet area (the area divided
+among the entries along each axis of the arrangement). The document `scale` (numeric, else `E_PARAM` path `scale`) applies to every view without its
 own except iso views (NTS by default), also outside layouts; ops `set scale` / `remove scale`.
 
 **Shared notes** (`notes: "shared"`). The keyed notes (`notes_style` keyed or list, §24) of all the layout's views form one
