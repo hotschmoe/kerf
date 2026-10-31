@@ -68,6 +68,8 @@ pub struct Env<'a, 's> {
     /// list and leaves its entries in `keyed_out`.
     pub shared_keys: Option<&'a [(String, u32)]>,
     pub keyed_out: Vec<KeyedEntry>,
+    /// The document's `views`: a keyed note with a `key` and no text takes the text of a note with that key in any view.
+    pub doc_views: &'a [Value],
 }
 
 impl<'a, 's> Env<'a, 's> {
@@ -100,6 +102,7 @@ impl<'a, 's> Env<'a, 's> {
             work: None,
             shared_keys: None,
             keyed_out: Vec::new(),
+            doc_views: &[],
         }
     }
 
@@ -243,13 +246,18 @@ fn read_key(env: &Env, an: &Value, id: &str, apath: &str) -> Option<u32> {
     None
 }
 
-/// The first note in the view with key `key` that has a text (keyed views: a note with a shared key may omit its text,
-/// and then takes that note's text and, unless it has its own, its `cite`).
+/// The note a keyed note with `key` and no text takes its text (and, unless it has its own, its `cite`) from: the first
+/// note with that key and a text in the view, else in the document's views in order (SPEC 24, 28.2).
 fn shared_key_note<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a Value> {
-    env.spec
-        .annotations
-        .iter()
-        .find(|an| non_null(an, "key").and_then(Value::num) == Some(f64::from(key)) && str_member(an, "text").is_some())
+    let holder = |an: &&Value| {
+        non_null(an, "key").and_then(Value::num) == Some(f64::from(key)) && str_member(an, "text").is_some()
+    };
+    env.spec.annotations.iter().find(holder).or_else(|| {
+        env.doc_views
+            .iter()
+            .filter_map(|v| v.get("annotations").and_then(Value::arr))
+            .find_map(|anns| anns.iter().filter(|an| str_member(an, "type") == Some("note")).find(holder))
+    })
 }
 
 /// The text form of the `nailing` component a note targets (SPEC 27.4): a note on fasteners may leave out its text.
@@ -270,7 +278,11 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     let Some(text0) =
         str_member(an, "text").or_else(|| shared.and_then(|sn| str_member(sn, "text"))).or(nail_text.as_deref())
     else {
-        let alt = if style == NotesStyle::Leader { "" } else { " (or a \"key\" shared with a note that has one)" };
+        let alt = if style == NotesStyle::Leader {
+            ""
+        } else {
+            " (or a \"key\" shared with a note in any view that has one)"
+        };
         env.diags.add(
             Level::Error,
             "E_PARAM",

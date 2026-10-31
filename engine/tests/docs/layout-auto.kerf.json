@@ -1,0 +1,353 @@
+{
+  "kerf": "0.1",
+  "id": "layout-auto",
+  "title": "STUD WALL ON STEM WALL, AUTO SHEET",
+  "meta": {
+    "author": "kerf test",
+    "discipline": "structural",
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "tags": [
+      "layout",
+      "insets",
+      "ref"
+    ],
+    "sheet": "S-10.01"
+  },
+  "components": [
+    {
+      "id": "ftg",
+      "type": "concrete",
+      "views": [
+        "A",
+        "B",
+        "I"
+      ],
+      "shape": "footing",
+      "width": 16,
+      "height": 10
+    },
+    {
+      "id": "stem",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "ftg@top_left",
+        "offset": [
+          4,
+          0
+        ]
+      },
+      "views": [
+        "A",
+        "B",
+        "I"
+      ],
+      "shape": "rect",
+      "width": 8,
+      "height": 24
+    },
+    {
+      "id": "a_sill",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "stem@top_left"
+      },
+      "views": [
+        "A",
+        "I"
+      ],
+      "size": "2x8",
+      "orient": "flat",
+      "treated": true
+    },
+    {
+      "id": "a_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "a_sill@top_center"
+      },
+      "views": [
+        "A",
+        "I"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 12
+    },
+    {
+      "id": "b_sill",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "stem@top_left",
+        "offset": [
+          1,
+          0
+        ]
+      },
+      "views": [
+        "B"
+      ],
+      "size": "2x6",
+      "orient": "flat",
+      "treated": true
+    },
+    {
+      "id": "b_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "b_sill@top_center"
+      },
+      "views": [
+        "B"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 12
+    },
+    {
+      "id": "p_stem",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          0,
+          0
+        ]
+      },
+      "views": [
+        "P"
+      ],
+      "shape": "rect",
+      "width": 48,
+      "height": 8
+    },
+    {
+      "id": "p_bolt",
+      "type": "solid",
+      "material": "steel",
+      "at": {
+        "anchor": "center",
+        "to": "p_stem@center"
+      },
+      "embedded": true,
+      "views": [
+        "P"
+      ],
+      "profile": {
+        "circle": 0.625
+      }
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "A",
+      "title": "STUD WALL ON STEM WALL",
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -2,
+          18
+        ],
+        "y": [
+          -2,
+          49
+        ]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_stud",
+          "type": "note",
+          "text": "2X6 STUDS @ 16\" O.C.",
+          "target": "a_stud",
+          "key": 1
+        },
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "2X8 P.T. SILL PLATE",
+          "target": "a_sill",
+          "key": 2
+        },
+        {
+          "id": "n_stem",
+          "type": "note",
+          "text": "8\" CONC. STEM WALL",
+          "target": "stem",
+          "key": 4
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "CONC. FTG. PER PLAN",
+          "target": "ftg"
+        },
+        {
+          "id": "r_plan",
+          "type": "ref",
+          "detail": "P",
+          "sheet": "S-10.01",
+          "at": "stem@middle_left",
+          "place": [
+            -1,
+            26
+          ],
+          "text": "PLAN"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "number": "B",
+      "title": "STUD WALL AT SHEAR WALL",
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -2,
+          18
+        ],
+        "y": [
+          -2,
+          49
+        ]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_stud",
+          "type": "note",
+          "target": "b_stud",
+          "key": 1
+        },
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "2X6 P.T. SILL PLATE",
+          "target": "b_sill",
+          "key": 3
+        },
+        {
+          "id": "n_stem",
+          "type": "note",
+          "target": "stem",
+          "key": 4
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "CONC. FTG. PER PLAN",
+          "target": "ftg"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "kind": "section",
+      "number": "P",
+      "title": "PLAN AT ANCHOR",
+      "scale": "1/2\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [
+          -2,
+          50
+        ],
+        "y": [
+          -2,
+          10
+        ]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_bolt",
+          "type": "note",
+          "text": "5/8\" DIA. ANCHOR BOLT @ 48\" O.C.",
+          "target": "p_bolt",
+          "key": 7
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "kind": "section",
+      "number": "D",
+      "title": "NON-BEARING PARTITION",
+      "cut_z": 0,
+      "annotations": [
+        {
+          "id": "r_see",
+          "type": "ref",
+          "detail": "3",
+          "sheet": "S-50.01",
+          "place": [
+            6,
+            20
+          ],
+          "text": "SEE PARTITION DETAIL"
+        }
+      ]
+    },
+    {
+      "id": "I",
+      "kind": "iso",
+      "number": "I",
+      "title": "STEM WALL ISO",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_stem",
+          "type": "note",
+          "key": 4,
+          "target": "stem"
+        }
+      ]
+    },
+    {
+      "id": "T",
+      "kind": "schedule",
+      "number": "T",
+      "title": "GENERAL NOTES",
+      "annotations": [
+        {
+          "id": "g1",
+          "type": "note",
+          "text": "ALL LUMBER DF-L NO. 2 MIN."
+        }
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "id": "S1",
+      "views": [
+        "A",
+        "B",
+        "I",
+        [
+          "P",
+          "D",
+          "T"
+        ]
+      ],
+      "sheet": "auto",
+      "iso_ratio": 0.75,
+      "number": "1"
+    }
+  ]
+}

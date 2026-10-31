@@ -1,0 +1,18 @@
+{"kerf_drawing":"0.1","doc":"layout-auto","view":"D","kind":"section","scale":4,"bounds":[4.8493,14.7493,30.3211,21.1507],
+"pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
+"layers":[{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
+"items":[
+{"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"r_see","closed":true,"pts":[[4.8493,20,1],[7.1507,20,1]]},
+{"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"r_see","closed":false,"pts":[[4.8493,20],[7.1507,20]]},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"r_see","s":"3","x":6,"y":20.5754,"h":0.375,"rot":0,"align":"center","valign":"middle"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"r_see","s":"S-50.01","x":6,"y":19.4246,"h":0.2813,"rot":0,"align":"center","valign":"middle"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"r_see","s":"SEE PARTITION DETAIL","x":7.4707,"y":20,"h":0.375,"rot":0,"align":"left","valign":"middle"},
+{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","closed":true,"pts":[[15.6139,15.9993,1],[18.1139,15.9993,1]]},
+{"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"title:D","closed":false,"pts":[[15.6139,15.9993],[18.1139,15.9993]]},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","s":"D","x":16.8639,"y":16.6243,"h":0.625,"rot":0,"align":"center","valign":"middle"},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:D","s":"S-10.01","x":16.8639,"y":15.3743,"h":0.2813,"rot":0,"align":"center","valign":"middle"},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","s":"NON-BEARING PARTITION","x":18.7139,"y":16.0793,"h":0.625,"rot":0,"align":"left","valign":"baseline"},
+{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","closed":false,"pts":[[18.7139,15.7993],[30.3211,15.7993]]},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:D","s":"SCALE: NTS","x":18.7139,"y":15.1843,"h":0.375,"rot":0,"align":"left","valign":"baseline"}
+],
+"diagnostics":[]}

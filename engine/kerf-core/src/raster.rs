@@ -23,19 +23,22 @@ use alloc::vec::Vec;
 pub const DEFAULT_PX: u32 = 1600;
 pub const MIN_PX: u32 = 200;
 pub const MAX_PX: u32 = 6000;
+/// Without `px` the image is at least this many pixels per paper inch wide (a 36x24 sheet: 3240 px), SPEC 28.2.
+pub const AUTO_PPI: f64 = 90.0;
 /// Longest side the page may reach (a tall sheet at 6000 px wide would otherwise be enormous).
 pub const MAX_SIDE: u32 = 8192;
 
 pub struct Options {
-    /// Requested image width in pixels (clamped to MIN_PX..=MAX_PX).
-    pub px: u32,
+    /// Requested image width in pixels (clamped to MIN_PX..=MAX_PX); None = DEFAULT_PX, or AUTO_PPI per paper inch
+    /// when that is wider.
+    pub px: Option<u32>,
     /// Paper margin around a bare (non-sheet) detail, as in the SVG exporter.
     pub margin_in: f64,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { px: DEFAULT_PX, margin_in: 0.25 }
+        Options { px: None, margin_in: 0.25 }
     }
 }
 
@@ -101,7 +104,10 @@ pub fn layout(d: &Drawing<'_>, opt: &Options) -> Layout {
     let margin = if d.page_w > 0.0 { 0.0 } else { opt.margin_in };
     let w_in = (d.bounds[2] - d.bounds[0]) / s + 2.0 * margin;
     let h_in = (d.bounds[3] - d.bounds[1]) / s + 2.0 * margin;
-    let want = f64::from(opt.px.clamp(MIN_PX, MAX_PX));
+    let want = match opt.px {
+        Some(px) => f64::from(px.clamp(MIN_PX, MAX_PX)),
+        None => math::ceil(w_in * AUTO_PPI).clamp(f64::from(DEFAULT_PX), f64::from(MAX_PX)),
+    };
     let mut ppi = want / w_in.max(1e-6);
     ppi = ppi.min(f64::from(MAX_SIDE) / h_in.max(1e-6));
     let side = |v: f64| math::ceil(v * ppi - 1e-9).clamp(1.0, f64::from(MAX_SIDE)) as u32;

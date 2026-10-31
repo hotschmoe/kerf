@@ -1148,7 +1148,7 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
   style's `notes.mode` decides (`keynote` is accepted as an old name of `keyed`). Leader is the default; keyed output never
   changes leader output.
 - **Numbering** (deterministic): a note's integer `key` (1-999) is its number. The other notes take the lowest unused numbers
-  in note order. Notes with the same `key` share one list entry (the first one's text; a later note may omit `text`, and a
+  in note order. Notes with the same `key` share one list entry (the first one's text; a later note may omit `text` and `cite`, also in another view, §28.2; a
   different text warns `W_PARAM`) and each draws its own tag. A bad `key` warns `W_PARAM` and is ignored.
 - **Tags** route exactly like leader text (§6.3, §16, §18, §20: columns outside the crop, de-crossing, repair), with the tag as
   the text block: the number's width x one text height (`key_tag: "plain"`), or a circle / flat-top hexagon sized by the widest
@@ -1635,17 +1635,17 @@ size per paper inch unchanged).
 
 **Views in a layout** keep their bubble, title and `SCALE:` line (each cell shows its own scale; the title block reads the
 common scale or `AS NOTED`). A view title wider than the view (less the bubble; at least 3" paper) wraps at spaces in a
-layout only. A view's own `W_VIEW_FIT` against the whole sheet is not checked inside a layout (the layout checks its cells).
+layout only. A view's own `W_VIEW_FIT` against the whole sheet is not checked inside a layout (the layout checks its cells), nor in `kerf check` for a view any layout names (§28.2).
 
 **Scale.** Precedence for each view: its own `scale` > the layout's numeric `scale` > the document `scale` > `common`.
 `common` builds the remaining views at each standard scale, 3" ... 1/4" = 1'-0" (largest first), and takes the first at
 which the arranged views and the list fit the sheet area (frame interior above the title block, 1/8" clear, §25.2); none
-fits: 1/4" and `W_VIEW_FIT`. An iso view without a scale stays NTS, fitted to its share of the sheet area (the area divided
+fits: 1/4" and `W_VIEW_FIT`. An iso view without a scale is drawn at the common scale over `iso_ratio` (§28.2); with no scale to pick it stays NTS, fitted to its share of the sheet area (the area divided
 among the entries along each axis of the arrangement). The document `scale` (numeric, else `E_PARAM` path `scale`) applies to every view without its
 own except iso views (NTS by default), also outside layouts; ops `set scale` / `remove scale`.
 
-**Shared notes** (`notes: "shared"`). The keyed notes (`notes_style` keyed or list, §24) of all the layout's views form one
-DETAIL NOTES list. Grouping, in layout order (views, then annotations): a note with a `key` joins the entry with that key
+**Shared notes** (`notes: "shared"`). The keyed notes (`notes_style` keyed or list, §24) of all the layout's views, schedule views
+included (§28.2), form one DETAIL NOTES list. Grouping, in layout order (views, then annotations): a note with a `key` joins the entry with that key
 in any view; a note without a key joins an earlier entry with the same `text` (trimmed) and the same `cite`; else it opens a
 new entry. Numbering: keyed entries take their key, the others the lowest free numbers in order; the entries are then
 numbered 1..N in that order, so the list has no gaps. When a key prints under another number, `I_KEY_RENUMBERED` (info,
@@ -1655,7 +1655,7 @@ number whose texts differ warn `W_PARAM` naming both notes and views. `per_view`
 Leader-style views are unaffected. Single-view export (`--view`) is unchanged: a view keeps its own numbering and list.
 
 **`W_VIEW_FIT` on a layout** (id = layout, path `layouts/<id>`): the size the layout needs against the sheet area, each
-view's paper size and scale, the list size and side, the largest view; fixes in order: a larger sheet (17x11, 22x17, 36x24)
+view's paper size and scale, the list size and side, the largest view; fixes in order: a larger standard sheet (17x11, 22x17, 24x18, 36x24)
 that holds it as arranged; for a numeric layout scale, the standard scale that fits (else `common`); when every view has
 its own scale, the ops that remove them (and the document `scale`); a view whose own scale is larger than the common one;
 the first other arrangement (row, column, grid 2..n-1, with the list right or below) that fits; the list on another side;
@@ -1667,7 +1667,7 @@ bubble); radius max(1/4", half the wider text + 0.06") paper. `at` (Ref, `{ref, 
 like a note `at`) draws a leader from the bubble edge with the style arrowhead; `place` ([x, y]) is the bubble centre,
 default `at` + 3/4" paper up and right; neither is `E_PARAM`. `text` (case transform) sits beside the bubble, on the side
 away from the leader. Notes layer, anno pen, src = the ref id; placed exactly (not moved by the note layout); its extent
-counts for the view fit. A view whose only annotation is a ref (and that draws nothing) is a "see other detail" scenario.
+counts for the view fit. A view whose annotations are all refs is a "see other detail" scenario: it draws no model (§28.2).
 
 **Outputs.** `drawing` with `layout`: the Drawing IR (§10) with `"kind":"layout"`, `view` = the layout id, `scale` = the
 first view's, and `"cells":[{"view","scale","scale_label","bounds"}]` (the views' extents in layout coordinates); its
@@ -2152,3 +2152,42 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   outside 5..85, more than 5000 fasteners (`E_LIMIT`). `E_REF_UNKNOWN`: a member that is not a component (nearest id).
 - A nailing has no solid: it takes no part in `W_OVERLAP`, `W_FLOATING` or any other geometry check, and the mesh has
   no nails (2.5D viewers show none).
+
+## 28. v0.2.0-beta.2 round-2 fixes
+
+### 28.2 beta.2: shared notes and layout sizing
+From round 2 of the MASS dogfood (issue #22): authors copied the text and citation of a shared keyed note into every view
+of a layout, a mismatch warning showed two identical texts (the cite differed), views were bent to fit a letter sheet they
+never print on, sheets and scales were found by trial, iso views stayed NTS beside scaled sections, a "see other detail"
+view still drew the model, schedule-view notes collided with keyed tags, and a 36x24 PNG needed `--px 3200` to read.
+
+- **Key-only notes.** In a keyed or list view (and a schedule view), a note with a `key` and no `text` takes the text, and
+  unless it has its own `cite` the cite, of the first note with that key and a text: in its own view, else in the
+  document's `views` in order. It works the same in a single-view export, so a layout's shared entry is written once.
+  No such note: `E_PARAM` (`... needs a string "text" (or a "key" shared with a note in any view that has one)`).
+- **Shared-note mismatch** (`W_PARAM`, §26.2) names the field that differs: `its text differs` (both texts), `its cite
+  differs` (both printed citations, or `no cite`; path `.../cite`), or `its text and cite differ` (both full entries).
+  The fix: remove `text` and `cite` from the later note and keep its `key`, or give it its own key.
+- **Schedule views in shared notes.** A schedule view's notes (always list notes, §26.1) join the layout's grouping and
+  numbering like keyed notes: unkeyed ones join by text and cite or take the lowest free numbers, keyed ones their key.
+  They no longer collide with the tags of keyed views.
+- **Fit per layout.** `kerf check` raises a view's own `W_VIEW_FIT` (against the style's sheet) only for a view no layout
+  names; a view in a layout is fit-checked as a cell of its layout (`W_VIEW_FIT` path `layouts/<id>`).
+- **`sheet: "auto"`.** The layout takes one of the standard sheets 11x8.5, 17x11, 22x17, 24x18, 36x24 (smallest first):
+  with a numeric layout `scale`, or when no view takes the common scale, the smallest that holds the arranged views and
+  the list; with `common`, the smallest at which the common scale (§26.2, picked per sheet) reaches 1" = 1'-0", else the
+  smallest that reaches the largest scale any of them fits. None holds it: 36x24 and `W_VIEW_FIT`. `I_LAYOUT_SHEET`
+  (info, id = layout, path `layouts/<id>`, printed by `kerf check`) names the sheet, the scale and why. The sheet and PDF
+  page are that size. Any other string is `E_PARAM` naming `auto` and the `WxH` form.
+- **Iso views at the common scale.** An iso view without its own `scale` in a layout whose other views take a common or
+  numeric layout scale is drawn at that scale factor over the layout's `iso_ratio` (number 0.1-4, default 1; else
+  `E_PARAM`): 1 draws it at the sections' size, 0.5 at half. Its `SCALE:` line stays NTS. When no view takes a layout
+  scale it stays NTS, fitted to its share of the sheet (§26.2). The title block reads one scale only when every cell
+  prints the same scale line, else `AS NOTED`.
+- **`W_VIEW_FIT` fixes** (layout): the larger sheet is the first of 17x11, 22x17, 24x18, 36x24 that holds it; the fix
+  "view V has its own larger scale" names section, plan and elevation views only (not schedule or iso views).
+- **"See other detail" views.** A view whose annotations are all `ref`s (at least one) and that has no `only` draws no
+  model: its membership set is empty (like a schedule view, §25.4: no geometry checks), its `SCALE:` line prints NTS, and
+  without `crop` its crop is the point at the centre of its bubbles (so it is as large as its refs, their text and title).
+- **PNG size.** Without `px`, an export is `max(1600, 90 x the page width in paper inches)` pixels wide, at most 6000
+  (a 36x24 sheet: 3240 px; a letter or 17x11 sheet: 1600). `px` still sets it.

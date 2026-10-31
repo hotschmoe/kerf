@@ -316,13 +316,13 @@ fn drawing_fn(inp: &Value) -> Output {
 
 fn export_fn(inp: &Value) -> Output {
     let (d, st) = doc_and_style!(inp);
+    let format = inp.get("format").and_then(Value::str).unwrap_or("svg");
+    let want_sheet = matches!(inp.get("sheet"), Some(Value::Bool(true)));
     let dr = match build_view(inp, d, &st) {
         Ok(dr) => dr,
         Err(e) => return e,
     };
-    let format = inp.get("format").and_then(Value::str).unwrap_or("svg");
     let font = font::embedded();
-    let want_sheet = matches!(inp.get("sheet"), Some(Value::Bool(true)));
     let review = matches!(inp.get("review"), Some(Value::Bool(true)));
     let maybe_sheet = |dr, want: bool| match (want, review) {
         (true, true) => review::overlay_sheet(sheet::with_sheet(dr, font), font),
@@ -341,15 +341,16 @@ fn export_fn(inp: &Value) -> Output {
                     return fail(
                         "E_INPUT",
                         &format!(
-                            "export \"px\" must be a number (output width in pixels, {}-{}, default {})",
+                            "export \"px\" must be a number (output width in pixels, {}-{}, default {} or {} per sheet inch when wider)",
                             raster::MIN_PX,
                             raster::MAX_PX,
-                            raster::DEFAULT_PX
+                            raster::DEFAULT_PX,
+                            raster::AUTO_PPI
                         ),
                     );
                 };
-                let n = if n.is_nan() { 1600.0 } else { n };
-                opt.px = crate::math::round(n).clamp(f64::from(raster::MIN_PX), f64::from(raster::MAX_PX)) as u32;
+                let n = if n.is_nan() { f64::from(raster::DEFAULT_PX) } else { n };
+                opt.px = Some(crate::math::round(n).clamp(f64::from(raster::MIN_PX), f64::from(raster::MAX_PX)) as u32);
             }
             match raster::render(&maybe_sheet(dr, want_sheet), font, &opt) {
                 Ok(b) => done(b),

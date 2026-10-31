@@ -1868,5 +1868,118 @@ section('#11. framing hardware');
   check('schema connector: kind, on, carried/carrying, post, rod and the hardware families', /^- kind: /m.test(r.out) && /^- on: /m.test(r.out) && /^- carried: /m.test(r.out) && /^- rod: /m.test(r.out) && /Hardware families .*HDU holdown 10/.test(r.out), r.out.slice(0, 400));
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #22: shared keyed notes without repeated text, the field a shared note differs in, W_VIEW_FIT only per layout,
+// sheet "auto", iso views at the common scale, schedule-view notes in a shared list, ref-only views, PNG px by sheet
+// size (SPEC 28.2)
+section('22. #22 shared notes and layout sizing');
+{
+  const base = JSON.parse(fs.readFileSync(path.join(DOCS, 'layout-sheet.kerf.json'), 'utf8'));
+  const clone = () => JSON.parse(JSON.stringify(base));
+  const view = (d, id) => d.views.find((v) => v.id === id);
+  const note = (d, vid, nid) => view(d, vid).annotations.find((a) => a.id === nid);
+  const pngWidth = (name) => fs.readFileSync(path.join(tmp, name)).readUInt32BE(16);
+
+  let d = clone();
+  delete note(d, 'B', 'n_stem').text;
+  delete note(d, 'B', 'n_stud').text;
+  write('k22.kerf.json', d);
+  let r = kerf(['check', 'k22.kerf.json']);
+  check('a keyed note with only a key takes the text of that key in another view: no error, no W_PARAM', r.code === 0 && /0 errors  0 warnings/.test(r.out) && !/W_PARAM/.test(r.out), r.out);
+  r = kerf(['drawing', 'k22.kerf.json', '--view', 'B']);
+  const vb = JSON.parse(r.out).items.filter((i) => i.t === 'text').map((i) => i.s);
+  check('single-view export of that view lists the inherited text', r.code === 0 && vb.includes('8" CONC. STEM WALL') && vb.includes('2X6 STUDS @ 16" O.C.'), vb);
+  r = kerf(['drawing', 'k22.kerf.json', '--layout', 'S1']);
+  const lt = JSON.parse(r.out).items.filter((i) => i.t === 'text').map((i) => i.s);
+  check('the layout list has the shared entry once', lt.filter((s) => s === '8" CONC. STEM WALL').length === 1, lt);
+  delete note(d, 'A', 'n_stem').text;
+  write('k22.kerf.json', d);
+  r = kerf(['check', 'k22.kerf.json']);
+  check('a key no note gives a text for: E_PARAM says any view may hold it', r.code === 1 && /^ERROR E_PARAM n_stem: note 'n_stem' needs a string "text" \(or a "key" shared with a note in any view that has one\)/m.test(r.out), r.out);
+
+  d = clone();
+  note(d, 'A', 'n_stud').cite = [{ code: 'IRC', section: 'R602.3', edition: 2021 }];
+  write('k22c.kerf.json', d);
+  r = kerf(['check', 'k22c.kerf.json']);
+  check('same text, different cite: W_PARAM names the cite and both values', /^WARN W_PARAM n_stud: layout S1: note 'n_stud' in view B prints as shared note 1 but its cite differs from note 'n_stud' in view A \(no cite vs "\(IRC R602\.3\)\*"\)/m.test(r.out), r.out);
+  note(d, 'B', 'n_stud').text = '2X4 STUDS @ 16" O.C.';
+  delete note(d, 'A', 'n_stud').cite;
+  write('k22c.kerf.json', d);
+  r = kerf(['check', 'k22c.kerf.json']);
+  check('different text: W_PARAM names the text', /^WARN W_PARAM n_stud: layout S1: .*its text differs from note 'n_stud' in view A \("2X4 STUDS @ 16" O\.C\." vs "2X6 STUDS @ 16" O\.C\."\)/m.test(r.out), r.out);
+
+  d = clone();
+  d.views.push({ id: 'T', kind: 'schedule', title: 'GENERAL NOTES', annotations: [{ id: 'g1', type: 'note', text: 'ALL LUMBER DF-L NO. 2' }, { id: 'g2', type: 'note', text: 'CONC. 2500 PSI MIN.' }] });
+  d.layouts[0].views.push('T');
+  write('k22s.kerf.json', d);
+  r = kerf(['check', 'k22s.kerf.json']);
+  check('schedule-view notes join the shared list without colliding with keyed notes', !/prints as shared note/.test(r.out) && /0 errors/.test(r.out), r.out);
+  r = kerf(['drawing', 'k22s.kerf.json', '--layout', 'S1']);
+  const st = JSON.parse(r.out).items.filter((i) => i.t === 'text').map((i) => i.s);
+  check('shared list: keyed entries and the schedule notes, numbered 1..8', ['ALL LUMBER DF-L NO. 2', 'CONC. 2500 PSI MIN.', '2X8 P.T. SILL PLATE', '8.'].every((s) => st.includes(s)) && !st.includes('9.'), st);
+
+  d = clone();
+  view(d, 'A').scale = '3"=1\'-0"';
+  view(d, 'A').crop = { x: [-2, 30], y: [-2, 49] };
+  write('k22f.kerf.json', d);
+  r = kerf(['check', 'k22f.kerf.json']);
+  check('a view a layout names gets no letter-sheet W_VIEW_FIT of its own', !/^WARN W_VIEW_FIT A:/m.test(r.out) && /^WARN W_VIEW_FIT S1:/m.test(r.out), r.out);
+  d.layouts[0].views = ['B', 'P', 'D'];
+  d.layouts[1].views = ['B'];
+  write('k22f.kerf.json', d);
+  r = kerf(['check', 'k22f.kerf.json']);
+  check('...a view no layout names still gets it', /^WARN W_VIEW_FIT A:/m.test(r.out), r.out);
+
+  const cr = JSON.parse(fs.readFileSync(path.join(DOCS, 'layout-corner-reinf.kerf.json'), 'utf8'));
+  cr.layouts[0].sheet = 'auto';
+  write('k22a.kerf.json', cr);
+  r = kerf(['check', 'k22a.kerf.json']);
+  const picked = /^INFO I_LAYOUT_SHEET S1: layout S1: "sheet": "auto" picked (\S+) with the views at ([^(]+) \(/m.exec(r.out);
+  check('sheet auto: I_LAYOUT_SHEET names the sheet and scale, no W_VIEW_FIT', picked && !/W_VIEW_FIT/.test(r.out), r.out);
+  r = kerf(['export', 'k22a.kerf.json', '--layout', 'S1', '--format', 'pdf', '-o', 'k22a.pdf']);
+  const [w, h] = picked ? picked[1].split('x').map(Number) : [0, 0];
+  check('the PDF page is the picked sheet', r.code === 0 && fs.readFileSync(path.join(tmp, 'k22a.pdf'), 'latin1').includes(`/MediaBox [0 0 ${w * 72} ${h * 72}]`), picked);
+  cr.layouts[0].scale = '3/4"=1\'-0"';
+  write('k22a.kerf.json', cr);
+  r = kerf(['check', 'k22a.kerf.json']);
+  check('sheet auto with a numeric scale: the smallest sheet that holds it at that scale', /I_LAYOUT_SHEET S1: .*picked \S+ with the views at 3\/4" = 1'-0" \(the smallest standard sheet that holds it\)/.test(r.out), r.out);
+  cr.layouts[0].sheet = 'huge';
+  cr.layouts[0].iso_ratio = 9;
+  write('k22a.kerf.json', cr);
+  r = kerf(['check', 'k22a.kerf.json']);
+  check('bad sheet and iso_ratio: E_PARAM with "auto" in the fix', /^ERROR E_PARAM S1: layout S1: "sheet" is "auto" or the paper size/m.test(r.out) && /^ERROR E_PARAM S1: layout S1: "iso_ratio" is the size of the iso views/m.test(r.out), r.out);
+
+  delete cr.layouts[0].iso_ratio;
+  cr.layouts[0].sheet = '36x24';
+  delete cr.layouts[0].scale;
+  cr.views.push({ id: 'I', kind: 'iso', title: 'CORNER ISO' });
+  cr.layouts[0].views.push('I');
+  write('k22i.kerf.json', cr);
+  r = kerf(['drawing', 'k22i.kerf.json', '--layout', 'S1']);
+  let cells = JSON.parse(r.out).cells;
+  const sec = cells.find((c) => c.view === 'A');
+  const iso = cells.find((c) => c.view === 'I');
+  check('an iso view in a common-scale layout is drawn at the sections\' scale (label NTS)', iso.scale === sec.scale && iso.scale_label === 'NTS', cells);
+  cr.layouts[0].iso_ratio = 0.5;
+  write('k22i.kerf.json', cr);
+  cells = JSON.parse(kerf(['drawing', 'k22i.kerf.json', '--layout', 'S1']).out).cells;
+  check('iso_ratio 0.5: the iso at half that size', cells.find((c) => c.view === 'I').scale === 2 * cells.find((c) => c.view === 'A').scale, cells);
+  r = kerf(['export', 'k22i.kerf.json', '--layout', 'S1', '--format', 'png', '--sheet', '-o', 'k22i.png']);
+  check('PNG of a 36x24 sheet defaults to 90 px per inch (3240 px)', r.code === 0 && pngWidth('k22i.png') === 3240, pngWidth('k22i.png'));
+  r = kerf(['export', 'k22i.kerf.json', '--layout', 'S1', '--format', 'png', '--sheet', '--px', '1600', '-o', 'k22j.png']);
+  check('--px still wins', r.code === 0 && pngWidth('k22j.png') === 1600, pngWidth('k22j.png'));
+  r = kerf(['export', 'k22i.kerf.json', '--view', 'A', '--format', 'png', '--sheet', '-o', 'k22k.png']);
+  check('a letter sheet stays at 1600 px', r.code === 0 && pngWidth('k22k.png') === 1600, pngWidth('k22k.png'));
+
+  d = clone();
+  delete view(d, 'D').crop;
+  view(d, 'D').annotations[0].place = [6, 20];
+  write('k22r.kerf.json', d);
+  r = kerf(['drawing', 'k22r.kerf.json', '--view', 'D']);
+  const dd = JSON.parse(r.out);
+  check('a view of only refs draws no model and prints SCALE: NTS', r.code === 0 && dd.items.every((i) => ['r_see', 'title:D'].includes(i.src)) && dd.items.some((i) => i.s === 'SCALE: NTS'), [...new Set(dd.items.map((i) => i.src))]);
+  check('...and is as large as its bubble and title', (dd.bounds[2] - dd.bounds[0]) / dd.scale < 6 && (dd.bounds[3] - dd.bounds[1]) / dd.scale < 2, dd.bounds);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

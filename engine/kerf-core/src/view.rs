@@ -113,7 +113,7 @@ impl<'a> Members<'a> {
             view: node.get("id").and_then(Value::str).unwrap_or(""),
             omit: pats("omit").unwrap_or_default(),
             only: pats("only"),
-            none: node.get("kind").and_then(Value::str).is_some_and(is_schedule_kind),
+            none: node.get("kind").and_then(Value::str).is_some_and(is_schedule_kind) || ref_only(node),
         }
     }
 
@@ -141,6 +141,15 @@ impl<'a> Members<'a> {
 }
 
 /// `kind` of a tables-and-notes view: "schedule", or its alias "sheet".
+/// A "see other detail" view (SPEC 28.2): its annotations are all `ref`s and it has no `only`, so it draws no model.
+pub fn ref_only(node: &Value) -> bool {
+    node.get("only").is_none_or(Value::is_null)
+        && node
+            .get("annotations")
+            .and_then(Value::arr)
+            .is_some_and(|a| !a.is_empty() && a.iter().all(|an| an.get("type").and_then(Value::str) == Some("ref")))
+}
+
 pub fn is_schedule_kind(kind: &str) -> bool {
     matches!(kind, "schedule" | "sheet")
 }
