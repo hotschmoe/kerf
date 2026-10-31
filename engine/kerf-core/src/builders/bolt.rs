@@ -13,9 +13,11 @@ use alloc::vec::Vec;
 
 param_enum! { pub enum Orient { Side = "side", End = "end" } }
 param_enum! { pub enum Line { X = "x", Y = "y", Z = "z" } }
+param_enum! { pub enum BoltKind { Bolt = "bolt", WeldStud = "weld_stud", HeadedStud = "headed_stud" } }
 
 params! {
     pub struct Params {
+        kind: Enum(BoltKind) = BoltKind::Bolt => { desc: "bolt: head, grip, washer and nut; weld_stud: threaded stud welded at the placement point (no head), grip UP through the plies, washer and nut on top (wood nailers on steel); headed_stud: shear stud welded at the placement point, `grip` = its length after welding, head 1.6d x 0.5d (embed plates, composite decks). Studs are side only: rotate the component to point them" },
         diameter: LenPos = 0.75 => { desc: "bolt diameter: 0.5, 0.625, 0.75 (typical), 0.875, 1" },
         grade: Str = "A325" => { desc: "free text for notes and the summary: A307, A325, A490, F1554 ..." },
         grip: LenPos = 1.0 => { desc: "thickness of the plies clamped between head and nut (sum of plate and flange thicknesses); the head bears at the placement point" },
@@ -76,6 +78,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     if !side && bp.line == Line::Z {
         ctx.p.fail("line", "line z runs along the axis of an end bolt: use line x or y".into());
         return None;
+    }
+    if bp.kind != BoltKind::Bolt {
+        if !side {
+            ctx.p.fail("orient", format!("a {} is welded to a face and drawn side-on: use orient side and rotate the component to point it (e.g. rotate 90 for a stud on a column flange seen in plan)", bp.kind.tag()));
+            return None;
+        }
+        return Some(stud(&bp));
     }
     let f = hex_flats(d);
     let head_h = 0.625 * d;
@@ -149,4 +158,79 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         info: format!("bolt {}\" dia. {}, grip {}, {}{row}", fmt_num(d), bp.grade, fmt_ft_in(grip), bp.orient.tag()),
         ..Built::default()
     })
+}
+
+/// A weld stud (threaded, nut and washer on the plies above) or a headed shear stud, welded at the local origin and
+/// pointing up (+y).
+fn stud(bp: &Params) -> Built {
+    let d = bp.diameter;
+    let f = hex_flats(d);
+    let grip = bp.grip;
+    let weld = |o: V2| {
+        vec![
+            Pt::new(o.x - 0.8 * d, 0.0),
+            Pt::new(o.x + 0.8 * d, 0.0),
+            Pt::new(o.x + 0.5 * d, 0.2 * d),
+            Pt::new(o.x - 0.5 * d, 0.2 * d),
+        ]
+    };
+    let mut prisms: Vec<Prism> = Vec::new();
+    let mut anchors = vec![
+        NamedAnchor { name: "head_bearing".to_string(), p: V2::init(0.0, 0.0) },
+        NamedAnchor { name: "weld_face".to_string(), p: V2::init(0.0, 0.0) },
+    ];
+    let offs = offsets(usize::from(bp.count), bp.spacing, bp.line);
+    for (k, &(o, zo)) in offs.iter().enumerate() {
+        prisms.push(Prism { zhalf: 0.8 * d, zoff: zo, ..steel("weld", model::one_loop(weld(o))) });
+        if bp.kind == BoltKind::WeldStud {
+            let wt = if bp.washer { WASHER_T } else { 0.0 };
+            let top = grip + wt + d + 0.5 * d;
+            prisms.push(Prism {
+                centerline: vec![Pt::new(o.x, 0.0), Pt::new(o.x, top)],
+                sweep_r: d / 2.0,
+                zoff: zo,
+                ..steel("shank", model::one_loop(model::rect_loop(o.x - d / 2.0, 0.0, o.x + d / 2.0, top)))
+            });
+            if bp.washer {
+                prisms.push(Prism {
+                    zhalf: d,
+                    zoff: zo,
+                    ..steel("washer", model::one_loop(model::rect_loop(o.x - d, grip, o.x + d, grip + wt)))
+                });
+            }
+            prisms.push(Prism {
+                zhalf: f / 2.0,
+                zoff: zo,
+                ..steel("nut", model::one_loop(model::rect_loop(o.x - f / 2.0, grip + wt, o.x + f / 2.0, grip + wt + d)))
+            });
+        } else {
+            let (hd, ht) = (1.6 * d, 0.5 * d);
+            prisms.push(Prism {
+                centerline: vec![Pt::new(o.x, 0.0), Pt::new(o.x, grip - ht)],
+                sweep_r: d / 2.0,
+                zoff: zo,
+                ..steel("shank", model::one_loop(model::rect_loop(o.x - d / 2.0, 0.0, o.x + d / 2.0, grip - ht)))
+            });
+            prisms.push(Prism {
+                zhalf: hd / 2.0,
+                zoff: zo,
+                ..steel("head", model::one_loop(model::rect_loop(o.x - hd / 2.0, grip - ht, o.x + hd / 2.0, grip)))
+            });
+        }
+        anchors.push(NamedAnchor { name: format!("bolt_{}", k + 1), p: o });
+    }
+    anchors.push(NamedAnchor { name: "nut_bearing".to_string(), p: V2::init(0.0, grip) });
+    let bx = box_of_prisms(&prisms);
+    let n = bp.count;
+    let row =
+        if n > 1 { format!(", ({n}) @ {} along {}", fmt_ft_in(bp.spacing), bp.line.tag()) } else { String::new() };
+    let what = if bp.kind == BoltKind::WeldStud { "grip" } else { "length" };
+    Built {
+        prisms,
+        anchors,
+        box_: bx,
+        nat_z: Some(d),
+        info: format!("bolt {} {}\" dia., {what} {}{row}", bp.kind.tag(), fmt_num(d), fmt_ft_in(grip)),
+        ..Built::default()
+    }
 }

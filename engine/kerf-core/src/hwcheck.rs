@@ -37,7 +37,7 @@ fn bearing(scene: &Scene<'_>, c: &Comp<'_>, b: &Bears, diags: &Diags) {
     let tol = 1.0 / 32.0;
     let (x, z) = ([b.plan[0], b.plan[1]], [b.plan[2], b.plan[3]]);
     let mut below: Option<(f64, &str)> = None;
-    for o in scene.comps.iter().filter(|o| o.state == State::Ok && o.index != c.index && o.id != b.post && !o.ty.traits.hardware) {
+    for o in scene.comps.iter().filter(|o| o.state == State::Ok && o.index != c.index && !b.post.contains(&o.id) && !o.ty.traits.hardware) {
         for p in o.world.iter().filter(|p| p.kind == Kind::Body && p.role != Role::Soil && !p.embedded) {
             let Some(pb) = plan_overlap(p, x, z) else { continue };
             if (pb.y1 - b.y).abs() <= tol {
@@ -56,17 +56,17 @@ fn bearing(scene: &Scene<'_>, c: &Comp<'_>, b: &Bears, diags: &Diags) {
                 format!(
                     "make the standoff match: {{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"standoff\":{}}}}}, or move '{}' so its bottom is at y {} (the top of '{host}' plus the standoff)",
                     crate::model::fmt_num(crate::math::round(so * 10000.0) / 10000.0),
-                    b.post,
+                    b.post.join("+"),
                     fmt_ft_in(top + b.standoff)
                 )
             } else {
-                format!("'{}' runs into '{host}': move it up so its bottom is at y {}", b.post, fmt_ft_in(top + b.standoff))
+                format!("'{}' runs into '{host}': move it up so its bottom is at y {}", b.post.join("+"), fmt_ft_in(top + b.standoff))
             };
             (
                 format!(
                     "post base '{id}' bears on nothing: its plate bottom is at y {} (post '{}' bottom {} less the standoff {}), but the top of '{host}' under it is at y {}",
                     fmt_ft_in(b.y),
-                    b.post,
+                    b.post.join("+"),
                     fmt_ft_in(b.post_y0),
                     fmt_ft_in(b.standoff),
                     fmt_ft_in(top)

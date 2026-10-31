@@ -83,8 +83,10 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
         out.push(s.split('.').next().unwrap_or(s));
     }
     for key in HOST_KEYS {
-        if let Some(s) = node.get(key).and_then(Value::str) {
-            out.push(host_id(s));
+        match node.get(key) {
+            Some(Value::String(s)) => out.push(host_id(s)),
+            Some(Value::Array(a)) => out.extend(a.iter().filter_map(Value::str).map(host_id)),
+            _ => {}
         }
     }
 }

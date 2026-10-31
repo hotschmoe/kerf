@@ -14,16 +14,20 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::f64::consts::PI;
 
-param_enum! { pub enum Hook { J = "J", L = "L", Headed = "headed", None = "none", Wedge = "wedge", Screw = "screw" } }
+param_enum! { pub enum Hook { J = "J", L = "L", Headed = "headed", None = "none", Wedge = "wedge", Screw = "screw", Adhesive = "adhesive" } }
 
 params! {
     pub struct Params {
         diameter: LenPos = 0.5 => { desc: "0.5 or 0.625 typical" },
         embed: OptLenPos => { def: "7 (4 for wedge/screw)", desc: "length below the placement point (top of concrete); effective embedment for wedge/screw" },
-        projection: LenPos = 2.5 => { desc: "length above the placement point" },
-        hook: Enum(Hook) = Hook::J => { desc: "J: 180 degree bend toward +x, inside radius 1.5*d, returning up hook_len from the lowest point; L: 90 degree bend toward +x, horizontal leg ends hook_len from the shaft centerline; headed: square head 2*d wide, 0.5*d thick; none; wedge: post-installed expansion anchor (straight shaft, expansion clip 1.15*d wide x 0.6*embed long at the embedded end, nut+washer); screw: Titen HD style concrete screw (thread ticks along the embedment, hex washer head at the top, no nut)" },
+        projection: OptLen => { def: "2.5 (with plate: through the plate, washer and nut)", desc: "length above the placement point; 0 (a rod cut flush) needs nut_washer false" },
+        hook: Enum(Hook) = Hook::J => { desc: "J: 180 degree bend toward +x, inside radius 1.5*d, returning up hook_len from the lowest point; L: 90 degree bend toward +x, horizontal leg ends hook_len from the shaft centerline; headed: square head 2*d wide, 0.5*d thick; none; wedge: post-installed expansion anchor (straight shaft, expansion clip 1.15*d wide x 0.6*embed long at the embedded end, nut+washer); screw: Titen HD style concrete screw (thread ticks along the embedment, hex washer head at the top, no nut); adhesive: threaded rod in a drilled hole filled with adhesive (the hole drawn grout-hatched, `hole` wide, full embed)" },
+        hole: OptLenPos => { def: "d + 1/8", desc: "hook adhesive: drilled hole diameter" },
         hook_len: OptLenPos => { def: "J 2, L 3", desc: "hook leg length in inches (see hook)" },
         nut_washer: Bool = true => { desc: "draw nut (1.5*d wide, 0.875*d tall, top at projection - 0.25*d) and washer (2.25*d wide, 0.125 thick) under it" },
+        plate: OptStr => { def: "null", desc: "the base plate (or any member) the rod passes through: the nut and washer sit on its top at the rod, and projection defaults to reach through them" },
+        leveling_nut: Bool = false => { desc: "a leveling nut and washer under `plate` (needs plate)" },
+        plate_washer: OptStr => { def: "null", desc: "\"WxWxT\" plate washer under the top nut instead of the round washer, e.g. \"3x3x0.229\" or \"3x3x1/4\"" },
     }
 }
 
@@ -35,9 +39,38 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let ap = ctx.p.parse::<Params>()?;
     let d = ap.diameter;
     let h = ap.hook;
-    let post = matches!(h, Hook::Wedge | Hook::Screw);
+    let post = matches!(h, Hook::Wedge | Hook::Screw | Hook::Adhesive);
     let embed = ap.embed.unwrap_or(if post { 4.0 } else { 7.0 });
-    let proj = ap.projection;
+    let pw = match ap.plate_washer.as_deref() {
+        Some(t) => Some(parse_plate_washer(ctx, t)?),
+        None => None,
+    };
+    let washer_t = pw.map_or(0.125, |w| w.1);
+    let nut_h = 0.875 * d;
+    let plate_ys = match ap.plate.as_deref() {
+        Some(pl) => Some(plate_faces(ctx, pl)?),
+        None => None,
+    };
+    if ap.leveling_nut && plate_ys.is_none() {
+        ctx.p.fail("leveling_nut", "leveling_nut needs \"plate\": the base plate the rod passes through (the nut goes under it)".to_string());
+        return None;
+    }
+    let proj = match (ap.projection, plate_ys) {
+        (Some(p), _) => p,
+        (None, Some((_, top))) => crate::math::ceil((top + washer_t + nut_h + 0.25 * d) * 16.0 - 1e-9) / 16.0,
+        (None, None) => 2.5,
+    };
+    if proj < 0.0 || (proj == 0.0 && ap.nut_washer && h != Hook::Screw) {
+        ctx.p.fail("projection", format!("projection must be greater than 0 for a rod with a nut (got {}); a rod cut flush with the concrete is projection 0 with nut_washer false", fmt_num(proj)));
+        return None;
+    }
+    if let Some((_, top)) = plate_ys
+        && ap.nut_washer
+        && proj < top + washer_t + nut_h
+    {
+        ctx.p.fail("projection", format!("projection {} ends inside the plate, washer and nut (they need {} above the concrete); remove projection to fit it, or raise it", fmt_ft_in(proj), fmt_ft_in(top + washer_t + nut_h + 0.25 * d)));
+        return None;
+    }
     let hook_len = ap.hook_len.unwrap_or(if h == Hook::L { 3.0 } else { 2.0 });
     let r = d / 2.0;
     let rc = 1.5 * d + r;
@@ -107,15 +140,39 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             0.75 * d,
         ));
     } else if ap.nut_washer {
-        let nut_h = 0.875 * d;
-        let ytop = proj - 0.25 * d;
-        let nut_bot = ytop - nut_h;
+        let (ytop, nut_bot) = match plate_ys {
+            Some((_, top)) => (top + washer_t + nut_h, top + washer_t),
+            None => (proj - 0.25 * d, proj - 0.25 * d - nut_h),
+        };
+        let ww = pw.map_or(1.125 * d, |w| w.0 / 2.0);
+        prisms.push(steel("washer", model::one_loop(model::rect_loop(-ww, nut_bot - washer_t, ww, nut_bot)), ww));
+        prisms.push(steel("nut", model::one_loop(model::rect_loop(-0.75 * d, nut_bot, 0.75 * d, ytop)), 0.75 * d));
+    }
+    if ap.leveling_nut
+        && let Some((bot, _)) = plate_ys
+    {
         prisms.push(steel(
-            "washer",
-            model::one_loop(model::rect_loop(-1.125 * d, nut_bot - 0.125, 1.125 * d, nut_bot)),
+            "leveling_washer",
+            model::one_loop(model::rect_loop(-1.125 * d, bot - 0.125, 1.125 * d, bot)),
             1.125 * d,
         ));
-        prisms.push(steel("nut", model::one_loop(model::rect_loop(-0.75 * d, nut_bot, 0.75 * d, ytop)), 0.75 * d));
+        prisms.push(steel(
+            "leveling_nut",
+            model::one_loop(model::rect_loop(-0.75 * d, bot - 0.125 - nut_h, 0.75 * d, bot - 0.125)),
+            0.75 * d,
+        ));
+    }
+    if h == Hook::Adhesive {
+        let hr = ap.hole.unwrap_or(d + 0.125) / 2.0;
+        if hr <= r {
+            ctx.p.fail("hole", format!("hole {} must be wider than the rod ({})", fmt_ft_in(2.0 * hr), fmt_ft_in(d)));
+            return None;
+        }
+        let mat = super::common::material_or(ctx, "grout", "concrete");
+        prisms.insert(
+            0,
+            Prism { material: mat.to_string(), ..steel("adhesive", model::one_loop(model::rect_loop(-hr, -embed, hr, 0.0)), hr) },
+        );
     }
     let bx = box_of_prisms(&prisms);
     Some(Built {
@@ -129,8 +186,69 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             fmt_ft_in(proj),
             h.tag(),
             if post { "" } else { " hook" }
-        ),
+        ) + &extras(&ap),
         prisms,
         ..Built::default()
     })
+}
+
+fn extras(ap: &Params) -> alloc::string::String {
+    let mut out = alloc::string::String::new();
+    if let Some(p) = &ap.plate {
+        out.push_str(&format!(", through {p}"));
+    }
+    if ap.leveling_nut {
+        out.push_str(", leveling nut");
+    }
+    if let Some(w) = &ap.plate_washer {
+        out.push_str(&format!(", plate washer {w}"));
+    }
+    out
+}
+
+/// "WxWxT" (lengths): the plate washer's width and thickness.
+fn parse_plate_washer(ctx: &mut Ctx, t: &str) -> Option<(f64, f64)> {
+    let parts: Vec<&str> = t.split(['x', 'X']).collect();
+    let vals: Vec<f64> = parts.iter().filter_map(|p| crate::units::parse_length_str(p.trim())).collect();
+    if parts.len() != 3 || vals.len() != 3 || vals.iter().any(|v| *v <= 0.0) || vals[2] >= vals[0] {
+        ctx.p.fail(
+            "plate_washer",
+            format!("plate_washer must be \"WxWxT\" in inches, e.g. \"3x3x0.229\" or \"3x3x1/4\" (got \"{t}\")"),
+        );
+        return None;
+    }
+    Some((vals[0].max(vals[1]), vals[2]))
+}
+
+/// The bottom and top (local y, from the placement point) of the member the rod passes through, on the rod's axis.
+fn plate_faces(ctx: &mut Ctx, name: &str) -> Option<(f64, f64)> {
+    let m = super::hardware::member(ctx, "plate", name)?;
+    let o = ctx.origin;
+    let ys = crate::pathclip::scan(&m.flat, o.x, true);
+    let (Some(&bot), Some(&top)) = (ys.first(), ys.last()) else {
+        ctx.p.fail(
+            "plate",
+            format!(
+                "plate '{}' is not over the rod (x {}): it spans x {}..{}",
+                m.id,
+                fmt_ft_in(o.x),
+                fmt_ft_in(m.bx.x0),
+                fmt_ft_in(m.bx.x1)
+            ),
+        );
+        return None;
+    };
+    if bot < o.y {
+        ctx.p.fail(
+            "plate",
+            format!(
+                "plate '{}' bottom (y {}) is below the rod's top of concrete (y {}); the rod passes up through the plate",
+                m.id,
+                fmt_ft_in(bot),
+                fmt_ft_in(o.y)
+            ),
+        );
+        return None;
+    }
+    Some((bot - o.y, top - o.y))
 }

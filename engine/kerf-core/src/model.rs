@@ -341,7 +341,7 @@ pub struct Built {
 pub struct Bears {
     pub y: f64,
     pub plan: [f64; 4],
-    pub post: String,
+    pub post: Vec<String>,
     pub post_y0: f64,
     pub standoff: f64,
 }
@@ -355,6 +355,8 @@ pub struct HwInfo {
     pub bears: Option<Bears>,
     /// A holdown: its rod, whose lower end must be anchored in concrete, masonry or steel.
     pub rod: Option<String>,
+    /// A hanger: the carried and the carrying members; the gap between them is the hanger's (no W_NEAR_MISS).
+    pub joins: [Vec<String>; 2],
 }
 
 pub const BOX_ANCHOR_NAMES: [&str; 9] = [

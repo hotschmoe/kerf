@@ -6,6 +6,7 @@
 use super::common::{Ctx, drop_duplicate_points, oriented_ccw, parse_point_list, sawn_depth, sawn_thickness, vertex_anchors};
 use super::connector::{Face, Kind, ModelInfo, Mount, Params, strap_info, thickness};
 use crate::clip;
+use crate::json::Value;
 use crate::params::ParamEnum;
 use crate::geom::{self, Box, FLAT_TOL, Pt, V2};
 use crate::math;
@@ -219,11 +220,36 @@ fn reject_placement(ctx: &mut Ctx, kind: Kind) -> bool {
     ctx.p.ok
 }
 
-fn need<'v>(ctx: &mut Ctx, v: Option<&'v str>, key: &str, kind: Kind, hint: &str) -> Option<&'v str> {
-    if v.is_none() {
+/// The member (or the union of the members listed) a host key names; None when missing or bad (reported).
+fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint: &str) -> Option<Member> {
+    let Some(v) = v else {
         ctx.p.fail(key, format!("kind {} needs '{key}': {hint}", kind.tag()));
+        return None;
+    };
+    let names: Vec<&str> = match v {
+        Value::String(s) => vec![s.as_str()],
+        Value::Array(a) if !a.is_empty() && a.iter().all(|e| e.str().is_some()) => a.iter().filter_map(Value::str).collect(),
+        _ => {
+            ctx.p.fail(key, format!("'{key}' must be a component id or a list of ids (got {})", model::kind_or_text(v)));
+            return None;
+        }
+    };
+    let mut out: Option<Member> = None;
+    for n in names {
+        let m = member(ctx, key, n)?;
+        out = Some(match out {
+            None => m,
+            Some(mut u) => {
+                u.id = format!("{}+{}", u.id, m.id);
+                u.bx.add_box(m.bx);
+                u.z0 = u.z0.min(m.z0);
+                u.z1 = u.z1.max(m.z1);
+                u.flat.extend(m.flat);
+                u
+            }
+        });
     }
-    v
+    out
 }
 
 pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<Built> {
@@ -314,11 +340,9 @@ fn model_size(name: &str, prefix: &str) -> Option<(f64, f64)> {
 
 fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
     let kind = Kind::Hanger;
-    let cn = need(ctx, cp.carried.as_deref(), "carried", kind, "the joist or beam it carries, e.g. \"joist\"");
-    let bn = need(ctx, cp.carrying.as_deref(), "carrying", kind, "the member it hangs from, e.g. \"header\"");
-    let (cn, bn) = (cn?, bn?);
-    let c = member(ctx, "carried", cn)?;
-    let b = member(ctx, "carrying", bn)?;
+    let c = need(ctx, cp.carried.as_ref(), "carried", kind, "the joist or beam it carries, e.g. \"joist\"");
+    let b = need(ctx, cp.carrying.as_ref(), "carrying", kind, "the member it hangs from, e.g. \"header\"");
+    let (c, b) = (c?, b?);
     let mount = cp.mount.unwrap_or_else(|| mi.mount());
     let overlap = |a0: f64, a1: f64, b0: f64, b1: f64| a1.min(b1) - a0.max(b0) > 1e-6;
     let yo = overlap(c.bx.y0, c.bx.y1, b.bx.y0, b.bx.y1);
@@ -424,7 +448,7 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
     if let Some(sr) = mi.series
         && let Some((mw, md)) = model_size(&mi.name, sr.prefix)
     {
-        if depth > md + 0.5 || depth < md - 2.5 {
+        if depth > md + 0.5 || depth < md - 1.0 {
             warns.push(warn(ctx, "W_HANGER_SIZE", "model", format!("hanger '{id}': model {} is made for a member {} deep; '{}' is {} deep{}", mi.name, fmt_ft_in(md), c.id, fmt_ft_in(depth), if depth > md { " (hanger too small)" } else { "" }), format!("pick the {} model sized for {} x {}", sr.prefix, fmt_ft_in(wc), fmt_ft_in(depth))));
         }
         if (mw - wc).abs() > 0.25 {
@@ -442,16 +466,16 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
         b.id
     );
     let origin = ctx.origin;
-    Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: seat_pt }], info, model::HwInfo { warns, ..Default::default() }))
+    let joins = [c.id.split('+').map(String::from).collect(), b.id.split('+').map(String::from).collect()];
+    let hw = model::HwInfo { warns, joins, ..Default::default() };
+    Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: seat_pt }], info, hw))
 }
 
 fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
     let kind = Kind::PostCap;
-    let pn = need(ctx, cp.post.as_deref(), "post", kind, "the post under the beam");
-    let bn = need(ctx, cp.beam.as_deref(), "beam", kind, "the beam on the post");
-    let (pn, bn) = (pn?, bn?);
-    let p = member(ctx, "post", pn)?;
-    let b = member(ctx, "beam", bn)?;
+    let p = need(ctx, cp.post.as_ref(), "post", kind, "the post under the beam");
+    let b = need(ctx, cp.beam.as_ref(), "beam", kind, "the beam on the post");
+    let (p, b) = (p?, b?);
     let top = p.bx.y1;
     if (b.bx.y0 - top).abs() > 0.25 || b.bx.x1 < p.bx.x0 || b.bx.x0 > p.bx.x1 || b.z1 < p.z0 || b.z0 > p.z1 {
         ctx.p.fail(
@@ -500,8 +524,7 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
 
 fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
     let kind = Kind::PostBase;
-    let pn = need(ctx, cp.post.as_deref(), "post", kind, "the post it holds")?;
-    let p = member(ctx, "post", pn)?;
+    let p = need(ctx, cp.post.as_ref(), "post", kind, "the post it holds")?;
     let so = cp.standoff.unwrap_or(1.0);
     if so < 0.0 {
         ctx.p.fail("standoff", format!("standoff must be 0 or more (got {})", fmt_ft_in(so)));
@@ -525,7 +548,7 @@ fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -
         kit.rect("side", [px0, px1], [yb, py0 + h], [pz0 - t, pz0], nails(px0, px1));
     }
     let info = format!("connector {}post base {gauge_i} ga, standoff {}, under {}", model_text(mi), fmt_ft_in(so), p.id);
-    let bears = model::Bears { y: yb, plan: [px0 - t, px1 + t, pz0 - t, pz1 + t], post: p.id.clone(), post_y0: py0, standoff: so };
+    let bears = model::Bears { y: yb, plan: [px0 - t, px1 + t, pz0 - t, pz1 + t], post: p.id.split('+').map(String::from).collect(), post_y0: py0, standoff: so };
     let hw = model::HwInfo { bears: Some(bears), ..Default::default() };
     let origin = ctx.origin;
     Some(kit.finish(origin, vec![NamedAnchor { name: "base_bottom".into(), p: V2::init((px0 + px1) / 2.0, yb) }], info, hw))
@@ -533,8 +556,7 @@ fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -
 
 fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
     let kind = Kind::Holdown;
-    let pn = need(ctx, cp.post.as_deref(), "post", kind, "the post or stud pack it is screwed to")?;
-    let p = member(ctx, "post", pn)?;
+    let p = need(ctx, cp.post.as_ref(), "post", kind, "the post or stud pack it is screwed to")?;
     let rod = match cp.rod.as_deref() {
         Some(r) => {
             let m = member(ctx, "rod", r)?;
