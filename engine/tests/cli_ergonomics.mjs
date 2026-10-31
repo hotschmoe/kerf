@@ -1924,6 +1924,24 @@ section('#28. round-2 papercuts');
   write('se28.kerf.json', { kerf: '0.1', id: 'se28', title: 'SE', components: [se, earth, { id: 'gr', type: 'fill', material: 'gravel', points: [[-30, -10], [60, -10], [60, -6], [-30, -6]] }], views: [{ id: 'A', kind: 'section' }] });
   r = kerf(['check', 'se28.kerf.json']);
   check('fill against fill is still W_OVERLAP', /^WARN W_OVERLAP .*'earth' and 'gr'|^WARN W_OVERLAP .*'gr' and 'earth'/m.test(r.out), r.out);
+
+  const slabPts = (x0) => [[x0, 0], [30, 0], [30, -6], [8, -6], [4, -14], [-4, -14], [-8, -6], [x0, -6]];
+  const stDoc = (x0, station) => ({ kerf: '0.1', id: 'st28', title: 'ST', components: [
+    { id: 'slab', type: 'concrete', shape: 'polygon', points: slabPts(x0), at: { to: [0, 0] } },
+    { id: 'b1', type: 'rebar', size: '#4', place: { in: 'slab', face: 'top', station } },
+  ], views: [{ id: 'A', kind: 'section' }] });
+  write('st28.kerf.json', stDoc(-30, { ref: 'slab@vertex_6', offset: [2, 0] }));
+  r = kerf(['check', 'st28.kerf.json']);
+  check('place.station as a Ref: the bar takes its x (vertex_6 x -4" + 2")', /^ b1 +rebar \(1\) #4 along z @ top face +x -2 1\/4"\.\.-1 3\/4"/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+  write('st28.kerf.json', stDoc(-24, { ref: 'slab@vertex_6', offset: [2, 0] }));
+  r = kerf(['check', 'st28.kerf.json']);
+  check('trimming the slab end leaves a Ref station where it was', /^ b1 +rebar \(1\) #4 along z @ top face +x -2 1\/4"\.\.-1 3\/4"/m.test(r.out), r.out);
+  write('st28.kerf.json', stDoc(-24, 28));
+  r = kerf(['check', 'st28.kerf.json']);
+  check('a length station still measures from the zone box left side (x -24" + 28")', /^ b1 +rebar \(1\) #4 along z @ top face +x 3 3\/4"\.\.4 1\/4"/m.test(r.out), r.out);
+  write('st28.kerf.json', stDoc(-24, 'slab@vertexx_6'));
+  r = kerf(['check', 'st28.kerf.json']);
+  check('a bad Ref station: E_ANCHOR_UNKNOWN listing the anchors', /^ERROR E_ANCHOR_UNKNOWN b1: reference 'slab@vertexx_6'.*vertex_6/m.test(r.out + r.err), r.out + r.err);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

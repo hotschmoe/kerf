@@ -43,7 +43,7 @@ params! {
         mode: Enum(Mode) = Mode::AlongZ => { desc: "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
         plane: Enum(Plane) = Plane::Xy => { desc: "path: xy = the bar lies in the section plane (points [x, y]); xz = the bar lies flat at height `y` (points [x, z]: corner and intersection bars, bars around an opening). A plan view draws an xz bar as its path, a section as a dot where it crosses the cut and a line where it runs behind it" },
         y: OptRaw => { def: "plane xz: required", desc: "height of the bar's centreline, a length or a Ref (its y), e.g. {\"ref\": \"ftg@bottom_left\", \"offset\": [0, 3.25]}" },
-        place: OptRaw => { desc: "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face of the host's outline (cut to the part for comp.part; in a polygon, the outermost run of edges facing that way, e.g. the lowest bottom run = a thickened footing), spread evenly along it at `side_cover` from its ends (count 1 centers); a bar centre outside the zone is E_PLACE_OUTSIDE. center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position)" },
+        place: OptRaw => { desc: "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face of the host's outline (cut to the part for comp.part; in a polygon, the outermost run of edges facing that way, e.g. the lowest bottom run = a thickened footing), spread evenly along it at `side_cover` from its ends (count 1 centers); a bar centre outside the zone is E_PLACE_OUTSIDE. center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position), or at the x (y) of a Ref, e.g. \"ftg@vertex_7\" or {ref, offset}, which follows that member when the host is resized" },
         points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs (plane xz: [x, z] pairs); bends get radius bend_radius, drawn as fillets" },
         bend_radius: OptLenPos => { def: "3*d_b", desc: "inside bend radius for path bars" },
         spacing_note: Str = "" => { def: "null", desc: "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
@@ -284,6 +284,25 @@ fn path_anchors(vs: &[V2], center: &[geom::Pt]) -> Vec<NamedAnchor> {
     out
 }
 
+/// Where `place.station` puts a single bar along the zone: an offset from the zone box's left (bottom) side, or the x (y)
+/// of a Ref, which follows the member it names when the host is resized.
+#[derive(Clone, Copy)]
+enum Station {
+    Offset(f64),
+    At(V2),
+}
+
+impl Station {
+    /// The station as a world coordinate along x (`horizontal`) or y, given the zone box's low side on that axis.
+    fn coord(self, lo: f64, horizontal: bool) -> f64 {
+        match self {
+            Station::Offset(o) => lo + o,
+            Station::At(p) if horizontal => p.x,
+            Station::At(p) => p.y,
+        }
+    }
+}
+
 fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
     if !matches!(pl, Value::Object(_)) {
         ctx.p.fail("place", "param 'place' must be {\"in\": \"comp[.part]\", \"face\": \"bottom|top|left|right|center\", \"cover\": 3, \"count\": 2, \"side_cover\": 3}".to_string());
@@ -303,14 +322,23 @@ fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
         ctx.p.fail("place/axis", format!("place.axis must be \"x\" or \"y\" (got \"{axis}\"): the direction a multi-bar row spreads for face \"center\""));
         return None;
     }
-    let station: Option<f64> = match pl.get("station") {
-        Some(x) => {
-            let Some(s) = units::parse_length(x) else {
-                ctx.p.fail("place/station", "place.station must be a length measured from the zone's left face (bottom face with axis \"y\"), e.g. 4 or \"4\\\"\"".to_string());
+    let station: Option<Station> = match pl.get("station") {
+        Some(x) => match units::parse_length(x) {
+            Some(s) => Some(Station::Offset(s)),
+            None if matches!(x, Value::String(_) | Value::Object(_)) => {
+                let path = format!("{}/{}/place/station", ctx.p.base, ctx.p.id);
+                let id = ctx.p.id.to_string();
+                let Some(p) = ctx.scene.point(x, &id, &path) else {
+                    ctx.p.ok = false;
+                    return None;
+                };
+                Some(Station::At(p))
+            }
+            None => {
+                ctx.p.fail("place/station", "place.station must be a length measured from the zone's left face (bottom face with axis \"y\"), e.g. 4 or \"4\\\"\", or a Ref whose x (y for left/right faces and axis \"y\") the bar takes, e.g. \"ftg@vertex_7\" or {\"ref\": \"ftg@bottom_left\", \"offset\": [12, 0]}".to_string());
                 return None;
-            };
-            Some(s)
-        }
+            }
+        },
         None => None,
     };
     if station.is_some() && count > 1 {
@@ -415,20 +443,24 @@ fn place_rebar(ctx: &mut Ctx, pl: &Value, d: f64) -> Option<Vec<V2>> {
         for i in 0..count {
             let t = if count == 1 { 0.5 } else { i as f64 / (count - 1) as f64 };
             if along_y {
-                let y = station.map_or(lo + (hi - lo) * t, |st| bx.y0 + st);
+                let y = station.map_or(lo + (hi - lo) * t, |st| st.coord(bx.y0, false));
                 out.push(V2::init(mid_x, y));
             } else {
-                let x = station.map_or(lo + (hi - lo) * t, |st| bx.x0 + st);
+                let x = station.map_or(lo + (hi - lo) * t, |st| st.coord(bx.x0, true));
                 out.push(V2::init(x, mid_y));
             }
         }
     } else if let Some(st) = station {
         let horizontal = dir.x == 0.0;
-        let line = if horizontal { bx.x0 + st } else { bx.y0 + st };
+        let line = st.coord(if horizontal { bx.x0 } else { bx.y0 }, horizontal);
         let Some((q, cosn)) = face_at(&zone, dir, horizontal, line) else {
+            let what = match st {
+                Station::Offset(o) => fmt_ft_in(o),
+                Station::At(_) => format!("(a Ref at {} {})", if horizontal { "x" } else { "y" }, fmt_ft_in(line)),
+            };
             let msg = format!(
                 "place.station {} puts the bar at {} {}, where zone '{in_s}' has no {face} face (the zone spans {} {}..{}). Fix: use a station between 0 and {}",
-                fmt_ft_in(st),
+                what,
                 if horizontal { "x" } else { "y" },
                 fmt_ft_in(line),
                 if horizontal { "x" } else { "y" },

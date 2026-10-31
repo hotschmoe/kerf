@@ -657,7 +657,11 @@ fn table_style(an: &Value, vid: &str, st: &Style, diags: &Diags) {
             continue;
         }
         listed += 1;
-        let every = if subs.len() > 1 { format!(" and the {} other cells with this text", subs.len() - 1) } else { String::new() };
+        let every = if subs.len() > 1 {
+            format!(" and the {} other cells with this text", subs.len() - 1)
+        } else {
+            String::new()
+        };
         let fix = if !ns.fix_safe || ns.rewrite || ns.fixed == text {
             "edit the text by hand to fix the problems listed".to_string()
         } else {
