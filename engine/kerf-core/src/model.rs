@@ -320,6 +320,8 @@ pub struct Built {
     pub plan_z: Vec<NamedAnchor>,
     /// The prisms' `zoff` are absolute z (bars in the XZ plane): without an explicit `z` the component is centred on z = 0.
     pub abs_z: bool,
+    /// Angle (radians, CCW) of the top surface that `slope: "@id"` follows (types with `has_pitch`).
+    pub pitch: f64,
 }
 
 pub const BOX_ANCHOR_NAMES: [&str; 9] = [

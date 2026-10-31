@@ -789,14 +789,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
 
     let Some(inst) = instance_transforms(scene, &id, ty, &mut p, &built, &at, angle, zbase, &arr) else { return };
     let world = world_prisms(scene.style, index, &built, &inst, emb_override, dashed);
-    let mut pitch_angle = 0.0;
-    if ty.traits.has_pitch {
-        let default_pitch = Value::String("4:12".into());
-        let pv = node.get("pitch").unwrap_or(&default_pitch);
-        let th = units::parse_slope(pv).unwrap_or(0.0);
-        let right = node.get("exterior").and_then(Value::str).is_some_and(|s| s == "right");
-        pitch_angle = if right { -th } else { th };
-    }
+    let pitch_angle = if ty.traits.has_pitch { built.pitch } else { 0.0 };
     let comp = &mut scene.comps[idx];
     comp.angle = angle;
     comp.pitch_angle = pitch_angle;
