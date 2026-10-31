@@ -768,6 +768,85 @@ async function main() {
   fs.rmSync(dirS, { recursive: true, force: true });
   fs.rmSync(outside, { recursive: true, force: true });
 
+  section('reference images: GET /api/docs/:file/reference (meta.references)');
+  const dirR = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-ref-'));
+  const outR = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-smoke-ref-outside-'));
+  const pngBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  fs.mkdirSync(path.join(dirR, 'refs', 'sub.png'), { recursive: true });
+  fs.writeFileSync(path.join(dirR, 'refs', 'stem.png'), pngBytes);
+  const typed = { 'refs/a.jpg': 'image/jpeg', 'refs/a.jpeg': 'image/jpeg', 'refs/a.webp': 'image/webp', 'refs/a.gif': 'image/gif', 'refs/a.svg': 'image/svg+xml', 'refs/a.pdf': 'application/pdf', 'refs/UPPER.PNG': 'image/png' };
+  for (const f of Object.keys(typed)) fs.writeFileSync(path.join(dirR, f), 'bytes of ' + f);
+  fs.writeFileSync(path.join(dirR, 'refs', 'notes.txt'), 'not an image');
+  fs.writeFileSync(path.join(dirR, 'refs', 'unlisted.png'), 'UNLISTED');
+  fs.writeFileSync(path.join(outR, 'secret.png'), 'TOP SECRET PNG');
+  fs.symlinkSync(path.join(outR, 'secret.png'), path.join(dirR, 'refs', 'escape.png'));
+  fs.symlinkSync(outR, path.join(dirR, 'linked'));
+  fs.symlinkSync(path.join(dirR, 'refs', 'stem.png'), path.join(dirR, 'refs', 'alias.png'));
+  const listed = ['refs/stem.png', ...Object.keys(typed), 'refs/notes.txt', 'refs/gone.png', 'refs/escape.png', 'linked/secret.png', 'refs/alias.png', 'refs/sub.png', '../' + path.basename(outR) + '/secret.png', path.join(outR, 'secret.png')];
+  cli(dirR, ['new', 'r.kerf.json']);
+  r = cli(dirR, ['apply', 'r.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'meta', value: { references: listed.map((p) => ({ path: p, caption: 'CAP ' + p })) } }]), '-w']);
+  check('a document listing reference files (with bad ones) is written', r.code === 0, r.out);
+  const RS = await startServer(dirR, ['--token', 'reftok']);
+  const bearer = { authorization: 'Bearer reftok' };
+  const refUrl = (p) => '/api/docs/r.kerf.json/reference?path=' + encodeURIComponent(p);
+  const refGet = (p, headers = bearer) => api(RS.port, 'GET', refUrl(p), { headers });
+  let rr = await refGet('refs/stem.png');
+  check('reference: a listed PNG is served byte for byte as image/png', rr.status === 200 && rr.headers['content-type'] === 'image/png' && rr.body.equals(pngBytes), [rr.status, rr.headers['content-type'], rr.text.slice(0, 120)]);
+  check('reference: Cache-Control no-cache + ETag, inline with the file name, the API security headers', rr.headers['cache-control'] === 'no-cache' && /^"\d+-\d+-[0-9a-f]{16}"$/.test(rr.headers.etag ?? '') && rr.headers['content-disposition'] === 'inline; filename="stem.png"' && rr.headers['x-content-type-options'] === 'nosniff' && /default-src 'none'/.test(rr.headers['content-security-policy'] ?? ''), rr.headers);
+  const r304 = await rawReq(RS.port, 'GET', refUrl('refs/stem.png'), { headers: { ...bearer, 'if-none-match': rr.headers.etag } });
+  check('reference: If-None-Match -> 304, no body', r304.status === 304 && r304.body.length === 0, r304.status);
+  for (const [p, mime] of Object.entries(typed)) {
+    rr = await refGet(p);
+    check(`reference: ${p} -> ${mime}`, rr.status === 200 && rr.headers['content-type'] === mime && rr.text === 'bytes of ' + p, [rr.status, rr.headers['content-type']]);
+  }
+  rr = await refGet('refs/alias.png');
+  check('reference: a symlink that stays inside --dir is followed', rr.status === 200 && rr.body.equals(pngBytes), rr.status);
+  rr = await refGet('refs/stem.png', {});
+  check('reference: no token -> 401 E_TOKEN, nothing served', rr.status === 401 && rr.json?.error?.code === 'E_TOKEN' && !rr.body.includes(pngBytes.subarray(0, 8)), rr.status);
+  rr = await refGet('refs/stem.png', { authorization: 'Bearer wrong' });
+  check('reference: wrong token -> 401', rr.status === 401, rr.status);
+  rr = await api(RS.port, 'GET', refUrl('refs/stem.png') + '&token=reftok');
+  check('reference: ?token= works (like downloads)', rr.status === 200 && rr.body.equals(pngBytes), rr.status);
+  rr = await refGet('refs/stem.png', { ...bearer, origin: 'http://evil.example' });
+  check('reference: a cross-origin request -> 403 E_ORIGIN', rr.status === 403 && rr.json?.error?.code === 'E_ORIGIN', rr.status);
+  rr = await api(RS.port, 'POST', refUrl('refs/stem.png'), { headers: bearer });
+  check('reference: POST -> 405', rr.status === 405, rr.status);
+  for (const [label, q] of [
+    ['../ traversal', '../' + path.basename(outR) + '/secret.png'],
+    ['traversal in the middle', 'refs/../../' + path.basename(outR) + '/secret.png'],
+    ['backslash traversal', '..\\' + path.basename(outR) + '\\secret.png'],
+    ['absolute path', path.join(outR, 'secret.png')],
+    ['drive letter', 'C:\\Windows\\win.png'],
+    ['URL', 'file:///etc/passwd.png'],
+    ['NUL byte', 'refs/stem.png\u0000.png'],
+  ]) {
+    rr = await refGet(q);
+    check(`reference: ${label} -> 400 E_PATH, nothing outside --dir read`, rr.status === 400 && rr.json?.error?.code === 'E_PATH' && !rr.text.includes('TOP SECRET'), [rr.status, rr.text.slice(0, 140)]);
+  }
+  rr = await api(RS.port, 'GET', '/api/docs/r.kerf.json/reference?path=%2e%2e%2f' + path.basename(outR) + '%2fsecret.png', { headers: bearer });
+  check('reference: percent-encoded ../ -> 400 E_PATH', rr.status === 400 && rr.json?.error?.code === 'E_PATH', rr.status);
+  rr = await refGet('refs/escape.png');
+  check('reference: a symlinked file that leaves --dir -> 403 E_PATH, content not returned', rr.status === 403 && rr.json?.error?.code === 'E_PATH' && !rr.text.includes('TOP SECRET'), [rr.status, rr.text.slice(0, 140)]);
+  rr = await refGet('linked/secret.png');
+  check('reference: a file under a symlinked directory that leaves --dir -> 403', rr.status === 403 && !rr.text.includes('TOP SECRET'), rr.status);
+  rr = await refGet('refs/notes.txt');
+  check('reference: an unknown extension -> 400 E_TYPE even when listed', rr.status === 400 && rr.json?.error?.code === 'E_TYPE' && !rr.text.includes('not an image'), [rr.status, rr.text.slice(0, 140)]);
+  rr = await refGet('refs/unlisted.png');
+  check('reference: a file that is not in meta.references -> 404, content not returned', rr.status === 404 && rr.json?.error?.code === 'E_NOT_FOUND' && /not in the meta\.references/.test(rr.json.error.message) && !rr.text.includes('UNLISTED'), rr.text.slice(0, 140));
+  rr = await refGet('refs/gone.png');
+  check('reference: listed but missing -> 404', rr.status === 404 && rr.json?.error?.code === 'E_NOT_FOUND', rr.status);
+  rr = await refGet('refs/sub.png');
+  check('reference: a directory -> 404', rr.status === 404, rr.status);
+  rr = await api(RS.port, 'GET', '/api/docs/r.kerf.json/reference', { headers: bearer });
+  check('reference: missing ?path= -> 400 E_INPUT with an example', rr.status === 400 && rr.json?.error?.code === 'E_INPUT' && /path=refs\//.test(rr.json.error.message), rr.text);
+  rr = await api(RS.port, 'GET', '/api/docs/nope.kerf.json/reference?path=refs%2Fstem.png', { headers: bearer });
+  check('reference: unknown document -> 404', rr.status === 404, rr.status);
+  r = cli(dirR, ['check', 'r.kerf.json']);
+  check('kerf check on the same folder: missing and escaping references warn W_REFERENCE_FILE', /meta\.references\[\d+\]\.path "refs\/gone\.png" does not exist/.test(r.out) && /"refs\/escape\.png" resolves outside the document's folder/.test(r.out) && /"linked\/secret\.png" resolves outside/.test(r.out) && /"refs\/sub\.png" does not exist/.test(r.out) && !/"refs\/stem\.png" does not exist/.test(r.out), r.out);
+  RS.proc.kill('SIGTERM');
+  fs.rmSync(dirR, { recursive: true, force: true });
+  fs.rmSync(outR, { recursive: true, force: true });
+
   section('misc');
   const badDir = spawn(KERF, ['serve', '--dir', '/definitely/not/here'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let berr = ''; badDir.stderr.on('data', (d) => { berr += d; });

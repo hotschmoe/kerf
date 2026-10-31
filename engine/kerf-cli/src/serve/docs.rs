@@ -1,10 +1,11 @@
-//! Document endpoints: info, list, get, create, apply, log, export.
+//! Document endpoints: info, list, get, create, apply, log, export, reference.
 
 use super::{DocInfo, Server, bad_request, compute_info, etag_of, is_missing, lock, mtime_ns, parse_body};
 use crate::agents;
 use crate::http::{self, Head, Out, Request};
-use crate::workspace::{self, DocLock, LogMeta};
+use crate::workspace::{self, DocLock, LogMeta, RefMiss};
 use kerf_core::json::{self, Value};
+use kerf_core::references::{self, PathProblem};
 use kerf_core::{api, canon, model, ops};
 use std::fs;
 use std::io::{self, Read, Write};
@@ -440,5 +441,82 @@ pub fn api_export(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &st
         Head { status: 200, content_type: Some(mime), keep_alive: ka, extra: &hdr, ..Head::default() },
         &r.bytes,
     )?;
+    Ok(ka)
+}
+
+/// Largest reference file the server sends (snips of drawing sets are far smaller).
+const MAX_REFERENCE: u64 = 64 << 20;
+
+/// `GET /api/docs/:file/reference?path=P`: a file listed in the document's `meta.references`, read from the served
+/// folder. The path must be relative, stay inside the folder (symbolic links included) and name an image or a PDF.
+pub fn api_reference(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &str) -> io::Result<bool> {
+    let ka = req.keep_alive;
+    let Some(rel) = req.param("path").filter(|p| !p.is_empty()) else {
+        return bad_request(
+            req,
+            w,
+            extra,
+            "E_INPUT",
+            "missing ?path=<a meta.references path>, for example path=refs/a.png",
+        );
+    };
+    if let Some(problem) = references::path_problem(&rel) {
+        let code = if problem == PathProblem::Extension { "E_TYPE" } else { "E_PATH" };
+        return bad_request(req, w, extra, code, &format!("path \"{rel}\" {}", problem.describe()));
+    }
+    let rd = match s.read_doc(file) {
+        Ok(rd) => rd,
+        Err(e) if is_missing(&e) => return not_found(w, ka, extra, file),
+        Err(e) => return Err(e),
+    };
+    if !json::parse(&rd.bytes).is_ok_and(|d| references::paths(&d).iter().any(|(_, p)| *p == rel)) {
+        let msg = format!("\"{rel}\" is not in the meta.references of {file} (only listed references are served)");
+        http::send_error(w, 404, ka, extra, "E_NOT_FOUND", &msg)?;
+        return Ok(ka);
+    }
+    let full = match workspace::resolve_reference(&s.dir_abs, &rel) {
+        Ok(p) => p,
+        Err(RefMiss::Missing) => return not_found(w, ka, extra, &rel),
+        Err(RefMiss::Outside) => {
+            let msg = format!(
+                "{rel} resolves outside the served folder through a symbolic link; copy the file into the folder"
+            );
+            http::send_error(w, 403, ka, extra, "E_PATH", &msg)?;
+            return Ok(ka);
+        }
+    };
+    let f = match fs::File::open(&full) {
+        Ok(f) => f,
+        Err(e) if is_missing(&e) => return not_found(w, ka, extra, &rel),
+        Err(e) => return Err(e),
+    };
+    let meta = f.metadata()?;
+    if !meta.is_file() {
+        return not_found(w, ka, extra, &rel);
+    }
+    if meta.len() > MAX_REFERENCE {
+        let msg = format!("{rel} is {} bytes; reference files are served up to {MAX_REFERENCE} bytes", meta.len());
+        http::send_error(w, 422, ka, extra, "E_TOO_LARGE", &msg)?;
+        return Ok(ka);
+    }
+    let mut bytes = Vec::new();
+    f.take(MAX_REFERENCE).read_to_end(&mut bytes)?;
+    let etag = etag_of(mtime_ns(&meta), meta.len(), &bytes);
+    let name: String = rel
+        .rsplit('/')
+        .next()
+        .unwrap_or("")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+        .collect();
+    let hdr = format!(
+        "ETag: {etag}\r\nCache-Control: no-cache\r\nContent-Disposition: inline; filename=\"{name}\"\r\n{extra}"
+    );
+    let head = Head { keep_alive: ka, no_store: false, extra: &hdr, ..Head::default() };
+    if req.header("if-none-match") == Some(etag.as_str()) {
+        http::send(w, Head { status: 304, ..head }, b"")?;
+        return Ok(ka);
+    }
+    http::send(w, Head { content_type: Some(http::mime_for(&rel)), ..head }, &bytes)?;
     Ok(ka)
 }

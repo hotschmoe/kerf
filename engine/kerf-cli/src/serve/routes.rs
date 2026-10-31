@@ -16,6 +16,7 @@ pub enum Kind {
     DocApply,
     DocLog,
     DocExport,
+    DocReference,
     Events,
     AgentRun,
     AgentStop,
@@ -48,11 +49,12 @@ const ENDPOINTS: [(&str, Methods); 5] = [
     ("/agent/stop", Methods { get: None, post: Some(Kind::AgentStop) }),
 ];
 
-const DOC_ACTIONS: [(&str, Methods); 4] = [
+const DOC_ACTIONS: [(&str, Methods); 5] = [
     ("", Methods { get: Some(Kind::DocGet), post: None }),
     ("apply", Methods { get: None, post: Some(Kind::DocApply) }),
     ("log", Methods { get: Some(Kind::DocLog), post: None }),
     ("export", Methods { get: Some(Kind::DocExport), post: None }),
+    ("reference", Methods { get: Some(Kind::DocReference), post: None }),
 ];
 
 pub fn route_of<'a>(method: &str, path: &'a str) -> Route<'a> {
@@ -184,6 +186,7 @@ pub fn handle_request(s: &Server, req: &mut Request, rd: &mut In, w: &mut Out) -
         Kind::DocApply => docs::api_apply(s, rq, w, &extra, route.file),
         Kind::DocLog => docs::api_log(s, rq, w, &extra, route.file),
         Kind::DocExport => docs::api_export(s, rq, w, &extra, route.file),
+        Kind::DocReference => docs::api_reference(s, rq, w, &extra, route.file),
         Kind::Events => stream::api_events(s, w, &extra),
         Kind::AgentRun => agent::api_agent_run(s, rq, w, &extra),
         Kind::AgentStop => agent::api_agent_stop(s, rq, w, &extra),
