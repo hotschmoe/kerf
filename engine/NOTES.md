@@ -114,8 +114,9 @@ geometrically (tolerance 1e-3).
 - Papercuts (#19, SPEC 25.5): on the 47 MASS details with every `acknowledge` stripped, W_NEAR_MISS 64 -> 15 (41 gaps
   filled by a subfloor, hanger, cap plate, tie or the other ply of a double plate; 1 side-by-side 1 3/4" framing space;
   the rest were union boxes of arrays); W_FLOATING 14 -> 14; new W_BOLT_EDGE 2 (S-80.01 D rods 1 1/2" from the ICF core
-  face, the case claude7 asked for) and W_BOLT_SPACING 1 (S-80.03's two faked weld studs 3/16" apart); every other code
-  unchanged. Wrap changes moved text in 29 views (values kept together) and title blocks of long titles now take two
+  face, the case claude7 asked for), W_BOLT_SPACING 1 (S-80.03's two faked weld studs 3/16" apart) and W_PARAM 1
+  (S-80.03 E: a weld with one member); every other code unchanged. Wrap changes moved text in 58 of 198 views (values
+  kept together) and title blocks of long titles now take two
   lines; goldens regenerated for both. `kerf version` gets `build` from `kerf-cli/build.rs` (`git describe`), so the core
   and the wasm stay byte-identical.
 - Lengths print as `3'-0 1/4"` (feet with zero inches keep the `0`). Keyed notes (SPEC 24, view `notes_style` or style

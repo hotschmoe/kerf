@@ -410,7 +410,13 @@ fn weld_members(scene: &Scene<'_>, vid: &str, id: &str, an: &Value, diags: &Diag
             "W_PARAM",
             Some(id),
             Some(&path),
-            format!("weld '{id}' in view {vid}: \"members\" must be two component ids (got {})", crate::model::kind_or_text(mv)),
+            format!(
+                "weld '{id}' in view {vid}: \"members\" must be the two component ids the weld joins (got {}); W_WELD_SIZE checks the thinner of two steel members",
+                match mv.arr() {
+                    Some(a) => format!("{} entr{}", a.len(), if a.len() == 1 { "y" } else { "ies" }),
+                    None => crate::model::kind_or_text(mv),
+                }
+            ),
             "e.g. \"members\": [\"col\", \"base_plate\"], or remove it".to_string(),
         );
         return;
