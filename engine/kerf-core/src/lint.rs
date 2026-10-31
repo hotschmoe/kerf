@@ -329,17 +329,14 @@ struct Abbr {
     abbr: &'static str,
 }
 
-/// Spelled-out word(s) that the house style abbreviates (matched as whole words, case-insensitive).
-static SPELLED_OUT: [Abbr; 10] = [
+/// Spelled-out word(s) the house style always abbreviates (matched as whole words, case-insensitive): the abbreviations
+/// that outnumber the spelled-out word by 3:1 or more in the MASS reference sets. Every other listed abbreviation and its
+/// words are both accepted (SPEC 25.3).
+static SPELLED_OUT: [Abbr; 5] = [
     Abbr { word: "GYPSUM BOARD", abbr: "GYP. BD." },
-    Abbr { word: "PRESSURE TREATED", abbr: "PT" },
     Abbr { word: "ON CENTER", abbr: "O.C." },
-    Abbr { word: "CONCRETE", abbr: "CONC." },
-    Abbr { word: "CONTINUOUS", abbr: "CONT." },
-    Abbr { word: "EACH", abbr: "EA." },
-    Abbr { word: "BOTTOM", abbr: "BOTT." },
-    Abbr { word: "REINFORCING", abbr: "REINF." },
     Abbr { word: "MINIMUM", abbr: "MIN." },
+    Abbr { word: "MAXIMUM", abbr: "MAX." },
     Abbr { word: "DIAMETER", abbr: "DIA." },
 ];
 

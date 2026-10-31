@@ -966,9 +966,8 @@ whose metrics are close; minor differences in CAD are acceptable.
   the member and also clears `W_UNTREATED_CONTACT`.
 - `W_NOTE_STYLE` (lint): note text containing lowercase letters (before the case transform; the case-significant
   tokens of §25.3 excepted), a trailing period (not after a house abbreviation, §25.3), ` x ` as a dimension separator (use ` X `), `1-1/2"` style fractions (house style is
-  `1 1/2"`), or a word on the abbreviation list spelled out (`GYPSUM BOARD → GYP. BD.`,
-  `CONCRETE → CONC.`, `CONTINUOUS → CONT.`, `EACH → EA.`, `ON CENTER → O.C.`, `BOTTOM → BOTT.`,
-  `REINFORCING → REINF.`, `MINIMUM → MIN.`, `DIAMETER → DIA.`, `PRESSURE TREATED → PT`). A dashed fraction is
+  `1 1/2"`), or one of five words spelled out that US practice abbreviates (`GYPSUM BOARD → GYP. BD.`,
+  `ON CENTER → O.C.`, `MINIMUM → MIN.`, `MAXIMUM → MAX.`, `DIAMETER → DIA.`; §25.3). A dashed fraction is
   `<whole>-<num>/<den>` with the whole number starting a token and a 2..64 power-of-two denominator ending it, so
   `HU212-2/HUC212-2` is not one. The fix text never changes a model number (§25.3).
 
@@ -1222,15 +1221,19 @@ transform and coverage.
   nails`) are still flagged.
 - **Citations.** The note text and the citation code take the case transform; the words of `section` that hold a digit
   print as written (`OSHA 1926.755(a)(1)`, not `1926.755(A)(1)`); plain words of `section` (`Table`) take the transform.
-- **House abbreviations.** A built-in table maps each abbreviation to its words (the first is canonical): EA. EACH,
-  CONT. CONTINUOUS, TYP. TYPICAL, MIN. MAX. CLR. DIA. BOTT./BOT. CONC. REINF. FA. FACE, GA. SIM. EMBED. MFR. FTG. FDN. GRD.
-  HDR. DBL. STL. GALV. VERT. HORIZ. GYP. BD. SHTG. PLY. STD. SQ. EQ. NOM. APPROX. REQD./REQ'D SPEC. DWG. EXIST. THK. ALT.
-  ARCH. EXT. INT. EXP. FIN. FLR. ELEV./EL. STRUCT. ENGR. MECH. ELEC. CTR. JT. JST. BM. COL. CONN. OPNG. PERP. LG. ADDL.
-  BLKG. SCHED. SECT. DET. DIM. OPP. INSUL. THRU BTWN. BRG. HT. PL. EOR O.C. E.F. E.W. T&B T.O. B.O. U.N.O./UNO PT CMU.
-  The style's `notes.abbreviations` (object, up to 500 entries: abbreviation -> a string or an array of up to 8 strings)
-  adds to it. A note may end on any listed abbreviation with its period (`FINISH PER ARCH.`); `NO.`, `NOS.` too. Any other
-  trailing period still warns, and the message says to add the word to `notes.abbreviations` if it is an abbreviation.
-  The forced spellings of §19 (`EACH -> EA.` ...) are unchanged.
+- **House abbreviations.** A built-in table of 156 entries (engine `house::ABBREVIATIONS`) maps each abbreviation to its
+  words (the first is canonical). It is US structural practice as written in the MASS reference set (32 US Southwest
+  drawing sets): periods on shortened words (`TYP.`, `CONT.`, `REINF.`, `REQ'D`), dotted initials for phrases (`O.C.`,
+  `U.N.O.`, `E.N.`, `T.O.F.`, `A.B.`), no periods on material and product initialisms (`CMU`, `LVL`, `PSL`, `HSS`, `OSB`,
+  `GLB`, `PT`). Variants in use are accepted (`BOT.`/`BOTT.`/`BTM.`, `REQ'D`/`REQD.`, `U.N.O.`/`UNO`, `P.T.`/`PT`). The
+  full list with meanings is `spec/styles/ABBREVIATIONS.md`. The style's `notes.abbreviations` (object, up to 500
+  entries: abbreviation -> a string or an array of up to 8 strings) adds to it. A note may end on any listed abbreviation
+  with its period (`FINISH PER ARCH.`); `NO.`, `NOS.` too. Any other trailing period still warns, and the message says to
+  add the word to `notes.abbreviations` if it is an abbreviation.
+- **Spelled out or abbreviated.** In the reference sets most words appear spelled out about as often as abbreviated
+  (CONCRETE 228 : CONC. 61, BOTTOM 103 : BOT. 11, EACH 132 : EA. 122), so both are house style. `W_NOTE_STYLE` asks for the
+  abbreviation only where it outnumbers the word 3:1 or more: `O.C.` (16:1), `MIN.`, `MAX.`, `GYP. BD.`, `DIA.` (about
+  4:1). Consistency within a sheet is the author's call.
 - **Fix safety.** The mechanical fix (abbreviate, upper-case, `1-1/2"` -> `1 1/2"`, drop a trailing period) is computed
   on whole words (letters and digits are word characters), does not double a period (`EACH.` -> `EA.`), checks the
   trailing period after abbreviating, and is offered only if every model number of the text (a token with a letter and a

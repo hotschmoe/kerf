@@ -205,7 +205,7 @@ pub static NOTE: Object = Object {
             name: "text",
             ty: "string",
             required: true,
-            desc: "keyed views: optional on a note whose `key` another note already has. House format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOTT. CONC. GYP. BD. REINF. PT; penny sizes `16d` and ACI symbols `db` `ld` `ldh` `f'c` `fy` keep their case, a house abbreviation may end the text (`PER ARCH.`) (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
+            desc: "keyed views: optional on a note whose `key` another note already has. House format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOT. CONC. GYP. BD. REINF. PT (always O.C. MIN. MAX. DIA. GYP. BD.; other words may be spelled out); penny sizes `16d` and ACI symbols `db` `ld` `ldh` `f'c` `fy` keep their case, a house abbreviation may end the text (`PER ARCH.`) (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
             ..Field::NONE
         },
         Field {

@@ -107,6 +107,7 @@ await t('diagnostics: acknowledged warnings get their own section (code, compone
   if (fixture) { await page.close(); return; }
   await ev(page, `[...document.querySelectorAll('.itabs .tab')].find(b => /DIAG/.test(b.textContent)).click()`);
   await page.waitForSelector('.diag.ack');
+  await page.waitForFunction(`/1 ACK/.test(document.getElementById('status').textContent)`);
   const s = await ev(page, `(() => ({
     tab: [...document.querySelectorAll('.itabs .tab')].find(b => /DIAG/.test(b.textContent)).textContent,
     bar: document.querySelector('.ackbar').textContent,

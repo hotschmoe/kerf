@@ -83,8 +83,8 @@ panel/membrane stops short of the member it rests on and prints this fix.
 
 ## Notes: one engineer's voice
 UPPERCASE, no trailing period, no sentences: `<SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>`, e.g.
-`2X6 PT SILL PLATE W/ 5/8" DIA. ANCHOR BOLTS @ 48" O.C.`, `(2) #5 CONT. BOTT.`. Fractions `1 1/2"`, ` X ` between sizes,
-abbreviations W/ O.C. EA. CONT. TYP. PT MIN. DIA. BOTT. CONC. GYP. BD. SHTG. REINF. MFR. U.N.O. (`W_NOTE_STYLE` lints this;
+`2X6 PT SILL PLATE W/ 5/8" DIA. ANCHOR BOLTS @ 48" O.C.`, `(2) #5 CONT. BOT.`. Fractions `1 1/2"`, ` X ` between sizes,
+abbreviations W/ O.C. EA. CONT. TYP. PT MIN. DIA. BOT. CONC. GYP. BD. SHTG. REINF. MFR. U.N.O. (`W_NOTE_STYLE` lints this;
 `16d`, `db`, `f'c` keep case).
 6-12 notes per detail: every structural element and connection, hardware model in the note, `INSTALL PER MFR.`.
 Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you are sure exist, always `"status":"suggested"`;

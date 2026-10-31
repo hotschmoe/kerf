@@ -725,10 +725,11 @@ section('#18. house style lint, kept case, requested coverage normalization');
     note('n_model', 'SIMPSON HU212-2/HUC212-2 HANGER'),
     note('n_arch', 'FINISH PER ARCH.'),
     note('n_type', 'TYPE I CEMENT GROUT'),
+    note('n_spelled', 'CONCRETE FOOTING W/ (2) #5 CONTINUOUS BOTTOM, EACH SIDE, PRESSURE TREATED SILL, T.O.F. PER S.A.D.'),
     note('n_cfr', 'GUARDRAIL PER OSHA', { cite: [{ code: 'OSHA', section: '1926.755(a)(1)', status: 'suggested' }] }),
   ];
   let r = kerf(['apply', 'hs.kerf.json', '--ops', JSON.stringify(ok), '-w', '--why', 'house exceptions']);
-  check('16d/8d, db/ldh/fy/f\'c/psi, HU212-2/HUC212-2, PER ARCH., TYPE I: no W_NOTE_STYLE', r.code === 0 && !/W_NOTE_STYLE/.test(r.out), r.out);
+  check('16d/8d, db/ldh/fy/f\'c/psi, HU212-2/HUC212-2, PER ARCH., TYPE I, spelled-out CONCRETE/EACH/BOTTOM: no W_NOTE_STYLE', r.code === 0 && !/W_NOTE_STYLE/.test(r.out), r.out);
   r = kerf(['drawing', 'hs.kerf.json', '--view', 'A']);
   const texts = r.code === 0 ? JSON.parse(r.out).items.filter((i) => i.t === 'text').map((i) => i.s).join(' | ') : '';
   check('the drawing keeps 16d, 8d, db, ldh, f\'c, psi as written and upper-cases the rest', /\(2\) 16d NAILS EA\. SIDE/.test(texts) && /8d( \| )?@/.test(texts) && /LAP 48 db MIN\., ldh PER ACI,/.test(texts) && /fy = 60 KSI/.test(texts) && /f'c = 3,000 psi/.test(texts), texts);
@@ -736,15 +737,15 @@ section('#18. house style lint, kept case, requested coverage normalization');
   check('the model number prints unchanged', /SIMPSON HU212-2\/HUC212-2/.test(texts), texts);
 
   const bad = [
-    note('b_lower', '(2) 16d nails each side'),
+    note('b_lower', '(2) 16d nails each side @ 6" on center'),
     note('b_frac', 'SIMPSON HU212-2 W/ 1-1/2" MIN. BEARING'),
-    note('b_period', 'STUD EACH.'),
+    note('b_period', '6" EMBED. MINIMUM.'),
     note('b_trail', 'SHEATHING EDGE.'),
   ];
   r = kerf(['apply', 'hs.kerf.json', '--ops', JSON.stringify(bad), '-w', '--why', 'still wrong']);
-  check('lower-case words are still flagged, and the fix keeps 16d', /WARN W_NOTE_STYLE b_lower: .*lowercase letters.*Fix: set text to "\(2\) 16d NAILS EA\. SIDE"$/m.test(r.out), r.out);
+  check('lower-case words are still flagged, and the fix keeps 16d', /WARN W_NOTE_STYLE b_lower: .*lowercase letters.*Fix: set text to "\(2\) 16d NAILS EACH SIDE @ 6" O\.C\."$/m.test(r.out), r.out);
   check('a real dashed fraction is still flagged; the fix leaves HU212-2 alone', /WARN W_NOTE_STYLE b_frac: .*dashed fraction.*Fix: set text to "SIMPSON HU212-2 W\/ 1 1\/2" MIN\. BEARING"$/m.test(r.out), r.out);
-  check('EACH. becomes EA. (no doubled period)', /WARN W_NOTE_STYLE b_period: .*Fix: set text to "STUD EA\."$/m.test(r.out), r.out);
+  check('MINIMUM. becomes MIN. (no doubled period); EACH and EMBED. are left as written', /WARN W_NOTE_STYLE b_period: .*Fix: set text to "6" EMBED\. MIN\."$/m.test(r.out), r.out);
   check('a period after a plain word is still a trailing period, and the message names the style escape', /WARN W_NOTE_STYLE b_trail: .*trailing period \(notes are not sentences; if "EDGE\." is an abbreviation, add it to the style's notes\.abbreviations\).*Fix: set text to "SHEATHING EDGE"$/m.test(r.out), r.out);
 
   kerf(['new', 'cov.kerf.json', '--template', 'section']);
