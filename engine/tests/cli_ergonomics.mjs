@@ -646,5 +646,86 @@ section('14. steel shapes, bolts and weld symbols: table errors, W_BOLT_EDGE, W_
   check('fillet weld without size: E_PARAM with a fix', /ERROR E_PARAM w2: weld 'w2': a fillet weld needs "size".*Fix: e\.g\. "size": "3\/16"/.test(r.out), r.out);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// issue #17: annotation layout (SPEC 25.2)
+section('15. annotation layout: iso at points, view fit clearance, reported moves, pin, overlaps, untangled leaders');
+{
+  const items = (name, view) => {
+    const r = kerf(['drawing', name, '--view', view]);
+    return r.code === 0 ? JSON.parse(r.out) : { items: [], bounds: [0, 0, 0, 0], scale: 1, err: r.err };
+  };
+  const tip = (d, id) => d.items.find((i) => i.src === id && i.t === 'fill')?.loops[0][0];
+  const near = (p, x, y) => p && Math.abs(p[0] - x) < 0.01 && Math.abs(p[1] - y) < 0.01;
+  const iso = {
+    kerf: '0.1', id: 'isoat', title: 'BEAM ON POST', run: [-24, 24],
+    components: [
+      { id: 'post', type: 'lumber', size: '4x4', run: 'y', length: 36, z: [-1.75, 1.75], at: { to: [0, 0] } },
+      { id: 'beam', type: 'lumber', size: '4x8', run: 'z', orient: 'upright', at: { to: 'post@top_left' } },
+    ],
+    views: [{ id: 'A', kind: 'iso', number: '1', title: 'BEAM ON POST', scale: 'NTS', from: 'front_right', annotations: [
+      { id: 'n1', type: 'note', text: 'BEAM CORNER', at: 'beam@top_right' },
+      { id: 'n2', type: 'note', text: 'OFFSET POINT', at: { ref: 'post@bottom_left', offset: [1.75, 6] } },
+      { id: 'n3', type: 'note', text: '4X4 POST', target: 'post' },
+    ] }],
+  };
+  write('isoat.kerf.json', iso);
+  let d = items('isoat.kerf.json', 'A');
+  // front_right: u = (x - z) cos30, v = y - (x + z) / 2, z = the near face of the referenced member
+  check('iso at Ref lands on the projected corner of the beam (near face z = 24)', near(tip(d, 'n1'), (3.5 - 24) * Math.cos(Math.PI / 6), 43.25 - 27.5 / 2), tip(d, 'n1'));
+  check('iso {ref, offset}: the offset applies in model space, then the point projects (post face z = 1.75)', near(tip(d, 'n2'), 0, 4.25), tip(d, 'n2'));
+  let r = kerf(['check', 'isoat.kerf.json']);
+  check('iso at points on the members: no W_NOTE_LANDING', r.code === 0 && !/W_NOTE_LANDING/.test(r.out), r.out);
+  const bubble = d.items.find((i) => i.src === 'title:A' && i.t === 'path' && i.closed);
+  const rad = bubble ? (bubble.pts[1][0] - bubble.pts[0][0]) / 2 : 0;
+  check('the view extents include the title bubble (its arc, not just its end points)', bubble && Math.abs(bubble.pts[0][1] - rad - d.bounds[1]) < 1e-3, [bubble?.pts, d.bounds]);
+  check('NTS fit keeps 1/8" clear of the frame and the title block', (d.bounds[3] - d.bounds[1]) / d.scale <= 6.75 + 1e-6, (d.bounds[3] - d.bounds[1]) / d.scale);
+  iso.views[0].annotations.push({ id: 'n4', type: 'note', text: 'NOTHING HERE', at: [60, 60] });
+  write('isoat.kerf.json', iso);
+  r = kerf(['check', 'isoat.kerf.json']);
+  check('W_NOTE_LANDING: an iso arrow off every face, with the at value and a fix', /WARN W_NOTE_LANDING n4: view A: the arrow of note 'n4' \("at": \[60,60\]\) lands on empty paper, off every visible face of the iso, .* Fix: point "at" at the member/.test(r.out), r.out);
+
+  const base = JSON.parse(fs.readFileSync(path.join(DETAILS, 'stud-wall-stem-footing.kerf.json'), 'utf8'));
+  const sec = structuredClone(base);
+  sec.views[0].annotations.push({ id: 'n_low', type: 'note', text: 'COMPACTED SUBGRADE', target: 'ftg', at: { ref: 'ftg@bottom_left', offset: [6, -30] } });
+  r = kerf(['check', write('l1.kerf.json', sec)]);
+  check('W_NOTE_LANDING: a section arrow below the crop, fix names the target', /WARN W_NOTE_LANDING n_low: .*lands on empty paper, outside the view crop.*Fix: remove "at" so the arrow lands inside target 'ftg'/.test(r.out), r.out);
+
+  const tall = structuredClone(base);
+  tall.views[0].crop.y = [-1, 40];
+  r = kerf(['check', write('l2.kerf.json', tall)]);
+  check('W_VIEW_FIT: a list + bubble that would touch the frame warns, names the list, suggests notes_side', /WARN W_VIEW_FIT A: .*1\/8" clear of both.*\(the DETAIL NOTES list\).*set notes_side to "right" or "left"/.test(r.out), r.out);
+
+  const dims = structuredClone(base);
+  dims.views[1].annotations = dims.views[1].annotations.filter((a) => a.type !== 'dim');
+  dims.views[1].annotations.push(
+    { id: 'd_a', type: 'dim', from: 'ftg@bottom_left', to: 'ftg@bottom_right', dir: 'h', offset: -6 },
+    { id: 'd_b', type: 'dim', from: 'ftg@bottom_left', to: 'ftg@bottom_right', dir: 'h', offset: -6, text: 'VERIFY' },
+  );
+  r = kerf(['check', write('l3.kerf.json', dims)]);
+  check('I_ANNOT_MOVED: a dimension stacked off its offset says how far, what it cleared and the offset that keeps it', /INFO I_ANNOT_MOVED d_b: view B: dimension 'd_b' is drawn at offset -\S+ instead of its offset -6: moved \S+ \(\S+" paper\) outward to clear dimension 'd_a'\s+Fix: keep it there: set "offset": -\S+;.*"pin": true/.test(r.out), r.out);
+  dims.views[1].annotations[dims.views[1].annotations.length - 1].pin = true;
+  r = kerf(['check', write('l3.kerf.json', dims)]);
+  check('pin: no I_ANNOT_MOVED, and the overprint warns W_LABEL_OVERLAP', !/I_ANNOT_MOVED d_b/.test(r.out) && /WARN W_LABEL_OVERLAP d_\w: view B: the text '\S+' of dimension 'd_\w' overprints the text '\S+' of dimension 'd_\w'/.test(r.out), r.out);
+  d = items('l3.kerf.json', 'B');
+  check('pin: the dimension line is drawn at its own offset (footing bottom y 0, offset -6)', d.items.some((i) => i.src === 'd_b' && i.t === 'path' && i.pen === 'dim' && i.pts.length === 2 && i.pts[0][1] === -6 && i.pts[1][1] === -6), d.items.filter((i) => i.src === 'd_b').map((i) => i.pts));
+  dims.views[1].annotations.push({ id: 'l_a', type: 'label', text: 'EXTERIOR', at: 'ftg@top_left', offset: [-12, 6] }, { id: 'l_b', type: 'label', text: 'GRADE', at: 'ftg@top_left', offset: [-12, 6] });
+  dims.views[1].annotations.push({ id: 'l_c', type: 'label', text: 'X', at: 'ftg@top_left', pin: 'yes' });
+  r = kerf(['check', write('l3.kerf.json', dims)]);
+  check('W_LABEL_OVERLAP: two labels on one spot, with an offset that clears it', /WARN W_LABEL_OVERLAP l_a: view B: label 'l_a' \('EXTERIOR'\) overprints label 'l_b' \('GRADE'\)\s+Fix: set label 'l_a' "offset": \[\S+, \S+\] \(now \[-12, 6\]\)/.test(r.out), r.out);
+  check('W_PARAM: pin must be a boolean', /WARN W_PARAM l_c: 'l_c' in view B: "pin" must be true or false \(got "yes"\)/.test(r.out), r.out);
+  r = kerf(['schema', 'dim', 'label']);
+  check('kerf schema dim/label document pin', (r.out.match(/pin.*bool/g) || []).length === 2 && /I_ANNOT_MOVED/.test(r.out), r.out);
+
+  const spots = [[60, 14], [24, 19], [2, 20], [11, 20], [50, 54], [37, 57], [58, 19], [15, 21], [6, 34]];
+  const words = ['STRAP', 'TIE', 'ANCHOR', 'HANGER', 'CLIP', 'PLATE', 'ROD', 'BOLT', 'SCREW'];
+  write('l4.kerf.json', {
+    kerf: '0.1', id: 'dense', title: 'DENSE', components: spots.map(([x, y], i) => ({ id: `b${i}`, type: 'lumber', size: '4x4', run: 'z', at: { to: [x, y] } })),
+    views: [{ id: 'A', kind: 'section', number: '1', title: 'DENSE', cut_z: 0, notes_side: 'right',
+      annotations: spots.map((_, i) => ({ id: `n${i}`, type: 'note', target: `b${i}`, text: `SIMPSON ${words[i]} EA. SIDE W/ (10) 16D NAILS INTO EA. MEMBER OR OTHER APPROVED HARDWARE PER PLAN ${i}` })) }],
+  });
+  r = kerf(['check', 'l4.kerf.json']);
+  check('a tall column whose landings are spread in x: leaders untangled, no W_LEADER_HIT', r.code === 0 && !/W_LEADER_HIT/.test(r.out), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

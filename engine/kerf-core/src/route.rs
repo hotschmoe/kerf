@@ -942,19 +942,35 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
     }
     c.layout();
     decross(&mut c);
+    let plain = c.snapshot();
     untangle(&mut c);
-    if c.eval().hits > 0 {
-        let mut best = c.snapshot();
-        c.budget = if p.light { 20 } else { 60 };
-        c.eval();
-        improve(&mut c);
-        let r = c.snapshot();
-        let rc = Cost { total: r.total, hits: r.hits, hard: r.hard };
-        let bc = Cost { total: best.total, hits: best.hits, hard: best.hard };
-        if better_mode(rc, bc, true) {
-            best = r;
+    let untangled = c.snapshot();
+    if untangled.hits > 0 {
+        // the search starts from the untangled column, and also from the plain one when untangling changed it
+        let cost = |s: &Snap| Cost { total: s.total, hits: s.hits, hard: s.hard };
+        let mut starts = vec![untangled];
+        if plain.key != starts[0].key || plain.left != starts[0].left {
+            starts.push(plain);
         }
-        c.restore(&best);
+        let mut best: Option<Snap> = None;
+        for start in starts {
+            if best.as_ref().is_some_and(|b| b.hits == 0) {
+                break;
+            }
+            c.restore(&start);
+            c.budget = if p.light { 20 } else { 60 };
+            c.eval();
+            improve(&mut c);
+            let r = c.snapshot();
+            for cand in [start, r] {
+                if best.as_ref().is_none_or(|b| better_mode(cost(&cand), cost(b), true)) {
+                    best = Some(cand);
+                }
+            }
+        }
+        if let Some(b) = best {
+            c.restore(&b);
+        }
         c.eval();
     }
 

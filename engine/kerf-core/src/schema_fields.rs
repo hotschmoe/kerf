@@ -208,7 +208,7 @@ pub static NOTE: Object = Object {
         Field {
             name: "at",
             ty: "point",
-            desc: "exact arrow landing: \"comp@anchor\", {\"ref\":\"comp@anchor\",\"offset\":[dx,dy]} or [x, y]. Use it when the target is hidden or the label point is bad",
+            desc: "exact arrow landing: \"comp@anchor\", {\"ref\":\"comp@anchor\",\"offset\":[dx,dy]} or [x, y]. Use it when the target is hidden or the label point is bad. Iso: the point is on the face of its component (else of `target`) nearest the viewer. W_NOTE_LANDING: outside the crop (section) or off every face (iso)",
             ..Field::NONE
         },
         Field {
@@ -270,6 +270,13 @@ pub static DIM: Object = Object {
             ..Field::NONE
         },
         Field { name: "text", ty: "string", desc: "replaces the measured text (e.g. \"VERIFY\")", ..Field::NONE },
+        Field {
+            name: "pin",
+            ty: "bool",
+            def: "false",
+            desc: "true: drawn exactly at `offset`, never stacked or pushed off a leader (overlaps then warn W_LABEL_OVERLAP). Without it a colliding dimension moves out and I_ANNOT_MOVED says where",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"d_sill\",\"type\":\"dim\",\"from\":\"sill@bottom_left\",\"to\":\"sill@bottom_right\",\"dir\":\"h\",\"offset\":-3}",
     ..Object::NONE
@@ -291,6 +298,13 @@ pub static LABEL: Object = Object {
             ..Field::NONE
         },
         Field { name: "offset", ty: "[dx, dy]", def: "[0, 0]", desc: "model inches added to `at`", ..Field::NONE },
+        Field {
+            name: "pin",
+            ty: "bool",
+            def: "false",
+            desc: "true: never moved off a note leader (a leader through it then warns W_LEADER_HIT). Without it a label on a leader moves up to 6 text heights and I_ANNOT_MOVED says where",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"l_ext\",\"type\":\"label\",\"text\":\"EXTERIOR\",\"at\":\"sill@top_left\",\"offset\":[-6,6]}",
     ..Object::NONE

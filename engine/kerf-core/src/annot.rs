@@ -557,7 +557,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
     let Some(fin) = best else { return Vec::new() };
     repair::report_moves(env, routed, &dl, &fin);
-    repair::report_overlaps(env, &dl, &fin.rd);
+    repair::report_overlaps(env, routed, &prep, &dl, &fin);
     let rd = fin.rd;
     notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep.g);
     notes::check_landings(env, routed, &fin.r, &base_segs);

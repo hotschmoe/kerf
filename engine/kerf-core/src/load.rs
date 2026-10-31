@@ -215,7 +215,7 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
     }
     for d in diags {
         if d.level == Level::Info
-            && !matches!(d.code, "I_SOLID_USED" | "I_UNVERIFIED_CITE" | "I_CITE_DOWNGRADED" | "I_ACK")
+            && !matches!(d.code, "I_SOLID_USED" | "I_UNVERIFIED_CITE" | "I_CITE_DOWNGRADED" | "I_ACK" | "I_ANNOT_MOVED")
         {
             continue;
         }

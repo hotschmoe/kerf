@@ -90,10 +90,10 @@ the designer verifies. Never present a design as engineered: capacities, spacing
 
 ## Views and annotations
 `crop` and `scale` are optional on a section view (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
-set them only to frame deliberately (`W_VIEW_FIT` then checks). Notes split to both sides and the layout resolves leader
-collisions itself; add `column` to a note only to force a side. Keyed notes: view `"notes_style":"keyed"` (numbered
-leaders + DETAIL NOTES list; `notes_side` above|left|right; same `key` = one entry). Dim `dir` defaults to the dominant axis. Dim `offset` sign: h > 0
-puts the line above the higher point, < 0 below the lower; v > 0 right of the rightmost, < 0 left of the leftmost.
+set them only to frame deliberately (`W_VIEW_FIT` then checks). The layout places notes and clears leader collisions
+(`column` on a note forces a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed notes:
+view `"notes_style":"keyed"` (numbered leaders + DETAIL NOTES list; `notes_side` above|left|right; same `key` = one
+entry). Dim `dir` default: dominant axis; `offset` > 0 is above (h) / right of (v) the points, < 0 below / left.
 Beam in a wall (flush beam, header): draw the elevation along the wall unless asked for the end-on section; say which you drew.
 Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
 
@@ -105,6 +105,10 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - `acknowledge` prints an `I_ACK` line per suppressed warning, logged by `kerf apply -w`.
 - Scenarios A/B/C in one document: one view per scenario, `omit` the other scenarios' members. Geometry checks run per
   view (a finding seen in only some views ends with `(in views A, C)`), so never acknowledge cross-scenario overlaps.
+- Annotation layout (SPEC 25.2): an iso `at` Ref lies on its component's face nearest the viewer (W_NOTE_LANDING when an
+  arrow lands on empty paper); dims the stacking or the leader repair move more than 1/8" (paper) and labels the repair
+  moves print I_ANNOT_MOVED with the offset that keeps them there; W_LABEL_OVERLAP: labels, dim text or note text that
+  overprint. Views keep 1/8" clear of the frame and title block.
 - Dimension offset sign, example: below a footing `{"from":"ftg@bottom_left","to":"ftg@bottom_right","dir":"h","offset":-6}`;
   its depth on the outside (left) face `{"from":"ftg@bottom_left","to":"ftg@top_left","dir":"v","offset":-6}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.

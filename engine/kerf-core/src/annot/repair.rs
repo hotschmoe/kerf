@@ -429,9 +429,11 @@ pub fn report_moves(env: &Env, notes: &[NoteIn], dl: &DimLab, best: &Best) {
     }
 }
 
-/// W_LABEL_OVERLAP (SPEC 25.2): a label whose text overprints another label or a dimension's text, and a pinned
-/// dimension whose text overprints another dimension's text. Proposes a label offset that clears it.
-pub fn report_overlaps(env: &Env, dl: &DimLab, rd: &Render) {
+/// W_LABEL_OVERLAP (SPEC 25.2): a label whose text overprints another label or a dimension's text, a pinned
+/// dimension whose text overprints another dimension's text, and a note's text (or key tag) on a label or dimension
+/// text. Proposes a label offset that clears it.
+pub fn report_overlaps(env: &Env, notes: &[NoteIn], prep: &NotePrep, dl: &DimLab, best: &Best) {
+    let rd = &best.rd;
     let vid = env.spec.id;
     let h = env.style.label_height_in * env.s;
     let iso = matches!(env.landing, Landing::Iso(_));
@@ -493,6 +495,45 @@ pub fn report_overlaps(env: &Env, dl: &DimLab, rd: &Render) {
                 Some(mv.id.as_str()),
                 Some(&format!("views/{vid}/annotations/{}", mv.id)),
                 format!("view {vid}: {} overprints {}", name(mv), name(other)),
+                fix,
+            );
+        }
+    }
+    let blocks = Clearance::new(&best.r, prep).notes;
+    for (n, b) in notes.iter().zip(&blocks) {
+        for o in obs.iter().filter(|o| polys_overlap(b, &o.poly)) {
+            reported += 1;
+            if reported > 8 {
+                continue;
+            }
+            let what = if o.kind == route::ObstKind::Label {
+                format!("label '{}' ('{}')", o.id, o.text)
+            } else {
+                format!("the text '{}' of dimension '{}'", o.text, o.id)
+            };
+            let fix = if n.place.is_some() {
+                format!(
+                    "move note '{}' (its \"place\") or {}",
+                    n.id,
+                    if o.kind == route::ObstKind::Label {
+                        "the label (its \"offset\")"
+                    } else {
+                        "the dimension (its \"offset\")"
+                    }
+                )
+            } else {
+                format!(
+                    "give note '{}' a \"place\" clear of it, or move {} (its \"offset\")",
+                    n.id,
+                    if o.kind == route::ObstKind::Label { "the label" } else { "the dimension" }
+                )
+            };
+            env.diags.add_fix(
+                Level::Warning,
+                "W_LABEL_OVERLAP",
+                Some(n.id),
+                Some(&format!("views/{vid}/annotations/{}", n.id)),
+                format!("view {vid}: the text of note '{}' overprints {what}", n.id),
                 fix,
             );
         }

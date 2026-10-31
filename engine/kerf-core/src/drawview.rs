@@ -146,12 +146,18 @@ fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
     }
     let te = side_ext(fit.title, crop, side);
     if te > best.ext + 1e-9 {
-        best = Culprit {
-            name: "the view title (bubble, title, scale)".to_string(),
-            ext: te,
-            kind: None,
-            id: "title".to_string(),
-        };
+        // the title sits under the lowest annotation: an annotation that reaches below the crop is the real culprit
+        if best.ext > 1e-9 {
+            best.name = format!("{} and the view title under it", best.name);
+            best.ext = te;
+        } else {
+            best = Culprit {
+                name: "the view title (bubble, title, scale)".to_string(),
+                ext: te,
+                kind: None,
+                id: "title".to_string(),
+            };
+        }
     }
     best
 }
