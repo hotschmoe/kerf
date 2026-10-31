@@ -321,6 +321,46 @@ drawn with the batt symbol (sinusoidal loop line fitted to the rect).
 `profile`: `{ "rect": [w, h] }` | `{ "circle": d }` | `{ "points": [...] }`; `material` required.
 Use only when no typed component fits; the summary flags it so a reviewer can see it.
 
+### 5.13 `steel` — structural shapes (AISC table)
+| param | default | notes |
+|---|---|---|
+| `shape` | — | `W8x18`, `HSS4x4x1/4` (rect: height x width x nominal wall), `HSS4.000x0.250` (round), `PIPE3STD` / `PIPE3XS`, `L4x3x3/8`, `C8x11.5`, `MC8x18.7`, `PL1/2x8` (plate thickness x width, any size) |
+| `orient` | `"section"` | `section` (cut end-on, runs along z), `elevation` (side view along its length), `plan` (top view along its length) |
+| `run` | `"x"` | elevation/plan: in-plane direction of the length, `x` or `y` |
+| `length` / `until` | — | elevation/plan: required (as lumber, §17). Section: optional `length` along z, centered on the first section view's `cut_z` (default: spans the doc `run`) |
+| `long_leg` | `"vertical"` | angles: LLV or LLH |
+| `outstand` | `"back"` | elevation of angles and channels: horizontal leg / flanges point away from the viewer (−z) or toward it |
+| `fillets` | true | W k-region and angle/channel root fillets, HSS corner radii (outside 2t, inside t) |
+| `grade` | null | free text (`A992`, `A500 GR. C`, `A36`) |
+Dimensions come from an embedded subset of the AISC Shapes Database v16 (W4–W24, square/rect/round HSS, pipe STD/XS,
+equal/unequal angles, C/MC); `kerf schema steel` lists every size, an unknown size is `E_PARAM` naming the sizes of that
+depth. HSS and pipe walls draw at the design thickness 0.93 × nominal; angle and channel root radii are approximations by
+size; channel flanges draw parallel at the tabulated average thickness. Cross-section frame: u across, v up, box (0,0)–(width, depth) with the
+bottom-left at the flange tip / heel / outside corner. Section: XY = (u, v) extruded along z; HSS and pipe are two `wall`
+halves (simple loops for the mesh). Elevation: XY = (length, v) for run x or (v, length) for run y, u along z (centered on
+the component's z; `outstand` picks the sign). Plan: XY = (length, u) / (u, length), v along z (top toward the viewer).
+Members seen lengthwise are stacks of rectangular slabs (flanges, web, walls, legs) at their own z (`Prism.zoff`), so iso,
+mesh and occlusion are true; pipe and round HSS seen lengthwise are boxes (2.5D limit).
+Draws: section cut ⇒ solid steel fill + steel pen (the material's `fill`), beyond ⇒ outline. Elevation and plan never
+fill: a prism flagged `lengthwise` whose member reaches behind the cut plane is classified **beyond** even where the plane
+passes through it, so the member draws as an elevation (W flanges as lines; HSS/pipe walls, back flanges and the web in
+plan as dashed `hidden` lines). A slab edge lying on the outline of a nearer slab of the same member draws once in the
+member's pen (not as a same-component shared edge).
+Named anchors: section — W `top_flange`, `bottom_flange`, `web_center`, `web_left`, `web_right`,
+`top_flange_tip_left/right` (underside), `bottom_flange_tip_left/right` (top face); HSS/pipe `inner_top`, `inner_bottom`,
+`inner_left`, `inner_right`; angle `heel`, `heel_inside`, `toe_vertical`, `toe_horizontal`, `vertical_leg_face`,
+`horizontal_leg_top`; channel `web_back`, `web_face`, `top_flange`, `bottom_flange`, `top_flange_tip`, `bottom_flange_tip`;
+plate `edge_left`, `edge_right`, `face_top`, `face_bottom`. Elevation/plan — the levels across the member at mid-length,
+each also as `<name>_start` / `<name>_end` at the member ends.
+
+### 5.14 `bolt` — structural bolt group
+`diameter` 0.75, `grade` `"A325"` (text), `grip` 1 (ply stack between head and nut), `orient` `side` (axis in-plane, head
+up at the placement point, grip downward) | `end` (axis along z, head toward the viewer), `count` 1, `spacing` 3,
+`line` `x` | `z` (side) or `x` | `y` (end): the row direction from bolt 1, `washer` true. Heavy hex head and nut 1.5d + 1/8
+across flats, head 0.625d, nut d, F436 washer 2d × 5/32 under the nut, stick-out 0.5d. Embedded steel. Placement anchor
+defaults to `head_bearing` (local origin, bolt 1's axis at the underside of the head); also `nut_bearing`, `bolt_1`..`bolt_n`.
+Natural z thickness: d (side), grip (end).
+
 ## 6. Views and annotations
 
 ```jsonc
@@ -366,6 +406,17 @@ Accepted: `3"=1'-0"` (factor 4), `1-1/2"=1'-0"` (8), `1"=1'-0"` (12), `3/4"=1'-0
 ```jsonc
 { "id": "l1", "type": "label", "text": "EXTERIOR", "at": "slab@top_exterior", "offset": [-18, 6] }
 ```
+**weld** — AWS weld symbol at a joint (section views; placed exactly, not moved by the note layout):
+```jsonc
+{ "id": "w1", "type": "weld", "at": "column@bottom_right",   // arrow tip at the joint
+  "offset": [6, 6],                  // elbow = at + offset (model inches; default 1/2" paper up-right); the reference line runs away from the arrow
+  "weld": "fillet",                  // fillet | cjp | pjp (bevel groove, CJP/PJP in the tail)
+  "size": "3/16", "sides": "arrow",  // arrow (symbol below the line) | other (above) | both
+  "all_around": true, "field": false, "tail": "TYP.",
+  "members": ["column", "base_plate"] }   // checked by W_WELD_SIZE
+```
+Fillet: right triangle, vertical leg on the left, height = text height; size text right-aligned left of the symbol.
+
 **cite** rules: the LLM may only create `status: "suggested"`. Only the designer (UI action)
 sets `verified`. Export renders citations per style `citations` (default: append
 ` (IRC R403.1.6)`; unverified ones get a trailing `*` and the sheet gets the footnote
@@ -522,6 +573,9 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_NOTE_TARGET` | warning | note target not visible in its view |
 | `W_VIEW_FIT` | warning | view + notes exceed the sheet frame at the chosen scale |
 | `I_UNVERIFIED_CITE` | info | citations awaiting designer verification (count) |
+| `W_BOLT_EDGE` | warning | a bolt's edge distance to a `steel` ply it passes through (in the drawing plane, or along z to the ply's z extent) is below AISC 360-16 Table J3.4 (1/2" 3/4, 5/8" 7/8, 3/4" 1, 7/8" 1 1/8, 1" 1 1/4, 1 1/8" 1 1/2, 1 1/4" 1 5/8, larger 1.25d); one warning per bolt group and ply, the worst bolt |
+| `W_BOLT_SPACING` | warning | bolt spacing < 2 2/3 d (AISC 360 J3.3) |
+| `W_WELD_SIZE` | warning | a fillet weld symbol with `members` is larger than the thinner part allows (t, or t − 1/16 when t ≥ 1/4; AISC 360 J2.2b) or smaller than Table J2.4 (1/8, 3/16, 1/4, 5/16 by thinner part ≤ 1/4, 1/2, 3/4, over). Thickness of a W or channel is its thinner element, of an HSS or pipe the design wall |
 | `I_SOLID_USED` | info | `solid` escape hatch used |
 
 ## 10. Drawing IR (`kerf_drawing` JSON)

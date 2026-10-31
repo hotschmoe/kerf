@@ -1,0 +1,232 @@
+{
+  "kerf": "0.1",
+  "id": "hss-column-base-plate",
+  "title": "HSS COLUMN BASE PLATE AT FOOTING",
+  "meta": {
+    "author": "kerf reference",
+    "discipline": "structural",
+    "classification": {
+      "uniformat": "B1010",
+      "masterformat": [
+        "05 12 00",
+        "03 30 00"
+      ]
+    },
+    "jurisdiction": {
+      "code": "IBC",
+      "edition": 2021
+    },
+    "tags": [
+      "steel",
+      "hss",
+      "base plate",
+      "anchor rods",
+      "footing"
+    ],
+    "sheet": "S-503",
+    "date": "2026-10-31"
+  },
+  "run": [-18, 18],
+  "components": [
+    {
+      "id": "footing",
+      "type": "concrete",
+      "at": {
+        "anchor": "top_center",
+        "to": [0, 0]
+      },
+      "shape": "footing",
+      "width": 36,
+      "height": 18
+    },
+    {
+      "id": "bott_bars",
+      "type": "rebar",
+      "size": "#5",
+      "place": {
+        "in": "footing",
+        "face": "bottom",
+        "cover": 3,
+        "count": 4,
+        "side_cover": 3
+      },
+      "spacing_note": "#5 @ 10\" O.C. EA. WAY"
+    },
+    {
+      "id": "grout",
+      "type": "concrete",
+      "material": "grout",
+      "z": [-7.5, 7.5],
+      "shape": "polygon",
+      "points": [
+        [-7.5, 0],
+        [7.5, 0],
+        [6, 1.5],
+        [-6, 1.5]
+      ]
+    },
+    {
+      "id": "base_plate",
+      "type": "steel",
+      "at": {
+        "anchor": "face_bottom",
+        "to": "grout@top_center"
+      },
+      "shape": "PL3/4x12",
+      "length": 12,
+      "grade": "A36"
+    },
+    {
+      "id": "column",
+      "type": "steel",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "base_plate@face_top"
+      },
+      "shape": "HSS6x6x1/4",
+      "orient": "elevation",
+      "run": "y",
+      "length": 30,
+      "grade": "A500 GR. C"
+    },
+    {
+      "id": "rod_left",
+      "type": "anchor_bolt",
+      "at": {
+        "to": {
+          "ref": "footing@top_center",
+          "offset": [-4.5, 0]
+        }
+      },
+      "diameter": 0.75,
+      "embed": 12,
+      "projection": 3.22,
+      "hook": "headed"
+    },
+    {
+      "id": "rod_right",
+      "type": "anchor_bolt",
+      "at": {
+        "to": {
+          "ref": "footing@top_center",
+          "offset": [4.5, 0]
+        }
+      },
+      "diameter": 0.75,
+      "embed": 12,
+      "projection": 3.22,
+      "hook": "headed"
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "HSS COLUMN BASE PLATE AT FOOTING",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [-22, 22],
+        "y": [-21, 30]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_col",
+          "type": "note",
+          "text": "HSS6X6X1/4 STEEL COLUMN",
+          "target": "column"
+        },
+        {
+          "id": "n_plate",
+          "type": "note",
+          "text": "PL 3/4\" X 12\" X 1'-0\" BASE PLATE",
+          "target": "base_plate"
+        },
+        {
+          "id": "n_rods",
+          "type": "note",
+          "text": "(4) 3/4\" DIA. F1554 GR. 36 HEADED ANCHOR RODS W/ HEAVY HEX NUT & WASHER, 12\" EMBED.",
+          "target": "rod_right"
+        },
+        {
+          "id": "n_grout",
+          "type": "note",
+          "text": "1 1/2\" NON-SHRINK GROUT",
+          "target": "grout"
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "CONC. FOOTING PER PLAN",
+          "target": "footing"
+        },
+        {
+          "id": "n_bars",
+          "type": "note",
+          "text": "#5 @ 10\" O.C. EA. WAY BOTT.",
+          "target": "bott_bars"
+        },
+        {
+          "id": "w_base",
+          "type": "weld",
+          "at": "column@bottom_left",
+          "offset": [-6, 14],
+          "weld": "fillet",
+          "size": "3/16",
+          "all_around": true,
+          "members": [
+            "column",
+            "base_plate"
+          ]
+        },
+        {
+          "id": "d_edge",
+          "type": "dim",
+          "from": "base_plate@top_left",
+          "to": "rod_left@top_of_concrete",
+          "dir": "h",
+          "offset": 6
+        },
+        {
+          "id": "d_embed",
+          "type": "dim",
+          "from": "rod_right@top_of_concrete",
+          "to": "rod_right@bottom_center",
+          "dir": "v",
+          "offset": 15
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "iso",
+      "number": "2",
+      "title": "HSS COLUMN BASE PLATE - ISO",
+      "scale": "NTS",
+      "cut_z": 0,
+      "crop": {
+        "x": [-20, 20],
+        "y": [-20, 30]
+      },
+      "from": "front_right",
+      "cutaway": true,
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_col",
+          "type": "note",
+          "text": "HSS6X6X1/4 COLUMN",
+          "target": "column"
+        },
+        {
+          "id": "n_plate",
+          "type": "note",
+          "text": "3/4\" BASE PLATE",
+          "target": "base_plate"
+        }
+      ]
+    }
+  ]
+}

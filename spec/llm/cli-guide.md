@@ -55,7 +55,7 @@ kerf guide --full
 W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
 W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
 W_NOTE_STYLE (house style and commentary: no sentences, `?`, `NOTE:`, `W/` or `AND` at the end), W_UNKNOWN_KEY (misspelled field),
-W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit left a member outside an explicit
+W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_BOLT_EDGE / W_WELD_SIZE (steel), W_CROP_STALE (an edit left a member outside an explicit
 `crop`: remove `crop` and `scale` to re-fit; typical after a pitch change), I_* (info only).
 
 ## Placement (relative, never computed coordinates)
@@ -66,6 +66,9 @@ W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_S
 - Inches, X right, Y up, Z toward the viewer; lengths are numbers or strings like `"7-5/8"`, `"3'-4 1/2\""`. Use actual
   sizes through typed components (`"2x6"`, not 1.5x5.5). Rebar: `"place":{"in":"footing","face":"bottom","cover":3,"count":2}`.
 - `"until": "<Ref>"` instead of `length` grows a member to another one's edge (no stale numbers).
+- Steel: `steel` takes AISC sizes (`"shape":"W8x18"`, `HSS4x4x1/4`, `PIPE3STD`, `L4x3x3/8`, `C8x11.5`, `PL1/2x8`) with `orient`
+  section (cut end-on, solid fill) | elevation | plan; `bolt` for bolt groups; a `weld` annotation draws the AWS symbol
+  (`kerf schema steel bolt weld`). W_BOLT_EDGE / W_BOLT_SPACING / W_WELD_SIZE check AISC minimums.
 
 ## Roof pitch: change it in ONE place
 Trusses own the pitch; sheathing and roofing follow it and run to the truss end. Never type a literal length or pitch on them.
@@ -102,4 +105,4 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - Dimension offset sign, example: below a footing `{"from":"ftg@bottom_left","to":"ftg@bottom_right","dir":"h","offset":-6}`;
   its depth on the outside (left) face `{"from":"ftg@bottom_left","to":"ftg@top_left","dir":"v","offset":-6}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/main/spec/SPEC.md.
-  The three reference details in `spec/details/` are complete documents to copy from.
+  The four reference details in `spec/details/` are complete documents to copy from.
