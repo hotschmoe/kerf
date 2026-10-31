@@ -138,5 +138,17 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   A dowel that laps a wall bar: `"points": [{"ref":"ftg@bottom_center","offset":[2,3]}, {"ref":"wall_bar@start","offset":[2,24]}]`.
 - `W_CUT_FILL`: an embedded part (bolt, bar) emptied a cut member's fill; the member keeps its fill and the warning
   says which part.
+- Plans and elevations (SPEC 26.3): model once, in the real orientation (Y up, Z toward the section viewer: a wall
+  running across the section is a profile extruded along z, a wall running along x is a long profile with its thickness
+  in `z`), then add views. `"kind": "plan"` cuts at `cut_y` (default 1" below the highest top): crossed members are
+  hatched, studs and posts get the end-grain X, members below are outlines, vertical bars are dots. Plan points are
+  [x, -z]; a plan `crop` also takes `{"x": [x0, x1], "z": [z0, z1]}`; Refs resolve by themselves (box anchors on the
+  plan footprint). `"kind": "elevation"` cuts nothing: nearer members hide farther ones, the crop break-lines every
+  member it cuts, and a strap on a face shows without touching `cut_z`. `"hidden_lines": true` dashes what is hidden.
+  Plan titles print as `PLAN - <title>` unless the title says PLAN (style `text.plan_title`): do not type "(PLAN)".
+- Corner and intersection bars: rebar `"plane": "xz"`, `"y": <height or Ref>`, `"points": [[x, z], ...]` (bends are
+  filleted). The plan draws the bent bar; a section shows a dot where it crosses `cut_z` and a line where it runs behind.
+- `shown`: `"hidden"` = dashed, no suffix (a base plate under a pour, a stiffener behind a web); `"where_occurs"` =
+  dashed and notes end in (WHERE OCCURS). The old `"dashed"` warns `W_SHOWN_DASHED`: pick one of the two.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.
