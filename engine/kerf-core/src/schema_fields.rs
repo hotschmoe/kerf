@@ -162,9 +162,16 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "omit",
-            ty: "[component id]",
+            ty: "[id|glob]",
             def: "[]",
-            desc: "components hidden in this view only",
+            desc: "components not drawn (or checked) in this view; ids or `*` globs (\"b_*\"). An entry that matches no component warns W_REF_UNKNOWN",
+            ..Field::NONE
+        },
+        Field {
+            name: "only",
+            ty: "[id|glob]",
+            def: "all",
+            desc: "the view draws only the components matching one of these ids or `*` globs ([\"shared_*\", \"a_*\"]); `omit` and component `views` still apply",
             ..Field::NONE
         },
         Field {

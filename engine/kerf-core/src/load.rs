@@ -369,7 +369,7 @@ fn inspect_at(l: &Loaded, q: &Value) -> Result<Value, InspectError> {
     let mut spec = spec_v.clone();
     spec.crop = resolved.crop;
     spec.scale = resolved.scale;
-    let prisms = compile::all_prisms(&l.scene);
+    let prisms = compile::view_prisms(&l.scene, &spec.members);
     let mut sec = Section::new(&l.scene, &spec, &prisms);
     sec.build();
     let mut hits = Vec::new();

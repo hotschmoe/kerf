@@ -60,6 +60,9 @@ fn explicit_crop(doc: &Value, id: &str) -> Option<Box> {
 fn shown_somewhere(c: &Comp<'_>, vs: &[Value], max_outside: f64) -> bool {
     for (vi, vnode) in vs.iter().enumerate() {
         let Some(spec) = view::parse(vnode, vi, &Diags::new()) else { continue };
+        if !spec.members.draws(c) {
+            continue;
+        }
         if spec.kind != Kind::Section || !spec.has_crop {
             return true;
         }
@@ -103,7 +106,7 @@ pub fn run(scene: &Scene<'_>, doc: &Value, before: Option<&Before<'_>>, diags: &
             continue;
         }
         for c in &scene.comps {
-            if c.state != State::Ok || spec.omit.iter().any(|o| *o == c.id) {
+            if c.state != State::Ok || !spec.members.draws(c) {
                 continue;
             }
             let ext = visible_extent(c, spec.cut_z);

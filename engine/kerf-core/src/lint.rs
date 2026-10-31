@@ -8,10 +8,11 @@ use crate::geom::V2;
 use crate::json::{Member, Value};
 use crate::model::{self, Diag, Diags, Level};
 use crate::references;
-use crate::scene::Scene;
+use crate::scene::{self, Scene};
 use crate::schema_fields::{self as schema, Object};
 use crate::style::Style;
 use crate::units;
+use crate::view;
 use alloc::borrow::Cow;
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -25,6 +26,7 @@ pub fn run(scene: &Scene, doc: &Value, diags: &Diags) {
     note_style(doc, diags);
     dim_zero(scene, doc, diags);
     ack_shape(doc, diags);
+    members(doc, diags);
     requested_missing(doc, diags);
     references::lint(doc, diags);
 }
@@ -210,6 +212,113 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
             lint_object(diags, an, o, &apath, Some(aid));
             for (i, ci) in arr_of(an, "cite").unwrap_or(&[]).iter().enumerate() {
                 lint_object(diags, ci, &schema::CITE, &format!("{apath}/cite/{i}"), Some(aid));
+            }
+        }
+    }
+}
+
+// ---- view membership (SPEC 25.4) -----------------------------------------------------------------------
+
+fn did_you_mean(x: &str, names: &[&str]) -> String {
+    model::nearest(x, names).map(|n| format!(" Did you mean '{n}'?")).unwrap_or_default()
+}
+
+/// Component `views` must name existing views; view `omit` / `only` are lists of ids or `*` globs. An id or glob that
+/// matches no component warns (it may name a component a later edit adds), so ops can arrive in any order.
+fn members(doc: &Value, diags: &Diags) {
+    let comps = arr_of(doc, "components").unwrap_or(&[]);
+    let cids: Vec<&str> = comps.iter().map(|c| str_of(c, "id")).filter(|s| !s.is_empty()).collect();
+    let views = arr_of(doc, "views").unwrap_or(&[]);
+    let vids: Vec<&str> = views.iter().map(|v| str_of(v, "id")).filter(|s| !s.is_empty()).collect();
+    let view_list =
+        if vids.is_empty() { "(none: the document has no views)".to_string() } else { scene::join_ids(&vids) };
+    for c in comps {
+        let Some(vv) = c.get("views").filter(|v| !v.is_null()) else { continue };
+        let cid = str_of(c, "id");
+        let path = format!("components/{cid}/views");
+        let Some(list) = vv.arr().filter(|a| !a.is_empty() && a.iter().all(|x| x.str().is_some())) else {
+            diags.add_fix(
+                Level::Error,
+                "E_PARAM",
+                Some(cid),
+                Some(&path),
+                format!("'views' of '{cid}' must be a non-empty array of view ids (got {}). Views: {view_list}", model::kind_or_text(vv)),
+                format!("e.g. \"views\": [\"{}\"]; remove \"views\" to draw '{cid}' in every view, or use \"visible\": false to hide it everywhere", vids.first().copied().unwrap_or("A")),
+            );
+            continue;
+        };
+        for v in list.iter().filter_map(Value::str) {
+            if !vids.contains(&v) {
+                diags.add_fix(
+                    Level::Error,
+                    "E_REF_UNKNOWN",
+                    Some(cid),
+                    Some(&path),
+                    format!(
+                        "'{cid}' lists view '{v}' in \"views\", but there is no view '{v}'.{} Views: {view_list}",
+                        did_you_mean(v, &vids)
+                    ),
+                    format!(
+                        "list existing view ids only, or add view '{v}' (op add, path \"views\") in the same batch"
+                    ),
+                );
+            }
+        }
+    }
+    for v in views {
+        let vid = str_of(v, "id");
+        if vid.is_empty() {
+            continue;
+        }
+        for key in ["omit", "only"] {
+            let Some(pv) = v.get(key).filter(|x| !x.is_null()) else { continue };
+            let path = format!("views/{vid}/{key}");
+            let Some(pats) = pv.arr().filter(|a| a.iter().all(|x| x.str().is_some())) else {
+                diags.add_fix(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(vid),
+                    Some(&path),
+                    format!(
+                        "view {vid}: \"{key}\" must be an array of component ids or `*` globs (got {})",
+                        model::kind_or_text(pv)
+                    ),
+                    format!("e.g. \"{key}\": [\"b_*\", \"roof_sheathing\"]"),
+                );
+                continue;
+            };
+            if key == "only" && pats.is_empty() {
+                diags.add_fix(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(vid),
+                    Some(&path),
+                    format!("view {vid}: \"only\": [] draws no component"),
+                    "list the ids or globs the view draws (e.g. [\"shared_*\", \"a_*\"]), or remove \"only\" to draw every component".to_string(),
+                );
+                continue;
+            }
+            for p in pats.iter().filter_map(Value::str) {
+                if cids.iter().any(|id| view::glob_match(p, id)) {
+                    continue;
+                }
+                let verb = if key == "omit" { "omits" } else { "lists in \"only\"" };
+                let message = if view::is_glob(p) {
+                    format!("view {vid} {verb} '{p}', a pattern that matches no component id, so it has no effect")
+                } else {
+                    format!(
+                        "view {vid} {verb} '{p}', which is not a component id (yet), so it has no effect.{}",
+                        did_you_mean(p, &cids)
+                    )
+                };
+                diags.add_fix(
+                    Level::Warning,
+                    "W_REF_UNKNOWN",
+                    Some(vid),
+                    Some(&path),
+                    message,
+                    format!("fix the id or pattern (`*` matches any run of characters), add the component, or remove '{p}' from views/{vid}/{key}"),
+                );
             }
         }
     }

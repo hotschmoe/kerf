@@ -255,7 +255,7 @@ pub fn hardware_line(h: &Hardware) -> String {
     format!("{}: {}, {w}\" wide, {g} ga, {}\" long", h.model, h.kind, crate::model::fmt_num(h.length))
 }
 
-const COMMON: [(&[&str], &str, &str); 13] = [
+const COMMON: [(&[&str], &str, &str); 14] = [
     (&["id"], "required", "unique slug [a-z][a-z0-9_]*; annotations and refs name it"),
     (&["type"], "required", "one of the catalog types"),
     (&["label"], "null", "short human label for summaries"),
@@ -283,6 +283,11 @@ const COMMON: [(&[&str], &str, &str); 13] = [
     ),
     (&["embedded"], "type default", "drawn over cut solids and never occluded (rebar, anchor bolts)"),
     (&["visible"], "true", "false hides the component from views and mesh"),
+    (
+        &["views"],
+        "null (every view)",
+        "[view id]: the component is drawn and checked only in these views (one scenario per view: shared members get no `views`, a scenario's members `views: [\"B\"]`, all at one origin). Excluded components are not drawn, not even as beyond outlines, and skip the geometry checks and W_CROP_STALE of that view. Unknown view ids are E_REF_UNKNOWN",
+    ),
     (
         &["shown"],
         "solid",

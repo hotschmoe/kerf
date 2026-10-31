@@ -4,7 +4,6 @@
 use super::text::{ascii_fold, layer_name, path_item, text_item, upper_if, wrap};
 use super::{Env, Landing};
 use crate::clip;
-use crate::compile;
 use crate::drawing::{Align, FillItem, Item, PathItem, VAlign};
 use crate::geom::{Box, Pt, V2};
 use crate::json::{self, Value};
@@ -64,7 +63,7 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
     if comp.state != crate::scene::State::Ok {
         return None;
     }
-    if compile::is_omitted(&spec.omit, &comp.id) {
+    if !spec.members.draws(comp) {
         return None;
     }
     let mut shapes_src: Vec<Vec<V2>> = Vec::new();

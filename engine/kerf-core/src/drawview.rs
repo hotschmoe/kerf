@@ -494,7 +494,7 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
     if spec.kind != Kind::Section || (spec.has_crop && spec.has_scale) {
         return same;
     }
-    let prisms = compile::view_prisms(scene, &spec.omit);
+    let prisms = compile::view_prisms(scene, &spec.members);
     let font = font::embedded();
     let d = Diags::new();
     let work = Work::new(DEFAULT_WORK_LIMIT);
@@ -534,21 +534,7 @@ pub fn build_from_scene<'a>(
     diags: &Diags,
 ) -> Option<Drawing<'a>> {
     let view_id = spec.id;
-    for o in &spec.omit {
-        if scene.find(o).is_none() {
-            diags.add(
-                Level::Error,
-                "E_REF_UNKNOWN",
-                Some(view_id),
-                Some(&format!("views/{view_id}/omit")),
-                format!(
-                    "view {view_id} omits '{o}', which is not a component id. Components: {}",
-                    scene::join_ids(&scene.comp_ids())
-                ),
-            );
-        }
-    }
-    let prisms = compile::view_prisms(scene, &spec.omit);
+    let prisms = compile::view_prisms(scene, &spec.members);
     let work = Work::new(DEFAULT_WORK_LIMIT);
     let font = font::embedded();
     let items: Vec<Item>;
