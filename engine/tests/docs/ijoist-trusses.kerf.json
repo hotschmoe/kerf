@@ -1,0 +1,64 @@
+{
+  "kerf": "0.1",
+  "id": "ijoist-trusses",
+  "title": "I-JOISTS AND TRUSS PROFILES",
+  "meta": {
+    "author": "kerf test",
+    "discipline": "structural",
+    "jurisdiction": {"code": "IRC", "edition": 2021},
+    "tags": ["ijoist", "floor truss", "scissor", "mono", "end on"]
+  },
+  "run": [-24, 24],
+  "components": [
+    {"id": "a_plate", "type": "lumber", "size": "2x6", "orient": "flat", "plies": 2, "views": ["A", "E", "F"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "a_rim", "type": "lumber", "size": "1.25x11.875", "product": "lsl", "views": ["A", "E", "F"], "at": {"anchor": "bottom_left", "to": "a_plate@top_left"}},
+    {"id": "a_joist", "type": "ijoist", "size": "11-7/8 x 2-5/16", "length": 36, "stiffeners": "left", "views": ["A", "E", "F"], "at": {"anchor": "bottom_left", "to": "a_rim@bottom_right"}},
+    {"id": "a_block", "type": "ijoist", "size": "11-7/8 x 2-5/16", "length": 14.5, "squash_blocks": "right", "views": ["A", "E", "F"], "z": -9.25, "at": {"anchor": "bottom_left", "to": "a_rim@bottom_right"}},
+    {"id": "a_sub", "type": "panel", "material": "plywood", "thickness": 0.75, "length": 40, "views": ["A", "F"], "at": {"anchor": "bottom_left", "to": "a_rim@top_left"}},
+    {"id": "b_ledger", "type": "lumber", "size": "2x12", "views": ["B"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "b_truss", "type": "truss", "profile": "parallel_chord", "bearing": "top_chord", "depth": 18, "bearing_width": 1.5, "span_shown": 54, "views": ["B"], "at": {"anchor": "bearing_outer", "to": "b_ledger@top_left"}},
+    {"id": "b_sub", "type": "panel", "material": "plywood", "thickness": 0.75, "length": 54, "views": ["B"], "at": {"anchor": "bottom_left", "to": "b_truss@top_chord_at_bearing"}},
+    {"id": "c_plate", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["C"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "c_truss", "type": "truss", "profile": "scissor", "pitch": "6:12", "bottom_pitch": "2:12", "overhang": 12, "span_shown": 42, "views": ["C"], "at": {"anchor": "bearing_outer", "to": "c_plate@top_left"}},
+    {"id": "c_block", "type": "lumber", "size": "2x6", "run": "y", "face": "narrow", "views": ["C"], "z": -12, "until": "c_truss@heel_block_top", "at": {"anchor": "bottom_left", "to": "c_plate@top_left"}},
+    {"id": "c_sheathing", "type": "panel", "material": "osb", "thickness": 0.4375, "slope": "@c_truss", "until": "c_truss@top_chord_end", "views": ["C"], "at": {"anchor": "bottom_left", "to": "c_truss@tail_top"}},
+    {"id": "c2_plate", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["C"], "at": {"anchor": "bottom_left", "to": [80, 0]}},
+    {"id": "c2_truss", "type": "truss", "profile": "mono", "pitch": "3:12", "heel_height": 24, "span_shown": 42, "views": ["C"], "at": {"anchor": "bearing_outer", "to": "c2_plate@top_left"}},
+    {"id": "c2_sheathing", "type": "panel", "material": "osb", "thickness": 0.4375, "slope": "@c2_truss", "until": "c2_truss@top_chord_end", "views": ["C"], "at": {"anchor": "bottom_left", "to": "c2_truss@top_chord_at_bearing"}},
+    {"id": "d_plate", "type": "lumber", "size": "2x6", "orient": "flat", "plies": 2, "views": ["D"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "d_joist", "type": "ijoist", "size": "11-7/8 x 2-5/16", "run": "z", "stiffeners": "both", "views": ["D"], "at": {"anchor": "bottom_left", "to": "d_plate@top_left", "offset": [1.5, 0]}},
+    {"id": "d_girder", "type": "truss", "orient": "end_on", "profile": "parallel_chord", "depth": 18, "plies": 2, "views": ["D"], "at": {"anchor": "top_left", "to": "d_joist@top_left", "offset": [22.5, 0]}},
+    {"id": "d_post", "type": "lumber", "size": "4x6", "run": "y", "length": 9.75, "views": ["D"], "at": {"anchor": "top_left", "to": "d_girder@bottom_left"}},
+    {"id": "d_sub", "type": "panel", "material": "plywood", "thickness": 0.75, "length": 36, "views": ["D"], "at": {"anchor": "bottom_left", "to": "d_joist@top_left", "offset": [-1.5, 0]}}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "number": "1", "title": "I-JOIST AT RIM", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n_a_joist", "type": "note", "text": "11 7/8\" I-JOISTS @ 16\" O.C. PER PLAN", "target": "a_joist"},
+       {"id": "n_a_stiff", "type": "note", "text": "WEB STIFFENER EA. SIDE PER MFR.", "target": "a_joist.stiffener"},
+       {"id": "n_a_rim", "type": "note", "text": "1 1/4\" LSL RIM BOARD", "target": "a_rim"},
+       {"id": "n_a_plate", "type": "note", "text": "DBL. 2X6 TOP PLATE", "target": "a_plate"},
+       {"id": "d_a", "type": "dim", "from": "a_joist@bottom_flange_start", "to": "a_joist@top_flange_start", "dir": "v", "offset": -8}
+     ]},
+    {"id": "B", "kind": "section", "number": "2", "title": "FLOOR TRUSS, TOP CHORD BEARING", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n_b_truss", "type": "note", "text": "FLOOR TRUSS PER PLAN, 4X2 CHORDS @ 24\" O.C.", "target": "b_truss"},
+       {"id": "n_b_ledger", "type": "note", "text": "2X12 LEDGER", "target": "b_ledger"}
+     ]},
+    {"id": "C", "kind": "section", "number": "3", "title": "SCISSOR AND MONO TRUSS HEELS", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n_c_truss", "type": "note", "text": "SCISSOR TRUSS PER PLAN", "target": "c_truss"},
+       {"id": "n_c_block", "type": "note", "text": "2X6 BLOCKING EA. BAY", "target": "c_block"},
+       {"id": "n_c2_truss", "type": "note", "text": "MONO TRUSS PER PLAN", "target": "c2_truss"}
+     ]},
+    {"id": "D", "kind": "section", "number": "4", "title": "PARALLEL FRAMING", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n_d_joist", "type": "note", "text": "I-JOIST W/ WEB STIFFENERS", "target": "d_joist"},
+       {"id": "n_d_girder", "type": "note", "text": "(2) PLY FLOOR TRUSS GIRDER", "target": "d_girder"}
+     ]},
+    {"id": "E", "kind": "iso", "number": "5", "title": "I-JOIST AT RIM", "from": "front_right", "annotations": []},
+    {"id": "F", "kind": "plan", "number": "6", "title": "I-JOIST AT RIM", "cut_y": 9, "annotations": [
+       {"id": "n_f_joist", "type": "note", "text": "I-JOIST", "target": "a_joist"}
+    ]}
+  ]
+}
