@@ -391,6 +391,8 @@ pub struct ViewOpts<'a> {
     pub keys: Option<&'a [(String, u32)]>,
     /// The layout checks the fit of its cells, so the view skips `W_VIEW_FIT` against the whole sheet.
     pub in_layout: bool,
+    /// The paper area an NTS view fits (its share of a layout); None = the whole sheet area.
+    pub fit: Option<(f64, f64)>,
 }
 
 /// The width a view title may take in a layout: the drawing with its notes, less the bubble, and at least 3" (paper).
@@ -854,7 +856,7 @@ pub fn build_with<'a>(
             // NTS views grow their (internal) fit factor until notes and title fit the sheet frame
             let pw = (b.x1 - b.x0) / scale;
             let ph = (b.y1 - b.y0) / scale;
-            let (aw, ah) = fit_area(st);
+            let (aw, ah) = opts.fit.unwrap_or_else(|| fit_area(st));
             let fits = pw <= aw + 1e-6 && ph <= ah + 1e-6;
             if !fits {
                 // the geometry shrinks with the factor, the annotations keep their paper size

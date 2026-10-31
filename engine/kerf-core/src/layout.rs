@@ -104,7 +104,25 @@ pub struct Layout<'a> {
     pub sheet: Option<(f64, f64)>,
 }
 
+/// A view keeps its own scale in a layout: an explicit (or document) `scale`, or an iso view, which stays NTS.
+fn fixed_scale(s: &ViewSpec) -> bool {
+    s.has_scale || s.kind == Kind::Iso
+}
+
 impl Layout<'_> {
+    /// The paper area an NTS view fits: the sheet area divided among the entries along each axis of the arrangement.
+    fn share(&self, st: &Style) -> (f64, f64) {
+        let (aw, ah) = self.area(st);
+        let n = self.entries.len().max(1);
+        let (cols, rows) = match self.arrange {
+            Arrange::Row => (n, 1),
+            Arrange::Column => (1, n),
+            Arrange::Grid(c) => (c.clamp(1, n), n.div_ceil(c.clamp(1, n))),
+        };
+        let part = |a: f64, k: usize| ((a - self.gap * (k - 1) as f64) / k as f64).max(1.0);
+        (part(aw, cols), part(ah, rows))
+    }
+
     /// The area the arranged views and the list must fit (paper inches), on the layout's sheet.
     fn area(&self, st: &Style) -> (f64, f64) {
         let (w, h) = self.sheet.unwrap_or((st.sheet_w_in, st.sheet_h_in));
@@ -707,11 +725,14 @@ struct Ctx<'c, 'a> {
     st: &'a Style,
     scene: &'c Scene<'c>,
     font: &'c Font,
+    /// The paper area an NTS view of the layout fits: its share of the sheet.
+    share: (f64, f64),
 }
 
 fn build_view<'a>(c: &Ctx<'_, 'a>, spec: &ViewSpec, keys: Option<&[(String, u32)]>) -> Option<Built<'a>> {
     let vd = Diags::new();
-    let d = drawview::build_with(c.doc, c.st, c.scene, spec, &vd, ViewOpts { keys, in_layout: true })?;
+    let d =
+        drawview::build_with(c.doc, c.st, c.scene, spec, &vd, ViewOpts { keys, in_layout: true, fit: Some(c.share) })?;
     Some(Built { d, diags: vd.into_vec() })
 }
 
@@ -881,7 +902,7 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
     let li = doc.get("layouts").and_then(Value::arr).and_then(|ls| ls.iter().position(|l| core::ptr::eq(l, node)));
     let lay = parse(doc, node, li.unwrap_or(0), diags)?;
     let font = font::embedded();
-    let c = Ctx { doc, st, scene, font };
+    let c = Ctx { doc, st, scene, font, share: lay.share(st) };
     let views = lay.views();
     let all = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let mut specs: Vec<ViewSpec> = Vec::new();
@@ -891,14 +912,17 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
     }
     let keys = if lay.shared { shared_keys(&lay, &specs, st, diags) } else { alloc::vec![Vec::new(); specs.len()] };
     let key_of = |k: usize| if lay.shared { Some(keys[k].as_slice()) } else { None };
-    let fixed: Vec<Option<Built>> =
-        specs.iter().enumerate().map(|(k, s)| if s.has_scale { build_view(&c, s, key_of(k)) } else { None }).collect();
-    if specs.iter().zip(&fixed).any(|(s, f)| s.has_scale && f.is_none()) {
+    let fixed: Vec<Option<Built>> = specs
+        .iter()
+        .enumerate()
+        .map(|(k, s)| if fixed_scale(s) { build_view(&c, s, key_of(k)) } else { None })
+        .collect();
+    if specs.iter().zip(&fixed).any(|(s, f)| fixed_scale(s) && f.is_none()) {
         return None;
     }
     let (aw, ah) = lay.area(st);
     let gutter = st.gutter_in;
-    let free: Vec<usize> = (0..specs.len()).filter(|&k| !specs[k].has_scale).collect();
+    let free: Vec<usize> = (0..specs.len()).filter(|&k| !fixed_scale(&specs[k])).collect();
     let candidates: Vec<f64> = match lay.scale {
         Some((f, _)) => alloc::vec![f],
         None if free.is_empty() => alloc::vec![0.0],
@@ -1126,16 +1150,19 @@ fn layout_fit(
     if common == 0.0 && lay.scale.is_none() && built.len() > 1 {
         let mut ops: Vec<String> = built
             .iter()
+            .filter(|b| b.d.kind != Kind::Iso)
             .filter(|b| view::find_view(c.doc, &b.d.view).is_some_and(|n| n.get("scale").is_some_and(|s| !s.is_null())))
             .map(|b| format!("{{\"op\":\"update\",\"path\":\"views/{}\",\"value\":{{\"scale\":null}}}}", b.d.view))
             .collect();
         if doc_scale(c.doc).is_some() {
             ops.push("{\"op\":\"remove\",\"path\":\"scale\"}".to_string());
         }
-        fixes.push(format!(
-            "every view has its own scale; remove them so the layout picks the largest common scale that fits: {}",
-            ops.join(", ")
-        ));
+        if !ops.is_empty() {
+            fixes.push(format!(
+                "the views have their own scales; remove them so the layout picks the largest common scale that fits: {}",
+                ops.join(", ")
+            ));
+        }
     }
     for b in built {
         if common > 0.0 && b.d.scale < common - 1e-9 {
