@@ -25,7 +25,7 @@ kerf new truss-cmu.kerf.json --ops ops.json --title "PREFAB TRUSS BEARING AT CMU
 4. Read the summary (every component with resolved x/y extents), the `COVERAGE` block and the diagnostics. Fix every ERROR;
    fix or justify every WARN. Every `meta.requested` item must read `ok` (build the `MISSING` ones, or drop an item only if the
    designer dropped it): do not finish before full coverage, a clean check is not a finished detail. An item is covered when
-   its words appear in one component's id/type/label/model or in one note, so name components and write notes in the designer's words. Then LOOK at it:
+   one component (id/type/label/model) or note/dim/weld/view title has all its words (EA.=EACH). Then LOOK at it:
 ```sh
 kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png
 ```
@@ -83,7 +83,8 @@ panel/membrane stops short of the member it rests on and prints this fix.
 ## Notes: one engineer's voice
 UPPERCASE, no trailing period, no sentences: `<SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>`, e.g.
 `2X6 PT SILL PLATE W/ 5/8" DIA. ANCHOR BOLTS @ 48" O.C.`, `(2) #5 CONT. BOTT.`. Fractions `1 1/2"`, ` X ` between sizes,
-abbreviations W/ O.C. EA. CONT. TYP. PT MIN. DIA. BOTT. CONC. GYP. BD. SHTG. REINF. MFR. U.N.O. (`W_NOTE_STYLE` lints this).
+abbreviations W/ O.C. EA. CONT. TYP. PT MIN. DIA. BOTT. CONC. GYP. BD. SHTG. REINF. MFR. U.N.O. (`W_NOTE_STYLE` lints this;
+`16d`, `db`, `f'c` keep case).
 6-12 notes per detail: every structural element and connection, hardware model in the note, `INSTALL PER MFR.`.
 Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you are sure exist, always `"status":"suggested"`;
 the designer verifies. Never present a design as engineered: capacities, spacing and nailing are the manufacturer's / EOR's.
@@ -105,6 +106,14 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - `acknowledge` prints an `I_ACK` line per suppressed warning, logged by `kerf apply -w`.
 - Scenarios A/B/C in one document: one view per scenario, `omit` the other scenarios' members. Geometry checks run per
   view (a finding seen in only some views ends with `(in views A, C)`), so never acknowledge cross-scenario overlaps.
+- Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
+  (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens and a plural
+  s, and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the
+  measured length), welds (`3/16 fillet weld all around`, `cjp`) and view titles. A `MISSING` line names the closest
+  candidate and the words it lacks; never stuff a component `label` with words to pass.
+- Note case: penny sizes (`16d`), ACI symbols (`db`, `ld`, `ldh`, `f'c`, `fy`) and units like `psi` print as written, and a
+  citation's numbered section (`1926.755(a)(1)`) keeps its case. A note may end on a house abbreviation (`PER ARCH.`).
+  A style adds tokens with `text.keep_case` and abbreviations with `notes.abbreviations` (`{"BRG.": "BEARING"}`).
 - Dimension offset sign, example: below a footing `{"from":"ftg@bottom_left","to":"ftg@bottom_right","dir":"h","offset":-6}`;
   its depth on the outside (left) face `{"from":"ftg@bottom_left","to":"ftg@top_left","dir":"v","offset":-6}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.

@@ -238,7 +238,7 @@ static SPELLED_OUT: [Abbr; 10] = [
 ];
 
 fn is_word_char(c: u8) -> bool {
-    c.is_ascii_alphabetic()
+    c.is_ascii_alphanumeric()
 }
 
 /// Index of the next whole-word, case-insensitive match of `phrase` in `text` at or after `from`.
@@ -420,6 +420,16 @@ fn abbreviate(work: Vec<u8>, word: &str, abbr: &str) -> Vec<u8> {
     work
 }
 
+/// The text (spelled-out words already abbreviated) ends on a period that is not part of an abbreviation, a dotted
+/// token (`O.C.`) or a number/inch mark.
+fn trailing_period(t: &[u8], st: &Style) -> bool {
+    if t.len() <= 1 || t[t.len() - 1] != b'.' {
+        return false;
+    }
+    let base = trim_end(last_token(t), b".");
+    !(base.contains(&b'.') || house::is_period_abbr(base, st) || base.last().is_some_and(|&c| !c.is_ascii_alphabetic()))
+}
+
 /// Check one note text against the house style (SPEC 19, 25.3). Pure. Penny sizes (`16d`), ACI symbols (`db`, `ld`,
 /// `f'c`) and the style's `text.keep_case` tokens keep their case; a period after a house abbreviation is not a trailing
 /// period; a model number with a dash (`HU212-2/HUC212-2`) is not a dashed fraction.
@@ -444,16 +454,12 @@ pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
             add_issue(&mut issues, &format!("\"{}\" spelled out (use \"{}\")", sp.word, sp.abbr));
         }
     }
-    let trimmed = trim_end(tb, &WS);
-    let mut trailing = false;
-    if trimmed.len() > 1 && trimmed[trimmed.len() - 1] == b'.' {
-        let tok = last_token(trimmed);
-        let base = trim_end(tok, b".");
-        let ok = base.contains(&b'.')
-            || house::is_period_abbr(base, st)
-            || base.last().is_some_and(|&c| !c.is_ascii_alphabetic());
-        trailing = !ok;
+    let mut work: Vec<u8> = tb.to_vec();
+    for sp in &SPELLED_OUT {
+        work = abbreviate(work, sp.word, sp.abbr);
     }
+    let trimmed = trim_end(&work, &WS);
+    let trailing = trailing_period(trimmed, st);
     if trailing {
         let word = String::from_utf8_lossy(trim_end(last_token(trimmed), b"."));
         add_issue(
@@ -491,10 +497,6 @@ pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
         return NoteStyle { issues, fixed: text.to_string(), rewrite: false, fix_safe: true };
     }
 
-    let mut work: Vec<u8> = tb.to_vec();
-    for sp in &SPELLED_OUT {
-        work = abbreviate(work, sp.word, sp.abbr);
-    }
     let up = house::upper_bytes(&work, st);
     let mut out: Vec<u8> = Vec::with_capacity(up.len());
     for k in 0..up.len() {
