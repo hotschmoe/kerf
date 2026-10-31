@@ -211,7 +211,11 @@ Draws: cut ⇒ outline + "wood X" mark (diagonals corner-to-corner per ply) per 
 | `thickness` | — | `0.4375` (7/16"), `0.46875` (15/32), `0.5`, `0.625`… |
 | `length` | — | in-plane extent |
 | `run` | `"x"` | in-plane direction of `length` before rotation: `x` or `y` |
-Profile: run x ⇒ (length × thickness); run y ⇒ (thickness × length). Use `slope` for roof sheathing.
+| `lay` | `"edge"` | `edge`: seen edge-on (the profile below); `face`: the sheet seen face-on, thickness along Z (§28.6) |
+| `height` | — | `lay: "face"`: the extent across `run` (required) |
+| `on` | null | `lay: "face"`: `"id.face_front"` / `"id.face_back"`: the sheet lies on that z face (sets z) |
+Profile: run x ⇒ (length × thickness); run y ⇒ (thickness × length). Use `slope` for roof sheathing. `lay: "face"`:
+run x ⇒ (length × height), run y ⇒ (height × length), natural z thickness = `thickness` (§28.6).
 
 ### 5.3 `cmu_wall` — concrete masonry wall in section
 | param | default | notes |
@@ -2105,8 +2109,8 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   from `edge_distance` to `edge_distance` from the corners at a step of at most `spacing` (both ends included, so corner
   nails coincide and are drawn once). A nail is kept where a framing box lies behind it.
 - `field`: one row per framing member behind the panel along the member's longer side on its centerline, at most
-  `spacing` apart, without the nails at the panel edge band; a member that carries an edge row, or whose centerline is
-  within 3" of a panel edge (the second ply of a chord, a doubled stud at a joint), gets none.
+  `spacing` apart, without the nails within 2" of an edge row (§28.6); a member that carries an edge row, or whose
+  centerline is within 3" of a panel edge (the second ply of a chord, a doubled stud at a joint), gets none.
 
 **Drawing.** Pen `steel` (layer of the steel pen), drawn over everything like embedded members.
 - Section, plan, elevation: view coordinates are (x, y, depth z), or in a plan (x, −z, depth y). A nail whose projected
@@ -2118,8 +2122,8 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   end-on (row direction within ~45° of the view axis), by half its row spacing (so a row of sill nails along a wall
   that a section crosses shows as one tick per row); it always draws. A nail wholly in front of the plane is dropped. A
   nail behind it draws unless a cut solid covers it (at its head when end-on, at its shank midpoint otherwise) or a solid
-  that is not one of its members lies wholly in front of it. Its own members never hide it (splice nails show through
-  the plates). Elevations cut nothing: only non-member solids in front hide nails. Nails show only in views that draw
+  that is not one of its members lies wholly in front of it. Its own members never hide it, cut or not (splice nails
+  show through the plates; end nails inside a cut block draw, §28.6). Elevations cut nothing: only non-member solids in front hide nails. Nails show only in views that draw
   the nailing and its first member.
 - Iso: a dot (radius 0.014 paper inch; screws a circle and cross) where the head is visible (the face it sits on is not
   behind another face); cutaway views drop heads in front of `cut_z`; a crop drops heads outside it.
@@ -2152,3 +2156,74 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   outside 5..85, more than 5000 fasteners (`E_LIMIT`). `E_REF_UNKNOWN`: a member that is not a component (nearest id).
 - A nailing has no solid: it takes no part in `W_OVERLAP`, `W_FLOATING` or any other geometry check, and the mesh has
   no nails (2.5D viewers show none).
+
+## 28. v0.2.0-beta.2 round-2 fixes
+
+### 28.6 beta.2: face-on sheathing and nailing
+From round 2 of the MASS dogfood (issue #26): shear walls (S-50.06), portal frames (S-50.08) and wall plans need a sheet
+seen face-on, and agents faked it with `thickness` = the wall height; floor and roof sheathing plans (S-60.05) needed one
+`nailing` per panel per pattern (24 components for three plans); nails inside a cut member never drew in a mid-bay section
+(end nails, toenails between trusses); a built-up post nailed from a covered face drew nothing and said nothing; the
+toenail length fixes sent agents round in a circle (S-70.08 ended on 8d instead of the reference's 16d).
+
+**Face-on panels.** `panel` takes `lay`: `edge` (default, §5.2) or `face`. A face-on sheet lies in the XY plane:
+`length` along the run axis (x, or y with `run: "y"`), `height` across it (required), `thickness` along Z (its natural
+z thickness, §3.2). `on: "id.face_front"` (or `"id"`) puts it on the front z face of that member's instance (`id#k`),
+`"id.face_back"` on the back face; `on` is a placement dependency and excludes `z` (`E_PARAM`). `height` or `on`
+without `lay: "face"` is `E_PARAM` naming `lay`. It draws as its outline in elevations (with `hidden_lines`, framing
+behind it dashes) and as a thin box in iso; a plan cuts it as a strip `thickness` deep; `until` works along its run.
+Notes on it land inside the sheet (it is thin only in plans, §21). Summary: `panel osb 7/16" x 4'-0" x 8'-0" lay face
+run x on stud.face_front`.
+An edge-on panel thicker than 1 1/2" warns `W_PARAM` (no sheet is that thick: a sheet faked face-on); the fix is the
+update op `{"lay":"face","height":<thickness>,"thickness":<the z range if 1 1/2" or less, else 0.4375>}` (keeps `z`),
+which draws the same geometry.
+
+**Nailing across panels.** Edge and field: the leading `members` that are `panel` components are the sheets the heads
+are on, the rest the framing (at least one member is left for the framing; a panel that lies against the thin face of an
+earlier sheet is backing, not another sheet). Every instance of an arrayed panel is a sheet. Each sheet is nailed as in
+§27.4 (its own edges, `edges` by direction for all of them); a fix that lists members keeps every sheet first. Each nail
+records the component its head is on, and a view shows it only where it draws that component (so one nailing over
+front and back sheets shows each side's nails only in views that draw that side).
+`blocked` (default true): `false` is an unblocked diaphragm or wall: edge positions without framing behind are dropped
+silently (no `W_NAIL_EDGE`), so the rows keep only the nails where framing crosses the edge. The `W_NAIL_EDGE` fix for
+an unbacked edge also offers `{"blocked": false}`, and, when the nailing nails only that edge, deleting it (an empty
+`edges` list means every edge). Field rows stop 2" (the panel minimum spacing) short of the edge rows: the span runs
+from the edge row when the member reaches within 2" of it, so no field nail sits beside an edge nail and the first
+field nail is at most `spacing` from the edge row.
+Edge and field `W_NAIL_LENGTH` measure the framing stack behind the nail: members after the sheets that continue the
+first framing member face to face along the drive axis (a doubled plate) add to it; penetration is measured into the
+framing (6D past the sheet), the exit past the far face of the last member of the stack.
+
+**Section: nails in their own cut members.** A nail behind the plane is hidden only by a solid that is not one of its
+members (cut, or beyond and wholly in front); its own members never hide it, cut or not, so end nails through a joist
+into cut blocking and toenails between trusses draw over the cut (the drafting convention). Identical shanks draw once.
+`W_NAIL_HIDDEN` in a section or plan says "in front of the cut plane ... or inside a cut solid that is not one of its
+members".
+
+**Iso: W_NAIL_HIDDEN.** An iso view that draws a nailing with heads in the view but none visible warns `W_NAIL_HIDDEN`
+(path `views/<id>`), naming per distinct reason the face the heads are on (the head face's outward normal: the drive
+direction reversed, for toenails the side face they start on; named left right top bottom front back by its dominant
+world axis) and the member:
+- **covered**: a drawn solid that is not the member lies against that face at the head ("covered by 'k', which lies
+  against that face (no view can show them)"): the only fix is to keep the nailing out of the view and give the schedule
+  in a note on the member;
+- **turned away** from the view (`from`): fixes: for face nailing whose last member is thinner than the nail and whose
+  far face no other component covers, the reversed `members` (heads on the far face); for toenails, `faces` with the
+  opposite face (unless that face is itself hidden); the `from` that looks at that face (not for a bottom face);
+- **under** another solid: omit that solid from the view;
+and always `omit` of the nailing. Heads clipped by the crop or a cutaway are not counted.
+
+**Toenail length.** The toenail check and its fixes use one geometry: head started min(L/3, 3/4 of the member) back from
+the joint on its side face, the size's own length, the angle. A point that ends outside the second member and every
+later member warns once per nailing: `'id': n of m 16d toenails (from the left and right face of 'blk', started 1 3/16"
+from its end at 30 deg) end outside 'plate' and the other members: the point is 3/8" past the bottom face of 'plate'`.
+Each fix offered is re-checked with that geometry, so applying any one clears the warning:
+1. the points end in other drawn solids sharing a view with the nailing (a lower plate): list them after the members
+   (alone when that clears every nail, else together with `faces` naming the faces whose nails then all stay inside, in
+   one update op);
+2. otherwise `faces` with only the faces whose nails stay inside;
+3. the same size at the nearest angle in 15..60 (steps of 5) that keeps every point inside;
+4. the longest size of the same kind (common, box, sinker) that stays inside at the current angle;
+5. always `{"through": true}` (the schedule calls for the nail and the points may come through).
+Fix suggestions that name other components (this check and `W_NAIL_MEMBERS` / `W_NAIL_EDGE`) consider only components
+drawn in a view the nailing is drawn in (`views`).

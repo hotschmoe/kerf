@@ -302,6 +302,35 @@ geometrically (tolerance 1e-3).
   (iso dots like refs 1087/0019) and a new elevation D "SHEAR PANEL LAYOUT AND NAILING" (with hidden_lines) like the
   0019 panel layout; both keep their `--strict` warning counts (10: acknowledged scenario-B/C overlaps and stale
   acknowledgements; 8: stale acknowledgements). No new warning on either.
+- Face-on sheathing and nailing (issue #26, SPEC 28.6). `panel` `lay: "face"` builds the sheet in the XY plane
+  (`length` x `height`) with `nat_z` = thickness and `nat_zc` from `on` (`id.face_front|face_back`; resolved from the
+  member's world prisms, `on` is already a placement dependency through `compile::HOST_KEYS`); `thinland` treats it as
+  thin only in plans. An edge-on panel over 1 1/2" thick warns W_PARAM with the update op that turns it face-on (same
+  geometry: checked on the nailing golden, whose shear panels it converted, drawing items identical).
+  `nailing`: `Job::sheets` = the leading `panel` members (edge/field) that do not lie against an earlier sheet's thin
+  face; `Nail::on` (the head's component) gates each nail per view (`Scene::nail_on_shown`), `Nail::face` is the head
+  face's outward normal (iso W_NAIL_HIDDEN names it). `blocked: false` drops unbacked edge positions silently. Field
+  rows span from the edge rows and drop nails within `FIELD_CLEAR` (2") of them. Panel W_NAIL_LENGTH grows the framing
+  stack face to face behind the first nail (doubled plates). Toenails: `Toe` holds one joint's geometry;
+  `toenail_check` re-runs `Toe::outside` for every fix it offers (members incl. solids the points end in, `faces`,
+  angle 15..60, size, `through`), so applying any offered fix clears it (ergonomics #26 applies each one). Section:
+  `nail_hidden` ignores every prism of the nailing's own members (cut or beyond); identical shanks dedup in
+  `draw_nails`. Iso: `nail_dots` records why each hidden head is hidden (`HeadHidden`: face turned away, a solid in front,
+  or a solid lying against the face via `IsoPrism` point test) and `drawview::iso_nails_hidden_diags` turns a nailing
+  with heads but none visible into W_NAIL_HIDDEN (diags of the final fit trial only). Fixes naming other components
+  consider only components sharing a view with the nailing (`Job::shares_view`).
+  47 MASS details (`--strict`, unchanged files): 14 -> 36 warnings, all new ones true positives: 16 W_PARAM on the
+  faked face-on sheets of S-50.06/S-50.08/S-80.04 (each with the op that fixes it) and 6 W_NAIL_HIDDEN for nailings
+  that drew nothing in an iso (S-50.03 king-stud end nails whose heads face away or lie under the next king stud;
+  S-50.06 back-face edge nailing). Drawing IR changes on 8 views: those diagnostics, plus nails inside cut members now
+  drawing in the steel pen (S-50.02 C, S-60.03 C, S-80.04 A/C). Rebuilt the natural way on copies (scratch, not
+  committed): S-50.06 (four `lay: face` sheets on `chord_l1.face_front/back`, 6 -> 4 nailings, back face in the plan),
+  S-50.08 (face-on legs and header sheet, one edge nailing over both legs, the 3" header grid as `rows: 3` face
+  nailing: now drawn like ref 0061, before it was a field row), S-60.05 (24 -> 7 nailings, `blocked: false` for the
+  unblocked plans), S-70.08 (16d toenails per the reference: first fix offered = add plate_1 and nail from the left
+  face; 0 warnings), S-70.04 (blocking end-nailed through the truss: the 16d dots draw inside the cut blocking; was
+  W_NAIL_HIDDEN), S-50.05 (built-up post plies nailed from each side: W_NAIL_HIDDEN says the king studs lie against
+  both faces, so the nailing is omitted from the iso and stays in the note). All six: 0 strict warnings.
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -664,6 +693,17 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - #11: hardware hidden by nearer members draws dashed in section, plan and elevation without `hidden_lines` (SPEC 26.3
   makes hidden lines opt-in per view); the issue asks for it for hardware, so `hw_dash` prisms always get their hidden
   outline. Existing `connector` polylines (no `kind`, no `on`) are unchanged, so the goldens are byte-identical.
+
+- #26: "nailing should accept several panels or an array". An array already worked (every instance of the first member
+  is a sheet); several panels are the leading `panel` members, so no new param and the old one-panel form is unchanged.
+  A panel that lies on an earlier sheet's thin face is backing (two layers nailed together), not a second sheet.
+- #26: "nails inside a cut member should show": chosen for every member of the nailing (not only the cut one the nail is
+  in), solid in the steel pen like other nails. Nails in front of the plane still drop.
+- #26: face-on panels are `panel lay: "face"` (the word `connector` uses for the same thing) instead of a new
+  `sheet`/`wall_panel` type; openings in a face-on sheet are not modelled (use several sheets, as portal frames do).
+- #26: `blocked: false` was added because a multi-panel nailing cannot carry per-panel `edges`, and unblocked
+  diaphragms nail only where framing crosses the edge; per-panel edges still need one nailing per group (S-60.05 C: two).
+- #26: the face-hint threshold is 1 1/2" (no structural sheet is thicker; 2x boards are `lumber`).
 
 ## REQUESTS
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,
