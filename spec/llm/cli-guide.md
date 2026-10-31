@@ -118,7 +118,7 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
   (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens and a plural
   s, and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the
-  measured length), welds (`3/16 fillet weld all around`, `cjp`) and view titles. A `MISSING` line names the closest
+  measured length), welds (`3/16 fillet weld all around`, `cjp`), tables and view titles. A `MISSING` line names the closest
   candidate and the words it lacks; never stuff a component `label` with words to pass.
 - Note case: penny sizes (`16d`), ACI symbols (`db`, `ld`, `ldh`, `f'c`, `fy`) and units like `psi` print as written, and a
   citation's numbered section (`1926.755(a)(1)`) keeps its case. A note may end on a house abbreviation (`PER ARCH.`).
@@ -138,5 +138,13 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   A dowel that laps a wall bar: `"points": [{"ref":"ftg@bottom_center","offset":[2,3]}, {"ref":"wall_bar@start","offset":[2,24]}]`.
 - `W_CUT_FILL`: an embedded part (bolt, bar) emptied a cut member's fill; the member keeps its fill and the warning
   says which part.
+- Schedules (SPEC 26.1): one `table` annotation per schedule, in a view `{"id":"S","kind":"schedule","title":"..."}` (no
+  components, no crop or scale; paper inches, caption NTS). Grouped headers go in `header` rows with `colspan`/`rowspan`;
+  plain headers in `columns` (`{"header":"EMBED.","unit":"IN.","width":0.75}`); cells may be numbers; `"\n"` breaks a line.
+  Every row must cover every column (counting rowspans from rows above), else E_PARAM names the row. General notes of the
+  schedule go in the view as notes (a list above the tables; `notes_title` renames DETAIL NOTES) or in the table's `notes`.
+  A table can also sit in a section view: it goes under the drawing, or at `at` (top-left corner; W_TABLE_OVERLAP if it
+  lands on anything). Cell text is linted like notes and counts for coverage. In a keyed view a general note with no
+  `target` or `at` is listed with no tag.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

@@ -198,6 +198,20 @@ geometrically (tolerance 1e-3).
   W_LABEL_OVERLAP 0 -> 9 (s-30-01 S: 27 table labels overprint), I_ANNOT_MOVED 0 -> 50 (10 labels, 40 dimensions;
   s-10-01/02/03, where every note has a hand-set `place`, account for 38). With every `place` removed (s-00-03, s-10-01/02/03): W_LEADER_HIT
   1 -> 1, s-10-01 A has none.
+- Tables and schedule views (issue #6, SPEC 26.1): `annot/table.rs` reads a table into a cell grid (`owner` = cell index
+  per slot, HTML placement), lays it out (`layout`: auto widths, spans widen their auto columns, `text::wrap_width` by font
+  width, row heights) and draws it at the origin (`render`); `annot::annotate` places it (`at`, stacked from [0, 0] in a
+  schedule view, under everything else in other views) and runs `table_overlaps` (W_TABLE_OVERLAP: other tables,
+  `ann_boxes`, path segments, hatch/fill loops). `view::Kind::Schedule` (`"schedule"`, alias `"sheet"`) has
+  `Members.none` (draws nothing; `validate::drawn_sets` skips it, so geometry findings never list it), and
+  `drawview::schedule_pass` builds it at scale factor 1 with an empty `Section` for the `Env` and the content box as
+  crop; `schedule_fit` is its W_VIEW_FIT. Keyed notes without `target`/`at` are `listed` in `Gathered` and kept out of the
+  router. Lint (`lint::table_style`) and coverage (`coverage::table_candidates`) read the document through
+  `table::texts` / `row_texts`. 47 MASS details: `kerf check --strict` output byte-identical before/after (0 errors, 790
+  warnings; none uses a table). S-00.02 rebuilt with three tables (A, B schedule views; C a section with the hook
+  sketches and the table at `at`): 143 -> 2 components, 144 -> 2 warnings under --strict (the two acknowledged
+  W_FLOATING hook sketches; W_ACK_UNUSED and the 141 cell solids gone), coverage 14/14, 91 KB -> 12 KB of JSON. Wasm
+  (wasm-opt -Oz): 788,276 -> 837,511 raw, 347,996 -> 368,624 gzip -9 (layout code and the diagnostic/schema text).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -304,6 +318,12 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   symbols; the minimum gap between leader note blocks is the style `note_gap_in`, unchanged.
 - The Zig test suite's unit tests (hostile-input table, OOM sweep, layout and view tests) were not ported: tests here are
   end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
+- Tables (issue #6): no rotated cell text (ref 1231's side label LAP SPLICES IN INCHES), no double or per-row heavy rules,
+  no shading; one text height (the note height) for title, headers and cells; a table is not an obstacle for leader
+  routing (auto placement keeps it clear of everything; one placed with `at` only warns W_TABLE_OVERLAP); a long
+  schedule is not split across views automatically (W_VIEW_FIT says to split it); auto-width cells never overflow, so
+  W_TABLE_CELL fires only on fixed `width`s. The web UI shows tables (they are plain drawing items) but its inspector
+  has no table editor (edit through ops).
 
 ## SPEC ISSUES
 - Issue #18 asks that "citation `section` strings are never case-folded". The golden `flush-psl-2x6` cites
@@ -375,4 +395,25 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   `N acknowledged`, so every golden summary.txt changed by that suffix.
 - The drawing IR's `acknowledged` is per view: acknowledged warnings whose acknowledging component that view draws.
   It is omitted (not `[]`) for documents without `acknowledge`, so no existing drawing golden changed.
+- Issue #6 proposes `kind: "sheet"` for a geometry-free view. Chosen: `kind: "schedule"` (what the view holds; "sheet"
+  already means `--sheet` framing and #7's layouts), with `"sheet"` accepted as an alias. Its drawing IR `kind` is
+  `"schedule"` and `scale` 1 (paper inches); `"scale": "NTS"` is accepted, anything else geometric is ignored with W_PARAM
+  rather than E_PARAM so a view converted from a section keeps drawing. A section view still rejects NTS (now pointing
+  to the schedule kind), since an NTS section has no fit rule.
+- Table `at` is the top-left corner of the border (not of the title), so tables align on their grids; auto placement in a
+  schedule view puts the first table's border corner at [0, 0] for the same reason.
+- `header` rows and column headers in `columns` are exclusive (E_PARAM) instead of stacking, so there is one header form
+  per table; a column `unit` still lands in the lowest header cell over its column, or warns when that cell spans.
+- `rules` semantics (the issue named the four values only): `header` keeps every rule inside the header (grouped headers
+  need them) and the column rules, and drops rules between body rows; `outer` is the border plus the header rule.
+- Table `notes` print numbered under `NOTE:`/`NOTES:`; a note starting with `*` is an unnumbered footnote (the issue
+  said "notes/footnotes" without a form).
+- Units are not linted (`IN.` would be flagged as a trailing period); cells, headers, title and notes are, with no repeat
+  check (repeated values are what a table is).
+- Coverage: a body row is matched together with the title and all header text, so `#4 bar 38` or `HDU8 holdown` match one
+  row; the title with the headers alone is another candidate (`f'c = 4,000 psi`).
+- The issue's "in keyed views, a note without target/at becomes a list-only entry": done for keyed views; leader views
+  keep the E_PARAM (its message now suggests a keyed or list view).
+- The 47-detail drafts were not converted to tables (only scratch copies of S-00.02); `~/github/mass-details` is
+  untouched.
 

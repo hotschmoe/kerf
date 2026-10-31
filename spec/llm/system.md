@@ -36,6 +36,7 @@ Write notes in the office grammar below. Every note in every detail should read 
 - Notes are usually 6-12 per detail. Notate every structural element and connection. Don't notate trivia.
 - Add `label` annotations for EXTERIOR / INTERIOR / GRADE when they help orientation.
 - Add dimensions only for what a builder needs (footing width/depth, embedment, recess depth, cover).
+- Schedules (lap lengths, embedment, holdowns, headers, hangers) are `table` annotations, usually in a `"kind":"schedule"` view; never cells drawn with solids and labels, never a schedule flattened into notes.
 
 # Code references
 - Cite the 2021 IRC unless the document's `meta.jurisdiction` says otherwise. Use IBC/ACI 318/TMS 402 only when IRC doesn't cover the item.
