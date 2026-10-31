@@ -1736,8 +1736,10 @@ section('#13. nailing: face, toenail, edge and field fasteners placed from their
   r = withNail({ pattern: 'edge', members: ['shtg', 'lower', 'upper'], size: '8d', spacing: 6, edge_distance: 0.25 });
   check('W_NAIL_EDGE: edge distance under 3/8"', /^WARN W_NAIL_EDGE nl: 'nl': edge_distance 1\/4" is under the 3\/8" minimum .*\{"edge_distance":0\.375\}/m.test(r.out), r.out);
   check('W_NAIL_EDGE: a panel edge with no framing behind it, fix: leave it out of edges', /^WARN W_NAIL_EDGE nl: 'nl': the top edge of 'shtg' has no framing behind it .*\{"op":"update","path":"components\/nl","value":\{"edges":\["left","right","bottom"\]\}\}/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '16d', count: 4, rows: 2, through: true }, { views: [{ id: 'S', kind: 'section', cut_z: -3, title: 'S', annotations: [] }] });
+  check('W_NAIL_HIDDEN: a section cut behind every nail shows none; fix: cut_z in front', /^WARN W_NAIL_HIDDEN nl: 'nl' draws none of its fasteners in view S.*\{"op":"update","path":"views\/S","value":\{"cut_z":3\}\}/m.test(r.out), r.out);
   r = withNail({ members: ['upper', 'lower'], size: '16d', count: 4, rows: 2, through: true }, { views: [{ id: 'S', kind: 'section', cut_z: 0, title: 'S', annotations: [] }] });
-  check('W_NAIL_HIDDEN: a section cut through the plates shows none; fix: cut_z in front', /^WARN W_NAIL_HIDDEN nl: 'nl' draws none of its fasteners in view S.*\{"op":"update","path":"views\/S","value":\{"cut_z":3\}\}/m.test(r.out), r.out);
+  check('a section cut through the plates draws the nails inside them (SPEC 28.6)', !/W_NAIL_HIDDEN/.test(r.out), r.out);
   r = withNail({ members: ['upper', 'lower'], size: '17d', count: 4 });
   check('bad size: E_PARAM listing the forms', /^ERROR E_PARAM nl: size "17d" is not a fastener size\. Use penny sizes/m.test(r.out), r.out);
   r = withNail({ members: ['upper', 'lowr'], size: '16d', count: 4 });
@@ -1756,6 +1758,80 @@ section('#13. nailing: face, toenail, edge and field fasteners placed from their
   check('removing a member a nailing lists is refused', r.code === 1 && /nl/.test(r.err), r.err);
   r = kerf(['schema', 'nailing']);
   check('kerf schema nailing: params, patterns and the example', r.code === 0 && /members/.test(r.out) && /toenail/.test(r.out) && /edge_distance/.test(r.out) && /splice_nails/.test(r.out), r.out.slice(0, 300));
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Issue #26: face-on sheathing (panel lay face), nailing across several panels, nails inside cut members, iso
+// W_NAIL_HIDDEN, toenail fixes that hold (SPEC 28.6)
+section('#26. face-on sheathing and nailing');
+{
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const opsIn = (line) => [...line.matchAll(/\{"op":"update","path":"[^"]+","value":\{.*?\}\}(?=;| \(|$)/g)].map((m) => JSON.parse(m[0]));
+  fs.copyFileSync(path.join(DOCS, 'sheathing.kerf.json'), path.join(tmp, 'sh.kerf.json'));
+  let r = kerf(['check', 'sh.kerf.json']);
+  check('golden sheathing doc: 0 warnings, 6/6 covered', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /COVERAGE  6\/6/.test(r.out), r.out);
+  check('lay face panel summary: thickness x length x height, the member it lies on', /^ w_sh1 +panel osb 7\/16" x 4'-0" x 8'-0" lay face run x on w_stud\.face_front x 0"\.\.4'-0" +y 0"\.\.8'-0"/m.test(r.out), r.out);
+  check('one edge nailing over two sheets: 96 nails, both sheets first in members', /^ w_en +nailing edge 8d @ 6" O\.C\. EDGE NAILING: 96 nails \(0\.131 x 2 1\/2"\), w_sh1 -> w_sh2 -> w_stud/m.test(r.out), r.out);
+  check('unblocked floor: blocked false nails only where joists cross the edges, no W_NAIL_EDGE', /^ f_en +nailing edge 10d @ 6" O\.C\. EDGE NAILING: 58 nails/m.test(r.out) && !/W_NAIL_EDGE/.test(r.out), r.out);
+  let d = items('sh.kerf.json', 'A');
+  check('elevation: the sheets draw face-on with nail dots over them', d.items.filter((i) => i.t === 'fill' && i.src === 'w_en').length === 96 && ['w_sh1', 'w_sh2'].every((id) => d.items.some((i) => i.t === 'region' && i.src === id)), d.err);
+  d = items('sh.kerf.json', 'P');
+  check('plan: the face-on sheet is a 7/16" strip in front of the studs', d.items.some((i) => i.src === 'w_sh1'), d.err);
+  d = items('sh.kerf.json', 'D');
+  check('section: end nails inside the cut blocking draw (2 dots from the joist behind the cut)', d.items.filter((i) => i.t === 'fill' && i.src === 'd_end').length === 2, d.items.filter((i) => i.src === 'd_end'));
+  check('section: 16d toenails into the double plate are 2 angled shanks', d.items.filter((i) => i.t === 'path' && i.src === 'd_toe' && Math.abs(i.pts[0][0] - i.pts[1][0]) > 1 && Math.abs(i.pts[0][1] - i.pts[1][1]) > 1).length === 2, d.items.filter((i) => i.src === 'd_toe'));
+
+  const doc = readJson('sh.kerf.json');
+  const variant = (name, edit) => { const v = JSON.parse(JSON.stringify(doc)); edit(v); write(name, v); return kerf(['check', name]); };
+  const comp = (v, id) => v.components.find((c) => c.id === id);
+  r = variant('sh1.kerf.json', (v) => { delete comp(v, 'w_sh1').height; });
+  check('lay face without height: E_PARAM naming height', /^ERROR E_PARAM w_sh1: a face-on panel \(lay face\) needs "height"/m.test(r.out), r.out);
+  r = variant('sh1.kerf.json', (v) => { delete comp(v, 'w_sh1').lay; });
+  check('height/on on an edge-on panel: E_PARAM saying lay face', /^ERROR E_PARAM w_sh1: 'height' is for a face-on sheet: add "lay": "face"/m.test(r.out), r.out);
+  r = variant('sh1.kerf.json', (v) => { comp(v, 'w_sh1').z = [3.5, 3.9375]; });
+  check('on and z together: E_PARAM', /^ERROR E_PARAM w_sh1: give either 'on' .* or 'z', not both/m.test(r.out), r.out);
+  r = variant('sh1.kerf.json', (v) => { comp(v, 'w_sh1').on = 'w_stud.face_left'; });
+  check('on a side face: E_PARAM naming face_front/face_back', /^ERROR E_PARAM w_sh1: 'on': a face-on sheet lies on a z face: "w_stud\.face_front" or "w_stud\.face_back"/m.test(r.out), r.out);
+  r = variant('sh1.kerf.json', (v) => { comp(v, 'f_en').blocked = true; });
+  check('blocked floor edges over no joist: W_NAIL_EDGE offering blocked false', /^WARN W_NAIL_EDGE f_en: .*has no framing behind it.*\{"op":"update","path":"components\/f_en","value":\{"blocked":false\}\}/m.test(r.out), r.out);
+
+  r = variant('sh2.kerf.json', (v) => { v.views.find((w) => w.id === 'B').from = 'back_right'; });
+  check('iso from behind: W_NAIL_HIDDEN, heads turned away, fix looks from that side', /^WARN W_NAIL_HIDDEN w_en: 'w_en' draws none of its fasteners in view B: the heads on the front face of 'w_sh1' are turned away from this view \(from back_right\).*\{"op":"update","path":"views\/B","value":\{"from":"front_right"\}\}/m.test(r.out), r.out);
+  const posts = (extra) => ({ kerf: '0.1', id: 'bp', title: 'POST', components: [
+    { id: 'p1', type: 'lumber', size: '2x6', run: 'y', face: 'narrow', length: 48, at: { to: [0, 0] } },
+    { id: 'p2', type: 'lumber', size: '2x6', run: 'y', face: 'narrow', length: 48, at: { to: 'p1@bottom_right' } },
+    { id: 'k', type: 'lumber', size: '2x6', run: 'y', face: 'narrow', length: 48, at: { anchor: 'bottom_right', to: 'p1@bottom_left' } },
+    { id: 'nl', type: 'nailing', members: ['p1', 'p2'], size: '10d', spacing: 10, rows: 2, ...extra }],
+    views: [{ id: 'I', kind: 'iso', annotations: [] }] });
+  write('bp.kerf.json', posts({}));
+  r = kerf(['check', 'bp.kerf.json']);
+  check('built-up post nailed from a face a king stud covers: W_NAIL_HIDDEN says so and offers omit (no silent blank)', /^WARN W_NAIL_HIDDEN nl: 'nl' draws none of its fasteners in view I: the heads on the left face of 'p1' are covered by 'k', which lies against that face.*Fix: keep the nailing out of this view.*\{"op":"update","path":"views\/I","value":\{"omit":\["nl"\]\}\}/m.test(r.out), r.out);
+  write('bp.kerf.json', posts({ members: ['p2', 'p1'] }));
+  r = kerf(['check', 'bp.kerf.json']);
+  check('driven from the free face: the heads show, no W_NAIL_HIDDEN', !/W_NAIL_HIDDEN/.test(r.out) && items('bp.kerf.json', 'I').items.filter((i) => i.t === 'fill' && i.src === 'nl').length > 4, r.out);
+
+  r = variant('sh3.kerf.json', (v) => { comp(v, 'd_toe').members = ['d_blk', 'd_pl2']; });
+  const line = (r.out.match(/^WARN W_NAIL_LENGTH d_toe: .*$/m) || [''])[0];
+  check('16d toenail through a single plate: W_NAIL_LENGTH says where the point ends and names the plate below', /16d toenails .* end outside 'd_pl2' .* past the bottom face of 'd_pl2'.*the points end in d_pl1: list it after 'd_pl2'/.test(line), r.out);
+  const fixes = opsIn(line);
+  check('toenail fixes: members, a size, through (each an update op)', fixes.length >= 3 && fixes.some((o) => o.value.members) && fixes.some((o) => o.value.size) && fixes.some((o) => o.value.through), fixes);
+  for (const op of fixes) {
+    const v = readJson('sh3.kerf.json');
+    Object.assign(v.components.find((c) => c.id === 'd_toe'), op.value);
+    write('sh4.kerf.json', v);
+    const rr = kerf(['check', 'sh4.kerf.json']);
+    check(`applying the toenail fix ${JSON.stringify(op.value)} clears W_NAIL_LENGTH (no flip-flop)`, !/W_NAIL_LENGTH d_toe/.test(rr.out), rr.out);
+  }
+
+  const plates = { kerf: '0.1', id: 'pl', title: 'PLATES', components: [
+    { id: 'pl1', type: 'lumber', size: '2x4', run: 'z', orient: 'flat', at: { to: [0, 0] } },
+    { id: 'pl2', type: 'lumber', size: '2x4', run: 'z', orient: 'flat', at: { to: 'pl1@top_left' } },
+    { id: 'sh', type: 'panel', thickness: 0.4375, length: 3.5, at: { to: 'pl2@top_left' } },
+    { id: 'en', type: 'nailing', pattern: 'edge', members: ['sh', 'pl2', 'pl1'], size: '8d', spacing: 6, edges: ['left'] }],
+    views: [{ id: 'A', kind: 'section' }] };
+  write('pl.kerf.json', plates);
+  r = kerf(['check', 'pl.kerf.json']);
+  check('edge nails through a doubled plate: the stack counts both plates (no W_NAIL_LENGTH)', !/W_NAIL_LENGTH/.test(r.out), r.out);
 }
 
 // ---------------------------------------------------------------------------------------------------
