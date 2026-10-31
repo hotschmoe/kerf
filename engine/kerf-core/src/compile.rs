@@ -703,7 +703,6 @@ fn world_prisms(
     emb_override: Option<bool>,
     dashed: bool,
 ) -> Vec<Prism> {
-    let centered = built.nat_z.is_some();
     let mut world = Vec::with_capacity(inst.xfs.len() * built.prisms.len());
     for (ii, (xf, z)) in inst.xfs.iter().zip(&inst.zs).enumerate() {
         for pr in &built.prisms {
@@ -713,7 +712,7 @@ fn world_prisms(
             q.instance = ii as u32;
             q.z0 = z[0];
             q.z1 = z[1];
-            if centered && (pr.zhalf > 0.0 || pr.zoff != 0.0) {
+            if pr.zhalf > 0.0 || pr.zoff != 0.0 {
                 let zc = (z[0] + z[1]) / 2.0 + pr.zoff;
                 let half = if pr.zhalf > 0.0 { pr.zhalf } else { (z[1] - z[0]) / 2.0 };
                 q.z0 = zc - half;
