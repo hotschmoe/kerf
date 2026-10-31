@@ -38,5 +38,17 @@ for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-s
     n++; if (!rev.equals(fs.readFileSync(path.join(here, `golden/${d}/${v}-review.svg`)))) { bad++; console.log('DIFF', d, `${v}-review.svg`); }
   }
 }
+// Issue #7: sheet layouts (shared DETAIL NOTES, insets at their own scale, reference bubbles).
+for (const d of ['layout-sheet', 'layout-corner-reinf']) {
+  const doc = JSON.parse(fs.readFileSync(path.join(here, `docs/${d}.kerf.json`), 'utf8'));
+  for (const l of doc.layouts.map((x) => x.id)) {
+    const out = call('drawing', JSON.stringify({ doc, layout: l }));
+    n++; if (!out.equals(fs.readFileSync(path.join(here, `golden/${d}/drawing-layout-${l}.json`)))) { bad++; console.log('DIFF', d, 'layout drawing', l); }
+    for (const [fmt, file, sheet] of [['svg', `layout-${l}-sheet.svg`, true], ['pdf', `layout-${l}.pdf`, false], ['dxf', `layout-${l}.dxf`, false]]) {
+      const o = call('export', JSON.stringify({ doc, layout: l, format: fmt, sheet }));
+      n++; if (!o.equals(fs.readFileSync(path.join(here, `golden/${d}/${file}`)))) { bad++; console.log('DIFF', d, file); }
+    }
+  }
+}
 console.log(`wasm vs native goldens: ${n - bad}/${n} byte-identical`);
 if (bad) process.exitCode = 1; // a CI gate: a mismatch must fail the step

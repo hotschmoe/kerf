@@ -164,7 +164,7 @@ const REFS_TEXT: &str = concat!(
 );
 
 pub const TOPICS_HINT: &str =
-    "doc view note dim label table cite ops at array acknowledge common refs <component type>";
+    "doc view layout note dim label table ref cite ops at array acknowledge common refs <component type>";
 
 pub fn render(topic: &str) -> Option<String> {
     if let Some(o) = fields::find_object(topic) {

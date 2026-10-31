@@ -1,5 +1,5 @@
 // Application model: the one KerfDoc + style + engine, op log, selection, view state, caches.
-import type { Acknowledged, ApplyResult, Actor, Diagnostic, Drawing, KerfDoc, Mesh, Op, StrokeFont, View } from './types';
+import type { Acknowledged, ApplyResult, Actor, Diagnostic, Drawing, KerfDoc, Layout, Mesh, Op, StrokeFont, View } from './types';
 import type { Engine, InspectQuery } from './engine';
 import { EngineCallError } from './engine';
 import { DrawingModel } from './draw2d';
@@ -32,7 +32,7 @@ export interface Remote {
   fetchCurrent(): Promise<{ doc: KerfDoc } | null>;
   /** remember a document state we know is on disk (own writes) so the echo `doc_changed` is not treated as external */
   /** export through the server (workspace mode): the file on disk is what is exported */
-  exportFile(view: string, format: string, sheet: boolean): Promise<{ name: string; bytes: Uint8Array } | null>;
+  exportFile(view: string, format: string, sheet: boolean, layout?: string): Promise<{ name: string; bytes: Uint8Array } | null>;
   /** a file listed in the open document's `meta.references`, read from the served folder */
   fetchReference(path: string): Promise<{ blob: Blob; etag: string | null }>;
   noteKnown(doc: KerfDoc): void;
@@ -52,6 +52,8 @@ export class App {
   opLog: LogEntry[] = [];
   rev = 0;
   activeView = '';
+  /** a sheet layout (SPEC 26.2) shown in SHEET mode instead of the active view; '' = the active view's sheet */
+  activeLayout = '';
   mode: Mode = 'view';
   selection: Selection = null;
   hover: string | null = null;
@@ -91,8 +93,11 @@ export class App {
   // ---- views ----
   get views(): View[] { return this.doc?.views ?? []; }
   get view(): View | undefined { return this.views.find((v) => v.id === this.activeView); }
-  setMode(m: Mode) { if (m !== this.mode) { this.mode = m; this.emit('view'); } }
+  get layouts(): Layout[] { return this.doc?.layouts ?? []; }
+  setMode(m: Mode) { if (m !== this.mode || this.activeLayout) { this.mode = m; this.activeLayout = ''; this.emit('view'); } }
   setActiveView(id: string) { if (id !== this.activeView) { this.activeView = id; if (this.mode !== 'view' && this.mode !== 'sheet') this.mode = 'view'; this.emit('view'); } }
+  /** show sheet layout `id` (SPEC 26.2) in SHEET mode */
+  setActiveLayout(id: string) { if (id !== this.activeLayout || this.mode !== 'sheet') { this.activeLayout = id; this.mode = 'sheet'; this.emit('view'); } }
 
   setSelection(id: string | null) {
     const kind = id ? (this.isNote(id) ? 'note' : 'comp') : null;
@@ -179,6 +184,7 @@ export class App {
     this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
     this.opLog.push({ n: this.opLog.length + 1, who, kind, why, ops, ts: hhmm(), before, changed: res.changed ?? [], file: this.remote?.file });
     if (!this.views.some((v) => v.id === this.activeView)) this.activeView = this.views[0]?.id ?? '';
+    if (!this.layouts.some((l) => l.id === this.activeLayout)) this.activeLayout = '';
     if (this.selection && !this.doc.components.some((c) => c.id === this.selection!.id) && !this.isNote(this.selection.id)) this.selection = null;
     this.emit('doc'); this.emit('log'); this.emit('view'); this.emit('selection');
   }
@@ -232,6 +238,7 @@ export class App {
       last.undone = true;
       this.opLog.push({ n: this.opLog.length + 1, who: 'DESIGNER', kind: 'undo', why: `UNDO ${last.n}: ${last.why}`, ops: [], ts: hhmm(), before: cur, changed: last.changed });
       if (!this.views.some((v) => v.id === this.activeView)) this.activeView = this.views[0]?.id ?? '';
+      if (!this.layouts.some((l) => l.id === this.activeLayout)) this.activeLayout = '';
       this.emit('doc'); this.emit('log'); this.emit('view'); this.emit('selection');
       return true;
     });
@@ -275,6 +282,19 @@ export class App {
       p = this.engine.exportBytes(this.doc, this.style, view, 'svg', true).then((b) => { this.perf.lastSheetMs = performance.now() - t0; return new TextDecoder().decode(b); });
       p.catch(() => this.sheetCache.delete(view));
       this.sheetCache.set(view, p);
+    }
+    return p;
+  }
+
+  getLayoutSvg(id = this.activeLayout): Promise<string> {
+    if (!this.doc) return Promise.reject(new Error('no document'));
+    const key = `layout:${id}`;
+    let p = this.sheetCache.get(key);
+    if (!p) {
+      const t0 = performance.now();
+      p = this.engine.exportLayout(this.doc, this.style, id, 'svg', true).then((b) => { this.perf.lastSheetMs = performance.now() - t0; return new TextDecoder().decode(b); });
+      p.catch(() => this.sheetCache.delete(key));
+      this.sheetCache.set(key, p);
     }
     return p;
   }

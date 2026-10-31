@@ -22,6 +22,14 @@ export interface Annotation {
   [k: string]: unknown;
 }
 
+/** A sheet of several views (SPEC 26.2): `views` entries are view ids or nested lists of them. */
+export interface Layout {
+  id: string;
+  title?: string;
+  views: (string | string[])[];
+  [k: string]: unknown;
+}
+
 export interface View {
   id: string;
   kind: 'section' | 'iso' | string;
@@ -49,6 +57,7 @@ export interface KerfDoc {
   run?: Pt;
   components: Component[];
   views: View[];
+  layouts?: Layout[];
   [k: string]: unknown;
 }
 

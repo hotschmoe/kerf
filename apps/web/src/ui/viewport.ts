@@ -1,4 +1,4 @@
-// Center column: view tabs [SECTION A] [ISO B] [3D] [SHEET], tool buttons, the three viewers and the REFERENCE panel.
+// Center column: view tabs [SECTION A] [ISO B] [3D] [SHEET] [LAYOUT S1], tool buttons, the three viewers and the REFERENCE panel.
 import type { App } from '../app';
 import { Viewport2D } from '../view2d';
 import type { View3D, Preset } from '../view3d';
@@ -85,7 +85,7 @@ export function mountViewport(app: App, el: HTMLElement) {
         view3.resize();
         (window as unknown as { __rendered3d?: boolean }).__rendered3d = true;
       } else {
-        const svg = await app.getSheetSvg(app.activeView);
+        const svg = app.activeLayout ? await app.getLayoutSvg(app.activeLayout) : await app.getSheetSvg(app.activeView);
         if (t !== token) return;
         await sheet.setSvg(svg);
         (window as unknown as { __renderedSheet?: boolean }).__renderedSheet = true;
@@ -102,10 +102,13 @@ export function mountViewport(app: App, el: HTMLElement) {
   function renderTabs() {
     clear(tabs); clear(tools);
     for (const v of app.views) {
-      tabs.append(tabBtn(`[${(v.kind || 'view').toUpperCase()} ${v.id}]`, app.mode === 'view' && app.activeView === v.id, () => { app.mode = 'view'; app.setActiveView(v.id); app.emit('view'); }));
+      tabs.append(tabBtn(`[${(v.kind || 'view').toUpperCase()} ${v.id}]`, app.mode === 'view' && app.activeView === v.id, () => { app.mode = 'view'; app.activeLayout = ''; app.setActiveView(v.id); app.emit('view'); }));
     }
     tabs.append(tabBtn('[3D]', app.mode === '3d', () => { app.setMode('3d'); }));
-    tabs.append(tabBtn('[SHEET]', app.mode === 'sheet', () => { app.setMode('sheet'); }));
+    tabs.append(tabBtn('[SHEET]', app.mode === 'sheet' && !app.activeLayout, () => { app.setMode('sheet'); }));
+    for (const l of app.layouts) {
+      tabs.append(tabBtn(`[LAYOUT ${l.id}]`, app.mode === 'sheet' && app.activeLayout === l.id, () => app.setActiveLayout(l.id)));
+    }
     if (refs.count) tools.append(tabBtn(`[REF ${refs.count}]`, refs.open, () => refs.toggle(), 'sm ref'));
     if (app.mode === '3d') {
       for (const [p, l] of [['front', 'FRONT'], ['iso', 'ISO'], ['top', 'TOP'], ['right', 'RIGHT']] as [Preset, string][]) {

@@ -296,6 +296,15 @@ async function main() {
   check('unknown format -> 400', nf2.status === 400);
   const nv2 = await api(port, 'GET', '/api/docs/beam.kerf.json/export?format=png');
   check('missing view -> 400', nv2.status === 400);
+  // Issue #7: a sheet layout exports through ?layout=
+  fs.copyFileSync(path.join(here, 'docs', 'layout-sheet.kerf.json'), path.join(dir, 'lay.kerf.json'));
+  await sleep(700);
+  const lpng = await api(port, 'GET', '/api/docs/lay.kerf.json/export?layout=S1&format=png&sheet=1&px=900');
+  check('layout png via ?layout=S1, filename names the layout', lpng.status === 200 && lpng.headers['content-type'] === 'image/png' && /filename="lay-S1\.png"/.test(lpng.headers['content-disposition']), lpng.headers);
+  const lboth = await api(port, 'GET', '/api/docs/lay.kerf.json/export?view=A&layout=S1&format=png');
+  check('view and layout together -> 400 E_INPUT', lboth.status === 400 && lboth.json?.error?.code === 'E_INPUT', lboth.text);
+  const lnone = await api(port, 'GET', '/api/docs/lay.kerf.json/export?layout=S9&format=svg');
+  check('unknown layout -> 404 E_VIEW listing the layouts', lnone.status === 404 && /Layouts: S1, S2/.test(lnone.json?.error?.message ?? ''), lnone.text);
   const png_t0 = performance.now();
   await api(port, 'GET', '/api/docs/beam.kerf.json/export?view=A&format=png&sheet=1');
   const png_ms = performance.now() - png_t0;

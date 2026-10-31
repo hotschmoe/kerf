@@ -7,6 +7,7 @@ use crate::drawview;
 use crate::dxf;
 use crate::font;
 use crate::json::{self, Value};
+use crate::layout;
 use crate::limits;
 use crate::lint;
 use crate::load;
@@ -82,13 +83,13 @@ const HELP_ROWS: [[&str; 3]; 11] = [
     ],
     [
         "drawing",
-        "{doc, view, style?}",
-        "Drawing IR JSON (SPEC 10) of one view; `acknowledged` lists the suppressed warnings of its components when the doc has `acknowledge`",
+        "{doc, view, style?} or {doc, layout, style?}",
+        "Drawing IR JSON (SPEC 10) of one view, or of a sheet layout (kind \"layout\", with \"cells\": each view's id, scale and bounds); `acknowledged` lists the suppressed warnings of its components when the doc has `acknowledge`",
     ],
     ["mesh", "{doc, style?, include_fills?: bool}", "mesh JSON for 3D viewers"],
     [
         "export",
-        "{doc, view, format: \"svg\"|\"png\"|\"pdf\"|\"dxf\", sheet?: bool, review?: bool, px?: number, style?}",
+        "{doc, view | layout, format: \"svg\"|\"png\"|\"pdf\"|\"dxf\", sheet?: bool, review?: bool, px?: number, style?}",
         "the file bytes (svg/dxf text, png/pdf binary); review marks acknowledged components and stamps N ACKNOWLEDGED WARNINGS",
     ],
 ];
@@ -257,11 +258,33 @@ fn trim_newlines(b: &[u8]) -> &[u8] {
 }
 
 fn build_view<'s>(inp: &Value, d: &Value, st: &'s Style) -> Result<drawing::Drawing<'s>, Output> {
-    let Some(view_id) = inp.get("view").and_then(Value::str) else {
-        return Err(fail("E_INPUT", "missing \"view\": the id of a view in the document"));
-    };
     let diags = Diags::new();
     let vdoc = lint::with_dim_dirs_from_doc(d, st);
+    if let Some(lv) = inp.get("layout") {
+        let Some(layout_id) = lv.str() else {
+            return Err(fail("E_INPUT", "\"layout\" must be the id of a layout in the document's \"layouts\""));
+        };
+        if inp.get("view").is_some() {
+            return Err(fail("E_INPUT", "give \"view\" (one view) or \"layout\" (a sheet of views), not both"));
+        }
+        if matches!(inp.get("review"), Some(Value::Bool(true))) {
+            return Err(fail(
+                "E_INPUT",
+                "\"review\" marks acknowledged warnings on one view; export each view with \"view\" and \"review\": true",
+            ));
+        }
+        return layout::build(&vdoc, st, layout_id, &diags).ok_or_else(|| {
+            let list = diags.list();
+            let first = list.iter().find(|x| x.level == Level::Error).or(list.first());
+            fail("E_VIEW", &first.map_or_else(|| "layout could not be built".to_string(), |x| x.message.clone()))
+        });
+    }
+    let Some(view_id) = inp.get("view").and_then(Value::str) else {
+        return Err(fail(
+            "E_INPUT",
+            "missing \"view\": the id of a view in the document (or \"layout\": the id of a layout)",
+        ));
+    };
     let mut dr = drawview::build(&vdoc, st, view_id, &diags).ok_or_else(|| {
         let msg = diags.list().first().map_or_else(|| "view could not be built".to_string(), |x| x.message.clone());
         fail("E_VIEW", &msg)

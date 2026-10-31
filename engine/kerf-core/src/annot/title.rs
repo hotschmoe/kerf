@@ -15,6 +15,27 @@ pub struct SheetInfo<'a> {
     pub scale_text: &'a str,
     pub sheet: &'a str,
     pub unverified: bool,
+    /// Layouts (SPEC 26.2): a title wider than this (model units) wraps at spaces; 0 keeps one line.
+    pub wrap_w: f64,
+}
+
+/// The title in lines no wider than `w` (a word wider than `w` keeps its own line).
+fn title_lines(env: &Env, title: &str, h: f64, w: f64) -> Vec<String> {
+    if w <= 0.0 || env.font.width(ascii_fold(title), h) <= w {
+        return alloc::vec![String::from(title)];
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for word in title.split(' ').filter(|x| !x.is_empty()) {
+        let trial = if cur.is_empty() { String::from(word) } else { format!("{cur} {word}") };
+        if !cur.is_empty() && env.font.width(ascii_fold(&trial), h) > w {
+            lines.push(core::mem::replace(&mut cur, String::from(word)));
+        } else {
+            cur = trial;
+        }
+    }
+    lines.push(cur);
+    lines
 }
 
 /// Title under the view: bubble, title text with heavy underline, scale (SPEC 6.5). Returns the lowest y used.
@@ -81,9 +102,28 @@ pub fn title_items(env: &mut Env, info: &SheetInfo, tcrop: Box, out: &mut Vec<It
     }
     let tx = cx + r + 0.15 * sc;
     let title = upper_if(env, info.title).into_owned();
-    let ty = cy + 0.02 * sc;
-    out.push(text_item(env, LayerKey::Title, Pen::Title, &src, &title, tx, ty, th, 0.0, Align::Left, VAlign::Baseline));
-    let tw = env.font.width(ascii_fold(&title), th);
+    let mut ty = cy + 0.02 * sc;
+    let lines = title_lines(env, &title, th, info.wrap_w);
+    let mut tw: f64 = 0.0;
+    for (k, line) in lines.iter().enumerate() {
+        if k > 0 {
+            ty -= th * 1.4;
+        }
+        out.push(text_item(
+            env,
+            LayerKey::Title,
+            Pen::Title,
+            &src,
+            line,
+            tx,
+            ty,
+            th,
+            0.0,
+            Align::Left,
+            VAlign::Baseline,
+        ));
+        tw = tw.max(env.font.width(ascii_fold(line), th));
+    }
     let uy = ty - 0.07 * sc;
     out.push(path_item(env, Pen::Title, &src, &[V2::init(tx, uy), V2::init(tx + tw, uy)], false));
     let scale_line = format!("SCALE: {}", info.scale_text);

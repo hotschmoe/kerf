@@ -59,9 +59,9 @@ export class Workspace implements Remote {
     return { doc: r.doc };
   }
 
-  async exportFile(view: string, format: string, sheet: boolean) {
+  async exportFile(view: string, format: string, sheet: boolean, layout?: string) {
     if (!this.file) return null;
-    const r = await this.client.exportDoc(this.file, { view, format, sheet, px: format === 'png' ? 1600 : undefined });
+    const r = await this.client.exportDoc(this.file, { view, layout, format, sheet, px: format === 'png' ? 1600 : undefined });
     return { name: r.name, bytes: new Uint8Array(await r.blob.arrayBuffer()) };
   }
 

@@ -40,11 +40,11 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 | gate | what it proves |
 |---|---|
 | `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
-| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 8 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
-| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (40 files); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 318 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view and every sheet layout (drawing JSON, sheet SVG, DXF, PDF, sheet PNG) of the documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
+| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (58 files, layouts included); the module has 0 imports and exactly the six ABI exports |
+| `tests/cli_ergonomics.mjs` | 342 checks of the CLI (stdout, stderr, exit code, files): what an agent sees |
 | `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
-| `tests/serve_smoke.mjs` | 224 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
+| `tests/serve_smoke.mjs` | 227 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
 | `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
 
 Golden PNGs for human review (`A.png`, `A-dxf.png`, `A-pdf.png` per view) come from `tests/make_golden.sh --png`; look at
@@ -325,7 +325,26 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   W_TABLE_CELL fires only on fixed `width`s. The web UI shows tables (they are plain drawing items) but its inspector
   has no table editor (edit through ops).
 
+- Sheet layouts (issue #7, `layout.rs`, SPEC 26.2): no automatic arrangement search (the W_VIEW_FIT fix proposes one;
+  the layout uses what the author wrote); cells of one row align on their bottom, so a view whose title wraps to two
+  lines puts its bubble a line higher than its neighbour's; an iso (NTS) view is fitted to an even share of the sheet,
+  not to the space its neighbours leave; a shared-key note still needs its text in its own view (the standalone view
+  build reads it there); reference bubbles are not obstacles for the note router (like welds); `--review` is per view
+  only; the 3D view and the inspector know nothing of layouts (the web UI lists and renders them, nothing more).
+
 ## SPEC ISSUES
+- Sheet layouts (#7) follow the issue's design with these choices: `notes_side` (right|left|below|above) for where the
+  shared list goes; a layout `sheet` size (`"17x11"`), because four scenarios and a list do not fit a letter sheet at a
+  useful scale (s-00-01 needs 17x11 at 1/2"; on letter even 1/4" overflows); nested lists in `views` for insets (a
+  column beside a main section) instead of a separate inset concept; the shared list is renumbered 1..N in key order
+  (I_KEY_RENUMBERED says so) so "no gaps" holds even when the authored keys skip numbers; an unkeyed note joins an
+  earlier entry with the same text and cite (the s-10-01 drafts repeat texts across scenarios without keys); scale
+  precedence view > layout numeric > document `scale` > `common`; iso views stay NTS in a layout (fitted to their
+  share); view titles wrap in layouts only (at least 3" paper wide); the layout's coordinates are paper inches times
+  the first view's scale (DXF keeps that view 1:1). The layout W_VIEW_FIT keeps the code W_VIEW_FIT with id = the
+  layout and path `layouts/<id>`. The `ref` annotation's leader point is `at` (as for notes) and its bubble `place`.
+- Sheet title block DETAIL NO: a layout without `number` prints the sheet alone (`S-10.01`), not `/S-10.01`; the same
+  rule now applies to a view whose `number` is the empty string (no golden has one).
 - Issue #18 asks that "citation `section` strings are never case-folded". The golden `flush-psl-2x6` cites
   `Table R602.3(5)` and printed `TABLE R602.3(5)`; folding nothing would print `Table`. Chosen: words of `section` that
   hold a digit print as written, plain words take the case transform (goldens unchanged, `1926.755(a)(1)` kept).

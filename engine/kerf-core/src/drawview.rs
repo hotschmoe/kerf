@@ -2,7 +2,7 @@
 
 use crate::annot::{self, AnnBox, AnnKind, Env, Landing, SheetInfo};
 use crate::compile;
-use crate::drawing::{Drawing, Item, LayerDef};
+use crate::drawing::{Drawing, Item, KeyedEntry, LayerDef};
 use crate::font::{self, Font};
 use crate::geom::{self, Box};
 use crate::iso::{self, Iso};
@@ -94,18 +94,20 @@ struct FitInfo {
     title: Box,
 }
 
-const STANDARD_SCALES: [f64; 7] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0];
+pub const STANDARD_SCALES: [f64; 7] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0];
 
 /// Paper clearance (inches) kept between a view (its notes, list, title bubble) and the sheet frame or title block.
 const FRAME_CLEAR_IN: f64 = 0.125;
 
 /// The sheet area a view with its annotations and title must fit (paper inches): inside the frame and above the title
 /// block, `FRAME_CLEAR_IN` clear of both.
-fn fit_area(st: &Style) -> (f64, f64) {
-    (
-        st.sheet_w_in - 2.0 * st.margin_in - 2.0 * FRAME_CLEAR_IN,
-        st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in - 2.0 * FRAME_CLEAR_IN,
-    )
+pub fn fit_area(st: &Style) -> (f64, f64) {
+    fit_area_of(st, st.sheet_w_in, st.sheet_h_in)
+}
+
+/// `fit_area` on a sheet of `w` x `h` paper inches (a layout's own `sheet`).
+pub fn fit_area_of(st: &Style, w: f64, h: f64) -> (f64, f64) {
+    (w - 2.0 * st.margin_in - 2.0 * FRAME_CLEAR_IN, h - 2.0 * st.margin_in - st.title_block_h_in - 2.0 * FRAME_CLEAR_IN)
 }
 
 struct Culprit {
@@ -445,6 +447,25 @@ struct SecPass {
     detail: Box,
     fit: FitInfo,
     unverified: bool,
+    keyed: Vec<KeyedEntry>,
+}
+
+/// How a layout (SPEC 26.2) builds one of its views; the default is a view on its own sheet.
+#[derive(Clone, Copy, Default)]
+pub struct ViewOpts<'a> {
+    /// Shared notes: each keyed note's number by note id; the view draws no DETAIL NOTES list.
+    pub keys: Option<&'a [(String, u32)]>,
+    /// The layout checks the fit of its cells, so the view skips `W_VIEW_FIT` against the whole sheet.
+    pub in_layout: bool,
+    /// The paper area an NTS view fits (its share of a layout); None = the whole sheet area.
+    pub fit: Option<(f64, f64)>,
+}
+
+/// The width a view title may take in a layout: the drawing with its notes, less the bubble, and at least 3" (paper).
+fn title_wrap(items: Box, crop: Box, sc: f64) -> f64 {
+    let mut b = items;
+    b.add_box(crop);
+    (b.width() - 0.775 * sc).max(3.0 * sc)
 }
 
 const GLYPH_INFO: &str = "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)";
@@ -459,6 +480,8 @@ struct SectionInputs<'a> {
     doc: &'a Value,
     diags: &'a Diags,
     work: &'a Work,
+    keys: Option<&'a [(String, u32)]>,
+    in_layout: bool,
 }
 
 /// `W_CUT_FILL` (SPEC 25.1): a cut part that lost its fill to an embedded part's hole, once per host and hole.
@@ -493,7 +516,7 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
 }
 
 fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, prisms, font, doc, diags, work } = inp;
+    let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout } = inp;
     let scale = spec.scale;
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
@@ -502,6 +525,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let regions = sec.region_items();
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));
     env.work = Some(work);
+    env.shared_keys = keys;
     let ann = annot::annotate(&mut env, &mut base_items);
     let unverified = env.unverified;
     let mut all: Vec<Item> = base_items;
@@ -520,6 +544,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
         scale_text: &scale_text,
         sheet: meta_string(doc, "sheet"),
         unverified,
+        wrap_w: if in_layout { title_wrap(ab, spec.crop, scale) } else { 0.0 },
     };
     let mut detail = annot::items_box(font, &all);
     detail.add_box(spec.crop);
@@ -531,17 +556,19 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     }
     let mut bounds = annot::items_box(font, &all);
     bounds.add_box(spec.crop);
-    SecPass { items: all, bounds, detail, fit, unverified }
+    let keyed = core::mem::take(&mut env.keyed_out);
+    SecPass { items: all, bounds, detail, fit, unverified, keyed }
 }
 
 /// A schedule view (SPEC 26.1): tables, the notes list and labels laid out in paper inches (scale factor 1) from the
 /// origin, the title under them. There is no geometry; the content box stands in for the crop.
 fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, font, doc, diags, work, .. } = inp;
+    let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, .. } = inp;
     let mut sec = Section::new(scene, spec, &[]);
     let origin = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
     let mut env = Env::new(st, font, scene, spec, 1.0, origin, diags, Landing::Section(&mut sec));
     env.work = Some(work);
+    env.shared_keys = keys;
     let mut all = annot::annotate(&mut env, &mut []);
     let unverified = env.unverified;
     let mut detail = annot::items_box(font, &all);
@@ -555,6 +582,7 @@ fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
         scale_text: &scale_text,
         sheet: meta_string(doc, "sheet"),
         unverified,
+        wrap_w: if in_layout { title_wrap(detail, detail, 1.0) } else { 0.0 },
     };
     let title_from = all.len();
     annot::title_items(&mut env, &info, detail, &mut all);
@@ -564,7 +592,8 @@ fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     }
     let mut bounds = annot::items_box(font, &all);
     bounds.add_box(detail);
-    SecPass { items: all, bounds, detail, fit, unverified }
+    let keyed = core::mem::take(&mut env.keyed_out);
+    SecPass { items: all, bounds, detail, fit, unverified, keyed }
 }
 
 /// Auto crop (SPEC 19): bounding box of the non-fill components visible in the section, plus 6".
@@ -789,7 +818,10 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
     let font = font::embedded();
     let d = Diags::new();
     let work = Work::new(DEFAULT_WORK_LIMIT);
-    let r = resolve_section(SectionInputs { st, scene, prisms: &prisms, font, doc, diags: &d, work: &work }, spec);
+    let r = resolve_section(
+        SectionInputs { st, scene, prisms: &prisms, font, doc, diags: &d, work: &work, keys: None, in_layout: false },
+        spec,
+    );
     Resolved { crop: r.crop, scale: r.scale }
 }
 
@@ -811,7 +843,7 @@ pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Op
         .and_then(Value::arr)
         .and_then(|vs| vs.iter().rposition(|v| v.get("id").and_then(Value::str) == Some(view_id)))
         .unwrap_or(0);
-    let spec = view::parse(vnode, idx, diags)?;
+    let spec = crate::layout::view_spec(doc, vnode, idx, diags)?;
     let scene = compile::compile(doc, st, diags);
     build_from_scene(doc, st, &scene, &spec, diags)
 }
@@ -824,6 +856,18 @@ pub fn build_from_scene<'a>(
     spec: &ViewSpec,
     diags: &Diags,
 ) -> Option<Drawing<'a>> {
+    build_with(doc, st, scene, spec, diags, ViewOpts::default())
+}
+
+/// `build_from_scene` for a view of a layout (SPEC 26.2).
+pub fn build_with<'a>(
+    doc: &Value,
+    st: &'a Style,
+    scene: &Scene,
+    spec: &ViewSpec,
+    diags: &Diags,
+    opts: ViewOpts,
+) -> Option<Drawing<'a>> {
     let view_id = spec.id;
     let prisms = compile::view_prisms(scene, &spec.members);
     let work = Work::new(DEFAULT_WORK_LIMIT);
@@ -835,9 +879,24 @@ pub fn build_from_scene<'a>(
     let crop_out: Box;
     let detail: Box;
     let fit: FitInfo;
+    let keyed: Vec<KeyedEntry>;
     let scale_text: String;
     if spec.kind == Kind::Schedule {
-        let pass = schedule_pass(SectionInputs { st, scene, prisms: &prisms, font, doc, diags, work: &work }, spec);
+        let pass = schedule_pass(
+            SectionInputs {
+                st,
+                scene,
+                prisms: &prisms,
+                font,
+                doc,
+                diags,
+                work: &work,
+                keys: opts.keys,
+                in_layout: opts.in_layout,
+            },
+            spec,
+        );
+        keyed = pass.keyed;
         scale = 1.0;
         scale_text = units::scale_label(0.0);
         crop_out = pass.detail;
@@ -847,7 +906,20 @@ pub fn build_from_scene<'a>(
         detail = pass.detail;
         fit = pass.fit;
     } else if spec.kind == Kind::Section {
-        let rs = resolve_section(SectionInputs { st, scene, prisms: &prisms, font, doc, diags, work: &work }, spec);
+        let rs = resolve_section(
+            SectionInputs {
+                st,
+                scene,
+                prisms: &prisms,
+                font,
+                doc,
+                diags,
+                work: &work,
+                keys: opts.keys,
+                in_layout: opts.in_layout,
+            },
+            spec,
+        );
         scale = rs.scale;
         crop_out = rs.crop;
         scale_text = rs.scale_text;
@@ -857,6 +929,7 @@ pub fn build_from_scene<'a>(
         bounds = pass.bounds;
         detail = pass.detail;
         fit = pass.fit;
+        keyed = pass.keyed;
     } else {
         scale_text = spec.scale_text.to_string();
         let mut trial = 0usize;
@@ -875,6 +948,7 @@ pub fn build_from_scene<'a>(
             let regions = iso.region_items();
             let mut env = Env::new(st, font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&iso));
             env.work = Some(&work);
+            env.shared_keys = opts.keys;
             let ann = annot::annotate(&mut env, &mut res.items);
             let un = env.unverified;
             let mut all: Vec<Item> = res.items;
@@ -892,12 +966,14 @@ pub fn build_from_scene<'a>(
                 scale_text: &label,
                 sheet: meta_string(doc, "sheet"),
                 unverified: un,
+                wrap_w: if opts.in_layout { title_wrap(ab, res.crop, scale) } else { 0.0 },
             };
             let mut det = annot::items_box(font, &all);
             det.add_box(res.crop);
             let title_from = all.len();
             annot::title_items(&mut env, &info, tcrop, &mut all);
             let fit_t = FitInfo { ann: env.ann_boxes.clone(), title: annot::items_box(font, &all[title_from..]) };
+            let kd = core::mem::take(&mut env.keyed_out);
             if env.unknown_glyph {
                 tdiags.add(Level::Info, "I_GLYPH", Some(view_id), None, GLYPH_INFO.to_string());
             }
@@ -906,7 +982,7 @@ pub fn build_from_scene<'a>(
             // NTS views grow their (internal) fit factor until notes and title fit the sheet frame
             let pw = (b.x1 - b.x0) / scale;
             let ph = (b.y1 - b.y0) / scale;
-            let (aw, ah) = fit_area(st);
+            let (aw, ah) = opts.fit.unwrap_or_else(|| fit_area(st));
             let fits = pw <= aw + 1e-6 && ph <= ah + 1e-6;
             if !fits {
                 // the geometry shrinks with the factor, the annotations keep their paper size
@@ -924,6 +1000,7 @@ pub fn build_from_scene<'a>(
                 crop_out = res.crop;
                 detail = det;
                 fit = fit_t;
+                keyed = kd;
                 break;
             }
             trial += 1;
@@ -934,7 +1011,7 @@ pub fn build_from_scene<'a>(
         let pw = (bounds.x1 - bounds.x0) / scale;
         let ph = (bounds.y1 - bounds.y0) / scale;
         let (aw, ah) = fit_area(st);
-        if pw > aw + 1e-6 || ph > ah + 1e-6 {
+        if !opts.in_layout && (pw > aw + 1e-6 || ph > ah + 1e-6) {
             let culprits = if spec.kind == Kind::Section && !spec.has_crop {
                 crop_culprits(scene, &prisms, spec, crop_out)
             } else {
@@ -973,5 +1050,6 @@ pub fn build_from_scene<'a>(
     d.author = meta_string(doc, "author").to_string();
     d.project = meta_string(doc, "project").to_string();
     d.doc_title = doc.get("title").and_then(Value::str).unwrap_or("").to_string();
+    d.keyed = keyed;
     Some(d)
 }

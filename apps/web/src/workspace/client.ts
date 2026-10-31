@@ -109,15 +109,15 @@ export class WorkspaceClient {
     throw new ServerError(r.status, err?.code ?? `HTTP_${r.status}`, err?.message ?? `HTTP ${r.status}`);
   }
 
-  async exportDoc(file: string, q: { view: string; format: string; sheet?: boolean; px?: number }): Promise<{ blob: Blob; name: string }> {
-    const p = new URLSearchParams({ view: q.view, format: q.format });
+  async exportDoc(file: string, q: { view: string; layout?: string; format: string; sheet?: boolean; px?: number }): Promise<{ blob: Blob; name: string }> {
+    const p = new URLSearchParams(q.layout ? { layout: q.layout, format: q.format } : { view: q.view, format: q.format });
     if (q.sheet) p.set('sheet', '1');
     if (q.px) p.set('px', String(q.px));
     const r = await this.request('GET', `/docs/${encodeURIComponent(file)}/export?${p}`);
     if (!r.ok) return this.fail(r);
     const cd = r.headers.get('content-disposition') ?? '';
     const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
-    return { blob: await r.blob(), name: m ? decodeURIComponent(m[1]) : `${file.replace(/\.kerf\.json$/, '')}-${q.view}.${q.format}` };
+    return { blob: await r.blob(), name: m ? decodeURIComponent(m[1]) : `${file.replace(/\.kerf\.json$/, '')}-${q.layout ?? q.view}.${q.format}` };
   }
 
   async reference(file: string, path: string): Promise<{ blob: Blob; etag: string | null }> {

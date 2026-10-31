@@ -230,8 +230,88 @@ fn apply_one(c: &mut Ctx, raw: &Value) {
         "meta" => apply_meta(c, &op),
         "components" => apply_components(c, &op),
         "views" => apply_views(c, &op),
-        _ => c.fail("E_OP", path, format!("unknown path root \"{root}\"; use doc, meta, components, views")),
+        "layouts" => apply_layouts(c, &op),
+        "scale" => apply_scale(c, &op),
+        _ => c.fail(
+            "E_OP",
+            path,
+            format!("unknown path root \"{root}\"; use doc, meta, scale, components, views, layouts"),
+        ),
     }
+}
+
+fn apply_scale(c: &mut Ctx, op: &Op) {
+    if op.seg.len() != 1 || op.kind == Kind::Add {
+        return c.fail(
+            "E_OP",
+            op.path,
+            "the document scale takes {\"op\":\"set\",\"path\":\"scale\",\"value\":\"3/4\\\"=1'-0\\\"\"} or {\"op\":\"remove\",\"path\":\"scale\"}".to_string(),
+        );
+    }
+    match op.value {
+        Some(v) if op.kind != Kind::Remove => set_key(&mut c.doc, "scale", v.clone()),
+        _ => {
+            if let Value::Object(ms) = &mut c.doc {
+                ms.retain(|m| m.key != "scale");
+            }
+        }
+    }
+    c.touch("scale");
+}
+
+fn apply_layouts(c: &mut Ctx, op: &Op) {
+    let value = op.value.unwrap_or(&Value::Null);
+    let mut list = c.list("layouts");
+    if op.seg.len() == 1 && op.kind == Kind::Add {
+        let Some(id) = id_of(value).map(str::to_string) else {
+            return c.fail("E_PARAM", op.path, "a layout needs a string \"id\", e.g. \"S1\"".to_string());
+        };
+        if index_of_id(&list, &id).is_some() {
+            return c.fail(
+                "E_DUP_ID",
+                op.path,
+                format!("layout id '{id}' already exists (use op update to change it)"),
+            );
+        }
+        list.push(value.clone());
+        c.set_list("layouts", list);
+        c.touch(&id);
+        return;
+    }
+    if op.seg.len() == 2 {
+        let lid = op.seg[1];
+        let Some(li) = index_of_id(&list, lid) else { return unknown_id(c, "layout", lid, &list, op.path) };
+        match op.kind {
+            Kind::Update | Kind::Set => {
+                if id_change(value, lid).is_some() {
+                    return c.fail("E_OP", op.path, "layout ids cannot be changed by update".to_string());
+                }
+                list[li] = if op.kind == Kind::Set { value.clone() } else { json::merge_patch(&list[li], value) };
+            }
+            Kind::Remove => {
+                list.remove(li);
+            }
+            Kind::Add => {
+                return c.fail(
+                    "E_OP",
+                    op.path,
+                    "add a layout with {\"op\":\"add\",\"path\":\"layouts\",\"value\":{...}}".to_string(),
+                );
+            }
+        }
+        c.set_list("layouts", list);
+        c.touch(lid);
+        return;
+    }
+    c.fail(
+        "E_OP",
+        op.path,
+        format!(
+            "unsupported op {} on path {}; layout paths: \"layouts\" (add), \"layouts/<id>\" (update, remove)",
+            op.kind.name(),
+            op.path
+        ),
+    );
 }
 
 fn sanitize_annotations(c: &Ctx, view: &Value) -> Value {
