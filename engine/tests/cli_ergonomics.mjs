@@ -2112,5 +2112,84 @@ section('#23. dimensions in plan and elevation, chain dims, dim text off its own
   check('I_ANNOT_MOVED names the label for the blocked member and the chain for its partner', /^INFO I_ANNOT_MOVED a: .*to clear label 'l1'/m.test(r.out) && /^INFO I_ANNOT_MOVED b: .*outward together with its chain \('a'\)/m.test(r.out), r.out);
 }
 
+// Issue #27: masonry elevation and plan footprints (SPEC 28.7): cmu_wall bond_beams, grout_courses and run x (courses,
+// head joints, control joints); concrete footprint (L/T, 45-degree ends) and pour joins without joint lines.
+section('issue #27: masonry elevation, bond beams anywhere, plan footprints, one casting draws no joint');
+{
+  const doc = (components, views) => ({ kerf: '0.1', id: 'm', title: 'M', run: [-24, 24], components, views: views ?? [{ id: 'A', kind: 'section', title: 'M', cut_z: 0 }] });
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const pathLen = (d, src) => d.items.filter((i) => i.t === 'path' && i.src === src).reduce((a, i) => { const q = i.closed ? [...i.pts, i.pts[0]] : i.pts; return a + q.slice(1).reduce((b, p, k) => b + Math.hypot(p[0] - q[k][0], p[1] - q[k][1]), 0); }, 0);
+  const wall = { id: 'w', type: 'cmu_wall', courses: 7, bond_beams: [4], grout: 'none', grout_courses: [[1, 2]], at: { anchor: 'bottom_left', to: [0, 0] } };
+  write('m1.kerf.json', doc([wall, { id: 'bb', type: 'rebar', size: '#5', place: { in: 'w.bond_beam_1', face: 'bottom', cover: 2, count: 1 } }]));
+  let r = kerf(['check', 'm1.kerf.json']);
+  check('bond beam at an intermediate course and partial grout: one wall, summary names both, 0 warnings', /w +cmu_wall 8" x 7 courses \(bond beams at courses 4\), grouted courses 1-2/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  check('the bar placed in bond_beam_1 sits in course 4', /bb +rebar \(1\) #5 along z @ bottom face +x .* +y 2'-2"/m.test(r.out), r.out);
+  write('m2.kerf.json', doc([{ ...wall, grout: 'solid', bond_beams: [[3, 9]] }]));
+  r = kerf(['check', 'm2.kerf.json']);
+  check('a course past the top: E_PARAM naming the range', /^ERROR E_PARAM w: bond_beams\[0\] must be a course from 1 to 7/m.test(r.out), r.out);
+  write('m2.kerf.json', doc([{ ...wall, grout: 'solid' }]));
+  r = kerf(['check', 'm2.kerf.json']);
+  check('grout_courses with grout solid: W_PARAM with the op that sets grout none', /^WARN W_PARAM w: 'w': grout_courses has no effect with grout "solid".*Fix: .*"value": \{"grout": "none"\}/m.test(r.out), r.out);
+
+  const fence = { id: 'f', type: 'cmu_wall', run: 'x', length: 160, courses: 6, bond_beam_courses: 1, control_joints: [80], at: { anchor: 'bottom_left', to: [0, 0] } };
+  write('m3.kerf.json', doc([fence], [{ id: 'E', kind: 'elevation', title: 'E', annotations: [{ id: 'n', type: 'note', text: 'CONTROL JOINT', target: 'f', at: 'f@control_joint_1_top' }] }]));
+  r = kerf(['check', 'm3.kerf.json']);
+  check('run x wall: summary with length and control joints, 0 warnings', /f +cmu_wall 8" x 6 courses run x L=13'-4" \(1 bond beam\), 1 control joint/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  let d = items('m3.kerf.json', 'E');
+  const thin = d.items.filter((i) => i.t === 'path' && i.src === 'f' && i.pen === 'beyond');
+  const segs = thin.flatMap((i) => i.pts.slice(1).map((p, k) => [i.pts[k], p]));
+  const vert = segs.filter((s) => Math.abs(s[0][0] - s[1][0]) < 1e-6);
+  const near = (x) => vert.some((s) => Math.abs(s[0][0] - x) < 1e-6);
+  check('elevation draws bed joints and head joints in running bond (thin lines)', segs.length > vert.length && vert.length >= 40 && near(15.8125) && near(7.8125), segs.length + ' ' + vert.length);
+  check('control joint: two full-height outlines 3/8" apart at x=80', [79.8125, 80.1875].every((x) => d.items.some((i) => i.t === 'path' && i.src === 'f' && i.pen !== 'beyond' && i.pts.some((p) => Math.abs(p[0] - x) < 1e-6))), d.err);
+  write('m4.kerf.json', doc([{ ...fence, run: 'z', courses: 2, bond_beam_courses: 0 }]));
+  r = kerf(['check', 'm4.kerf.json']);
+  check('length / control_joints on a wall in section: E_PARAM naming run x', /^ERROR E_PARAM f: param 'length' is for a wall seen face-on: add "run": "x"/m.test(r.out), r.out);
+  write('m4.kerf.json', doc([{ ...fence, length: undefined }]));
+  r = kerf(['check', 'm4.kerf.json']);
+  check('run x without length: E_PARAM with an example', /^ERROR E_PARAM f: param 'length' is required for type cmu_wall: run x draws the wall face-on/m.test(r.out), r.out);
+  write('m4.kerf.json', doc([{ ...fence, control_joints: [80, 80.2] }]));
+  r = kerf(['check', 'm4.kerf.json']);
+  check('control joints too close: E_PARAM at that joint', /^ERROR E_PARAM f: control_joints\[1\] must be a distance along the wall, increasing/m.test(r.out), r.out);
+
+  const L = { id: 'ftg', type: 'concrete', shape: 'footprint', height: 12, top: 0, points: [[0, 0], [48, 0], [48, -12], [12, -12], [12, -48], [0, -48]] };
+  write('m5.kerf.json', doc([L], [{ id: 'P', kind: 'plan', title: 'L', cut_y: -6 }, { id: 'A', kind: 'section', title: 'A', cut_z: -30 }]));
+  r = kerf(['check', 'm5.kerf.json']);
+  check('footprint L: summary, 0 warnings', /ftg +concrete footprint 6 points, 1'-0" thick, z -4'-0"..0"/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  d = items('m5.kerf.json', 'P');
+  check('plan of the L: its outline only (no line across the corner where its slabs meet)', Math.abs(pathLen(d, 'ftg') - 192) < 1e-6, pathLen(d, 'ftg'));
+  d = items('m5.kerf.json', 'A');
+  check('section through one leg: the cut is that leg (x 0..12)', Math.abs(pathLen(d, 'ftg') - 48) < 1e-6, pathLen(d, 'ftg'));
+  const ang = { id: 'td', type: 'concrete', shape: 'footprint', height: 4, top: -4, points: [[0, -18], [6, -18], [14, -10], [14, 10], [6, 18], [0, 18]] };
+  write('m6.kerf.json', doc([ang], [{ id: 'P', kind: 'plan', title: 'T', cut_y: -6 }, { id: 'A', kind: 'section', title: 'A', cut_z: 14 }]));
+  d = items('m6.kerf.json', 'P');
+  check('45-degree ends in plan: the exact outline (two edges at 45 degrees)', Math.abs(pathLen(d, 'td') - (36 + 6 + 6 + 20 + 2 * 8 * Math.SQRT2)) < 1e-3, pathLen(d, 'td'));
+  d = items('m6.kerf.json', 'A');
+  check('section across a 45-degree end: cut where the plane crosses (x 0..10), the rest beyond (x 10..14)', d.items.some((i) => i.t === 'path' && i.src === 'td' && i.pen === 'cut' && i.pts.some((p) => Math.abs(p[0] - 10) < 1e-6)) && d.items.some((i) => i.t === 'path' && i.src === 'td' && i.pen === 'beyond' && i.pts.some((p) => Math.abs(p[0] - 14) < 1e-6)), d.err);
+  r = kerf(['mesh', 'm6.kerf.json']);
+  check('mesh of an angled footprint: one part', r.code === 0 && JSON.parse(r.out).parts.filter((p) => p.src === 'td').length === 1, r.err);
+  write('m7.kerf.json', doc([{ ...ang, voids: [{ rect: [2, 2], at: [7, -6] }] }]));
+  r = kerf(['check', 'm7.kerf.json']);
+  check('voids on an angled footprint: E_PARAM with the fix', /^ERROR E_PARAM td: 'td' is a footprint with an angled edge: it takes no voids.*Fix: draw the opening in the footprint's own points/m.test(r.out), r.out);
+  write('m7.kerf.json', doc([{ ...ang, points: [[0, 0], [10, 10], [10, 0], [0, 10]] }]));
+  r = kerf(['check', 'm7.kerf.json']);
+  check('a crossing outline: E_PARAM', /^ERROR E_PARAM td: the footprint outline crosses itself/m.test(r.out), r.out);
+  write('m7.kerf.json', doc([{ ...ang, rotate: 30 }]));
+  r = kerf(['check', 'm7.kerf.json']);
+  check('rotate on a footprint: E_PARAM (draw the angle in the points)', /^ERROR E_PARAM td: a footprint is drawn in plan/m.test(r.out), r.out);
+
+  const slab = { id: 'slab', type: 'concrete', shape: 'rect', width: 40, height: 4, at: { anchor: 'top_left', to: [0, 0] } };
+  const edge = { id: 'edge', type: 'concrete', shape: 'rect', width: 10, height: 8, at: { anchor: 'top_left', to: [0, -4] } };
+  write('m8.kerf.json', doc([slab, edge]));
+  const joint = (dd) => dd.items.some((i) => i.t === 'path' && i.pts.some((p, k) => k > 0 && Math.abs(p[1] + 4) < 1e-6 && Math.abs(i.pts[k - 1][1] + 4) < 1e-6 && Math.min(p[0], i.pts[k - 1][0]) < 5 && Math.max(p[0], i.pts[k - 1][0]) > 5));
+  check('touching concrete without pour: the joint line is drawn', joint(items('m8.kerf.json', 'A')));
+  write('m8.kerf.json', doc([{ ...slab, pour: 'p' }, { ...edge, pour: 'p' }]));
+  check('same pour: no joint line between slab and thickened edge', !joint(items('m8.kerf.json', 'A')));
+  r = kerf(['schema', 'concrete']);
+  check('schema concrete: footprint, top and pour', /footprint/.test(r.out) && /^- top: /m.test(r.out) && /^- pour: /m.test(r.out), r.out.slice(0, 300));
+  r = kerf(['guide', '--full']);
+  check('guide --full: bond_beams, run x and footprint', /"bond_beams":\[4\]/.test(r.out) && /"run":"x"/.test(r.out) && /"shape":"footprint"/.test(r.out));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

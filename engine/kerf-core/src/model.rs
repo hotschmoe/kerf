@@ -209,6 +209,18 @@ pub struct Prism {
     pub hw_dash: bool,
     /// Nail or screw dots on a plate seen face-on (SPEC 27.2), drawn where the plate is visible.
     pub nails: Vec<V2>,
+    /// Lines on the face toward the viewer (the joints of a masonry wall seen face-on, SPEC 28.7): drawn thin where the
+    /// prism is seen beyond the cut and not hidden.
+    pub face_lines: Vec<[V2; 2]>,
+    /// A layer of a wall seen face-on (cmu_wall run x): an outline edge it shares with a nearer layer of the same wall
+    /// is that layer's edge, drawn once in its pen.
+    pub face_on: bool,
+    /// A slab of a concrete footprint with an angled edge (SPEC 28.7): the checks use the slabs, and section, plan,
+    /// elevation, iso and 3D draw the exact `footprint` carried on the first slab instead.
+    pub fp_proxy: bool,
+    /// The plan outline [x, z] (CCW) of an angled footprint, with its y range `fp_y`.
+    pub footprint: Vec<V2>,
+    pub fp_y: [f64; 2],
 }
 
 impl Default for Prism {
@@ -246,6 +258,11 @@ impl Default for Prism {
             path3: Vec::new(),
             hw_dash: false,
             nails: Vec::new(),
+            face_lines: Vec::new(),
+            face_on: false,
+            fp_proxy: false,
+            footprint: Vec::new(),
+            fp_y: [0.0; 2],
         }
     }
 }
@@ -256,6 +273,7 @@ impl Prism {
         q.loops = self.loops.iter().map(|l| xf.apply_loop(l)).collect();
         q.quads = self.quads.iter().map(|quad| quad.map(|c| xf.apply(c))).collect();
         q.ply_lines = self.ply_lines.iter().map(|s| [xf.apply(s[0]), xf.apply(s[1])]).collect();
+        q.face_lines = self.face_lines.iter().map(|s| [xf.apply(s[0]), xf.apply(s[1])]).collect();
         if !self.line_pts.is_empty() {
             q.line_pts = xf.apply_loop(&self.line_pts);
         }
@@ -268,6 +286,13 @@ impl Prism {
         for c in &mut q.path3 {
             let w = xf.apply(V2::init(c[0], c[1]));
             *c = [w.x, w.y, c[2]];
+        }
+        if !self.footprint.is_empty() {
+            let x0 = self.footprint[0].x;
+            let (a, b) = (xf.apply(V2::init(x0, self.fp_y[0])), xf.apply(V2::init(x0, self.fp_y[1])));
+            let dx = a.x - x0;
+            q.footprint = self.footprint.iter().map(|v| V2::init(v.x + dx, v.y)).collect();
+            q.fp_y = [a.y.min(b.y), a.y.max(b.y)];
         }
         q
     }

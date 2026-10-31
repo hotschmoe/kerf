@@ -935,9 +935,13 @@ pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
         }
         Kind::Elevation => {
             fs.cut_z = f64::INFINITY;
-            FlatView { scene: None, prisms: plan::xz_bars_in_section(prisms, fs.cut_z), spec: fs }
+            let prisms = plan::footprints_in_section(plan::xz_bars_in_section(prisms, fs.cut_z), fs.cut_z);
+            FlatView { scene: None, prisms, spec: fs }
         }
-        _ => FlatView { scene: None, prisms: plan::xz_bars_in_section(prisms, fs.cut_z), spec: fs },
+        _ => {
+            let prisms = plan::footprints_in_section(plan::xz_bars_in_section(prisms, fs.cut_z), fs.cut_z);
+            FlatView { scene: None, prisms, spec: fs }
+        }
     }
 }
 

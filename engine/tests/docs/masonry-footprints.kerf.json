@@ -1,0 +1,39 @@
+{
+  "kerf": "0.1",
+  "id": "masonry-footprints",
+  "title": "MASONRY ELEVATION AND PLAN FOOTPRINTS",
+  "run": [-24, 24],
+  "components": [
+    {"id": "e_ftg", "type": "concrete", "shape": "footing", "width": 160, "height": 12, "z": [-10, 10], "views": ["E"], "at": {"anchor": "top_left", "to": [0, 0]}},
+    {"id": "e_wall", "type": "cmu_wall", "run": "x", "length": 160, "courses": 6, "bond_beams": [3], "bond_beam_courses": 1, "control_joints": [80], "views": ["E"], "at": {"anchor": "bottom_left", "to": [0, 0]},
+      "voids": [{"rect": [8, 8], "at": [40, 0], "anchor": "bottom_left"}]},
+    {"id": "e_bb", "type": "rebar", "mode": "path", "size": "#5", "views": ["E"], "points": [{"ref": "e_wall@bond_beam_center", "offset": [-77, 0]}, {"ref": "e_wall@bond_beam_center", "offset": [77, 0]}]},
+    {"id": "s_ftg", "type": "concrete", "shape": "footing", "width": 20, "height": 10, "views": ["S"], "at": {"anchor": "top_left", "to": [-6, 0]}},
+    {"id": "s_wall", "type": "cmu_wall", "courses": 6, "bond_beams": [4], "grout": "none", "grout_courses": [[1, 2]], "views": ["S"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "s_bb", "type": "rebar", "size": "#5", "views": ["S"], "place": {"in": "s_wall.bond_beam_1", "face": "bottom", "cover": 2, "count": 1}},
+    {"id": "f_ftg", "type": "concrete", "shape": "footprint", "height": 10, "top": 0, "views": ["P", "A", "I"],
+      "points": [[0, 20], [16, 20], [16, -4], [40, -28], [40, -44], [24, -44], [0, -20]]},
+    {"id": "f_stem", "type": "concrete", "shape": "footprint", "height": 18, "top": 18, "views": ["P", "A", "I"],
+      "points": [[5, 20], [11, 20], [11, -10], [5, -10]]},
+    {"id": "f_slab", "type": "concrete", "shape": "rect", "width": 30, "height": 4, "pour": "slab", "views": ["P", "A", "I"], "at": {"anchor": "top_left", "to": [11, 18]}},
+    {"id": "f_edge", "type": "concrete", "shape": "rect", "width": 8, "height": 4, "pour": "slab", "views": ["P", "A", "I"], "at": {"anchor": "top_left", "to": [11, 14]}}
+  ],
+  "views": [
+    {"id": "E", "kind": "elevation", "title": "FENCE WALL ELEVATION", "scale": "3/8\"=1'-0\"", "notes_style": "keyed",
+      "annotations": [
+        {"id": "n_cj", "type": "note", "text": "CONTROL JOINT", "target": "e_wall", "at": "e_wall@control_joint_1_top"},
+        {"id": "n_bb", "type": "note", "text": "BOND BEAM W/ (1) #5 CONT.", "target": "e_bb"},
+        {"id": "n_dr", "type": "note", "text": "DRAINAGE BLOCK", "target": "e_wall", "at": {"ref": "e_wall@bottom_left", "offset": [44, 9]}}
+      ]},
+    {"id": "S", "title": "BOND BEAM AT MID-HEIGHT", "scale": "3/4\"=1'-0\"", "cut_z": 0,
+      "annotations": [
+        {"id": "n_g", "type": "note", "text": "GROUT SOLID BELOW GRADE", "target": "s_wall.grout"},
+        {"id": "n_b", "type": "note", "text": "BOND BEAM W/ (1) #5", "target": "s_bb"}
+      ]},
+    {"id": "P", "kind": "plan", "title": "ANGLED FOOTING", "scale": "1/2\"=1'-0\"", "cut_y": 12,
+      "annotations": [{"id": "n_f", "type": "note", "text": "45 DEG. FOOTING RETURN", "target": "f_ftg"}]},
+    {"id": "A", "title": "SECTION", "scale": "1\"=1'-0\"", "cut_z": 0,
+      "annotations": [{"id": "n_s", "type": "note", "text": "SLAB AND THICKENED EDGE CAST TOGETHER", "target": "f_edge"}]},
+    {"id": "I", "kind": "iso", "title": "ISOMETRIC", "from": "front_right"}
+  ]
+}

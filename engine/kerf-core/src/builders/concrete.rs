@@ -13,17 +13,18 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 
-param_enum! { pub enum Shape { Rect = "rect", Footing = "footing", Polygon = "polygon", SlabEdge = "slab_edge" } }
+param_enum! { pub enum Shape { Rect = "rect", Footing = "footing", Polygon = "polygon", SlabEdge = "slab_edge", Footprint = "footprint" } }
 param_enum! { pub enum Exterior { Left = "left", Right = "right" } }
 
 params! {
     pub struct Params {
-        shape: Enum(Shape) => { desc: "rect | footing | polygon | slab_edge" },
+        shape: Enum(Shape) => { desc: "rect | footing | polygon | slab_edge | footprint (a plan outline [x, z] with a thickness in y: L and T footings, notched slabs, block-outs with 45-degree ends, angled walls)" },
         material: Str = "concrete" => { desc: "any style material" },
         cover: OptRaw => { def: "{bottom:3, sides:3, top:1.5}", desc: "REQUIRED clear cover for bars in this host (W_COVER); cover.parts.<part> overrides per part zone, e.g. {\"parts\":{\"slab\":{\"bottom\":0.75}}}. The default suits footings and walls cast against earth (every shape, polygons included); give a slab its own, e.g. a 4\" slab on grade with a mid-depth bar: {\"bottom\":1.5,\"top\":1.5}" },
-        width: OptLenPos => { hint: "rect/footing need width and height", also: &["height"], def: "rect/footing: required", desc: "box size" },
+        width: OptLenPos => { hint: "rect/footing need width and height", also: &["height"], def: "rect/footing: required", desc: "box size; footprint: height is the thickness in y" },
         height: OptLenPos => { hint: "rect/footing need width and height", row: false, desc: "box size" },
-        points: OptRaw => { def: "polygon: required", desc: "polyline [x,y(,bulge)] relative to the placement point, or absolute Refs" },
+        points: OptRaw => { def: "polygon, footprint: required", desc: "polygon: polyline [x,y(,bulge)] relative to the placement point, or absolute Refs. footprint: the plan outline as [x, z(, bulge)] pairs (model x and z; x relative to the placement point)" },
+        top: OptRaw => { def: "footprint: 0", desc: "footprint: y of the top surface, a length (relative to the placement point) or a Ref (its y); the footprint spans top - height .. top" },
         exterior: Enum(Exterior) = Exterior::Left => { desc: "slab_edge: which side is the exterior edge (right mirrors)" },
         slab_thickness: LenPos = 4.0 => { desc: "slab_edge" },
         slab_length: LenPos = 48.0 => { desc: "slab_edge: slab drawn from exterior face inward" },
@@ -33,6 +34,7 @@ params! {
         recess: OptRaw => { desc: "slab_edge: {width, depth, from_edge} depression at the top exterior edge (door sill); from_edge 0 = at the exterior face" },
         recess_slope: Len = 0.0 => { desc: "slab_edge: recess floor falls this many inches toward the exterior over its width" },
         base: OptRaw => { desc: "slab_edge: {material: gravel|sand|compacted_fill, thickness} uniform base course under the slab soffit and along the haunch (soil side), stopping at the footing bottom; part `base` with the fill hatch. Replaces hand-drawn fill polygons under the slab" },
+        pour: OptStr => { def: "null", desc: "monolithic pour: concrete components with the same pour name are one casting, so where they touch no joint line is drawn (section, plan, elevation), e.g. a slab and its thickened edge, or the legs of an L footing" },
         voids: OptRaw => { def: "null", desc: "what the host loses (SPEC 26.4): component ids (\"column\", \"plate.part\": its outline over its z extent, so the hole follows the member) and shapes {\"rect\": [w, h], \"at\": Ref, \"anchor\": \"center\"} | {\"circle\": d, \"at\": Ref} | {\"points\": [...]}, each with optional \"z\": [z0, z1] (default: through). Cut in section, iso and 3D; embedded steel then shows with its own fill. W_COVER measures to the void edge" },
     }
 }
@@ -51,6 +53,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     match cp.shape {
         sh @ (Shape::Rect | Shape::Footing) => rect_or_footing(ctx, &cp, sh, material, cov),
         Shape::Polygon => polygon(ctx, &cp, material, cov),
+        Shape::Footprint => footprint(ctx, &cp, material, cov),
         _ => slab_edge(ctx, &cp, material, cov),
     }
 }
@@ -109,6 +112,181 @@ fn polygon(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Opti
         points_mode: true,
         host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set }),
         info: "concrete polygon".into(),
+        ..Built::default()
+    })
+}
+
+/// Most slabs one z interval of a footprint with an angled edge is cut into for the checks; all intervals together.
+const FP_STEPS_MAX: usize = 48;
+const FP_SLABS_MAX: usize = 400;
+
+/// Whether two segments cross or touch away from a shared end (a footprint must be a simple polygon).
+fn segments_meet(a0: V2, a1: V2, b0: V2, b1: V2) -> bool {
+    let mut ta = [0.0; 2];
+    let mut tb = [0.0; 2];
+    let n = geom::seg_seg(a0, a1, b0, b1, &mut ta, &mut tb);
+    (0..n).any(|k| {
+        let end_a = ta[k] < 1e-9 || ta[k] > 1.0 - 1e-9;
+        let end_b = tb[k] < 1e-9 || tb[k] > 1.0 - 1e-9;
+        !(end_a && end_b)
+    })
+}
+
+/// A plan footprint (SPEC 28.7): an outline in [x, z] with a thickness in y. Its prisms are z slabs, one per run of
+/// z between the outline's vertices, with the outline's x intervals; an angled edge makes a staircase of thin slabs
+/// for the checks, and section, plan, elevation, iso and 3D draw the exact outline carried on the first slab.
+fn footprint(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Option<Built> {
+    if ctx.angle != 0.0 {
+        ctx.p.fail("rotate", "a footprint is drawn in plan ([x, z] points) and rotate/slope tilt the section plane: give the angled outline in 'points' instead".into());
+        return None;
+    }
+    let Some(h) = cp.height else {
+        ctx.p.missing("height", "footprint needs 'height', its thickness in y below 'top'");
+        return None;
+    };
+    let top = match &cp.top {
+        None => 0.0,
+        Some(v) => match units::parse_length(v) {
+            Some(y) => y,
+            None => {
+                let path = format!("{}/{}/top", ctx.p.base, ctx.p.id);
+                let id = String::from(ctx.p.id);
+                ctx.scene.point(v, &id, &path)?.y - ctx.origin.y
+            }
+        },
+    };
+    let example = "e.g. \"points\": [[0, 0], [48, 0], [48, -12], [12, -12], [12, -48], [0, -48]] (an L)";
+    let Some(arr) = cp.points.as_ref().and_then(|v| v.arr()) else {
+        ctx.p.fail(
+            "points",
+            format!("shape footprint needs 'points': the plan outline as [x, z] pairs (model x and z), {example}"),
+        );
+        return None;
+    };
+    let mut lp: vec::Vec<Pt> = vec::Vec::new();
+    for (i, e) in arr.iter().enumerate() {
+        let xz = e.arr().filter(|a| a.len() == 2 || a.len() == 3).and_then(|a| {
+            let b = match a.get(2) {
+                None => 0.0,
+                Some(bv) => bv.num().filter(|b| {
+                    *b == 0.0 || (b.abs() >= super::common::MIN_BULGE && b.abs() <= super::common::MAX_BULGE)
+                })?,
+            };
+            Some(Pt { x: units::parse_length(&a[0])?, y: units::parse_length(&a[1])?, b })
+        });
+        let Some(q) = xz else {
+            ctx.p.fail(&format!("points/{i}"), format!("point {i} of a footprint must be [x, z] or [x, z, bulge]: lengths (model x and z, seen from above), a bulge 0 or 0.000001..1000 (got {}); Refs are not taken", model::kind_or_text(e)));
+            return None;
+        };
+        lp.push(q);
+    }
+    let clean = drop_duplicate_points(&lp);
+    if clean.len() < 3 {
+        ctx.p.fail("points", format!("a footprint needs at least 3 distinct points (got {}), {example}", clean.len()));
+        return None;
+    }
+    let mut poly = geom::flatten_loop(&clean, geom::FLAT_TOL);
+    if geom::signed_area_v(&poly) < 0.0 {
+        poly.reverse();
+    }
+    let n = poly.len();
+    for i in 0..n {
+        for j in i + 1..n {
+            if j == i + 1 || (i == 0 && j == n - 1) {
+                continue;
+            }
+            if segments_meet(poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n]) {
+                ctx.p.fail(
+                    "points",
+                    "the footprint outline crosses itself: list the points once around the outline, in order".into(),
+                );
+                return None;
+            }
+        }
+    }
+    let area = geom::signed_area_v(&poly);
+    if area < 1e-6 {
+        ctx.p.fail("points", "the footprint outline has no area".into());
+        return None;
+    }
+    let angled = (0..n).any(|i| {
+        let d = poly[(i + 1) % n].sub(poly[i]);
+        d.x.abs() > 1e-9 && d.y.abs() > 1e-9
+    });
+    let mut zs: vec::Vec<f64> = poly.iter().map(|v| v.y).collect();
+    crate::sort::stable(&mut zs, |a, b| a < b);
+    zs.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+    let (zmin, zmax) = (zs[0], zs[zs.len() - 1]);
+    let zc = (zmin + zmax) / 2.0;
+    let total_dz: f64 = zmax - zmin;
+    let step = 1.0f64.max(total_dz / FP_SLABS_MAX as f64);
+    let (y0, y1) = (top - h, top);
+    let mut prisms: vec::Vec<Prism> = vec::Vec::new();
+    for w in zs.windows(2) {
+        let (za, zb) = (w[0], w[1]);
+        let zm = (za + zb) / 2.0;
+        let slanted = (0..n).any(|i| {
+            let (p, q) = (poly[i], poly[(i + 1) % n]);
+            (p.y.min(q.y) < zm && p.y.max(q.y) > zm) && (q.x - p.x).abs() > 1e-9
+        });
+        let k_n = if slanted {
+            crate::num::to_int_clamped::<usize>(math::ceil((zb - za) / step), 1, FP_STEPS_MAX)
+        } else {
+            1
+        };
+        for k in 0..k_n {
+            let a = za + (zb - za) * k as f64 / k_n as f64;
+            let b = za + (zb - za) * (k + 1) as f64 / k_n as f64;
+            let xs = crate::pathclip::scan(core::slice::from_ref(&poly), (a + b) / 2.0, false);
+            for iv in xs.as_chunks::<2>().0 {
+                if iv[1] - iv[0] < 1e-9 {
+                    continue;
+                }
+                prisms.push(Prism {
+                    material: material.into(),
+                    loops: model::one_loop(model::rect_loop(iv[0], y0, iv[1], y1)),
+                    zoff: (a + b) / 2.0 - zc,
+                    zhalf: (b - a) / 2.0,
+                    seam: [a > zmin + 1e-9, b < zmax - 1e-9],
+                    fp_proxy: angled,
+                    ..Prism::default()
+                });
+            }
+        }
+    }
+    if let Some(first) = prisms.first_mut().filter(|_| angled) {
+        first.footprint = poly.iter().map(|v| V2::init(v.x, v.y - zc)).collect();
+        first.fp_y = [y0, y1];
+    }
+    let bx = geom::points_box(&poly.iter().map(|v| Pt::at(*v, 0.0)).collect::<vec::Vec<_>>());
+    let box_ = geom::Box { x0: bx.x0, y0, x1: bx.x1, y1 };
+    let mut anchors = vec::Vec::new();
+    let mut plan_z = vec::Vec::new();
+    for (k, v) in clean.iter().enumerate() {
+        let w = clean[(k + 1) % clean.len()];
+        let mid = geom::seg_point(v.v(), w.v(), v.b, 0.5);
+        for (name, p) in [(format!("vertex_{}", k + 1), v.v()), (format!("edge_{}_mid", k + 1), mid)] {
+            anchors.push(NamedAnchor { name: name.clone(), p: V2::init(p.x, top) });
+            plan_z.push(NamedAnchor { name, p: V2::init(0.0, p.y - zc) });
+        }
+    }
+    let outline = model::rect_loop(box_.x0, y0, box_.x1, y1);
+    Some(Built {
+        prisms,
+        anchors,
+        plan_z,
+        box_,
+        nat_z: Some(total_dz),
+        nat_zc: Some(zc),
+        points_mode: true,
+        host: Some(HostInfo { outline, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set }),
+        info: format!(
+            "concrete footprint {} points, {} thick, z {}..{}",
+            clean.len(),
+            fmt_ft_in(h),
+            fmt_ft_in(zmin),
+            fmt_ft_in(zmax)
+        ),
         ..Built::default()
     })
 }

@@ -797,6 +797,9 @@ fn world_prisms(
             for c in &mut q.path3 {
                 c[2] += (z[0] + z[1]) / 2.0;
             }
+            for v in &mut q.footprint {
+                v.y += (z[0] + z[1]) / 2.0;
+            }
             if let Some(e) = emb_override {
                 q.embedded = e;
             }

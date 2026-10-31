@@ -221,9 +221,12 @@ Profile: run x ⇒ (length × thickness); run y ⇒ (thickness × length). Use `
 | `width` | 8 | nominal 6, 8, 10, 12 ⇒ actual 5.625, 7.625, 9.625, 11.625 |
 | `courses` | — | number of 8" courses (7.625 unit + 0.375 mortar joint) |
 | `bond_beam_courses` | 0 | top N courses are bond-beam units (grouted, horizontal bars) |
+| `bond_beams` | null | bond-beam courses anywhere: `[4]`, `[[4, 5], 9]` (§28.7) |
 | `grout` | `"reinforced"` | `solid` (all cells), `reinforced` (bond beams + cut cell), `none` |
+| `grout_courses` | null | courses grouted solid when the rest are not (§28.7) |
 | `face_shell` | 1.25 | face shell thickness, drawn in section |
 | `top_joint` | false | include a mortar joint above the top course |
+| `run`, `length`, `control_joints`, `bond` | `"z"` | `run: "x"`: the wall seen face-on with its joint pattern (§28.7) |
 Profile box: width_actual × (courses·8 − 0.375 [+0.375 if top_joint]). Bottom of the lowest
 course sits at the box bottom (a bed joint is assumed below, not drawn).
 Parts: `course_1`…`course_n` (1 = bottom), `bond_beam` (union of bond-beam courses), `grout`, `cell` (between the face
@@ -237,11 +240,13 @@ ungrouted ⇒ empty with the cross web shown as a beyond line), mortar joints as
 ### 5.4 `concrete` — cast-in-place concrete with shape builders
 | param | default | notes |
 |---|---|---|
-| `shape` | — | `rect`, `polygon`, `slab_edge`, `footing` |
+| `shape` | — | `rect`, `polygon`, `slab_edge`, `footing`, `footprint` |
 | `material` | `"concrete"` | |
 | `cover` | `{ "bottom": 3, "sides": 3, "top": 1.5 }` | REQUIRED clear cover for bars in this host, used by `W_COVER` |
 | `voids` | null | what the host loses: component ids (`"col"`, `"plate.part"`) and shapes (`rect`, `circle`, `points`, optional `z`); also on `cmu_wall`; a `sleeve` cuts the hosts in its `through` (§26.4) |
-`rect`: `width`, `height`. `footing`: same as rect (semantic name; parts `footing`).
+| `pour` | null | monolithic pour name: touching concrete of one pour draws no joint (§28.7) |
+`rect`: `width`, `height`. `footing`: same as rect (semantic name; parts `footing`). `footprint`: a plan outline
+`points` `[x, z]` with `height` and `top` (§28.7).
 `polygon`: `points` (§3.3).
 `slab_edge` — monolithic slab with turned-down (thickened) edge footing:
 | param | default | notes |
@@ -2270,3 +2275,60 @@ line: for a positive offset the largest of (higher point + offset) over its memb
 dimension line, which is extended under it (to the text's end plus the text gap), on the same side and at the same gap as
 text that fits (above an `h` line, left of a `v` line read from the right), never centred on the line's axis. The raised
 places (a text row out at either end, on a short leader) are unchanged.
+
+### 28.7 beta.2: masonry elevation and plan footprints
+From round 2 of the MASS dogfood (issue #27): CMU fence and retaining elevations were faked with concrete rectangles and
+void gaps, a bond beam at a slab or ledger needed two or three stacked `cmu_wall` components, and L/T footings, notched
+slabs and 45-degree block-out ends were boxes with z-ranged voids that drew a hairline across the corner.
+
+**`cmu_wall` bond beams and grout by course.**
+- `bond_beams`: courses (1 = bottom) that are bond-beam units, as course numbers or `[from, to]` ranges (`[4]`,
+  `[[4, 5], 9]`); `bond_beam_courses` (top N) still works and adds to it. Bond-beam courses are always grouted (also with
+  `grout: "none"`). Each run of adjacent bond-beam courses is a zone `bond_beam_<k>` (k = 1 from the bottom) with anchor
+  `bond_beam_<k>_center`; `bond_beam` and `bond_beam_center` are the highest run.
+- `grout_courses`: courses grouted solid when the rest are not (partial grouting), same list form, e.g.
+  `"grout": "none", "grout_courses": [[1, 3]]` for solid grout below grade. With `grout` `solid` (or `reinforced` in a
+  wall seen in section) every course is already grouted: `W_PARAM` with the op that sets `grout: "none"`. The `grout`
+  zone is one rectangle per run of grouted courses.
+- A course outside 1..courses, a reversed range or a non-list is `E_PARAM` (path `.../bond_beams/<k>`) naming the range.
+- The summary reads `(n bond beam)` for top courses, else `(bond beams at courses 4, 9-10)`, and `, grouted courses 1-3`.
+
+**`cmu_wall` seen face-on (`run: "x"`).** The wall runs along x for `length` (required) with its thickness (the actual
+width) along z, centred on `z` like any member with a natural z thickness. Per panel between control joints it is a
+front and a back face shell (`face_shell` thick) and the grouted cells between them (one `grout` body per run of
+grouted courses; hollow courses have no body). `reinforced` grouts only the bond beams and `grout_courses` here (the
+vertical-bar cells are not modelled).
+- The face shells carry the joint pattern: a bed joint line at every joint centreline and head joints in `bond`
+  `running` (alternate courses offset 8") or `stack`, each panel starting with a full unit on course 1. An elevation
+  draws them thin (beyond pen) where the face is visible; a section through the wall draws them on the back shell seen
+  through hollow cells; plan, iso and 3D show the shells without joints.
+- `control_joints`: distances from the wall's left end; each is a 3/8" vertical gap through every course (two lines in
+  elevation) and the bond restarts in the next panel. Anchors `control_joint_<k>` (bottom) and `control_joint_<k>_top`.
+  Joints not increasing, closer than 3/8", or outside the wall are `E_PARAM`. `length` or `control_joints` on a
+  `run: "z"` wall is `E_PARAM` (fix: add `"run": "x"`).
+- Zones `course_<k>`, `bond_beam[_k]`, `grout` span the length; `voids` cut the shells (drainage blocks, openings) and
+  the pattern stops at the hole. A bond-beam bar is a path rebar along x at `wall@bond_beam_center`'s height.
+
+**Concrete `shape: "footprint"`.** A plan outline extruded in y: `points` are `[x, z]` (or `[x, z, bulge]`) pairs, x
+relative to the placement point, z model z; `height` is the thickness and `top` (default 0; a length relative to the
+placement point, or a Ref whose y is used) the top surface, so it spans `top - height .. top`. `z` (a number) moves the
+outline's z middle; `rotate`/`slope` are `E_PARAM` (draw the angle in the points). Fewer than 3 distinct points, a
+crossing outline or no area is `E_PARAM`. Anchors: the 9 box anchors of its section box (x extent by y range), `vertex_k`
+and `edge_k_mid` at the top surface (plan views place them at their z).
+- The model holds it as z slabs: one per interval between the outline's vertex z values, each with the outline's x
+  intervals there, the caps between slabs marked as seams (§26.4), so an L or T footing, a notched slab or a U is exact
+  in every view and check, and `voids` and sleeves work as on any host.
+- An outline with an angled edge (neither along x nor along z) is held by the checks as a staircase of slabs (at most
+  48 per interval, 400 in all, 1" steps), and every view draws the exact outline instead: a plan draws it as one region
+  (cut when `cut_y` is inside its y range), a section draws the x intervals where the cut plane crosses it and the strips
+  of its front surface behind (a line where that surface turns more than 10 degrees), an elevation those strips, iso and
+  the mesh the extruded outline. Such a footprint takes no `voids` and no sleeve `through` (`E_PARAM` at the entry:
+  draw the opening in its points or split it).
+
+**One casting draws no joint.** Where two bodies of one casting touch, the shared edge is not drawn and they hide what
+lies behind them as one body, in section, plan and elevation views; their hatch (anchored at the origin) runs on. One
+casting is (a) the slabs of one member that a void or a footprint split along z, and (b) concrete components with the
+same `pour` (a name, e.g. `"pour": "slab"` on a slab, its thickened edge and the fill of a block-out). Two bodies join
+when both are cut, or both are beyond at the same depth, and of the same material. Without `pour`, touching components
+keep their joint line (a cold joint between a footing and its stem). Iso views still draw the edges between different
+components of one pour.

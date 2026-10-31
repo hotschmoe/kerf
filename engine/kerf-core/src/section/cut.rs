@@ -1,6 +1,8 @@
 //! Cut prisms: fills, hatching, grain, outlines, cut marks.
 
 use super::hardware::is_path_bar;
+use super::joins::off_edges;
+use super::occlusion::PieceOut;
 use super::{Section, Target};
 use crate::clip::{self, Op};
 use crate::drawing::{FillItem, HatchItem};
@@ -222,6 +224,12 @@ impl Section<'_> {
         } else {
             match p.outline {
                 OutlineMode::None => {}
+                OutlineMode::Full if self.joins.get(i).is_some_and(|e| !e.is_empty()) => {
+                    let whole = p.loops.iter().map(|l| PieceOut { pts: l.clone(), closed: true }).collect();
+                    for pc in off_edges(whole, &self.joins[i].clone()) {
+                        self.add_clipped(Target::Strokes, &pc.pts, pc.closed, pen_out, &src, p.embedded);
+                    }
+                }
                 OutlineMode::Full => {
                     for l in &p.loops {
                         self.add_clipped(Target::Strokes, l, true, pen_out, &src, p.embedded);

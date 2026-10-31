@@ -12,7 +12,7 @@ use crate::geom::{self, Box, Pt, V2};
 use crate::hatch;
 use crate::math;
 use crate::mesh;
-use crate::model::{Kind, OutlineMode};
+use crate::model::{Kind, OutlineMode, Prism};
 use crate::num;
 use crate::pen::Pen;
 use crate::scene::{Comp, Scene, State};
@@ -77,6 +77,8 @@ struct IsoPrism {
     seam: [Vec<[V2; 2]>; 2],
     /// Framing hardware (SPEC 27.2): what other members hide of it draws dashed, and a note still lands on it.
     hw_dash: bool,
+    /// An angled concrete footprint (SPEC 28.7): `loops` are its plan outline in (x, z), extruded over y = z0..z1.
+    axis_y: bool,
 }
 
 /// A visible face: outer loop and holes in paper-projected model units.
@@ -198,7 +200,14 @@ impl Iso {
                 if ip.comp != comp || ip.instance != inst || part.is_some_and(|pn| ip.part != pn) {
                     continue;
                 }
-                let near = if self.sz > 0.0 { ip.z1 } else { ip.z0 };
+                let near = if ip.axis_y {
+                    let zs = ip.loops.iter().flatten().map(|v| v.y);
+                    if self.sz > 0.0 { zs.fold(f64::NEG_INFINITY, f64::max) } else { zs.fold(f64::INFINITY, f64::min) }
+                } else if self.sz > 0.0 {
+                    ip.z1
+                } else {
+                    ip.z0
+                };
                 z = Some(z.map_or(near, |zz: f64| if self.sz > 0.0 { zz.max(near) } else { zz.min(near) }));
             }
         }
@@ -474,6 +483,10 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
             if p.kind == Kind::Ghost || p.role == Role::Void {
                 continue;
             }
+            if p.fp_proxy {
+                footprint_iso(c, p, spec, crop, out);
+                continue;
+            }
             let fill_mat = p.role == Role::Soil;
             if fill_mat && !spec.cutaway {
                 continue;
@@ -542,10 +555,52 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
                         outline: p.outline,
                         seam: seam.clone(),
                         hw_dash: p.hw_dash,
+                        axis_y: false,
                     });
                 }
             }
         }
+    }
+}
+
+/// An angled footprint in iso (SPEC 28.7): its plan outline, cropped in x and y and cut back to z <= cut_z in a cutaway,
+/// extruded over its y range.
+fn footprint_iso(c: &Comp, p: &Prism, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPrism>) {
+    if p.footprint.len() < 3 {
+        return;
+    }
+    let [mut y0, mut y1] = p.fp_y;
+    let big = 1e7;
+    let (mut x0, mut x1, z1) = (-big, big, if spec.cutaway { spec.cut_z } else { big });
+    if let Some(cb) = crop {
+        (x0, x1) = (cb.x0, cb.x1);
+        y0 = y0.max(cb.y0);
+        y1 = y1.min(cb.y1);
+    }
+    if y1 - y0 < 1e-9 {
+        return;
+    }
+    let keep = vec![V2::init(x0, -big), V2::init(x1, -big), V2::init(x1, z1), V2::init(x0, z1)];
+    let region = clip::boolean(core::slice::from_ref(&p.footprint), core::slice::from_ref(&keep), clip::Op::Intersect);
+    for outer in region.into_iter().filter(|l| geom::signed_area_v(l) > 0.0) {
+        out.push(IsoPrism {
+            src: src_of(c, p.instance),
+            instance: p.instance,
+            comp: c.index,
+            part: p.part.clone(),
+            loops: vec![outer],
+            z0: y0,
+            z1: y1,
+            cap_cut: false,
+            pen: None,
+            material: p.material.clone(),
+            embedded: p.embedded,
+            is_fill: false,
+            outline: p.outline,
+            seam: [Vec::new(), Vec::new()],
+            hw_dash: p.hw_dash,
+            axis_y: true,
+        });
     }
 }
 
@@ -576,17 +631,19 @@ fn mk_face(iso: &mut Iso, n: [f64; 3], verts: &[[f64; 3]], holes3: &[Vec<[f64; 3
 
 fn add_prism(iso: &mut Iso, pi: usize) {
     let Some(ip) = iso.prisms.get(pi) else { return };
-    let (z0, z1, cap_cut, ip_pen) = (ip.z0, ip.z1, ip.cap_cut, ip.pen);
+    let (z0, z1, cap_cut, ip_pen, axis_y) = (ip.z0, ip.z1, ip.cap_cut, ip.pen, ip.axis_y);
     let seam = ip.seam.clone();
     let loops: Vec<FLoop> = ip.loops.iter().map(|l| flatten_sharp(l)).collect();
     let Some(first) = loops.first() else { return };
-    let lift = |pts: &[V2], z: f64| -> Vec<[f64; 3]> { pts.iter().map(|p| [p.x, p.y, z]).collect() };
+    let at = |p: V2, h: f64| -> [f64; 3] { if axis_y { [p.x, h, p.y] } else { [p.x, p.y, h] } };
+    let lift = |pts: &[V2], z: f64| -> Vec<[f64; 3]> { pts.iter().map(|&p| at(p, z)).collect() };
     let top_v = lift(&first.pts, z1);
     let bot_v = lift(&first.pts, z0);
     let top_h: Vec<Vec<[f64; 3]>> = loops[1..].iter().map(|fl| lift(&fl.pts, z1)).collect();
     let bot_h: Vec<Vec<[f64; 3]>> = loops[1..].iter().map(|fl| lift(&fl.pts, z0)).collect();
-    let ftop = mk_face(iso, [0.0, 0.0, 1.0], &top_v, &top_h, pi);
-    let fbot = mk_face(iso, [0.0, 0.0, -1.0], &bot_v, &bot_h, pi);
+    let (n_top, n_bot) = if axis_y { ([0.0, 1.0, 0.0], [0.0, -1.0, 0.0]) } else { ([0.0, 0.0, 1.0], [0.0, 0.0, -1.0]) };
+    let ftop = mk_face(iso, n_top, &top_v, &top_h, pi);
+    let fbot = mk_face(iso, n_bot, &bot_v, &bot_h, pi);
     for (li, fl) in loops.iter().enumerate() {
         let n = fl.pts.len();
         let mut side_faces = Vec::with_capacity(n);
@@ -594,8 +651,8 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             let p = fl.pts[i];
             let q = fl.pts[(i + 1) % n];
             let d = q.sub(p).norm();
-            let nn = [d.y, -d.x, 0.0];
-            let verts = [[p.x, p.y, z0], [q.x, q.y, z0], [q.x, q.y, z1], [p.x, p.y, z1]];
+            let nn = if axis_y { [d.y, 0.0, -d.x] } else { [d.y, -d.x, 0.0] };
+            let verts = [at(p, z0), at(q, z0), at(q, z1), at(p, z1)];
             side_faces.push(mk_face(iso, nn, &verts, &[], pi));
         }
         let chain = pi * 16 + li;
@@ -607,22 +664,14 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             let top_pen = pen_of(iso, ip_pen, ftop, sf, cap_cut);
             for [t0, t1] in cap_pieces(p, q, &seam[1]) {
                 let (a, b) = (p.lerp(q, t0), p.lerp(q, t1));
-                iso.edges.push(Edge {
-                    a: [a.x, a.y, z1],
-                    b: [b.x, b.y, z1],
-                    pen: top_pen,
-                    prism: pi,
-                    f1: ftop,
-                    f2: sf,
-                    chain,
-                });
+                iso.edges.push(Edge { a: at(a, z1), b: at(b, z1), pen: top_pen, prism: pi, f1: ftop, f2: sf, chain });
             }
             let bot_pen = pen_of(iso, ip_pen, fbot, sf, false);
             for [t0, t1] in cap_pieces(p, q, &seam[0]) {
                 let (a, b) = (p.lerp(q, t0), p.lerp(q, t1));
                 iso.edges.push(Edge {
-                    a: [a.x, a.y, z0],
-                    b: [b.x, b.y, z0],
+                    a: at(a, z0),
+                    b: at(b, z0),
                     pen: bot_pen,
                     prism: pi,
                     f1: fbot,
@@ -642,7 +691,7 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             }
             let pen = ip_pen.unwrap_or(if fp != fc { Pen::Profile } else { Pen::Beyond });
             let chain = usize::MAX.saturating_sub(pi * 4096 + li * 1024 + i);
-            iso.edges.push(Edge { a: [p.x, p.y, z0], b: [p.x, p.y, z1], pen, prism: pi, f1: prev, f2: cur, chain });
+            iso.edges.push(Edge { a: at(p, z0), b: at(p, z1), pen, prism: pi, f1: prev, f2: cur, chain });
         }
     }
 }
