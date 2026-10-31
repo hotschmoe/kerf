@@ -488,8 +488,12 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
             };
             for sg in segs {
                 let mat_name = if sg.mortar { "mortar" } else { p.material.as_str() };
-                let z0 = sg.z0;
+                let mut z0 = sg.z0;
                 let mut z1 = sg.z1;
+                if let Some([cz0, cz1]) = spec.crop_z {
+                    z0 = z0.max(cz0);
+                    z1 = z1.min(cz1);
+                }
                 let mut cap = false;
                 if spec.cutaway {
                     if z0 >= spec.cut_z {
