@@ -157,7 +157,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             info.push_str(&format!(" L={}", fmt_ft_in(l)));
         }
     } else {
-        info.push_str(&format!("{size} {}{pt} {} run {} L={}{until_note}", run.tag(), lp.face.tag(), run.tag(), fmt_ft_in(length)));
+        info.push_str(&format!(
+            "{size} {}{pt} {} run {} L={}{until_note}",
+            run.tag(),
+            lp.face.tag(),
+            run.tag(),
+            fmt_ft_in(length)
+        ));
     }
     if let Some(bk) = lp.barrier {
         let seal_t = 0.125;

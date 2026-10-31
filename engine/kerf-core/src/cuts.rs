@@ -48,7 +48,13 @@ impl Frame {
                 h: b.width(),
             }
         } else {
-            Frame { o: V2::init(b.x0, b.y0), u: V2::init(1.0, 0.0), v: V2::init(0.0, 1.0), len: b.width(), h: b.height() }
+            Frame {
+                o: V2::init(b.x0, b.y0),
+                u: V2::init(1.0, 0.0),
+                v: V2::init(0.0, 1.0),
+                len: b.width(),
+                h: b.height(),
+            }
         }
     }
     fn local(&self, f: V2) -> V2 {
@@ -57,18 +63,11 @@ impl Frame {
     fn dir(&self, d: V2) -> V2 {
         V2::init(d.dot(self.u), d.dot(self.v))
     }
-    fn to_local(&self) -> Xf {
+    fn local_xf(&self) -> Xf {
         Xf { a: self.u.x, b: self.u.y, c: self.v.x, d: self.v.y, tx: self.o.x, ty: self.o.y }
     }
-    fn to_frame(&self) -> Xf {
-        Xf {
-            a: self.u.x,
-            b: self.v.x,
-            c: self.u.y,
-            d: self.v.y,
-            tx: -self.o.dot(self.u),
-            ty: -self.o.dot(self.v),
-        }
+    fn frame_xf(&self) -> Xf {
+        Xf { a: self.u.x, b: self.v.x, c: self.u.y, d: self.v.y, tx: -self.o.dot(self.u), ty: -self.o.dot(self.v) }
     }
 }
 
@@ -93,11 +92,14 @@ fn err(scene: &Scene, id: &str, path: &str, msg: String, fix: &str) {
 
 fn op_text(id: &str, value: Value) -> String {
     let mut buf = Vec::new();
-    json::write_compact(&mut buf, &Value::Object(vec![
-        Member { key: "op".into(), value: json::string("update") },
-        Member { key: "path".into(), value: json::string(&format!("components/{id}")) },
-        Member { key: "value".into(), value },
-    ]));
+    json::write_compact(
+        &mut buf,
+        &Value::Object(vec![
+            Member { key: "op".into(), value: json::string("update") },
+            Member { key: "path".into(), value: json::string(&format!("components/{id}")) },
+            Member { key: "value".into(), value },
+        ]),
+    );
     String::from_utf8_lossy(&buf).into_owned()
 }
 
@@ -241,7 +243,13 @@ pub fn two_point(scene: &Scene, id: &str, ty: Type, node: &Value) -> Option<Opti
     let (fv, tv) = (node.get("from").filter(|v| !v.is_null()), node.get("to").filter(|v| !v.is_null()));
     if fv.is_none() && tv.is_none() {
         if node.get("align").is_some_and(|v| !v.is_null()) {
-            err(scene, id, &format!("{base}/align"), format!("'{id}': align only applies to a member placed with from/to"), "remove align, or give \"from\" and \"to\"");
+            err(
+                scene,
+                id,
+                &format!("{base}/align"),
+                format!("'{id}': align only applies to a member placed with from/to"),
+                "remove align, or give \"from\" and \"to\"",
+            );
             return None;
         }
         return Some(None);
@@ -266,18 +274,32 @@ pub fn two_point(scene: &Scene, id: &str, ty: Type, node: &Value) -> Option<Opti
                 scene,
                 id,
                 &format!("{base}/{key}"),
-                format!("'{id}' is placed with from/to (its length and angle come from the two points): remove '{key}'"),
+                format!(
+                    "'{id}' is placed with from/to (its length and angle come from the two points): remove '{key}'"
+                ),
                 &op_text(id, obj1(key, Value::Null)),
             );
             return None;
         }
     }
     if ty == Type::Lumber && node.get("run").and_then(Value::str) == Some("z") {
-        err(scene, id, &format!("{base}/run"), format!("'{id}': from/to place a member in the section plane; run z (end-on) has no length there"), "remove run (a two-point member runs along x of its own frame), or remove from/to");
+        err(
+            scene,
+            id,
+            &format!("{base}/run"),
+            format!("'{id}': from/to place a member in the section plane; run z (end-on) has no length there"),
+            "remove run (a two-point member runs along x of its own frame), or remove from/to",
+        );
         return None;
     }
     if ty == Type::Steel && !matches!(node.get("orient").and_then(Value::str), Some("elevation" | "plan")) {
-        err(scene, id, &format!("{base}/orient"), format!("'{id}': from/to need a steel member seen lengthwise: orient elevation or plan"), &op_text(id, obj1("orient", json::string("elevation"))));
+        err(
+            scene,
+            id,
+            &format!("{base}/orient"),
+            format!("'{id}': from/to need a steel member seen lengthwise: orient elevation or plan"),
+            &op_text(id, obj1("orient", json::string("elevation"))),
+        );
         return None;
     }
     let p0 = scene.point(fv, id, &format!("{base}/from"))?;
@@ -285,7 +307,13 @@ pub fn two_point(scene: &Scene, id: &str, ty: Type, node: &Value) -> Option<Opti
     let d = p1.sub(p0);
     let len = d.len();
     if len < 1e-3 {
-        err(scene, id, &base, format!("'{id}': from and to are the same point ({}, {})", fmt_ft_in(p0.x), fmt_ft_in(p0.y)), "point from and to at the two members the brace or web connects");
+        err(
+            scene,
+            id,
+            &base,
+            format!("'{id}': from and to are the same point ({}, {})", fmt_ft_in(p0.x), fmt_ft_in(p0.y)),
+            "point from and to at the two members the brace or web connects",
+        );
         return None;
     }
     let run_y = node.get("run").and_then(Value::str) == Some("y");
@@ -376,7 +404,11 @@ fn len_field(scene: &Scene, id: &str, path: &str, e: &Value, key: &str, positive
                 scene,
                 id,
                 &format!("{path}/{key}"),
-                format!("'{id}' {key} must be a {} length in inches (got {})", if positive { "positive" } else { "non-negative" }, model::kind_or_text(v)),
+                format!(
+                    "'{id}' {key} must be a {} length in inches (got {})",
+                    if positive { "positive" } else { "non-negative" },
+                    model::kind_or_text(v)
+                ),
                 CUTS_FIX,
             );
             Err(())
@@ -412,7 +444,13 @@ fn named<'s, 'a>(scene: &'s Scene<'a>, id: &str, path: &str, what: &str, name: &
         return None;
     };
     if base == id {
-        err(scene, id, path, format!("'{id}' {what}: a member cannot cut itself"), "name the member it bears on or meets");
+        err(
+            scene,
+            id,
+            path,
+            format!("'{id}' {what}: a member cannot cut itself"),
+            "name the member it bears on or meets",
+        );
         return None;
     }
     if c.state != State::Ok {
@@ -481,11 +519,25 @@ pub fn prepare(
         return Some(None);
     }
     let Some(run_y) = run_y else {
-        err(scene, id, &base, format!("'{id}': cuts apply to a member seen lengthwise (lumber run x or y, steel orient elevation or plan); an end-on member has no ends in the section"), "set \"run\": \"x\" (or \"y\"), or remove cuts");
+        err(
+            scene,
+            id,
+            &base,
+            format!(
+                "'{id}': cuts apply to a member seen lengthwise (lumber run x or y, steel orient elevation or plan); an end-on member has no ends in the section"
+            ),
+            "set \"run\": \"x\" (or \"y\"), or remove cuts",
+        );
         return None;
     };
     if matches!(node.get("mirror"), Some(Value::Bool(true))) {
-        err(scene, id, &format!("components/{id}/mirror"), format!("'{id}': mirror and cuts do not combine (the cuts are in the member's own frame)"), &op_text(id, obj1("mirror", Value::Null)));
+        err(
+            scene,
+            id,
+            &format!("components/{id}/mirror"),
+            format!("'{id}': mirror and cuts do not combine (the cuts are in the member's own frame)"),
+            &op_text(id, obj1("mirror", Value::Null)),
+        );
         return None;
     }
     let frame = Frame::of(built.box_, run_y);
@@ -509,7 +561,13 @@ pub fn prepare(
         Some(v) => match v.arr() {
             Some(a) => a,
             None => {
-                err(scene, id, &base, format!("'{id}': cuts must be a list of cut objects (got {})", model::kind_or_text(v)), CUTS_FIX);
+                err(
+                    scene,
+                    id,
+                    &base,
+                    format!("'{id}': cuts must be a list of cut objects (got {})", model::kind_or_text(v)),
+                    CUTS_FIX,
+                );
                 return None;
             }
         },
@@ -552,12 +610,7 @@ pub fn prepare(
         let heel = b.q.y / b.up.y;
         let hap = (frame.h - b.q.y) / b.up.y;
         let on = b.on.as_deref().map_or(String::new(), |o| format!(" on {o}"));
-        parts.push(format!(
-            "birdmouth{on} seat {} heel {} (HAP {})",
-            fmt_ft_in(seat),
-            fmt_ft_in(heel),
-            fmt_ft_in(hap)
-        ));
+        parts.push(format!("birdmouth{on} seat {} heel {} (HAP {})", fmt_ft_in(seat), fmt_ft_in(heel), fmt_ft_in(hap)));
     }
     let n_notch = plan.notches.len() + notch_count_by(list);
     if n_notch > 0 {
@@ -598,7 +651,13 @@ fn read_cut(
     xw: V2,
 ) -> Result<(), ()> {
     let Value::Object(members) = e else {
-        err(scene, id, path, format!("'{id}' cuts[{k}] must be an object with a \"type\" (got {})", model::kind_or_text(e)), CUTS_FIX);
+        err(
+            scene,
+            id,
+            path,
+            format!("'{id}' cuts[{k}] must be an object with a \"type\" (got {})", model::kind_or_text(e)),
+            CUTS_FIX,
+        );
         return Err(());
     };
     let Some(ty) = e.get("type").and_then(Value::str).filter(|t| TYPES.contains(t)) else {
@@ -630,13 +689,18 @@ fn read_cut(
             let which: &[usize] = match end {
                 Some("start") => &[0],
                 Some("end") => &[1],
-                Some("both") | None if matches!(ty, "square" | "plumb" | "level") || e.get("angle").is_some() => &[0, 1],
+                Some("both") | None if matches!(ty, "square" | "plumb" | "level") || e.get("angle").is_some() => {
+                    &[0, 1]
+                }
                 _ => {
                     err(
                         scene,
                         id,
                         &format!("{path}/end"),
-                        format!("'{id}' cuts[{k}] ({ty}): end must be \"start\" or \"end\"{}", if matches!(ty, "trim") || e.get("line").is_some() { "" } else { " or \"both\"" }),
+                        format!(
+                            "'{id}' cuts[{k}] ({ty}): end must be \"start\" or \"end\"{}",
+                            if matches!(ty, "trim") || e.get("line").is_some() { "" } else { " or \"both\"" }
+                        ),
                         CUTS_FIX,
                     );
                     return Err(());
@@ -648,7 +712,13 @@ fn read_cut(
                 "level" => End::Level,
                 "trim" => {
                     let Some(to) = e.get("to").and_then(Value::str) else {
-                        err(scene, id, &format!("{path}/to"), format!("'{id}' cuts[{k}] (trim): \"to\" names the member whose face the end is cut to"), "{\"type\": \"trim\", \"end\": \"end\", \"to\": \"top_chord\"}");
+                        err(
+                            scene,
+                            id,
+                            &format!("{path}/to"),
+                            format!("'{id}' cuts[{k}] (trim): \"to\" names the member whose face the end is cut to"),
+                            "{\"type\": \"trim\", \"end\": \"end\", \"to\": \"top_chord\"}",
+                        );
                         return Err(());
                     };
                     named(scene, id, &format!("{path}/to"), &format!("cuts[{k}] trim to"), to).ok_or(())?;
@@ -658,33 +728,70 @@ fn read_cut(
                     (Some(a), None) => match a.num().filter(|a| a.abs() < 80.0) {
                         Some(a) => End::Angle(a * geom::RAD_PER_DEG),
                         None => {
-                            err(scene, id, &format!("{path}/angle"), format!("'{id}' cuts[{k}] (bevel): angle is degrees from square, between -80 and 80 (got {})", model::kind_or_text(a)), "{\"type\": \"bevel\", \"end\": \"end\", \"angle\": 45}");
+                            err(
+                                scene,
+                                id,
+                                &format!("{path}/angle"),
+                                format!(
+                                    "'{id}' cuts[{k}] (bevel): angle is degrees from square, between -80 and 80 (got {})",
+                                    model::kind_or_text(a)
+                                ),
+                                "{\"type\": \"bevel\", \"end\": \"end\", \"angle\": 45}",
+                            );
                             return Err(());
                         }
                     },
                     (None, Some(l)) => {
                         let pts = l.arr().filter(|a| a.len() == 2);
                         let Some(pts) = pts else {
-                            err(scene, id, &format!("{path}/line"), format!("'{id}' cuts[{k}] (bevel): line is two points [p, q] (Refs or [x, y]) the end is cut along"), "{\"type\": \"bevel\", \"end\": \"end\", \"line\": [\"ridge@top_left\", \"ridge@bottom_left\"]}");
+                            err(
+                                scene,
+                                id,
+                                &format!("{path}/line"),
+                                format!(
+                                    "'{id}' cuts[{k}] (bevel): line is two points [p, q] (Refs or [x, y]) the end is cut along"
+                                ),
+                                "{\"type\": \"bevel\", \"end\": \"end\", \"line\": [\"ridge@top_left\", \"ridge@bottom_left\"]}",
+                            );
                             return Err(());
                         };
                         let p = scene.point(&pts[0], id, &format!("{path}/line/0")).ok_or(())?;
                         let q = scene.point(&pts[1], id, &format!("{path}/line/1")).ok_or(())?;
                         if p.dist(q) < 1e-6 {
-                            err(scene, id, &format!("{path}/line"), format!("'{id}' cuts[{k}] (bevel): the two line points are the same"), "give two distinct points on the line");
+                            err(
+                                scene,
+                                id,
+                                &format!("{path}/line"),
+                                format!("'{id}' cuts[{k}] (bevel): the two line points are the same"),
+                                "give two distinct points on the line",
+                            );
                             return Err(());
                         }
                         End::Line(p, q)
                     }
                     _ => {
-                        err(scene, id, path, format!("'{id}' cuts[{k}] (bevel): give exactly one of angle (degrees from square) or line (two points)"), "{\"type\": \"bevel\", \"end\": \"end\", \"angle\": 45}");
+                        err(
+                            scene,
+                            id,
+                            path,
+                            format!(
+                                "'{id}' cuts[{k}] (bevel): give exactly one of angle (degrees from square) or line (two points)"
+                            ),
+                            "{\"type\": \"bevel\", \"end\": \"end\", \"angle\": 45}",
+                        );
                         return Err(());
                     }
                 },
             };
             for &i in which {
                 if let Some(j) = explicit[i] {
-                    err(scene, id, path, format!("'{id}': cuts[{j}] and cuts[{k}] both cut the {} end; keep one", ["start", "end"][i]), &cuts_op(id, node, k, None));
+                    err(
+                        scene,
+                        id,
+                        path,
+                        format!("'{id}': cuts[{j}] and cuts[{k}] both cut the {} end; keep one", ["start", "end"][i]),
+                        &cuts_op(id, node, k, None),
+                    );
                     return Err(());
                 }
                 explicit[i] = Some(k);
@@ -692,7 +799,16 @@ fn read_cut(
             }
             for &i in which {
                 if end_line(plan, i, None, up, xw).is_none() && !matches!(kind, End::Line(..) | End::Trim(_)) {
-                    err(scene, id, path, format!("'{id}' cuts[{k}] ({ty}): the cut runs along the member (it is {} degrees from horizontal), so it cannot close the end", deg(math::atan2(up.x, up.y).abs())), "use a square or level cut on a vertical member, plumb on a level one");
+                    err(
+                        scene,
+                        id,
+                        path,
+                        format!(
+                            "'{id}' cuts[{k}] ({ty}): the cut runs along the member (it is {} degrees from horizontal), so it cannot close the end",
+                            deg(math::atan2(up.x, up.y).abs())
+                        ),
+                        "use a square or level cut on a vertical member, plumb on a level one",
+                    );
                     return Err(());
                 }
             }
@@ -715,7 +831,13 @@ fn read_birdmouth(
 ) -> Result<(), ()> {
     let f = plan.frame;
     if plan.bird.is_some() {
-        err(scene, id, path, format!("'{id}' has two birdmouth cuts; a member bears on one seat"), &cuts_op(id, node, k, None));
+        err(
+            scene,
+            id,
+            path,
+            format!("'{id}' has two birdmouth cuts; a member bears on one seat"),
+            &cuts_op(id, node, k, None),
+        );
         return Err(());
     }
     if up.y < 0.087 || up.x.abs() < 0.0175 {
@@ -743,7 +865,16 @@ fn read_birdmouth(
                 Some(s.to_string())
             }
             None => {
-                err(scene, id, &format!("{path}/on"), format!("'{id}' cuts[{k}] (birdmouth): on names the member the seat bears on (got {})", model::kind_or_text(v)), "\"on\": \"top_plate\"");
+                err(
+                    scene,
+                    id,
+                    &format!("{path}/on"),
+                    format!(
+                        "'{id}' cuts[{k}] (birdmouth): on names the member the seat bears on (got {})",
+                        model::kind_or_text(v)
+                    ),
+                    "\"on\": \"top_plate\"",
+                );
                 return Err(());
             }
         },
@@ -754,7 +885,15 @@ fn read_birdmouth(
     let sv = -hdir.y;
     let seat = match (seat_in, heel_in) {
         (Some(_), Some(_)) => {
-            err(scene, id, path, format!("'{id}' cuts[{k}] (birdmouth): give seat or heel, not both (one sets the other through the slope)"), &cuts_op(id, node, k, Some(drop_key(e, "heel"))));
+            err(
+                scene,
+                id,
+                path,
+                format!(
+                    "'{id}' cuts[{k}] (birdmouth): give seat or heel, not both (one sets the other through the slope)"
+                ),
+                &cuts_op(id, node, k, Some(drop_key(e, "heel"))),
+            );
             return Err(());
         }
         (Some(s), None) => s,
@@ -767,7 +906,15 @@ fn read_birdmouth(
             match width {
                 Some(b) => b.width(),
                 None => {
-                    err(scene, id, path, format!("'{id}' cuts[{k}] (birdmouth): give the seat length (or on: the member it bears on, whose width is the default seat)"), "{\"type\": \"birdmouth\", \"on\": \"top_plate\"} or {\"type\": \"birdmouth\", \"seat\": 3.5}");
+                    err(
+                        scene,
+                        id,
+                        path,
+                        format!(
+                            "'{id}' cuts[{k}] (birdmouth): give the seat length (or on: the member it bears on, whose width is the default seat)"
+                        ),
+                        "{\"type\": \"birdmouth\", \"on\": \"top_plate\"} or {\"type\": \"birdmouth\", \"seat\": 3.5}",
+                    );
                     return Err(());
                 }
             }
@@ -781,7 +928,12 @@ fn read_birdmouth(
             scene,
             id,
             &format!("{path}/seat"),
-            format!("'{id}' cuts[{k}] (birdmouth): a {} seat cuts {} into the {} member, through it", fmt_ft_in(seat), fmt_ft_in(qv), fmt_ft_in(h)),
+            format!(
+                "'{id}' cuts[{k}] (birdmouth): a {} seat cuts {} into the {} member, through it",
+                fmt_ft_in(seat),
+                fmt_ft_in(qv),
+                fmt_ft_in(h)
+            ),
             &cuts_op(id, node, k, Some(set_key(e, "seat", sixteenth_floor(max_seat)))),
         );
         return Err(());
@@ -858,11 +1010,26 @@ fn read_notch(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &m
     let f = plan.frame;
     if let Some(by) = e.get("by") {
         if let Some(other) = ["at", "w", "d", "x"].into_iter().find(|key| e.get(key).is_some()) {
-            err(scene, id, &format!("{path}/{other}"), format!("'{id}' cuts[{k}] (notch): by (subtract a member) and a rectangle (at, w, d) do not combine"), CUTS_FIX);
+            err(
+                scene,
+                id,
+                &format!("{path}/{other}"),
+                format!("'{id}' cuts[{k}] (notch): by (subtract a member) and a rectangle (at, w, d) do not combine"),
+                CUTS_FIX,
+            );
             return Err(());
         }
         if by.str().is_none() {
-            err(scene, id, &format!("{path}/by"), format!("'{id}' cuts[{k}] (notch): by names the member whose outline is cut out (got {})", model::kind_or_text(by)), "{\"type\": \"notch\", \"by\": \"top_plate\"}");
+            err(
+                scene,
+                id,
+                &format!("{path}/by"),
+                format!(
+                    "'{id}' cuts[{k}] (notch): by names the member whose outline is cut out (got {})",
+                    model::kind_or_text(by)
+                ),
+                "{\"type\": \"notch\", \"by\": \"top_plate\"}",
+            );
             return Err(());
         }
         return Ok(());
@@ -870,14 +1037,32 @@ fn read_notch(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &m
     let at = e.get("at").and_then(Value::str);
     let corners = ["top_left", "top_right", "bottom_left", "bottom_right", "top", "bottom"];
     let Some(at) = at.filter(|a| corners.contains(a)) else {
-        err(scene, id, &format!("{path}/at"), format!("'{id}' cuts[{k}] (notch): give by (a member) or at: one of {} with w (along the member) and d (into it)", corners.join(", ")), "{\"type\": \"notch\", \"at\": \"top_right\", \"w\": 3.5, \"d\": 1.5}");
+        err(
+            scene,
+            id,
+            &format!("{path}/at"),
+            format!(
+                "'{id}' cuts[{k}] (notch): give by (a member) or at: one of {} with w (along the member) and d (into it)",
+                corners.join(", ")
+            ),
+            "{\"type\": \"notch\", \"at\": \"top_right\", \"w\": 3.5, \"d\": 1.5}",
+        );
         return Err(());
     };
     let need = |key: &str| -> Result<f64, ()> {
         match len_field(scene, id, path, e, key, true)? {
             Some(x) => Ok(x),
             None => {
-                err(scene, id, &format!("{path}/{key}"), format!("'{id}' cuts[{k}] (notch): {key} is required ({})", if key == "w" { "length along the member" } else { "depth into the member" }), "{\"type\": \"notch\", \"at\": \"top_right\", \"w\": 3.5, \"d\": 1.5}");
+                err(
+                    scene,
+                    id,
+                    &format!("{path}/{key}"),
+                    format!(
+                        "'{id}' cuts[{k}] (notch): {key} is required ({})",
+                        if key == "w" { "length along the member" } else { "depth into the member" }
+                    ),
+                    "{\"type\": \"notch\", \"at\": \"top_right\", \"w\": 3.5, \"d\": 1.5}",
+                );
                 Err(())
             }
         }
@@ -893,7 +1078,15 @@ fn read_notch(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &m
     let x = match corner {
         Some(_) => {
             if e.get("x").is_some() {
-                err(scene, id, &format!("{path}/x"), format!("'{id}' cuts[{k}] (notch): x places a notch at \"top\"/\"bottom\"; a corner notch starts at its end"), CUTS_FIX);
+                err(
+                    scene,
+                    id,
+                    &format!("{path}/x"),
+                    format!(
+                        "'{id}' cuts[{k}] (notch): x places a notch at \"top\"/\"bottom\"; a corner notch starts at its end"
+                    ),
+                    CUTS_FIX,
+                );
                 return Err(());
             }
             0.0
@@ -901,7 +1094,15 @@ fn read_notch(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &m
         None => match len_field(scene, id, path, e, "x", false)? {
             Some(x) => x,
             None => {
-                err(scene, id, &format!("{path}/x"), format!("'{id}' cuts[{k}] (notch at {at}): x (distance from the start end to the notch) is required"), "{\"type\": \"notch\", \"at\": \"top\", \"x\": 24, \"w\": 3.5, \"d\": 1.5}");
+                err(
+                    scene,
+                    id,
+                    &format!("{path}/x"),
+                    format!(
+                        "'{id}' cuts[{k}] (notch at {at}): x (distance from the start end to the notch) is required"
+                    ),
+                    "{\"type\": \"notch\", \"at\": \"top\", \"x\": 24, \"w\": 3.5, \"d\": 1.5}",
+                );
                 return Err(());
             }
         },
@@ -911,7 +1112,14 @@ fn read_notch(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &m
             scene,
             id,
             path,
-            format!("'{id}' cuts[{k}] (notch): a {} x {} notch{} does not fit the member ({} long, {} deep)", fmt_ft_in(w), fmt_ft_in(d), if corner.is_none() { format!(" at x {}", fmt_ft_in(x)) } else { String::new() }, fmt_ft_in(f.len), fmt_ft_in(f.h)),
+            format!(
+                "'{id}' cuts[{k}] (notch): a {} x {} notch{} does not fit the member ({} long, {} deep)",
+                fmt_ft_in(w),
+                fmt_ft_in(d),
+                if corner.is_none() { format!(" at x {}", fmt_ft_in(x)) } else { String::new() },
+                fmt_ft_in(f.len),
+                fmt_ft_in(f.h)
+            ),
             "make the notch shallower than the member and within its length",
         );
         return Err(());
@@ -947,7 +1155,7 @@ fn end_line(plan: &Plan, i: usize, world: Option<(&Scene, &Xf)>, up: V2, xw: V2)
         End::Angle(a) => V2::init(-math::sin(*a), math::cos(*a)),
         End::Line(a, b) => {
             let (_, inv) = world?;
-            let to = plan.frame.to_frame();
+            let to = plan.frame.frame_xf();
             let pa = to.apply(inv.apply(*a));
             let pb = to.apply(inv.apply(*b));
             let l = Line { p: pa, t: pb.sub(pa) };
@@ -963,7 +1171,7 @@ fn end_line(plan: &Plan, i: usize, world: Option<(&Scene, &Xf)>, up: V2, xw: V2)
 /// misses it.
 fn trim_line(scene: &Scene, plan: &Plan, i: usize, tg: &Target, inv: &Xf) -> Option<Line> {
     let c = scene.find(&tg.comp)?;
-    let to = plan.frame.to_frame();
+    let to = plan.frame.frame_xf();
     let f = plan.frame;
     let mid = f.len / 2.0;
     let dir = if i == 0 { -1.0 } else { 1.0 };
@@ -1082,12 +1290,24 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
                             if plan.two && plan.vref != f.h / 2.0 { "aligned" } else { "center" }
                         ),
                         match k {
-                            Some(k) => format!("move '{id}' so its {what} reaches '{}', or drop the cut: {}", tg.comp, cuts_op(id, node, *k, None)),
-                            None => format!("point {} at an anchor on the face of '{}' that '{id}' meets (e.g. \"{}@bottom_center\")", ["from", "to"][i], tg.comp, tg.comp),
+                            Some(k) => format!(
+                                "move '{id}' so its {what} reaches '{}', or drop the cut: {}",
+                                tg.comp,
+                                cuts_op(id, node, *k, None)
+                            ),
+                            None => format!(
+                                "point {} at an anchor on the face of '{}' that '{id}' meets (e.g. \"{}@bottom_center\")",
+                                ["from", "to"][i],
+                                tg.comp,
+                                tg.comp
+                            ),
                         },
                     ),
                     _ => (
-                        format!("the {what} cut of '{id}' ({}) runs along the member and cannot close it (the end is left square)", e.name()),
+                        format!(
+                            "the {what} cut of '{id}' ({}) runs along the member and cannot close it (the end is left square)",
+                            e.name()
+                        ),
                         match k {
                             Some(k) => format!("drop or change the cut: {}", cuts_op(id, node, *k, None)),
                             None => "change the cut".to_string(),
@@ -1144,7 +1364,7 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
     let lo = s0.min(sh).min(0.0) - 0.5;
     let hi = e0.max(eh).max(f.len) + 0.5;
     let stretch = Xf::translate(lo, 0.0).mul(Xf::scaling((hi - lo) / f.len, 1.0));
-    let sx = f.to_local().mul(stretch).mul(f.to_frame());
+    let sx = f.local_xf().mul(stretch).mul(f.frame_xf());
     let mut strip = vec![V2::init(s0, 0.0), V2::init(e0, 0.0), V2::init(eh, f.h), V2::init(sh, f.h)];
     clip::orient_ccw(&mut strip);
     let mut region: Vec<Vec<V2>> = vec![strip];
@@ -1170,7 +1390,7 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
     for np in &notch_polys {
         region = clip::boolean(&region, core::slice::from_ref(np), Op::Diff);
     }
-    let to_local = f.to_local();
+    let to_local = f.local_xf();
     let region_local: Vec<Vec<V2>> = region.iter().map(|l| l.iter().map(|&p| to_local.apply(p)).collect()).collect();
     let mut out: Vec<Prism> = Vec::with_capacity(built.prisms.len());
     for p in &built.prisms {
@@ -1193,8 +1413,7 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
         }
         for g in group_region(&inter, None) {
             let mut r = q.clone();
-            r.ply_lines =
-                q.ply_lines.iter().flat_map(|s| clip_segment(s[0], s[1], &g.flat)).collect();
+            r.ply_lines = q.ply_lines.iter().flat_map(|s| clip_segment(s[0], s[1], &g.flat)).collect();
             r.loops = g.loops;
             out.push(r);
         }
@@ -1223,22 +1442,38 @@ fn check_seat(scene: &Scene, id: &str, plan: &Plan, b: &Bird, on: &str, xf: &Xf)
         return;
     }
     let why = if !level {
-        format!("the seat is {} {} its top", fmt_ft_in((q.y - ob.y1).abs()), if q.y > ob.y1 { "above" } else { "below" })
+        format!(
+            "the seat is {} {} its top",
+            fmt_ft_in((q.y - ob.y1).abs()),
+            if q.y > ob.y1 { "above" } else { "below" }
+        )
     } else {
-        format!("the seat runs x {}..{} past its x {}..{}", fmt_ft_in(x0), fmt_ft_in(x1), fmt_ft_in(ob.x0), fmt_ft_in(ob.x1))
+        format!(
+            "the seat runs x {}..{} past its x {}..{}",
+            fmt_ft_in(x0),
+            fmt_ft_in(x1),
+            fmt_ft_in(ob.x0),
+            fmt_ft_in(ob.x1)
+        )
     };
     let corner = seat_corner(plan.angle, &f, b.hdir);
-    let at = obj1("at", Value::Object(vec![
-        Member { key: "anchor".into(), value: json::string("seat_outer") },
-        Member { key: "to".into(), value: json::string(&format!("{on}@{corner}")) },
-    ]));
+    let at = obj1(
+        "at",
+        Value::Object(vec![
+            Member { key: "anchor".into(), value: json::string("seat_outer") },
+            Member { key: "to".into(), value: json::string(&format!("{on}@{corner}")) },
+        ]),
+    );
     scene.diags.add_fix(
         Level::Warning,
         "W_CUT_MISS",
         Some(id),
         Some(&format!("components/{id}/cuts/{}", b.k)),
         format!("the birdmouth seat of '{id}' does not bear on '{on}': {why}"),
-        format!("place the seat on it (or remove \"at\": a birdmouth with on places the member itself): {}", op_text(id, at)),
+        format!(
+            "place the seat on it (or remove \"at\": a birdmouth with on places the member itself): {}",
+            op_text(id, at)
+        ),
     );
 }
 

@@ -1435,5 +1435,96 @@ section('#9. plan and elevation views, shown hidden / where_occurs, rebar plane 
   check('plan: studs (lumber run y) cut by the plane get the end-grain X', d.items.filter((i) => i.t === 'path' && /^stud/.test(i.src) && i.pen === 'beyond' && i.pts.length === 2).length >= 6, d.items.filter((i) => /^stud/.test(i.src ?? '')).length);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #12: lumber cuts (birdmouth, notch, plumb/level/bevel/trim ends) and two-point members from/to (SPEC 27.3)
+section('#12 lumber cuts and two-point members');
+{
+  const doc = (components, views = [{ id: 'A', kind: 'section', title: 'C', cut_z: 0 }]) => ({ kerf: '0.1', id: 'c', title: 'C', run: [-24, 24], components, views });
+  const regions = (file, src, v = 'A') => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out).items.filter((i) => i.t === 'region' && i.src === src) : []; };
+  const pts = (rs) => rs.flatMap((i) => i.loops.flat());
+  const hasPt = (rs, x, y) => pts(rs).some((p) => Math.abs(p[0] - x) < 1e-6 && Math.abs(p[1] - y) < 1e-6);
+  const area = (rs) => rs.reduce((b, i) => b + i.loops.reduce((a, l) => a + l.reduce((c, p, k) => { const q = l[(k + 1) % l.length]; return c + (p[0] * q[1] - q[0] * p[1]) / 2; }, 0), 0), 0);
+  const stud = { id: 'stud', type: 'lumber', size: '2x4', run: 'y', length: 24, at: { anchor: 'bottom_left', to: [0, -24] } };
+  const plate = { id: 'plate', type: 'lumber', size: '2x4', orient: 'flat', at: { anchor: 'bottom_left', to: 'stud@top_left' } };
+  const rafter = { id: 'rafter', type: 'lumber', size: '2x8', run: 'x', slope: '6:12', length: 48, cuts: [{ type: 'birdmouth', on: 'plate', tail: 12 }, { type: 'plumb', end: 'both' }] };
+  write('c1.kerf.json', doc([stud, plate, rafter], [{ id: 'A', kind: 'section', title: 'C', cut_z: 0 }, { id: 'I', kind: 'iso', title: 'I' }, { id: 'P', kind: 'plan', title: 'P', cut_y: 1 }]));
+  let r = kerf(['check', 'c1.kerf.json']);
+  check('a 6:12 rafter with a birdmouth on the plate and no at: 0 warnings, the summary gives seat, heel and HAP', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /^ rafter +lumber 2x8 .*cuts: plumb start, plumb end, birdmouth on plate seat 3 1\/2" heel 1 3\/4" \(HAP 6 3\/8"\)/m.test(r.out), r.out);
+  let rs = regions('c1.kerf.json', 'rafter');
+  check('section: the seat runs along the plate top from its outer corner (0, 1 1/2) to (3 1/2, 1 1/2)', hasPt(rs, 0, 1.5) && hasPt(rs, 3.5, 1.5), pts(rs));
+  check('plumb end cuts: the low end is vertical at the 12" tail', pts(rs).filter((p) => Math.abs(p[0] + 12) < 1e-6).length === 2, pts(rs));
+  r = kerf(['mesh', 'c1.kerf.json']);
+  const rm = r.code === 0 ? JSON.parse(r.out).parts.filter((p) => p.src === 'rafter') : [];
+  const mpos = rm.flatMap((p) => p.positions.filter((_, k) => k % 3 !== 2).reduce((a, x, k, arr) => (k % 2 ? a : [...a, [x, arr[k + 1]]]), []));
+  check('mesh: the extruded rafter has the seat corner too, and nothing below the plate top over the plate', mpos.some((p) => Math.abs(p[0]) < 1e-6 && Math.abs(p[1] - 1.5) < 1e-6) && !mpos.some((p) => p[0] > 1e-6 && p[0] < 3.5 - 1e-6 && p[1] < 1.5 - 1e-6), mpos.length);
+  rs = regions('c1.kerf.json', 'rafter', 'P');
+  check('plan cut through the plate: the rafter is cut only outside the wall (x < 0)', rs.length > 0 && pts(rs).every((p) => p[0] <= 1e-6), pts(rs));
+  r = kerf(['schema', 'lumber']);
+  check('schema lumber lists from, to, align, cuts and the cut anchors', /^- from: /m.test(r.out) && /^- cuts: /m.test(r.out) && /seat_outer/.test(r.out), r.out.slice(0, 200));
+  r = kerf(['schema', 'cuts']);
+  check('schema cuts documents every cut type and the diagnostics', r.code === 0 && /square\|plumb\|level\|bevel\|trim\|birdmouth\|notch/.test(r.out) && /W_BIRDMOUTH_DEPTH/.test(r.out) && /W_CUT_MISS/.test(r.out), r.out.slice(0, 200));
+  r = kerf(['guide']);
+  check('the short guide names from/to and the birdmouth, within 12 KB', /"from":"tie@top_center","to":"chord@bottom_center"/.test(r.out) && /birdmouth/.test(r.out) && Buffer.byteLength(r.out) <= 12288, Buffer.byteLength(r.out));
+
+  const deep = { ...rafter, size: '2x4', slope: '8:12' };
+  write('c2.kerf.json', doc([stud, plate, deep]));
+  r = kerf(['check', 'c2.kerf.json']);
+  const m = /^WARN W_BIRDMOUTH_DEPTH rafter: 'rafter' birdmouth cuts 1 15\/16" into the 3 1\/2" depth \(55%\) .*Fix: shorten the seat to 2 1\/16" .*(\{"op":"update","path":"components\/rafter","value":\{"cuts":\[\{"type":"birdmouth","on":"plate","tail":12,"seat":2.0625\},\{"type":"plumb","end":"both"\}\]\}\})/m.exec(r.out);
+  check('a 2x4 at 8:12 on a 3 1/2" seat cuts 55% of its depth: W_BIRDMOUTH_DEPTH with the seat op', m !== null, r.out);
+  r = kerf(['apply', 'c2.kerf.json', '--ops', m ? m[1] : '[]', '-w', '--why', 'shorter seat']);
+  check('applying that op clears it', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+
+  write('c3.kerf.json', doc([stud, plate, { ...rafter, at: { anchor: 'bottom_left', to: [-10, 4] } }]));
+  r = kerf(['check', 'c3.kerf.json']);
+  const m3 = /^WARN W_CUT_MISS rafter: the birdmouth seat of 'rafter' does not bear on 'plate': the seat is [^.]+ above its top .*(\{"op":"update","path":"components\/rafter","value":\{"at":\{"anchor":"seat_outer","to":"plate@top_left"\}\}\})/m.exec(r.out);
+  check('a birdmouth placed off its plate: W_CUT_MISS with the at op that seats it', m3 !== null, r.out);
+  r = kerf(['apply', 'c3.kerf.json', '--ops', m3 ? m3[1] : '[]', '-w', '--why', 'seat it']);
+  check('applying it seats the rafter: 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  const wall = { id: 'wall', type: 'cmu_wall', width: 8, courses: 2, at: { anchor: 'top_left', to: [-2, 0] } };
+  const p3 = { id: 'plate', type: 'lumber', size: '2x4', orient: 'flat', treated: true, at: { anchor: 'bottom_left', to: [0, 0] } };
+  write('c4.kerf.json', doc([wall, p3, { ...rafter, size: '2x10', treated: true, cuts: [{ type: 'birdmouth', on: 'plate', heel: 1.5, tail: 12 }] }]));
+  r = kerf(['check', 'c4.kerf.json']);
+  const m4 = /^WARN W_OVERLAP .*'rafter'.*Fix: the birdmouth heel of 'rafter' \(1 1\/2"\) drops it below the top of 'plate' into 'wall': a [\d /]+" heel \(plumb cut\) lifts it clear: (\{"op":"update".*\})$/m.exec(r.out);
+  check('a birdmouth plate set back from the wall face: W_OVERLAP prints the heel that lifts the tail clear', m4 !== null, r.out);
+  r = kerf(['apply', 'c4.kerf.json', '--ops', m4 ? m4[1] : '[]', '-w', '--why', 'lift']);
+  check('applying it removes the overlap', r.code === 0 && !/W_OVERLAP/.test(r.out), r.out);
+
+  const bc = { id: 'bc', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 36, at: { anchor: 'bottom_left', to: [0, 0] } };
+  const tc = { id: 'tc', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 36, at: { anchor: 'bottom_left', to: [0, 14] } };
+  const web = { id: 'web', type: 'lumber', size: '2x4', face: 'narrow', from: { ref: 'bc@top_left', offset: [4, 0] }, to: { ref: 'tc@bottom_left', offset: [16.5, 0] } };
+  write('c5.kerf.json', doc([bc, tc, web]));
+  r = kerf(['check', 'c5.kerf.json']);
+  check('a 45 degree floor truss web from/to between two chords: no W_OVERLAP, no ack, ends trimmed to both', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /^ web +lumber 2x4 x narrow run x L=1'-5 11\/16" from bc@top_left\+\[4, 0\] to tc@bottom_left\+\[16.5, 0\] cuts: trim to bc start, trim to tc end/m.test(r.out), r.out);
+  rs = regions('c5.kerf.json', 'web');
+  let ys = pts(rs).map((p) => p[1]);
+  check('the web bears flat on the bottom chord (y 1 1/2) and the top chord (y 14), level cuts', Math.abs(Math.min(...ys) - 1.5) < 1e-6 && Math.abs(Math.max(...ys) - 14) < 1e-6 && ys.filter((y) => Math.abs(y - 1.5) < 1e-6).length === 2 && ys.filter((y) => Math.abs(y - 14) < 1e-6).length === 2, ys);
+  r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/tc', value: { at: { anchor: 'bottom_left', to: [0, 18] } } }]), '-w', '--why', 'deeper truss']);
+  ys = pts(regions('c5.kerf.json', 'web')).map((p) => p[1]);
+  check('moving the top chord: the web follows, still 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out) && Math.abs(Math.max(...ys) - 18) < 1e-6, [ys, r.out]);
+  r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'remove', path: 'components/tc' }])]);
+  check('removing a member a from/to names is refused', r.code === 1 && /cannot remove 'tc': still referenced by web/.test(r.err), r.err);
+  r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/web', value: { length: 20 } }])]);
+  check('from/to with length: E_PARAM whose fix removes it', r.code === 1 && /ERROR E_PARAM components\/web\/length: 'web' is placed with from\/to .*remove 'length'  Fix: \{"op":"update","path":"components\/web","value":\{"length":null\}\}/.test(r.err), r.err);
+  r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/web', value: { cuts: [{ type: 'trim', end: 'end', to: 'bc' }, { type: 'level', end: 'end' }] } }])]);
+  check('two cuts on one end: E_PARAM with the op that drops one', r.code === 1 && /cuts\[0\] and cuts\[1\] both cut the end end; keep one/.test(r.err), r.err);
+  r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/web', value: { cuts: [{ type: 'miter', end: 'end' }] } }])]);
+  check('an unknown cut type: E_PARAM listing the types', r.code === 1 && /cuts\[0\] needs a "type": one of "square", "plumb", "level", "bevel", "trim", "birdmouth", "notch"/.test(r.err), r.err);
+  r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/bc', value: { cuts: [{ type: 'plumb' }], run: null, face: null } }])]);
+  check('cuts on an end-on member (run z): E_PARAM', r.code === 1 && /cuts apply to a member seen lengthwise/.test(r.err), r.err);
+
+  const beam = { id: 'beam', type: 'lumber', product: 'glulam', size: '3.5x12', run: 'x', length: 48, at: { anchor: 'bottom_left', to: [0, 0] }, cuts: [{ type: 'notch', by: 'tp' }, { type: 'notch', at: 'bottom_right', w: 3.5, d: 1.5 }] };
+  const tp = { id: 'tp', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 24, at: { anchor: 'top_left', to: { ref: 'beam@top_left', offset: [-12, 0] } } };
+  const post = { id: 'post', type: 'lumber', size: '4x4', run: 'y', length: 36, at: { anchor: 'top_left', to: 'beam@bottom_left' } };
+  const kick = { id: 'kick', type: 'steel', shape: 'L3x3x1/4', orient: 'elevation', from: { ref: 'post@middle_right', offset: [0, -6] }, to: { ref: 'beam@bottom_left', offset: [18, 0] } };
+  write('c6.kerf.json', doc([beam, tp, post, kick], [{ id: 'E', kind: 'elevation', title: 'E', cut_z: 0 }]));
+  r = kerf(['check', 'c6.kerf.json']);
+  check('a beam notched by the plate placed from it (no cycle) and a steel kicker from/to: 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /^ beam .*cuts: 2 notches minus notch tp /m.test(r.out) && /^ kick +steel L3x3x1\/4 .*trim to post start, trim to beam end/m.test(r.out), r.out);
+  r = kerf(['drawing', 'c6.kerf.json', '--view', 'E']);
+  check('the beam outline in elevation steps down at both notches', r.code === 0 && JSON.parse(r.out).items.some((i) => i.src === 'beam' && i.t === 'path' && JSON.stringify(i.pts).includes('[48,1.5]')), r.code);
+  write('c7.kerf.json', doc([{ ...beam, cuts: [{ type: 'notch', by: 'stud' }, { type: 'trim', end: 'end', to: 'stud' }] }, { ...stud, at: { to: [100, 0] } }]));
+  r = kerf(['check', 'c7.kerf.json']);
+  check('a notch by and a trim that miss: W_CUT_MISS each, with the op that drops the cut', /^WARN W_CUT_MISS beam: the notch by 'stud' of 'beam' removes nothing: .*"cuts": \[\{"type":"trim","end":"end","to":"stud"\}\]/m.test(r.out) && /^WARN W_CUT_MISS beam: the end of 'beam' does not meet 'stud': .*\{"op":"update","path":"components\/beam","value":\{"cuts":\[\{"type":"notch","by":"stud"\}\]\}\}/m.test(r.out), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

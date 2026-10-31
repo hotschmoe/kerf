@@ -625,6 +625,96 @@ pub static ARRAY: Object = Object {
     ..Object::NONE
 };
 
+pub static CUTS: Object = Object {
+    name: "cuts",
+    brief: "lumber/steel end cuts, birdmouth, notches; from/to members",
+    summary: "`cuts` on lumber (run x/y) and steel (orient elevation/plan): a list of cuts applied to the member's profile, so section, plan, elevation, iso, the mesh and every check see the cut member. The member's frame: u along its length (start = the `at` end or `from`, end = the far end or `to`), v across (bottom face = v 0, top = the depth; for a two-point member top is the face left of from->to). End cuts pass through the end of the member's center line (its aligned line for from/to) and extend or shorten the member to close it.",
+    fields: &[
+        Field {
+            name: "type",
+            ty: "square|plumb|level|bevel|trim|birdmouth|notch",
+            required: true,
+            desc: "square/plumb/level: end cut perpendicular / vertical / horizontal; bevel: `angle` (degrees from square, CCW) or `line` [p, q] (cut along the line through two points); trim: the end runs to the face of member `to` it meets (shortened or extended); birdmouth: seat cut on a bearing member; notch: rectangle or a member's outline taken out",
+            ..Field::NONE
+        },
+        Field {
+            name: "end",
+            ty: "start|end|both",
+            def: "both (square, plumb, level, bevel angle)",
+            desc: "which end an end cut closes; trim and bevel line need start or end. One cut per end",
+            ..Field::NONE
+        },
+        Field { name: "angle", ty: "degrees", def: "", desc: "bevel: -80..80 from square", ..Field::NONE },
+        Field {
+            name: "line",
+            ty: "[point, point]",
+            def: "",
+            desc: "bevel: two Refs or [x, y] on the cut line",
+            ..Field::NONE
+        },
+        Field {
+            name: "to",
+            ty: "component id",
+            def: "",
+            desc: "trim: the member whose face the end is cut to (`id`, `id#k`, `id.part`)",
+            ..Field::NONE
+        },
+        Field {
+            name: "on",
+            ty: "component id",
+            def: "",
+            desc: "birdmouth: the member the seat bears on (its width is the default seat). Without `at` the member is placed so its seat_outer anchor lands on the outer top corner of `on` (the low side); a seat that does not sit on it is W_CUT_MISS",
+            ..Field::NONE
+        },
+        Field {
+            name: "seat",
+            ty: "length",
+            def: "width of `on`",
+            desc: "birdmouth: horizontal seat length",
+            ..Field::NONE
+        },
+        Field {
+            name: "heel",
+            ty: "length",
+            def: "",
+            desc: "birdmouth: height of the plumb (heel) cut instead of seat (seat = heel / slope)",
+            ..Field::NONE
+        },
+        Field {
+            name: "tail",
+            ty: "length",
+            def: "0",
+            desc: "birdmouth: horizontal distance from the plumb cut of the seat to the low end of the member (the eave overhang; measured at the center line)",
+            ..Field::NONE
+        },
+        Field {
+            name: "by",
+            ty: "component id",
+            def: "",
+            desc: "notch: subtract that member's outline (every instance, where the z ranges meet; like concrete `voids`); not a placement dependency",
+            ..Field::NONE
+        },
+        Field {
+            name: "at",
+            ty: "top_left|top_right|bottom_left|bottom_right|top|bottom",
+            def: "",
+            desc: "notch: a rectangle at a corner (left = start end) or along a face at `x`",
+            ..Field::NONE
+        },
+        Field { name: "w", ty: "length", def: "", desc: "notch: length along the member", ..Field::NONE },
+        Field { name: "d", ty: "length", def: "", desc: "notch: depth into the member", ..Field::NONE },
+        Field {
+            name: "x",
+            ty: "length",
+            def: "",
+            desc: "notch at top/bottom: distance from the start end",
+            ..Field::NONE
+        },
+    ],
+    notes: "Two-point members: lumber and steel take `from` and `to` (points: Refs, {ref, offset} or [x, y]) instead of at/length/until/rotate/slope; `align` center|top|bottom picks the line that runs between them. An end at a Ref to a member is trimmed to the face of that member it meets (an explicit cut for that end replaces it), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both with no computed angle or length, and follows them when they move.\nAnchors: seat_outer, seat_inner, heel_bottom (birdmouth), start_top, start_bottom, end_top, end_bottom (the cut corners); the 9 box anchors stay those of the uncut member.\nDiagnostics: W_BIRDMOUTH_DEPTH (the seat cuts more than 1/3 of the depth; fix: the seat that keeps 2/3), W_CUT_MISS (a seat off its bearing member, a trim whose line misses its member, a notch that removes nothing; each fix is an op), W_OVERLAP of a birdmouth member below its plate prints the heel that lifts it clear; E_PARAM for a cut that does not fit (seat through the member, notch deeper than the member, end cuts that cross).",
+    example: "[{\"type\":\"birdmouth\",\"on\":\"top_plate\",\"tail\":12},{\"type\":\"plumb\",\"end\":\"both\"},{\"type\":\"notch\",\"by\":\"ledger\"}]",
+};
+
 pub static ACK: Object = Object {
     name: "acknowledge",
     brief: "suppress a warning with a logged reason",
@@ -768,8 +858,8 @@ impl Object {
 }
 
 /// Every non-component topic, in listing order.
-pub static OBJECTS: [&Object; 14] =
-    [&DOC, &VIEW, &LAYOUT, &NOTE, &DIM, &LABEL, &WELD, &TABLE, &REF, &CITE, &OPS, &AT, &ARRAY, &ACK];
+pub static OBJECTS: [&Object; 15] =
+    [&DOC, &VIEW, &LAYOUT, &NOTE, &DIM, &LABEL, &WELD, &TABLE, &REF, &CITE, &OPS, &AT, &ARRAY, &CUTS, &ACK];
 
 pub fn find_object(name: &str) -> Option<&'static Object> {
     if let Some(o) = OBJECTS.iter().find(|o| o.name == name) {
@@ -778,6 +868,7 @@ pub fn find_object(name: &str) -> Option<&'static Object> {
     match name {
         "op" => Some(&OPS),
         "ack" => Some(&ACK),
+        "cut" | "from" | "birdmouth" | "notch" => Some(&CUTS),
         _ => None,
     }
 }

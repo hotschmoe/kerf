@@ -192,6 +192,8 @@ the engine draws. The engine MUST also emit this catalog as JSON and markdown (`
 | `plies` | 1 | built-up members; plies stack along X for run z, along Z otherwise; draws ply lines |
 | `treated` | false | preservative-treated (affects label, validation `W_UNTREATED_CONTACT`) |
 | `blocking` | false | section mark becomes single diagonal instead of X (discontinuous member) |
+| `from`, `to`, `align` | null | two-point member: runs between two points, ends trimmed to the members they meet (§27.3) |
+| `cuts` | null | run x/y: end cuts, birdmouth seat, notches (§27.3; `kerf schema cuts`) |
 | `grade` | null | free text e.g. `"#2 DF-L"` for notes |
 
 Material: `wood`; `treated:true` ⇒ `wood_treated`; `product`≠`sawn` ⇒ `wood_engineered`.
@@ -615,6 +617,8 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `E_ANCHOR_UNKNOWN` | error | unknown anchor; list the component's anchors |
 | `E_CYCLE` | error | placement cycle |
 | `W_OVERLAP` | warning | two cut regions overlap by > 0.01 in² (report overlap bbox in ft-in). Exempt: `embedded` items, membranes, connectors, and fills vs any non-fill solid (§26.4). A member inside concrete/cmu gets the `voids` (or sleeve `through`) op as its fix |
+| `W_BIRDMOUTH_DEPTH` | warning | a birdmouth seat cuts more than 1/3 of the member depth (§27.3) |
+| `W_CUT_MISS` | warning | a lumber/steel cut that misses: a seat off its bearing member, a trim that meets nothing, a notch `by` that removes nothing (§27.3) |
 | `W_VOID_MISS` | warning | a `voids` entry or a sleeve `through` host that removes nothing from its host; the fix drops it (§26.4) |
 | `W_FLOATING` | warning | a component touches nothing (gap > 1/32" to every other; concrete/masonry pieces facing across a joint < 1" touch), or some instances of an `array` touch nothing while others do (§25.5) |
 | `E_PLACE_OUTSIDE` | error | a `rebar.place` bar centre falls outside its zone (cover deeper than the host, or a `station` past the face); the bar is not drawn (§25.1) |
@@ -1706,3 +1710,81 @@ the wall thickness), packing as two strips, natural z thickness od (2.5D, like p
 - `W_OVERLAP` between a concrete/cmu host and a non-masonry solid (or grout) prints, before the usual fix, the op that
   subtracts it: `{"op": "update", "path": "components/<host>", "value": {"voids": [..., "<id>"]}}`, or for a sleeve
   `{"op": "update", "path": "components/<sleeve>", "value": {"through": "<host>"}}`.
+
+## 27. v0.2.0-beta.2 wood framing
+
+### 27.3 beta.2: lumber cuts and two-point members
+
+From the MASS details dogfood run (issue #12): lumber was a rotated box. A rafter rested on the corner of its plate, a
+flush beam could not be notched for the plate, sloped chords ended square and their rotated box ran through the member
+they met, and braces and truss webs were placed with angles and lengths computed in a script and trimmed by trial (with
+`W_OVERLAP` acknowledged). Members seen lengthwise now take cuts, and braces run between two anchors.
+
+**Frame.** A member seen lengthwise (lumber `run` x or y; `steel` `orient` elevation or plan) is a strip in its own
+frame: u along the length (0 at the start, `length` at the end), v across (0 on the bottom face, the depth on the top
+face). Run x: u = +x, v = +y; run y: u = +y, v = −x (v is always left of u). The cuts below change that strip's profile
+in the builder's local coordinates before the member is placed, so section, plan, elevation, iso, the mesh, picking and
+every check (`W_OVERLAP`, `W_FLOATING`, `W_NEAR_MISS`, landing) see the cut member. Lengthwise lumber grain and ply lines
+follow the cut profile. The 9 box anchors stay those of the uncut `[0, length]` box. `cuts` on an end-on member (lumber
+run z, steel section) or together with `mirror` is `E_PARAM`.
+
+**Two-point members.** `lumber` and `steel` (elevation/plan) take `from` and `to`: points (a Ref, `{ref, offset}` or
+`[x, y]`, §3.3). The member's length is |to − from| and its angle that of from→to (`rotate`, `slope`, `at`, `length`,
+`until` and `mirror` with them are `E_PARAM` whose fix is the op that removes the key; lumber without `run` runs x; `run:
+"z"` is `E_PARAM`; steel needs `orient` elevation or plan). `align`: `center` (default) | `top` | `bottom` picks the line
+that runs from `from` to `to`: the center line, or the top (v = depth, left of from→to) or bottom face. Each end whose
+point is a Ref to a component (`comp@anchor`, `comp#k@anchor`, `comp.part@anchor`) is trimmed to that component (a
+`trim` cut, below) unless `cuts` gives that end its own cut; an end at a literal point is square. So a brace
+`"from": "tie@top_center", "to": "chord@bottom_center"` bears flat on the tie and the chord, needs no computed number and
+follows both when they move. `from`, `to` (and every Ref in `cuts`, except `notch.by`) are placement dependencies (§3.2);
+`slope: "@brace"` follows its angle.
+
+**End cuts.** `cuts` entries with `type` `square`, `plumb`, `level`, `bevel` or `trim` close an end (`end`: `start`, `end`
+or `both`; default `both` for square, plumb, level and bevel with an angle; trim and bevel with a line need one end; two
+cuts on one end are `E_PARAM`). Each is a line: square ⊥ the member, plumb vertical and level horizontal in world, bevel
+`angle` degrees from square (CCW in the frame, |angle| < 80), all through the end of the reference line (the aligned line
+of a two-point member, else the center line: u = 0 or `length`, v = depth/2); bevel `line: [p, q]` the line through two
+points; trim `to: "<id>"` the face of that component the reference line meets: casting from the member's middle toward
+that end, the first boundary edge of the target's outline (that instance, that part) it crosses, at most max(length, 48")
+beyond the end. The member is stretched to reach both lines and clipped to the strip between them, so an end cut extends
+or shortens the member as needed. A cut along the member (plumb on a vertical member, level on a level one) is `E_PARAM`;
+end cuts that cross inside the member (too short for its cuts) or meet its faces absurdly far out are `E_PARAM`. Named
+anchors `start_top`, `start_bottom`, `end_top`, `end_bottom` are the cut corners (sheathing on a plumb-cut rafter:
+`"at": {"to": "rafter@start_top"}, "until": "rafter@end_top"`). A trim whose line misses its target is `W_CUT_MISS`
+(the end stays square; the fix is the op that drops the cut, or for `from`/`to`, a face anchor of the target).
+
+**Birdmouth.** `{"type": "birdmouth", "on": "<id>", "seat": s | "heel": h, "tail": t}` cuts a seat in a sloped member
+(its bottom face must look down: within 85° of horizontal and at least 1° off level, else `E_PARAM`). The seat is level
+(world), `seat` long (horizontal; default: the width of `on`'s box), and meets a plumb heel cut of height
+`seat · tan(slope)` (`heel` sets that height instead; both is `E_PARAM`). The heel is on the low side of the member;
+`tail` (default 0) is the horizontal distance from the heel's plumb line to the low end of the reference line (the eave
+overhang). Named anchors: `seat_outer` (heel corner, where seat and plumb cut meet), `seat_inner` (the seat's inner end on
+the bottom face), `heel_bottom` (the plumb cut's foot on the bottom face). Without `at`, a member with a birdmouth `on`
+a component is placed with `seat_outer` on the outer top corner of `on` (top_left when the member rises toward +x, else
+top_right), so the seat bears on it with no computed offset. The summary line gives seat, heel and HAP (the plumb height
+above the seat). A seat that does not lie on the top of `on` (1/32" tolerance) is `W_CUT_MISS` with the `at` op that puts
+it there. A seat cutting more than 1/3 of the member depth (perpendicular to the member) is `W_BIRDMOUTH_DEPTH`: common
+framing practice and IRC R802.7.1 (notching of sawn lumber) keep the section at the bearing; the fix is the op with the
+largest seat that keeps 2/3 (rounded down to 1/16"). A seat through the member, or one that falls outside it, is
+`E_PARAM`. A `W_OVERLAP` between a member with a birdmouth and a component other than its `on` (the wall under a narrow
+plate) prints as its fix the `heel` that lifts the member clear: the current heel minus the overlap height, at most the
+depth of `on`.
+
+**Notches.** `{"type": "notch", "at": "top_left" | "top_right" | "bottom_left" | "bottom_right", "w": w, "d": d}` takes a
+w × d rectangle out of that corner (left = start; it runs past a cut end); `"at": "top" | "bottom"` with `x` (from the
+start) a rectangle along that face. A notch deeper than the member or longer than it is `E_PARAM`.
+`{"type": "notch", "by": "<id>"}` subtracts that component's outline after placement with the `voids` machinery (§26.4:
+every instance, split along z where the z ranges differ, a part with `id.part`); it is not a placement dependency, so the
+notching member may be placed from the notched one (a top plate at `beam@top_left`). One that removes nothing is
+`W_CUT_MISS` (id = the notched member, path `components/<id>/cuts/<k>`) with the op that drops it. The summary line ends
+with `minus notch <id>`.
+
+**Validation.** Cut objects are checked strictly: an unknown `type` or key, a missing required field, or a bad length is
+`E_PARAM` at `components/<id>/cuts/<k>[/<key>]` with an example in the fix; an unknown `on`, `to` or `by` id is
+`E_REF_UNKNOWN`. `kerf schema cuts` documents the object; removing a component that a `from`, `to` or cut names is refused
+(§14).
+
+| code | level | rule |
+|---|---|---|
+| `W_BIRDMOUTH_DEPTH` | warning | a birdmouth seat cuts more than 1/3 of the member depth; fix: the op with the largest seat that keeps 2/3 |
+| `W_CUT_MISS` | warning | a birdmouth seat off the top of its `on` member, a trim whose line misses its member, a `notch.by` that removes nothing; each fix is an op |

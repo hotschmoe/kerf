@@ -683,7 +683,10 @@ fn base_transform(comp_id: &str, ty: &Entry, p: &mut Params, built: &Built, at: 
     if built.points_mode {
         return Some(Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle)));
     }
-    let anc = at.local.or_else(|| model::box_anchor(built.box_, at.anchor)).or_else(|| built.anchors.iter().find(|n| n.name == at.anchor).map(|n| n.p));
+    let anc = at
+        .local
+        .or_else(|| model::box_anchor(built.box_, at.anchor))
+        .or_else(|| built.anchors.iter().find(|n| n.name == at.anchor).map(|n| n.p));
     let Some(anc) = anc else {
         let mut names = model::BOX_ANCHOR_NAMES.join(", ");
         for n in &built.anchors {
