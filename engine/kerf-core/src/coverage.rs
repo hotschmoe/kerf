@@ -153,8 +153,12 @@ fn candidates(doc: &Value, scene: Option<&Scene>, w: &Words) -> Vec<Cand> {
     let mut out = Vec::new();
     for c in doc.get("components").and_then(Value::arr).unwrap_or(&[]) {
         let id = str_of(c, "id");
-        let joined =
+        let mut joined =
             format!("{} {} {} {} {}", id, str_of(c, "type"), str_of(c, "label"), str_of(c, "model"), str_of(c, "size"));
+        if str_of(c, "type") == "nailing" {
+            joined.push(' ');
+            joined.push_str(&crate::builders::nailing::node_text(c));
+        }
         let text = joined.get(id.len() + 1..).unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" ");
         out.push(Cand {
             found: String::from(id),

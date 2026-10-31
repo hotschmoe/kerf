@@ -82,6 +82,16 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     if let Some(s) = node.get("place").and_then(|pl| pl.get("in")).and_then(Value::str) {
         out.push(s.split('.').next().unwrap_or(s));
     }
+    if node.get("type").and_then(Value::str) == Some("nailing") {
+        for m in node.get("members").and_then(Value::arr).unwrap_or(&[]) {
+            if let Some(s) = m.str() {
+                out.push(s.split('#').next().unwrap_or(s));
+            }
+        }
+        for e in node.get("range").and_then(Value::arr).unwrap_or(&[]) {
+            add_ref_dep(e, out);
+        }
+    }
 }
 
 /// The components a node names in `voids`, a sleeve's `through` and a fill's `except` (SPEC 26.4). They are not

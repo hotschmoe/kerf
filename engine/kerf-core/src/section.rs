@@ -4,10 +4,12 @@ mod beyond;
 mod breaks;
 mod cut;
 mod hardware;
+mod nails;
 mod occlusion;
 mod strokes;
 
 pub use cut::{FillFault, group_region};
+pub use nails::NailsHidden;
 pub use occlusion::Occ;
 pub use strokes::{Stroke, chain_strokes, dedupe};
 
@@ -62,6 +64,9 @@ pub struct Section<'s> {
     pub truncated_hatch: bool,
     pub fill_faults: Vec<FillFault>,
     pub crop_loop: Vec<V2>,
+    /// Where each drawn fastener of a `nailing` component is (component index, point): its notes land there.
+    pub nail_marks: Vec<(u32, V2)>,
+    pub nails_hidden: Vec<NailsHidden>,
 }
 
 impl<'s> Section<'s> {
@@ -109,6 +114,8 @@ impl<'s> Section<'s> {
             truncated_hatch: false,
             fill_faults: Vec::new(),
             crop_loop,
+            nail_marks: Vec::new(),
+            nails_hidden: Vec::new(),
         }
     }
 
@@ -242,6 +249,7 @@ impl<'s> Section<'s> {
             }
             let _ = i;
         }
+        self.draw_nails();
         self.break_lines();
     }
 

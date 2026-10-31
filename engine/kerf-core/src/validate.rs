@@ -290,7 +290,7 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
         return;
     }
     for c in &s.comps {
-        if c.dashed {
+        if c.dashed || c.world.is_empty() {
             continue;
         }
         let touching_in = |p: &&&Pf<'_>, any_instance: bool| {

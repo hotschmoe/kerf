@@ -516,7 +516,43 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
     }
 }
 
-/// The title a view prints: a plan or elevation view's title through the style's `text.plan_title` /
+fn nails_hidden_diags(hidden: &[crate::section::NailsHidden], spec: &ViewSpec, diags: &Diags) {
+    let plan = spec.kind == Kind::Plan;
+    let (key, plane) = if plan { ("cut_y", "cut_y") } else { ("cut_z", "cut plane") };
+    for h in hidden {
+        let vid = spec.id;
+        if spec.kind == Kind::Elevation {
+            diags.add_fix(
+                Level::Warning,
+                "W_NAIL_HIDDEN",
+                Some(&h.id),
+                Some(&format!("views/{vid}")),
+                format!("'{}' draws none of its fasteners in view {vid}: members that are not in its `members` lie in front of all of them", h.id),
+                format!("omit the members in front from this view, or keep the nailing out of it: {{\"op\":\"update\",\"path\":\"views/{vid}\",\"value\":{{\"omit\":[\"{}\"]}}}} (add to the existing omit list)", h.id),
+            );
+            continue;
+        }
+        diags.add_fix(
+            Level::Warning,
+            "W_NAIL_HIDDEN",
+            Some(&h.id),
+            Some(&format!("views/{vid}")),
+            format!(
+                "'{}' draws none of its fasteners in view {vid}: every one in the window is in front of the {plane} at {} or inside a solid the plane cuts",
+                h.id,
+                fmt_num(spec.cut_z)
+            ),
+            format!(
+                "put the {plane} in front of the members: {{\"op\":\"update\",\"path\":\"views/{vid}\",\"value\":{{\"{key}\":{}}}}}{}; or keep it out of this view: {{\"op\":\"update\",\"path\":\"views/{vid}\",\"value\":{{\"omit\":[\"{}\"]}}}} (add to the existing omit list)",
+                fmt_num(h.clear),
+                if plan { "" } else { " or \"kind\": \"elevation\"" },
+                h.id
+            ),
+        );
+    }
+}
+
+/// The title a view prints:a plan or elevation view's title through the style's `text.plan_title` /
 /// `text.elevation_title` (default "PLAN - {title}" / "{title}"), unless it already names its kind (SPEC 26.3).
 pub fn view_title(st: &Style, spec: &ViewSpec) -> String {
     let (template, words): (&str, &[&str]) = match spec.kind {
@@ -539,6 +575,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
     fill_fault_diags(&sec.fill_faults, spec.id, diags);
+    nails_hidden_diags(&sec.nails_hidden, spec, diags);
     let mut base_items = sec.finish();
     let regions = sec.region_items();
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));

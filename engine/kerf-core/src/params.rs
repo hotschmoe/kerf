@@ -108,6 +108,13 @@ pub fn read_int(p: &mut Params<'_>, key: &str, default: Option<i64>, min: i64, m
     p.int(key, default, min, max).or(default).unwrap_or(0)
 }
 
+pub fn read_opt_int(p: &mut Params<'_>, key: &str, min: i64, max: i64) -> Option<i64> {
+    if !p.has(key) {
+        return None;
+    }
+    p.int(key, None, min, max)
+}
+
 pub fn read_str(p: &mut Params<'_>, key: &str, default: Option<&str>) -> String {
     if !p.has(key)
         && let Some(d) = default

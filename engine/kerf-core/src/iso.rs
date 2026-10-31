@@ -108,6 +108,8 @@ pub struct Iso {
     edges: Vec<Edge>,
     prisms: Vec<IsoPrism>,
     pub vis: Vec<Vis>,
+    /// Where each visible fastener head of a `nailing` component is (component index, paper-projected point).
+    pub nail_marks: Vec<(u32, V2)>,
     gx0: f64,
     gy0: f64,
     gw: f64,
@@ -129,6 +131,7 @@ impl Default for Iso {
             edges: Vec::new(),
             prisms: Vec::new(),
             vis: Vec::new(),
+            nail_marks: Vec::new(),
             gx0: 0.0,
             gy0: 0.0,
             gw: 1.0,
@@ -850,6 +853,8 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
         flush(&mut cur, cur_src, &mut items);
     }
 
+    nail_dots(iso, scene, spec, style, s, &mut items);
+
     // visible shapes per prism for note landing points
     let mut cand: Vec<u32> = Vec::new();
     let mut vis_out: Vec<Vis> = Vec::new();
@@ -959,6 +964,69 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
         cropb = sb;
     }
     Result { items, scale: s, crop: cropb }
+}
+
+/// Fastener heads of `nailing` components (SPEC 27.4): a dot (screws: a circle with a cross) where the head is visible.
+fn nail_dots(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, s: f64, items: &mut Vec<Item>) {
+    let (sx, sz) = (iso.sx, iso.sz);
+    let pen = if style.pen(Pen::Steel).is_some() { Pen::Steel } else { Pen::Beyond };
+    let layer = style.layer_for_pen(pen);
+    let mut cand: Vec<u32> = Vec::new();
+    let mut placed: Vec<V2> = Vec::new();
+    let mut marks: Vec<(u32, V2)> = Vec::new();
+    for c in &scene.comps {
+        if !scene.nails_shown(c, &spec.members) {
+            continue;
+        }
+        for n in &c.built.nails {
+            if spec.has_crop && !spec.crop.contains(V2::init(n.head[0], n.head[1])) {
+                continue;
+            }
+            if spec.cutaway && n.head[2] > spec.cut_z + 1e-6 {
+                continue;
+            }
+            let p = proj(sx, sz, n.head);
+            let d = depth_of(sx, sz, n.head);
+            let mut bb = Box::default();
+            bb.add_point(p.x, p.y);
+            iso.candidates(bb.expand(1e-9), &mut cand);
+            if iso.occluded_at(p, d, &[], &cand) {
+                continue;
+            }
+            marks.push((c.index, p));
+            if placed.iter().any(|q| q.eql(p, 1e-6)) {
+                continue;
+            }
+            placed.push(p);
+            if n.screw {
+                let r = 0.025 * s;
+                items.push(Item::Path(PathItem {
+                    layer: layer.into(),
+                    pen,
+                    src: c.id.clone(),
+                    closed: true,
+                    pts: crate::model::circle_loop(p.x, p.y, r),
+                }));
+                let k = r * 0.7071;
+                for (a, b) in [(V2::init(-k, -k), V2::init(k, k)), (V2::init(-k, k), V2::init(k, -k))] {
+                    items.push(Item::Path(PathItem {
+                        layer: layer.into(),
+                        pen,
+                        src: c.id.clone(),
+                        closed: false,
+                        pts: vec![Pt::at(p.add(a), 0.0), Pt::at(p.add(b), 0.0)],
+                    }));
+                }
+            } else {
+                items.push(Item::Fill(crate::drawing::FillItem {
+                    layer: layer.into(),
+                    src: c.id.clone(),
+                    loops: crate::model::one_loop(crate::model::circle_loop(p.x, p.y, 0.014 * s)),
+                }));
+            }
+        }
+    }
+    iso.nail_marks = marks;
 }
 
 /// Grade-line chain (or full outline) of a fill's cut face.

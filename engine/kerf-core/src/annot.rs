@@ -252,13 +252,24 @@ fn shared_key_note<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a Value> {
         .find(|an| non_null(an, "key").and_then(Value::num) == Some(f64::from(key)) && str_member(an, "text").is_some())
 }
 
+/// The text form of the `nailing` component a note targets (SPEC 27.4): a note on fasteners may leave out its text.
+fn nailing_text(env: &Env, an: &Value) -> Option<String> {
+    let target = str_member(an, "target")?;
+    let cid = target.find(['.', '#']).map_or(target, |d| &target[..d]);
+    let c = env.scene.find(cid)?;
+    (c.ty.ty == crate::catalog::Type::Nailing).then(|| crate::builders::nailing::node_text(c.node))
+}
+
 /// A note, or `None` (with a diagnostic) when it cannot be drawn.
 fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) -> Option<NoteIn<'a>> {
     let vid = env.spec.id;
     let style = env.notes_style();
     let key = if style == NotesStyle::Leader { None } else { read_key(env, an, id, apath) };
     let shared = if str_member(an, "text").is_none() { key.and_then(|k| shared_key_note(env, k)) } else { None };
-    let Some(text0) = str_member(an, "text").or_else(|| shared.and_then(|sn| str_member(sn, "text"))) else {
+    let nail_text = if str_member(an, "text").is_none() { nailing_text(env, an) } else { None };
+    let Some(text0) =
+        str_member(an, "text").or_else(|| shared.and_then(|sn| str_member(sn, "text"))).or(nail_text.as_deref())
+    else {
         let alt = if style == NotesStyle::Leader { "" } else { " (or a \"key\" shared with a note that has one)" };
         env.diags.add(
             Level::Error,
