@@ -463,6 +463,15 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   (no peak); a pitched truss cannot bear on its top chord (only parallel_chord); there is no `hanger` (issue #11) or
   truss-plate detail; iso shows sloped chords at their 2D slope (the known 2.5D limit).
 
+- Framing hardware (#11, SPEC 27.2, `builders/hardware.rs`, `hwcheck.rs`): hangers follow members running along x
+  or z only (no skew; a sloped joist rotated about its corner has an unplumb end that pokes into the carrying member,
+  so `carried` reports it is not at a face until lumber gets plumb cuts, #12); a z-normal holdown's tapered sides are
+  four slabs; a post cap under a beam that ends on the post is drawn as a full cap (no ECC end cap); nail dots show in
+  section and elevation views (not plan or iso); the hardware checks (W_HANGER_SIZE, W_HOLDOWN_ROD, W_POST_BASE) run
+  once per document, not per view (they are not geometry conflicts between drawn members); a list in `carried`/`post`
+  is one bounding box (an I-joist's flanges and web), so a hanger fits the widest flange. Model families give kind,
+  mount and gauge only: no product dimensions are tabulated (the note carries the model).
+
 ## SPEC ISSUES
 - Sheet layouts (#7) follow the issue's design with these choices: `notes_side` (right|left|below|above) for where the
   shared list goes; a layout `sheet` size (`"17x11"`), because four scenarios and a list do not fit a letter sheet at a
@@ -644,11 +653,26 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - Minimums: 3/8" edge distance (SDPWS, the 0019 reference note 6), 10D spacing within a row, 2" o.c. for panel nailing;
   no NDS end/edge-distance tables (the drawings are schematic).
 
+- #11 hardware: the issue proposed `kind` values `strap|tie|angle` with `on` and `W_HOLDOWN_ROD`; kept, plus
+  `W_HANGER_SIZE` and `W_POST_BASE` for "hanger too small" and "hardware floating off its host". The issue's
+  `anchor_bolt through: "<plate>"` is named `plate` here, because `through` already means "subtract me from these hosts"
+  on a sleeve (and `collect_subtract_refs` reads it on every node). The issue's `washer: "plate"` + `plate_washer` is
+  just `plate_washer` (giving it is the switch). Unknown models still draw (with W_UNKNOWN_MODEL) rather than draw
+  nothing: a wrong-gauge strap with a warning is more useful to an agent than a missing one. Weld studs: with #15 fixed,
+  `bolt rotate: 180` draws, but with a head at the flange and "bolt" in the summary, so `bolt kind: weld_stud |
+  headed_stud` was still worth adding (no head, weld collar, nut on top, summary says weld_stud).
+- #11: hardware hidden by nearer members draws dashed in section, plan and elevation without `hidden_lines` (SPEC 26.3
+  makes hidden lines opt-in per view); the issue asks for it for hardware, so `hw_dash` prisms always get their hidden
+  outline. Existing `connector` polylines (no `kind`, no `on`) are unchanged, so the goldens are byte-identical.
+
 ## REQUESTS
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,
   `web_left/right` (run z); `truss` parallel_chord exposes `end_top`, `end_bottom`, `end_vertical` and
   `bearing: "face"`. A hanger that seats a joist end would also let `W_BEARING` count the seat as the support (today a
   hung end is simply not checked).
+- #11 -> #12 (lumber cuts): a plumb-cut end on sloped joists would let a hanger carry a sloped joist (`carried` checks
+  the joist's extent at the carrying face). -> #10 (I-joists): an I-joist component would replace `carried: [flange,
+  web, flange]` lists; `hardware::member` takes any component's body prisms, so nothing else should be needed.
 - Sheet layouts (#7): print view titles through `drawview::view_title(st, spec)` (it applies `text.plan_title` /
   `text.elevation_title`), and treat `kind` plan/elevation views like sections (they are flat, numeric-scale views; their
   Drawing `kind` is "plan" / "elevation").

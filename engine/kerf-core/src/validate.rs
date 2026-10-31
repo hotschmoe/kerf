@@ -115,6 +115,7 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     let crop = explicit_crop(doc);
     each_set(&sets, &ids, diags, |s, d| short_slope(s, crop, d));
     crate::steelcheck::run(scene, doc, diags);
+    crate::hwcheck::run(scene, diags);
     for c in &scene.comps {
         if c.state == State::Ok && c.ty.traits.escape_hatch {
             let mat = c.world.first().map_or("?", |p| p.material.as_str());
@@ -344,16 +345,60 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
             }
         }
         if !touches {
-            diags.add_fix(
-                Level::Warning,
-                "W_FLOATING",
-                Some(&c.id),
-                None,
-                format!("component '{}' touches nothing (gap > 1/32\" to every other component, in plan and in z); it may be mis-placed", c.id),
-                "check its `at` anchor/offset, or `z` range if it should bear on another member".to_string(),
-            );
+            let (msg, fix) = match face_host(s, c, &mine) {
+                Some((host, face, gap)) => (
+                    format!(
+                        "component '{}' touches nothing: it floats {} off the {face} of '{host}' (hardware placed with a hand-set `z`)",
+                        c.id,
+                        fmt_ft_in(gap)
+                    ),
+                    format!(
+                        "mount it on that face: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"on\":\"{host}.{face}\",\"z\":null}}}}",
+                        c.id
+                    ),
+                ),
+                None => (
+                    format!(
+                        "component '{}' touches nothing (gap > 1/32\" to every other component, in plan and in z); it may be mis-placed",
+                        c.id
+                    ),
+                    "check its `at` anchor/offset, or `z` range if it should bear on another member".to_string(),
+                ),
+            };
+            diags.add_fix(Level::Warning, "W_FLOATING", Some(&c.id), None, msg, fix);
         }
     }
+}
+
+/// A face-on strap (`connector` seen face-on, placed with `z`) that overlaps a member in plan and floats less than 1"
+/// in front of or behind it: that member, the face (`face_front` / `face_back`) and the gap (SPEC 27.2).
+fn face_host<'a>(s: &Drawn<'_, 'a>, c: &Comp<'a>, mine: &[&&Pf<'_>]) -> Option<(String, &'static str, f64)> {
+    if !c.ty.traits.hardware || c.node.get("on").is_some() || !mine.iter().all(|p| p.prism.face_tie) {
+        return None;
+    }
+    let mut best: Option<(f64, String, &'static str)> = None;
+    for p in mine {
+        for q in s
+            .items
+            .iter()
+            .filter(|q| q.comp.index != c.index && !q.comp.ty.traits.hardware && q.prism.role != Role::Soil)
+        {
+            if !p.box_.overlaps(q.box_, 0.0)
+                || clip::total_area(&clip::boolean(&p.flat, &q.flat, Op::Intersect)) <= 0.01
+            {
+                continue;
+            }
+            let (gap, face) = if p.prism.z0 >= q.prism.z1 {
+                (p.prism.z0 - q.prism.z1, "face_front")
+            } else {
+                (q.prism.z0 - p.prism.z1, "face_back")
+            };
+            if gap > 0.0 && gap < 1.0 && best.as_ref().is_none_or(|b| gap < b.0) {
+                best = Some((gap, q.comp.id.clone(), face));
+            }
+        }
+    }
+    best.map(|(g, id, f)| (id, f, g))
 }
 
 fn untreated(s: &Drawn<'_, '_>, diags: &Diags) {
@@ -921,9 +966,16 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut reported: Vec<[u32; 3]> = Vec::new();
     let min_gap = 1.0 / 32.0;
     let max_gap = 3.0;
+    let hung = |a: &str, b: &str| {
+        s.comps.iter().any(|h| {
+            let [j0, j1] = &h.built.hw.joins;
+            (j0.iter().any(|x| x == a) && j1.iter().any(|x| x == b))
+                || (j0.iter().any(|x| x == b) && j1.iter().any(|x| x == a))
+        })
+    };
     for (i, &ca) in boxes.iter().enumerate() {
         for &cb in &boxes[i + 1..] {
-            if ca.c.index == cb.c.index {
+            if ca.c.index == cb.c.index || hung(&ca.c.id, &cb.c.id) {
                 continue;
             }
             let zlo = ca.z0.max(cb.z0);

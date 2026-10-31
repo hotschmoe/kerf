@@ -276,7 +276,8 @@ Path bars add the anchors `start`, `end`, `bend_k` and `seg_k_mid`, all on the b
 `diameter` 0.5 | 0.625, `embed` (below placement point), `projection` (above), `hook`
 `"J"`|`"L"`|`"headed"`|`"none"` (hook length 3 in default), `nut_washer` true.
 Placement anchor named `top_of_concrete` (the point where bolt meets the host top surface).
-In-plane member at a given `z`. `embedded: true`.
+In-plane member at a given `z`. `embedded: true`. Base plate rods (`plate`, `leveling_nut`, `plate_washer`), adhesive
+anchors and `projection: 0`: §27.2.
 
 ### 5.7 `connector` — schematic steel hardware (straps, ties, embedded anchors)
 | param | default | notes |
@@ -291,6 +292,7 @@ In-plane member at a given `z`. `embedded: true`.
 Drawn as a thickened polyline (pen `steel`, filled solid when cut). Schematic only — the note
 carries the model; geometry shows location and path. If `model` is in the hardware table
 (engine embeds a small table: model → width, gauge, length, kind) unspecified params fill in.
+Hangers, post caps, post bases, holdowns (`kind`), straps flush on a member face (`on`) and model families: §27.2.
 
 ### 5.8 `truss` — prefab wood truss heel (side view)
 Profiles (scissor, mono, parallel chord), bearings (top chord, face) and end-on trusses: §27.1.
@@ -380,7 +382,7 @@ up at the placement point, grip downward) | `end` (axis along z, head toward the
 `line` `x` | `z` (side) or `x` | `y` (end): the row direction from bolt 1, `washer` true. Heavy hex head and nut 1.5d + 1/8
 across flats, head 0.625d, nut d, F436 washer 2d × 5/32 under the nut, stick-out 0.5d. Embedded steel. Placement anchor
 defaults to `head_bearing` (local origin, bolt 1's axis at the underside of the head); also `nut_bearing`, `bolt_1`..`bolt_n`.
-Natural z thickness: d (side), grip (end). Any `rotate` (180 draws the head below a flange, the grip up) keeps the cut fill of
+`kind` `weld_stud` / `headed_stud`: §27.2. Natural z thickness: d (side), grip (end). Any `rotate` (180 draws the head below a flange, the grip up) keeps the cut fill of
 the plies the bolt passes through (§25.1).
 
 ## 6. Views and annotations
@@ -642,6 +644,10 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_BOLT_EDGE` (anchor bolt) | warning | an `anchor_bolt` shaft (its deeper 60% inside concrete/masonry) < 1 1/2" clear of the host edge (ACI 318-19 17.9.2, cover per 20.5.1.3) |
 | `W_WELD_SIZE` | warning | a fillet weld symbol with `members` is larger than the thinner part allows (t, or t − 1/16 when t ≥ 1/4; AISC 360 J2.2b) or smaller than Table J2.4 (1/8, 3/16, 1/4, 5/16 by thinner part ≤ 1/4, 1/2, 3/4, over). Thickness of a W or channel is its thinner element, of an HSS or pipe the design wall |
 | `W_BEARING` | warning | an `ijoist` laid along x bears less than 1 3/4" on what is under one of its ends, or less than 3 1/2" on an intermediate support; the fix gives the length to add and the x to reach (§27.1) |
+| `W_UNKNOWN_MODEL` | warning | a connector `model` in neither the hardware table nor a family, without `gauge` (and `width` for a strap); names the nearest model (§27.2) |
+| `W_HANGER_SIZE` | warning | a hanger too short, too tall, too narrow or wide, or a model sized for another member (§27.2) |
+| `W_HOLDOWN_ROD` | warning | a holdown without a rod, a rod that ends below its seat and nut, or a rod anchored in no concrete, masonry or steel (§27.2) |
+| `W_POST_BASE` | warning | a post base whose plate bears on nothing; the fix is the `standoff` that makes it bear (§27.2) |
 | `I_SOLID_USED` | info | `solid` escape hatch used |
 | `W_REF_UNKNOWN` | warning | a view `omit` / `only` entry (id or `*` glob) that matches no component; it has no effect (§25.4) |
 | `W_ABBREV` | warning | an abbreviation in a note, label, dim text, weld tail or view title not written in the company style's approved form (`TYP` -> `TYP.`, `OC` -> `O.C.`, `C.M.U.` -> `CMU`, `BOTT.` -> `BOT.`), or a spelled-out word its `always` list abbreviates; one per token, the fix is the `update` op that rewrites only the flagged tokens (§25.6) |
@@ -1886,6 +1892,97 @@ any lumber) draws no material hatch: the `wood_engineered` lamination lines appe
 
 **Compile.** A prism's `zhalf`/`zoff` now apply whether or not the component has a natural z thickness (relative to the
 instance's z centre), so a run z member that spans the doc run can carry pieces at the section (stiffeners, end-on webs).
+
+### 27.2 beta.2: framing hardware
+
+From the MASS details dogfood run (issue #11): hangers, post caps, post bases and holdowns were hand-drawn `connector`
+polylines (`side` flipping with point order) or stacks of `solid` plates (16 in one detail); straps on a member face
+needed a hand-computed thin `z` and then floated (`W_FLOATING`) or vanished in iso (`W_NOTE_TARGET`); unknown models drew
+an 18 ga default silently; leveling nuts and weld studs were `solid`s and `anchor_bolt embed: 0.01` hacks. Hardware is now
+one component placed from the members it connects, a set of thin plates at their true place in 3D, so section, plan,
+elevation, iso and the mesh agree.
+
+**`connector` `kind`.** `strap` (default with `points` or `on`), `tie`, `angle`: the polyline of §5.7. `hanger`,
+`post_cap`, `post_base`, `holdown`: sized from their members; they take no `at`, `rotate`, `slope`, `mirror`, `z`,
+`points`, `on`, `lay` or `side` (E_PARAM: remove it), and keys of another kind are E_PARAM naming the kind's keys. Without
+`kind`, `points` or `on`, the kind comes from the model's family (below). A member key (`carried`, `carrying`, `post`,
+`beam`) takes an id, `id#k` (array instance k) or a list of ids drawn as one member (an I-joist's flanges and web, a
+built-up post); these keys, `rod`, `on` and an anchor bolt's `plate` are placement dependencies. Every plate is steel,
+gauge thick (`gauge`, default from the model, else 18; caps, bases and holdowns 12), and is framing hardware (below).
+- **hanger** (`carried`, `carrying`, `mount` `face` | `top_flange`, `height`, `seat`, `width`): the carried member must
+  end at a side face of the carrying one (gap -1/4" to 1/2" along x or z, overlapping in the other two axes; else E_PARAM
+  with both extents and the fix). Seat under the carried member's end, `seat` long (2) plus the gap, as wide as the member
+  (`width` overrides); sides on its two faces, `height` tall (0.85 x the member's depth at the face, down to 1/16"); face
+  mount: two flanges 1" wide on the carrying face, outside the sides, three nail dots each; top flange: a back strap up the
+  carrying face and a flange over its top, min(2 1/2", its depth) long. A member running along x (seen lengthwise in a
+  section) gets sides that follow its bottom edge (sloped joists); one running along z is boxed. Models ending in `TF`
+  and the top-flange families default to `top_flange`. Anchor `seat`.
+- **post_cap** (`post`, `beam`, `height`): the beam must sit on the post (bottom within 1/4" of the post top, over it;
+  else E_PARAM with the `at` fix). Seat plate at the post top; side plates up the beam's two faces across the beam
+  (`height`, default half the beam depth, at most 7"), and down the post's other two faces (as tall, at most half the
+  post), with nail dots on those seen face-on. A beam longer along z than its width runs along z. Anchor `seat`.
+- **post_base** (`post`, `standoff` 1, `height` 3 1/2, `face`): base plate `standoff` below the post bottom, a seat under
+  the post when the standoff exceeds two plate thicknesses, side plates from the base up the post (`face` left/right: the
+  x faces, default; front/back: the z faces). Anchor `base_bottom`.
+- **holdown** (`post`, `rod`, `face`, `height` 10, `width` 2 1/2, `seat` 3/8, `seat_height` 0): on the post face toward
+  the rod (`face` overrides; a rod inside the post outline is E_PARAM): back plate on the face, seat `seat` thick from the
+  face past the rod (rod radius + 3/8", at least 1/2"), two side plates tapering from the seat to the top of the back
+  plate (a polygon when the face is x-normal, four slabs when it is z-normal: 2.5D), centered on the rod along the face,
+  and screw ticks every 1 1/2" into the post (embedded). `rod` names an `anchor_bolt` or `bolt`. Anchor `seat_top` (the rod
+  axis at the top of the seat).
+
+**`on`: straps on a member face.** `"on": "<member>.face_left|face_right|face_top|face_bottom|face_front|face_back"`
+places a strap flush outside that face: left/right/top/bottom are seen edge-on (`lay` edge, thickness outward, `width`
+along z centered on the member), front/back face-on (`lay` face, gauge along z at the face). `points` snap onto the face
+line (x for left/right, y for top/bottom; kept for front/back); without them the strap runs the whole face along the
+member (top/bottom of a member running along z: the strap runs along z). A numeric `z` moves the strap's center. `side`
+and the keys of other kinds are E_PARAM; a `lay` that contradicts the face is E_PARAM.
+
+**Dashed when hidden.** Plates of these kinds and `on` straps are framing hardware. In a section, plan or elevation, the parts
+of their outline a nearer (or cut) member hides draw in the `hidden` pen, without `hidden_lines`; in iso, the parts of
+their edges other components hide (their own faces excepted) draw dashed. A note whose hardware target is hidden
+everywhere lands on the hidden outline (no `W_NOTE_TARGET`). Plates seen face-on carry nail dots, drawn where the plate
+is visible (section and elevation; radius 0.012 paper inch x scale, at least 0.04"). A `face_front` strap is a face-on
+tie (§5.7: drawn over what it covers, with nail dots).
+
+**Models.** `model` resolves against the table (exact, case-insensitive), then the families: a model starting with a
+family prefix followed by a digit, `-`, `.`, `/` or nothing (longest prefix wins: `HDU5`, `HU212-2`, `ITS2.06/11.88`,
+`CCQ44`). A family gives the kind, the hanger mount and a typical gauge (and width for straps); geometry comes from the
+members, never from a product table, and the note carries the exact model. `kerf schema connector` lists the families,
+`kerf catalog` their descriptions. A model in neither, with `gauge` (and for a strap `width`) not given, is
+`W_UNKNOWN_MODEL` with the nearest known name; giving them silences it.
+
+**Anchor bolts.** `plate: "<id>"`: the member the rod passes through; on the rod's axis its bottom and top set the nut:
+washer and nut on its top, and `projection` (when not given) reaches through them plus d/4, rounded up to 1/16".
+`leveling_nut: true` (needs `plate`, else E_PARAM) adds a washer (2.25d x 1/8) and nut (1.5d x 0.875d) under the plate
+(parts `leveling_washer`, `leveling_nut`). `plate_washer: "WxWxT"` replaces the round washer. `hook: "adhesive"`: a
+straight rod in a drilled hole (`hole`, default d + 1/8) filled for the full embed (part `adhesive`, material grout,
+embedded). `projection: 0` is allowed with `nut_washer: false` (a rod cut flush); with a nut it is E_PARAM, as is a
+projection that ends inside the plate, washer and nut.
+
+**Weld and headed studs.** With `bolt rotate: 180` fixed (#15) a weld stud can be drawn as a bolt, but it then carries a
+head at the flange and reads as a bolt in the summary and notes, so `bolt` gains `kind`: `bolt` (default), `weld_stud`
+(no head: a weld collar at the placement point, the welded face, anchors `head_bearing` = `weld_face`; the shank up
+through the `grip`, washer and nut on top, d/2 stick-out) and `headed_stud` (weld collar, shank, head 1.6d x 0.5d;
+`grip` is the stud's length after welding). Studs point up (+y) and are side only (`orient: "end"` is E_PARAM: rotate the
+component).
+
+**Checks.**
+- `W_UNKNOWN_MODEL` (path `components/<id>/model`): above.
+- `W_HANGER_SIZE`: a hanger under 60% of the carried depth (fix: the `height` update op), taller than the member, a seat
+  width more than 1/8" off the member's, or a model whose size reads off its name (`LUS210` = 2x10, `HU212-2` = two
+  2x12, `ITS2.06/11.88`) and is for a member more than 1/2" shallower, 1" deeper or 1/4" narrower or wider.
+- `W_HOLDOWN_ROD`: no `rod` (fix: the update op naming the nearest anchor bolt or bolt within 8"); a rod that ends below
+  the seat top plus washer and 0.875d nut (fix: the anchor bolt's `projection` update op); a rod whose lower end lies in
+  no concrete, masonry or steel member.
+- `W_POST_BASE` (path `components/<id>/standoff`): the base plate bottom is not within 1/32" of the top of a member under
+  it; the fix is the `standoff` update op that makes it bear on the member below (or moving the post).
+- `W_FLOATING` of a face-on strap set with `z` that overlaps a member in plan and floats less than 1" off its front or
+  back face says so; the fix is `{"op":"update","path":"components/<id>","value":{"on":"<member>.face_front","z":null}}`.
+- `W_NEAR_MISS` is not reported between a hanger's carried and carrying members (the gap is the hanger's).
+
+Limits (2.5D): hangers follow members that run along x or z; skewed (plan-angle) hangers are not modelled, and a
+z-normal holdown's tapered sides are slabs. A post cap under a beam that ends on the post draws as a full cap.
 
 ### 27.3 beta.2: lumber cuts and two-point members
 

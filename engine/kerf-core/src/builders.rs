@@ -22,6 +22,7 @@ pub mod concrete;
 pub mod connector;
 pub mod fill;
 pub mod flashing;
+pub mod hardware;
 pub mod ijoist;
 pub mod insulation;
 pub mod joint;

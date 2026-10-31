@@ -93,6 +93,22 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
             add_ref_dep(e, out);
         }
     }
+    for key in HOST_KEYS {
+        match node.get(key) {
+            Some(Value::String(s)) => out.push(host_id(s)),
+            Some(Value::Array(a)) => out.extend(a.iter().filter_map(Value::str).map(host_id)),
+            _ => {}
+        }
+    }
+}
+
+/// Keys that name the members a piece of hardware is placed from (SPEC 27.2): placement dependencies.
+pub const HOST_KEYS: [&str; 7] = ["on", "carried", "carrying", "post", "beam", "rod", "plate"];
+
+/// The component id in a host name `id`, `id#k` or `id.face_left`.
+pub fn host_id(s: &str) -> &str {
+    let s = s.split('.').next().unwrap_or(s);
+    s.split('#').next().unwrap_or(s)
 }
 
 /// The components a node names in `voids`, a sleeve's `through` and a fill's `except` (SPEC 26.4). They are not
@@ -585,7 +601,11 @@ fn resolve_z(scene: &Scene, p: &mut Params, built: &Built) -> Option<[f64; 2]> {
         }
     }
     if !z_explicit && let Some(th) = built.nat_z {
-        let mid = if built.abs_z { 0.0 } else { scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0) };
+        let mid = match built.nat_zc {
+            Some(c) => c,
+            None if built.abs_z => 0.0,
+            None => scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0),
+        };
         zbase = [mid - th / 2.0, mid + th / 2.0];
     }
     Some(zbase)

@@ -184,7 +184,7 @@ pub struct Hardware {
 }
 
 /// Schematic hardware table: `connector.model` fills width and gauge from here.
-pub const HARDWARE: [Hardware; 55] = [
+pub const HARDWARE: [Hardware; 60] = [
     Hardware { model: "H2.5A", width: 1.375, gauge: 18, length: 5.5, kind: "hurricane tie" },
     Hardware { model: "H1", width: 1.375, gauge: 18, length: 5.5, kind: "hurricane tie" },
     Hardware { model: "H10A", width: 1.5, gauge: 18, length: 8.0, kind: "hurricane tie" },
@@ -264,7 +264,142 @@ pub const HARDWARE: [Hardware; 55] = [
     Hardware { model: "ST6224", width: 2.0625, gauge: 16, length: 23.3125, kind: "strap tie" },
     Hardware { model: "FHA18", width: 1.4375, gauge: 12, length: 17.75, kind: "strap tie" },
     Hardware { model: "LTS12", width: 1.25, gauge: 18, length: 12.0, kind: "twist strap" },
+    Hardware { model: "H3", width: 1.25, gauge: 18, length: 4.625, kind: "hurricane tie" },
+    Hardware { model: "ST22", width: 1.625, gauge: 20, length: 21.625, kind: "strap tie" },
+    Hardware { model: "ST6236", width: 2.0625, gauge: 16, length: 33.8125, kind: "strap tie" },
+    Hardware { model: "MST27", width: 2.0625, gauge: 12, length: 27.0, kind: "strap" },
+    Hardware { model: "MST60", width: 2.0625, gauge: 10, length: 60.0, kind: "strap" },
 ];
+
+/// A family of hardware recognised by its model prefix (SPEC 27.2): the connector kind it draws as, the hanger mount, a
+/// typical gauge and (straps and ties) width. Generic: sizes come from the members, the note carries the exact model.
+pub struct Series {
+    pub prefix: &'static str,
+    pub kind: &'static str,
+    pub mount: &'static str,
+    pub gauge: u32,
+    pub width: f64,
+    pub desc: &'static str,
+}
+
+const fn ser(
+    prefix: &'static str,
+    kind: &'static str,
+    mount: &'static str,
+    gauge: u32,
+    width: f64,
+    desc: &'static str,
+) -> Series {
+    Series { prefix, kind, mount, gauge, width, desc }
+}
+
+pub const SERIES: [Series; 67] = [
+    ser("LUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
+    ser("MUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
+    ser("HUS", "hanger", "face", 16, 0.0, "heavy face-mount hanger"),
+    ser("HHUS", "hanger", "face", 14, 0.0, "heavy face-mount hanger"),
+    ser("HU", "hanger", "face", 14, 0.0, "face-mount hanger"),
+    ser("HUC", "hanger", "face", 14, 0.0, "concealed-flange face-mount hanger"),
+    ser("HGUS", "hanger", "face", 12, 0.0, "heavy girder hanger"),
+    ser("IUS", "hanger", "face", 18, 0.0, "face-mount I-joist hanger"),
+    ser("LU", "hanger", "face", 20, 0.0, "face-mount joist hanger"),
+    ser("U", "hanger", "face", 16, 0.0, "face-mount joist hanger"),
+    ser("SUR", "hanger", "face", 16, 0.0, "skewed face-mount hanger"),
+    ser("SUL", "hanger", "face", 16, 0.0, "skewed face-mount hanger"),
+    ser("ITS", "hanger", "top_flange", 18, 0.0, "top-flange I-joist hanger"),
+    ser("MIT", "hanger", "top_flange", 16, 0.0, "top-flange I-joist hanger"),
+    ser("HIT", "hanger", "top_flange", 14, 0.0, "top-flange I-joist hanger"),
+    ser("THA", "hanger", "top_flange", 18, 0.0, "top-flange truss hanger"),
+    ser("LBV", "hanger", "top_flange", 14, 0.0, "top-flange hanger"),
+    ser("JB", "hanger", "top_flange", 16, 0.0, "top-flange joist hanger"),
+    ser("HB", "hanger", "top_flange", 12, 0.0, "heavy top-flange hanger"),
+    ser("WPU", "hanger", "top_flange", 10, 0.0, "welded top-flange hanger"),
+    ser("GLTV", "hanger", "top_flange", 10, 0.0, "glulam top-flange hanger"),
+    ser("CC", "post_cap", "", 10, 0.0, "column cap"),
+    ser("CCQ", "post_cap", "", 10, 0.0, "column cap (screwed)"),
+    ser("ECC", "post_cap", "", 10, 0.0, "end column cap"),
+    ser("ECCQ", "post_cap", "", 10, 0.0, "end column cap (screwed)"),
+    ser("BC", "post_cap", "", 18, 0.0, "post cap / base"),
+    ser("AC", "post_cap", "", 18, 0.0, "adjustable post cap"),
+    ser("LCE", "post_cap", "", 20, 0.0, "post cap"),
+    ser("PC", "post_cap", "", 12, 0.0, "post cap"),
+    ser("ABU", "post_base", "", 12, 0.0, "adjustable standoff post base"),
+    ser("ABA", "post_base", "", 16, 0.0, "adjustable post base"),
+    ser("ABW", "post_base", "", 14, 0.0, "adjustable post base"),
+    ser("CBSQ", "post_base", "", 12, 0.0, "standoff column base"),
+    ser("CB", "post_base", "", 10, 0.0, "column base"),
+    ser("PB", "post_base", "", 12, 0.0, "post base"),
+    ser("HDU", "holdown", "", 10, 0.0, "holdown (bucket, screwed)"),
+    ser("HDQ", "holdown", "", 10, 0.0, "holdown (bucket, screwed)"),
+    ser("HHDQ", "holdown", "", 10, 0.0, "heavy holdown"),
+    ser("HD", "holdown", "", 10, 0.0, "holdown (bolted)"),
+    ser("HDC", "holdown", "", 10, 0.0, "holdown"),
+    ser("PHD", "holdown", "", 10, 0.0, "holdown"),
+    ser("HTT", "holdown", "", 11, 0.0, "tension tie holdown"),
+    ser("DTT", "holdown", "", 14, 0.0, "deck tension tie"),
+    ser("LTT", "holdown", "", 14, 0.0, "light tension tie"),
+    ser("H", "strap", "", 18, 1.375, "hurricane / seismic tie"),
+    ser("STHD", "strap", "", 12, 3.0, "strap-tie holdown (embedded)"),
+    ser("LSTHD", "strap", "", 14, 3.0, "strap-tie holdown (embedded)"),
+    ser("CS", "strap", "", 16, 1.25, "coil strap"),
+    ser("CMST", "strap", "", 14, 3.0, "coil strap"),
+    ser("MSTA", "strap", "", 12, 1.25, "strap"),
+    ser("LSTA", "strap", "", 20, 1.25, "strap"),
+    ser("META", "strap", "", 18, 1.25, "embedded truss anchor"),
+    ser("HETA", "strap", "", 16, 1.25, "embedded truss anchor"),
+    ser("SP", "strap", "", 20, 1.625, "stud plate tie"),
+    ser("ST", "strap", "", 16, 2.0625, "strap tie"),
+    ser("MST", "strap", "", 12, 2.0625, "strap"),
+    ser("HRS", "strap", "", 12, 1.375, "strap"),
+    ser("TC", "strap", "", 16, 1.5, "truss connector"),
+    ser("PA", "strap", "", 12, 2.0, "purlin anchor (embedded)"),
+    ser("HPA", "strap", "", 12, 2.0, "purlin anchor (embedded)"),
+    ser("LTS", "strap", "", 18, 1.25, "twist strap"),
+    ser("MTS", "strap", "", 16, 1.25, "twist strap"),
+    ser("HTS", "strap", "", 16, 1.25, "twist strap"),
+    ser("TBE", "strap", "", 18, 2.5, "truss bearing enhancer"),
+    ser("GA", "strap", "", 18, 2.5, "gusset angle"),
+    ser("A", "strap", "", 18, 1.5, "framing angle"),
+    ser("L", "strap", "", 16, 1.25, "reinforcing angle"),
+];
+
+/// How a connector `model` resolves (SPEC 27.2).
+pub enum ModelMatch {
+    /// In the hardware table: width, gauge, length.
+    Exact(&'static Hardware),
+    /// A known family by prefix: kind, mount, gauge, width.
+    Series(&'static Series),
+    Unknown,
+}
+
+/// The table entry for `model` (case-insensitive), else the family whose prefix is the longest one `model` starts with
+/// and continues with a digit, a separator or nothing (`HDU5`, `HU212-2`, `ITS2.06/11.88`, `CCQ44`).
+pub fn resolve_model(model: &str) -> ModelMatch {
+    if let Some(h) = HARDWARE.iter().find(|h| h.model.eq_ignore_ascii_case(model)) {
+        return ModelMatch::Exact(h);
+    }
+    let up = model.to_ascii_uppercase();
+    let mut best: Option<&'static Series> = None;
+    for s in &SERIES {
+        let Some(rest) = up.strip_prefix(s.prefix) else { continue };
+        let ok = rest.chars().next().is_none_or(|c| c.is_ascii_digit() || matches!(c, '-' | '.' | '/' | ' '));
+        if ok && best.is_none_or(|b| s.prefix.len() > b.prefix.len()) {
+            best = Some(s);
+        }
+    }
+    best.map_or(ModelMatch::Unknown, ModelMatch::Series)
+}
+
+/// Every model name and family prefix, for "did you mean" (table models first).
+pub fn model_names() -> Vec<&'static str> {
+    HARDWARE.iter().map(|h| h.model).chain(SERIES.iter().map(|s| s.prefix)).collect()
+}
+
+pub fn series_line(s: &Series) -> String {
+    let mount = if s.mount.is_empty() { String::new() } else { format!(" ({})", s.mount.replace('_', "-")) };
+    let width = if s.width > 0.0 { format!(", {}\" wide", crate::model::fmt_num(s.width)) } else { String::new() };
+    format!("{}*: {}{mount}, kind {}, {} ga{width}", s.prefix, s.desc, s.kind, s.gauge)
+}
 
 pub fn hardware_line(h: &Hardware) -> String {
     let (w, g) = (crate::model::fmt_num(h.width), h.gauge);
@@ -383,20 +518,20 @@ pub static ENTRIES: [Entry; 19] = [
     },
     Entry {
         ty: Type::AnchorBolt,
-        summary: "Anchor bolt in the XY plane at a given z (shank, hook, nut and washer).",
-        parts: "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut)",
+        summary: "Anchor bolt in the XY plane at a z (hook, nut, washer; leveling nut, adhesive).",
+        parts: "shank, nut, washer (wedge adds clip; screw has threads, washer, head instead of nut; leveling_nut adds leveling_nut, leveling_washer; adhesive adds adhesive, the filled hole)",
         anchors: "9 box anchors + top_of_concrete (where the bolt meets the host top surface, local (0,0))",
-        draws: "Embedded steel, natural z thickness = diameter. The placement anchor DEFAULTS to top_of_concrete, so `\"at\": {\"to\": \"cmu@top_center\"}` seats the bolt in the top surface, projection up (you do not set `anchor`). z defaults to the first section view's cut_z, so the bolt is cut, not hidden; set `z` only to move it. `array` {axis z, count, spacing} draws bolts @ spacing in iso/3D (one is cut in section).",
+        draws: "Embedded steel, natural z thickness = diameter. The placement anchor DEFAULTS to top_of_concrete, so `\"at\": {\"to\": \"cmu@top_center\"}` seats the bolt in the top surface, projection up (you do not set `anchor`). z defaults to the first section view's cut_z, so the bolt is cut, not hidden; set `z` only to move it. `array` {axis z, count, spacing} draws bolts @ spacing in iso/3D (one is cut in section). Through a base plate: `\"plate\": \"<id>\"` seats the washer and nut on the plate at the rod and fits `projection`; `leveling_nut: true` adds a nut and washer under the plate; `plate_washer` \"3x3x1/4\" replaces the round washer; `hook: \"adhesive\"` draws the drilled hole filled (grout hatch).",
         example: "{\"id\":\"anchor_bolt\",\"type\":\"anchor_bolt\",\"diameter\":0.5,\"embed\":7,\"projection\":2.75,\"hook\":\"J\",\"at\":{\"to\":[3,0]}}",
         traits: Traits { default_anchor: "top_of_concrete", ..Traits::NONE },
     },
     Entry {
         ty: Type::Connector,
-        summary: "Schematic steel hardware (straps, ties, embedded anchors) as a thickened polyline.",
-        parts: "none",
-        anchors: "9 box anchors of the resolved profile + vertex_1..vertex_n at the points (in `points` order), edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge)",
-        draws: "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets.",
-        example: "{\"id\":\"tie\",\"type\":\"connector\",\"model\":\"H2.5A\",\"lay\":\"face\",\"points\":[[0,0],[0,6]]}",
+        summary: "Steel hardware: straps (points or `on` a face), hangers, post caps/bases, holdowns.",
+        parts: "strap: none; hanger: seat, side, flange (face mount) or back, top_flange; post_cap: seat, beam_side, post_side; post_base: base, seat, side; holdown: back, seat, side, screw",
+        anchors: "9 box anchors of the resolved profile + (strap) vertex_1..vertex_n at the points (in `points` order), edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge); hanger and post_cap `seat`, post_base `base_bottom`, holdown `seat_top` (the rod axis at the top of the seat, where the nut bears)",
+        draws: "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets. Hangers, caps, bases, holdowns and `on` straps are plates at their true place in 3D (no at, z or points): section, plan, elevation, iso and the mesh agree; where a nearer member hides them they draw dashed and a note still lands on them; plates seen face-on show nail dots. Checks: W_UNKNOWN_MODEL, W_HANGER_SIZE, W_HOLDOWN_ROD, W_POST_BASE.",
+        example: "{\"id\":\"hanger\",\"type\":\"connector\",\"model\":\"LUS210\",\"carried\":\"joist\",\"carrying\":\"header\"}",
         traits: Traits { hardware: true, line_like: true, ..Traits::NONE },
     },
     Entry {
@@ -491,9 +626,9 @@ pub static ENTRIES: [Entry; 19] = [
     },
     Entry {
         ty: Type::Bolt,
-        summary: "Bolt group (heavy hex, nut, washer) through steel plies, side (axis in-plane) or end-on.",
-        parts: "shank, head, washer, nut (one set per bolt)",
-        anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing)",
+        summary: "Bolt group (heavy hex, nut, washer) through steel plies, side or end-on; studs.",
+        parts: "shank, head, washer, nut (one set per bolt); studs: weld, shank, washer and nut (weld_stud) or head (headed_stud)",
+        anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing); studs: head_bearing = weld_face (the welded end, local origin), nut_bearing (top of the grip)",
         draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
         example: "{\"id\":\"cap_bolts\",\"type\":\"bolt\",\"diameter\":0.75,\"grip\":0.875,\"count\":2,\"spacing\":3.5,\"at\":{\"to\":[0,0]}}",
         traits: Traits { default_anchor: "head_bearing", ..Traits::NONE },
@@ -568,6 +703,7 @@ pub fn entry_json(e: &Entry) -> Value {
     let mut m = alloc::vec![("type", s(e.name())), ("summary", s(e.summary)), ("params", ps)];
     if e.traits.hardware {
         m.push(("models", Value::Array(HARDWARE.iter().map(|h| Value::String(hardware_line(h))).collect())));
+        m.push(("families", Value::Array(SERIES.iter().map(|f| Value::String(series_line(f))).collect())));
     }
     if e.traits.shape_table {
         m.push(("shapes", s(&builders::steel_shapes::catalog_text())));
@@ -597,6 +733,10 @@ pub fn append_entry_markdown(out: &mut String, e: &Entry) {
         out.push_str("\nHardware models (auto-fill width and gauge):\n");
         for h in &HARDWARE {
             out.push_str(&format!("- {}\n", hardware_line(h)));
+        }
+        out.push_str("\nHardware families (a model starting with the prefix: kind, mount and gauge; sizes come from the members):\n");
+        for f in &SERIES {
+            out.push_str(&format!("- {}\n", series_line(f)));
         }
     }
     if e.traits.shape_table {

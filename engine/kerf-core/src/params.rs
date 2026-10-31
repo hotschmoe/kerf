@@ -136,6 +136,13 @@ pub fn read_raw(p: &mut Params<'_>, key: &str, default: Option<Value>) -> Value 
     Value::Null
 }
 
+pub fn read_opt_str(p: &mut Params<'_>, key: &str) -> Option<String> {
+    if !p.has(key) {
+        return None;
+    }
+    p.str(key, None).map(String::from)
+}
+
 pub fn read_opt_raw(p: &mut Params<'_>, key: &str) -> Option<Value> {
     p.raw(key).cloned()
 }

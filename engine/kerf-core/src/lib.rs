@@ -18,6 +18,7 @@ mod font;
 mod geom;
 mod hatch;
 mod house;
+mod hwcheck;
 mod iso;
 pub mod json;
 mod layout;

@@ -14,6 +14,13 @@ pub struct Occ {
     pub prism: usize,
 }
 
+impl Occ {
+    /// Whether the point lies inside this body.
+    pub fn covers(&self, c: V2) -> bool {
+        self.bx.contains(c) && geom::locate(c, &self.loops, 1e-9) == geom::Loc::Inside
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PieceOut {
     pub pts: Vec<Pt>,
