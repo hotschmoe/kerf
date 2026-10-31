@@ -152,8 +152,8 @@ geometrically (tolerance 1e-3).
   `KERF_UI` set (musl static on `ubuntu-24.04` / `ubuntu-24.04-arm`, MSVC `+crt-static` on `windows-latest` /
   `windows-11-arm`, `macos-15-intel` / `macos-latest`), each smoke-run on its own runner (`kerf version` equals the
   manifest version, `check_golden.mjs`, `serve_smoke.mjs`); `publish` writes `SHA256SUMS` and creates the release
-  (`--prerelease` when the version has a `-`) with `kerf-<arch>-<os>[.exe]` assets, the names `install.sh` / `install.ps1`
-  download. `workflow_dispatch` is a dry run: same jobs, assets uploaded as the `release-assets` workflow artifact, no release.
+  as the latest release, alphas included (the installers download from `releases/latest`, which skips prereleases), with
+  `kerf-<arch>-<os>[.exe]` assets, the names `install.sh` / `install.ps1` download. `workflow_dispatch` is a dry run: same jobs, assets uploaded as the `release-assets` workflow artifact, no release.
 - `tools/release.sh <version>` bumps the manifest and `Cargo.lock`, commits, tags and pushes.
 - Cross-platform test notes: `serve_smoke.mjs` reads process data from `/proc` where it exists and from `ps` elsewhere
   (macOS); the web e2e tests take `KERF_CHROME`, `KERF_CHROME_ARGS` and `KERF_PYTHON` for runners that are not this machine.
