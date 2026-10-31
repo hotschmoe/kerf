@@ -302,6 +302,23 @@ geometrically (tolerance 1e-3).
   (iso dots like refs 1087/0019) and a new elevation D "SHEAR PANEL LAYOUT AND NAILING" (with hidden_lines) like the
   0019 panel layout; both keep their `--strict` warning counts (10: acknowledged scenario-B/C overlaps and stale
   acknowledgements; 8: stale acknowledgements). No new warning on either.
+- #22 shared notes and layout sizing (SPEC 28.2): `annot::shared_key_note` looks for a key's text in the view, then in
+  `Env::doc_views` (the document's views, set by every `Env` builder in `drawview`), so a key-only note works in a
+  single-view export too. `layout::merge_entries` names the differing field from the entry's body (text) and the rest
+  of its printed text (the cite). `layout::shared_keys` treats a schedule view as a list view (`Env::notes_style` already
+  did, so the view numbered its notes on its own and collided). `drawview::build_with` skips the letter-sheet
+  `W_VIEW_FIT` for a view `layout::names_view` finds (export never prints diagnostics, so there is no "own sheet"
+  exception). `layout::build_from_scene`: views are built per candidate scale once (`Trial`, cached by scale, and by the
+  NTS share when no view takes a layout scale) and the sheets of `sheet: "auto"` only re-run the arrangement math; an
+  iso view without a scale gets `ViewOpts::iso_factor` = scale / `iso_ratio` (the iso trial loop then runs once).
+  `view::ref_only` sets `Members::none`; `drawview::ref_crop` probes one pass at a zero crop and takes the centre of
+  the ref items. `raster::Options::px` is an `Option` (None = max(1600, 90 ppi)); no golden changed (all pages are
+  under 17.8" wide). 47 MASS details: `kerf check --strict` 0 errors / 14 warnings before and after (diagnostic output
+  identical). Proofs on copies (`kerf drawing --layout` byte-identical to the originals): s-10-01 (23 repeated keyed
+  texts removed, `sheet: auto` picks 36x24 at 1" like the author), s-60-01 (19 removed, auto with its 1" picks 22x17
+  like the author); s-00-02 with the 13 general notes back in schedule A (unkeyed) and keys 14-16 in sketch D prints
+  tags 14-16 against list entries 14-16 (was 1-3 against the schedule notes); s-70-08 D without `omit:["*"]` draws only
+  its bubble; s-50-08 auto (no scale) picks 36x24 at 1/2" where the author chose 24x18 at 5/16".
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -664,8 +681,20 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - #11: hardware hidden by nearer members draws dashed in section, plan and elevation without `hidden_lines` (SPEC 26.3
   makes hidden lines opt-in per view); the issue asks for it for hardware, so `hw_dash` prisms always get their hidden
   outline. Existing `connector` polylines (no `kind`, no `on`) are unchanged, so the goldens are byte-identical.
+- #22 `sheet: "auto"` with `scale: common` needs a target, since a bigger sheet always allows a bigger scale. Chose
+  1" = 1'-0" (the smallest sheet whose common scale reaches it, else the smallest reaching the best scale any sheet
+  fits): it matches the round-2 authors' hand-picked sheets for the section layouts (s-10-01 36x24, s-60-01 22x17), but
+  takes a large sheet for elevation layouts that never reach 1" (s-50-08: 36x24 at 1/2" vs the author's 24x18 at 5/16");
+  a numeric layout `scale` with `auto` gives the smallest sheet at that scale. A style key for the target could follow.
+- #22 iso views in a layout are "sized to the sections' scale" by drawing them at the same scale factor (iso
+  foreshortening makes them read slightly smaller); their scale line stays NTS. `iso_ratio` is the stated ratio.
+- #22 the issue's "or a view-level `sheet`" exception for the per-view fit check: views have no `sheet` key, so a view
+  any layout names is never letter-checked; the per-view check stays for views in no layout.
+- #22 a ref-only view prints SCALE: NTS (it draws nothing to scale); this changed the layout-sheet golden view D label.
 
 ## REQUESTS
+- apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the
+  engine default (90 px per sheet inch, 3240 px for 36x24).
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,
   `web_left/right` (run z); `truss` parallel_chord exposes `end_top`, `end_bottom`, `end_vertical` and
   `bearing: "face"`. A hanger that seats a joist end would also let `W_BEARING` count the seat as the support (today a

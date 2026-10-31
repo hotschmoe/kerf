@@ -112,14 +112,18 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   drawn (not even as beyond outlines) and skip that view's checks, so never acknowledge cross-scenario overlaps; a
   finding seen in only some views ends with `(in views A, C)`.
 - One sheet for the scenarios (`kerf schema layout`): `"layouts":[{"id":"S1","views":["A","B","C","D"],"arrange":"grid",
-  "columns":2,"sheet":"17x11"}]`, then `kerf export x.kerf.json --layout S1 --format png --sheet -o x-S1.png`. Each view
-  keeps its bubble, title and scale; the keyed notes of all views share one DETAIL NOTES list numbered 1..N without gaps
-  (same `key` = one entry across views; an unkeyed note with the same text joins it). Views without their own `scale`
-  get the largest standard scale at which the whole sheet fits; a view's own `scale` wins, so a plan inset at 1/2"
-  stands beside a 1" section: `"views":["A",["P1","P2"]]` stacks P1 over P2 beside A. Doc-level `"scale"` sets one
-  scale for every view. Point at another detail with a `ref` annotation (`{"type":"ref","detail":"3","sheet":"S-50.01",
-  "at":"beam@top_right","text":"SIM."}`); a view holding only a ref is a "see other detail" scenario. `W_VIEW_FIT` on
-  `layouts/S1` lists every view's size and the fix that fits (larger `sheet`, other `arrange`, list `notes_side`).
+  "columns":2,"sheet":"auto"}]`, then `kerf export x.kerf.json --layout S1 --format png --sheet -o x-S1.png` (the PNG
+  is 90 px per sheet inch, at least 1600). Each view keeps its bubble, title and scale; the keyed notes of all views
+  and the notes of schedule views share one DETAIL NOTES list numbered 1..N without gaps (same `key` = one entry across
+  views: write its text and cite once, the other views give only the `key`; an unkeyed note with the same text joins
+  it). Views without their own `scale` get the largest standard scale at which the whole sheet fits, iso views that
+  scale over `iso_ratio` (default 1); a view's own `scale` wins, so a plan inset at 1/2" stands beside a 1" section:
+  `"views":["A",["P1","P2"]]` stacks P1 over P2 beside A. `"sheet":"auto"` takes the smallest of 11x8.5 ... 36x24
+  that holds the views at the layout's numeric `scale`, or with `common` at 1"=1'-0" (`I_LAYOUT_SHEET` says which).
+  Doc-level `"scale"` sets one scale for every view. Point at another detail with a `ref` annotation
+  (`{"type":"ref","detail":"3","sheet":"S-50.01","at":"beam@top_right","text":"SIM."}`); a view holding only refs is a
+  "see other detail" scenario and draws no model. A view a layout names is fit-checked only in the layout: `W_VIEW_FIT`
+  on `layouts/S1` lists every view's size and the fix that fits (larger `sheet`, other `arrange`, list `notes_side`).
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
   (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens and a plural
   s, and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the
