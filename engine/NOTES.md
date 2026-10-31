@@ -42,7 +42,7 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 | `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
 | `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 8 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
 | `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (40 files); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 210 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/cli_ergonomics.mjs` | 229 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
 | `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
 | `tests/serve_smoke.mjs` | 224 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
 | `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
@@ -126,6 +126,20 @@ geometrically (tolerance 1e-3).
   bolt's z and cast rays perpendicular to the axis; z distance to the ply's z extent counts too. Wasm: +70 KB raw,
   +22 KB brotli (588,023 -> 658,168 raw; 224,965 -> 246,938 brotli); about 21 KB is strings and tables, the rest the
   builders, the parser and the checks (no float formatting was pulled in).
+- House text rules (issue #18, SPEC 25.3): `house.rs` holds the abbreviation table, the case-significant tokens (penny
+  sizes, ACI symbols, style `text.keep_case`), the dashed-fraction test and the coverage word normalization; `lint.rs`
+  (W_NOTE_STYLE), `annot/text.rs::upper_if` + `sheet.rs` (the case transform) and `coverage.rs` all read it. Coverage is
+  computed once in `load_after_edit` (with the scene, so a dim without `text` offers its measured length) and kept on
+  `Loaded.coverage`: the summary and W_REQUESTED_MISSING share it (resolving dim points inside `summary` would re-borrow
+  the diagnostics list). Measured on the 47 MASS details (copies; the shipped files had already been reworded around
+  the old rules, so they are 0/0 before and after; their warnings are unchanged, 18 -> 18): replaying each detail's op
+  log, the first builds go W_NOTE_STYLE 43 -> 17 and W_REQUESTED_MISSING 58 -> 31, all 253 intermediate states 48 -> 17
+  and 100 -> 55. Every W_NOTE_STYLE that went away is a 16d/8d, an ACI symbol or a `PER ARCH.`; the 17 left are real
+  (spelled-out CONTINUOUS/EACH/BOTTOM/CONCRETE). The 27 coverage items that now match were each checked by hand (EA. =
+  EACH, CONT. = continuous, dim text `4" TYP.`, view titles, the weld, `15 ft` = `15'-0"`, `ftg` = footing); the 31 left
+  are true misses (not built yet, `(3) #4` vs `(2) #4`, `hooked` vs `HOOK`, `bearing` vs `BEAR`: no stemming). Drawing
+  text changes on the 47: 12 items (s-00-02 labels `f'c` now print as written, s-80-02 `1926.755(a)(1)`). Wasm without
+  wasm-opt: 768,557 -> 795,385 raw, 312,380 -> 324,074 gzip (the tables and the tokenizer).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -224,6 +238,18 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
 
 ## SPEC ISSUES
+- Issue #18 asks that "citation `section` strings are never case-folded". The golden `flush-psl-2x6` cites
+  `Table R602.3(5)` and printed `TABLE R602.3(5)`; folding nothing would print `Table`. Chosen: words of `section` that
+  hold a digit print as written, plain words take the case transform (goldens unchanged, `1926.755(a)(1)` kept).
+- Abbreviations that are also plain words (ALT. ARCH. COL. DIM. EXP. FIN. INT. SIM.) expand in coverage only when
+  written with the period, and a candidate offers the written word too, so `screw alt` still matches `SCREW ALT.`
+  (S-80.04) while `arch` does not match `ARCHITECT`. `NO.` is accepted at the end of a note but never expanded
+  (`no pipes` must not match `NUMBER`).
+- Lengths: a requested length with units counts only as the length; a bare fraction counts as its digits (so `3/16 fillet
+  weld` keeps matching a weld whose size is `3/16`). `2'-2` without the inch mark reads as 2'-2".
+- Not done from the issue's proposal: `I_REQUESTED_STYLE` at `kerf new` (with abbreviation matching both ways it has
+  nothing left to warn about), table cells (#6) and nailing components (#13) as coverage sources: those features are
+  other branches; add them as candidates in `coverage::candidates` when they merge.
 - SPEC 13 says `kerf export` takes `format: "svg"|"dxf"|"pdf"`; the engine also accepts `png`, and PDF export frames the
   drawing on a sheet by default while SVG/DXF/PNG do not. Worth one sentence in 13/13.2.
 - SPEC 12 `3'-0 1/4"` versus `3'-1/4"` for feet with zero whole inches and a fraction: the engine prints the former.

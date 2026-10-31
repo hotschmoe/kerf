@@ -428,10 +428,11 @@ Fillet: right triangle, vertical leg on the left, height = text height; size tex
 **cite** rules: the LLM may only create `status: "suggested"`. Only the designer (UI action)
 sets `verified`. Export renders citations per style `citations` (default: append
 ` (IRC R403.1.6)`; unverified ones get a trailing `*` and the sheet gets the footnote
-`* CODE REFERENCE NOT VERIFIED BY DESIGNER`).
+`* CODE REFERENCE NOT VERIFIED BY DESIGNER`). The case transform applies to the note text, the code and the format's
+literal text; words of `section` that hold a digit (`1926.755(a)(1)`, `R602.3(5)`) print as written (§25.3).
 
 ### 6.3 Note layout (deterministic; engines MUST implement this algorithm)
-1. Text: style case transform (default UPPERCASE), word-wrap at `style.notes.wrap_chars` (28)
+1. Text: style case transform (default UPPERCASE; the tokens of §25.3 keep their case), word-wrap at `style.notes.wrap_chars` (28)
    using stroke-font advance widths × text height; never break inside a word unless longer than the line.
 2. Landing point per note: `at` if given; else the target's visible-region **label point**:
    centroid of its largest visible polygon if inside it, otherwise the point inside on the
@@ -473,9 +474,11 @@ full default):
                                  "cut_mark": null | "x" | "diagonal", "color3d": "#RRGGBB",
                                  "layer": "S-DETL-CONC" } },
   "patterns": { "<NAME>": [ [angle, x0, y0, dx, dy, dash1, dash2, …], … ] },   // AutoCAD .pat semantics, paper inches
-  "text":  { "font": "kerf-simplex", "height_in": 0.09375, "title_height_in": 0.15625, "case": "upper", "line_spacing": 1.6 },
+  "text":  { "font": "kerf-simplex", "height_in": 0.09375, "title_height_in": 0.15625, "case": "upper", "line_spacing": 1.6,
+             "keep_case": [] },                   // extra tokens printed as written under "upper" (§25.3)
   "notes": { "mode": "leader", "wrap_chars": 28, "gutter_in": 0.375, "shoulder_in": 0.125, "note_gap_in": 0.0625, "arrow": "closed_filled", "arrow_len_in": 0.09375,
-             "key_tag": "plain", "list_title": "DETAIL NOTES" },   // mode leader | keyed | list; key_tag plain | circle | hex
+             "key_tag": "plain", "list_title": "DETAIL NOTES",    // mode leader | keyed | list; key_tag plain | circle | hex
+             "abbreviations": {} },               // extra house abbreviations, {"BRG.": "BEARING"} (§25.3)
   "dims":  { "terminator": "tick", "tick_len_in": 0.0625, "ext_gap_in": 0.0625, "ext_over_in": 0.0625, "text_gap_in": 0.0469, "precision": 16 },
   "citations": { "format": " ({code} {section})", "unverified": "flag", "flag": "*",
                  "footnote": "* CODE REFERENCE NOT VERIFIED BY DESIGNER" },
@@ -932,11 +935,13 @@ whose metrics are close; minor differences in CAD are acceptable.
   on any component suppresses that warning for it. The reason prints in the summary as an `I_ACK` line, and
   `kerf apply` logs it. `lumber.barrier: "sill_seal" | "membrane"` draws a 1/8" sill-sealer strip under
   the member and also clears `W_UNTREATED_CONTACT`.
-- `W_NOTE_STYLE` (lint): note text containing lowercase letters (before the case transform), a
-  trailing period, ` x ` as a dimension separator (use ` X `), `1-1/2"` style fractions (house style is
+- `W_NOTE_STYLE` (lint): note text containing lowercase letters (before the case transform; the case-significant
+  tokens of §25.3 excepted), a trailing period (not after a house abbreviation, §25.3), ` x ` as a dimension separator (use ` X `), `1-1/2"` style fractions (house style is
   `1 1/2"`), or a word on the abbreviation list spelled out (`GYPSUM BOARD → GYP. BD.`,
   `CONCRETE → CONC.`, `CONTINUOUS → CONT.`, `EACH → EA.`, `ON CENTER → O.C.`, `BOTTOM → BOTT.`,
-  `REINFORCING → REINF.`, `MINIMUM → MIN.`, `DIAMETER → DIA.`, `PRESSURE TREATED → PT`).
+  `REINFORCING → REINF.`, `MINIMUM → MIN.`, `DIAMETER → DIA.`, `PRESSURE TREATED → PT`). A dashed fraction is
+  `<whole>-<num>/<den>` with the whole number starting a token and a 2..64 power-of-two denominator ending it, so
+  `HU212-2/HUC212-2` is not one. The fix text never changes a model number (§25.3).
 
 **Defaults that should just work**
 - `anchor_bolt` placement anchor defaults to `top_of_concrete`. Its default `z` (and the default z
@@ -1010,7 +1015,8 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Requested-elements coverage:** documents may carry `meta.requested: ["cmu wall", "bond beam", "H2.5A", ...]`.
   The agent writes the designer's asks there on the first build. `kerf check` prints a `COVERAGE` block,
   one line per item, `ok <component ids>` or `MISSING`, matched against component ids, types, labels,
-  `model`s and note text (case-insensitive word match). `W_REQUESTED_MISSING` warns for each missing item.
+  `model`s and annotation text with the normalization and sources of §25.3. `W_REQUESTED_MISSING` warns for each missing
+  item and names the closest candidate.
   The guide tells agents to fill `meta.requested` from the request and to finish only at full coverage.
 - **Re-fit after edits:** when a view has an explicit `crop` and an edit leaves a non-fill component
   with more than 25% of its extent outside the crop (and the component was mostly inside before, or was
@@ -1081,3 +1087,57 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
 - `notes_side: "above"` on a leader view warns `W_PARAM` and lays out as `both`. `W_NOTE_STYLE` lints keyed and list note text
   as it does leader text; repeated text under one key is not a repeat, and a repeat in a keyed view suggests sharing the key.
   `W_VIEW_FIT` names the list as a culprit and suggests moving it (`above` <-> `left`/`right`).
+
+## 25. v0.2.0-alpha.5 correctness
+
+### 25.3 alpha.5: house style lint and coverage
+From the MASS dogfood run (47 details, issue #18): the note lint forced spellings engineers do not use, the renderer
+upper-cased tokens whose case is significant, and coverage matched the designer's words literally, so agents reworded
+`meta.requested` or stuffed component labels. One table set (engine `house` module) now serves the lint, the case
+transform and coverage.
+
+- **Case-significant tokens.** A token is a run of letters, digits and apostrophes. It keeps its case in the lint and on
+  the drawing when it is a penny size (digits then `d`: `16d`, `8d`), or, after an optional leading number (`48db`), one
+  of the ACI / AISC / NDS symbols and units `db ld ldh ldc ldt lc lst f'c f'ci f'm f'g fy fyt fu fc fr fs Fy Fu Fb Fv Fc
+  Fp Fnt Fnv ksi psi psf plf pcf kip kips ksf` (exact case; `’` reads as `'`), or a token of the style's
+  `text.keep_case` (array of up to 500 single tokens, 1-60 characters). `W_NOTE_STYLE` flags lowercase letters only
+  outside these tokens, and its fix upper-cases everything else. The style case transform (`text.case: "upper"`) does the
+  same for note, label, dimension, weld-tail, title and title-block text. Lower-case words that are not on the list (`16d
+  nails`) are still flagged.
+- **Citations.** The note text and the citation code take the case transform; the words of `section` that hold a digit
+  print as written (`OSHA 1926.755(a)(1)`, not `1926.755(A)(1)`); plain words of `section` (`Table`) take the transform.
+- **House abbreviations.** A built-in table maps each abbreviation to its words (the first is canonical): EA. EACH,
+  CONT. CONTINUOUS, TYP. TYPICAL, MIN. MAX. CLR. DIA. BOTT./BOT. CONC. REINF. FA. FACE, GA. SIM. EMBED. MFR. FTG. FDN. GRD.
+  HDR. DBL. STL. GALV. VERT. HORIZ. GYP. BD. SHTG. PLY. STD. SQ. EQ. NOM. APPROX. REQD./REQ'D SPEC. DWG. EXIST. THK. ALT.
+  ARCH. EXT. INT. EXP. FIN. FLR. ELEV./EL. STRUCT. ENGR. MECH. ELEC. CTR. JT. JST. BM. COL. CONN. OPNG. PERP. LG. ADDL.
+  BLKG. SCHED. SECT. DET. DIM. OPP. INSUL. THRU BTWN. BRG. HT. PL. EOR O.C. E.F. E.W. T&B T.O. B.O. U.N.O./UNO PT CMU.
+  The style's `notes.abbreviations` (object, up to 500 entries: abbreviation -> a string or an array of up to 8 strings)
+  adds to it. A note may end on any listed abbreviation with its period (`FINISH PER ARCH.`); `NO.`, `NOS.` too. Any other
+  trailing period still warns, and the message says to add the word to `notes.abbreviations` if it is an abbreviation.
+  The forced spellings of §19 (`EACH -> EA.` ...) are unchanged.
+- **Fix safety.** The mechanical fix (abbreviate, upper-case, `1-1/2"` -> `1 1/2"`, drop a trailing period) is computed
+  on whole words (letters and digits are word characters), does not double a period (`EACH.` -> `EA.`), checks the
+  trailing period after abbreviating, and is offered only if every model number of the text (a token with a letter and a
+  digit, e.g. `HU212-2`, `H2.5A`) appears unchanged, upper-cased, in the fixed text; otherwise the fix says to edit by
+  hand. `TYPE I`, `CLASS I` (and after GRADE, CATEGORY, ZONE, GROUP, PHASE, LEVEL, TIER, STAGE, OPTION, CASE, PART) is a
+  numeral, not first-person commentary.
+- **Coverage normalization.** Item and candidate texts become word lists: lower case, `’`/`”` folded; letters joined
+  across `.` (`o.c.`), `&` (`t&b`) and `'` (`req'd`, `f'c`); a plural `s` dropped (not after `s`); stop words `w with and
+  at of the a an to for in on per` dropped. Lengths become one word: `15'-0"`, `4'`, `2'-2`, `1 1/2"`, `5/8"`, `48in`,
+  `15 ft`, `2.5 in.` (to the nearest 1/16"). On the item side a length with units counts only as the length (`15 ft` =
+  `15'-0"` = `180"`); a bare proper fraction (`3/16`) counts as its digits, and a candidate offers both. Then every
+  abbreviation and every spelling of its words is rewritten to the canonical words, longest match first, on both sides
+  (`EA. FACE` = `each face` = `E.F.`; `CLR.` = `clear`). An abbreviation that is also a plain word (ALT. ARCH. COL. DIM. EXP.
+  FIN. INT. SIM.) is rewritten only when written with its period, and a candidate then offers the written word as well:
+  `alt` asks for `ALT`/`ALT.`, `alt.` also matches `ALTERNATE`.
+- **Coverage sources.** A candidate is one component (id, type, label, model, size; it reports the id) or one
+  annotation: note or label text plus its citations' code, section and title (it reports the target component, else
+  `note <id>`/`label <id>`), a dim's `text` or, without text, the length it measures in a section view (`dim <id>`), a
+  weld as `<size> fillet weld` (`cjp`/`pjp` complete/partial joint penetration groove weld), plus `all around`, `field
+  weld`, `both sides` and its tail (`weld <id>`), and a view `title` (`view <id>`). An item is covered when one candidate
+  offers all of its words. A keyed note with no text adds nothing (its key's first note carries the text).
+- **Explaining a miss.** For an uncovered item the candidate with the most of its words (first in document order on a
+  tie) is the closest. The `COVERAGE` line reads `MISSING  <item>  closest: <source> (lacks "w1", "w2")` and
+  `W_REQUESTED_MISSING` adds `closest: <source> "<text>" (<n> of <m> words; lacks ...)`, or `no candidate shares any of
+  its words`. Lengths print as feet-inches.
+- Coverage is computed once per load, with the compiled scene (`Loaded.coverage`), and both the summary and the lint use it.
