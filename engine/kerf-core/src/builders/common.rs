@@ -21,6 +21,8 @@ pub struct Ctx<'a, 's, 'p> {
     pub origin: V2,
     /// Placement rotation (radians CCW): `until` measures along the member's rotated run direction.
     pub angle: f64,
+    /// The length of a two-point member (`from`/`to`, SPEC 27.3): it replaces `length`/`until`.
+    pub span: Option<f64>,
 }
 
 pub fn box_of_prisms(prisms: &[Prism]) -> Box {
@@ -274,6 +276,9 @@ pub fn material_ok(ctx: &mut Ctx, key: &str, name: &str) -> bool {
 
 /// `length` or `until` (SPEC 17) for members that run along x or y. Returns the length in inches.
 pub fn length_or_until(ctx: &mut Ctx, run: &str, hint: &str, note: &mut String) -> Option<f64> {
+    if let Some(l) = ctx.span {
+        return Some(l);
+    }
     let has_len = ctx.p.has("length");
     let Some(uv) = ctx.p.raw("until") else { return ctx.p.len_pos("length", None, hint) };
     if has_len {

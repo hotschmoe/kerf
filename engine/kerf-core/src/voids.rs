@@ -40,8 +40,10 @@ struct Void {
     /// How the host's summary line names it: `col`, `rect`, `sleeve sl`.
     name: String,
     path: String,
-    /// The entry of the host's `voids` this void came from (None: a sleeve's `through`).
+    /// The entry of the host's `voids` this void came from (None: a sleeve's `through` or a notch).
     entry: Option<usize>,
+    /// The entry of the host's `cuts` this void came from (a lumber or steel notch `by`, SPEC 27.3).
+    notch: Option<usize>,
     cutters: Vec<Cutter>,
     removed: bool,
 }
@@ -165,7 +167,7 @@ fn collect(scene: &Scene) -> Vec<Void> {
                     for (k, e) in list.iter().enumerate() {
                         let p = format!("{path}/{k}");
                         let void = match e {
-                            Value::String(s) => comp_void(scene, hi, s, &p),
+                            Value::String(s) => comp_void(scene, hi, s, &p, "voids"),
                             Value::Object(_) => shape_void(scene, hi, k, e, &p),
                             _ => {
                                 err(
@@ -196,6 +198,7 @@ fn collect(scene: &Scene) -> Vec<Void> {
                             },
                             path: p,
                             entry: Some(k),
+                            notch: None,
                             cutters,
                             removed: false,
                         }));
@@ -213,6 +216,22 @@ fn collect(scene: &Scene) -> Vec<Void> {
         }
         if c.ty.traits.passes_through {
             out.extend(through(scene, hi));
+        }
+        for (k, by) in crate::cuts::notch_bys(c) {
+            let p = format!("components/{}/cuts/{k}", c.id);
+            if let Some(cutters) = comp_void(scene, hi, by, &p, &format!("cuts[{k}] notch by")) {
+                out.push(Void {
+                    host: hi,
+                    owner: hi,
+                    what: format!("notch by '{by}'"),
+                    name: format!("notch {by}"),
+                    path: p,
+                    entry: None,
+                    notch: Some(k),
+                    cutters,
+                    removed: false,
+                });
+            }
         }
     }
     out
@@ -294,6 +313,7 @@ fn through(scene: &Scene, si: usize) -> Vec<Void> {
             name: format!("sleeve {}", c.id),
             path: p,
             entry: None,
+            notch: None,
             cutters: cutters.clone(),
             removed: false,
         });
@@ -302,7 +322,7 @@ fn through(scene: &Scene, si: usize) -> Vec<Void> {
 }
 
 /// A `voids` entry naming a component (`"col"` or `"col.part"`): its envelope per instance.
-fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str) -> Option<Vec<Cutter>> {
+fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str, key: &str) -> Option<Vec<Cutter>> {
     let host = &scene.comps[hi];
     if s.contains(['@', '#']) {
         err(
@@ -311,7 +331,7 @@ fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str) -> Option<Vec<Cutter
             &host.id,
             path,
             format!(
-                "'{}' voids entry '{s}' names a component or a part (\"col\", \"col.part\"), not an anchor or an array instance; every instance is subtracted",
+                "'{}' {key} entry '{s}' names a component or a part (\"col\", \"col.part\"), not an anchor or an array instance; every instance is subtracted",
                 host.id
             ),
             Some(format!("\"{}\"", s.split(['@', '#']).next().unwrap_or(s))),
@@ -329,12 +349,12 @@ fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str) -> Option<Vec<Cutter
             &host.id,
             path,
             format!("'{}' cannot void itself", host.id),
-            Some(format!("remove \"{s}\" from voids")),
+            Some(format!("remove \"{s}\" from {key}")),
         );
         return None;
     }
     let Some(c) = scene.find(id) else {
-        unknown_id(scene, &host.id, path, &format!("'{}' voids", host.id), id);
+        unknown_id(scene, &host.id, path, &format!("'{}' {key}", host.id), id);
         return None;
     };
     if c.state != State::Ok {
@@ -347,10 +367,10 @@ fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str) -> Option<Vec<Cutter
             &host.id,
             path,
             format!(
-                "'{}' voids '{id}': '{id}' is a fill; fills are clipped by the solids they surround on their own (SPEC 26.4), they never cut a solid",
+                "'{}' {key} '{id}': '{id}' is a fill; fills are clipped by the solids they surround on their own (SPEC 26.4), they never cut a solid",
                 host.id
             ),
-            Some(format!("remove \"{s}\" from voids")),
+            Some(format!("remove \"{s}\" from {key}")),
         );
         return None;
     }
@@ -364,7 +384,7 @@ fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str) -> Option<Vec<Cutter
             &host.id,
             path,
             format!(
-                "'{}' voids '{s}': component '{id}' has no part '{pn}'. Parts: {}",
+                "'{}' {key} '{s}': component '{id}' has no part '{pn}'. Parts: {}",
                 host.id,
                 if parts.is_empty() { "(none)".to_string() } else { join_ids(&parts) }
             ),
@@ -379,7 +399,7 @@ fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str) -> Option<Vec<Cutter
             "E_PARAM",
             &host.id,
             path,
-            format!("'{}' voids '{s}': '{id}' ({}) has no solid outline to subtract", host.id, c.ty.name()),
+            format!("'{}' {key} '{s}': '{id}' ({}) has no solid outline to subtract", host.id, c.ty.name()),
             Some(format!(
                 "remove \"{s}\" from voids, or subtract a shape: {{\"rect\": [w, h], \"at\": \"{id}@center\"}}"
             )),
@@ -666,6 +686,38 @@ fn miss(scene: &Scene, v: &Void) {
     } else {
         "their outlines do not overlap".to_string()
     };
+    if let Some(k) = v.notch {
+        let rest: Vec<Value> = host
+            .node
+            .get("cuts")
+            .and_then(Value::arr)
+            .map(|a| a.iter().enumerate().filter(|(i, _)| *i != k).map(|(_, e)| e.clone()).collect())
+            .unwrap_or_default();
+        let mut buf = Vec::new();
+        json::write_compact(&mut buf, &Value::Array(rest));
+        scene.diags.add_fix(
+            Level::Warning,
+            "W_CUT_MISS",
+            Some(&host.id),
+            Some(&v.path),
+            format!(
+                "the {} of '{}' removes nothing: the notching member ({}, {}) and '{}' ({}, {}): {why}",
+                v.what,
+                host.id,
+                box_text(vb),
+                z_text(vz),
+                host.id,
+                box_text(hb),
+                z_text(hz)
+            ),
+            format!(
+                "move one of them so they overlap, or remove the cut: {{\"op\": \"update\", \"path\": \"components/{}\", \"value\": {{\"cuts\": {}}}}}",
+                host.id,
+                String::from_utf8_lossy(&buf)
+            ),
+        );
+        return;
+    }
     let (msg, fix) = match v.entry {
         Some(k) => {
             let rest: Vec<Value> = host

@@ -19,6 +19,7 @@ param_enum! { pub enum Orient { Section = "section", Elevation = "elevation", Pl
 param_enum! { pub enum Run { X = "x", Y = "y" } }
 param_enum! { pub enum LongLeg { Vertical = "vertical", Horizontal = "horizontal" } }
 param_enum! { pub enum Outstand { Back = "back", Front = "front" } }
+param_enum! { pub enum Align { Center = "center", Top = "top", Bottom = "bottom" } }
 
 params! {
     pub struct Params {
@@ -32,6 +33,10 @@ params! {
         fillets: Bool = true => { desc: "draw the root fillets (W k-region, angle and channel roots) and HSS corner radii (outside 2t, inside t) in section" },
         hidden_lines: Bool = false => { desc: "elevation/plan: also draw the hidden faces as dashed lines (HSS and pipe inside wall faces, the web of a W in plan, back flanges of a channel, the back leg of an angle). Default off: drafting omits them; the silhouette is always solid" },
         grade: Str = "" => { def: "null", desc: "free text for notes and the summary, e.g. \"A992\", \"A500 GR. C\", \"A36\", \"A53 GR. B\"" },
+        from: OptRaw => { desc: "elevation/plan: two-point member (kicker, brace): start point (Ref or [x, y]); with `to` it sets length and angle, ends at a Ref are trimmed to that member's face (as lumber `from`)" },
+        to: OptRaw => { desc: "elevation/plan: two-point member end point (see `from`)" },
+        align: OptEnum(Align) => { def: "center", desc: "two-point member: center, top or bottom line runs from `from` to `to`" },
+        cuts: OptRaw => { desc: "elevation/plan: end cuts and notches (copes) as lumber `cuts`: square|plumb|level|bevel|trim ends, notch at a corner (cope) or by a member. `kerf schema cuts`" },
     }
 }
 

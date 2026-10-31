@@ -15,6 +15,7 @@ param_enum! { pub enum Run { Z = "z", X = "x", Y = "y" } }
 param_enum! { pub enum Orient { Upright = "upright", Flat = "flat" } }
 param_enum! { pub enum Face { Wide = "wide", Narrow = "narrow" } }
 param_enum! { pub enum Barrier { SillSeal = "sill_seal", Membrane = "membrane" } }
+param_enum! { pub enum Align { Center = "center", Top = "top", Bottom = "bottom" } }
 
 params! {
     pub struct Params {
@@ -29,6 +30,10 @@ params! {
         treated: Bool = false => { desc: "preservative treated (material wood_treated; W_UNTREATED_CONTACT checks)" },
         blocking: Bool = false => { desc: "discontinuous member: section mark is one diagonal instead of an X" },
         grade: Str = "" => { def: "null", desc: "free text e.g. \"#2 DF-L\" for notes" },
+        from: OptRaw => { desc: "two-point member (brace, kicker, truss web, outlooker): a point (Ref, {ref, offset} or [x, y]) where the member starts; with `to` it gives the length and angle (no `at`/`length`/`until`/`rotate`/`slope`; run defaults to x). An end at a Ref to a member is cut to the face of that member it meets (trim), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both. Example: \"from\": \"tie@top_center\", \"to\": \"top_chord@bottom_center\"" },
+        to: OptRaw => { desc: "two-point member: the point where it ends (see `from`)" },
+        align: OptEnum(Align) => { def: "center", desc: "two-point member: which line of it runs from `from` to `to`: center (centerline), top or bottom (the face left / right of the from->to direction)" },
+        cuts: OptRaw => { desc: "run x/y (seen lengthwise): end cuts, seat cut and notches, applied to the profile (section, plan, elevation, iso, checks): {type: square|plumb|level, end: start|end|both}, {type: bevel, end, angle (deg from square) | line: [p, q]}, {type: trim, end, to: id} (end cut to the face of `to`), {type: birdmouth, on: plate, seat | heel, tail} (seat on the plate's top; without `at` the member is placed on it; anchors seat_outer, seat_inner, heel_bottom; W_BIRDMOUTH_DEPTH past 1/3 of the depth), {type: notch, at: top_left|top_right|bottom_left|bottom_right|top|bottom, w, d, x} or {type: notch, by: id}. Cut corners: anchors start_top, start_bottom, end_top, end_bottom. `kerf schema cuts`" },
         barrier: OptEnum(Barrier) => { desc: "sill_seal | membrane: draws a 1/8\" sealer strip under the member (part `barrier`, material sill_seal) and the member sits on top of it, so bottom_* anchors are the strip underside and the member top is 1/8\" higher than without. Clears W_UNTREATED_CONTACT for untreated wood on concrete/CMU (put it on the wood member that bears on the masonry; add a note, e.g. `SILL SEALER`)" },
     }
 }
@@ -36,18 +41,18 @@ params! {
 pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let lp = ctx.p.parse::<Params>()?;
     let size = lp.size.as_str();
-    let run = lp.run.tag();
     let treated = lp.treated;
     let is_sawn = lp.product == Product::Sawn;
     let Some(sz) = parse_sawn(size).or_else(|| parse_actual(size)) else {
         ctx.p.fail("size", format!("size \"{size}\" is not recognised. Use sawn nominal \"TxD\" (1x, 2x, 3x, 4x: depth 3..14, e.g. \"2x10\", \"3x8\"; 6x, 8x: depth 6..12, e.g. \"6x8\"), or an actual \"thickness x depth\" such as \"1.75x9.25\""));
         return None;
     };
+    let run = if ctx.span.is_some() && lp.run == Run::Z { Run::X } else { lp.run };
     let plies = usize::from(lp.plies);
     let n_plies = f64::from(lp.plies);
     let mut length = 0.0;
     let mut until_note = String::new();
-    if lp.run == Run::Z && ctx.p.has("until") {
+    if run == Run::Z && ctx.p.has("until") {
         ctx.p.fail(
             "until",
             "'until' only applies to lumber with run x or y (run z spans the document run; set 'z' instead)".into(),
@@ -55,13 +60,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     }
     let mut z_length = None;
-    if lp.run == Run::Z && ctx.p.has("length") {
+    if run == Run::Z && ctx.p.has("length") {
         z_length = Some(ctx.p.len_pos("length", None, "length of a run z member along z, e.g. 24")?);
     }
-    if lp.run != Run::Z {
+    if run != Run::Z {
         length = length_or_until(
             ctx,
-            run,
+            run.tag(),
             "lumber with run x or y needs its length, e.g. \"length\": 92.625, or \"until\": \"other@anchor\"",
             &mut until_note,
         )?;
@@ -78,7 +83,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let mut quads: Vec<[V2; 4]> = Vec::new();
     let mut ply_lines: Vec<[V2; 2]> = Vec::new();
     let wide = lp.face == Face::Wide;
-    if lp.run == Run::Z {
+    if run == Run::Z {
         if lp.orient != Orient::Flat {
             w = t * n_plies;
             h = d;
@@ -101,7 +106,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             }
         }
     } else {
-        let along_x = lp.run == Run::X;
+        let along_x = run == Run::X;
         let in_plane = if wide { d } else { t * n_plies };
         let out_of_plane = if wide { t * n_plies } else { d };
         nat = Some(out_of_plane);
@@ -136,7 +141,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let prism = Prism {
         material: material.into(),
         loops: model::one_loop(model::rect_loop(0.0, 0.0, w, h)),
-        quads: if lp.run == Run::Z { quads } else { Vec::new() },
+        quads: if run == Run::Z { quads } else { Vec::new() },
         blocking: lp.blocking,
         ply_lines,
         ..Prism::default()
@@ -146,13 +151,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         info.push_str(&format!("({plies}) "));
     }
     let pt = if treated { " PT" } else { "" };
-    if lp.run == Run::Z {
+    if run == Run::Z {
         info.push_str(&format!("{size}{pt} {} run z", lp.orient.tag()));
         if let Some(l) = z_length {
             info.push_str(&format!(" L={}", fmt_ft_in(l)));
         }
     } else {
-        info.push_str(&format!("{size} {run}{pt} {} run {run} L={}{until_note}", lp.face.tag(), fmt_ft_in(length)));
+        info.push_str(&format!("{size} {}{pt} {} run {} L={}{until_note}", run.tag(), lp.face.tag(), run.tag(), fmt_ft_in(length)));
     }
     if let Some(bk) = lp.barrier {
         let seal_t = 0.125;

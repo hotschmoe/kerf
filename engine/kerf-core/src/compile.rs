@@ -82,6 +82,7 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     if let Some(s) = node.get("place").and_then(|pl| pl.get("in")).and_then(Value::str) {
         out.push(s.split('.').next().unwrap_or(s));
     }
+    crate::cuts::collect_deps(node, out, add_ref_dep);
 }
 
 /// The components a node names in `voids`, a sleeve's `through` and a fill's `except` (SPEC 26.4). They are not
@@ -100,6 +101,7 @@ pub fn collect_subtract_refs<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
             }
         }
     }
+    crate::cuts::collect_notch_refs(node, out);
     for key in ["through", "except"] {
         match node.get(key) {
             Some(Value::String(s)) => out.push(s),
@@ -401,10 +403,14 @@ fn placement_order(scene: &mut Scene) -> Vec<usize> {
 struct AtSpec<'n> {
     anchor: &'n str,
     to: V2,
+    /// The local point that lands on `to` when it is not a named anchor (a two-point member's start).
+    local: Option<V2>,
 }
 
 fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &mut Params<'n>) -> Option<AtSpec<'n>> {
-    let Some(av) = p.raw("at") else { return Some(AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0) }) };
+    let Some(av) = p.raw("at") else {
+        return Some(AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0), local: None });
+    };
     if !matches!(av, Value::Object(_)) {
         p.fail(
             "at",
@@ -412,7 +418,7 @@ fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &
         );
         return None;
     }
-    let mut spec = AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0) };
+    let mut spec = AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0), local: None };
     if let Some(anc) = av.get("anchor") {
         if let Some(s) = anc.str() {
             spec.anchor = s
@@ -622,14 +628,11 @@ struct Instances {
 
 /// Transform and z range of every instance (array expansion times cover-placed bars). None when the instance budget is exceeded
 /// or the placement anchor is unknown (reported).
-#[allow(clippy::too_many_arguments)]
 fn instance_transforms(
     scene: &mut Scene,
     comp_id: &str,
-    ty: &Entry,
-    p: &mut Params,
     built: &Built,
-    at: &AtSpec,
+    base_xf: Xf,
     angle: f64,
     zbase: [f64; 2],
     arr: &ArraySpec,
@@ -652,26 +655,6 @@ fn instance_transforms(
         return None;
     }
     scene.instances_total += n_inst;
-    let base_xf = if built.points_mode {
-        Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle))
-    } else {
-        let anc = model::box_anchor(built.box_, at.anchor)
-            .or_else(|| built.anchors.iter().find(|n| n.name == at.anchor).map(|n| n.p));
-        let Some(anc) = anc else {
-            let mut names = model::BOX_ANCHOR_NAMES.join(", ");
-            for n in &built.anchors {
-                names.push_str(", ");
-                names.push_str(&n.name);
-            }
-            p.fail_code(
-                "E_ANCHOR_UNKNOWN",
-                "at/anchor",
-                format!("'{}' is not an anchor of '{comp_id}' ({}). Anchors: {names}", at.anchor, ty.name()),
-            );
-            return None;
-        };
-        Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle)).mul(Xf::translate(-anc.x, -anc.y))
-    };
     let mut xfs = Vec::with_capacity(n_inst);
     let mut zs = Vec::with_capacity(n_inst);
     for k in 0..arr.count {
@@ -692,6 +675,29 @@ fn instance_transforms(
         }
     }
     Some(Instances { xfs, zs })
+}
+
+/// The transform of the first instance: the placement anchor onto `at.to`, rotated about it. None when the anchor is
+/// unknown (reported).
+fn base_transform(comp_id: &str, ty: &Entry, p: &mut Params, built: &Built, at: &AtSpec, angle: f64) -> Option<Xf> {
+    if built.points_mode {
+        return Some(Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle)));
+    }
+    let anc = at.local.or_else(|| model::box_anchor(built.box_, at.anchor)).or_else(|| built.anchors.iter().find(|n| n.name == at.anchor).map(|n| n.p));
+    let Some(anc) = anc else {
+        let mut names = model::BOX_ANCHOR_NAMES.join(", ");
+        for n in &built.anchors {
+            names.push_str(", ");
+            names.push_str(&n.name);
+        }
+        p.fail_code(
+            "E_ANCHOR_UNKNOWN",
+            "at/anchor",
+            format!("'{}' is not an anchor of '{comp_id}' ({}). Anchors: {names}", at.anchor, ty.name()),
+        );
+        return None;
+    };
+    Some(Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle)).mul(Xf::translate(-anc.x, -anc.y)))
 }
 
 /// The prisms of every instance in world coordinates, in builder order per instance.
@@ -745,9 +751,23 @@ fn place_component(scene: &mut Scene, idx: usize) {
     let mut p = Params::new(diags, node, &id, "components", ty.name());
     scene.comps[idx].state = State::Failed;
 
-    let Some(at) = parse_at(scene, &id, ty.traits.default_anchor, &mut p) else { return };
+    let Some(two) = crate::cuts::two_point(scene, &id, ty.ty, node) else { return };
+    let (mut at, angle) = match &two {
+        Some(t) => (AtSpec { anchor: "", to: t.p0, local: None }, t.angle),
+        None => {
+            let Some(at) = parse_at(scene, &id, ty.traits.default_anchor, &mut p) else { return };
+            let Some(angle) = resolve_angle(scene, index, &id, &mut p) else { return };
+            (at, angle)
+        }
+    };
+    let run_y = crate::cuts::lengthwise(ty.ty, node, two.is_some());
+    if two.is_none()
+        && p.raw("at").is_none()
+        && let Some(to) = crate::cuts::auto_seat(scene, node, angle, run_y == Some(true))
+    {
+        at = AtSpec { anchor: "seat_outer", to, local: None };
+    }
     scene.comps[idx].place_pt = at.to;
-    let Some(angle) = resolve_angle(scene, index, &id, &mut p) else { return };
     let mirror = p.boolean("mirror", false);
     let visible = p.boolean("visible", true);
     let shown = p.choice("shown", Some("solid"), &["solid", "hidden", "where_occurs", "dashed"]);
@@ -768,7 +788,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
     }
 
     let built = {
-        let mut ctx = Ctx { scene, style: scene.style, p, origin: at.to, angle };
+        let mut ctx = Ctx { scene, style: scene.style, p, origin: at.to, angle, span: two.as_ref().map(|t| t.len) };
         let b = builders::build(ty.ty, &mut ctx);
         p = ctx.p;
         b
@@ -780,6 +800,10 @@ fn place_component(scene: &mut Scene, idx: usize) {
     if mirror && !built.points_mode {
         built = builders::mirror_about_center(&built);
     }
+    let Some(cuts) = crate::cuts::prepare(scene, &id, node, &mut built, angle, run_y, two.as_ref()) else { return };
+    if let (Some(pl), Some(_)) = (&cuts, &two) {
+        at.local = Some(pl.start_point());
+    }
 
     let Some(zbase) = resolve_z(scene, &mut p, &built) else { return };
     let Some(arr) = resolve_array(&mut p) else { return };
@@ -788,7 +812,13 @@ fn place_component(scene: &mut Scene, idx: usize) {
         return;
     }
 
-    let Some(inst) = instance_transforms(scene, &id, ty, &mut p, &built, &at, angle, zbase, &arr) else { return };
+    let Some(base_xf) = base_transform(&id, ty, &mut p, &built, &at, angle) else { return };
+    if let Some(pl) = &cuts
+        && !crate::cuts::apply(scene, &id, node, pl, &mut built, &base_xf)
+    {
+        return;
+    }
+    let Some(inst) = instance_transforms(scene, &id, &built, base_xf, angle, zbase, &arr) else { return };
     let world = world_prisms(scene.style, index, &built, &inst, emb_override, dashed);
     let mut pitch_angle = 0.0;
     if ty.traits.has_pitch {
