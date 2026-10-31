@@ -34,7 +34,7 @@ params! {
         range: OptRaw => { desc: "face, toenail: [from, to] limits the rows along their axis: Refs or [x, y] points (projected on the row), or z values for a row along z" },
         edges: OptRaw => { def: "all four", desc: "edge: panel edges to nail, by direction: left right top bottom front back" },
         faces: OptRaw => { desc: "toenail: side faces of the first member the nails start on (left right top bottom front back); default both faces whose normal lies in the drawing plane" },
-        edge_distance: OptLenPos => { def: "edge, field 3/8; face 10 x shank dia.", desc: "distance from the panel edge (edge, field) or from the ends of the joint (face) to the first nail" },
+        edge_distance: OptLenPos => { def: "edge, field 3/8; face 10D (10 x shank dia.)", desc: "distance from the panel edge (edge, field) or from the ends of the joint (face) to the first nail" },
         angle: Num = 30.0 => { desc: "toenail: degrees between the nail and the member (30 typical, started 1/3 of the nail length from the end)" },
         through: Bool = false => { desc: "the points may come out of the far face (plate splice face nails, clinched nails): no W_NAIL_LENGTH for that" },
         text: Str = "" => { def: "generated", desc: "note text form override; the default is generated from the params (\"(8) 16d NAILS STAGGERED\", \"8d @ 6\\\" O.C. EDGE NAILING\") and a note targeting this component without `text` uses it" },
