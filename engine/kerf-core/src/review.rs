@@ -215,10 +215,10 @@ pub fn overlay_sheet<'a>(mut d: Drawing<'a>, font: &Font) -> Drawing<'a> {
             let mut x = f.x0;
             while x + w <= f.x1 + 1e-9 {
                 let b = Box { x0: x - 1.5 * g, y0: top - h - 1.5 * g, x1: x + w + 1.5 * g, y1: top + 1.5 * g };
-                if !taken.iter().any(|t| t.overlaps(b, 0.0)) {
-                    return Some((x, top));
+                match taken.iter().find(|t| t.overlaps(b, 0.0)) {
+                    None => return Some((x, top)),
+                    Some(t) => x = (t.x1 + 1.5 * g).max(x + g),
                 }
-                x += g;
             }
             top -= g;
         }
