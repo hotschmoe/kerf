@@ -1,4 +1,4 @@
-# Kerf installer for Windows:  irm https://raw.githubusercontent.com/hotschmoe/kerf/main/install.ps1 | iex
+# Kerf installer for Windows:  irm https://raw.githubusercontent.com/hotschmoe/kerf/master/install.ps1 | iex
 # Installs kerf.exe to %LOCALAPPDATA%\kerf\bin and adds it to your user PATH.
 # Pin a version:  $env:KERF_VERSION = "v0.1.0-alpha.1"; irm ... | iex
 $ErrorActionPreference = 'Stop'

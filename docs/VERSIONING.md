@@ -23,4 +23,4 @@ release workflow starts with a step that fails unless `v` + the manifest version
 ver=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' engine/Cargo.toml)
 test "v$ver" = "$GITHUB_REF_NAME" || { echo "::error::tag $GITHUB_REF_NAME != v$ver"; exit 1; }
 ```
-On `main` the manifest holds the version of the latest release; between releases builds report that version.
+On `master` the manifest holds the version of the latest release; between releases builds report that version.

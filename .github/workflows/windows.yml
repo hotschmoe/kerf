@@ -53,16 +53,24 @@ jobs:
           KERF_UI: ../apps/web/dist-serve
         run: cargo build --release
 
-      - name: run against that binary
-        run: |
-          kerf="$PWD/target/release/kerf.exe"
-          "$kerf" version
-          node tests/serve_smoke.mjs "$kerf"
-          node tests/windows_serve.mjs "$kerf"
-          node tests/cli_ergonomics.mjs "$kerf"
-          node tests/platform_serve.mjs "$kerf"
-          KERF="$kerf" node tests/check_golden.mjs
+      - run: target/release/kerf.exe version
+      - name: serve smoke test
+        if: ${{ !cancelled() }}
+        run: node tests/serve_smoke.mjs "$PWD/target/release/kerf.exe"
+      - name: field-shaped session
+        if: ${{ !cancelled() }}
+        run: node tests/windows_serve.mjs "$PWD/target/release/kerf.exe"
+      - name: CLI ergonomics
+        if: ${{ !cancelled() }}
+        run: node tests/cli_ergonomics.mjs "$PWD/target/release/kerf.exe"
+      - name: platform checks
+        if: ${{ !cancelled() }}
+        run: node tests/platform_serve.mjs "$PWD/target/release/kerf.exe"
+      - name: golden set (byte-identical to the Linux goldens)
+        if: ${{ !cancelled() }}
+        run: KERF="$PWD/target/release/kerf.exe" node tests/check_golden.mjs
       - name: Ctrl-Break stops the agent tree
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $node = (Get-Command node).Source

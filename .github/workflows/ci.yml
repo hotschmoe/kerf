@@ -74,6 +74,7 @@ jobs:
     env:
       KERF_CHROME: /usr/bin/google-chrome
       KERF_CHROME_ARGS: --use-angle=swiftshader --enable-unsafe-swiftshader
+      KERF_PYTHON: python3
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/toolchain

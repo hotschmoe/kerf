@@ -19,7 +19,7 @@ interpretation, implement it, and record it in your dir's `NOTES.md` under `## S
 If you need a change in another agent's dir, write it under `## REQUESTS` in your NOTES.md.
 
 ## Git
-- Shared working tree at `~/github/kerf` on `main`. Commit only your own paths:
+- Shared working tree at `~/github/kerf` on `master`. Commit only your own paths:
   `git add <yourdir> && git commit -m "<area>: <msg>" -- <yourdir>`.
   If `index.lock` exists, wait 2 s and retry. Never `git add -A`, never reset/checkout/stash
   other paths, never rewrite history, never push (the orchestrator pushes).

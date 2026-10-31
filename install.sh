@@ -1,5 +1,5 @@
 #!/bin/sh
-# Kerf installer for Linux / macOS:  curl -fsSL https://raw.githubusercontent.com/hotschmoe/kerf/main/install.sh | sh
+# Kerf installer for Linux / macOS:  curl -fsSL https://raw.githubusercontent.com/hotschmoe/kerf/master/install.sh | sh
 # Installs `kerf` to ~/.local/bin (override: KERF_INSTALL_DIR). Pin a version: KERF_VERSION=v0.1.0-alpha.1
 set -eu
 os=$(uname -s); arch=$(uname -m)

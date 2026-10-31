@@ -162,7 +162,7 @@ await t('engine loader in a Web Worker: calls, bytes, errors (echo.wasm)', async
 
 // ---------------------------------------------------------------- exports through the real engine
 if (!fixture) {
-  const py = path.join(repo, 'tools/.venv/bin/python');
+  const py = process.env.KERF_PYTHON ?? path.join(repo, 'tools/.venv/bin/python');
   for (const [fmt, tool] of [['dxf', 'dxf_check.py'], ['pdf', 'pdf_check.py'], ['svg', null]]) {
     await t(`export ${fmt.toUpperCase()} button downloads <docid>-<view>.${fmt} and validates`, async () => {
       const page = await open('sample=truss-bearing-cmu&view=A');

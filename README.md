@@ -16,8 +16,8 @@ and 3D, edit the notes, and export DXF / PDF / SVG for your CAD software.
 
 | platform | command |
 |---|---|
-| Windows (PowerShell) | `irm https://raw.githubusercontent.com/hotschmoe/kerf/main/install.ps1 \| iex` |
-| Linux / macOS | `curl -fsSL https://raw.githubusercontent.com/hotschmoe/kerf/main/install.sh \| sh` |
+| Windows (PowerShell) | `irm https://raw.githubusercontent.com/hotschmoe/kerf/master/install.ps1 \| iex` |
+| Linux / macOS | `curl -fsSL https://raw.githubusercontent.com/hotschmoe/kerf/master/install.sh \| sh` |
 
 ## Use it with Claude Code, Grok, or any coding agent
 

@@ -1,110 +1,185 @@
-# Release: on a version tag, build the web UI, embed it in `kerf`, cross-compile for every platform
-# and attach the binaries (named exactly as install.sh / install.ps1 expect) plus SHA256SUMS.
+# Release: on a version tag, gate on Windows and Linux, build the wasm and the web UI that `kerf serve` embeds, build the
+# six binaries on native runners (asset names are what install.sh / install.ps1 download), smoke-run each, publish.
+# workflow_dispatch is a dry run: everything is built and checked, the assets are uploaded as workflow artifacts and no
+# release is created.
 name: release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
 
-jobs:
-  # No release unless the Windows build starts a server and survives a field-shaped session on a Windows runner.
-  windows-gate:
-    uses: ./.github/workflows/windows.yml
+env:
+  CARGO_TERM_COLOR: always
+  PY_PKGS: ezdxf pypdf pypdfium2 pillow numpy
 
-  release:
-    needs: windows-gate
+jobs:
+  version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
-
-      # Version single source of truth: engines/zig/build.zig.zon `.version`. The tag must be "v" + that string.
-      - name: Tag matches build.zig.zon version
+      - id: v
         run: |
-          zon=$(sed -n 's/^ *\.version = "\(.*\)",$/\1/p' engines/zig/build.zig.zon)
-          test "v$zon" = "$GITHUB_REF_NAME" || { echo "::error::tag $GITHUB_REF_NAME != v$zon (engines/zig/build.zig.zon .version). Bump the zon version, commit, then tag."; exit 1; }
+          ver=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' engine/Cargo.toml)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "v$ver" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME != v$ver (engine/Cargo.toml [workspace.package] version). Run tools/release.sh."
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          case "$ver" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac >> "$GITHUB_OUTPUT"
 
+  windows-gate:
+    needs: version
+    uses: ./.github/workflows/windows.yml
+
+  linux-gates:
+    needs: version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain
+        with:
+          cache: 'false'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: pip install --quiet $PY_PKGS
+      - uses: ./.github/actions/wasm-opt
 
-      # The shipped wasm goes through binaryen `wasm-opt -Oz` (REVIEW SIZ-1: about -11% raw); `-Dwasm-opt` fails the
-      # build if wasm-opt is missing, so a release never silently ships the unoptimised module.
-      - name: binaryen wasm-opt (version_123)
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --target wasm32-unknown-unknown -p kerf-wasm -- -D warnings
+      - run: cargo build --release
+      - run: tests/check_golden.sh
+      - name: wasm (wasm-opt is required)
         run: |
-          curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz \
-            | tar xz -C "$RUNNER_TEMP" binaryen-version_123/bin/wasm-opt
-          echo "$RUNNER_TEMP/binaryen-version_123/bin" >> "$GITHUB_PATH"
-
-      # Order matters: the web build copies engines/zig/dist/kerf.wasm, and the CLI embeds the web build.
-      - name: Build kerf.wasm (wasm-opt -Oz) + wasm golden
-        working-directory: engines/zig
-        run: |
-          zig build wasm -Dwasm-opt
-          node ../../tools/zig-engine/wasm_golden.mjs dist/kerf.wasm
-          node ../../tools/zig-engine/wasm_check.mjs dist/kerf.wasm
+          node ../tools/build_wasm.mjs --require-wasm-opt
+          node tests/wasm_golden.mjs
+          node tests/wasm_check.mjs dist/kerf.wasm
           ls -l dist/kerf.wasm
-
-      - name: Build the web UI (workspace mode, for `kerf serve`)
+      - run: node tests/cli_ergonomics.mjs "$PWD/target/release/kerf"
+      - run: node tests/serve_smoke.mjs "$PWD/target/release/kerf"
+      - run: node tests/platform_serve.mjs "$PWD/target/release/kerf"
+      - name: mutation fuzz on a debug build
+        run: |
+          cargo build
+          KERF=$PWD/target/debug/kerf python3 tests/fuzz.py 300 1
+      - name: web UI for kerf serve (uses the wasm-opt module above)
         working-directory: apps/web
         run: |
-          npm ci
-          if npm run 2>/dev/null | grep -q 'build:serve'; then
-            npm run build:serve
-            echo "UI_DIR=../../apps/web/dist-serve" >> "$GITHUB_ENV"
-          else
-            npm run build:zig
-            echo "UI_DIR=../../apps/web/dist-zig" >> "$GITHUB_ENV"
-          fi
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm run test:unit
+          KERF_WASM=../../engine/dist/kerf.wasm npm run build:serve
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui
+          path: apps/web/dist-serve
+          if-no-files-found: error
 
-      # The release is gated by the same checks as CI, run against the build that ships (ReleaseSafe, REVIEW SAF-2).
-      - name: Test the engine and the server
-        working-directory: engines/zig
+  build:
+    name: build ${{ matrix.asset }}
+    needs: [version, windows-gate, linux-gates]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, asset: kerf-x86_64-linux }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, asset: kerf-aarch64-linux }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, asset: kerf-x86_64-windows.exe, crt: static }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, asset: kerf-aarch64-windows.exe, crt: static }
+          - { os: macos-15-intel, target: x86_64-apple-darwin, asset: kerf-x86_64-macos }
+          - { os: macos-latest, target: aarch64-apple-darwin, asset: kerf-aarch64-macos }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain
+        with:
+          targets: ${{ matrix.target }}
+          cache: 'false'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui
+          path: apps/web/dist-serve
+      - name: build (release, UI embedded, stripped by the release profile)
+        working-directory: engine
+        env:
+          KERF_UI: ../apps/web/dist-serve
+          RUSTFLAGS: ${{ matrix.crt == 'static' && '-C target-feature=+crt-static' || '' }}
         run: |
-          pip install --quiet ezdxf pypdf pypdfium2 pillow numpy
-          zig build test --summary all
-          zig build              # Debug (safety checks): what the golden gate exercises
-          bash tests/check_golden.sh
-          zig build -Doptimize=safe -Dui="$UI_DIR"
-          node tests/cli_ergonomics.mjs
-          node tests/serve_smoke.mjs
+          cargo build --release --target ${{ matrix.target }}
+          mkdir -p ../release
+          bin=target/${{ matrix.target }}/release/kerf
+          if [ -f "$bin.exe" ]; then bin="$bin.exe"; fi
+          cp "$bin" "../release/${{ matrix.asset }}"
+          ls -l ../release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet $PY_PKGS
+      - name: smoke-run the binary on its own runner
+        working-directory: engine
+        env:
+          KERF: ${{ github.workspace }}/release/${{ matrix.asset }}
+        run: |
+          expected='${{ needs.version.outputs.version }}'
+          chmod +x "$KERF"
+          "$KERF" version | tee /dev/stderr | grep -q "\"version\":\"$expected\""
+          node tests/check_golden.mjs
+          node tests/serve_smoke.mjs "$KERF"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: release/${{ matrix.asset }}
+          if-no-files-found: error
 
-      # ReleaseSafe, not ReleaseSmall: bounds, overflow and cast checks stay on in the shipped CLI, so a bad input is a
-      # clean error/abort instead of silent memory corruption (about +1.2 MB per target; the wasm stays ReleaseSmall).
-      - name: Cross-compile kerf (UI embedded, ReleaseSafe)
-        working-directory: engines/zig
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: kerf-*
+          path: release
+          merge-multiple: true
+      - name: checksums
+        working-directory: release
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/release"
-          build() { # <zig target> <asset name>
-            rm -rf zig-out
-            zig build -Dtarget="$1" -Doptimize=safe -Dstrip=true -Dui="$UI_DIR"
-            if [ -f zig-out/bin/kerf.exe ]; then cp zig-out/bin/kerf.exe "$GITHUB_WORKSPACE/release/$2"; else cp zig-out/bin/kerf "$GITHUB_WORKSPACE/release/$2"; fi
-          }
-          build x86_64-windows-gnu   kerf-x86_64-windows.exe
-          build aarch64-windows-gnu  kerf-aarch64-windows.exe
-          build x86_64-linux-musl    kerf-x86_64-linux
-          build aarch64-linux-musl   kerf-aarch64-linux
-          build x86_64-macos         kerf-x86_64-macos
-          build aarch64-macos        kerf-aarch64-macos
-          cd "$GITHUB_WORKSPACE/release"
           sha256sum kerf-* > SHA256SUMS
           ls -l
-
-      - name: Upload to the GitHub release
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release/*
+      - name: GitHub release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes   # not marked prerelease: install.sh/.ps1 use releases/latest
+          flag=; [ "$PRERELEASE" = true ] && flag=--prerelease
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes $flag
           gh release upload "$GITHUB_REF_NAME" release/* --clobber

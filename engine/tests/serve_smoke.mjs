@@ -4,7 +4,7 @@
 // agent bridge (fake agent), token auth on 0.0.0.0 and Host/Origin checks.
 //
 //   node tests/serve_smoke.mjs [path/to/kerf]      (default: engine/target/release/kerf; run `cargo build --release` first)
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,6 +18,12 @@ const KERF = path.resolve(process.argv[2] ?? path.join(here, '..', 'target', 're
 const REF = path.join(here, '..', '..', 'spec', 'details', 'flush-beam-strap.kerf.json');
 const FAKE = path.join(here, 'fake-agent.mjs');
 // `touch` does not exist on Windows: a node one-liner that creates the file named by its argument.
+const PROCFS = fs.existsSync('/proc/self/status');
+const psOut = (...args) => spawnSync('ps', args.map(String), { encoding: 'utf8' }).stdout ?? '';
+const procStatus = (pid, key) => +fs.readFileSync(`/proc/${pid}/status`, 'utf8').match(new RegExp(`${key}:\\s+(\\d+)`))[1];
+const rssKb = (pid) => (PROCFS ? procStatus(pid, 'VmRSS') : +psOut('-o', 'rss=', '-p', pid).trim());
+const threadsOf = (pid) => (PROCFS ? procStatus(pid, 'Threads') : psOut('-M', '-p', pid).trim().split('\n').length - 1);
+const cmdlines = () => (PROCFS ? fs.readdirSync('/proc').filter((d) => /^\d+$/.test(d)).map((d) => { try { return fs.readFileSync(`/proc/${d}/cmdline`, 'utf8'); } catch { return ''; } }) : psOut('-ax', '-o', 'command=').split('\n'));
 const TOUCH = WIN ? [process.execPath, '-e', 'require("fs").writeFileSync(process.argv[1], "")'] : ['touch'];
 if (!fs.existsSync(KERF)) { console.error('kerf binary not found: ' + KERF + ' (cargo build --release first)'); process.exit(2); }
 
@@ -164,12 +170,12 @@ async function main() {
 
   section('server: start, info, empty library');
   const { port, banner } = await startServer(dir, ['--trust-agents']);
-  check('banner prints the URL and the dir', banner.includes('http://127.0.0.1:' + port + '/') && banner.includes(dir.replace(/\/$/, '')), banner);
+  check('banner prints the URL and the dir', banner.includes('http://127.0.0.1:' + port + '/') && [dir.replace(/\/$/, ''), fs.realpathSync.native(dir)].some((d) => banner.includes(d)), banner);
   let t0 = performance.now();
   let info = await api(port, 'GET', '/api/info');
   const info_ms = performance.now() - t0;
   check('GET /api/info', info.status === 200 && info.json.version && info.json.token_required === false && !('proxy' in info.json) && Array.isArray(info.json.agents), info.text);
-  check('info.dir is the served folder', fs.realpathSync(info.json.dir) === fs.realpathSync(dir), info.json.dir);
+  check('info.dir is the served folder', fs.realpathSync.native(info.json.dir) === fs.realpathSync.native(dir), info.json.dir);
   const fake = info.json.agents.find((a) => a.id === 'fake'), ghost = info.json.agents.find((a) => a.id === 'ghost');
   check('agents: override from .kerf/agents.json is available with a version', fake && fake.available === true && /^v\d+/.test(fake.version ?? ''), fake);
   check('agents: missing CLI -> available:false + reason', ghost && ghost.available === false && /not found/.test(ghost.reason ?? ''), ghost);
@@ -306,7 +312,7 @@ async function main() {
   check('stderr line -> {type:stderr}', runEvents.some((e) => e.type === 'stderr' && /a line on stderr/.test(e.text)));
   check('message was prefixed with the workspace context + file', runEvents.some((e) => e.type === 'assistant' && /EDIT the plate/.test(JSON.stringify(e))));
   check('exit event: code 0 + session_id captured', !!exitEv && exitEv.data.event.code === 0 && exitEv.data.event.session_id === 'fake-session-1', exitEv?.data);
-  check('agent ran in --dir with KERF_ACTOR=agent and kerf on PATH', runEvents.some((e) => e.type === 'system' && e.actor === 'agent' && fs.realpathSync(e.cwd) === fs.realpathSync(dir)) && runEvents.some((e) => e.type === 'tool_result' && /^DOC a/.test(e.text)), runEvents);
+  check('agent ran in --dir with KERF_ACTOR=agent and kerf on PATH', runEvents.some((e) => e.type === 'system' && e.actor === 'agent' && fs.realpathSync.native(e.cwd) === fs.realpathSync.native(dir)) && runEvents.some((e) => e.type === 'tool_result' && /^DOC a/.test(e.text)), runEvents);
   const aLog = await ev.waitFor((f) => f.event === 'log' && f.data.entry.why === 'fake agent edit', 3000);
   check('the agent edit shows up as a log event with who:agent', !!aLog && aLog.data.entry.who === 'agent' && aLog.data.entry.tool === 'kerf-cli', aLog);
   check('the agent\'s log event is published BEFORE its exit event', ev.frames.findIndex((f) => f.event === 'log' && f.data.entry.why === 'fake agent edit') < ev.frames.findIndex(isRun_exit(rid)), ev.frames.map((f) => f.event + ':' + (f.data?.event?.type ?? '')).slice(-12));
@@ -400,7 +406,7 @@ async function main() {
   const burst = await Promise.all(Array.from({ length: 24 }, () => api(port, 'GET', '/api/info')));
   check('parallel requests succeed while 4 SSE streams are open', burst.every((x) => x.status === 200));
   sses.forEach((s) => s.close());
-  const rss = (() => { try { return +fs.readFileSync(`/proc/${children[0].pid}/status`, 'utf8').match(/VmRSS:\s+(\d+)/)[1]; } catch { return null; } })();
+  const rss = (() => { try { return rssKb(children[0].pid); } catch { return null; } })();
   console.log(`  numbers: /api/info first call ${info_ms.toFixed(1)} ms; /api/docs p50 ${lat[15].toFixed(2)} ms p95 ${lat[28].toFixed(2)} ms; png sheet export ${png_ms.toFixed(0)} ms; RSS ${rss ? (rss / 1024).toFixed(1) + ' MB' : 'n/a'} (after the above)`);
   ev.close();
   children[0].kill('SIGTERM');
@@ -488,7 +494,14 @@ async function main() {
   const P = await startServer(dirP, ['--trust-agents', '--agent-timeout', '4']);
   const evP = sse(P.port);
   await evP.waitFor((f) => f.event === 'ping', 2000);
-  const isAlive = (pid) => { try { process.kill(pid, 0); if (WIN) return true; return fs.existsSync(`/proc/${pid}`) ? !/^State:\s+Z/m.test(fs.readFileSync(`/proc/${pid}/status`, 'utf8')) || 'zombie' : false; } catch { return false; } };
+  const isAlive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      if (WIN) return true;
+      if (!PROCFS) { const stat = psOut('-o', 'stat=', '-p', pid).trim(); return stat === '' ? false : !/^Z/.test(stat) || 'zombie'; }
+      return fs.existsSync(`/proc/${pid}`) ? !/^State:\s+Z/m.test(fs.readFileSync(`/proc/${pid}/status`, 'utf8')) || 'zombie' : false;
+    } catch { return false; }
+  };
   const runOf = (rid) => (f) => f.event === 'agent' && f.data.run_id === rid;
   const exitOf = (rid, ms = 10000) => evP.waitFor((f) => runOf(rid)(f) && f.data.event.type === 'exit', ms);
   const run = (message, extra = {}) => api(P.port, 'POST', '/api/agent/run', { body: { agent: 'fake', message, ...extra } });
@@ -499,7 +512,7 @@ async function main() {
   check('V-3: 6 concurrent POST /api/agent/run -> exactly one 200 and five 409 E_BUSY', okRuns.length === 1 && busyRuns.length === 5 && busyRuns.every((r) => r.json.error.code === 'E_BUSY'), burstRuns.map((r) => r.status));
   const ridRace = okRuns[0].json.run_id;
   await sleep(300);
-  const procs = WIN ? [0] : fs.readdirSync('/proc').filter((d) => /^\d+$/.test(d)).filter((d) => { try { return fs.readFileSync(`/proc/${d}/cmdline`, 'utf8').includes('fake-agent.mjs'); } catch { return false; } });
+  const procs = WIN ? [0] : cmdlines().filter((c) => c.includes('fake-agent.mjs'));
   check('V-3: only one agent process exists', procs.length === 1, procs);
   const stopRace = await api(P.port, 'POST', '/api/agent/stop', { body: { run_id: ridRace } });
   check('V-3: the surviving run is the one stop reaches', stopRace.json?.stopped === true, stopRace.text);
@@ -583,7 +596,7 @@ async function main() {
   const getBody = await tClose('GET /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4\r\n\r\nabcd', 2000);
   check('V-5: a GET with a body is refused (400)', getBody.status === 400, getBody.text.slice(0, 80));
   // memory: 40 connections declaring 60 MiB each used to allocate 60 MiB each up front
-  const rssOf = (pid) => WIN ? 0 : +fs.readFileSync(`/proc/${pid}/status`, 'utf8').match(/VmRSS:\s+(\d+)/)[1] / 1024;
+  const rssOf = (pid) => WIN ? 0 : rssKb(pid) / 1024;
   const rss0 = rssOf(Q.proc.pid);
   const declared = Array.from({ length: 40 }, () => rawSocket(Q.port, 'POST /api/agent/run HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 62914560\r\n\r\n{', { ms: 900 }));
   await sleep(500);
@@ -650,9 +663,9 @@ async function main() {
   const R = await startServer(dirQ);
   const socks = [];
   for (let i = 0; i < 270; i++) { const s2 = net.connect(R.port, '127.0.0.1'); s2.on('error', () => {}); socks.push(s2); }
-  for (let i = 0; i < 40; i++) { if (WIN) { await sleep(100); continue; } if (+fs.readFileSync(`/proc/${R.proc.pid}/status`, 'utf8').match(/Threads:\s+(\d+)/)[1] >= 256) break; await sleep(100); }
+  for (let i = 0; i < 40; i++) { if (WIN) { await sleep(100); continue; } if (threadsOf(R.proc.pid) >= 256) break; await sleep(100); }
   await sleep(200);
-  const threads = WIN ? 0 : +fs.readFileSync(`/proc/${R.proc.pid}/status`, 'utf8').match(/Threads:\s+(\d+)/)[1];
+  const threads = WIN ? 0 : threadsOf(R.proc.pid);
   const refused = await rawSocket(R.port, 'GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n', { ms: 800 });
   check('V-4: over 256 open connections the next one gets 503 (and the thread count is bounded)', (refused.status === 503 || (WIN && refused.status === 0 /* Windows drops a reply that is followed by an RST */)) && threads < 330, [refused.status, threads]);
   socks.forEach((s2) => s2.destroy());

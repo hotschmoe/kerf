@@ -90,7 +90,7 @@ s2.proc.kill();
 const info = await api(s1, 'GET', '/api/info');
 check('info.dir has no verbatim \\\\?\\ prefix', info.json && typeof info.json.dir === 'string' && !info.json.dir.startsWith('\\\\?\\'), info.json?.dir);
 check('the banner shows the plain folder path', !s1.banner.includes('\\\\?\\'), s1.banner);
-const real = fs.realpathSync(dir);
+const real = fs.realpathSync.native(dir);
 check('info.dir is the served folder', info.json?.dir?.toLowerCase() === real.toLowerCase().replace(/^\\\\\?\\/, ''), [info.json?.dir, real]);
 
 console.log('\n# op log held by the server while CLI writers run');
