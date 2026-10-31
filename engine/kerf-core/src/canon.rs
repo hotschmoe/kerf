@@ -43,6 +43,7 @@ const RECESS_KEYS: [&str; 3] = ["width", "depth", "from_edge"];
 const COVER_KEYS: [&str; 4] = ["bottom", "sides", "top", "parts"];
 const PLACE_KEYS: [&str; 7] = ["in", "face", "cover", "count", "side_cover", "axis", "station"];
 const PROFILE_KEYS: [&str; 3] = ["rect", "circle", "points"];
+const VOID_KEYS: [&str; 6] = ["rect", "circle", "points", "at", "anchor", "z"];
 const CROP_KEYS: [&str; 2] = ["x", "y"];
 
 fn keys_of(o: &Object) -> Vec<String> {
@@ -104,6 +105,9 @@ pub fn order(ctx: &KeyCtx) -> Vec<String> {
     }
     if p.len() == 4 && p[0] == "components" && p[2] == "acknowledge" && last == "[]" {
         return keys_of(&schema::ACK);
+    }
+    if p.len() == 4 && p[0] == "components" && p[2] == "voids" && last == "[]" {
+        return strs(&VOID_KEYS);
     }
     if p[0] == "components" && p.len() >= 3 {
         if ctx.obj.iter().any(|m| m.key == "ref") {

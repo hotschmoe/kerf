@@ -55,7 +55,7 @@ pub fn apply(scene: &mut Scene) {
         return;
     }
     let mut hosts: Vec<usize> = voids.iter().map(|v| v.host).collect();
-    hosts.sort_unstable();
+    crate::sort::stable(&mut hosts, |a, b| a < b);
     hosts.dedup();
     let mut worlds: Vec<(usize, Vec<Prism>)> = Vec::new();
     for &h in &hosts {
