@@ -9,6 +9,7 @@ random.seed(seed)
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 K = os.environ.get('KERF') or os.path.join(ROOT, 'engine/target/release/kerf')
 docs = [json.load(open(f)) for f in sorted(glob.glob(os.path.join(ROOT, 'spec/details/*.kerf.json')))]
+layout_docs = [json.load(open(f)) for f in sorted(glob.glob(os.path.join(ROOT, 'engine/tests/docs/layout-*.kerf.json')))]
 JUNK = [None, True, False, 0, -1, 1e9, -1e9, 0.0001, "", "x", "7 5/8", [], {}, [1], [1, 2, 3, 4], "nope@top_left", "@origin", {"ref": "cmu@top_left"}, "#9", [[0, 0], [1, 1]]]
 # REVIEW appendix B: the values that used to panic / hang / OOM (edition 1e30, gauge 1e20, wrap_chars -5, bulge 1e-14, slope "nan", 19-digit
 # lengths, scale "1e300:1", offsets 1e300, run +-1e300, crop +-1e300). Python writes inf/nan as Infinity/NaN (invalid JSON: must give E_JSON).
@@ -47,8 +48,12 @@ def mutate(d):
     return d
 bad = 0
 for i in range(N):
-    d = mutate(random.choice(docs))
+    lay = layout_docs and i % 5 == 4
+    d = mutate(random.choice(layout_docs if lay else docs))
     inp = {'doc': d, 'view': random.choice(['A', 'B']), 'format': random.choice(['svg', 'dxf', 'pdf']), 'ops': []}
+    if lay:
+        del inp['view']
+        inp['layout'] = random.choice(['S1', 'S2'])
     if random.random() < 0.15: inp['style'] = random.choice(STYLES)
     txt = json.dumps(inp)
     data = txt.encode().replace(b'@@BADUTF8@@', b'\xff\xfe')  # raw invalid UTF-8 inside a string

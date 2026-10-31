@@ -90,8 +90,10 @@ Top level (canonical key order is the order listed):
     "forked_from": null                  // id@version when forked (future library)
   },
   "run": [-24, 24],                      // default z-extent for components (inches)
+  "scale": "3/4\"=1'-0\"",                // optional: default scale of views without their own (§26.2)
   "components": [ /* §4 */ ],
-  "views": [ /* §6 */ ]
+  "views": [ /* §6 */ ],
+  "layouts": [ /* §26.2: several views on one sheet */ ]
 }
 ```
 
@@ -435,6 +437,11 @@ Accepted: `3"=1'-0"` (factor 4), `1-1/2"=1'-0"` (8), `1"=1'-0"` (12), `3/4"=1'-0
 ```
 Fillet: right triangle, vertical leg on the left, height = text height; size text right-aligned left of the symbol.
 
+**ref** — reference bubble (detail number over sheet number), optional leader and text; placed exactly (§26.2):
+```jsonc
+{ "id": "r1", "type": "ref", "detail": "3", "sheet": "S-50.01", "at": "beam@top_right", "place": null, "text": "SIM." }
+```
+
 **cite** rules: the LLM may only create `status: "suggested"`. Only the designer (UI action)
 sets `verified`. Export renders citations per style `citations` (default: append
 ` (IRC R403.1.6)`; unverified ones get a trailing `*` and the sheet gets the footnote
@@ -603,6 +610,7 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_NOTE_LANDING` | warning | a note's explicit `at` puts the arrow on empty paper: outside the crop (section), off every visible face and line (iso) |
 | `W_LABEL_OVERLAP` | warning | a label overprints a label or dimension text, a note's text overprints either, or a pinned dimension overprints another |
 | `I_ANNOT_MOVED` | info | the layout drew a dimension more than 1/8" (paper) from its `offset`, or moved a label that far (printed by `kerf check`) |
+| `I_KEY_RENUMBERED` | info | a layout with shared notes prints a keyed note under another number than its `key` so the list has no gaps (§26.2) |
 | `I_UNVERIFIED_CITE` | info | citations awaiting designer verification (count) |
 | `W_BOLT_EDGE` | warning | a bolt's edge distance to a `steel` ply it passes through (in the drawing plane, or along z to the ply's z extent) is below AISC 360-16 Table J3.4 (1/2" 3/4, 5/8" 7/8, 3/4" 1, 7/8" 1 1/8, 1" 1 1/4, 1 1/8" 1 1/2, 1 1/4" 1 5/8, larger 1.25d); one warning per bolt group and ply, the worst bolt |
 | `W_BOLT_SPACING` | warning | bolt spacing < 2 2/3 d (AISC 360 J3.3); two anchor bolts closer than 4d (cast-in) or 6d (wedge/screw) center to center, in plane and z (ACI 318-19 17.9.2) |
@@ -694,9 +702,9 @@ All inputs/outputs are UTF-8 JSON unless noted.
 | `check` | `{ doc, style, strict?: bool, reference_files? }` | `{ diagnostics, acknowledged, summary }` (`reference_files`: §23; `strict`, `acknowledged`: §25.4) |
 | `apply` | `{ doc, style, ops, actor?: "llm"|"designer" }` | `{ ok, doc, diagnostics, acknowledged, summary, changed }` — atomic: on any error `ok:false`, doc unchanged |
 | `inspect` | `{ doc, style, query }` | see §14 |
-| `drawing` | `{ doc, style, view }` | Drawing IR |
+| `drawing` | `{ doc, style, view }` or `{ doc, style, layout }` | Drawing IR (a layout: §26.2) |
 | `mesh` | `{ doc, style }` | Mesh |
-| `export` | `{ doc, style, view, format: "svg"|"dxf"|"pdf", sheet?: bool, review?: bool }` | **raw bytes** (`review`: §25.4) |
+| `export` | `{ doc, style, view (or layout), format: "svg"|"dxf"|"pdf", sheet?: bool, review?: bool }` | **raw bytes** (`review`: §25.4; `layout`: §26.2) |
 
 `summary` is the compact text the LLM reads after every change, e.g.:
 ```
@@ -730,8 +738,8 @@ kerf catalog [--markdown]
 kerf fmt <doc> [-w]
 kerf check <doc> [--style S] [--strict]
 kerf apply <doc> <ops.json> [--style S] [-o out.kerf.json]
-kerf drawing <doc> --view A [--style S] [-o out.json]
-kerf export <doc> --view A --format svg|dxf|pdf [--style S] [--sheet] [--review] -o <file>
+kerf drawing <doc> --view A|--layout S1 [--style S] [-o out.json]
+kerf export <doc> --view A|--layout S1 --format svg|dxf|pdf [--style S] [--sheet] [--review] -o <file>
 kerf mesh <doc> [-o mesh.json]
 kerf call <fn> < input.json         # raw API access, used by conformance tests
 ```
@@ -1379,3 +1387,80 @@ members get no `views`; each scenario's members get `views: ["B"]`; no `omit` li
 - `array`: a numeric `z` places instance 0; it does not center the group.
 - `kerf version` adds `"build"`: `git describe --tags --always --dirty` of the source tree at build time (`KERF_BUILD`
   overrides; `unknown` outside a checkout). The core API `version` is unchanged (exports never carry it).
+
+## 26. v0.2.0-beta.1 drawing kinds
+
+### 26.2 beta.1: sheet layouts
+From the MASS dogfood run (issue #7): a company detail is one sheet with several scenarios side by side (A-D), one shared
+DETAIL NOTES list, plan insets beside a main section at their own scale, and "SEE 3/S-50.01" callouts. Kerf exported one view
+per sheet, so a 4-scenario detail became 4 sheets with 4 lists, gaps in each list (`1,2,3,4,6`) and a different auto scale
+per scenario.
+
+**Document `layouts`** (array; ops: `add layouts`, `update|set|remove layouts/<id>`; `kerf schema layout`):
+```jsonc
+{ "id": "S1",                       // required; `kerf export <doc> --layout S1`
+  "views": ["A", "B", ["P1", "P2"]], // required: view ids in reading order; a nested list stacks across the arrangement
+  "arrange": "row",                 // row | column | grid; default row, or grid when `columns` is set
+  "columns": 2,                     // grid: entries per row (1-12); with row/column it warns W_PARAM and is ignored
+  "notes": "shared",                // shared (default) | per_view
+  "notes_side": "right",            // right (default) | left | below | above: where the shared list goes
+  "scale": "common",                // common (default) | a numeric scale for the views without their own
+  "gap": 0.5,                       // paper inches between entries (0-4)
+  "sheet": "17x11",                 // paper size "WxH" or [w, h] in inches (5-60 each); default the style's sheet
+  "title": "...", "number": "1" }   // title block DETAIL (default doc title) and DETAIL NO (default empty)
+```
+Errors are `E_PARAM` (shape, values) and `E_REF_UNKNOWN` (a view id not in `views[]`, with the list and a did-you-mean); a
+view named twice is `E_PARAM`, a duplicate layout id `E_DUP_ID`; unknown keys warn `W_UNKNOWN_KEY` against the layout
+table. Removing a view a layout names fails the apply with that `E_REF_UNKNOWN`.
+
+**Arrangement** (paper inches). Each view is built as on its own sheet (any view kind: the layout calls the normal view
+build), then measured by its full extents (drawing, notes, list, title). `row` puts entries side by side, `column` one above
+the other, `grid` in rows of `columns` entries (column width = widest entry of the column, row height = tallest of the row).
+A nested list in `views` is a column inside a row or grid, a row inside a column. Inside its box an entry is centred across
+and sits on the box's bottom, so the titles of one row share a line; columns stack from the top; `gap` separates entries.
+The shared list goes `gutter_in` beside (top-aligned) or above/below (left-aligned) the arranged views; the whole is
+centred on the sheet. The layout's drawing coordinates are paper inches times the scale of its first view: a view at that
+scale keeps model inches 1:1 (DXF), a view at another scale is scaled by the ratio (its text heights too; hatch pattern
+size per paper inch unchanged).
+
+**Views in a layout** keep their bubble, title and `SCALE:` line (each cell shows its own scale; the title block reads the
+common scale or `AS NOTED`). A view title wider than the view (less the bubble; at least 3" paper) wraps at spaces in a
+layout only. A view's own `W_VIEW_FIT` against the whole sheet is not checked inside a layout (the layout checks its cells).
+
+**Scale.** Precedence for each view: its own `scale` > the layout's numeric `scale` > the document `scale` > `common`.
+`common` builds the remaining views at each standard scale, 3" ... 1/4" = 1'-0" (largest first), and takes the first at
+which the arranged views and the list fit the sheet area (frame interior above the title block, 1/8" clear, §25.2); none
+fits: 1/4" and `W_VIEW_FIT`. The document `scale` (numeric, else `E_PARAM` path `scale`) applies to every view without its
+own except iso views (NTS by default), also outside layouts; ops `set scale` / `remove scale`.
+
+**Shared notes** (`notes: "shared"`). The keyed notes (`notes_style` keyed or list, §24) of all the layout's views form one
+DETAIL NOTES list. Grouping, in layout order (views, then annotations): a note with a `key` joins the entry with that key
+in any view; a note without a key joins an earlier entry with the same `text` (trimmed) and the same `cite`; else it opens a
+new entry. Numbering: keyed entries take their key, the others the lowest free numbers in order; the entries are then
+numbered 1..N in that order, so the list has no gaps. When a key prints under another number, `I_KEY_RENUMBERED` (info,
+id = layout, path `layouts/<id>`; printed by `kerf check`) lists `key k prints as n`. Tags in every view show the layout
+number; the views draw no list of their own; the list is drawn once (§24 look; side per `notes_side`). Notes under one
+number whose texts differ warn `W_PARAM` naming both notes and views. `per_view` keeps each view's own list and numbers.
+Leader-style views are unaffected. Single-view export (`--view`) is unchanged: a view keeps its own numbering and list.
+
+**`W_VIEW_FIT` on a layout** (id = layout, path `layouts/<id>`): the size the layout needs against the sheet area, each
+view's paper size and scale, the list size and side, the largest view; fixes in order: a larger sheet (17x11, 22x17, 36x24)
+that holds it as arranged; for a numeric layout scale, the standard scale that fits (else `common`); when every view has
+its own scale, the ops that remove them (and the document `scale`); a view whose own scale is larger than the common one;
+the first other arrangement (row, column, grid 2..n-1, with the list right or below) that fits; the list on another side;
+last, shrink the largest view's crop or split the layout.
+
+**`ref` annotation** (any view; `kerf schema ref`): a bubble split by a horizontal line, `detail` (required, string or
+number) in the top half at text height, `sheet` (optional) in the bottom half at 0.9 label height (no sheet: a plain
+bubble); radius max(1/4", half the wider text + 0.06") paper. `at` (Ref, `{ref, offset}` or [x, y]; projected in an iso
+like a note `at`) draws a leader from the bubble edge with the style arrowhead; `place` ([x, y]) is the bubble centre,
+default `at` + 3/4" paper up and right; neither is `E_PARAM`. `text` (case transform) sits beside the bubble, on the side
+away from the leader. Notes layer, anno pen, src = the ref id; placed exactly (not moved by the note layout); its extent
+counts for the view fit. A view whose only annotation is a ref (and that draws nothing) is a "see other detail" scenario.
+
+**Outputs.** `drawing` with `layout`: the Drawing IR (§10) with `"kind":"layout"`, `view` = the layout id, `scale` = the
+first view's, and `"cells":[{"view","scale","scale_label","bounds"}]` (the views' extents in layout coordinates); its
+`diagnostics` are the views' plus the layout's. `export` with `layout`: svg/png/dxf/pdf as for a view; the sheet (PDF always,
+others with `sheet`) uses the layout's `sheet` size. `review` with `layout` is `E_INPUT`; `view` and `layout` together are
+`E_INPUT` (CLI: usage error, exit 2; `--layout` only with `drawing`/`export`). `kerf check` builds every layout and adds
+its layout-level diagnostics (W_VIEW_FIT, I_KEY_RENUMBERED, shared-text W_PARAM) once.
