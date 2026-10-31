@@ -340,7 +340,7 @@
       "cut_z": 0,
       "crop": {
         "x": [-2, 26],
-        "y": [30, 52]
+        "y": [30, 51.5]
       },
       "notes_side": "right",
       "annotations": [

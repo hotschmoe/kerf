@@ -6,7 +6,7 @@ use super::{Env, Landing};
 use crate::clip;
 use crate::compile;
 use crate::drawing::{Align, FillItem, Item, PathItem, VAlign};
-use crate::geom::{Box, Pt, V2};
+use crate::geom::{self, Box, Pt, V2};
 use crate::json::{self, Value};
 use crate::limits;
 use crate::math;
@@ -97,10 +97,7 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
                 shapes_src.extend(reg);
             }
         }
-        Landing::Iso(iso) => {
-            let p = iso.landing(comp, inst, part)?;
-            return Some(alloc::vec![p]);
-        }
+        Landing::Iso(iso) => return iso.landing(comp, inst, part, env.crop, h),
     }
     let shapes = shape::shapes_of(&shapes_src);
     let lp = shape::banded_label_point(&shapes, env.crop, h)?;
@@ -170,6 +167,8 @@ pub struct LabelSpec<'a> {
     /// Drawing-space position (author offset applied); None when an iso label does not project.
     pub base: Option<V2>,
     pub off: V2,
+    /// `pin`: never moved by the layout repair (overlaps then warn W_LABEL_OVERLAP).
+    pub pin: bool,
 }
 
 fn num2(x: f64) -> String {
@@ -332,6 +331,67 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
             None,
             Some(&format!("views/{vid}")),
             format!("view {vid}: {} more leader hits not listed; fix the ones above first (dense notes: split the view, shorten notes, or set \"place\" on some)", r.hits.len() - maxn),
+        );
+    }
+}
+
+/// W_NOTE_LANDING (SPEC 25.2): a note with an explicit `at` must put its arrowhead on the drawing. In a section that is
+/// anywhere inside the crop (an arrow may point into an opening or the air above grade); in an iso it is a visible face
+/// or within half a text height of a drawn line, since the space between iso faces is not part of any member.
+pub fn check_landings(env: &Env, notes: &[NoteIn], r: &route::Layout, base_segs: &[[V2; 2]]) {
+    let vid = env.spec.id;
+    let tol = 0.5 * env.style.text_height_in * env.s;
+    let iso = match &env.landing {
+        Landing::Iso(iso) => Some(*iso),
+        Landing::Section(_) => None,
+    };
+    for (n, &land) in notes.iter().zip(&r.landing) {
+        if n.movable {
+            continue;
+        }
+        let gap = base_segs.iter().map(|sg| geom::dist_point_seg(land, sg[0], sg[1])).fold(f64::INFINITY, f64::min);
+        let where_ = match iso {
+            None if env.crop.expand(tol).contains(land) => continue,
+            None => "outside the view crop".to_string(),
+            Some(iso) => {
+                let on_face =
+                    iso.vis.iter().flat_map(|v| &v.shapes).any(|sh| shape::shape_contains(&sh.as_shape(), land));
+                if on_face || gap <= tol {
+                    continue;
+                }
+                "off every visible face of the iso".to_string()
+            }
+        };
+        let an = env.spec.annotations.iter().find(|a| a.get("id").and_then(Value::str) == Some(n.id));
+        let at_text = an.and_then(|a| a.get("at")).map_or_else(String::new, |v| {
+            let mut buf = Vec::new();
+            json::write_compact(&mut buf, v);
+            String::from_utf8_lossy(&buf).into_owned()
+        });
+        let target = an.and_then(|a| a.get("target")).and_then(Value::str).unwrap_or("");
+        let far = if gap.is_finite() {
+            format!("{} in (paper) from the nearest drawn line", fixed(gap / env.s, 2))
+        } else {
+            "and nothing is drawn in the view".to_string()
+        };
+        let fix = if target.is_empty() {
+            "point \"at\" at the member the note describes: a Ref such as \"<component>@center\", or {\"ref\": ..., \"offset\": [dx, dy]} with an offset that stays on the member".to_string()
+        } else {
+            format!(
+                "remove \"at\" so the arrow lands inside target '{target}', or point it at a Ref on '{target}' (e.g. \"{}@center\")",
+                target.split(['.', '#']).next().unwrap_or(target)
+            )
+        };
+        env.diags.add_fix(
+            crate::model::Level::Warning,
+            "W_NOTE_LANDING",
+            Some(n.id),
+            Some(&format!("views/{vid}/annotations/{}/at", n.id)),
+            format!(
+                "view {vid}: the arrow of note '{}' (\"at\": {at_text}) lands on empty paper, {where_}, {far}",
+                n.id
+            ),
+            fix,
         );
     }
 }

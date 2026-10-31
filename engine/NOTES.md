@@ -42,7 +42,7 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 | `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
 | `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 8 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
 | `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (40 files); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 229 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/cli_ergonomics.mjs` | 265 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
 | `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
 | `tests/serve_smoke.mjs` | 224 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
 | `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
@@ -154,6 +154,23 @@ geometrically (tolerance 1e-3).
   S-50.02 with its label stuffing removed (`48in min lap`, `(8) 16d each side` in plate labels) covers 12/12 (was 9/12). Drawing
   text changes on the 47: 12 items (s-00-02 labels `f'c` now print as written, s-80-02 `1926.755(a)(1)`). Wasm without
   wasm-opt: 768,557 -> 795,385 raw, 312,380 -> 324,074 gzip (the tables and the tokenizer).
+- Annotation layout (issue #17, SPEC 25.2): `annot.rs` `at_owner`/`at_drawn` + `Iso::project_on` give an iso `at` the z
+  of its component's near face (`Iso::landing` now returns section-style candidates); `notes::check_landings` is
+  W_NOTE_LANDING. `text::items_box` is bulge-aware, so the title bubble (and circle tags) are in a view's extents;
+  `drawview::fit_area` is the frame above the title block less `FRAME_CLEAR_IN` (1/8") per side for the auto scale, the
+  NTS fit (which now estimates the factor it needs) and W_VIEW_FIT. `repair.rs`: `Clearance` (leaders + note blocks),
+  `repair_dim` slides text before pushing and never pushes blind, `repair_label` caps at 6 text heights,
+  `report_moves` (I_ANNOT_MOVED, the stacking's `blockers` from `dims::stack_dims` plus the pushing note) and
+  `report_overlaps` (W_LABEL_OVERLAP). `pin` is read in `annot::read_pin`. `route.rs` `untangle` + the two-start
+  search in `route()`. On 120 random dense columns (8-11 four-line notes on one side), untangling took leader
+  crossings from 138 to 40 and all leader hits from 341 to 257 (against the same tree without `untangle`). Time on the
+  47 MASS details: unchanged (198 `kerf drawing` calls in 0.53 s vs 0.51 s).
+  47 MASS details (copies, `kerf drawing` diagnostics per view), master -> this tree: W_LEADER_HIT 16 -> 8,
+  W_VIEW_FIT 0 -> 8 (explicit scales whose list or bubble touched the frame or title block: s-10-09 A, s-10-10 A,
+  s-80-01 A/B/C, s-70-02 A, s-00-02 C, s-10-02 E), W_NOTE_LANDING 0 -> 2 (s-10-03 B, s-30-01 F: arrows outside the crop),
+  W_LABEL_OVERLAP 0 -> 9 (s-30-01 S: 27 table labels overprint), I_ANNOT_MOVED 0 -> 50 (10 labels, 40 dimensions;
+  s-10-01/02/03, where every note has a hand-set `place`, account for 38). With every `place` removed (s-00-03, s-10-01/02/03): W_LEADER_HIT
+  1 -> 1, s-10-01 A has none.
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -254,6 +271,10 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   `zone: "<part>"` on hand-drawn polygons (use `in: "comp.part"` on builders with parts, or anchors + Ref offsets).
   `bend_k` / `seg_k_mid` count the corner points as given; a collinear interior point still counts as a bend (its
   `bend_k` is the point itself).
+- Annotation layout (issue #17): annotations cannot `acknowledge` (W_LEADER_HIT on an intentional crowd stays);
+  keyed tags still go to columns (no "near the landing, outside solids" placement); a dimension the leader repair
+  pushes can still move up to 2" (paper), now reported as I_ANNOT_MOVED; W_LABEL_OVERLAP does not look at weld
+  symbols; the minimum gap between leader note blocks is the style `note_gap_in`, unchanged.
 - The Zig test suite's unit tests (hostile-input table, OOM sweep, layout and view tests) were not ported: tests here are
   end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
 
@@ -290,3 +311,15 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - `W_BAR_OUTSIDE` is a new code rather than a `W_COVER` variant: `W_COVER` is about cover in a host, this is about having
   no host. A path bar only warns when a bend is outside or no point is inside, because a straight leg out of the concrete
   is common (dowels into future work, S-80-01's lap bar welded to a column between two pours).
+- Issue #17, iso `at`: the issue asks that `{ref, offset}` "land on the offset point of the 3D solid". Chosen: z is the
+  near face of the Ref's component (largest drawn z1 for front views, smallest z0 for back views, after cutaway), a
+  literal point uses the note's `target`, else `cut_z` (labels: same rule, no target). A point at the far end of a
+  member therefore needs a Ref on that member, not a z.
+- Issue #17, W_NOTE_LANDING in sections: warning only outside the crop. Inside it an arrow legitimately points into an
+  opening or the air ("WALL OPENING PER PLAN" in s-10-02 E); on the 47 MASS details an off-geometry rule also fired on
+  5 arrows inside the crop 0.05-0.13" (paper) from a line, which read as intended.
+- Issue #17 proposes `I_ANNOT_MOVED` as info: kept info, but `kerf check` now prints it (it filtered infos to a short
+  list). The 1/8" (paper) threshold applies to the dimension line's offset and to the label's shift; a text slide along
+  the dimension line is not reported (the line stays where the author put it).
+- The frame clearance is a constant 1/8" (paper), not a style key; the sheet still centres the view, so the clearance
+  shows as at least 1/8" on every side when the view fits.

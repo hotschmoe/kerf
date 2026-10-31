@@ -138,8 +138,9 @@ impl Default for Iso {
 }
 
 impl Iso {
-    /// Label point of the visible faces of `comp` (None: nothing of it is visible).
-    pub fn landing(&self, comp: &Comp, inst: Option<u32>, part: Option<&str>) -> Option<V2> {
+    /// Landing candidates on the visible faces of `comp` (None: nothing of it is visible): the label point first, then
+    /// other well-inside points the note layout may move the arrow to when its leader hits something (as in a section).
+    pub fn landing(&self, comp: &Comp, inst: Option<u32>, part: Option<&str>, crop: Box, h: f64) -> Option<Vec<V2>> {
         let mut shapes: Vec<Shape> = Vec::new();
         for v in &self.vis {
             if v.comp != comp.index {
@@ -153,7 +154,8 @@ impl Iso {
             }
             shapes.extend(v.shapes.iter().map(OwnedShape::as_shape));
         }
-        shape::label_point(&shapes)
+        let p = shape::label_point(&shapes)?;
+        Some(shape::candidates_for(&shapes, crop, p, h))
     }
 
     /// Non-drawn picking regions: the visible face chosen per prism (cut cap first).
@@ -177,8 +179,21 @@ impl Iso {
         out
     }
 
-    pub fn project(&self, p: V2) -> Option<V2> {
-        Some(proj(self.sx, self.sz, [p.x, p.y, self.cut_z]))
+    /// Project a point given relative to a component (an `at` Ref, offset applied): it lies on the face of that
+    /// component (instance, part) nearest the viewer, so z is the near end of its drawn z extent (cutaway applied).
+    /// A point with no component, or one not drawn in this view, lies on the plane z = cut_z.
+    pub fn project_on(&self, owner: Option<(u32, u32, Option<&str>)>, p: V2) -> V2 {
+        let mut z: Option<f64> = None;
+        if let Some((comp, inst, part)) = owner {
+            for ip in &self.prisms {
+                if ip.comp != comp || ip.instance != inst || part.is_some_and(|pn| ip.part != pn) {
+                    continue;
+                }
+                let near = if self.sz > 0.0 { ip.z1 } else { ip.z0 };
+                z = Some(z.map_or(near, |zz: f64| if self.sz > 0.0 { zz.max(near) } else { zz.min(near) }));
+            }
+        }
+        proj(self.sx, self.sz, [p.x, p.y, z.unwrap_or(self.cut_z)])
     }
 
     fn cell_range(&self, b: Box) -> [usize; 4] {

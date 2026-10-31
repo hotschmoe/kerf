@@ -9,6 +9,8 @@ use crate::pen::{LayerKey, Pen};
 use crate::route;
 use crate::sort;
 use crate::units;
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 /// A parsed dimension. Its drawn offset is `off0` (authored) pushed outward by `push` (layout repair) and by
@@ -22,6 +24,8 @@ pub struct DimSpec<'a> {
     pub dir: DimDir,
     pub off0: f64,
     pub text: Option<&'a str>,
+    /// `pin`: drawn at `off0` exactly, never stacked or pushed (overlaps then warn W_LABEL_OVERLAP).
+    pub pin: bool,
 }
 
 impl DimSpec<'_> {
@@ -35,6 +39,15 @@ impl DimSpec<'_> {
             DimDir::V => (self.to.y - self.from.y).abs(),
             DimDir::Aligned => self.from.dist(self.to),
             DimDir::H => (self.to.x - self.from.x).abs(),
+        }
+    }
+
+    /// Unit vector along the dimension line (from the lower / left end), the direction its text slides in.
+    pub fn along(&self) -> V2 {
+        match self.dir {
+            DimDir::V => V2::init(0.0, 1.0),
+            DimDir::Aligned => self.to.sub(self.from).norm(),
+            DimDir::H => V2::init(1.0, 0.0),
         }
     }
 
@@ -81,8 +94,9 @@ impl DimShape {
 /// Build one dimension. `offset` is the signed dimension-line offset (SPEC 16). When the text does not fit
 /// between the extension lines it goes outside (SPEC 20), never smaller and never dropped, joined to the
 /// dimension line by a short leader. `variant` picks where: 0/1 on the axis beyond the end of the line, 2-5
-/// raised out of the axis (outward / inward of the object) at the far / near end.
-pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, out: &mut Vec<Item>) -> DimShape {
+/// raised out of the axis (outward / inward of the object) at the far / near end. `slide` moves text that fits
+/// along the line from its middle (the layout repair slides it off a note leader, SPEC 25.2).
+pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide: f64, out: &mut Vec<Item>) -> DimShape {
     let st = env.style;
     let sc = env.s;
     let gap = st.ext_gap_in * sc;
@@ -159,7 +173,7 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, out: &
     let tn = V2::init(-math::sin(ang * RAD_PER_DEG), math::cos(ang * RAD_PER_DEG));
     let mut valign = VAlign::Baseline;
     let center = if fits {
-        la.mid(lb).add(tn.scale(tgap))
+        la.mid(lb).add(u.scale(slide)).add(tn.scale(tgap))
     } else {
         valign = VAlign::Middle;
         let at_far = matches!(variant, 0 | 2 | 4);
@@ -265,18 +279,37 @@ struct DimPlaced {
     items: Vec<Item>,
 }
 
+/// What a dimension's text or lines collide with: the other dimensions already placed and the labels.
+fn conflicts_of(sh: &DimShape, placed: &[(usize, DimShape)], labels: &[(&str, [V2; 4])], tol: f64) -> usize {
+    let mut c: usize = placed.iter().map(|(_, o)| dim_conflicts(sh, o, tol)).sum();
+    for (_, lp) in labels {
+        if polys_overlap(&sh.text, lp) {
+            c += 1;
+        }
+        if sh.used().iter().any(|sg| poly_hits_seg(lp, sg[0], sg[1])) {
+            c += 1;
+        }
+    }
+    c
+}
+
 /// SPEC 20 dimension stacking: dims are placed shortest first; a dimension whose line would overlap another
 /// one, or whose text would overprint another dimension's text or lines, moves out in steps of 0.25 paper
 /// inch (outside text first tries the other places before the dimension line moves). `pushes` is the extra
-/// outward distance chosen by the layout repair. Returns the effective offsets and fills `items`.
+/// outward distance chosen by the layout repair, `slides` the text slides. A pinned dimension stays at its offset. Fills the effective
+/// offsets `eff`, the items, and per dimension `blockers`: what it collides with at its authored offset (pushes
+/// included), named for the diagnostics (SPEC 25.2).
+#[allow(clippy::too_many_arguments)]
 pub fn stack_dims(
     env: &mut Env,
     specs: &[DimSpec],
     pushes: &[f64],
+    slides: &[f64],
     base_segs: &[[V2; 2]],
-    label_polys: &[[V2; 4]],
+    labels: &[(&str, [V2; 4])],
     items: &mut [Vec<Item>],
     eff: &mut [f64],
+    blockers: &mut [Vec<String>],
 ) {
     let step = 0.25 * env.s;
     let mut order: Vec<usize> = (0..specs.len()).collect();
@@ -285,29 +318,23 @@ pub fn stack_dims(
         let sy = specs[y].span();
         if (sx - sy).abs() > 1e-9 { sx < sy } else { x < y }
     });
-    let mut placed: Vec<DimShape> = Vec::new();
+    let mut placed: Vec<(usize, DimShape)> = Vec::new();
     for i in order {
         let d = &specs[i];
         let start = d.off0 + d.sgn() * pushes.get(i).copied().unwrap_or(0.0);
+        let slide = slides.get(i).copied().unwrap_or(0.0);
         let mut best: Option<DimPlaced> = None;
         let mut best_c = usize::MAX;
-        for k in 0..=12u32 {
+        let kmax = if d.pin { 0 } else { 12u32 };
+        for k in 0..=kmax {
             let off = start + d.sgn() * f64::from(k) * step;
             let mut kbest: Option<DimPlaced> = None;
             let mut kbest_hits = usize::MAX;
             let mut kbest_c = usize::MAX;
             for v in 0..DIM_VARIANTS {
                 let mut its = Vec::new();
-                let sh = dim_build(env, d, off, v, &mut its);
-                let mut c: usize = placed.iter().map(|o| dim_conflicts(&sh, o, 0.5 * step)).sum();
-                for lp in label_polys {
-                    if polys_overlap(&sh.text, lp) {
-                        c += 1;
-                    }
-                    if sh.used().iter().any(|sg| poly_hits_seg(lp, sg[0], sg[1])) {
-                        c += 1;
-                    }
-                }
+                let sh = dim_build(env, d, off, v, slide, &mut its);
+                let c = conflicts_of(&sh, &placed, labels, 0.5 * step);
                 let bh = if sh.fits { 0 } else { base_hits(base_segs, &sh.text) };
                 let fits = sh.fits;
                 if c < kbest_c || (c == kbest_c && bh < kbest_hits) {
@@ -317,6 +344,21 @@ pub fn stack_dims(
                 }
                 if fits {
                     break;
+                }
+            }
+            if k == 0
+                && kbest_c > 0
+                && let (Some(kb), Some(why)) = (&kbest, blockers.get_mut(i))
+            {
+                for (j, o) in &placed {
+                    if dim_conflicts(&kb.shape, o, 0.5 * step) > 0 {
+                        why.push(format!("dimension '{}'", specs[*j].id));
+                    }
+                }
+                for (lid, lp) in labels {
+                    if conflicts_of(&kb.shape, &[], &[(lid, *lp)], 0.5 * step) > 0 {
+                        why.push(format!("label '{lid}'"));
+                    }
                 }
             }
             if kbest_c < best_c {
@@ -334,6 +376,6 @@ pub fn stack_dims(
         if let Some(it) = items.get_mut(i) {
             *it = pick.items;
         }
-        placed.push(pick.shape);
+        placed.push((i, pick.shape));
     }
 }

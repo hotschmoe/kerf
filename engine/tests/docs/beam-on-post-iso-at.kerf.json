@@ -1,0 +1,34 @@
+{
+  "kerf": "0.1",
+  "id": "beam-on-post-iso-at",
+  "title": "BEAM ON POST",
+  "run": [-24, 24],
+  "meta": { "jurisdiction": { "code": "IRC", "edition": 2021 } },
+  "components": [
+    { "id": "post", "type": "lumber", "label": "4x4 post", "size": "4x4", "run": "y", "length": 36, "z": [-1.75, 1.75], "at": { "to": [0, 0] } },
+    { "id": "beam", "type": "lumber", "label": "4x8 beam", "size": "4x8", "run": "z", "orient": "upright", "at": { "to": "post@top_left" } }
+  ],
+  "views": [
+    {
+      "id": "A", "kind": "iso", "number": "1", "title": "BEAM ON POST", "scale": "NTS", "from": "front_right",
+      "annotations": [
+        { "id": "n_corner", "type": "note", "text": "4X8 BEAM CORNER", "at": "beam@top_right" },
+        { "id": "n_face", "type": "note", "text": "4X4 POST FACE", "at": { "ref": "post@bottom_left", "offset": [1.75, 6] } },
+        { "id": "n_post", "type": "note", "text": "4X4 POST", "target": "post" },
+        { "id": "l_top", "type": "label", "text": "TOP OF BEAM", "at": "beam@top_center", "offset": [0, 3] }
+      ]
+    },
+    {
+      "id": "B", "kind": "section", "number": "2", "title": "BEAM ON POST SECTION", "scale": "1-1/2\"=1'-0\"", "cut_z": 0,
+      "crop": { "x": [-6, 10], "y": [24, 48] },
+      "annotations": [
+        { "id": "n_beam", "type": "note", "text": "4X8 BEAM", "target": "beam" },
+        { "id": "n_post2", "type": "note", "text": "4X4 POST", "target": "post" },
+        { "id": "d_beam", "type": "dim", "from": "beam@bottom_left", "to": "beam@top_left", "dir": "v", "offset": -3 },
+        { "id": "d_beam2", "type": "dim", "from": "beam@bottom_left", "to": "beam@top_left", "dir": "v", "offset": -3, "text": "VERIFY" },
+        { "id": "d_pin", "type": "dim", "from": "beam@top_left", "to": "beam@top_right", "dir": "h", "offset": 3, "pin": true },
+        { "id": "l_brg", "type": "label", "text": "BEARING", "at": "post@top_center", "offset": [8, -4] }
+      ]
+    }
+  ]
+}

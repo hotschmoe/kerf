@@ -174,6 +174,37 @@ fn annotation_id<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, seen: &mut Vec<
     Some(id)
 }
 
+/// The component (index, instance, part) an `at` point is given relative to: a Ref, or the `ref` of `{ref, offset}`;
+/// for a literal `[x, y]` (or `@origin`), the note's `target` (`comp`, `comp.part`, `comp#k`) when it has one.
+fn at_owner<'v>(env: &Env, atv: &'v Value, target: &'v str) -> Option<(u32, u32, Option<&'v str>)> {
+    let text = atv.str().or_else(|| atv.get("ref").and_then(Value::str));
+    if let Some(r) = text.and_then(|t| scene::parse_ref(t).ok()).filter(|r| !r.origin) {
+        let c = env.scene.find(r.comp)?;
+        return Some((c.index, r.inst, r.part));
+    }
+    if target.is_empty() {
+        return None;
+    }
+    let (head, part) = match target.split_once('.') {
+        Some((h, p)) => (h, Some(p)),
+        None => (target, None),
+    };
+    let (cid, inst) = match head.split_once('#') {
+        Some((c, k)) => (c, k.parse::<u32>().ok()?),
+        None => (head, 0),
+    };
+    Some((env.scene.find(cid)?.index, inst, part))
+}
+
+/// Drawing position of the model point `p` resolved from `atv`: itself in a section; in an iso, projected from the
+/// face nearest the viewer of the component it refers to (SPEC 25.2).
+fn at_drawn(env: &Env, atv: &Value, target: &str, p: V2) -> V2 {
+    match &env.landing {
+        Landing::Section(_) => p,
+        Landing::Iso(iso) => iso.project_on(at_owner(env, atv, target), p),
+    }
+}
+
 /// A note's `key` (keyed views): a whole number from 1 to 999; anything else warns and is ignored.
 fn read_key(env: &Env, an: &Value, id: &str, apath: &str) -> Option<u32> {
     let kv = non_null(an, "key")?;
@@ -239,7 +270,7 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     let at_v = non_null(an, "at");
     if let Some(atv) = at_v {
         if let Some(p) = env.scene.point(atv, id, &format!("{apath}/at")) {
-            landing = Some(alloc::vec![p]);
+            landing = Some(alloc::vec![at_drawn(env, atv, target, p)]);
         }
         movable = false;
     } else if target.is_empty() {
@@ -309,6 +340,29 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     None
 }
 
+/// `pin` on a dimension or label: true keeps it exactly where the author put it; anything but a boolean warns.
+fn read_pin(env: &Env, an: &Value, id: &str, apath: &str) -> bool {
+    match non_null(an, "pin") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => {
+            env.diags.add_fix(
+                Level::Warning,
+                "W_PARAM",
+                Some(id),
+                Some(&format!("{apath}/pin")),
+                format!(
+                    "'{id}' in view {}: \"pin\" must be true or false (got {}); ignored",
+                    env.spec.id,
+                    model::kind_or_text(v)
+                ),
+                "use \"pin\": true to keep it exactly where you put it, or remove it".to_string(),
+            );
+            false
+        }
+    }
+}
+
 fn read_dim<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: &str) -> Option<DimSpec<'a>> {
     let (Some(fv), Some(tv)) = (an.get("from"), an.get("to")) else {
         env.diags.add(
@@ -340,7 +394,8 @@ fn read_dim<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: 
     };
     let off =
         model::length_or_diag(env.diags, Some(id), &format!("{apath}/offset"), an.get("offset"), "dim offset", 0.0)?;
-    Some(DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text") })
+    let pin = read_pin(env, an, id, apath);
+    Some(DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text"), pin })
 }
 
 /// A label and its offset from the `at` point.
@@ -374,11 +429,9 @@ fn read_label<'a>(
         off = model::offset_pair_or_diag(env.diags, Some(id), &format!("{apath}/offset"), "label offset", ov)?;
         p = p.add(off);
     }
-    let base = match &mut env.landing {
-        Landing::Section(_) => Some(p),
-        Landing::Iso(iso) => iso.project(p),
-    };
-    Some((LabelSpec { k, id, text, base, off }, off))
+    let base = Some(at_drawn(env, atv, "", p));
+    let pin = read_pin(env, an, id, apath);
+    Some((LabelSpec { k, id, text, base, off, pin }, off))
 }
 
 /// Reads every annotation of the view; the invalid ones are diagnosed and skipped.
@@ -503,8 +556,11 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
 
     let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
     let Some(fin) = best else { return Vec::new() };
+    repair::report_moves(env, routed, &dl, &fin);
+    repair::report_overlaps(env, routed, &prep, &dl, &fin);
     let rd = fin.rd;
     notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep.g);
+    notes::check_landings(env, routed, &fin.r, &base_segs);
     for (its, m) in rd.per.iter().zip(&rd.meta) {
         let bx = items_box(env.font, its);
         match m.kind {

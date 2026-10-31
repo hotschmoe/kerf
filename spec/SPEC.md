@@ -438,15 +438,16 @@ literal text; words of `section` that hold a digit (`1926.755(a)(1)`, `R602.3(5)
 ### 6.3 Note layout (deterministic; engines MUST implement this algorithm)
 1. Text: style case transform (default UPPERCASE; the tokens of §25.3 keep their case), word-wrap at `style.notes.wrap_chars` (28)
    using stroke-font advance widths × text height; never break inside a word unless longer than the line.
-2. Landing point per note: `at` if given; else the target's visible-region **label point**:
-   centroid of its largest visible polygon if inside it, otherwise the point inside on the
-   horizontal line through the centroid's y that is midway between the two nearest boundary crossings.
+2. Landing point per note: `at` if given (in an iso projected from the near face of its component, §25.2); else the
+   target's visible-region **label point**: centroid of its largest visible polygon if inside it, otherwise the point
+   inside on the horizontal line through the centroid's y that is midway between the two nearest boundary crossings.
 3. Column: notes with `place` are fixed. Others go to a column at `crop.x1 + gutter` (right) or
    `crop.x0 − gutter − text_width` (left) (`gutter` = style paper inches × scale factor). For
    `both`, a note goes to the side nearer its landing point.
 4. Ordering: sort column notes by landing y descending (top first); initial y = landing y; then
    resolve overlaps top-down: each note's top must be ≤ previous note's bottom − `note_gap`.
    If the column overflows the crop bottom, shift the whole column up (then down if it overflows the top).
+   Leaders of one column that still cross are untangled (§25.2).
 5. Leader: from the text's vertical middle on the near side (with a horizontal shoulder of
    `shoulder` paper inches) straight to the landing point; arrowhead per style.
 6. Keyed mode (view `notes_style: "keyed"`, or style `notes.mode`): same placement, but the column
@@ -456,11 +457,14 @@ literal text; words of `section` that hold a digit (`1926.755(a)(1)`, `R602.3(5)
 Extension lines from the two points (gap `ext_gap`, overshoot `ext_over`), dimension line at
 `offset`, terminators per style (`tick` = 45° heavy slash, default), text centered above the
 dimension line, feet-inch format, rotated for vertical dims (reading from the right). If text
-does not fit between the extension lines it moves outside to the right/top.
+does not fit between the extension lines it moves outside to the right/top. Colliding dimensions stack outward and
+a dimension text on a note leader first slides along its line (§20, §25.2); a dimension drawn more than 1/8" (paper)
+from its `offset` reports `I_ANNOT_MOVED`, and `"pin": true` keeps it at its `offset`.
 
 ### 6.5 Title
 Under each view: a detail bubble (circle, number on top, sheet on bottom if `meta.sheet`),
-the title text underlined (heavy), and `SCALE: 1 1/2" = 1'-0"` beneath.
+the title text underlined (heavy), and `SCALE: 1 1/2" = 1'-0"` beneath. The bubble's full circle is part of the view's
+extents, and the view with its notes, list and title keeps 1/8" (paper) clear of the frame and the title block (§25.2).
 
 ## 7. Style (`*.kerfstyle.json`)
 
@@ -589,7 +593,10 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_COVER` | warning | rebar clear cover < required. Host = the concrete/cmu prism containing the bar center. Each host boundary edge is classified by its outward normal: n.y < −0.5 ⇒ `bottom`, n.y > 0.5 ⇒ `top`, else `sides`. Required cover comes from the host's `cover`, with `cover.parts.<part>` overriding for bars inside that part zone. cmu_wall default cover `{ "sides": 1.5, "top": 1.5, "bottom": 0.5 }` |
 | `W_UNTREATED_CONTACT` | warning | wood (`treated:false`) touching concrete/grout/cmu (IRC R317.1) |
 | `W_NOTE_TARGET` | warning | note target not visible in its view |
-| `W_VIEW_FIT` | warning | view + notes exceed the sheet frame at the chosen scale |
+| `W_VIEW_FIT` | warning | view + notes + title (bubble included) exceed the sheet frame, less 1/8" clearance, at the chosen scale |
+| `W_NOTE_LANDING` | warning | a note's explicit `at` puts the arrow on empty paper: outside the crop (section), off every visible face and line (iso) |
+| `W_LABEL_OVERLAP` | warning | a label overprints a label or dimension text, a note's text overprints either, or a pinned dimension overprints another |
+| `I_ANNOT_MOVED` | info | the layout drew a dimension more than 1/8" (paper) from its `offset`, or moved a label that far (printed by `kerf check`) |
 | `I_UNVERIFIED_CITE` | info | citations awaiting designer verification (count) |
 | `W_BOLT_EDGE` | warning | a bolt's edge distance to a `steel` ply it passes through (in the drawing plane, or along z to the ply's z extent) is below AISC 360-16 Table J3.4 (1/2" 3/4, 5/8" 7/8, 3/4" 1, 7/8" 1 1/8, 1" 1 1/4, 1 1/8" 1 1/2, 1 1/4" 1 5/8, larger 1.25d); one warning per bolt group and ply, the worst bolt |
 | `W_BOLT_SPACING` | warning | bolt spacing < 2 2/3 d (AISC 360 J3.3) |
@@ -857,7 +864,9 @@ whose metrics are close; minor differences in CAD are acceptable.
   - Vapor retarder always uses pen `vapor` (dashed), never `cut`.
   - Hatch phase: pattern origin at model (0,0) after the family's own x0/y0, never per-region.
   - NTS (iso) fit: start at the factor that fits the cropped geometry in the frame, then grow the
-    factor in steps of 0.5 until drawing + notes + title fit. NTS views never raise `W_VIEW_FIT`.
+    factor (at least 0.5 per trial, else the factor at which the geometry fits beside the annotations' paper size,
+    §25.2) until drawing + notes + title fit. An NTS view raises `W_VIEW_FIT` only when its annotations alone do
+    not fit.
 - **Region items (for picking, not drawn):** for every visible cut region and every visible
   beyond face in a section/iso view, the Drawing IR also emits
   `{ "t": "region", "src": "<id>", "part": "<part>|null", "instance": k, "cut": true|false, "loops": [[[x,y,b],…],…] }`
@@ -1132,6 +1141,55 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
 - **CMU cells.** `cmu_wall` adds the part `cell` (between the face shells, full height) for `place` and the anchors
   `cell_left`, `cell_center`, `cell_right`, `cell_left_top`, `cell_right_top` (§5.3), so vertical path bars in a cell follow
   the wall width: `{"ref": "wall@cell_left", "offset": [1.5, -12]}`.
+
+### 25.2 alpha.5: annotation layout
+From the MASS dogfood run (issue #17): iso `at` points that did not project, title bubbles over the title block, labels
+and dimensions moved without a word, crossing leaders on dense views.
+- **Iso `at` points.** A note's or label's `at` (a Ref, `{ref, offset}` or `[x, y]`) is a model point; in an iso it is
+  projected like every other point. Its z is the near face of the component it names: the largest drawn z1 of that
+  component's prisms (instance and part of the Ref; cutaway applied) for `from` front_*, the smallest z0 for back_*. The
+  `offset` of `{ref, offset}` (and a label's `offset`) applies in model space before the projection. A literal point
+  (or `@origin`) on a note takes the note's `target` as its component; with none, z = `cut_z`.
+- **`W_NOTE_LANDING`.** An explicit `at` that puts the arrowhead on empty paper warns: in a section, a landing more than
+  half a text height outside the crop (inside the crop an arrow may point into an opening or the air above grade); in an
+  iso, a landing on no visible face and more than half a text height from every drawn line. The message has the `at`
+  value and the distance to the nearest line; the fix is to drop `at` (when the note has a `target`) or to point it at a
+  Ref on the member.
+- **Iso landing candidates.** An iso note's target gets the same alternative landing points as in a section (§16), so
+  the search can move an arrow off a crowded spot; the first candidate is still the label point, so a clean layout is
+  unchanged.
+- **View extents and frame clearance.** Arc segments count in a view's extents (the title bubble reached r below its
+  centre line and the sheet drew it over the title block). The area a view must fit is the frame interior above the
+  title block less 1/8" (paper) on each side; the auto scale (§19), the NTS fit (§17) and `W_VIEW_FIT` all use it, and
+  the sheet centres the view, so the DETAIL NOTES list and the bubble keep at least 1/8" from the frame and the title
+  block. An explicit scale that cannot keep it warns `W_VIEW_FIT`. The NTS fit grows its factor to at least
+  `geometry / (area - annotations)` per axis (annotations keep their paper size). `W_VIEW_FIT` names the annotation that
+  pushes the title down (`the notes column (8 notes) and the view title under it`) and calls the title "the view
+  title (bubble, title, scale)", not the title block.
+- **No silent moves: `I_ANNOT_MOVED`** (info, printed by `kerf check`). A dimension drawn more than 1/8" (paper) from its
+  `offset` (stacking, §20, plus repair pushes) reports where it is drawn, how far it moved (model and paper) and what it
+  clears (the dimensions and labels it collides with at its `offset`, the note whose leader pushed it); the fix gives the
+  `offset` that keeps it there, or `pin`. A label the repair moved more than 1/8" reports the distance and the note; in a
+  section the fix gives the label `offset` that keeps it there.
+- **`pin`** (dimension, label; default false): a pinned dimension is drawn exactly at its `offset` (no stacking, no
+  repair push, its text does not slide); a pinned label never moves. What then overprints warns `W_LABEL_OVERLAP`, a
+  leader through it `W_LEADER_HIT`.
+- **Smaller repair moves.** A dimension text hit by a leader first slides along its line (steps of half a text height,
+  both directions, nearest first, the text staying between the extension lines) so the line stays at its `offset`; only
+  when no slide clears it is the dimension pushed out, in 0.25" (paper) steps to the first position that clears the
+  leaders (at most 2" in total); no position clears, no push. Moved text and labels must also stay off every note text
+  block and key tag. Labels move at most 6 text heights (was 12).
+- **`W_LABEL_OVERLAP`** (warning): a label overprints another label or a dimension's text, a note's text block (or key
+  tag) overprints a label or dimension text, or a pinned dimension's text overprints another dimension's. For a label
+  the fix gives the smallest `offset` change (half text height steps, 8 directions) that clears it. At most 8 are
+  listed per view, then a count.
+- **Untangled columns.** After the §16 adjacent swaps, two notes of one column (neither placed) whose leaders still cross
+  trade places when that lowers the number of crossing pairs in the column; the first improving pair in note order is
+  taken, at most 2n + 4 rounds. A tall column pushes notes far from their landings, so non-neighbours cross: this is what
+  fanned leaders across dense views. When hits remain, the §16 search runs from the untangled column and, if untangling
+  changed it, also from the plain one; the better result wins (note-to-note hits, then all hits, then cost). A crossing
+  that remains is a `W_LEADER_HIT` ("crosses the leader of note ..."). Keyed tags (§24) route through the same code, so
+  keyed output changes only where it had crossings.
 
 ### 25.3 alpha.5: house style lint and coverage
 From the MASS dogfood run (47 details, issue #18): the note lint forced spellings engineers do not use, the renderer

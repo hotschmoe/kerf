@@ -110,7 +110,13 @@ pub fn items_box(font: &Font, items: &[Item]) -> Box {
     let mut b = Box::default();
     for it in items {
         match it {
-            Item::Path(p) => b.add_box(geom::points_box(&p.pts)),
+            Item::Path(p) if p.closed => b.add_box(geom::loop_box(&p.pts)),
+            Item::Path(p) => {
+                b.add_box(geom::points_box(&p.pts));
+                for w in p.pts.windows(2) {
+                    geom::seg_box_into(&mut b, w[0].v(), w[1].v(), w[0].b);
+                }
+            }
             Item::Fill(f) => {
                 for l in &f.loops {
                     b.add_box(geom::points_box(l));
