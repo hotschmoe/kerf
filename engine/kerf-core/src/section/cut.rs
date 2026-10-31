@@ -156,7 +156,7 @@ impl Section<'_> {
             }
         }
         let hatches = mat.map_or(&[][..], |m| &m.hatch[..]);
-        let want_hatch = !hatches.is_empty();
+        let want_hatch = !hatches.is_empty() && !self.is_lengthwise_lumber(p);
         if (want_hatch || (!path_bar && (is_fill_mat || is_thin) && p.kind == Kind::Body)) && !region.is_empty() {
             let groups = group_region(&region, region_exact.then_some(&p.loops[..]));
             for g in groups {

@@ -74,9 +74,8 @@ Trusses own the pitch; sheathing and roofing follow it and run to the truss end.
 {"id":"truss","type":"truss","pitch":"6:12","exterior":"left","overhang":18,"span_shown":36,"at":{"anchor":"bearing_outer","to":"sill_plate@top_left"}}
 {"id":"roof_sheathing","type":"panel","material":"osb","thickness":0.4375,"slope":"@truss","until":"truss@top_chord_end","at":{"anchor":"bottom_left","to":"truss@tail_top"}}
 ```
-To change the pitch of an existing detail, one ops file: `update components/truss {"pitch":"6:12"}`, and on every sloped panel/membrane
-`update components/roof_sheathing {"slope":"@truss","until":"truss@top_chord_end","length":null}`. `W_SHORT_SLOPE` warns when a sloped
-panel/membrane stops short of the member it rests on and prints this fix.
+To change the pitch: `update components/truss {"pitch":"6:12"}`; a sloped panel/membrane with a literal length gets
+`{"slope":"@truss","until":"truss@top_chord_end","length":null}` (`W_SHORT_SLOPE` prints this fix).
 
 ## Notes: one engineer's voice
 UPPERCASE, no trailing period, no sentences: `<SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>`, e.g.
