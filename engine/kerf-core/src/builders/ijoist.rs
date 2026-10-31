@@ -100,7 +100,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let jp = ctx.p.parse::<Params>()?;
     let size = jp.size.as_str();
     let parsed = super::common::parse_actual(size).map(|s| (s.t.max(s.d), s.t.min(s.d)));
-    let series = parsed.and_then(|(d, b)| SERIES.iter().find(|s| near(s.flange, b) && s.depths.iter().any(|&x| near(x, d))));
+    let series =
+        parsed.and_then(|(d, b)| SERIES.iter().find(|s| near(s.flange, b) && s.depths.iter().any(|&x| near(x, d))));
     let (Some((d, _)), Some(series)) = (parsed, series) else {
         let (nd, nb) = parsed.map_or((11.875, 2.3125), |(d, b)| nearest(d, b));
         let brand = size.bytes().any(|c| c.is_ascii_alphabetic() && c != b'x' && c != b'X');
@@ -122,7 +123,15 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let tf = jp.flange_depth.unwrap_or(series.flange_depth);
     let tw = jp.web.unwrap_or(if bf > 3.0 || d > 16.5 { 0.4375 } else { 0.375 });
     if 2.0 * tf >= d - 1.0 {
-        ctx.p.fail("flange_depth", format!("flange_depth {} leaves no web in a {} deep joist (two flanges must be under {})", fmt_ft_in(tf), fmt_ft_in(d), fmt_ft_in((d - 1.0) / 2.0)));
+        ctx.p.fail(
+            "flange_depth",
+            format!(
+                "flange_depth {} leaves no web in a {} deep joist (two flanges must be under {})",
+                fmt_ft_in(tf),
+                fmt_ft_in(d),
+                fmt_ft_in((d - 1.0) / 2.0)
+            ),
+        );
         return None;
     }
     if tw >= bf {
@@ -131,7 +140,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let mut until_note = String::new();
     if jp.run == Run::Z && ctx.p.has("until") {
-        ctx.p.fail("until", "'until' only applies to run x (a run z joist spans the document run: give 'length' or set 'z')".into());
+        ctx.p.fail(
+            "until",
+            "'until' only applies to run x (a run z joist spans the document run: give 'length' or set 'z')".into(),
+        );
         return None;
     }
     let mut z_length = None;
@@ -162,9 +174,29 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let run_x = jp.run == Run::X;
     let full = if run_x { length } else { STIFFENER_W };
     let mut slabs = vec![
-        Slab { part: "bottom_flange", material: "wood", u0: 0.0, u1: bf, v0: 0.0, v1: tf, x0: 0.0, x1: full, cut_mark: true },
+        Slab {
+            part: "bottom_flange",
+            material: "wood",
+            u0: 0.0,
+            u1: bf,
+            v0: 0.0,
+            v1: tf,
+            x0: 0.0,
+            x1: full,
+            cut_mark: true,
+        },
         Slab { part: "web", material: "osb", u0: xl, u1: xr, v0: tf, v1: d - tf, x0: 0.0, x1: full, cut_mark: false },
-        Slab { part: "top_flange", material: "wood", u0: 0.0, u1: bf, v0: d - tf, v1: d, x0: 0.0, x1: full, cut_mark: true },
+        Slab {
+            part: "top_flange",
+            material: "wood",
+            u0: 0.0,
+            u1: bf,
+            v0: d - tf,
+            v1: d,
+            x0: 0.0,
+            x1: full,
+            cut_mark: true,
+        },
     ];
     let ends = |e: Ends| -> Vec<(f64, f64)> {
         if !run_x {
@@ -182,7 +214,17 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     };
     for (x0, x1) in ends(jp.stiffeners) {
         for (u0, u1) in [(0.0, xl), (xr, bf)] {
-            slabs.push(Slab { part: "stiffener", material: "wood", u0, u1, v0: tf, v1: d - tf - STIFFENER_GAP, x0, x1, cut_mark: true });
+            slabs.push(Slab {
+                part: "stiffener",
+                material: "wood",
+                u0,
+                u1,
+                v0: tf,
+                v1: d - tf - STIFFENER_GAP,
+                x0,
+                x1,
+                cut_mark: true,
+            });
         }
     }
     for (x0, x1) in ends(jp.squash_blocks) {
@@ -234,14 +276,19 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
                 ..Prism::default()
             }
         };
-        let b = if run_x { Box { x0: s.x0, y0: s.v0, x1: s.x1, y1: s.v1 } } else { Box { x0: s.u0, y0: s.v0, x1: s.u1, y1: s.v1 } };
+        let b = if run_x {
+            Box { x0: s.x0, y0: s.v0, x1: s.x1, y1: s.v1 }
+        } else {
+            Box { x0: s.u0, y0: s.v0, x1: s.u1, y1: s.v1 }
+        };
         add_zone(s.part, b);
         prisms.push(pr);
     }
 
     let anchor = |name: &str, p: V2| NamedAnchor { name: name.into(), p };
     let mut anchors = Vec::new();
-    let mut info = format!("ijoist {} (flange {} x {}, web {})", size_text(d, bf), fmt_ft_in(bf), fmt_ft_in(tf), fmt_ft_in(tw));
+    let mut info =
+        format!("ijoist {} (flange {} x {}, web {})", size_text(d, bf), fmt_ft_in(bf), fmt_ft_in(tf), fmt_ft_in(tw));
     let box_;
     let nat;
     if run_x {

@@ -95,7 +95,12 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let top = if ctx.p.has("top_chord") { tp.top_chord.clone() } else { default_chord.to_string() };
     let bot = if ctx.p.has("bottom_chord") { tp.bottom_chord.clone() } else { default_chord.to_string() };
     let Some((dt, tt)) = chord_size(&top) else {
-        ctx.p.fail("top_chord", format!("top_chord \"{top}\" is not a sawn nominal size like \"2x4\", \"2x6\" (or \"4x2\" for a 2x4 laid flat)"));
+        ctx.p.fail(
+            "top_chord",
+            format!(
+                "top_chord \"{top}\" is not a sawn nominal size like \"2x4\", \"2x6\" (or \"4x2\" for a 2x4 laid flat)"
+            ),
+        );
         return None;
     };
     let Some((db, tb)) = chord_size(&bot) else {
@@ -131,7 +136,10 @@ fn lower(x: f64, y0: f64, sl: f64) -> f64 {
 
 fn parse_pitch(ctx: &mut Ctx, key: &str, v: &Value) -> Option<f64> {
     let Some(theta) = units::parse_slope(v) else {
-        ctx.p.fail(key, format!("param '{key}' must be rise:run like \"4:12\" or degrees (got {})", model::kind_or_text(v)));
+        ctx.p.fail(
+            key,
+            format!("param '{key}' must be rise:run like \"4:12\" or degrees (got {})", model::kind_or_text(v)),
+        );
         return None;
     };
     if theta <= 0.0 || theta >= math::PI / 2.0 {
@@ -159,7 +167,14 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
             None => math::atan(s / 2.0),
         };
         if theta_b >= theta - 1e-9 {
-            ctx.p.fail("bottom_pitch", format!("a scissor truss's bottom_pitch must be flatter than its pitch {}:12 (got {}:12)", fmt_num(s * 12.0), fmt_num(math::tan(theta_b) * 12.0)));
+            ctx.p.fail(
+                "bottom_pitch",
+                format!(
+                    "a scissor truss's bottom_pitch must be flatter than its pitch {}:12 (got {}:12)",
+                    fmt_num(s * 12.0),
+                    fmt_num(math::tan(theta_b) * 12.0)
+                ),
+            );
             return None;
         }
     } else if ctx.p.has("bottom_pitch") {
@@ -190,7 +205,13 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     }
     let overhang = if (mono || face) && !ctx.p.has("overhang") { 0.0 } else { tp.overhang };
     if face && overhang != 0.0 {
-        ctx.p.fail("overhang", format!("a truss hung at a face (bearing \"face\") has no overhang: remove 'overhang' (got {})", fmt_ft_in(overhang)));
+        ctx.p.fail(
+            "overhang",
+            format!(
+                "a truss hung at a face (bearing \"face\") has no overhang: remove 'overhang' (got {})",
+                fmt_ft_in(overhang)
+            ),
+        );
         return None;
     }
     let sl = sigma * s;
@@ -338,12 +359,19 @@ fn web_half(w: f64, h: f64, p: f64) -> f64 {
 /// A parallel-chord (floor or flat) truss in side view: chords, the end vertical and alternating diagonal webs.
 fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let Some(d) = tp.depth else {
-        ctx.p.fail("depth", "profile \"parallel_chord\" needs 'depth' (overall, bottom of bottom chord to top of top chord, e.g. 18)".into());
+        ctx.p.fail(
+            "depth",
+            "profile \"parallel_chord\" needs 'depth' (overall, bottom of bottom chord to top of top chord, e.g. 18)"
+                .into(),
+        );
         return None;
     };
     for key in ["heel", "heel_height", "bottom_pitch", "pitch"] {
         if ctx.p.has(key) {
-            ctx.p.fail(key, format!("'{key}' does not apply to profile \"parallel_chord\" (its chords are level: give depth)"));
+            ctx.p.fail(
+                key,
+                format!("'{key}' does not apply to profile \"parallel_chord\" (its chords are level: give depth)"),
+            );
             return None;
         }
     }
@@ -357,7 +385,13 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let face = tp.bearing == Bearing::Face;
     let overhang = if ctx.p.has("overhang") { tp.overhang } else { 0.0 };
     if face && overhang != 0.0 {
-        ctx.p.fail("overhang", format!("a truss hung at a face (bearing \"face\") has no overhang: remove 'overhang' (got {})", fmt_ft_in(overhang)));
+        ctx.p.fail(
+            "overhang",
+            format!(
+                "a truss hung at a face (bearing \"face\") has no overhang: remove 'overhang' (got {})",
+                fmt_ft_in(overhang)
+            ),
+        );
         return None;
     }
     let flat = ch.dt < ch.tt;
@@ -365,18 +399,39 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let xe = tp.span_shown;
     let x_body = if tcb { tp.bearing_width } else { 0.0 };
     if xe < x_body + w + 6.0 {
-        ctx.p.fail("span_shown", format!("span_shown {} is too short to draw the truss body: give at least {}", fmt_num(xe), fmt_num(math::ceil(x_body + w + 6.0))));
+        ctx.p.fail(
+            "span_shown",
+            format!(
+                "span_shown {} is too short to draw the truss body: give at least {}",
+                fmt_num(xe),
+                fmt_num(math::ceil(x_body + w + 6.0))
+            ),
+        );
         return None;
     }
     let top_loop = model::rect_loop(-overhang, d - dt, xe, d);
     let bot_loop = model::rect_loop(x_body, 0.0, xe, db);
     let ev = model::rect_loop(x_body, db, x_body + w, d - dt);
-    let mut prisms = vec![wood("bottom_chord", bot_loop.clone()), wood("top_chord", top_loop.clone()), wood("end_vertical", ev.clone())];
-    let mut zones = vec![zone_of("bottom_chord", &bot_loop), zone_of("top_chord", &top_loop), zone_of("end_vertical", &ev)];
+    let mut prisms = vec![
+        wood("bottom_chord", bot_loop.clone()),
+        wood("top_chord", top_loop.clone()),
+        wood("end_vertical", ev.clone()),
+    ];
+    let mut zones =
+        vec![zone_of("bottom_chord", &bot_loop), zone_of("top_chord", &top_loop), zone_of("end_vertical", &ev)];
     let p = tp.web_spacing.unwrap_or(h);
     let hw = web_half(w, h, p);
     if p <= 2.0 * hw + 0.25 {
-        ctx.p.fail("web_spacing", format!("web_spacing {} is too tight for {} webs over {} between the chords: give at least {}", fmt_num(p), fmt_ft_in(w), fmt_ft_in(h), fmt_num(math::ceil(2.0 * hw + 1.0))));
+        ctx.p.fail(
+            "web_spacing",
+            format!(
+                "web_spacing {} is too tight for {} webs over {} between the chords: give at least {}",
+                fmt_num(p),
+                fmt_ft_in(w),
+                fmt_ft_in(h),
+                fmt_num(math::ceil(2.0 * hw + 1.0))
+            ),
+        );
         return None;
     }
     let (yb, yt) = (db, d - dt);
@@ -427,7 +482,13 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         anchors,
         zones,
         nat_z: Some(ch.tt.max(ch.tb)),
-        info: format!("truss parallel chord {} deep, {}+{} chords, {bearing}, webs @ {}", fmt_ft_in(d), ch.top, ch.bot, fmt_ft_in(p)),
+        info: format!(
+            "truss parallel chord {} deep, {}+{} chords, {bearing}, webs @ {}",
+            fmt_ft_in(d),
+            ch.top,
+            ch.bot,
+            fmt_ft_in(p)
+        ),
         ..Built::default()
     })
 }
@@ -444,7 +505,15 @@ fn end_on(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let dt_v = ch.dt / math::cos(theta);
     let h = d - dt_v - ch.db;
     if h <= 0.0 {
-        ctx.p.fail("depth", format!("depth {} is not more than the two chords ({} + {}): give the overall height at the cut", fmt_ft_in(d), fmt_ft_in(ch.db), fmt_ft_in(dt_v)));
+        ctx.p.fail(
+            "depth",
+            format!(
+                "depth {} is not more than the two chords ({} + {}): give the overall height at the cut",
+                fmt_ft_in(d),
+                fmt_ft_in(ch.db),
+                fmt_ft_in(dt_v)
+            ),
+        );
         return None;
     }
     let plies = usize::from(tp.plies);
@@ -454,8 +523,10 @@ fn end_on(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let mut zones = Vec::new();
     for (part, t, y0, y1) in [("bottom_chord", ch.tb, 0.0, ch.db), ("top_chord", ch.tt, d - dt_v, d)] {
         let x0 = (tw - t) / 2.0;
-        let quads: Vec<[V2; 4]> = (0..plies).map(|k| quad_of(x0 + k as f64 * tw, y0, x0 + k as f64 * tw + t, y1)).collect();
-        let ply_lines: Vec<[V2; 2]> = (1..plies).map(|k| [V2::init(k as f64 * tw, y0), V2::init(k as f64 * tw, y1)]).collect();
+        let quads: Vec<[V2; 4]> =
+            (0..plies).map(|k| quad_of(x0 + k as f64 * tw, y0, x0 + k as f64 * tw + t, y1)).collect();
+        let ply_lines: Vec<[V2; 2]> =
+            (1..plies).map(|k| [V2::init(k as f64 * tw, y0), V2::init(k as f64 * tw, y1)]).collect();
         let lp = model::rect_loop(x0, y0, x0 + (plies - 1) as f64 * tw + t, y1);
         zones.push(zone_of(part, &lp));
         prisms.push(Prism { quads, ply_lines, ..wood(part, lp) });
@@ -502,7 +573,13 @@ fn end_on(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         zones,
         box_: Box { x0: 0.0, y0: 0.0, x1: w, y1: d },
         nat_z: tp.length,
-        info: format!("truss{girder} end-on {} deep at the cut, {}+{} chords, webs @ {}", fmt_ft_in(d), ch.top, ch.bot, fmt_ft_in(spacing)),
+        info: format!(
+            "truss{girder} end-on {} deep at the cut, {}+{} chords, webs @ {}",
+            fmt_ft_in(d),
+            ch.top,
+            ch.bot,
+            fmt_ft_in(spacing)
+        ),
         ..Built::default()
     })
 }
