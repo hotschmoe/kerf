@@ -309,7 +309,8 @@ pub const WORKSPACE_STYLE: &str = "kerf.kerfstyle.json";
 
 /// The nearest `kerf.kerfstyle.json` in `dir` or one of its ancestors (absolute path).
 pub fn find_style(dir: &Path) -> Option<PathBuf> {
-    let start = fs::canonicalize(if dir.as_os_str().is_empty() { Path::new(".") } else { dir }).ok()?;
+    let start =
+        fs::canonicalize(if dir.as_os_str().is_empty() { Path::new(".") } else { dir }).map(sys::plain_path).ok()?;
     start.ancestors().map(|d| d.join(WORKSPACE_STYLE)).find(|f| f.is_file())
 }
 

@@ -1503,7 +1503,7 @@ section('house style: W_ABBREV, company style kerf.kerfstyle.json, acknowledge o
     note('c_bott', '(2) #5 CONT. BOTT.'),
   ];
   r = kerf(['apply', 'co/proj/w.kerf.json', '--ops', JSON.stringify(cops), '-w', '--why', 'company style']);
-  check('the nearest kerf.kerfstyle.json above the document applies without --style and is named on a STYLE line', r.code === 0 && /^STYLE .*co\/kerf\.kerfstyle\.json \(workspace style; --style overrides\)$/m.test(r.out.split('\n')[0]), r.out.split('\n')[0]);
+  check('the nearest kerf.kerfstyle.json above the document applies without --style and is named on a STYLE line', r.code === 0 && /^STYLE .*co[\\/]kerf\.kerfstyle\.json \(workspace style; --style overrides\)$/m.test(r.out.split('\n')[0]), r.out.split('\n')[0]);
   check('always list: ON CENTER and MINIMUM. flagged (rule always), the quoted one is not; the fix absorbs the period', /W_ABBREV c_oc: .*"ON CENTER" is spelled out, and the company style always abbreviates it \(rule always\): write "O\.C\."/.test(r.out) && /"MINIMUM\." is spelled out/.test(r.out) && r.out.includes('{"text":"#4 @ 12\\" O.C. UNO, 6\\" MIN. \\"ON CENTER\\""}') && (r.out.match(/^WARN W_ABBREV c_oc:/gm) || []).length === 2, r.out);
   check('style switches: dotted_initials off lets UNO and the template\'s PT pass, approved BOTT. is fine', !/"UNO" breaks/.test(r.out) && !/W_ABBREV c_bott:/.test(r.out) && !/W_ABBREV n_sill:/.test(r.out), r.out);
   r = kerf(['check', 'co/proj/w.kerf.json', '--style', path.join(here, '..', '..', 'spec', 'styles', 'kerf-standard.kerfstyle.json')]);
@@ -1520,7 +1520,7 @@ section('house style: W_ABBREV, company style kerf.kerfstyle.json, acknowledge o
   r = kerf(['init', 'lib2']);
   check('kerf init writes a starter kerf.kerfstyle.json (defaults) and AGENTS.md names it', /^wrote kerf\.kerfstyle\.json$/m.test(r.out) && readJson('lib2/kerf.kerfstyle.json').notes.abbreviations.extends === 'us-structural' && /kerf\.kerfstyle\.json/.test(fs.readFileSync(path.join(tmp, 'lib2', 'AGENTS.md'), 'utf8')), r.out);
   r = kerf(['init', 'co/proj2']);
-  check('kerf init under a company folder keeps the company style (writes none)', /^company style: .*co\/kerf\.kerfstyle\.json \(found above; kerf applies it here\)$/m.test(r.out) && !fs.existsSync(path.join(tmp, 'co', 'proj2', 'kerf.kerfstyle.json')), r.out);
+  check('kerf init under a company folder keeps the company style (writes none)', /^company style: .*co[\\/]kerf\.kerfstyle\.json \(found above; kerf applies it here\)$/m.test(r.out) && !fs.existsSync(path.join(tmp, 'co', 'proj2', 'kerf.kerfstyle.json')), r.out);
 }
 
 // ---------------------------------------------------------------------------------------------------
