@@ -109,8 +109,15 @@ geometrically (tolerance 1e-3).
   `omit`, with their W_OVERLAP/W_NEAR_MISS acknowledgements stripped, warnings went 628 -> 267 (W_OVERLAP 573 -> 200,
   W_NEAR_MISS 39 -> 50, W_FLOATING 0 -> 1); what is left is within one scenario (100 are S-50.07's 0.01-0.02 sq in grid
   overlaps), plus near-misses that another scenario's lumber used to hide and two real misses the global check could
-  not see (S-60.03 view D: the parallel joist floats; S-40.02 view B: bottom chord 3" short of the ledger). Near-miss
-  blockers are still lumber only, so a panel in the gap (subfloor under a wall plate) does not block.
+  not see (S-60.03 view D: the parallel joist floats; S-40.02 view B: bottom chord 3" short of the ledger). Since #19 any
+  drawn prism in the gap blocks a near miss (subfloor, hanger seat, another array instance).
+- Papercuts (#19, SPEC 25.5): on the 47 MASS details with every `acknowledge` stripped, W_NEAR_MISS 64 -> 15 (41 gaps
+  filled by a subfloor, hanger, cap plate, tie or the other ply of a double plate; 1 side-by-side 1 3/4" framing space;
+  the rest were union boxes of arrays); W_FLOATING 14 -> 14; new W_BOLT_EDGE 2 (S-80.01 D rods 1 1/2" from the ICF core
+  face, the case claude7 asked for) and W_BOLT_SPACING 1 (S-80.03's two faked weld studs 3/16" apart); every other code
+  unchanged. Wrap changes moved text in 29 views (values kept together) and title blocks of long titles now take two
+  lines; goldens regenerated for both. `kerf version` gets `build` from `kerf-cli/build.rs` (`git describe`), so the core
+  and the wasm stay byte-identical.
 - Lengths print as `3'-0 1/4"` (feet with zero inches keep the `0`). Keyed notes (SPEC 24, view `notes_style` or style
   `notes.mode`) route the number tags through the same column layout as leader text, then place the DETAIL NOTES list
   outside everything else (`list_items`), so leader output is unchanged by the feature.
@@ -224,6 +231,17 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
 
 ## SPEC ISSUES
+- #19 W_CROP_STALE "only warn when the member changed since the crop was set": the engine has no record of when a crop
+  was set, so an apply compares the member's extent before and after the edit (moved or resized = changed); `kerf check`
+  and new members use the "< 10% inside every view" rule. A crop narrowed on purpose never warns unless < 10% is left.
+- #19 polygon slab cover: kept the 3" default for every concrete shape (a footing polygon needs it) and made W_COVER say
+  when the default cannot fit the host depth, with the exact op; deriving the default from thickness would silently
+  change cover for footings drawn as polygons.
+- #19 anchor edge distance: ACI 318-19 17.9.2 ties cast-in anchors to cover (20.5.1.3); the check uses 1 1/2" clear for
+  every hook type (post-installed 6d would warn on most IRC sill anchors whose ESRs allow 1 3/4"). Spacing uses 4d
+  cast-in / 6d post-installed.
+- #19 text mask: hatch knockout under note/dim/label text already exists (SPEC 18), so no `mask` field was added; the DXF
+  hatch is still not knocked out (Known gaps).
 - SPEC 13 says `kerf export` takes `format: "svg"|"dxf"|"pdf"`; the engine also accepts `png`, and PDF export frames the
   drawing on a sheet by default while SVG/DXF/PNG do not. Worth one sentence in 13/13.2.
 - SPEC 12 `3'-0 1/4"` versus `3'-1/4"` for feet with zero whole inches and a fraction: the engine prints the former.
