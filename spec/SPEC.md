@@ -586,6 +586,15 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_WELD_SIZE` | warning | a fillet weld symbol with `members` is larger than the thinner part allows (t, or t − 1/16 when t ≥ 1/4; AISC 360 J2.2b) or smaller than Table J2.4 (1/8, 3/16, 1/4, 5/16 by thinner part ≤ 1/4, 1/2, 3/4, over). Thickness of a W or channel is its thinner element, of an HSS or pipe the design wall |
 | `I_SOLID_USED` | info | `solid` escape hatch used |
 
+**Per-view geometry checks.** `W_OVERLAP`, `W_FLOATING`, `W_UNTREATED_CONTACT`, `W_COVER`, `W_NEAR_MISS` and
+`W_SHORT_SLOPE` run over the components each view draws: compiled, `visible`, and not in that view's `omit` (iso views
+included, with their own `omit`). Views that draw the same components are checked once. A finding is reported once; when
+it occurs in some views but not all, its message ends with ` (in view B)` / ` (in views A, C)`. A finding in every view,
+and every finding of a document without views (all components checked together, `visible` or not), carries no view
+list. So a multi-scenario detail (one view per scenario, the other scenarios' members omitted) gets no warnings between
+members that are never drawn together, and needs no `acknowledge` for them. `W_SHORT_SLOPE` keeps using the first
+section view's explicit crop for every view.
+
 ## 10. Drawing IR (`kerf_drawing` JSON)
 
 Output of a view; input of every exporter and of every UI's 2D renderer. Model-space inches.
@@ -789,6 +798,8 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **View `omit`:** `"omit": ["roofing", "roof_sheathing"]`, a list of component ids excluded
   from that view only (all instances). Typical use: peel back sheathing or finishes in an iso so the
   framing reads. Unknown ids ⇒ `E_REF_UNKNOWN`. Annotations targeting an omitted component ⇒ `W_NOTE_TARGET`.
+  The geometry checks run per view over what the view draws (§9), so `omit` is also how one document holds
+  alternative scenarios.
 - **Fills in iso:** `fill` components (earth, gravel, sand, compacted_fill) never render as 3D
   blocks in iso views. With `cutaway: true` only their cut face at `cut_z` is drawn (hatched,
   without a heavy outline except the grade line chain per `outline`). Without cutaway they're omitted.

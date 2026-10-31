@@ -283,6 +283,50 @@ section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_*
 }
 
 // ---------------------------------------------------------------------------------------------------
+section('6b. geometry checks per view: omit-based scenarios, findings named with their views');
+{
+  const scn = {
+    kerf: '0.1', id: 'scn', title: 'SCENARIOS',
+    components: [
+      { id: 'beam', type: 'lumber', size: '4x10', run: 'z', at: { anchor: 'bottom_left', to: [0, 0] } },
+      { id: 'cap', type: 'lumber', size: '2x4', run: 'x', length: 6, at: { anchor: 'bottom_left', to: [1, 9] } },
+      { id: 'a_joist', type: 'lumber', size: '2x10', run: 'x', length: 24, at: { anchor: 'bottom_right', to: 'beam@bottom_left' } },
+      { id: 'b_joist', type: 'lumber', size: '2x8', run: 'x', length: 24, at: { anchor: 'bottom_right', to: 'beam@bottom_left' } },
+      { id: 'b_blk', type: 'lumber', size: '2x4', run: 'x', length: 6, at: { anchor: 'bottom_right', to: [1, 8] } },
+      { id: 'b_nailer', type: 'lumber', size: '2x4', run: 'x', length: 6, at: { anchor: 'bottom_left', to: 'a_joist@top_left', offset: [4, 0] } },
+    ],
+    views: [
+      { id: 'A', kind: 'section', title: 'SCENARIO A', omit: ['b_joist', 'b_blk', 'b_nailer'] },
+      { id: 'B', kind: 'section', title: 'SCENARIO B', omit: ['a_joist'] },
+      { id: 'C', kind: 'iso', title: 'SCENARIO B', omit: ['a_joist', 'b_blk'] },
+    ],
+  };
+  write('scn.kerf.json', scn);
+  let r = kerf(['check', 'scn.kerf.json']);
+  const warns = r.out.split('\n').filter((l) => l.startsWith('WARN '));
+  check('members of different scenarios never drawn together: no W_OVERLAP between them', !warns.some((l) => /'a_joist' and 'b_/.test(l)), warns);
+  check('a finding in every view reads as before (no view list)', warns.some((l) => /^WARN W_OVERLAP beam: 'beam' and 'cap' overlap by 0\.63 sq in .* within z -3\/4"\.\.3\/4" Fix:/.test(l)), warns);
+  check('the iso view uses its own omit: the overlap with b_blk is reported once, in view B only', warns.filter((l) => /'b_blk' overlap/.test(l)).length === 1 && warns.some((l) => /^WARN W_OVERLAP beam: 'beam' and 'b_blk' overlap by 1\.25 sq in .* \(in view B\) Fix:/.test(l)), warns);
+  check('a member resting on another scenario\'s member floats where that member is omitted: W_FLOATING once, views B and C listed', warns.filter((l) => /W_FLOATING/.test(l)).length === 1 && warns.some((l) => /^WARN W_FLOATING b_nailer: component 'b_nailer' touches nothing .* \(in views B, C\) Fix:/.test(l)), warns);
+  check('a gap another scenario\'s member hid is a W_NEAR_MISS in the views that show it', warns.some((l) => /^WARN W_NEAR_MISS b_blk: 'b_blk' and 'b_joist' leave a 3\/4" gap .* \(in view B\) Fix:/.test(l)), warns);
+  check('5 warnings in all, output stable across runs', warns.length === 5 && /0 errors  5 warnings/.test(r.out) && kerf(['check', 'scn.kerf.json']).out === r.out, r.out);
+  const ack = { ...scn, components: scn.components.map((c) => (c.id === 'b_blk' ? { ...c, acknowledge: [{ code: 'W_OVERLAP', reason: 'blocking notched around the beam' }] } : c)) };
+  write('scn-ack.kerf.json', ack);
+  r = kerf(['check', 'scn-ack.kerf.json']);
+  check('acknowledging the per-view overlap: I_ACK keeps the view list', /0 errors  4 warnings/.test(r.out) && /^INFO I_ACK b_blk: W_OVERLAP on 'b_blk' acknowledged: blocking notched around the beam \(was: .*\(in view B\)\)/m.test(r.out), r.out);
+  const { views, ...noViews } = scn;
+  write('scn-noviews.kerf.json', noViews);
+  r = kerf(['check', 'scn-noviews.kerf.json']);
+  check('no views: every component is checked together, as before', /0 errors  4 warnings/.test(r.out) && /^WARN W_OVERLAP a_joist: 'a_joist' and 'b_joist' overlap by 174\.00 sq in/m.test(r.out) && !/\(in view/.test(r.out), r.out);
+  const e07 = JSON.parse(fs.readFileSync(path.join(DETAILS, 'truss-bearing-cmu.kerf.json'), 'utf8'));
+  Object.assign(e07.components.find((c) => c.id === 'roof_sheathing'), { slope: '@truss', length: 40 });
+  e07.components.find((c) => c.id === 'truss').pitch = '6:12';
+  write('e07-iso.kerf.json', e07);
+  r = kerf(['check', 'e07-iso.kerf.json']);
+  check('W_SHORT_SLOPE on the sheathing the iso omits names the section view only', /^WARN W_SHORT_SLOPE roof_sheathing: .*short of .* \(in view A\) Fix:/m.test(r.out), r.out);
+}
+
+// ---------------------------------------------------------------------------------------------------
 section('7. v0.1.5 (SPEC 21): lenient ops input');
 {
   kerf(['new', 'l.kerf.json', '--template', 'section']);

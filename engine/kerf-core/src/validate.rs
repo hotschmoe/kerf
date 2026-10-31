@@ -1,12 +1,15 @@
 //! Geometry checks over a compiled scene: overlaps, floating members, untreated wood on masonry, rebar cover,
-//! near-miss gaps, short sloped sheets and the citation tally.
+//! near-miss gaps, short sloped sheets and the citation tally. The geometry checks run once per distinct set of
+//! components the document's views draw (a view's `omit` removes components from its set).
 
 use crate::builders::world_box;
 use crate::clip::{self, Op};
+use crate::compile;
 use crate::geom::{self, Loc, Pt, V2, Xf};
 use crate::json::Value;
+use crate::limits;
 use crate::math;
-use crate::model::{Cover, Diags, HostInfo, Kind, Level, Prism};
+use crate::model::{Cover, Diag, Diags, HostInfo, Kind, Level, Prism};
 use crate::scene::{Comp, Scene, State, join_ids};
 use crate::style::Role;
 use crate::units::{self, fmt_ft_in};
@@ -100,12 +103,14 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
             items.push(Pf { prism: p, flat, box_, comp: c });
         }
     }
-    overlaps(&items, diags);
-    floating(scene, &items, diags);
-    untreated(&items, diags);
-    cover(scene, diags);
-    near_miss(scene, diags);
-    short_slope(scene, &items, doc, diags);
+    let (sets, ids) = drawn_sets(scene, doc, &items);
+    each_set(&sets, &ids, diags, overlaps);
+    each_set(&sets, &ids, diags, floating);
+    each_set(&sets, &ids, diags, untreated);
+    each_set(&sets, &ids, diags, cover);
+    each_set(&sets, &ids, diags, near_miss);
+    let crop = explicit_crop(doc);
+    each_set(&sets, &ids, diags, |s, d| short_slope(s, crop, d));
     crate::steelcheck::run(scene, doc, diags);
     for c in &scene.comps {
         if c.state == State::Ok && c.ty.traits.escape_hatch {
@@ -122,13 +127,83 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     unverified_count(doc, diags);
 }
 
-fn overlaps(items: &[Pf<'_>], diags: &Diags) {
+/// The components one or more views draw (compiled, `visible`, not in the view's `omit`) and their prisms. `views`
+/// are the indices of those views in `views[]`; empty for the single set of a document without views.
+struct Drawn<'p, 'a> {
+    comps: Vec<&'a Comp<'a>>,
+    items: Vec<&'p Pf<'a>>,
+    views: Vec<usize>,
+}
+
+/// The distinct component sets of the document's views (views that draw the same components share one) and the
+/// view ids. A document without views (or with more than the view limit) gets one set of every compiled component.
+fn drawn_sets<'p, 'a>(scene: &'a Scene<'a>, doc: &'a Value, items: &'p [Pf<'a>]) -> (Vec<Drawn<'p, 'a>>, Vec<&'a str>) {
+    let mut groups: Vec<(Vec<bool>, Vec<usize>)> = Vec::new();
+    let mut ids: Vec<&str> = Vec::new();
+    let va = doc.get("views").and_then(Value::arr).filter(|va| va.len() <= limits::MAX_VIEWS).unwrap_or(&[]);
+    for v in va {
+        let Some(id) = v.get("id").and_then(Value::str) else { continue };
+        if ids.contains(&id) {
+            continue;
+        }
+        let omit: Vec<&str> =
+            v.get("omit").and_then(Value::arr).map_or(Vec::new(), |oa| oa.iter().filter_map(Value::str).collect());
+        let mask: Vec<bool> = scene
+            .comps
+            .iter()
+            .map(|c| c.state == State::Ok && c.visible && !compile::is_omitted(&omit, &c.id))
+            .collect();
+        match groups.iter_mut().find(|g| g.0 == mask) {
+            Some(g) => g.1.push(ids.len()),
+            None => groups.push((mask, alloc::vec![ids.len()])),
+        }
+        ids.push(id);
+    }
+    if groups.is_empty() {
+        groups.push((scene.comps.iter().map(|c| c.state == State::Ok).collect(), Vec::new()));
+    }
+    let sets = groups
+        .into_iter()
+        .map(|(mask, views)| Drawn {
+            comps: scene.comps.iter().filter(|c| mask[c.index as usize]).collect(),
+            items: items.iter().filter(|p| mask[p.comp.index as usize]).collect(),
+            views,
+        })
+        .collect();
+    (sets, ids)
+}
+
+/// Run one geometry check over every set. A finding is reported once; when it occurs in some views but not all,
+/// its message ends with the views it occurs in.
+fn each_set<'p, 'a>(sets: &[Drawn<'p, 'a>], ids: &[&str], diags: &Diags, check: impl Fn(&Drawn<'p, 'a>, &Diags)) {
+    let mut found: Vec<(Diag, Vec<usize>)> = Vec::new();
+    for s in sets {
+        let sd = Diags::new();
+        check(s, &sd);
+        for d in sd.into_vec() {
+            match found.iter_mut().find(|(f, vs)| *f == d && !s.views.iter().any(|v| vs.contains(v))) {
+                Some((_, vs)) => vs.extend(&s.views),
+                None => found.push((d, s.views.clone())),
+            }
+        }
+    }
+    for (mut d, mut vs) in found {
+        if vs.len() < ids.len() {
+            vs.sort_unstable();
+            let names: Vec<&str> = vs.iter().map(|&v| ids[v]).collect();
+            d.message.push_str(&format!(" (in view{} {})", if names.len() == 1 { "" } else { "s" }, names.join(", ")));
+        }
+        diags.push(d);
+    }
+}
+
+fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut reported: Vec<[u32; 2]> = Vec::new();
-    for (i, p) in items.iter().enumerate() {
+    for (i, p) in s.items.iter().enumerate() {
         if p.prism.embedded || p.prism.kind != Kind::Body || p.comp.ty.traits.hardware {
             continue;
         }
-        for q in &items[i + 1..] {
+        for q in &s.items[i + 1..] {
             if q.prism.embedded || q.prism.kind != Kind::Body || q.comp.ty.traits.hardware {
                 continue;
             }
@@ -172,18 +247,18 @@ fn overlaps(items: &[Pf<'_>], diags: &Diags) {
     }
 }
 
-fn floating(scene: &Scene<'_>, items: &[Pf<'_>], diags: &Diags) {
+fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
     let gap = 1.0 / 32.0;
-    let n_comps = scene.comps.iter().filter(|c| c.state == State::Ok && !c.dashed).count();
+    let n_comps = s.comps.iter().filter(|c| !c.dashed).count();
     if n_comps < 2 {
         return;
     }
-    for c in &scene.comps {
-        if c.state != State::Ok || c.dashed {
+    for c in &s.comps {
+        if c.dashed {
             continue;
         }
-        let touches = items.iter().filter(|p| p.comp.index == c.index).any(|p| {
-            items.iter().any(|q| {
+        let touches = s.items.iter().filter(|p| p.comp.index == c.index).any(|p| {
+            s.items.iter().any(|q| {
                 q.comp.index != c.index
                     && z_gap(p.prism, q.prism) <= gap
                     && p.box_.expand(gap).overlaps(q.box_, 0.0)
@@ -203,14 +278,14 @@ fn floating(scene: &Scene<'_>, items: &[Pf<'_>], diags: &Diags) {
     }
 }
 
-fn untreated(items: &[Pf<'_>], diags: &Diags) {
+fn untreated(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut reported: Vec<[u32; 2]> = Vec::new();
     let gap = 1.0 / 32.0;
-    for p in items {
+    for p in &s.items {
         if p.prism.role != Role::Wood {
             continue;
         }
-        for q in items {
+        for q in &s.items {
             if !q.prism.role.is_masonry() || z_gap(p.prism, q.prism) > gap {
                 continue;
             }
@@ -364,9 +439,9 @@ fn piece_text(pieces: &[Piece], k: usize) -> String {
     )
 }
 
-fn cover(scene: &Scene<'_>, diags: &Diags) {
-    for bar in &scene.comps {
-        if bar.state != State::Ok || !bar.ty.traits.reinforcement {
+fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
+    for bar in &s.comps {
+        if !bar.ty.traits.reinforcement {
             continue;
         }
         let r = bar.built.bar_d / 2.0;
@@ -395,8 +470,8 @@ fn cover(scene: &Scene<'_>, diags: &Diags) {
                 let Some(l0) = bp.loops.first() else { continue };
                 centre = geom::loop_box(l0).center();
             }
-            for h in &scene.comps {
-                let Some(host) = h.built.host.as_ref().filter(|_| h.state == State::Ok) else { continue };
+            for h in &s.comps {
+                let Some(host) = h.built.host.as_ref() else { continue };
                 let Some(hz0) = h.zs.first() else { continue };
                 if bp.z0 < hz0[0] - 1e-6 && bp.z1 < hz0[0] - 1e-6 {
                     continue;
@@ -543,10 +618,10 @@ struct CompBox<'a> {
     z1: f64,
 }
 
-fn near_miss(scene: &Scene<'_>, diags: &Diags) {
+fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut boxes: Vec<CompBox<'_>> = Vec::new();
-    for c in &scene.comps {
-        if c.state != State::Ok || !c.ty.traits.near_miss || !axis_aligned(c) {
+    for &c in &s.comps {
+        if !c.ty.traits.near_miss || !axis_aligned(c) {
             continue;
         }
         let mut b = geom::Box::default();
@@ -690,7 +765,7 @@ fn same_slope(a1: f64, a2: f64) -> bool {
     d < 0.5 * (PI / 180.0)
 }
 
-fn proj_extent(items: &[Pf<'_>], c: &Comp<'_>, part: Option<&str>, u: V2) -> Option<[f64; 2]> {
+fn proj_extent(items: &[&Pf<'_>], c: &Comp<'_>, part: Option<&str>, u: V2) -> Option<[f64; 2]> {
     let mut lo = f64::INFINITY;
     let mut hi = f64::NEG_INFINITY;
     for it in items {
@@ -711,12 +786,12 @@ fn proj_extent(items: &[Pf<'_>], c: &Comp<'_>, part: Option<&str>, u: V2) -> Opt
     (lo <= hi).then_some([lo, hi])
 }
 
-fn short_slope(scene: &Scene<'_>, items: &[Pf<'_>], doc: &Value, diags: &Diags) {
-    let crop = explicit_crop(doc);
+fn short_slope(s: &Drawn<'_, '_>, crop: Option<geom::Box>, diags: &Diags) {
+    let items = &s.items;
     let slack = 0.5;
     let touch = 1.0 / 16.0;
-    for c in &scene.comps {
-        if c.state != State::Ok || c.dashed || !c.ty.traits.sheet {
+    for &c in &s.comps {
+        if c.dashed || !c.ty.traits.sheet {
             continue;
         }
         let mut u = V2::init(math::cos(c.angle), math::sin(c.angle));
@@ -747,8 +822,8 @@ fn short_slope(scene: &Scene<'_>, items: &[Pf<'_>], doc: &Value, diags: &Diags) 
         }
         let mut best: Option<&Comp<'_>> = None;
         let mut best_end = 0.0;
-        for h in &scene.comps {
-            if h.index == c.index || h.state != State::Ok || h.dashed {
+        for &h in &s.comps {
+            if h.index == c.index || h.dashed {
                 continue;
             }
             if c.ty.traits.rigid_sheet && h.ty.traits.rigid_sheet {
