@@ -187,7 +187,7 @@ struct Frame<'a> {
 }
 
 /// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
-fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &Diags) {
+fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, culprits: Option<(String, String)>, diags: &Diags) {
     let Frame { scale_text, scale, crop, bounds, aw, ah } = *frame;
     let view_id = spec.id;
     let leader = spec.notes_style.unwrap_or(st.notes_mode) == NotesStyle::Leader;
@@ -211,6 +211,13 @@ fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &D
     );
     let mut fixes = String::new();
     let mut nfix = 0usize;
+    if let Some((m, f)) = culprits {
+        msg.push_str(&m);
+        if !f.is_empty() {
+            nfix += 1;
+            fixes.push_str(&format!("{nfix}) {f}"));
+        }
+    }
     let lc = side_culprit(fit, crop, b'l');
     let rc = side_culprit(fit, crop, b'r');
     let tc = side_culprit(fit, crop, b't');
@@ -230,7 +237,8 @@ fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &D
         if cw > ow + 0.5 {
             nfix += 1;
             fixes.push_str(&format!(
-                "{nfix}) narrow crop.x by {} in (now [{}, {}])",
+                "{}{nfix}) narrow crop.x by {} in (now [{}, {}])",
+                sep(nfix),
                 fmt_num(need),
                 fmt_num(crop.x0),
                 fmt_num(crop.x1)
@@ -428,6 +436,129 @@ pub fn auto_crop(prisms: &[Prism], cut_z: f64) -> Box {
     }
     let m = 6.0;
     Box { x0: b.x0 - m, y0: b.y0 - m, x1: b.x1 + m, y1: b.y1 + m }
+}
+
+/// The component ids the view's annotations name (`target`, and the component of every `comp@anchor` Ref).
+fn annotated_ids<'a>(spec: &ViewSpec<'a>) -> Vec<&'a str> {
+    fn walk<'a>(v: &'a Value, out: &mut Vec<&'a str>) {
+        match v {
+            Value::String(s) => {
+                let id = s.find(['@', '.', '#']).map_or(s.as_str(), |k| &s[..k]);
+                if !id.is_empty() && !out.contains(&id) {
+                    out.push(id);
+                }
+            }
+            Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            Value::Object(m) => m.iter().filter(|e| e.key != "text" && e.key != "id").for_each(|e| walk(&e.value, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for an in spec.annotations {
+        walk(an, &mut out);
+    }
+    out
+}
+
+/// What stretches an auto crop (SPEC 18, W_VIEW_FIT): the components outside the main group of components that touch
+/// or nearly touch along x or y (more than 2'-0" of empty space splits groups; the main group is the one the view's
+/// annotations name most, then the largest), or, with one group, the components at the crop's edges. Returns the
+/// message part and the first fix.
+fn crop_culprits(scene: &Scene, prisms: &[Prism], spec: &ViewSpec, crop: Box) -> Option<(String, String)> {
+    let cut_z = spec.cut_z;
+    let view_id = spec.id;
+    let mut boxes: Vec<(u32, Box)> = Vec::new();
+    for p in prisms {
+        let is_cut = p.z0 < cut_z - 1e-9 && p.z1 > cut_z + 1e-9;
+        if (!is_cut && p.z1 > cut_z + 1e-9) || p.role == Role::Soil {
+            continue;
+        }
+        let mut b = Box::default();
+        for l in &p.loops {
+            b.add_box(geom::points_box(l));
+        }
+        b.add_box(geom::points_box(&p.line_pts));
+        b.add_box(geom::points_box(&p.centerline));
+        if b.is_empty() {
+            continue;
+        }
+        match boxes.iter_mut().find(|(c, _)| *c == p.comp) {
+            Some((_, cb)) => cb.add_box(b),
+            None => boxes.push((p.comp, b)),
+        }
+    }
+    let name = |c: u32| scene.comps.get(c as usize).map_or("?", |cc| cc.id.as_str());
+    let named = annotated_ids(spec);
+    let ids_text = |cs: &[u32]| {
+        let mut v: Vec<String> = cs.iter().take(8).map(|&c| format!("'{}'", name(c))).collect();
+        if cs.len() > 8 {
+            v.push(format!("{} more", cs.len() - 8));
+        }
+        v.join(", ")
+    };
+    for on_x in [true, false] {
+        let span = |b: &Box| if on_x { (b.x0, b.x1) } else { (b.y0, b.y1) };
+        let gap_min = 24.0;
+        let mut order: Vec<usize> = (0..boxes.len()).collect();
+        crate::sort::stable(&mut order, |&a, &b| span(&boxes[a].1).0 < span(&boxes[b].1).0);
+        let mut groups: Vec<(Vec<u32>, f64, f64)> = Vec::new();
+        for &i in &order {
+            let (c, b) = boxes[i];
+            let (lo, hi) = span(&b);
+            match groups.last_mut() {
+                Some(g) if lo <= g.2 + gap_min => {
+                    g.0.push(c);
+                    g.2 = g.2.max(hi);
+                }
+                _ => groups.push((alloc::vec![c], lo, hi)),
+            }
+        }
+        if groups.len() < 2 {
+            continue;
+        }
+        let rank = |g: &(Vec<u32>, f64, f64)| (g.0.iter().filter(|&&c| named.contains(&name(c))).count(), g.0.len());
+        let main = (0..groups.len()).fold(0, |m, k| if rank(&groups[k]) > rank(&groups[m]) { k } else { m });
+        let mut stray: Vec<u32> = Vec::new();
+        for (k, g) in groups.iter().enumerate() {
+            if k != main {
+                stray.extend(&g.0);
+            }
+        }
+        stray.sort_unstable();
+        let axis = if on_x { "x" } else { "y" };
+        let (m0, m1) = (groups[main].1, groups[main].2);
+        let mut quoted: Vec<String> = spec.omit.iter().map(|o| format!("\"{o}\"")).collect();
+        quoted.extend(stray.iter().map(|&c| format!("\"{}\"", name(c))));
+        let msg = format!(
+            " The auto crop spans {axis} {}..{} because {} lie apart from the main group of components ({axis} {}..{}).",
+            units::fmt_ft_in(if on_x { crop.x0 } else { crop.y0 }),
+            units::fmt_ft_in(if on_x { crop.x1 } else { crop.y1 }),
+            ids_text(&stray),
+            units::fmt_ft_in(m0),
+            units::fmt_ft_in(m1)
+        );
+        let fix = format!(
+            "if view {view_id} should not draw them (another scenario), add them to its omit: {{\"op\":\"update\",\"path\":\"views/{view_id}\",\"value\":{{\"omit\":[{}]}}}}; otherwise set an explicit crop",
+            quoted.join(", ")
+        );
+        return Some((msg, fix));
+    }
+    if boxes.is_empty() {
+        return None;
+    }
+    let mut edges: Vec<String> = Vec::new();
+    for (side, pick) in [("left", 0u8), ("right", 1), ("bottom", 2), ("top", 3)] {
+        let val = |b: &Box| match pick {
+            0 => -b.x0,
+            1 => b.x1,
+            2 => -b.y0,
+            _ => b.y1,
+        };
+        let best = boxes.iter().map(|(_, b)| val(b)).fold(f64::NEG_INFINITY, f64::max);
+        let at: Vec<u32> = boxes.iter().filter(|(_, b)| val(b) >= best - 1e-6).map(|(c, _)| *c).collect();
+        edges.push(format!("{side} {}", ids_text(&at)));
+    }
+    Some((format!(" The auto crop (components + 6\") is set by: {}.", edges.join("; ")), String::new()))
 }
 
 struct SecResolved {
@@ -639,7 +770,13 @@ pub fn build_from_scene<'a>(
         let aw = st.sheet_w_in - 2.0 * st.margin_in;
         let ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
         if pw > aw + 1e-6 || ph > ah + 1e-6 {
-            view_fit(st, spec, &Frame { scale_text: &scale_text, scale, crop: crop_out, bounds, aw, ah }, &fit, diags);
+            let culprits = if spec.kind == Kind::Section && !spec.has_crop {
+                crop_culprits(scene, &prisms, spec, crop_out)
+            } else {
+                None
+            };
+            let frame = Frame { scale_text: &scale_text, scale, crop: crop_out, bounds, aw, ah };
+            view_fit(st, spec, &frame, &fit, culprits, diags);
         }
     }
     let layers = collect_layers(&items, st);
