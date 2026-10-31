@@ -19,6 +19,14 @@ and 3D, edit the notes, and export DXF / PDF / SVG for your CAD software.
 | Windows (PowerShell) | `irm https://raw.githubusercontent.com/hotschmoe/kerf/master/install.ps1 \| iex` |
 | Linux / macOS | `curl -fsSL https://raw.githubusercontent.com/hotschmoe/kerf/master/install.sh \| sh` |
 
+Or build from source (Rust, no third-party crates; the toolchain is pinned in `engine/rust-toolchain.toml` and rustup
+installs it on first use):
+```sh
+cd engine && cargo build --release        # engine/target/release/kerf
+```
+With the web workstation embedded in the binary: `cd apps/web && npm ci && npm run build:serve`, then
+`cd ../../engine && KERF_UI=../apps/web/dist-serve cargo build --release`. Details in [`engine/README.md`](engine/README.md).
+
 ## Use it with Claude Code, Grok, or any coding agent
 
 ```sh
@@ -49,5 +57,12 @@ agents only: no API keys and no provider calls from Kerf; the web chat needs `ke
 | `apps/web/` | the web workstation (TypeScript + DOM + three.js) |
 | `tools/` | shared checkers and build helpers (DXF/PDF audits, wasm build, screenshots) |
 | `docs/` | history and decisions ([`STACKS.md`](docs/STACKS.md): the bake-off, and why Rust replaced Zig) |
+
+CI (`.github/workflows/`): `ci.yml` runs on every push to `master` / `dev-hotschmoe` and on pull requests (fmt, clippy,
+all engine gates on Linux, the web tests, the CLI gates on macOS) and calls `windows.yml`, which builds the shipped
+configuration and runs the gates on `windows-latest` (x86_64) and `windows-11-arm` (aarch64). A release is
+`tools/release.sh <version>`: it bumps `engine/Cargo.toml`, tags `v<version>` and pushes; `release.yml` then re-runs the
+gates, builds six binaries on native runners and publishes them with `SHA256SUMS`
+(`workflow_dispatch` on `release.yml` is a dry run that stops before publishing).
 
 License: MIT. Fonts: IBM Plex Mono (OFL), Hershey Simplex (public domain, NBS).
