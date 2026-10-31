@@ -96,6 +96,18 @@ struct FitInfo {
 
 const STANDARD_SCALES: [f64; 7] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0];
 
+/// Paper clearance (inches) kept between a view (its notes, list, title bubble) and the sheet frame or title block.
+const FRAME_CLEAR_IN: f64 = 0.125;
+
+/// The sheet area a view with its annotations and title must fit (paper inches): inside the frame and above the title
+/// block, `FRAME_CLEAR_IN` clear of both.
+fn fit_area(st: &Style) -> (f64, f64) {
+    (
+        st.sheet_w_in - 2.0 * st.margin_in - 2.0 * FRAME_CLEAR_IN,
+        st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in - 2.0 * FRAME_CLEAR_IN,
+    )
+}
+
 struct Culprit {
     name: String,
     ext: f64,
@@ -134,7 +146,7 @@ fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
     }
     let te = side_ext(fit.title, crop, side);
     if te > best.ext + 1e-9 {
-        best = Culprit { name: "the title block".to_string(), ext: te, kind: None, id: "title".to_string() };
+        best = Culprit { name: "the view title (bubble, title, scale)".to_string(), ext: te, kind: None, id: "title".to_string() };
     }
     best
 }
@@ -181,7 +193,7 @@ struct Frame<'a> {
     scale: f64,
     crop: Box,
     bounds: Box,
-    /// Sheet area (paper inches) inside the margins and above the title block.
+    /// Sheet area (paper inches) inside the frame and above the title block, less the frame clearance.
     aw: f64,
     ah: f64,
 }
@@ -198,7 +210,7 @@ fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &D
     let cw = crop.width() / scale;
     let ch = crop.height() / scale;
     let mut msg = format!(
-        "view {view_id} with notes, dimensions and title needs {} x {} paper inches but the sheet area is {} x {} at scale {}. Overflow by edge (sheet centered on the view): left {}\", right {}\", top {}\", bottom {}\".",
+        "view {view_id} with notes, dimensions and title needs {} x {} paper inches but the sheet area is {} x {} (inside the frame, above the title block, 1/8\" clear of both) at scale {}. Overflow by edge (sheet centered on the view): left {}\", right {}\", top {}\", bottom {}\".",
         fixed(pw, 2),
         fixed(ph, 2),
         fixed(aw, 2),
@@ -308,7 +320,7 @@ fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &D
         if big.kind.is_none() && big.id == "title" {
             nfix += 1;
             fixes.push_str(&format!(
-                "{}{nfix}) the title block sits below the lowest annotation: shorten the notes column or the crop",
+                "{}{nfix}) the view title (bubble, title, scale) sits below the lowest annotation: shorten the crop or the notes column, raise the lowest dimension, or use a smaller scale",
                 sep(nfix)
             ));
         }
@@ -450,8 +462,7 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
         let pass = section_pass(inp, &rs);
         return SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass };
     }
-    let aw = st.sheet_w_in - 2.0 * st.margin_in;
-    let ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
+    let (aw, ah) = fit_area(st);
     let mut last: Option<SecResolved> = None;
     let mut last_diags: Vec<Diag> = Vec::new();
     for (k, &sc) in STANDARD_SCALES.iter().enumerate() {
@@ -574,10 +585,12 @@ pub fn build_from_scene<'a>(
         scale_text = spec.scale_text.to_string();
         let mut trial = 0usize;
         let mut fitted = 0.0;
+        let mut need = 0.0f64;
         loop {
             let tdiags = Diags::new();
             let mut iso = Iso::default();
-            let res = iso::build(&mut iso, scene, spec, st, if trial == 0 { 0.0 } else { fitted + 0.5 * trial as f64 });
+            let factor = if trial == 0 { 0.0 } else { (fitted + 0.5 * trial as f64).max(need) };
+            let res = iso::build(&mut iso, scene, spec, st, factor);
             if trial == 0 {
                 fitted = res.scale;
             }
@@ -617,8 +630,16 @@ pub fn build_from_scene<'a>(
             // NTS views grow their (internal) fit factor until notes and title fit the sheet frame
             let pw = (b.x1 - b.x0) / scale;
             let ph = (b.y1 - b.y0) / scale;
-            let fits = pw <= st.sheet_w_in - 2.0 * st.margin_in + 1e-6
-                && ph <= st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in + 1e-6;
+            let (aw, ah) = fit_area(st);
+            let fits = pw <= aw + 1e-6 && ph <= ah + 1e-6;
+            if !fits {
+                // the geometry shrinks with the factor, the annotations keep their paper size
+                let (gw, gh) = (res.crop.width(), res.crop.height());
+                let (room_w, room_h) = (aw - (pw - gw / scale), ah - (ph - gh / scale));
+                if room_w > 0.5 && room_h > 0.5 {
+                    need = (gw / room_w).max(gh / room_h);
+                }
+            }
             if fits || spec.scale != 0.0 || trial >= 16 {
                 diags.extend(tdiags.take());
                 items = all;
@@ -636,8 +657,7 @@ pub fn build_from_scene<'a>(
     {
         let pw = (bounds.x1 - bounds.x0) / scale;
         let ph = (bounds.y1 - bounds.y0) / scale;
-        let aw = st.sheet_w_in - 2.0 * st.margin_in;
-        let ah = st.sheet_h_in - 2.0 * st.margin_in - st.title_block_h_in;
+        let (aw, ah) = fit_area(st);
         if pw > aw + 1e-6 || ph > ah + 1e-6 {
             view_fit(st, spec, &Frame { scale_text: &scale_text, scale, crop: crop_out, bounds, aw, ah }, &fit, diags);
         }
