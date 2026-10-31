@@ -1792,6 +1792,15 @@ section('#26. face-on sheathing and nailing');
   check('on and z together: E_PARAM', /^ERROR E_PARAM w_sh1: give either 'on' .* or 'z', not both/m.test(r.out), r.out);
   r = variant('sh1.kerf.json', (v) => { comp(v, 'w_sh1').on = 'w_stud.face_left'; });
   check('on a side face: E_PARAM naming face_front/face_back', /^ERROR E_PARAM w_sh1: 'on': a face-on sheet lies on a z face: "w_stud\.face_front" or "w_stud\.face_back"/m.test(r.out), r.out);
+  r = variant('sh1.kerf.json', (v) => { const c = comp(v, 'w_sh1'); delete c.lay; delete c.on; delete c.height; c.thickness = 96; c.z = [3.5, 3.9375]; });
+  check('a sheet faked face-on (thickness = its height): W_PARAM with the lay face op', /^WARN W_PARAM w_sh1: panel 'w_sh1' is 8'-0" thick and 4'-0" long: no sheet is that thick.*Fix: \{"op":"update","path":"components\/w_sh1","value":\{"lay":"face","height":96,"thickness":0\.4375\}\}/m.test(r.out), r.out);
+  {
+    const v = readJson('sh1.kerf.json');
+    Object.assign(comp(v, 'w_sh1'), { lay: 'face', height: 96, thickness: 0.4375 });
+    write('sh1b.kerf.json', v);
+    const strip = (f) => items(f, 'A').items.filter((i) => i.t !== 'text');
+    check('applying it clears the warning and draws the same elevation', /0 errors  0 warnings/.test(kerf(['check', 'sh1b.kerf.json']).out) && JSON.stringify(strip('sh1b.kerf.json')) === JSON.stringify(strip('sh.kerf.json')));
+  }
   r = variant('sh1.kerf.json', (v) => { comp(v, 'f_en').blocked = true; });
   check('blocked floor edges over no joist: W_NAIL_EDGE offering blocked false', /^WARN W_NAIL_EDGE f_en: .*has no framing behind it.*\{"op":"update","path":"components\/f_en","value":\{"blocked":false\}\}/m.test(r.out), r.out);
 

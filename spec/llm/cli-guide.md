@@ -200,14 +200,23 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - Nailing (SPEC 27.4): draw fasteners with a `nailing` component, never notes alone. It is placed from `members` (the
   member the heads are on first), so it moves with them: plate splice `{"type":"nailing","members":["upper_plate",
   "lower_plate"],"size":"16d","count":8,"rows":2,"through":true}` (staggered rows over the joint; `range` limits them),
-  toenails `{"pattern":"toenail","members":["blocking","plate"],"size":"8d","count":2}`, sheathing
+  toenails `{"pattern":"toenail","members":["blocking","plate","lower_plate"],"size":"16d","count":2}`, sheathing
   `{"pattern":"edge","members":["shtg","sill","stud_end","top_plate"],"size":"8d","spacing":6}` (kept where framing lies
-  behind; a bare edge is W_NAIL_EDGE) and `{"pattern":"field","members":["shtg","stud"],"size":"8d","spacing":12}`. Nails in the
+  behind; a bare edge is W_NAIL_EDGE; `"blocked": false` for an unblocked diaphragm) and
+  `{"pattern":"field","members":["shtg","stud"],"size":"8d","spacing":12}`. Several sheets side by side: list every sheet
+  first, then the framing (`["sh1","sh2","sh3","joists","rim"]`): one edge and one field nailing per layout. Nails in the
   drawing plane draw as a shank with a head (toenails angled), end-on as dots; iso shows dots on the face. A note
   targeting it may omit `text` (it prints `(8) 16d NAILS STAGGERED`, `8d @ 6" O.C. EDGE NAILING`, or the `text` param),
-  and coverage reads that text. In a section only nails at or behind the cut and outside cut solids show: an elevation
-  (or `cut_z` in front) shows splice nails, W_NAIL_HIDDEN says when a view shows none. W_NAIL_MEMBERS (no touching
-  joint), W_NAIL_LENGTH (points out of the far face: `through` or a shorter size), W_NAIL_SPACING print their fixes.
+  and coverage reads that text. In a section nails at or behind the cut show, also inside their own cut members (end
+  nails and toenails in a mid-bay section); other cut solids hide them. W_NAIL_HIDDEN says when a view shows none (an
+  iso names the face turned away or the piece covering the heads). W_NAIL_MEMBERS (no touching joint), W_NAIL_LENGTH
+  (points out of the far face: `through` or a shorter size; every toenail fix it offers is re-checked), W_NAIL_SPACING
+  print their fixes.
+- Sheathing seen face-on (shear walls, portal frames, wall sheathing in a plan of the wall) is a `panel` with
+  `"lay": "face"`: `length` along x, `height` along y, `thickness` along z, `"on": "stud.face_front"` (or `face_back`)
+  sets z: `{"type":"panel","lay":"face","material":"osb","thickness":0.4375,"length":48,"height":96,
+  "on":"stud.face_front","at":{"to":[0,0]}}`. Never fake it with `thickness` = the wall height. Edge and field nailing
+  work on it (edges left/right/top/bottom); an elevation with `"hidden_lines": true` dashes the framing behind.
 - Framing hardware (SPEC 27.2) is one `connector` placed from its members, never polylines or `solid` plates:
   `{"type":"connector","model":"LUS210","carried":"joist","carrying":"header"}` (hanger: seat under the joist end,
   sides on its faces, flanges on the header face; `"mount":"top_flange"` or a TF/ITS/THA model hooks over the top;

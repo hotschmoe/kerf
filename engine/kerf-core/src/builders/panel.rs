@@ -79,6 +79,37 @@ fn on_face(ctx: &mut Ctx, on: &str, t: f64) -> Option<f64> {
     Some(if face == "face_front" { z1 + t / 2.0 } else { z0 - t / 2.0 })
 }
 
+/// No sheet is thicker: an edge-on panel past this is a sheet faked face-on with `thickness` = its height (SPEC 28.6).
+const FACE_HINT: f64 = 1.5;
+
+/// W_PARAM for an edge-on panel thicker than any sheet, with the op that makes it a face-on sheet of the same size.
+fn face_hint(ctx: &mut Ctx, pp: &Params, length: f64) {
+    let id = ctx.p.id;
+    let z = ctx.p.raw("z").and_then(crate::json::Value::arr).and_then(|a| {
+        let z0 = crate::units::parse_length(a.first()?)?;
+        let z1 = crate::units::parse_length(a.get(1)?)?;
+        Some(z1 - z0)
+    });
+    let sheet = z.filter(|t| *t > 0.0 && *t <= FACE_HINT).unwrap_or(0.4375);
+    let run = if pp.run == Run::X { "" } else { ",\"run\":\"y\"" };
+    ctx.p.diags.add_fix(
+        model::Level::Warning,
+        "W_PARAM",
+        Some(id),
+        Some(&format!("components/{id}")),
+        format!(
+            "panel '{id}' is {} thick and {} long: no sheet is that thick. A sheet seen face-on (shear wall, portal frame, wall sheathing in elevation or iso) is \"lay\": \"face\" with its height in \"height\"",
+            fmt_ft_in(pp.thickness),
+            fmt_ft_in(length)
+        ),
+        format!(
+            "{{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"lay\":\"face\",\"height\":{},\"thickness\":{}{run}}}}} (z stays; or \"on\": \"<stud>.face_front\" instead of z)",
+            super::common::fmt_num(pp.thickness),
+            super::common::fmt_num(sheet)
+        ),
+    );
+}
+
 pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let pp = ctx.p.parse_all::<Params>();
     let run = pp.run.tag();
@@ -111,6 +142,9 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let material = pp.material.tag();
     if !material_ok(ctx, "material", material) {
         return None;
+    }
+    if !face && pp.thickness > FACE_HINT {
+        face_hint(ctx, &pp, length);
     }
     let along_x = pp.run == Run::X;
     let across = if face { pp.height.unwrap_or(0.0) } else { pp.thickness };
