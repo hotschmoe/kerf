@@ -444,8 +444,16 @@ section('12. steel shapes, bolts and weld symbols: table errors, W_BOLT_EDGE, W_
   r = kerf(['drawing', 'stl.kerf.json', '--view', 'A']);
   const items = r.code === 0 ? JSON.parse(r.out).items : [];
   check('weld symbol drawn: leader, reference line, symbol, size text, all-around circle', items.filter((i) => i.src === 'w1' && i.t === 'path').length >= 4 && items.some((i) => i.src === 'w1' && i.t === 'text' && i.s === '3/16') && items.some((i) => i.src === 'w1' && i.t === 'path' && i.closed), r.err);
-  check('HSS in elevation: hidden wall lines, never filled', items.some((i) => i.src === 'col' && i.pen === 'hidden') && !items.some((i) => i.src === 'col' && i.t === 'fill'), r.err);
+  check('HSS in elevation: solid silhouette, no hidden lines by default, never filled', items.some((i) => i.src === 'col' && i.pen === 'steel') && !items.some((i) => i.src === 'col' && (i.pen === 'hidden' || i.t === 'fill')), r.err);
   check('plate cut in section: solid steel fill', items.some((i) => i.src === 'plate' && i.t === 'fill'), r.err);
+  const hid = steelDoc([]);
+  hid.components[1].hidden_lines = true;
+  hid.views[0].crop = { x: [-8, 8], y: [-2, 12] };
+  write('stl.kerf.json', hid);
+  r = kerf(['drawing', 'stl.kerf.json', '--view', 'A']);
+  const its2 = r.code === 0 ? JSON.parse(r.out).items : [];
+  check('hidden_lines: true draws the inside wall faces dashed', its2.filter((i) => i.src === 'col' && i.pen === 'hidden').length === 2, r.err);
+  check('a steel member seen lengthwise gets a break line where the crop cuts it', its2.some((i) => i.src === 'crop' && i.pen === 'break' && i.pts.every((p) => Math.abs(p[1] - 12) < 1) && i.pts[0][0] < 3 && i.pts[i.pts.length - 1][0] > 7), r.err);
   write('stl.kerf.json', steelDoc([], [{ id: 'w2', type: 'weld', at: 'col@bottom_right' }]));
   r = kerf(['check', 'stl.kerf.json']);
   check('fillet weld without size: E_PARAM with a fix', /ERROR E_PARAM w2: weld 'w2': a fillet weld needs "size".*Fix: e\.g\. "size": "3\/16"/.test(r.out), r.out);

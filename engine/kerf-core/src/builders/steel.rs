@@ -23,13 +23,14 @@ param_enum! { pub enum Outstand { Back = "back", Front = "front" } }
 params! {
     pub struct Params {
         shape: Str => { desc: "AISC designation from the embedded table: W8x18, HSS4x4x1/4 (rect, nominal wall), HSS4.000x0.250 (round), PIPE3STD / PIPE3XS, L4x3x3/8, C8x11.5, MC8x18.7, PL1/2x8 (plate thickness x width, any size). HSS and pipe walls draw at the design thickness 0.93 x nominal" },
-        orient: Enum(Orient) = Orient::Section => { desc: "section: cut end-on, the member runs along z (true flange/web/wall thicknesses, solid steel fill when cut); elevation: seen from the side along its length (depth in-plane: a W shows its flanges as lines, an HSS its walls as hidden lines); plan: seen from above along its length (flange width in-plane, web as hidden lines). Elevation and plan never fill, even where the section plane passes through them" },
+        orient: Enum(Orient) = Orient::Section => { desc: "section: cut end-on, the member runs along z (true flange/web/wall thicknesses, solid steel fill when cut); elevation: seen from the side along its length (depth in-plane: the silhouette in the visible steel pen, a W's flanges as lines); plan: seen from above along its length (flange width in-plane). Elevation and plan never fill, even where the section plane passes through them, and get a break line where the crop cuts them off" },
         run: Enum(Run) = Run::X => { desc: "elevation/plan: in-plane direction of the length, x (beam) or y (column, post). Run y puts the cross-section's top (elevation) or left (plan) toward +x" },
         length: OptRaw => { def: "elevation/plan: required", desc: "member length (or `until`). Section: optional; the member is then that long along z, centered on the first section view's cut_z (default: spans the doc run)" },
         until: OptRaw => { desc: "elevation/plan alternative to length: a Ref; the member grows from its placement anchor along its run until its far end reaches the Ref (as lumber `until`)" },
         long_leg: Enum(LongLeg) = LongLeg::Vertical => { desc: "angles: which leg is vertical in the cross-section: vertical (LLV) or horizontal (LLH). The vertical leg is on the left (heel bottom-left); mirror: true puts it on the right" },
-        outstand: Enum(Outstand) = Outstand::Back => { desc: "elevation of angles and channels: the horizontal leg / the flanges point back (away from the viewer, -z: you see the vertical leg or web face-on, the rest as hidden lines) or front (+z)" },
+        outstand: Enum(Outstand) = Outstand::Back => { desc: "elevation of angles and channels: the horizontal leg / the flanges point back (away from the viewer, -z: you see the vertical leg or web face-on) or front (+z)" },
         fillets: Bool = true => { desc: "draw the root fillets (W k-region, angle and channel roots) and HSS corner radii (outside 2t, inside t) in section" },
+        hidden_lines: Bool = false => { desc: "elevation/plan: also draw the hidden faces as dashed lines (HSS and pipe inside wall faces, the web of a W in plan, back flanges of a channel, the back leg of an angle). Default off: drafting omits them; the silhouette is always solid" },
         grade: Str = "" => { def: "null", desc: "free text for notes and the summary, e.g. \"A992\", \"A500 GR. C\", \"A36\", \"A53 GR. B\"" },
     }
 }
@@ -426,7 +427,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ..steel_prism(sl.part, model::rect_loop(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)))
         });
     }
-    for &c in hidden {
+    for &c in hidden.iter().filter(|_| sp.hidden_lines) {
         prisms.push(hidden_line(at(0.0, c), at(len, c), depth / 2.0));
     }
     let mut anchors: Vec<NamedAnchor> = Vec::new();

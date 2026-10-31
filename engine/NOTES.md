@@ -42,7 +42,7 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 | `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
 | `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 7 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
 | `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (32 files); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 159 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/cli_ergonomics.mjs` | 161 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
 | `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
 | `tests/serve_smoke.mjs` | 190 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
 | `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
@@ -111,8 +111,8 @@ geometrically (tolerance 1e-3).
   the weld symbol, `steelcheck.rs` W_BOLT_EDGE / W_BOLT_SPACING / W_WELD_SIZE (called from `validate::run`). Two prism
   fields carry it through the pipeline: `zoff` (a slab's z center relative to the component's, applied in
   `compile::world_prisms`) and `lengthwise` (section: a member that reaches behind the cut is beyond, never cut; its slab
-  edges on a nearer slab of the same member are dropped in `section/beyond.rs`). Ghost prisms with `line_pts` draw open
-  hidden lines. Edge distance: side bolts sample the grip axis through the union of the ply's prisms that contain the
+  edges on a nearer slab of the same member are dropped in `section/beyond.rs`; `section/breaks.rs` gives it break
+  lines at the crop). Ghost prisms with `line_pts` draw open hidden lines (only with `hidden_lines: true`). Edge distance: side bolts sample the grip axis through the union of the ply's prisms that contain the
   bolt's z and cast rays perpendicular to the axis; z distance to the ply's z extent counts too. Wasm: +70 KB raw,
   +22 KB brotli (588,023 -> 658,168 raw; 224,965 -> 246,938 brotli); about 21 KB is strings and tables, the rest the
   builders, the parser and the checks (no float formatting was pulled in).

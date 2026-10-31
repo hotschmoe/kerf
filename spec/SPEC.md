@@ -331,6 +331,7 @@ Use only when no typed component fits; the summary flags it so a reviewer can se
 | `long_leg` | `"vertical"` | angles: LLV or LLH |
 | `outstand` | `"back"` | elevation of angles and channels: horizontal leg / flanges point away from the viewer (−z) or toward it |
 | `fillets` | true | W k-region and angle/channel root fillets, HSS corner radii (outside 2t, inside t) |
+| `hidden_lines` | false | elevation/plan: draw hidden faces dashed |
 | `grade` | null | free text (`A992`, `A500 GR. C`, `A36`) |
 Dimensions come from an embedded subset of the AISC Shapes Database v16 (W4–W24, square/rect/round HSS, pipe STD/XS,
 equal/unequal angles, C/MC); `kerf schema steel` lists every size, an unknown size is `E_PARAM` naming the sizes of that
@@ -343,9 +344,11 @@ Members seen lengthwise are stacks of rectangular slabs (flanges, web, walls, le
 mesh and occlusion are true; pipe and round HSS seen lengthwise are boxes (2.5D limit).
 Draws: section cut ⇒ solid steel fill + steel pen (the material's `fill`), beyond ⇒ outline. Elevation and plan never
 fill: a prism flagged `lengthwise` whose member reaches behind the cut plane is classified **beyond** even where the plane
-passes through it, so the member draws as an elevation (W flanges as lines; HSS/pipe walls, back flanges and the web in
-plan as dashed `hidden` lines). A slab edge lying on the outline of a nearer slab of the same member draws once in the
-member's pen (not as a same-component shared edge).
+passes through it, so the member draws as an elevation: its silhouette in the visible steel pen (a W also shows its
+flanges as lines). Hidden faces (HSS/pipe inside walls, back flanges, the web in plan) are omitted unless
+`hidden_lines: true`, which draws them dashed in the `hidden` pen. A slab edge lying on the outline of a nearer slab of
+the same member draws once in the member's pen (not as a same-component shared edge). Where the crop cuts a lengthwise
+member off, it gets a break line (§16 break symbol), merged with the break lines of adjacent cut members.
 Named anchors: section — W `top_flange`, `bottom_flange`, `web_center`, `web_left`, `web_right`,
 `top_flange_tip_left/right` (underside), `bottom_flange_tip_left/right` (top face); HSS/pipe `inner_top`, `inner_bottom`,
 `inner_left`, `inner_right`; angle `heel`, `heel_inside`, `toe_vertical`, `toe_horizontal`, `vertical_leg_face`,
