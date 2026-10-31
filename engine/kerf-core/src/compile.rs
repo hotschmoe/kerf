@@ -429,6 +429,8 @@ fn placement_order(scene: &mut Scene) -> Vec<usize> {
 
 struct AtSpec<'n> {
     anchor: &'n str,
+    /// `at.anchor` is written (a point list's local origin lands on `to` otherwise, SPEC 28.1).
+    explicit: bool,
     to: V2,
     /// The local point that lands on `to` when it is not a named anchor (a two-point member's start).
     local: Option<V2>,
@@ -436,7 +438,7 @@ struct AtSpec<'n> {
 
 fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &mut Params<'n>) -> Option<AtSpec<'n>> {
     let Some(av) = p.raw("at") else {
-        return Some(AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0), local: None });
+        return Some(AtSpec { anchor: default_anchor, explicit: false, to: V2::init(0.0, 0.0), local: None });
     };
     if !matches!(av, Value::Object(_)) {
         p.fail(
@@ -445,10 +447,11 @@ fn parse_at<'n>(scene: &Scene, comp_id: &str, default_anchor: &'static str, p: &
         );
         return None;
     }
-    let mut spec = AtSpec { anchor: default_anchor, to: V2::init(0.0, 0.0), local: None };
-    if let Some(anc) = av.get("anchor") {
+    let mut spec = AtSpec { anchor: default_anchor, explicit: false, to: V2::init(0.0, 0.0), local: None };
+    if let Some(anc) = av.get("anchor").filter(|a| !a.is_null()) {
         if let Some(s) = anc.str() {
-            spec.anchor = s
+            spec.anchor = s;
+            spec.explicit = true;
         } else {
             p.fail("at/anchor", "at.anchor must be an anchor name string".into());
             return None;
@@ -708,11 +711,41 @@ fn instance_transforms(
     Some(Instances { xfs, zs })
 }
 
-/// The transform of the first instance: the placement anchor onto `at.to`, rotated about it. None when the anchor is
-/// unknown (reported).
-fn base_transform(comp_id: &str, ty: &Entry, p: &mut Params, built: &Built, at: &AtSpec, angle: f64) -> Option<Xf> {
-    if built.points_mode {
+/// The transform of the first instance: the placement anchor onto `at.to`, rotated about it. A point-list shape puts
+/// its local origin there unless `at.anchor` is written (SPEC 28.1). None when the anchor is unknown or cannot apply
+/// (reported).
+fn base_transform(
+    comp_id: &str,
+    ty: &Entry,
+    p: &mut Params,
+    built: &Built,
+    at: &AtSpec,
+    angle: f64,
+    fixed: Option<&str>,
+) -> Option<Xf> {
+    if built.points_mode && (!at.explicit || at.anchor == "origin") {
         return Some(Xf::translate(at.to.x, at.to.y).mul(Xf::rotate(angle)));
+    }
+    if built.points_mode
+        && let Some(why) = fixed
+    {
+        p.ok = false;
+        p.diags.add_fix(
+            Level::Error,
+            "E_PARAM",
+            Some(comp_id),
+            Some(&format!("components/{comp_id}/at/anchor")),
+            format!(
+                "at.anchor \"{}\" cannot apply to '{comp_id}' ({}): {why}, so moving the shape to put its {} on at.to would pull it off",
+                at.anchor,
+                ty.name(),
+                at.anchor
+            ),
+            format!(
+                "remove the anchor (literal points are then measured from at.to, Refs stay where they point): {{\"op\":\"update\",\"path\":\"components/{comp_id}\",\"value\":{{\"at\":{{\"anchor\":null}}}}}}; or write every point as a literal [x, y] and keep the anchor"
+            ),
+        );
+        return None;
     }
     let anc = at
         .local
@@ -720,6 +753,9 @@ fn base_transform(comp_id: &str, ty: &Entry, p: &mut Params, built: &Built, at: 
         .or_else(|| built.anchors.iter().find(|n| n.name == at.anchor).map(|n| n.p));
     let Some(anc) = anc else {
         let mut names = model::BOX_ANCHOR_NAMES.join(", ");
+        if built.points_mode {
+            names.push_str(", origin (the point [0, 0] the literal points are measured from)");
+        }
         for n in &built.anchors {
             names.push_str(", ");
             names.push_str(&n.name);
@@ -786,7 +822,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
 
     let Some(two) = crate::cuts::two_point(scene, &id, ty.ty, node) else { return };
     let (mut at, angle) = match &two {
-        Some(t) => (AtSpec { anchor: "", to: t.p0, local: None }, t.angle),
+        Some(t) => (AtSpec { anchor: "", explicit: false, to: t.p0, local: None }, t.angle),
         None => {
             let Some(at) = parse_at(scene, &id, ty.traits.default_anchor, &mut p) else { return };
             let Some(angle) = resolve_angle(scene, index, &id, &mut p) else { return };
@@ -798,7 +834,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
         && p.raw("at").is_none()
         && let Some(to) = crate::cuts::auto_seat(scene, node, angle, run_y == Some(true))
     {
-        at = AtSpec { anchor: "seat_outer", to, local: None };
+        at = AtSpec { anchor: "seat_outer", explicit: false, to, local: None };
     }
     scene.comps[idx].place_pt = at.to;
     let mirror = p.boolean("mirror", false);
@@ -820,17 +856,31 @@ fn place_component(scene: &mut Scene, idx: usize) {
         );
     }
 
-    let built = {
-        let mut ctx = Ctx { scene, style: scene.style, p, origin: at.to, angle, span: two.as_ref().map(|t| t.len) };
+    let (built, fixed) = {
+        let mut ctx =
+            Ctx { scene, style: scene.style, p, origin: at.to, angle, span: two.as_ref().map(|t| t.len), fixed: None };
         let b = builders::build(ty.ty, &mut ctx);
         p = ctx.p;
-        b
+        (b, ctx.fixed)
     };
     let Some(mut built) = built else { return };
     if !p.ok {
         return;
     }
-    if mirror && !built.points_mode {
+    if mirror && built.points_mode {
+        diags.add_fix(
+            Level::Error,
+            "E_PARAM",
+            Some(&id),
+            Some(&format!("components/{id}/mirror")),
+            format!("'{id}' ({}): mirror does not apply to a shape drawn from a point list", ty.name()),
+            format!(
+                "write the mirrored points (negate each literal x) and remove mirror: {{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"mirror\":null}}}}"
+            ),
+        );
+        return;
+    }
+    if mirror {
         built = builders::mirror_about_center(&built);
     }
     let Some(cuts) = crate::cuts::prepare(scene, &id, node, &mut built, angle, run_y, two.as_ref()) else { return };
@@ -845,7 +895,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
         return;
     }
 
-    let Some(base_xf) = base_transform(&id, ty, &mut p, &built, &at, angle) else { return };
+    let Some(base_xf) = base_transform(&id, ty, &mut p, &built, &at, angle, fixed.as_deref()) else { return };
     if let Some(pl) = &cuts
         && !crate::cuts::apply(scene, &id, node, pl, &mut built, &base_xf)
     {

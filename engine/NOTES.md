@@ -111,6 +111,25 @@ geometrically (tolerance 1e-3).
   overlaps), plus near-misses that another scenario's lumber used to hide and two real misses the global check could
   not see (S-60.03 view D: the parallel joist floats; S-40.02 view B: bottom chord 3" short of the ledger). Since #19 any
   drawn prism in the gap blocks a near miss (subfloor, hanger seat, another array instance).
+- Checks between components per view set (#20, SPEC 28.1): `steelcheck::drawn` (bolt vs steel and anchor vs host
+  `W_BOLT_EDGE`, anchor `W_BOLT_SPACING`) and `hwcheck::drawn` (`W_POST_BASE`, the anchorage of `W_HOLDOWN_ROD`) take the
+  component list of one `validate::Drawn` set and run through `each_set` like W_OVERLAP; `steelcheck::run` /
+  `hwcheck::run` keep the one-component checks (bolt group `spacing`, `W_WELD_SIZE`, the builders' hardware warnings).
+  `Scene::views` / `Scene::together` (some view draws both, always true without views) keep the neighbour searches for
+  fixes in the scenario: nailing `backing` / `touching` (W_NAIL_MEMBERS, W_NAIL_EDGE) and the holdown's `nearest_rod`.
+  On the 47 round-2 details (copies, `check --strict`) the 12 cross-scenario warnings claude7 refused to acknowledge
+  went away (S-80.01: 6 W_BOLT_SPACING between rods of A/C vs B/P1 vs P2/P3; S-80.02: 5 W_BOLT_SPACING A vs B, D vs E;
+  S-80.04: W_BOLT_EDGE of view C's weld stud against view D's beam); every pair was checked to share no view, nothing
+  else changed, S-10.01 stayed at 0. No golden changed.
+- Point-list anchors (#21, SPEC 28.1): `AtSpec::explicit` records a written `at.anchor`; `base_transform` keeps the
+  origin placement for point-list builds (`points_mode`) without one (or with `"origin"`) and otherwise resolves the
+  anchor on the built box / named anchors like any shape. `Ctx::fixed` is set by `parse_point_list` (a Ref point), the
+  membrane `until` and `hardware::build_on` (strap on a face): an anchor then is E_PARAM with the update op that drops
+  it. `mirror` on a point-list build (ignored before) is E_PARAM. Only S-10.06 (B: b_left/b_right) and S-10.07 (A:
+  ftg/stem) of the 47 details change: claude8 wrote `"anchor":"bottom_left","to":[0,0]` as the workaround for this bug,
+  so their polygons move and warn (S-10.06 +7, S-10.07 +2: W_OVERLAP, W_FLOATING, W_BAR_OUTSIDE, W_COVER, W_VIEW_FIT);
+  dropping the anchor gives back the beta.1 drawings byte for byte with 0 warnings. Every other view of the set draws
+  the same IR as beta.1 (211 of 213).
 - Scenario membership (issue #8, SPEC 25.4): `view::Members` (component `views`, view `only` / `omit`, `*` globs via
   `view::glob_match`) is the one test of "does view V draw component C"; `compile::view_prisms`, iso `gather`, note
   landings, `validate::drawn_sets`, `crop` (W_CROP_STALE) and `inspect at` all use it (`inspect at` used every visible
@@ -664,6 +683,13 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - #11: hardware hidden by nearer members draws dashed in section, plan and elevation without `hidden_lines` (SPEC 26.3
   makes hidden lines opt-in per view); the issue asks for it for hardware, so `hw_dash` prisms always get their hidden
   outline. Existing `connector` polylines (no `kind`, no `on`) are unchanged, so the goldens are byte-identical.
+- #21: SPEC 3.2 says `anchor` defaults to `bottom_left`, but point lists always put their local origin on `to`. Chosen:
+  an omitted anchor keeps the origin placement (every existing document without one is unchanged), a written one is
+  honoured, `"origin"` names the old default. A written `"bottom_left"` therefore differs from an omitted one for point
+  lists whose lower left corner is not `[0, 0]`; the alternative (treat a written default as omitted) would have kept
+  the silent misplacement for exactly the anchor an agent writes most.
+- #20: a component drawn in no view (every view excludes it) is checked by none of the per-view checks, as before for
+  W_OVERLAP; a holdown whose rod is excluded from a view skips the anchorage check in that view.
 
 ## REQUESTS
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,

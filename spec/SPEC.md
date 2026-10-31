@@ -131,7 +131,8 @@ anywhere a Ref is accepted: `{ "ref": "footing@bottom_left", "offset": [3, 3] }`
 ```
 
 Translates the component so its own `anchor` lands on the `to` point plus `offset`.
-- `anchor` defaults to `"bottom_left"`; `offset` defaults to `[0, 0]`.
+- `anchor` defaults to `"bottom_left"`; `offset` defaults to `[0, 0]`. A shape built from a point list puts its
+  local origin on `to` when `anchor` is omitted, and its named anchor when one is written (§28.1).
 - `to` may be a Ref, a Ref-with-offset object, or a literal point `[x, y]`.
 - Omitting `at` places `bottom_left` at the origin.
 - `rotate` (deg, CCW) or `slope` ("4:12", sloping up toward +X) rotates the member about its
@@ -154,7 +155,8 @@ mean instance 0.
 
 Builders that take polylines (`solid` polygon, `fill`, `membrane`, `rebar.path`, `connector.path`)
 accept entries that are either `[x, y]` (relative to the placement point when `at` is given,
-otherwise absolute) or a Ref / Ref-with-offset (always absolute). Optional third element on a
+otherwise absolute) or a Ref / Ref-with-offset (always absolute). With `at.anchor` the literal points are local to the
+shape and its anchor lands on `at.to`; Refs then are `E_PARAM` (§28.1). Optional third element on a
 literal point is a DXF-style **bulge** for the segment to the next point (arc; bulge = tan(θ/4)).
 
 ## 4. Components — common fields
@@ -654,8 +656,9 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_ACK_UNUSED` | warning | `acknowledge` entries of a component (or a view or annotation, §25.6) that suppressed nothing in any view (stale, repeated, or an `I_*` code); one per owner, the fix is the `update` op that removes them. Only when every view was built and the document has no errors (§25.4) |
 | `I_ACK` | info | a warning suppressed by `acknowledge` (code, component, reason, the original message); `diagnostics` only, the summary groups them (§25.4) |
 
-**Per-view geometry checks.** `W_OVERLAP`, `W_FLOATING`, `W_UNTREATED_CONTACT`, `W_COVER`, `W_NEAR_MISS` and
-`W_SHORT_SLOPE` run over the components each view draws: compiled, `visible`, and members of that view (component
+**Per-view geometry checks.** `W_OVERLAP`, `W_FLOATING`, `W_UNTREATED_CONTACT`, `W_COVER`, `W_BAR_OUTSIDE`,
+`W_NEAR_MISS`, `W_SHORT_SLOPE`, `W_BEARING`, and the checks between components of §28.1 (`W_BOLT_EDGE`, anchor
+`W_BOLT_SPACING`, `W_POST_BASE`, the anchorage of `W_HOLDOWN_ROD`) run over the components each view draws: compiled, `visible`, and members of that view (component
 `views`, view `only` and `omit`, §25.4; iso views included, with their own membership). Views that draw the same components are checked once. A finding is reported once; when
 it occurs in some views but not all, its message ends with ` (in view B)` / ` (in views A, C)`. A finding in every view,
 and every finding of a document without views (all components checked together, `visible` or not), carries no view
@@ -2152,3 +2155,42 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   outside 5..85, more than 5000 fasteners (`E_LIMIT`). `E_REF_UNKNOWN`: a member that is not a component (nearest id).
 - A nailing has no solid: it takes no part in `W_OVERLAP`, `W_FLOATING` or any other geometry check, and the mesh has
   no nails (2.5D viewers show none).
+
+## 28. v0.2.0-beta.2 round-2 fixes
+
+### 28.1 beta.2: scenario-aware checks and point-list anchors
+From round 2 of the MASS dogfood run (issues #20, #21).
+
+**Every check between components runs per view set** (#20). §9's per-view rule (`W_OVERLAP` since §25.4) now covers
+every check that compares one component with others: `W_BOLT_EDGE` of a bolt against the `steel` it passes through and
+of an `anchor_bolt` against its concrete or masonry host, `W_BOLT_SPACING` between anchor bolts, `W_POST_BASE` (the
+member under the plate), the anchorage half of `W_HOLDOWN_ROD` (the rod ends in concrete, masonry or steel) and
+`W_BEARING` and `W_BAR_OUTSIDE` (already per view). Two components are compared only when some view draws both; a finding
+that holds in some views only ends with ` (in view B)` / ` (in views A, C)`; a document without views checks every
+component together. So rods, bolts and studs of scenarios that share one origin may coincide without
+warnings, and a post base whose own scenario has nothing under it warns in that view although another scenario's pad
+lies there. Checks of one component or one annotation stay document-wide: bolt group `spacing` (`W_BOLT_SPACING`),
+`W_WELD_SIZE`, the builders' `W_HANGER_SIZE` / `W_HOLDOWN_ROD` / `W_UNKNOWN_MODEL`, the `W_NAIL_*` family (members are
+named). Searches for a neighbour to name in a fix stay in the scenario too: the components a `W_NAIL_MEMBERS` /
+`W_NAIL_EDGE` fix offers are drawn in a view with the member, the rod a `W_HOLDOWN_ROD` fix offers is drawn in a view
+with the holdown.
+
+**Anchors on point lists** (#21). A shape built from a point list (`concrete` polygon, `solid` `profile.points`, `fill`,
+`insulation` / `flashing` with `points`, `membrane`, `connector` `points`, `rebar` path) is placed like a box shape:
+- `at.anchor` omitted, or `"origin"`: the local origin (the point `[0, 0]` the literal points are measured from) lands
+  on `at.to` plus `offset`, as before. Without `at` the literal points are absolute.
+- any other `at.anchor`: one of the 9 box anchors of the shape's local box (the points' extent; a membrane's or bar's
+  thickness included) or a named anchor (`vertex_k`, `edge_k_mid`, a bar's `start` / `bend_k`, ...) lands on `at.to`
+  plus `offset`; `rotate` / `slope` turn the shape about it. `{"anchor":"top_left","to":"stem@top_right"}` puts the
+  polygon's top left corner on the stem's top right corner wherever its points start.
+- the anchor cannot apply when the geometry is fixed in place: a point given as a Ref (absolute), a membrane `until`
+  (it runs to an absolute point), a strap `on` a member face. Then `E_PARAM` at `components/<id>/at/anchor`: `at.anchor
+  "top_left" cannot apply to 'key' (concrete): point 0 of 'points' is the Ref "stem@top_right", an absolute point, so
+  moving the shape to put its top_left on at.to would pull it off`; the fix is the op
+  `{"op":"update","path":"components/<id>","value":{"at":{"anchor":null}}}` (or literal points only).
+- an unknown anchor is `E_ANCHOR_UNKNOWN`, listing `origin`, the box anchors and the named anchors.
+- `mirror: true` on a point-list shape, ignored before, is `E_PARAM` with the op that removes it (write the mirrored
+  points).
+Before beta.2 every point-list shape ignored `at.anchor` (silently). A document that wrote `"anchor": "bottom_left"`
+next to points measured from `at.to` moves now unless the points' lower left corner is `[0, 0]`: remove the anchor (or
+write `"origin"`).

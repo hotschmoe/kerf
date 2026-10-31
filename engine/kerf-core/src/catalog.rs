@@ -416,7 +416,7 @@ const COMMON: [(&[&str], &str, &str); 14] = [
     (
         &["at"],
         "origin",
-        "{anchor (default bottom_left), to: Ref | {ref, offset} | [x,y], offset: [dx,dy]}: translates the part so its anchor lands on `to`+offset. Point-list types (connector, membrane, fill, rebar path, concrete polygon, solid points) ignore `anchor`: literal [x,y] entries are relative to `to`+offset, Refs are absolute",
+        "{anchor (default bottom_left), to: Ref | {ref, offset} | [x,y], offset: [dx,dy]}: translates the part so its anchor lands on `to`+offset. Point-list types (connector, membrane, fill, rebar path, concrete polygon, solid points): literal [x,y] entries are relative to `to`+offset, Refs are absolute; a written `anchor` (box anchor or vertex_k) puts that point of the shape on `to` instead (no Ref points then)",
     ),
     (&["rotate"], "0", "degrees CCW about the placement point"),
     (
@@ -424,7 +424,11 @@ const COMMON: [(&[&str], &str, &str); 14] = [
         "null",
         "\"4:12\" rise:run, degrees, or \"@<component>\" (e.g. \"@truss\": inherit that member's slope, so pitch lives in ONE place; a truss with exterior right slopes the other way). Rotation about the placement point; adds to rotate",
     ),
-    (&["mirror"], "false", "mirror the profile about its vertical centerline before placement"),
+    (
+        &["mirror"],
+        "false",
+        "mirror the profile about its vertical centerline before placement (not for point-list shapes: write mirrored points)",
+    ),
     (
         &["z"],
         "null",

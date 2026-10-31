@@ -87,6 +87,9 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             _ => "ref",
         };
         until_note = format!(" (until {ref_txt})");
+        ctx.fixed.get_or_insert_with(|| {
+            format!("'until' runs the last segment to the Ref \"{ref_txt}\", an absolute point")
+        });
     }
     let left = mp.side == Side::Left;
     let t = mp.thickness.unwrap_or_else(|| membrane_thickness(material));

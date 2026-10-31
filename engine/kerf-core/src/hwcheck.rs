@@ -111,14 +111,14 @@ fn rod_anchor(comps: &[&Comp<'_>], c: &Comp<'_>, rod: &str, diags: &Diags) {
     let tip = V2::init((bx.x0 + bx.x1) / 2.0, bx.y0 + 0.25);
     let zc = (z0 + z1) / 2.0;
     let anchored = comps.iter().filter(|o| o.index != r.index && !o.ty.traits.hardware).any(|o| {
-            o.world.iter().any(|p| {
-                p.kind == Kind::Body
-                    && (p.role.is_masonry() || p.role == Role::Steel)
-                    && zc >= p.z0
-                    && zc <= p.z1
-                    && geom::locate(tip, &clip::from_region(&p.loops, FLAT_TOL), 1e-6) != geom::Loc::Outside
-            })
-        });
+        o.world.iter().any(|p| {
+            p.kind == Kind::Body
+                && (p.role.is_masonry() || p.role == Role::Steel)
+                && zc >= p.z0
+                && zc <= p.z1
+                && geom::locate(tip, &clip::from_region(&p.loops, FLAT_TOL), 1e-6) != geom::Loc::Outside
+        })
+    });
     if anchored {
         return;
     }
