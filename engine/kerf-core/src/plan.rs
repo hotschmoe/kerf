@@ -170,6 +170,7 @@ fn rect_prism(src: &Prism, x0: f64, x1: f64, z0: f64, z1: f64, d0: f64, d1: f64)
         role: src.role,
         blocking: src.blocking,
         dashed: src.dashed,
+        hw_dash: src.hw_dash,
         ..Prism::default()
     }
 }

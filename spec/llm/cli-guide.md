@@ -172,5 +172,16 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   filleted). The plan draws the bent bar; a section shows a dot where it crosses `cut_z` and a line where it runs behind.
 - `shown`: `"hidden"` = dashed, no suffix (a base plate under a pour, a stiffener behind a web); `"where_occurs"` =
   dashed and notes end in (WHERE OCCURS). The old `"dashed"` warns `W_SHOWN_DASHED`: pick one of the two.
+- Framing hardware (SPEC 27.2) is one `connector` placed from its members, never polylines or `solid` plates:
+  `{"type":"connector","model":"LUS210","carried":"joist","carrying":"header"}` (hanger: seat under the joist end,
+  sides on its faces, flanges on the header face; `"mount":"top_flange"` or a TF/ITS/THA model hooks over the top;
+  `carried` may list an I-joist's flange and web ids), `{"kind":"post_cap","post":"post","beam":"beam"}`,
+  `{"kind":"post_base","post":"post","standoff":1}`, `{"model":"HDU5","post":"post","rod":"anchor_bolt_id"}` (holdown
+  on the face toward its rod). No `at`, `z` or `points`: they follow the members in every view, iso and 3D. A strap on a
+  member face: `"on":"post.face_left"` (face_right/top/bottom/front/back) with `points` along it; no `z`, no `side`.
+  Hardware a nearer member hides draws dashed and keeps its note. Unknown `model`: `W_UNKNOWN_MODEL` unless you give
+  `gauge` (and `width`). Base plate rods: `anchor_bolt` `"plate":"base_plate","leveling_nut":true` (projection fits
+  itself), `"plate_washer":"3x3x1/4"`, `"hook":"adhesive"`; weld studs: `bolt` `"kind":"weld_stud"` placed at the steel
+  face (grip up through the nailer), `"kind":"headed_stud"` for shear studs.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.
