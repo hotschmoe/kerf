@@ -297,7 +297,7 @@
       "at": {
         "to": [600, 0]
       },
-      "shown": "dashed",
+      "shown":"where_occurs",
       "shape": "polygon",
       "cover": {
         "bottom": 1.5,

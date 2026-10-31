@@ -2,8 +2,9 @@
 
 use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, world_box};
 use crate::clip;
-use crate::geom::{self, Box, FLAT_TOL, V2, Xf};
+use crate::geom::{self, Box, FLAT_TOL, Pt, V2, Xf};
 use crate::json::Value;
+use crate::math;
 use crate::model::fmt_num;
 use crate::model::{self, Built, Level, NamedAnchor, Prism};
 use crate::num;
@@ -34,13 +35,16 @@ pub fn rebar_diameter(size: &str) -> Option<f64> {
 }
 
 param_enum! { pub enum Mode { AlongZ = "along_z", Path = "path" } }
+param_enum! { pub enum Plane { Xy = "xy", Xz = "xz" } }
 
 params! {
     pub struct Params {
         size: Str = "#4" => { desc: "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
         mode: Enum(Mode) = Mode::AlongZ => { desc: "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
+        plane: Enum(Plane) = Plane::Xy => { desc: "path: xy = the bar lies in the section plane (points [x, y]); xz = the bar lies flat at height `y` (points [x, z]: corner and intersection bars, bars around an opening). A plan view draws an xz bar as its path, a section as a dot where it crosses the cut and a line where it runs behind it" },
+        y: OptRaw => { def: "plane xz: required", desc: "height of the bar's centreline, a length or a Ref (its y), e.g. {\"ref\": \"ftg@bottom_left\", \"offset\": [0, 3.25]}" },
         place: OptRaw => { desc: "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face of the host's outline (cut to the part for comp.part; in a polygon, the outermost run of edges facing that way, e.g. the lowest bottom run = a thickened footing), spread evenly along it at `side_cover` from its ends (count 1 centers); a bar centre outside the zone is E_PLACE_OUTSIDE. center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position)" },
-        points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs; bends get radius bend_radius, drawn as fillets" },
+        points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs (plane xz: [x, z] pairs); bends get radius bend_radius, drawn as fillets" },
         bend_radius: OptLenPos => { def: "3*d_b", desc: "inside bend radius for path bars" },
         spacing_note: Str = "" => { def: "null", desc: "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
     }
@@ -54,6 +58,9 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     };
     let r = d / 2.0;
+    if rp.plane == Plane::Xz {
+        return build_xz(ctx, &rp, size, d);
+    }
     if rp.mode == Mode::AlongZ {
         let lp = model::circle_loop(0.0, 0.0, r);
         let prism = Prism {
@@ -111,6 +118,124 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         points_mode: true,
         bar_d: d,
         info: format!("rebar {} path L={}{}", size, fmt_ft_in(path_len(&vs)), note),
+        ..Built::default()
+    })
+}
+
+/// Most legs one straight run of an XZ bar is cut into for the checks, iso and mesh (a diagonal run is a staircase).
+const XZ_STEPS_MAX: usize = 48;
+/// Bounds on the legs of one XZ bar: points of its coarse centreline, and staircase slabs over all diagonal runs.
+const XZ_POINTS_MAX: usize = 200;
+const XZ_SLABS_MAX: usize = 400;
+
+/// A bar lying flat at height `y`, bent in the XZ plane (SPEC 26.3). Its prisms are axis legs (a run along x is a
+/// bar seen lengthwise, a run along z a dot extruded along z, a diagonal run a staircase of short slabs) with the whole
+/// centreline on the first one, which section, plan and elevation views draw from.
+fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
+    let r = d / 2.0;
+    if rp.place.is_some() {
+        ctx.p.fail("place", "plane \"xz\" bars are drawn from 'points' ([x, z] pairs) at height 'y'; 'place' is for bars along z (remove place, or remove plane)".to_string());
+        return None;
+    }
+    let Some(yv) = rp.y.as_ref() else {
+        ctx.p.fail("y", "plane \"xz\" needs 'y': the height of the bar's centreline (a length, or a Ref whose y is used, e.g. {\"ref\": \"ftg@bottom_left\", \"offset\": [0, 3.25]})".to_string());
+        return None;
+    };
+    let y = match units::parse_length(yv) {
+        Some(y) => y,
+        None => {
+            let path = format!("{}/{}/y", ctx.p.base, ctx.p.id);
+            let id = ctx.p.id.to_string();
+            ctx.scene.point(yv, &id, &path)?.y
+        }
+    };
+    let Some(arr) = rp.points.as_ref().and_then(Value::arr) else {
+        ctx.p.fail(
+            "points",
+            "plane \"xz\" needs 'points': [[x, z], ...], the bar's corners seen from above (model x and z)".to_string(),
+        );
+        return None;
+    };
+    let mut vs: Vec<V2> = Vec::new();
+    for (i, e) in arr.iter().enumerate() {
+        let xz = e
+            .arr()
+            .filter(|a| a.len() == 2)
+            .and_then(|a| Some(V2::init(units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
+        let Some(v) = xz else {
+            ctx.p.fail(&format!("points/{i}"), format!("point {i} of a plane \"xz\" bar must be [x, z], two lengths (model x and z; the height is 'y'), got {}", model::kind_or_text(e)));
+            return None;
+        };
+        if vs.last().is_none_or(|l: &V2| l.dist(v) > 1e-9) {
+            vs.push(v);
+        }
+    }
+    if vs.len() < 2 {
+        ctx.p.fail("points", format!("a path bar needs at least 2 distinct points (got {})", vs.len()));
+        return None;
+    }
+    let br = rp.bend_radius.unwrap_or(3.0 * d);
+    let center = pathgeom::fillet(&vs, br + r);
+    let flat = geom::flatten_polyline(&center, false, FLAT_TOL);
+    let mut tol = d / 4.0;
+    let mut coarse = geom::flatten_polyline(&center, false, tol);
+    while coarse.len() > XZ_POINTS_MAX && tol < 1e6 {
+        tol *= 4.0;
+        coarse = geom::flatten_polyline(&center, false, tol);
+    }
+    let total_dz: f64 = coarse.windows(2).map(|w| (w[1].y - w[0].y).abs()).sum();
+    let step = d.max(total_dz / XZ_SLABS_MAX as f64);
+    let mut prisms: Vec<Prism> = Vec::new();
+    let leg = |loops: Vec<Pt>, zc: f64, zh: f64| Prism {
+        material: "rebar".to_string(),
+        loops: model::one_loop(loops),
+        embedded: true,
+        sweep_r: r,
+        zoff: zc,
+        zhalf: zh.max(1e-4),
+        xz_bar: true,
+        ..Prism::default()
+    };
+    for w in coarse.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let (dx, dz) = ((b.x - a.x).abs(), (b.y - a.y).abs());
+        if dz < 1e-6 {
+            let lp = model::rect_loop(a.x.min(b.x), y - r, a.x.max(b.x), y + r);
+            prisms.push(leg(lp, a.y, r));
+        } else if dx < 1e-6 {
+            prisms.push(leg(model::circle_loop(a.x, y, r), (a.y + b.y) / 2.0, dz / 2.0));
+        } else {
+            let n = num::to_int_clamped::<usize>(math::ceil(dz / step), 1, XZ_STEPS_MAX);
+            for k in 0..n {
+                let (p, q) = (a.lerp(b, k as f64 / n as f64), a.lerp(b, (k + 1) as f64 / n as f64));
+                let lp = model::rect_loop(p.x.min(q.x) - r, y - r, p.x.max(q.x) + r, y + r);
+                prisms.push(leg(lp, (p.y + q.y) / 2.0, (q.y - p.y).abs() / 2.0));
+            }
+        }
+    }
+    if let Some(first) = prisms.first_mut() {
+        first.path3 = flat.iter().map(|v| [v.x, y, v.y]).collect();
+    }
+    let mut box_ = Box::default();
+    for v in &flat {
+        box_.add_point(v.x - r, y - r);
+        box_.add_point(v.x + r, y + r);
+    }
+    let xz_anchors = path_anchors(&vs, &center);
+    let anchors = xz_anchors.iter().map(|a| NamedAnchor { name: a.name.clone(), p: V2::init(a.p.x, y) }).collect();
+    let plan_z = xz_anchors.into_iter().map(|a| NamedAnchor { name: a.name, p: V2::init(0.0, a.p.y) }).collect();
+    let note =
+        if rp.spacing_note.is_empty() { alloc::string::String::new() } else { format!(" ({})", rp.spacing_note) };
+    Some(Built {
+        prisms,
+        anchors,
+        plan_z,
+        box_,
+        nat_z: Some(d),
+        abs_z: true,
+        points_mode: true,
+        bar_d: d,
+        info: format!("rebar {size} xz path at y {} L={}{}", fmt_ft_in(y), fmt_ft_in(path_len(&vs)), note),
         ..Built::default()
     })
 }

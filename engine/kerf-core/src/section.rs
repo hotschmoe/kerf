@@ -21,7 +21,7 @@ use crate::pen::Pen;
 use crate::scene::Scene;
 use crate::sort;
 use crate::style::{Role, Style};
-use crate::view::ViewSpec;
+use crate::view::{Kind as ViewKind, ViewSpec};
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -74,10 +74,11 @@ impl<'s> Section<'s> {
                 .iter()
                 .any(|q| q.lengthwise && q.comp == p.comp && q.instance == p.instance && q.z0 < spec.cut_z - eps)
         };
+        let elevation = spec.kind == ViewKind::Elevation;
         let cls = prisms
             .iter()
             .map(|p| {
-                if p.lengthwise && p.z1 > spec.cut_z + eps && reaches_behind(p) {
+                if elevation || (p.lengthwise && p.z1 > spec.cut_z + eps && reaches_behind(p)) {
                     Class::Beyond
                 } else if p.z0 < spec.cut_z - eps && p.z1 > spec.cut_z + eps {
                     Class::Cut

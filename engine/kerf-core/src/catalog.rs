@@ -300,7 +300,7 @@ const COMMON: [(&[&str], &str, &str); 14] = [
     (
         &["shown"],
         "solid",
-        "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)",
+        "solid | hidden | where_occurs. hidden = a member behind or below the others (e.g. a base plate under a closure pour in plan, a stiffener behind a web): all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP. where_occurs = the same graphics, and notes targeting it get \" (WHERE OCCURS)\" appended. The old \"dashed\" means where_occurs and warns W_SHOWN_DASHED. Section, plan and elevation views (iso omits it)",
     ),
     (
         &["acknowledge"],
@@ -367,7 +367,7 @@ pub static ENTRIES: [Entry; 17] = [
         summary: "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
         parts: "none",
         anchors: "9 box anchors of the bar (center = bar center for along_z); path bars add start, end, bend_k (on the bar at the middle of the bend at interior point k+1) and seg_k_mid (middle of the straight part of leg k), all on the centreline: aim notes and dims at these, not the box anchors of a bent bar",
-        draws: "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu.",
+        draws: "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu (in XY only: the cover of an xz bar along z is not checked). Plan views: bars along z and path bars below the cut draw as lines along their run, vertical legs and bars crossing the cut as dots, xz bars as their path. An xz corner bar: {\"id\":\"corner\",\"type\":\"rebar\",\"size\":\"#4\",\"plane\":\"xz\",\"y\":24,\"points\":[[4.5,-16],[4.5,-43.5],[32,-43.5]]}",
         example: "{\"id\":\"top_bar\",\"type\":\"rebar\",\"size\":\"#4\",\"at\":{\"anchor\":\"center\",\"to\":[6,-2.5]}}",
         traits: Traits { reinforcement: true, line_like: true, ..Traits::NONE },
     },

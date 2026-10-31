@@ -2,7 +2,7 @@
 
 You build construction details with the `kerf` command-line engine. A detail is one JSON file
 (`<id>.kerf.json`) in the current folder. The designer reviews it in
-the Kerf web UI (`kerf serve`), edits notes, verifies citations and exports DXF/PDF. You describe construction
+the Kerf web UI (`kerf serve`) and verifies citations. You describe construction
 with typed components; the engine places, draws, lays out notes and checks.
 
 ## Shell rules (the sandbox rejects compound commands)
@@ -47,8 +47,7 @@ kerf guide --full
   `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]`. The summary counts and lists them (`kerf check --strict`
   prints each). Wood on CMU wants `"barrier":"sill_seal"`. No fake geometry.
 - Scenarios: one view each, one origin; scenario members get `"views":["B"]`, shared none; one sheet: `kerf schema layout`.
-- Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one: `citations` -> `cite`, `side` -> `notes_side`, `point` -> `at`,
-  `kind` -> `type`, `pos` -> `place`). `kerf schema <topic>` before guessing a field name.
+- Unknown keys warn (`W_UNKNOWN_KEY` names the right one). `kerf schema <topic>` before guessing a field name.
 
 ## Diagnostics you will meet (each prints its own fix)
 W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
@@ -89,13 +88,14 @@ Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you a
 the designer verifies. Never present a design as engineered: capacities, spacing and nailing are the manufacturer's / EOR's.
 
 ## Views and annotations
-`crop` and `scale` are optional on a section view (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
+`crop` and `scale` are optional (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
 set them only to frame deliberately (`W_VIEW_FIT` then checks). The layout places notes and clears leader collisions
 (`column` on a note forces a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed notes:
 view `"notes_style":"keyed"` (numbered leaders + DETAIL NOTES list; `notes_side` above|left|right; same `key` = one
 entry). Dim `dir` default: dominant axis; `offset` > 0 is above (h) / right of (v) the points, < 0 below / left.
 Schedules: `table` annotations (`kerf schema table`) in a `"kind":"schedule"` view, not solids/labels.
-Beam in a wall (flush beam, header): draw the elevation along the wall unless asked for the end-on section; say which you drew.
+Plans/elevations: view `kind` `plan` (cut at `cut_y`; plan [x,y] = model [x,-z]) or `elevation` (no cut), same members in
+their real orientation; never a faked section. Beam in a wall: draw the elevation unless asked otherwise.
 Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
 
 <!-- FULL -->
@@ -160,5 +160,17 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   `"voids": [{"rect": [8, 4], "at": "stem@top_center", "anchor": "top_center"}]`, `{"circle": 4, "at": ..., "z": [-6, 6]}`.
   Pipe through a wall or footing: `{"type": "sleeve", "pipe": 4, "fill": "joint_filler", "through": "stem", "at": {"to":
   "stem@center"}}` (run x/y + `length` to cut it along its axis). `W_VOID_MISS` prints the op that drops a void that misses.
+- Plans and elevations (SPEC 26.3): model once, in the real orientation (Y up, Z toward the section viewer: a wall
+  running across the section is a profile extruded along z, a wall running along x is a long profile with its thickness
+  in `z`), then add views. `"kind": "plan"` cuts at `cut_y` (default 1" below the highest top): crossed members are
+  hatched, studs and posts get the end-grain X, members below are outlines, vertical bars are dots. Plan points are
+  [x, -z]; a plan `crop` also takes `{"x": [x0, x1], "z": [z0, z1]}`; Refs resolve by themselves (box anchors on the
+  plan footprint). `"kind": "elevation"` cuts nothing: nearer members hide farther ones, the crop break-lines every
+  member it cuts, and a strap on a face shows without touching `cut_z`. `"hidden_lines": true` dashes what is hidden.
+  Plan titles print as `PLAN - <title>` unless the title says PLAN (style `text.plan_title`): do not type "(PLAN)".
+- Corner and intersection bars: rebar `"plane": "xz"`, `"y": <height or Ref>`, `"points": [[x, z], ...]` (bends are
+  filleted). The plan draws the bent bar; a section shows a dot where it crosses `cut_z` and a line where it runs behind.
+- `shown`: `"hidden"` = dashed, no suffix (a base plate under a pour, a stiffener behind a web); `"where_occurs"` =
+  dashed and notes end in (WHERE OCCURS). The old `"dashed"` warns `W_SHOWN_DASHED`: pick one of the two.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

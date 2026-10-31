@@ -199,6 +199,11 @@ pub struct Prism {
     pub seam: [bool; 2],
     /// Where the CMU running bond starts along z when a void split the wall into slabs (None: at z0).
     pub bond_z0: Option<f64>,
+    /// One leg of a bar bent in the horizontal (XZ) plane (rebar `plane: "xz"`): the checks, iso and mesh use the legs;
+    /// section, plan and elevation views draw the bar from `path3` instead.
+    pub xz_bar: bool,
+    /// The first leg of an XZ bar carries its whole centreline in world [x, y, z] (bends flattened).
+    pub path3: Vec<[f64; 3]>,
 }
 
 impl Default for Prism {
@@ -232,6 +237,8 @@ impl Default for Prism {
             lengthwise: false,
             seam: [false; 2],
             bond_z0: None,
+            xz_bar: false,
+            path3: Vec::new(),
         }
     }
 }
@@ -247,6 +254,10 @@ impl Prism {
         }
         if !self.centerline.is_empty() {
             q.centerline = xf.apply_loop(&self.centerline);
+        }
+        for c in &mut q.path3 {
+            let w = xf.apply(V2::init(c[0], c[1]));
+            *c = [w.x, w.y, c[2]];
         }
         q
     }
@@ -305,6 +316,10 @@ pub struct Built {
     pub centers: Vec<V2>,
     pub info: String,
     pub bar_d: f64,
+    /// Named anchors that sit off the component's z centre (bars in the XZ plane): `p.y` is the z offset; plan views use it.
+    pub plan_z: Vec<NamedAnchor>,
+    /// The prisms' `zoff` are absolute z (bars in the XZ plane): without an explicit `z` the component is centred on z = 0.
+    pub abs_z: bool,
 }
 
 pub const BOX_ANCHOR_NAMES: [&str; 9] = [

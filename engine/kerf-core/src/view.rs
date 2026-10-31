@@ -10,13 +10,17 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-/// Section view or isometric view; also the `kind` of the `Drawing` a view produces.
+/// Section, plan, elevation or isometric view; also the `kind` of the `Drawing` a view produces.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
     Section,
     Iso,
     /// Tables and notes only (SPEC 26.1): no components, no crop, no model scale; laid out in paper inches.
     Schedule,
+    /// Looking down (-Y) at the horizontal cut plane `cut_y` (SPEC 26.3).
+    Plan,
+    /// Looking toward -Z with nothing cut (SPEC 26.3).
+    Elevation,
 }
 
 impl Kind {
@@ -25,7 +29,14 @@ impl Kind {
             Kind::Section => "section",
             Kind::Iso => "iso",
             Kind::Schedule => "schedule",
+            Kind::Plan => "plan",
+            Kind::Elevation => "elevation",
         }
+    }
+
+    /// Exact 2D views drawn by the section engine (section, plan, elevation).
+    pub fn is_flat(self) -> bool {
+        matches!(self, Kind::Section | Kind::Plan | Kind::Elevation)
     }
 }
 
@@ -65,6 +76,10 @@ pub struct ViewSpec<'a> {
     /// Model inches per paper inch; 0 = NTS (fit).
     pub scale: f64,
     pub cut_z: f64,
+    /// Plan views: the height of the horizontal cut plane; None = the top of the highest drawn member less 1".
+    pub cut_y: Option<f64>,
+    /// Plan and elevation views: the hidden parts of outlines draw as dashed hidden lines.
+    pub hidden_lines: bool,
     pub crop: Box,
     /// The author set `crop` / `scale` explicitly (SPEC 19). When false, drawview auto-fits them.
     pub has_crop: bool,
@@ -209,6 +224,8 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     match kind_s {
         "section" => {}
         "iso" => kind = Kind::Iso,
+        "plan" => kind = Kind::Plan,
+        "elevation" => kind = Kind::Elevation,
         k if is_schedule_kind(k) => kind = Kind::Schedule,
         _ => {
             diags.add(
@@ -216,15 +233,15 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
                 "E_PARAM",
                 Some(id),
                 Some(&format!("{base}/kind")),
-                format!(
-                    "view kind must be \"section\", \"iso\" or \"schedule\" (tables and notes only) (got \"{kind_s}\")"
-                ),
+            format!(
+                "view kind must be \"section\", \"plan\", \"elevation\", \"iso\" or \"schedule\" (tables and notes only) (got \"{kind_s}\")"
+            ),
             );
             ok = false;
         }
     }
     let mut has_scale = node.get("scale").is_some_and(|v| !v.is_null());
-    let mut scale_text = node.get("scale").and_then(Value::str).unwrap_or(if kind == Kind::Section {
+    let mut scale_text = node.get("scale").and_then(Value::str).unwrap_or(if kind.is_flat() {
         DEFAULT_SECTION_SCALE
     } else {
         "NTS"
@@ -238,8 +255,8 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         scale = 0.0;
     } else if let Some(s) = units::parse_scale(scale_text) {
         scale = s.factor;
-        if kind == Kind::Section && s.factor == 0.0 {
-            diags.add(Level::Error, "E_PARAM", Some(id), Some(&spath), "section views need a numeric scale such as \"1-1/2\\\"=1'-0\\\"\", \"1\\\"=1'-0\\\"\", \"3/4\\\"=1'-0\\\"\" or \"1:20\" (NTS is for iso views; a view of tables and notes only is \"kind\": \"schedule\", which needs no scale)".to_string());
+        if kind.is_flat() && s.factor == 0.0 {
+            diags.add(Level::Error, "E_PARAM", Some(id), Some(&spath), "section, plan and elevation views need a numeric scale such as \"1-1/2\\\"=1'-0\\\"\", \"1\\\"=1'-0\\\"\", \"3/4\\\"=1'-0\\\"\" or \"1:20\" (NTS is for iso views; a view of tables and notes only is \"kind\": \"schedule\", which needs no scale)".to_string());
             ok = false;
         }
     } else if let Some(s) = units::parse_scale_any(scale_text) {
@@ -252,13 +269,22 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     let mut crop = Box::default();
     let mut has_crop = false;
     if let Some(cv) = node.get("crop").filter(|v| !v.is_null() && kind != Kind::Schedule) {
-        match (parse_range(cv.get("x")), parse_range(cv.get("y"))) {
+        let ry = match (kind, cv.get("z")) {
+            (Kind::Plan, Some(zv)) if cv.get("y").is_none() => parse_range(Some(zv)).map(|[z0, z1]| [-z1, -z0]),
+            _ => parse_range(cv.get("y")),
+        };
+        match (parse_range(cv.get("x")), ry) {
             (Some([x0, x1]), Some([y0, y1])) if x0 < x1 && y0 < y1 => {
                 crop = Box { x0, y0, x1, y1 };
                 has_crop = true;
             }
             _ => {
-                diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{base}/crop")), format!("crop must be {{\"x\": [x0, x1], \"y\": [y0, y1]}} with x0 < x1 and y0 < y1, every value a length of at most {} inches in magnitude (got {})", model::fmt_num(limits::MAX_COORD_IN), model::kind_or_text(cv)));
+                let plan = if kind == Kind::Plan {
+                    " (a plan view also takes {\"x\": [x0, x1], \"z\": [z0, z1]} in model z)"
+                } else {
+                    ""
+                };
+                diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{base}/crop")), format!("crop must be {{\"x\": [x0, x1], \"y\": [y0, y1]}} with x0 < x1 and y0 < y1{plan}, every value a length of at most {} inches in magnitude (got {})", model::fmt_num(limits::MAX_COORD_IN), model::kind_or_text(cv)));
                 ok = false;
             }
         }
@@ -278,6 +304,70 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
             ok = false;
         }
     }
+    let mut cut_y = None;
+    if let Some(cy) = node.get("cut_y").filter(|v| !v.is_null()) {
+        match units::parse_length(cy) {
+            Some(y) if kind == Kind::Plan => cut_y = Some(y),
+            Some(_) => diags.add_fix(
+                Level::Warning,
+                "W_PARAM",
+                Some(id),
+                Some(&format!("{base}/cut_y")),
+                format!("view {id}: cut_y is the cut height of a plan view; this {} view ignores it", kind.name()),
+                format!("remove cut_y, or set \"kind\": \"plan\" on view {id}"),
+            ),
+            None => {
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/cut_y")),
+                    "cut_y must be a length (the height of the plan's horizontal cut plane)".to_string(),
+                );
+                ok = false;
+            }
+        }
+    }
+    if kind == Kind::Plan && node.get("cut_z").is_some_and(|v| !v.is_null()) {
+        diags.add_fix(
+            Level::Warning,
+            "W_PARAM",
+            Some(id),
+            Some(&format!("{base}/cut_z")),
+            format!("view {id}: a plan view cuts at the height cut_y, so its cut_z is ignored"),
+            "remove cut_z; set cut_y to the height of the cut plane (default: 1\" below the top of the highest member)"
+                .to_string(),
+        );
+    }
+    let hidden_lines = match node.get("hidden_lines") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) if matches!(kind, Kind::Plan | Kind::Elevation) => *b,
+        Some(Value::Bool(_)) => {
+            diags.add_fix(
+                Level::Warning,
+                "W_PARAM",
+                Some(id),
+                Some(&format!("{base}/hidden_lines")),
+                format!(
+                    "view {id}: hidden_lines applies to plan and elevation views; this {} view ignores it",
+                    kind.name()
+                ),
+                "remove hidden_lines, or give the members to show dashed \"shown\": \"hidden\"".to_string(),
+            );
+            false
+        }
+        Some(v) => {
+            diags.add(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("{base}/hidden_lines")),
+                format!("hidden_lines must be true or false (got {})", model::kind_or_text(v)),
+            );
+            ok = false;
+            false
+        }
+    };
     let mut from = From::FrontRight;
     if let Some(s) = node.get("from").and_then(Value::str) {
         match s {
@@ -380,6 +470,8 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         scale_text,
         scale,
         cut_z,
+        cut_y,
+        hidden_lines,
         crop,
         has_crop,
         has_scale,

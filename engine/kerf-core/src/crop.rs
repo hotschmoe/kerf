@@ -55,10 +55,20 @@ fn inside1(lo: f64, hi: f64, c0: f64, c1: f64, eps: f64) -> f64 {
     (hi.min(c1) - lo.max(c0)).max(0.0) / (hi - lo)
 }
 
+/// The cut plane W_CROP_STALE measures a view's members against: a section's cut_z, nothing for an elevation (every
+/// member shows); plan and iso views are not checked (their crops are not in model x/y).
+fn crop_cut(spec: &ViewSpec<'_>) -> Option<f64> {
+    match spec.kind {
+        Kind::Section => Some(spec.cut_z),
+        Kind::Elevation => Some(f64::INFINITY),
+        _ => None,
+    }
+}
+
 fn explicit_crop(doc: &Value, id: &str) -> Option<Box> {
     let node = view::find_view(doc, id)?;
     let spec = view::parse(node, 0, &Diags::new())?;
-    (spec.kind == Kind::Section && spec.has_crop).then_some(spec.crop)
+    (crop_cut(&spec).is_some() && spec.has_crop).then_some(spec.crop)
 }
 
 fn shown_somewhere(c: &Comp<'_>, vs: &[Value], max_outside: f64) -> bool {
@@ -67,10 +77,10 @@ fn shown_somewhere(c: &Comp<'_>, vs: &[Value], max_outside: f64) -> bool {
         if !spec.members.draws(c) {
             continue;
         }
-        if spec.kind != Kind::Section || !spec.has_crop {
+        let Some(cut) = crop_cut(&spec).filter(|_| spec.has_crop) else {
             return true;
-        }
-        let ext = visible_extent(c, spec.cut_z);
+        };
+        let ext = visible_extent(c, cut);
         if !ext.is_empty() && outside_fraction(ext, spec.crop) <= max_outside {
             return true;
         }
@@ -90,7 +100,7 @@ enum Prior {
 fn prior(before: Option<&Before<'_>>, c: &Comp<'_>, spec: &ViewSpec<'_>) -> Prior {
     let Some(bf) = before else { return Prior::None };
     let Some(old) = bf.scene.find(&c.id) else { return Prior::Added };
-    let old_ext = visible_extent(old, spec.cut_z);
+    let old_ext = visible_extent(old, crop_cut(spec).unwrap_or(spec.cut_z));
     if old_ext.is_empty() || view::find_view(bf.doc, spec.id).is_none() {
         return Prior::None;
     }
@@ -112,14 +122,14 @@ pub fn run(scene: &Scene<'_>, doc: &Value, before: Option<&Before<'_>>, diags: &
     let mut reported = vec![false; scene.comps.len()];
     for (vi, vnode) in vs.iter().enumerate() {
         let Some(spec) = view::parse(vnode, vi, &Diags::new()) else { continue };
-        if spec.kind != Kind::Section || !spec.has_crop {
+        let Some(cut) = crop_cut(&spec).filter(|_| spec.has_crop) else {
             continue;
-        }
+        };
         for c in &scene.comps {
             if c.state != State::Ok || !spec.members.draws(c) {
                 continue;
             }
-            let ext = visible_extent(c, spec.cut_z);
+            let ext = visible_extent(c, cut);
             if ext.is_empty() {
                 continue;
             }

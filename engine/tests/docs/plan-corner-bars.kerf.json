@@ -1,0 +1,40 @@
+{
+  "kerf": "0.1",
+  "id": "plan-corner-bars",
+  "title": "CORNER REINFORCING AT STEM WALL AND FOOTING",
+  "components": [
+    {"id": "ftg_x", "type": "concrete", "label": "footing", "shape": "rect", "width": 54, "height": 10, "at": {"anchor": "bottom_left", "to": [-6, 0]}, "z": [-6, 14]},
+    {"id": "ftg_z", "type": "concrete", "label": "footing", "shape": "rect", "width": 20, "height": 10, "at": {"anchor": "bottom_left", "to": [-6, 0]}, "z": [-40, -6]},
+    {"id": "wall_x", "type": "concrete", "label": "stem wall", "shape": "rect", "width": 48, "height": 30, "cover": {"bottom": 3, "top": 1.5, "sides": 2}, "at": {"anchor": "bottom_left", "to": "ftg_x@top_left", "offset": [6, 0]}, "z": [0, 8]},
+    {"id": "wall_z", "type": "concrete", "label": "stem wall", "shape": "rect", "width": 8, "height": 30, "cover": {"bottom": 3, "top": 1.5, "sides": 2}, "at": {"anchor": "bottom_left", "to": "wall_x@bottom_left"}, "z": [-40, 0]},
+    {"id": "dowel", "type": "rebar", "size": "#5", "mode": "path", "points": [{"ref": "ftg_x@bottom_left", "offset": [10, 3]}, {"ref": "ftg_x@bottom_left", "offset": [10, 30]}], "z": 4, "array": {"axis": "z", "count": 3, "spacing": -16}},
+    {"id": "ftg_bar", "type": "rebar", "size": "#4", "at": {"anchor": "center", "to": {"ref": "ftg_x@bottom_left", "offset": [13, 3.5]}}, "z": [-40, 14]},
+    {"id": "corner_out", "type": "rebar", "size": "#4", "plane": "xz", "y": {"ref": "wall_x@bottom_left", "offset": [0, 20]}, "points": [[30, 5.5], [2.5, 5.5], [2.5, -26]]},
+    {"id": "corner_in", "type": "rebar", "size": "#4", "plane": "xz", "y": {"ref": "wall_x@bottom_left", "offset": [0, 20]}, "points": [[30, 2.5], [5.5, 2.5], [5.5, -26]]},
+    {"id": "sill", "type": "lumber", "label": "sill plate", "size": "2x6", "run": "z", "orient": "flat", "treated": true, "at": {"anchor": "bottom_left", "to": "wall_z@top_left", "offset": [1.25, 0]}, "z": [-40, 0], "shown": "hidden"}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "number": "1", "title": "SECTION AT WALL", "cut_z": 4, "notes_side": "right", "annotations": [
+      {"id": "n1", "type": "note", "text": "CONC. STEM WALL", "target": "wall_x"},
+      {"id": "n2", "type": "note", "text": "#4 CORNER BAR EA. FACE", "target": "corner_out"},
+      {"id": "n3", "type": "note", "text": "#5 DOWEL @ 16\" O.C.", "target": "dowel"}
+    ]},
+    {"id": "B", "kind": "plan", "number": "2", "title": "CORNER REINFORCING", "notes_side": "right", "annotations": [
+      {"id": "n1", "type": "note", "text": "CONC. STEM WALL", "target": "wall_x"},
+      {"id": "n2", "type": "note", "text": "#4 CORNER BAR EA. FACE", "target": "corner_out"},
+      {"id": "n3", "type": "note", "text": "#5 DOWEL @ 16\" O.C.", "target": "dowel"},
+      {"id": "n4", "type": "note", "text": "CONC. FOOTING", "target": "ftg_x"},
+      {"id": "n5", "type": "note", "text": "2X6 PT SILL PLATE BEYOND", "target": "sill"},
+      {"id": "d1", "type": "dim", "from": "wall_z@top_left", "to": "corner_out@end", "dir": "v", "offset": -10, "text": "24\" MIN. LAP"}
+    ]},
+    {"id": "C", "kind": "plan", "number": "3", "title": "FOOTING PLAN", "cut_y": 6, "crop": {"x": [-10, 52], "z": [-44, 18]}, "hidden_lines": true, "notes_side": "right", "annotations": [
+      {"id": "n1", "type": "note", "text": "CONC. FOOTING", "target": "ftg_z"},
+      {"id": "n2", "type": "note", "text": "#4 CONT. BOTT.", "target": "ftg_bar"},
+      {"id": "n3", "type": "note", "text": "#5 DOWEL", "target": "dowel#1"}
+    ]},
+    {"id": "E", "kind": "elevation", "number": "4", "title": "STEM WALL", "hidden_lines": true, "crop": {"x": [-10, 40], "y": [-6, 44]}, "notes_side": "right", "annotations": [
+      {"id": "n1", "type": "note", "text": "CONC. STEM WALL", "target": "wall_x"},
+      {"id": "n2", "type": "note", "text": "#5 DOWEL", "target": "dowel"}
+    ]}
+  ]
+}

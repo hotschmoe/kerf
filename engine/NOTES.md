@@ -236,6 +236,19 @@ geometrically (tolerance 1e-3).
   `sleeve` components (pipe 4", packing joint_filler) instead of nine nested `solid` circles reads like the reference
   (sleeve and pipe rings, open bore) and has 0 warnings (was 1 acknowledged). Time on the 47: noise (5.04 s -> 4.86 s for
   every view's `kerf drawing` + `check`).
+- Plan and elevation views (issue #9, SPEC 26.3). Both go through the section engine: `drawview::flat_view` turns a
+  view into (scene, prisms, spec with the cut plane in `cut_z`). Elevation: `Section::new` classes every prism beyond,
+  `draw_beyond` uses the profile pen (end-grain X on run-z lumber, loose-fill hatch on its visible part,
+  `hidden_pieces` for `hidden_lines`), `break_lines` scans each member's visible region just inside the crop.
+  Plan (`plan.rs`): each XY prism becomes strips (x-interval x z range, model y as depth: cut where `cut_y` crosses the
+  profile, else below with the profile's top as depth; below strips of one member merge unless the top steps or creases
+  by 10 deg or more), rebar becomes centreline bars and dots, membranes crossing the plane lines along z, fills are
+  dropped; `plan::scene` clones the components with per-instance plan boxes (`Comp::plan`) so Refs resolve in plan
+  coordinates through `Scene::anchor_point`. Rebar `plane: "xz"`: the builder emits legs (`Prism::xz_bar`) for checks,
+  iso and mesh, and the flattened 3D centreline (`Prism::path3`, first leg) from which `plan::xz_bars_in_section` makes
+  dots and projected lines for sections/elevations. 47 MASS details: every section view as a plan and as an
+  elevation (326 views): 0 crashes, slowest 0.34 s. Their 198 existing views draw byte-identical drawing IR (diagnostics
+  aside). Wasm 788,276 -> 825,316 bytes (+4.7%; gzip 347,996 -> 363,164).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -333,10 +346,19 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - Allocation churn: glibc malloc, not a per-call arena (the measured bound is 0.77x in-process; a safe arena for the
   threaded server is real allocator work). Process start-up is dynamic glibc + libgcc_s (0.9 ms). See `PERF.md`.
 - Steel: no WT, S, HP or double angles; channel flanges draw parallel (no 2:12 inner slope); angle/channel root radii
-  are by size, not tabulated; pipe and round HSS seen lengthwise are boxes in 3D; elevation/plan members hide what is
-  behind them but things in front of the cut plane are still dropped (an elevation detail sets `cut_z` in front of
-  everything and gives in-plane members `z` explicitly, see `tests/docs/steel-beam-cap-plate.kerf.json`); weld symbols
-  are not obstacles for the note layout; no plate-on-flange fit check yet.
+  are by size, not tabulated; pipe and round HSS seen lengthwise are boxes in 3D; in a section, `orient`
+  elevation/plan members hide what is behind them but things in front of the cut plane are dropped (use a view of
+  `kind: "elevation"`, which cuts nothing, SPEC 26.3); weld symbols are not obstacles for the note layout; no
+  plate-on-flange fit check yet.
+- Plan and elevation views (issue #9, SPEC 26.3): a plan's occlusion depth per strip is the highest point of the profile
+  over that strip (a sloped member hides a lower one by its top, not point by point); a plan draws rebar below the cut
+  and members `shown: "hidden"` over everything (no occlusion of embedded parts, as in a section); xz bars measure
+  `W_COVER` in XY only (their cover along z, to the faces of a wall running along x, is not checked); a diagonal xz leg is
+  a staircase of slabs for iso, mesh and the checks (the views draw the true path); two components that meet at a
+  corner draw their shared edge (a monolithic L wall needs one polygon component, which only works in one direction in
+  2.5D); `cmu_wall` has no face-on elevation (its courses are in the section plane), so a CMU wall elevation is still a
+  `solid` per course; there is no `along_y` rebar mode (a vertical bar is a two-point path bar); a plan cannot cut
+  through a sloped member exactly where a strip boundary falls on a vertex at the cut (it is cut or below as a whole).
 - Rebar `place` (issue #16 leftovers): `face: "center"` still uses the zone box (an L zone's box centre can be outside;
   that is `E_PLACE_OUTSIDE` now, not a silent bar); side cover on a run whose neighbouring edges lean inward is measured
   along the run, not perpendicular to those edges (`W_COVER` reports it); there is no `place` for path bars and no
@@ -477,4 +499,37 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   keep the E_PARAM (its message now suggests a keyed or list view).
 - The 47-detail drafts were not converted to tables (only scratch copies of S-00.02); `~/github/mass-details` is
   untouched.
+- Issue #9 plan coordinates: the issue does not say which way plan y points. Chosen: plan y = -model z, the only
+  orientation that is not a mirror image when looking down with x to the right (the section viewer at +z stands at the
+  bottom of the plan). Literal points in a plan view are therefore [x, -z]; to soften that, a plan `crop` also takes
+  `{"x": [...], "z": [...]}` in model z, and Refs resolve to plan points by themselves.
+- Issue #9 default `cut_y` "the top of the tallest member minus 1"": read as the top of the highest drawn member
+  (bodies only, loose fill excluded) minus 1".
+- Issue #9 "members below draw as visible outlines, or as hidden lines with `hidden_lines: true`": read as the view
+  option that also draws the hidden parts of outlines dashed (both kinds), on top of the visible outlines. Members
+  `shown: "hidden"` draw their whole footprint dashed in plan, above or below the plane (the "beyond / above" plan
+  convention). Embedded parts (rebar) are never hidden in plan either, as in a section: a rebar plan shows the bars in the
+  concrete.
+- Issue #9 elevation `cut_z`: an elevation draws every member, so its `cut_z` would mean nothing; kept as the default z
+  of in-plane members (SPEC 1/19 read it from the first section view; elevations count, plans and isos do not). A plan's
+  `cut_z` warns W_PARAM.
+- Issue #9 `dashed` compatibility: the issue offers "an alias with a W_UNKNOWN_KEY-style hint". Chosen a warning,
+  `W_SHOWN_DASHED`, with both update ops, so `--strict` runs see it: drawings are unchanged. On the 47 MASS details it adds
+  39 warnings (11 documents) and changes nothing else.
+- Issue #9 titles: the brief asks to decide whether plan titles get "(PLAN)" automatically. Chosen a style template,
+  `text.plan_title` = "PLAN - {title}" (the MASS references print "PLAN - CORNER REINFORCING ..." and "PLAN VIEW - ..."),
+  skipped when the title already contains the word PLAN; `text.elevation_title` = "{title}" (the references put
+  ELEVATION in their own words: "FENCE WALL ELEVATION"). The template applies to the printed title and the title block,
+  not to the document, so coverage still reads what the author wrote.
+- Issue #9 "path rebar in the XZ plane": no such mode existed. Added rebar `plane: "xz"` (points [x, z] at height `y`)
+  instead of a full 3D path: the 2.5D model keeps XY prisms, and only views that can draw the true path (plan; section
+  dots and projections) use the centreline. `along_y` from the issue's wording is not a new mode: a vertical bar is a
+  two-point path bar, which a plan draws as a dot.
 
+## REQUESTS
+- Sheet layouts (#7): print view titles through `drawview::view_title(st, spec)` (it applies `text.plan_title` /
+  `text.elevation_title`), and treat `kind` plan/elevation views like sections (they are flat, numeric-scale views; their
+  Drawing `kind` is "plan" / "elevation").
+- Subtract solids (#14): if voids are applied to the compiled world prisms (`Comp::world`), plans and elevations get them
+  for free; if they are applied inside the section engine instead, `plan::prisms` needs the subtracted profiles before it
+  slices them.

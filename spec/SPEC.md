@@ -169,6 +169,7 @@ literal point is a DXF-style **bulge** for the segment to the next point (arc; b
   "embedded": false,           // drawn over cut solids (rebar, anchor bolts, embedded straps)
   "visible": true,
   "views": null,               // ["A","C"]: drawn and checked only in these views (default: every view; §25.4)
+  "shown": "solid",            // solid | hidden | where_occurs (dashed graphics, §16, §26.3)
   // …type-specific params
 }
 ```
@@ -383,11 +384,13 @@ the plies the bolt passes through (§25.1).
 ```jsonc
 {
   "id": "A",
-  "kind": "section",                        // section | iso | schedule (§26.1)
+  "kind": "section",                        // section | plan | elevation | iso | schedule (§26.3, §26.1)
   "number": "1",                            // detail number in the bubble
   "title": "TRUSS BEARING AT CMU WALL",
   "scale": "1-1/2\"=1'-0\"",                // see §6.1
   "cut_z": 6,                               // section: cut plane z; look toward −Z
+  "cut_y": 40,                              // plan only: height of the horizontal cut plane (§26.3)
+  "hidden_lines": false,                    // plan, elevation: hidden parts of outlines drawn dashed (§26.3)
   "crop": { "x": [-30, 40], "y": [-12, 48] },  // model-space window; break lines where cut solids are clipped
   "from": "front_right",                    // iso only: front_right | front_left | back_right | back_left
   "cutaway": true,                          // iso only: clip solids to z ≤ cut_z, hatch the cut face
@@ -399,6 +402,8 @@ the plies the bolt passes through (§25.1).
   "annotations": [ … ]
 }
 ```
+Plan and elevation views follow every rule of this section for section views (scales, crop and auto crop, note layout,
+dimensions, title); a plan's `crop`, `at`, `place` and literal points are in plan coordinates (x, −z), §26.3.
 A view draws a component when the component's `views` (if set) lists the view, the view's `only` (if set) matches its
 id, and no `omit` entry matches it (§25.4). Everything a view does (section and iso drawing, beyond outlines, auto crop,
 note landings, `inspect at`, the geometry checks of §9, `W_CROP_STALE`) uses that set.
@@ -503,7 +508,8 @@ full default):
                                  "layer": "S-DETL-CONC" } },
   "patterns": { "<NAME>": [ [angle, x0, y0, dx, dy, dash1, dash2, …], … ] },   // AutoCAD .pat semantics, paper inches
   "text":  { "font": "kerf-simplex", "height_in": 0.09375, "title_height_in": 0.15625, "case": "upper", "line_spacing": 1.6,
-             "keep_case": [] },                   // extra tokens printed as written under "upper" (§25.3)
+             "keep_case": [],                     // extra tokens printed as written under "upper" (§25.3)
+             "plan_title": "PLAN - {title}", "elevation_title": "{title}" },   // plan/elevation view titles (§26.3)
   "notes": { "mode": "leader", "wrap_chars": 28, "gutter_in": 0.375, "shoulder_in": 0.125, "note_gap_in": 0.0625, "arrow": "closed_filled", "arrow_len_in": 0.09375,
              "key_tag": "plain", "list_title": "DETAIL NOTES",    // mode leader | keyed | list; key_tag plain | circle | hex
              "abbreviations": {} },               // extra house abbreviations, {"BRG.": "BEARING"} (§25.3)
@@ -539,13 +545,14 @@ Materials (MVP): `concrete`, `grout`, `cmu`, `mortar`, `earth`, `gravel`, `sand`
 3. **Resolve placement** DAG; apply translate / rotate / mirror; expand arrays. Then subtract voids and sleeves
    from their hosts (§26.4): hosts are split into z slabs, each slab minus the voids that span it.
 4. **Validate** (§9) → diagnostics.
-5. **Views** → Drawing IR (§10): section (§8.1) or iso (§8.2), then annotations, title, crop,
-   break lines.
+5. **Views** → Drawing IR (§10): section (§8.1), plan or elevation (§26.3: both reduce to §8.1) or iso (§8.2), then
+   annotations, title, crop, break lines.
 6. **Mesh** (§11) for the 3D viewer.
 7. **Export** Drawing → SVG / DXF / PDF (§12).
 
 ### 8.1 Section view (exact, 2D)
-Look direction −Z, cut plane z = `cut_z`.
+Look direction −Z, cut plane z = `cut_z`. Plan and elevation views are drawn by this same algorithm (§26.3): an
+elevation classes every prism as beyond, a plan first turns the prisms into plan prisms with model y as their depth.
 - **Cut** prisms: z0 < cut_z < z1. Their profiles are the cut regions (hatched, pen `cut`;
   `embedded` ones drawn last on top). `cut_mark` (wood X / diagonal) is drawn ONLY for members
   whose length runs along Z (lumber `run:"z"`, i.e. seen in cross-section); members cut
@@ -615,7 +622,8 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_CUT_FILL` | warning | an embedded part emptied a cut member's fill, or a boolean fault was caught and the fill kept (§25.1) |
 | `W_COVER` | warning | rebar clear cover < required. Host = the concrete/cmu prism containing the bar center. Each host boundary edge is classified by its outward normal: n.y < −0.5 ⇒ `bottom`, n.y > 0.5 ⇒ `top`, else `sides`. Required cover comes from the host's `cover`, with `cover.parts.<part>` overriding for bars inside that part zone. cmu_wall default cover `{ "sides": 1.5, "top": 1.5, "bottom": 0.5 }`. The message names the knob (`cover.<face>`, `cover.parts.<part>.<face>`, `, default` when unset) and the fix carries the exact `update` op (§25.5) |
 | `W_UNTREATED_CONTACT` | warning | wood (`treated:false`) touching concrete/grout/cmu (IRC R317.1) |
-| `W_NOTE_TARGET` | warning | note target not visible in its view |
+| `W_NOTE_TARGET` | warning | note target not visible in its view (plan and elevation: the fix names `cut_y` / `hidden_lines`, §26.3) |
+| `W_SHOWN_DASHED` | warning | a component uses the old `"shown": "dashed"` (drawn as `where_occurs`); the fix gives the `where_occurs` and the `hidden` update ops (§26.3) |
 | `W_VIEW_FIT` | warning | view + notes + title (bubble included) exceed the sheet frame, less 1/8" clearance, at the chosen scale; with an auto crop it names the components that stretch it (§25.5) |
 | `W_NOTE_LANDING` | warning | a note's explicit `at` puts the arrow on empty paper: outside the crop (section), off every visible face and line (iso) |
 | `W_LABEL_OVERLAP` | warning | a label overprints a label or dimension text, a note's text overprints either, or a pinned dimension overprints another |
@@ -927,9 +935,11 @@ whose metrics are close; minor differences in CAD are acceptable.
   `place.station: <in>` positions a single bar at that x offset (or y with `axis: "y"`) from the
   zone's left (bottom) face instead of centering it.
 - `W_COVER` on a `path` bar names the failing segment (index and endpoints in ft-in) and the face.
-- **"Where occurs" graphics:** any component may set `"shown": "dashed"`. It draws all its visible edges
+- **"Where occurs" graphics:** any component may set `"shown": "where_occurs"`. It draws all its visible edges
   in the `hidden` pen (no hatch, no cut mark), is exempt from `W_FLOATING` / `W_NEAR_MISS` / `W_OVERLAP`,
-  and its notes get the suffix ` (WHERE OCCURS)` unless the text already says so.
+  and its notes get the suffix ` (WHERE OCCURS)` unless the text already says so. `"shown": "hidden"` draws the same
+  way without the suffix (a member hidden behind or below others); the old `"dashed"` is `where_occurs` and warns
+  `W_SHOWN_DASHED` (§26.3).
 
 **New/extended components**
 - `anchor_bolt.hook: "wedge"`: a post-installed expansion anchor. Straight shaft, expansion clip
@@ -1397,7 +1407,7 @@ members get no `views`; each scenario's members get `views: ["B"]`; no `omit` li
 - Lumber sizes: §5.1 (3x and 8x listed; 8x is 7 1/2" thick). `run:"z"` lumber takes `length` (§5.1, like steel section).
 - `kerf schema view` lists `3/16"=1'-0"` and `1/8"=1'-0"` (any `<paper>"=1'-0"` parses); auto scale picks from 3"…1/4".
 - `cut_z`: members wholly in front of it (z0 ≥ cut_z) are not drawn, behind it are beyond outlines; a section used as an
-  elevation needs `cut_z` in front of every member it shows.
+  elevation needs `cut_z` in front of every member it shows (since beta.1: use `"kind": "elevation"`, §26.3).
 - `array`: a numeric `z` places instance 0; it does not center the group.
 - `kerf version` adds `"build"`: `git describe --tags --always --dirty` of the source tree at build time (`KERF_BUILD`
   overrides; `unknown` outside a checkout). The core API `version` is unchanged (exports never carry it).
@@ -1568,6 +1578,79 @@ first view's, and `"cells":[{"view","scale","scale_label","bounds"}]` (the views
 others with `sheet`) uses the layout's `sheet` size. `review` with `layout` is `E_INPUT`; `view` and `layout` together are
 `E_INPUT` (CLI: usage error, exit 2; `--layout` only with `drawing`/`export`). `kerf check` builds every layout and adds
 its layout-level diagnostics (W_VIEW_FIT, I_KEY_RENUMBERED, shared-text W_PARAM) once.
+
+### 26.3 beta.1: plan and elevation views
+
+From the MASS details dogfood run (issue #9): plans were faked as sections with XY as the plan (vertical bars as
+`along_z` dots, titles "(PLAN)" by hand, `steel orient: plan` with z as up), elevations were sections whose members in
+front of `cut_z` silently vanished, and `shown: "dashed"` meant both "hidden" and "where occurs". One model now gives
+every view: members keep their real orientation (Y up, Z toward the section viewer) and the view kind picks the drawing.
+
+**`"kind": "plan"`** looks down (−Y) at the horizontal cut plane y = `cut_y` (default: 1" below the top of the highest
+drawn member, fills excluded).
+- Plan coordinates: plan x = model x, plan y = −model z, so the viewer of a section (at +z) stands at the bottom of the
+  plan and the drawing is not mirrored. A plan's `crop` is in plan coordinates; `{"x": [x0, x1], "z": [z0, z1]}` (model
+  z) is accepted for it. Literal points (`at`, `place`, dim `from`/`to` as `[x, y]`) are plan coordinates. A Ref
+  `comp@<box anchor>` is that box anchor of the instance's plan box (its x extent times its z range, a part's box for
+  `comp.part@anchor`); a named anchor (`bend_1`, `vertex_3`, ...) is at its model x and the z of the instance's centre
+  (an xz bar's anchors at their own z).
+- Each prism (an XY profile over [z0, z1]) becomes plan prisms: rectangles x-interval × [−z1, −z0] whose depth is model
+  y. The x-intervals come from the profile: where the line y = `cut_y` crosses the profile the interval is **cut**
+  (hatched by material, cut pen, lumber running along y such as studs and posts gets its end-grain X); between the
+  profile's vertices below the plane each interval is **below**, its depth the profile's top there. Neighbouring
+  below-intervals of one member merge when their tops meet without a step or a crease (less than 10°), so a plan line
+  appears only where the top surface breaks (a stem above a footing: the stem's faces). Members wholly above the plane
+  are not drawn. Then the section algorithm of §8.1 runs with `cut_y` as the cut plane: below-intervals are outlines
+  hidden by cut regions and by higher intervals.
+- Rebar: a bar along z (`along_z`) and the part of a path bar below the plane draw as a line along their run (the
+  rebar pen, at the bar's z); where a path bar crosses the plane, and along each vertical leg below it, it is a dot
+  (filled, the bar's diameter). Embedded parts cut square (anchor bolts) draw as dots too. Membranes crossing the plane
+  are a line along z; loose fill (earth, gravel) is not drawn in plan.
+- `"shown": "hidden"` / `"where_occurs"` members draw the outline of their whole plan footprint in the hidden pen, above
+  or below the plane.
+- A plan view ignores `cut_z` (`W_PARAM`); `cut_y` on any other kind warns `W_PARAM` and is ignored.
+
+**`"kind": "elevation"`** looks toward −Z and cuts nothing.
+- Every drawn member is beyond (§8.1) and nothing is in front of a cut plane: a member draws where no nearer member
+  (larger z1) covers it, in the `profile` pen (fill materials keep their steel/rebar pen). Embedded members are never
+  hidden (as in a section).
+- Lumber seen end-on (run z: joists, blocking perpendicular to the elevation) keeps its X (or diagonal for `blocking`)
+  where it is not hidden. Loose fill (earth) keeps its hatch on its visible part.
+- Crop: every member the crop cuts gets a break line along that crop edge (lumber, concrete, steel: all but loose fill
+  and dashed members), measured on its visible part, so a member hidden at the crop edge gets none.
+- An elevation's `cut_z` only sets the default z of in-plane members (§1); `W_CROP_STALE` (§21) checks elevation views
+  like section views.
+
+**Both.** `"hidden_lines": true` draws the hidden parts of outlines (below cut regions or higher members in plan, behind
+nearer members in elevation) as dashed lines in the `hidden` pen, and lets a note land on a member that is hidden
+everywhere (on its hidden outline). Without it, a note targeting a member hidden everywhere is `W_NOTE_TARGET`, whose
+fix names `cut_y` (plan) or `hidden_lines`. `hidden_lines` on a section or iso view warns `W_PARAM` and is ignored.
+Dimensions, labels, welds, keyed notes and the title work as in a section view; `inspect at` takes plan coordinates in a
+plan view. Auto crop and auto scale (§19) work on the plan or elevation geometry.
+
+**Titles.** The printed title (view title and title block) of a plan view is the style's `text.plan_title` with
+`{title}` replaced by the view's `title` (default `"PLAN - {title}"`, the MASS house form "PLAN - CORNER REINFORCING"),
+and of an elevation view `text.elevation_title` (default `"{title}"`: unchanged). The template is not applied when the
+title already contains the word PLAN (PLANS) or ELEVATION (ELEVATIONS, ELEV.), so "BASE PLATE (BP-A) PLAN" prints as
+written. Coverage (§21) reads the title as written in the document.
+
+**`shown`.** `"solid"` (default), `"hidden"`: dashed graphics (§16), no hatch or cut mark, never hides anything, exempt
+from `W_FLOATING` / `W_NEAR_MISS` / `W_OVERLAP`, notes keep their text; `"where_occurs"`: the same graphics, and notes
+targeting it end in ` (WHERE OCCURS)`. The old `"dashed"` behaves as `where_occurs` and warns `W_SHOWN_DASHED` with
+both update ops (pick `hidden` for a member that is only behind or below others).
+
+**Rebar `plane: "xz"`** (corner and intersection bars, bars around openings): `points` are `[x, z]` pairs at the height
+`y` (a length or a Ref, whose y is used), bends filleted at `bend_radius`. `z` (a number) shifts the bar along z;
+`array` works as for other bars. A plan draws the bar as its path (cut when `cut_y` passes within its radius). A section
+draws a dot where the bar crosses `cut_z` and its centreline projected on XY where it runs behind the cut; an elevation
+draws the projection. The checks, iso and the mesh use legs: a run along x is a bar seen lengthwise, a run along z a dot
+extruded along z, a diagonal run a staircase of short slabs (at most 48). `W_COVER` reports the worst leg once per host
+face; it measures cover in XY only. Named anchors: `start`, `end`, `bend_k`, `seg_k_mid` (§25.1), at the bar's height.
+
+**Composition.** The kind is a property of one view and its Drawing (`"kind": "plan"` / `"elevation"` in the IR, §10);
+anything that places views (sheet layouts) places these like any other. Plans and elevations are built from the same
+compiled prisms as sections, so whatever changes those prisms before a view draws them (e.g. subtracted solids) shows in
+every kind.
 
 ### 26.4 beta.1: fills under solids, voids and sleeves
 Solids subtract each other (#14), so no fill, pour or wall is traced by hand around what it surrounds.

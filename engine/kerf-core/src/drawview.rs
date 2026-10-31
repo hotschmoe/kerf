@@ -11,6 +11,7 @@ use crate::math;
 use crate::model::{Diag, Diags, Level, Prism};
 use crate::num;
 use crate::pen;
+use crate::plan;
 use crate::route::{DEFAULT_WORK_LIMIT, Work};
 use crate::scene::{self, Scene};
 use crate::section::{FillFault, Section};
@@ -515,6 +516,23 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
     }
 }
 
+/// The title a view prints: a plan or elevation view's title through the style's `text.plan_title` /
+/// `text.elevation_title` (default "PLAN - {title}" / "{title}"), unless it already names its kind (SPEC 26.3).
+pub fn view_title(st: &Style, spec: &ViewSpec) -> String {
+    let (template, words): (&str, &[&str]) = match spec.kind {
+        Kind::Plan => (&st.plan_title, &["PLAN", "PLANS"]),
+        Kind::Elevation => (&st.elevation_title, &["ELEVATION", "ELEVATIONS", "ELEV."]),
+        _ => return spec.title.to_string(),
+    };
+    let upper = spec.title.to_ascii_uppercase();
+    let named = upper.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.')).any(|w| words.contains(&w));
+    if named || !template.contains("{title}") {
+        return spec.title.to_string();
+    }
+    let out = template.replace("{title}", spec.title);
+    out.trim_matches(|c: char| c == ' ' || c == '-').to_string()
+}
+
 fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout } = inp;
     let scale = spec.scale;
@@ -538,9 +556,10 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
         tcrop.y0 = ab.y0;
     }
     let scale_text = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
+    let shown_title = view_title(st, spec);
     let info = SheetInfo {
         number: &spec.number,
-        title: spec.title,
+        title: &shown_title,
         scale_text: &scale_text,
         sheet: meta_string(doc, "sheet"),
         unverified,
@@ -808,21 +827,55 @@ pub struct Resolved {
     pub scale: f64,
 }
 
-/// Section views only; other views and fully explicit specs come back unchanged.
+/// Section, plan and elevation views; iso views and fully explicit specs come back unchanged.
 pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> Resolved {
     let same = Resolved { crop: spec.crop, scale: spec.scale };
-    if spec.kind != Kind::Section || (spec.has_crop && spec.has_scale) {
+    if !spec.kind.is_flat() || (spec.has_crop && spec.has_scale) {
         return same;
     }
-    let prisms = compile::view_prisms(scene, &spec.members);
+    let fv = flat_view(scene, spec);
     let font = font::embedded();
     let d = Diags::new();
     let work = Work::new(DEFAULT_WORK_LIMIT);
-    let r = resolve_section(
-        SectionInputs { st, scene, prisms: &prisms, font, doc, diags: &d, work: &work, keys: None, in_layout: false },
-        spec,
-    );
+    let scene = fv.scene.as_ref().unwrap_or(scene);
+    let inp = SectionInputs {
+        st,
+        scene,
+        prisms: &fv.prisms,
+        font,
+        doc,
+        diags: &d,
+        work: &work,
+        keys: None,
+        in_layout: false,
+    };
+    let r = resolve_section(inp, &fv.spec);
     Resolved { crop: r.crop, scale: r.scale }
+}
+
+/// What a section, plan or elevation view draws: the scene its Refs resolve in (plan views: plan coordinates), its
+/// prisms, and its spec with the cut plane in `cut_z` (a plan's `cut_y`; an elevation cuts nothing).
+pub struct FlatView<'a> {
+    pub scene: Option<Scene<'a>>,
+    pub prisms: Vec<Prism>,
+    pub spec: ViewSpec<'a>,
+}
+
+pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
+    let prisms = compile::view_prisms(scene, &spec.members);
+    let mut fs = spec.clone();
+    match spec.kind {
+        Kind::Plan => {
+            let cut = spec.cut_y.unwrap_or_else(|| plan::default_cut_y(&prisms));
+            fs.cut_z = cut;
+            FlatView { prisms: plan::prisms(scene, &prisms, cut), scene: Some(plan::scene(scene)), spec: fs }
+        }
+        Kind::Elevation => {
+            fs.cut_z = f64::INFINITY;
+            FlatView { scene: None, prisms: plan::xz_bars_in_section(prisms, fs.cut_z), spec: fs }
+        }
+        _ => FlatView { scene: None, prisms: plan::xz_bars_in_section(prisms, fs.cut_z), spec: fs },
+    }
 }
 
 /// Build the Drawing for `view_id`. Returns None (with diagnostics) if the view does not exist or is invalid.
@@ -869,7 +922,9 @@ pub fn build_with<'a>(
     opts: ViewOpts,
 ) -> Option<Drawing<'a>> {
     let view_id = spec.id;
-    let prisms = compile::view_prisms(scene, &spec.members);
+    let fv = flat_view(scene, spec);
+    let scene = fv.scene.as_ref().unwrap_or(scene);
+    let prisms = &fv.prisms;
     let work = Work::new(DEFAULT_WORK_LIMIT);
     let font = font::embedded();
     let items: Vec<Item>;
@@ -886,7 +941,7 @@ pub fn build_with<'a>(
             SectionInputs {
                 st,
                 scene,
-                prisms: &prisms,
+                prisms,
                 font,
                 doc,
                 diags,
@@ -905,12 +960,12 @@ pub fn build_with<'a>(
         bounds = pass.bounds;
         detail = pass.detail;
         fit = pass.fit;
-    } else if spec.kind == Kind::Section {
+    } else if spec.kind.is_flat() {
         let rs = resolve_section(
             SectionInputs {
                 st,
                 scene,
-                prisms: &prisms,
+                prisms,
                 font,
                 doc,
                 diags,
@@ -918,7 +973,7 @@ pub fn build_with<'a>(
                 keys: opts.keys,
                 in_layout: opts.in_layout,
             },
-            spec,
+            &fv.spec,
         );
         scale = rs.scale;
         crop_out = rs.crop;
@@ -960,9 +1015,10 @@ pub fn build_with<'a>(
                 tcrop.y0 = ab.y0;
             }
             let label = units::scale_label(if spec.scale == 0.0 { 0.0 } else { scale });
+            let shown_title = view_title(st, spec);
             let info = SheetInfo {
                 number: &spec.number,
-                title: spec.title,
+                title: &shown_title,
                 scale_text: &label,
                 sheet: meta_string(doc, "sheet"),
                 unverified: un,
@@ -1012,8 +1068,8 @@ pub fn build_with<'a>(
         let ph = (bounds.y1 - bounds.y0) / scale;
         let (aw, ah) = fit_area(st);
         if !opts.in_layout && (pw > aw + 1e-6 || ph > ah + 1e-6) {
-            let culprits = if spec.kind == Kind::Section && !spec.has_crop {
-                crop_culprits(scene, &prisms, spec, crop_out)
+            let culprits = if spec.kind.is_flat() && !spec.has_crop {
+                crop_culprits(scene, prisms, &fv.spec, crop_out)
             } else {
                 None
             };
@@ -1039,7 +1095,7 @@ pub fn build_with<'a>(
     d.layers = layers;
     d.diagnostics = diags.to_vec();
     d.number = spec.number.clone();
-    d.title = spec.title.to_string();
+    d.title = view_title(st, spec);
     d.scale_label = label;
     d.sheet_no = meta_string(doc, "sheet").to_string();
     d.date = meta_string(doc, "date").to_string();

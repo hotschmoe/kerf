@@ -19,6 +19,14 @@ pub enum State {
     Failed,
 }
 
+/// One instance of a component in a plan view: its plan box (x, -z), its parts' plan boxes and the z of its centre.
+#[derive(Clone, Debug)]
+pub struct PlanInst {
+    pub bx: geom::Box,
+    pub zc: f64,
+    pub parts: Vec<(String, geom::Box)>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Comp<'a> {
     pub index: u32,
@@ -33,6 +41,8 @@ pub struct Comp<'a> {
     pub embedded: bool,
     pub visible: bool,
     pub dashed: bool,
+    /// `shown: "where_occurs"` (or the old `"dashed"`): notes that target it end in (WHERE OCCURS).
+    pub where_occurs: bool,
     pub arr_count: usize,
     pub place_pt: V2,
     pub angle: f64,
@@ -40,6 +50,8 @@ pub struct Comp<'a> {
     pub world: Vec<Prism>,
     /// What this host's voids and sleeves take away (SPEC 26.4), for W_COVER.
     pub voids: Vec<crate::voids::Cutter>,
+    /// Plan views only (SPEC 26.3): per instance, where its Refs resolve in plan coordinates. Empty elsewhere.
+    pub plan: Vec<PlanInst>,
 }
 
 impl<'a> Comp<'a> {
@@ -57,12 +69,14 @@ impl<'a> Comp<'a> {
             embedded: false,
             visible: true,
             dashed: false,
+            where_occurs: false,
             arr_count: 1,
             place_pt: V2::init(0.0, 0.0),
             angle: 0.0,
             pitch_angle: 0.0,
             world: Vec::new(),
             voids: Vec::new(),
+            plan: Vec::new(),
         }
     }
 }
@@ -131,7 +145,7 @@ pub fn where_occurs_text(scene: &Scene<'_>, target: &str, text: &str) -> String 
         id = &id[..h];
     }
     let Some(c) = scene.find(id) else { return text.to_string() };
-    if !c.dashed || text.to_ascii_lowercase().contains("where occurs") {
+    if !c.where_occurs || text.to_ascii_lowercase().contains("where occurs") {
         return text.to_string();
     }
     format!("{} (WHERE OCCURS)", text.trim_end_matches(' '))
@@ -191,6 +205,20 @@ impl<'a> Scene<'a> {
 
     pub fn anchor_point(c: &Comp<'_>, inst: usize, part: Option<&str>, name: &str) -> Option<V2> {
         let xf = c.xfs.get(inst)?;
+        if let Some(pi) = c.plan.get(inst) {
+            if let Some(p) = part {
+                let b = pi.parts.iter().find(|(n, _)| n == p)?.1;
+                return model::box_anchor(b, name);
+            }
+            if let Some(v) = model::box_anchor(pi.bx, name) {
+                return Some(v);
+            }
+            let n = c.built.anchors.iter().find(|n| n.name == name)?;
+            if let Some(z) = c.built.plan_z.iter().find(|a| a.name == name) {
+                return Some(V2::init(xf.apply(n.p).x, -(pi.zc + z.p.y)));
+            }
+            return Some(V2::init(xf.apply(n.p).x, -pi.zc));
+        }
         if let Some(p) = part {
             let b = Scene::part_box(c, p)?;
             return Some(xf.apply(model::box_anchor(b, name)?));

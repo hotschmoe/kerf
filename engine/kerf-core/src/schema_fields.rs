@@ -109,9 +109,9 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "kind",
-            ty: "section|iso|schedule",
+            ty: "section|plan|elevation|iso|schedule",
             def: "section",
-            desc: "section = 2D cut looking toward -Z; iso = hidden-line 3D; schedule = tables, notes and labels only (no components, no crop or scale, paper inches from [0, 0], caption SCALE: NTS; \"sheet\" is accepted for it)",
+            desc: "section = 2D cut at cut_z looking toward -Z; plan = looking down at the cut plane cut_y (members it crosses are cut and hatched, members below draw as outlines; vertical bars are dots, bars in the XZ plane paths; plan point [x, y] = model (x, -z)); elevation = looking toward -Z with nothing cut (nearer members hide farther ones, members the crop cuts get break lines); iso = hidden-line 3D. One model gives all of them: keep members in their real orientation; schedule = tables, notes and labels only (no components, no crop or scale, paper inches from [0, 0], caption SCALE: NTS; \"sheet\" is accepted for it)",
             ..Field::NONE
         },
         Field {
@@ -138,13 +138,27 @@ pub static VIEW: Object = Object {
             name: "cut_z",
             ty: "length",
             def: "0",
-            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn. A section used as an elevation therefore needs cut_z in front of (greater than) every member to show. Also the default z of in-plane members and anchor bolts",
+            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn: to show members without cutting them use kind \"elevation\". Also the default z of in-plane members and anchor bolts (an elevation's cut_z only sets that; a plan ignores it)",
+            ..Field::NONE
+        },
+        Field {
+            name: "cut_y",
+            ty: "length",
+            def: "1\" below the top of the highest member",
+            desc: "plan only: height of the horizontal cut plane; members it crosses are cut (hatched; studs and posts get the end-grain X), members below draw as outlines hidden by higher ones, members above are not drawn",
+            ..Field::NONE
+        },
+        Field {
+            name: "hidden_lines",
+            ty: "boolean",
+            def: "false",
+            desc: "plan and elevation: also draw the hidden parts of outlines as dashed hidden lines (a footing under a slab, a post behind a sheathed wall). For one member use its \"shown\": \"hidden\" instead",
             ..Field::NONE
         },
         Field {
             name: "crop",
             ty: "{\"x\":[x0,x1],\"y\":[y0,y1]}",
-            desc: "model-inch window (x right, y up). When omitted it auto-fits all non-fill components plus 6\" (fills are clipped to that box). Solids cut by the window get break lines. After an edit that leaves a member mostly outside an explicit crop, W_CROP_STALE says so (remove crop and scale to re-fit)",
+            desc: "model-inch window (x right, y up; a plan view takes {\"x\":[x0,x1],\"z\":[z0,z1]} in model z, or y = -z). When omitted it auto-fits all non-fill components plus 6\" (fills are clipped to that box). Solids cut by the window get break lines. After an edit that leaves a member mostly outside an explicit crop, W_CROP_STALE says so (remove crop and scale to re-fit)",
             ..Field::NONE
         },
         Field {
@@ -197,9 +211,9 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "annotations",
-            ty: "[note|dim|label|weld|table]",
+            ty: "[note|dim|label|weld|table|ref]",
             def: "[]",
-            desc: "notes, dimensions, labels, weld symbols and tables (schedules) in drawing order (`kerf schema note|dim|label|weld|table`)",
+            desc: "notes, dimensions, labels, weld symbols, tables (schedules) and reference bubbles in drawing order (`kerf schema note|dim|label|weld|table|ref`)",
             ..Field::NONE
         },
     ],

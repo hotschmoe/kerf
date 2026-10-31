@@ -11,10 +11,12 @@ use crate::house;
 use crate::json::{self, Value};
 use crate::limits;
 use crate::math;
+use crate::model::Kind;
 use crate::num;
 use crate::pen::{LayerKey, Pen};
 use crate::route;
 use crate::scene::Scene;
+use crate::section::Class;
 use crate::shape;
 use crate::sort;
 use crate::style::KeyTag;
@@ -86,7 +88,35 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
                 }
                 shapes_src.extend(sec.visible_region(i));
             }
+            if shapes_src.is_empty() && spec.hidden_lines {
+                for (i, p) in prisms.iter().enumerate() {
+                    if p.comp != comp.index
+                        || inst.is_some_and(|k| p.instance != k)
+                        || part.is_some_and(|pn| p.part != pn)
+                        || sec.cls[i] == Class::Drop
+                        || p.kind != Kind::Body
+                    {
+                        continue;
+                    }
+                    let f = sec.flat_of(i);
+                    shapes_src.extend(clip::boolean(&f, core::slice::from_ref(&sec.crop_loop), clip::Op::Intersect));
+                }
+            }
             if shapes_src.is_empty()
+                && let Some(pn) = part
+                && let Some(lb) = comp
+                    .plan
+                    .get(inst.unwrap_or(0) as usize)
+                    .and_then(|pi| pi.parts.iter().find(|(n, _)| n == pn).map(|(_, b)| *b))
+            {
+                let mut pts =
+                    [V2::init(lb.x0, lb.y0), V2::init(lb.x1, lb.y0), V2::init(lb.x1, lb.y1), V2::init(lb.x0, lb.y1)];
+                clip::orient_ccw(&mut pts);
+                let reg = clip::boolean(&[pts.to_vec()], core::slice::from_ref(&sec.crop_loop), clip::Op::Intersect);
+                shapes_src.extend(reg);
+            }
+            if shapes_src.is_empty()
+                && comp.plan.is_empty()
                 && let Some(pn) = part
                 && let Some(lb) = Scene::part_box(comp, pn)
             {

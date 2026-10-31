@@ -1,0 +1,436 @@
+{
+  "kerf": "0.1",
+  "id": "elevation-stud-strap",
+  "title": "STRAP HOLDOWN FLOOR TO FLOOR",
+  "components": [
+    {
+      "id": "stud_lo",
+      "type": "lumber",
+      "label": "stud below",
+      "at": {
+        "anchor": "top_left",
+        "to": [0, 0]
+      },
+      "z": [-2.75, 2.75],
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 16
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "stud_lo2",
+      "type": "lumber",
+      "label": "stud below",
+      "at": {
+        "anchor": "top_left",
+        "to": [48, 0]
+      },
+      "z": [-2.75, 2.75],
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 16
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "post_lo",
+      "type": "lumber",
+      "label": "post below",
+      "at": {
+        "anchor": "top_left",
+        "to": [30, 0]
+      },
+      "z": [-2.75, 2.75],
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 1.5
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "pl1",
+      "type": "lumber",
+      "label": "top plate",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [-4, 0]
+      },
+      "z": [-2.75, 2.75],
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 72
+    },
+    {
+      "id": "pl2",
+      "type": "lumber",
+      "label": "top plate",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "pl1@top_left"
+      },
+      "z": [-2.75, 2.75],
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 72
+    },
+    {
+      "id": "rim",
+      "type": "lumber",
+      "label": "rim board",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "pl2@top_left"
+      },
+      "z": [1.5, 2.75],
+      "size": "1.25x11.875",
+      "product": "lsl",
+      "run": "x",
+      "length": 72
+    },
+    {
+      "id": "joist_tf",
+      "type": "lumber",
+      "label": "joist top flange",
+      "at": {
+        "anchor": "top_left",
+        "to": {
+          "ref": "rim@top_left",
+          "offset": [6, 0]
+        }
+      },
+      "z": [-40, 1.5],
+      "array": {
+        "axis": "x",
+        "count": 4,
+        "spacing": 16
+      },
+      "size": "2x3",
+      "run": "z",
+      "orient": "flat"
+    },
+    {
+      "id": "joist_bf",
+      "type": "lumber",
+      "label": "joist bottom flange",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "rim@bottom_left",
+          "offset": [6, 0]
+        }
+      },
+      "z": [-40, 1.5],
+      "array": {
+        "axis": "x",
+        "count": 4,
+        "spacing": 16
+      },
+      "size": "2x3",
+      "run": "z",
+      "orient": "flat"
+    },
+    {
+      "id": "joist_web",
+      "type": "panel",
+      "label": "joist web",
+      "material": "osb",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "joist_bf@top_left",
+          "offset": [1.0625, 0]
+        }
+      },
+      "z": [-40, 1.5],
+      "array": {
+        "axis": "x",
+        "count": 4,
+        "spacing": 16
+      },
+      "thickness": 0.375,
+      "until": "joist_tf@bottom_left",
+      "run": "y"
+    },
+    {
+      "id": "subfloor",
+      "type": "panel",
+      "label": "subfloor",
+      "material": "plywood",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "rim@top_left"
+      },
+      "z": [-40, 2.75],
+      "thickness": 0.75,
+      "length": 72
+    },
+    {
+      "id": "sole",
+      "type": "lumber",
+      "label": "sole plate",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "subfloor@top_left"
+      },
+      "z": [-2.75, 2.75],
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 72
+    },
+    {
+      "id": "stud_up",
+      "type": "lumber",
+      "label": "stud above",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, 17.125]
+      },
+      "z": [-2.75, 2.75],
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 16
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "stud_up2",
+      "type": "lumber",
+      "label": "stud above",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [48, 17.125]
+      },
+      "z": [-2.75, 2.75],
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 16
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "post_up",
+      "type": "lumber",
+      "label": "post above",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [30, 17.125]
+      },
+      "z": [-2.75, 2.75],
+      "array": {
+        "axis": "x",
+        "count": 2,
+        "spacing": 1.5
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "narrow",
+      "length": 40
+    },
+    {
+      "id": "strap",
+      "type": "connector",
+      "label": "strap holdown",
+      "z": [2.75, 2.85],
+      "model": "CMST14",
+      "points": [
+        {
+          "ref": "post_lo#0@top_left",
+          "offset": [1.5, -24]
+        },
+        {
+          "ref": "post_up#0@bottom_left",
+          "offset": [1.5, 24]
+        }
+      ],
+      "lay": "face"
+    },
+    {
+      "id": "blk_alt",
+      "type": "lumber",
+      "label": "alt. solid blocking",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "rim@bottom_left",
+          "offset": [33, 0]
+        }
+      },
+      "z": [-1.5, 0],
+      "shown": "where_occurs",
+      "size": "2x6",
+      "run": "x",
+      "face": "wide",
+      "length": 14.5
+    },
+    {
+      "id": "hd_behind",
+      "type": "lumber",
+      "label": "blocking behind",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [1.5, -20]
+      },
+      "z": [-2.75, -1.25],
+      "shown": "hidden",
+      "size": "2x4",
+      "run": "x",
+      "face": "wide",
+      "length": 14.5
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "elevation",
+      "number": "A",
+      "title": "STRAP OVER FLOOR JOISTS PERPENDICULAR TO WALL",
+      "scale": "3/4\"=1'-0\"",
+      "hidden_lines": true,
+      "crop": {
+        "x": [-4, 68],
+        "y": [-30, 48]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "(2) 2X6 POST BELOW PER PLAN",
+          "target": "post_lo",
+          "key": 1
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "DBL. 2X6 TOP PLATE",
+          "target": "pl1",
+          "key": 2
+        },
+        {
+          "id": "n3",
+          "type": "note",
+          "text": "1 1/4\" LSL RIM BOARD",
+          "target": "rim",
+          "key": 3
+        },
+        {
+          "id": "n5",
+          "type": "note",
+          "text": "2X6 SOLE PLATE PER SHEAR WALL SCHEDULE",
+          "target": "sole",
+          "key": 5
+        },
+        {
+          "id": "n6",
+          "type": "note",
+          "text": "(2) 2X6 POST ABOVE PER PLAN",
+          "target": "post_up",
+          "key": 6
+        },
+        {
+          "id": "n7",
+          "type": "note",
+          "text": "SIMPSON CMST14 STRAP HOLDOWN PER HOLDOWN SCHEDULE, FASTENERS PER SCHEDULE",
+          "target": "strap",
+          "key": 7
+        },
+        {
+          "id": "n9",
+          "type": "note",
+          "text": "FLOOR JOISTS PERPENDICULAR TO WALL BEYOND",
+          "target": "joist_bf",
+          "key": 9
+        },
+        {
+          "id": "d1",
+          "type": "dim",
+          "from": "rim@top_right",
+          "to": "rim@bottom_right",
+          "dir": "v",
+          "offset": 6,
+          "text": "CLR. SPAN"
+        },
+        {
+          "id": "n10",
+          "type": "note",
+          "text": "ALT. SOLID BLOCKING",
+          "target": "blk_alt",
+          "key": 10
+        },
+        {
+          "id": "n11",
+          "type": "note",
+          "text": "2X4 BLOCKING BEYOND",
+          "target": "hd_behind",
+          "key": 11
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "kind": "plan",
+      "number": "B",
+      "title": "WALL AT POST",
+      "scale": "3/4\"=1'-0\"",
+      "cut_y": -12,
+      "crop": {
+        "x": [-4, 68],
+        "z": [-8, 8]
+      },
+      "notes_side": "right",
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "(2) 2X6 POST",
+          "target": "post_lo"
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "CMST14 STRAP",
+          "target": "strap"
+        },
+        {
+          "id": "n3",
+          "type": "note",
+          "text": "2X6 STUDS @ 16\" O.C.",
+          "target": "stud_lo"
+        },
+        {
+          "id": "d1",
+          "type": "dim",
+          "from": "post_lo#0@bottom_left",
+          "to": "post_lo#1@bottom_right",
+          "dir": "h",
+          "offset": -6
+        }
+      ]
+    }
+  ]
+}

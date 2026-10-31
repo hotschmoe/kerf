@@ -618,7 +618,9 @@
     "case": "upper",
     "line_spacing": 1.6,
     "dxf_style": "KERF",
-    "dxf_font": "romans.shx"
+    "dxf_font": "romans.shx",
+    "plan_title": "PLAN - {title}",
+    "elevation_title": "{title}"
   },
   "notes": {
     "mode": "leader",
