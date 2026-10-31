@@ -746,6 +746,13 @@ fn bar_outside(s: &Drawn<'_, '_>, bar: &Comp<'_>, outside: &[(V2, &str)], diags:
     let total = bar.world.len();
     let which = if total == 1 {
         format!("{what} (x {}, y {})", fmt_ft_in(c.x), fmt_ft_in(c.y))
+    } else if bar.world.iter().any(|p| p.xz_bar) {
+        format!(
+            "{} of the {total} pieces of its xz path (the first at x {}, y {})",
+            outside.len(),
+            fmt_ft_in(c.x),
+            fmt_ft_in(c.y)
+        )
     } else {
         format!("{} of its {total} bars (the first at x {}, y {})", outside.len(), fmt_ft_in(c.x), fmt_ft_in(c.y))
     };

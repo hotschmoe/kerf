@@ -124,6 +124,9 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
 
 /// Most legs one straight run of an XZ bar is cut into for the checks, iso and mesh (a diagonal run is a staircase).
 const XZ_STEPS_MAX: usize = 48;
+/// Bounds on the legs of one XZ bar: points of its coarse centreline, and staircase slabs over all diagonal runs.
+const XZ_POINTS_MAX: usize = 200;
+const XZ_SLABS_MAX: usize = 400;
 
 /// A bar lying flat at height `y`, bent in the XZ plane (SPEC 26.3). Its prisms are axis legs (a run along x is a
 /// bar seen lengthwise, a run along z a dot extruded along z, a diagonal run a staircase of short slabs) with the whole
@@ -174,7 +177,14 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
     let br = rp.bend_radius.unwrap_or(3.0 * d);
     let center = pathgeom::fillet(&vs, br + r);
     let flat = geom::flatten_polyline(&center, false, FLAT_TOL);
-    let coarse = geom::flatten_polyline(&center, false, d / 4.0);
+    let mut tol = d / 4.0;
+    let mut coarse = geom::flatten_polyline(&center, false, tol);
+    while coarse.len() > XZ_POINTS_MAX && tol < 1e6 {
+        tol *= 4.0;
+        coarse = geom::flatten_polyline(&center, false, tol);
+    }
+    let total_dz: f64 = coarse.windows(2).map(|w| (w[1].y - w[0].y).abs()).sum();
+    let step = d.max(total_dz / XZ_SLABS_MAX as f64);
     let mut prisms: Vec<Prism> = Vec::new();
     let leg = |loops: Vec<Pt>, zc: f64, zh: f64| Prism {
         material: "rebar".to_string(),
@@ -195,7 +205,7 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
         } else if dx < 1e-6 {
             prisms.push(leg(model::circle_loop(a.x, y, r), (a.y + b.y) / 2.0, dz / 2.0));
         } else {
-            let n = num::to_int_clamped::<usize>(math::ceil(dz / d), 1, XZ_STEPS_MAX);
+            let n = num::to_int_clamped::<usize>(math::ceil(dz / step), 1, XZ_STEPS_MAX);
             for k in 0..n {
                 let (p, q) = (a.lerp(b, k as f64 / n as f64), a.lerp(b, (k + 1) as f64 / n as f64));
                 let lp = model::rect_loop(p.x.min(q.x) - r, y - r, p.x.max(q.x) + r, y + r);
