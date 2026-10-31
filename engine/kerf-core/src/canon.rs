@@ -122,6 +122,7 @@ pub fn order(ctx: &KeyCtx) -> Vec<String> {
                 "dim" => keys_of(&schema::DIM),
                 "label" => keys_of(&schema::LABEL),
                 "weld" => keys_of(&schema::WELD),
+                "table" => keys_of(&schema::TABLE),
                 _ => keys_of(&schema::NOTE),
             };
         }

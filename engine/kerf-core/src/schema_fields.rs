@@ -96,9 +96,9 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "kind",
-            ty: "section|iso",
+            ty: "section|iso|schedule",
             def: "section",
-            desc: "section = 2D cut looking toward -Z; iso = hidden-line 3D",
+            desc: "section = 2D cut looking toward -Z; iso = hidden-line 3D; schedule = tables, notes and labels only (no components, no crop or scale, paper inches from [0, 0], caption SCALE: NTS; \"sheet\" is accepted for it)",
             ..Field::NONE
         },
         Field {
@@ -118,7 +118,7 @@ pub static VIEW: Object = Object {
         Field {
             name: "scale",
             ty: "string",
-            desc: "section: 3\"=1'-0\" | 1-1/2\"=1'-0\" | 1\"=1'-0\" | 3/4\"=1'-0\" | 1/2\"=1'-0\" | 3/8\"=1'-0\" | 1/4\"=1'-0\" | 3/16\"=1'-0\" | 1/8\"=1'-0\" (any <paper>\"=1'-0\") | \"1:N\"; iso: \"NTS\". When omitted the engine picks the largest of 3\"..1/4\"=1'-0\" at which the view + notes + title fit the frame",
+            desc: "schedule: none (\"NTS\" accepted). section: 3\"=1'-0\" | 1-1/2\"=1'-0\" | 1\"=1'-0\" | 3/4\"=1'-0\" | 1/2\"=1'-0\" | 3/8\"=1'-0\" | 1/4\"=1'-0\" | 3/16\"=1'-0\" | 1/8\"=1'-0\" (any <paper>\"=1'-0\") | \"1:N\"; iso: \"NTS\". When omitted the engine picks the largest of 3\"..1/4\"=1'-0\" at which the view + notes + title fit the frame",
             ..Field::NONE
         },
         Field {
@@ -159,7 +159,13 @@ pub static VIEW: Object = Object {
             name: "notes_style",
             ty: "leader|keyed|list",
             def: "leader",
-            desc: "leader = text at the leader end; keyed = a number tag at the leader end and the texts in a numbered DETAIL NOTES list (notes sharing a `key` share one entry); list = the DETAIL NOTES list only, no tags or leaders (typical notes; `target` not needed)",
+            desc: "leader = text at the leader end; keyed = a number tag at the leader end and the texts in a numbered DETAIL NOTES list (notes sharing a `key` share one entry); list = the DETAIL NOTES list only, no tags or leaders (typical notes; `target` not needed). In a keyed view a note with neither `target` nor `at` is a list-only entry (a number, no tag). Schedule views are always list",
+            ..Field::NONE
+        },
+        Field {
+            name: "notes_title",
+            ty: "string",
+            desc: "heading of the DETAIL NOTES list in this view, e.g. \"HEADER SCHEDULE NOTES\" (1-60 characters; default: the style's notes.list_title, DETAIL NOTES)",
             ..Field::NONE
         },
         Field {
@@ -178,9 +184,9 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "annotations",
-            ty: "[note|dim|label|weld]",
+            ty: "[note|dim|label|weld|table]",
             def: "[]",
-            desc: "notes, dimensions, labels and weld symbols in drawing order (`kerf schema note|dim|label|weld`)",
+            desc: "notes, dimensions, labels, weld symbols and tables (schedules) in drawing order (`kerf schema note|dim|label|weld|table`)",
             ..Field::NONE
         },
     ],
@@ -211,7 +217,7 @@ pub static NOTE: Object = Object {
         Field {
             name: "target",
             ty: "string",
-            desc: "component id or `comp.part` (e.g. `slab.footing`); the arrow lands inside its visible region. Required unless `at` is given",
+            desc: "component id or `comp.part` (e.g. `slab.footing`); the arrow lands inside its visible region. Required unless `at` is given (or the view is keyed, list or schedule: a keyed note with neither is listed with no tag)",
             ..Field::NONE
         },
         Field {
@@ -410,6 +416,87 @@ pub static WELD: Object = Object {
     ..Object::NONE
 };
 
+pub static TABLE: Object = Object {
+    name: "table",
+    brief: "a schedule: ruled grid of cells with headers",
+    summary: "A schedule table (annotation of type table): a ruled grid sized in paper inches (the view scale does not change it), with header rows (colspan/rowspan for grouped headers), body rows, an optional title above and numbered notes below. The way to draw any schedule (lap lengths, anchor embedment, holdowns, headers, hangers), never cells built from solids and labels. Put it in a view of kind \"schedule\" (no components) or under a section's drawing.",
+    fields: &[
+        Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
+        Field { name: "type", ty: "\"table\"", required: true, desc: "annotation type", ..Field::NONE },
+        Field {
+            name: "columns",
+            ty: "[string|column]",
+            required: true,
+            desc: "one entry per column (1-40): a header string, or {\"header\", \"unit\", \"width\", \"align\"}: unit prints as (UNIT) under the header, width is the printed width in paper inches (0.1-30; default: fit the widest cell, long text wraps at about notes.wrap_chars), align left|center|right of the body cells (default center)",
+            ..Field::NONE
+        },
+        Field {
+            name: "header",
+            ty: "[[cell]]",
+            desc: "header rows for grouped headers (then leave `header` out of `columns`); without it the column headers make one header row. Header cells are centred",
+            ..Field::NONE
+        },
+        Field {
+            name: "rows",
+            ty: "[[cell]]",
+            required: true,
+            desc: "body rows, top to bottom. A cell is a string, a number, null (empty) or {\"text\", \"colspan\", \"rowspan\", \"align\"}. As in HTML a cell takes the next column not covered by a rowspan from above; every row must cover every column exactly (E_PARAM names the row and the gap). \"\\n\" in a text starts a new line",
+            ..Field::NONE
+        },
+        Field {
+            name: "title",
+            ty: "string",
+            desc: "printed centred and underlined above the table, e.g. \"CLASS B TENSION LAP SPLICE (IN.)\"",
+            ..Field::NONE
+        },
+        Field {
+            name: "notes",
+            ty: "[string]",
+            desc: "printed under the table as NOTES: 1. 2. ...; a note starting with * is a footnote (no number)",
+            ..Field::NONE
+        },
+        Field {
+            name: "rules",
+            ty: "all|header|outer|none",
+            def: "all",
+            desc: "all = heavy border, header rule, every row and column rule; header = no rules between body rows; outer = border and header rule; none = text only",
+            ..Field::NONE
+        },
+        Field {
+            name: "at",
+            ty: "point",
+            desc: "top-left corner of the border: a Ref or [x, y] (model inches; in a schedule view paper inches, y up). Default: a schedule view stacks its tables from [0, 0] down in order; other views put them under the drawing and its notes, left-aligned. A table placed with `at` over notes, dims, labels, lines or another table warns W_TABLE_OVERLAP",
+            ..Field::NONE
+        },
+    ],
+    notes: "Text takes the house case transform and W_NOTE_STYLE (no repeat check), and counts for meta.requested coverage (the title with the headers is one candidate, each body row with them another). Text height and line pitch are the style's note text. A cell wider than its fixed `width` warns W_TABLE_CELL with the width that fits. In a schedule view the DETAIL NOTES list sits above the tables (notes_side left/right puts it beside them; the view's notes_title renames it).",
+    example: "{\"id\":\"t_lap\",\"type\":\"table\",\"title\":\"CLASS B TENSION LAP SPLICE (IN.)\",\"columns\":[{\"width\":0.7},{},{},{},{}],\"header\":[[{\"text\":\"BAR SIZE\",\"rowspan\":2},{\"text\":\"f'c = 3,000 PSI\",\"colspan\":2},{\"text\":\"f'c = 4,000 PSI\",\"colspan\":2}],[\"OTHER\",\"TOP\",\"OTHER\",\"TOP\"]],\"rows\":[[\"#3\",24,28,24,25],[\"#4\",29,38,25,33]],\"notes\":[\"VERT. BARS: USE OTHER VALUES\"]}",
+};
+
+/// The keys of a `columns` entry object (lint only).
+pub static TABLE_COLUMN: Object = Object {
+    name: "table",
+    fields: &[
+        Field { name: "header", ty: "string", ..Field::NONE },
+        Field { name: "unit", ty: "string", ..Field::NONE },
+        Field { name: "width", ty: "length", ..Field::NONE },
+        Field { name: "align", ty: "left|center|right", ..Field::NONE },
+    ],
+    ..Object::NONE
+};
+
+/// The keys of a cell object (lint only).
+pub static TABLE_CELL: Object = Object {
+    name: "table",
+    fields: &[
+        Field { name: "text", ty: "string", ..Field::NONE },
+        Field { name: "colspan", ty: "integer", ..Field::NONE },
+        Field { name: "rowspan", ty: "integer", ..Field::NONE },
+        Field { name: "align", ty: "left|center|right", ..Field::NONE },
+    ],
+    ..Object::NONE
+};
+
 pub static CITE: Object = Object {
     name: "cite",
     brief: "one code citation",
@@ -457,7 +544,7 @@ pub static OPS: Object = Object {
             ..Field::NONE
         },
     ],
-    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields (not `annotations`: use the annotation paths)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  remove components/<id> | views/<view> | views/<view>/annotations/<id>\n          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)\n  set    doc                              value = the whole document (first build)\n  set    components/<id>                  replace the whole component\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
+    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label | weld | table\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields (not `annotations`: use the annotation paths)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  remove components/<id> | views/<view> | views/<view>/annotations/<id>\n          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)\n  set    doc                              value = the whole document (first build)\n  set    components/<id>                  replace the whole component\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
     example: "[{\"op\":\"add\",\"path\":\"components\",\"value\":{\"id\":\"sill\",\"type\":\"lumber\",\"size\":\"2x6\",\"orient\":\"flat\",\"treated\":true}},{\"op\":\"update\",\"path\":\"views/A/annotations/n_sill\",\"value\":{\"text\":\"2X6 PT SILL PLATE W/ SEALER\"}},{\"op\":\"remove\",\"path\":\"components/old\"}]",
 };
 
@@ -544,7 +631,7 @@ impl Object {
 }
 
 /// Every non-component topic, in listing order.
-pub static OBJECTS: [&Object; 11] = [&DOC, &VIEW, &NOTE, &DIM, &LABEL, &WELD, &CITE, &OPS, &AT, &ARRAY, &ACK];
+pub static OBJECTS: [&Object; 12] = [&DOC, &VIEW, &NOTE, &DIM, &LABEL, &WELD, &TABLE, &CITE, &OPS, &AT, &ARRAY, &ACK];
 
 pub fn find_object(name: &str) -> Option<&'static Object> {
     if let Some(o) = OBJECTS.iter().find(|o| o.name == name) {

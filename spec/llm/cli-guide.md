@@ -13,8 +13,8 @@ with typed components; the engine places, draws, lays out notes and checks.
 ## Workflow
 1. Ambiguity: ask ONE short question only if the answer changes the structural system or the load path (CMU vs
    stud wall, truss vs rafter, embedded anchor vs plate, what bears on what). Otherwise build with conventional
-   choices and report your assumptions AND the main alternative reading. "Give me a footing detail" with no
-   structure named is ambiguous: ask which footing (continuous wall, isolated pad, turned-down slab edge).
+   choices and report your assumptions AND the main alternative reading. "Give me a footing detail" alone is
+   ambiguous: ask which (wall, pad or slab-edge footing).
 2. Write `ops.json` with the Write tool. First build = one op `{"op":"set","path":"doc","value":{...whole document...}}`
    (a single op object or `{"ops":[...],"why":"..."}` is accepted too). Put the designer's asks in `meta.requested`, one short
    phrase each, in their words: `"meta":{"requested":["cmu wall","bond beam","H2.5A ties","#5 rebar","vapor retarder"]}`.
@@ -25,18 +25,17 @@ kerf new truss-cmu.kerf.json --ops ops.json --title "PREFAB TRUSS BEARING AT CMU
 4. Read the summary (every component with resolved x/y extents), the `COVERAGE` block and the diagnostics. Fix every ERROR;
    fix or justify every WARN. Every `meta.requested` item must read `ok` (build the `MISSING` ones, or drop an item only if the
    designer dropped it): do not finish before full coverage, a clean check is not a finished detail. An item is covered when
-   one component (id/type/label/model) or note/dim/weld/view title has all its words (EA.=EACH). Then LOOK at it:
+   one component (id/type/label/model) or note/dim/weld/table/view title has all its words (EA.=EACH). Then LOOK at it:
 ```sh
 kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png
 ```
-5. Refine with small ops (a new ops file each time; keep ids stable so the designer's diffs stay clean):
+5. Refine with small ops (a new ops file each time; keep ids stable):
 ```sh
 kerf apply truss-cmu.kerf.json ops.json -w --why "Add HETA20 anchors at 16 in o.c."
 kerf apply truss-cmu.kerf.json ops.json --dry-run
 kerf check truss-cmu.kerf.json
 kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
 kerf export truss-cmu.kerf.json --view A --format dxf -o truss-cmu-A.dxf
-kerf new x.kerf.json --template section
 kerf schema note dim cite
 kerf schema lumber
 kerf guide --full
@@ -96,6 +95,7 @@ set them only to frame deliberately (`W_VIEW_FIT` then checks). The layout place
 (`column` on a note forces a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed notes:
 view `"notes_style":"keyed"` (numbered leaders + DETAIL NOTES list; `notes_side` above|left|right; same `key` = one
 entry). Dim `dir` default: dominant axis; `offset` > 0 is above (h) / right of (v) the points, < 0 below / left.
+Schedules: `table` annotations (`kerf schema table`) in a `"kind":"schedule"` view, not solids/labels.
 Beam in a wall (flush beam, header): draw the elevation along the wall unless asked for the end-on section; say which you drew.
 Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
 
@@ -118,7 +118,7 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
   (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens and a plural
   s, and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the
-  measured length), welds (`3/16 fillet weld all around`, `cjp`) and view titles. A `MISSING` line names the closest
+  measured length), welds (`3/16 fillet weld all around`, `cjp`), tables and view titles. A `MISSING` line names the closest
   candidate and the words it lacks; never stuff a component `label` with words to pass.
 - Note case: penny sizes (`16d`), ACI symbols (`db`, `ld`, `ldh`, `f'c`, `fy`) and units like `psi` print as written, and a
   citation's numbered section (`1926.755(a)(1)`) keeps its case. A note may end on a house abbreviation (`PER ARCH.`).
@@ -138,5 +138,13 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   A dowel that laps a wall bar: `"points": [{"ref":"ftg@bottom_center","offset":[2,3]}, {"ref":"wall_bar@start","offset":[2,24]}]`.
 - `W_CUT_FILL`: an embedded part (bolt, bar) emptied a cut member's fill; the member keeps its fill and the warning
   says which part.
+- Schedules (SPEC 26.1): one `table` annotation per schedule, in a view `{"id":"S","kind":"schedule","title":"..."}` (no
+  components, no crop or scale; paper inches, caption NTS). Grouped headers go in `header` rows with `colspan`/`rowspan`;
+  plain headers in `columns` (`{"header":"EMBED.","unit":"IN.","width":0.75}`); cells may be numbers; `"\n"` breaks a line.
+  Every row must cover every column (counting rowspans from rows above), else E_PARAM names the row. General notes of the
+  schedule go in the view as notes (a list above the tables; `notes_title` renames DETAIL NOTES) or in the table's `notes`.
+  A table can also sit in a section view: it goes under the drawing, or at `at` (top-left corner; W_TABLE_OVERLAP if it
+  lands on anything). Cell text is linted like notes and counts for coverage. In a keyed view a general note with no
+  `target` or `at` is listed with no tag.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

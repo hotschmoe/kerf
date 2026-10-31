@@ -163,7 +163,8 @@ const REFS_TEXT: &str = concat!(
     "- Coordinates: inches, X right, Y up, Z toward the viewer; sections look along -Z.\n",
 );
 
-pub const TOPICS_HINT: &str = "doc view note dim label cite ops at array acknowledge common refs <component type>";
+pub const TOPICS_HINT: &str =
+    "doc view note dim label table cite ops at array acknowledge common refs <component type>";
 
 pub fn render(topic: &str) -> Option<String> {
     if let Some(o) = fields::find_object(topic) {
@@ -177,7 +178,7 @@ pub fn render(topic: &str) -> Option<String> {
         "refs" | "ref" | "anchors" | "anchor" => Some(String::from(REFS_TEXT)),
         "annotation" | "annotations" => {
             let mut out = String::new();
-            for o in [&fields::NOTE, &fields::DIM, &fields::LABEL] {
+            for o in [&fields::NOTE, &fields::DIM, &fields::LABEL, &fields::WELD, &fields::TABLE] {
                 out.push_str(&render_object(o));
                 out.push('\n');
             }
@@ -214,7 +215,7 @@ pub fn guide_section() -> String {
     out.push_str("Topics: ");
     out.push_str(TOPICS_HINT);
     out.push_str(". Unknown keys are kept but warn (W_UNKNOWN_KEY, with a suggestion): the field names below are the only ones.\n\n");
-    for o in [&fields::VIEW, &fields::NOTE, &fields::DIM, &fields::LABEL, &fields::CITE, &fields::OPS] {
+    for o in [&fields::VIEW, &fields::NOTE, &fields::DIM, &fields::LABEL, &fields::TABLE, &fields::CITE, &fields::OPS] {
         out.push_str("```text\n");
         out.push_str(&render_object(o));
         out.push_str("```\n\n");

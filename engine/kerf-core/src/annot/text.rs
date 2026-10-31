@@ -218,3 +218,38 @@ pub fn wrap(text: &str, chars_in: usize) -> Vec<String> {
     }
     lines
 }
+
+/// Greedy word wrap at a paper width: the lines of each paragraph of `text` (split at `\n`) no wider than `max_w` at
+/// text height `h`. The pieces of one value stay together when they fit (`wrap_words`); a word wider than `max_w` is
+/// never split and takes a line of its own (the caller reports the overflow).
+pub fn wrap_width(font: &Font, text: &str, h: f64, max_w: f64) -> Vec<String> {
+    let units = |s: &str| font.width_units(ascii_fold(s));
+    let max_units = max_w * font.cap / h.max(1e-12) + 1e-9;
+    let space = units(" ");
+    let mut lines: Vec<String> = Vec::new();
+    for para in text.split('\n') {
+        let mut cur = String::new();
+        let mut cur_units = 0.0;
+        let tokens = wrap_words(para);
+        let words = tokens.iter().flat_map(|t| {
+            let parts: Vec<&str> = if units(t) > max_units { t.split(' ').collect() } else { alloc::vec![t.as_str()] };
+            parts
+        });
+        for w in words {
+            let wu = units(w);
+            if cur.is_empty() {
+                cur.push_str(w);
+                cur_units = wu;
+            } else if cur_units + space + wu <= max_units {
+                cur.push(' ');
+                cur.push_str(w);
+                cur_units += space + wu;
+            } else {
+                lines.push(core::mem::replace(&mut cur, String::from(w)));
+                cur_units = wu;
+            }
+        }
+        lines.push(cur);
+    }
+    lines
+}

@@ -10,6 +10,7 @@ pub mod dims;
 pub mod knockout;
 pub mod notes;
 pub mod repair;
+pub mod table;
 pub mod text;
 pub mod title;
 pub mod weld;
@@ -97,6 +98,9 @@ impl<'a, 's> Env<'a, 's> {
 
     /// The view's `notes_style`, else the style's `notes.mode`.
     pub fn notes_style(&self) -> NotesStyle {
+        if self.spec.kind == Kind::Schedule {
+            return NotesStyle::List;
+        }
         self.spec.notes_style.unwrap_or(self.style.notes_mode)
     }
 }
@@ -108,6 +112,7 @@ pub enum AnnKind {
     Label,
     /// The keyed notes list (one box per view).
     List,
+    Table,
 }
 
 #[derive(Clone, Debug)]
@@ -145,6 +150,9 @@ struct Gathered<'a> {
     dspecs: Vec<DimSpec<'a>>,
     lspecs: Vec<LabelSpec<'a>>,
     welds: Vec<(usize, Vec<Item>)>,
+    tables: Vec<table::Table<'a>>,
+    /// Per note: drawn only in the DETAIL NOTES list (list views; keyed notes without `target` or `at`).
+    listed: Vec<bool>,
 }
 
 /// The id of annotation `k`, or a diagnostic and `None` when it has none or repeats an earlier one.
@@ -262,7 +270,8 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     let cites: &[Value] = cite_src.get("cite").and_then(Value::arr).unwrap_or(&[]);
     let full = notes::note_text(env, &text, cites);
     let body = text::upper_if(env, &text).into_owned();
-    if style == NotesStyle::List {
+    let untargeted = str_member(an, "target").is_none() && non_null(an, "at").is_none();
+    if style == NotesStyle::List || (style == NotesStyle::Keyed && untargeted) {
         return Some(NoteIn {
             id,
             text: full,
@@ -289,7 +298,7 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
             "E_PARAM",
             Some(id),
             Some(apath),
-            format!("note '{id}' needs a \"target\" (component id or comp.part) or an \"at\" point"),
+            format!("note '{id}' needs a \"target\" (component id or comp.part) or an \"at\" point; a general note without a leader belongs in a view with \"notes_style\": \"keyed\" (it is then listed with no tag) or \"list\""),
         );
         return None;
     } else {
@@ -487,18 +496,38 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
         dspecs: Vec::new(),
         lspecs: Vec::new(),
         welds: Vec::new(),
+        tables: Vec::new(),
+        listed: Vec::new(),
     };
     let mut seen: Vec<&'a str> = Vec::new();
-    let types = ["note", "dim", "label", "weld"];
+    let types = ["note", "dim", "label", "weld", "table"];
     for (k, an) in spec.annotations.iter().enumerate() {
         let mut slot: Option<usize> = None;
         let mut cur_meta = Meta::default();
         if let Some(id) = annotation_id(env, an, k, &mut seen) {
             let apath = format!("views/{vid}/annotations/{id}");
             match str_member(an, "type").unwrap_or("") {
+                ty @ ("dim" | "weld") if spec.kind == Kind::Schedule => {
+                    env.diags.add_fix(
+                        Level::Error,
+                        "E_PARAM",
+                        Some(id),
+                        Some(&format!("{apath}/type")),
+                        format!("{ty} '{id}' is in schedule view {vid}, which draws no components: a {ty} needs a section view"),
+                        format!("move '{id}' to a section view, or remove it (a schedule view holds tables, notes and labels)"),
+                    );
+                }
+                "table" => {
+                    if let Some(t) = table::read(env, an, k, id, &apath) {
+                        g.tables.push(t);
+                    }
+                }
                 "note" => {
                     if let Some(note) = read_note(env, an, id, &apath) {
                         slot = Some(g.notes.len());
+                        let ns = env.notes_style();
+                        let untargeted = str_member(an, "target").is_none() && non_null(an, "at").is_none();
+                        g.listed.push(ns == NotesStyle::List || (ns == NotesStyle::Keyed && untargeted));
                         g.notes.push(note);
                     }
                 }
@@ -562,7 +591,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
 /// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
 /// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
 pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
-    let Gathered { notes, note_slot, per, meta, dspecs, lspecs, mut welds } = gather(env);
+    let Gathered { notes, note_slot, per, meta, dspecs, lspecs, mut welds, tables, listed } = gather(env);
     let style = env.notes_style();
     if style == NotesStyle::Leader && env.spec.notes_side == NotesSide::Above {
         let vid = env.spec.id;
@@ -576,7 +605,10 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         );
     }
     let numbers = if style == NotesStyle::Leader { Vec::new() } else { notes::key_numbers(&notes) };
-    let routed: &[NoteIn<'a>] = if style == NotesStyle::List { &[] } else { &notes };
+    let routed_idx: Vec<usize> = (0..notes.len()).filter(|&i| !listed[i]).collect();
+    let routed_notes: Vec<NoteIn<'a>> = routed_idx.iter().map(|&i| notes[i].clone()).collect();
+    let routed_numbers: Vec<u32> = routed_idx.iter().filter_map(|&i| numbers.get(i).copied()).collect();
+    let routed: &[NoteIn<'a>] = &routed_notes;
     let mut base_segs: Vec<[V2; 2]> = Vec::new();
     for it in base_items.iter() {
         if let Item::Path(p) = it {
@@ -593,7 +625,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         }
     }
     let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs };
-    let prep = notes::prep_notes(env, routed, if routed.is_empty() { &[] } else { &numbers });
+    let prep = notes::prep_notes(env, routed, &routed_numbers);
 
     let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
     let Some(fin) = best else { return Vec::new() };
@@ -631,20 +663,139 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
             result.append(&mut w.1);
         }
         if let Some(Some(sl)) = note_slot.get(k)
-            && let Some(o) = outs.get_mut(*sl)
+            && let Some(r) = routed_idx.iter().position(|i| i == sl)
+            && let Some(o) = outs.get_mut(r)
         {
             result.append(o);
         }
+    }
+    let schedule = env.spec.kind == Kind::Schedule;
+    let mut drawn: Vec<(usize, Vec<Item>)> = Vec::new();
+    let mut cursor: Option<f64> = None;
+    for t in tables.iter().filter(|t| t.at.is_some() || schedule) {
+        let mut its = table::render(env, t);
+        let local = items_box(env.font, &its);
+        let d = match t.at {
+            Some(at) => at,
+            None => {
+                let y = cursor.map_or(0.0, |c| c - local.y1);
+                cursor = Some(y + local.y0 - env.style.gutter_in * env.s);
+                V2::init(0.0, y)
+            }
+        };
+        table::translate(&mut its, d);
+        drawn.push((t.k, its));
     }
     if !numbers.is_empty() {
         let entries = notes::list_entries(env, &notes, &numbers);
         let mut ext = items_box(env.font, &result);
         ext.add_box(env.crop);
+        for (_, its) in &drawn {
+            ext.add_box(items_box(env.font, its));
+        }
         let list = notes::list_items(env, &entries, ext);
         let bx = items_box(env.font, &list);
         env.notes_box.add_box(bx);
         env.ann_boxes.push(AnnBox { id: "notes_list".to_string(), kind: AnnKind::List, bbox: bx, offset: 0.0 });
         result.extend(list);
     }
+    let mut ext = items_box(env.font, &result);
+    ext.add_box(env.crop);
+    for (_, its) in &drawn {
+        ext.add_box(items_box(env.font, its));
+    }
+    for t in tables.iter().filter(|t| t.at.is_none() && !schedule) {
+        let mut its = table::render(env, t);
+        let local = items_box(env.font, &its);
+        let d = V2::init(ext.x0 - local.x0, ext.y0 - env.style.gutter_in * env.s - local.y1);
+        table::translate(&mut its, d);
+        ext.add_box(items_box(env.font, &its));
+        drawn.push((t.k, its));
+    }
+    crate::sort::stable(&mut drawn, |a, b| a.0 < b.0);
+    let boxes: Vec<(usize, Box)> = drawn.iter().map(|(k, its)| (*k, items_box(env.font, its))).collect();
+    let regions: Vec<Vec<V2>> = base_items
+        .iter()
+        .flat_map(|it| match it {
+            Item::Hatch(h) => h.loops.as_slice(),
+            Item::Fill(f) => f.loops.as_slice(),
+            _ => &[],
+        })
+        .map(|lp| lp.iter().map(|q| q.v()).collect())
+        .collect();
+    table_overlaps(env, &tables, &boxes, &base_segs, &regions);
+    for ((_, its), (k, bx)) in drawn.into_iter().zip(&boxes) {
+        let id = tables.iter().find(|t| t.k == *k).map_or("", |t| t.id);
+        env.ann_boxes.push(AnnBox { id: id.to_string(), kind: AnnKind::Table, bbox: *bx, offset: 0.0 });
+        result.extend(its);
+    }
     result
+}
+
+/// `W_TABLE_OVERLAP` (SPEC 26.1): a table placed with `at` overprints another table, a note, dimension, label or the
+/// notes list, or the drawing's lines.
+fn table_overlaps(
+    env: &Env,
+    tables: &[table::Table],
+    boxes: &[(usize, Box)],
+    base_segs: &[[V2; 2]],
+    regions: &[Vec<V2>],
+) {
+    let vid = env.spec.id;
+    let pad = 0.05 * env.s;
+    for (i, &(k, bx)) in boxes.iter().enumerate() {
+        let Some(t) = tables.iter().find(|t| t.k == k).filter(|t| t.at.is_some()) else { continue };
+        let inner = bx.expand(-pad);
+        let mut hits: Vec<String> = Vec::new();
+        for (j, &(k2, b2)) in boxes.iter().enumerate() {
+            if j != i && inner.overlaps(b2, 0.0) {
+                hits.push(format!("table '{}'", tables.iter().find(|t| t.k == k2).map_or("", |t| t.id)));
+            }
+        }
+        for a in env.ann_boxes.iter().filter(|a| a.kind != AnnKind::Table && inner.overlaps(a.bbox, 0.0)) {
+            hits.push(match a.kind {
+                AnnKind::Note => format!("note '{}'", a.id),
+                AnnKind::Dim => format!("dimension '{}'", a.id),
+                AnnKind::Label => format!("label '{}'", a.id),
+                _ => format!("the {} list", env.spec.notes_title.unwrap_or("DETAIL NOTES")),
+            });
+        }
+        let on_region = regions.iter().any(|lp| {
+            crate::geom::point_in_loop_eo(inner.center(), lp)
+                || (0..lp.len()).any(|i| crate::pathclip::clip_seg(lp[i], lp[(i + 1) % lp.len()], inner).is_some())
+        });
+        if on_region || base_segs.iter().any(|sg| crate::pathclip::clip_seg(sg[0], sg[1], inner).is_some()) {
+            hits.push("the drawing (its lines or hatched regions)".to_string());
+        }
+        if hits.is_empty() {
+            continue;
+        }
+        let at = t.at.unwrap_or_default();
+        let fix = if env.spec.kind == Kind::Iso {
+            "remove \"at\" to place the table under the drawing, or move \"at\" clear of them".to_string()
+        } else {
+            let mut clear = env.crop;
+            for (j, &(_, b2)) in boxes.iter().enumerate() {
+                if j != i {
+                    clear.add_box(b2);
+                }
+            }
+            for a in env.ann_boxes.iter().filter(|a| a.kind != AnnKind::Table) {
+                clear.add_box(a.bbox);
+            }
+            let below = V2::init(at.x, at.y - (bx.y1 - clear.y0) - env.style.gutter_in * env.s);
+            format!(
+                "remove \"at\" to place the table under the drawing, or set \"at\": {} (below everything else)",
+                notes::fmt_pt(below)
+            )
+        };
+        env.diags.add_fix(
+            Level::Warning,
+            "W_TABLE_OVERLAP",
+            Some(t.id),
+            Some(&format!("views/{vid}/annotations/{}/at", t.id)),
+            format!("table '{}' in view {vid} overprints {}", t.id, hits.join(", ")),
+            fix,
+        );
+    }
 }

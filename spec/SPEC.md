@@ -377,7 +377,7 @@ the plies the bolt passes through (§25.1).
 ```jsonc
 {
   "id": "A",
-  "kind": "section",                        // section | iso
+  "kind": "section",                        // section | iso | schedule (§26.1)
   "number": "1",                            // detail number in the bubble
   "title": "TRUSS BEARING AT CMU WALL",
   "scale": "1-1/2\"=1'-0\"",                // see §6.1
@@ -387,6 +387,7 @@ the plies the bolt passes through (§25.1).
   "cutaway": true,                          // iso only: clip solids to z ≤ cut_z, hatch the cut face
   "notes_side": "right",                    // right | left | both | above (keyed: where the list goes, §24)
   "notes_style": "leader",                  // leader | keyed | list (§24); default: style notes.mode
+  "notes_title": "DETAIL NOTES",            // heading of the notes list (§26.1); default: style notes.list_title
   "omit": ["roofing", "b_*"],               // components not drawn in this view: ids or `*` globs (§25.4)
   "only": ["shared_*", "a_*"],              // optional: the view draws only matching components (§25.4)
   "annotations": [ … ]
@@ -399,7 +400,7 @@ note landings, `inspect at`, the geometry checks of §9, `W_CROP_STALE`) uses th
 ### 6.1 Scales
 Accepted: `3"=1'-0"` (factor 4), `1-1/2"=1'-0"` (8), `1"=1'-0"` (12), `3/4"=1'-0"` (16),
 `1/2"=1'-0"` (24), `3/8"=1'-0"` (32), `1/4"=1'-0"` (48), and `"1:N"`. Also `"NTS"`
-(iso views; engine fits to frame). Paper size of anything = model size / factor.
+(iso views; engine fits to frame; schedule views, which have no model scale, §26.1). Paper size of anything = model size / factor.
 
 ### 6.2 Annotation types
 
@@ -434,6 +435,8 @@ Accepted: `3"=1'-0"` (factor 4), `1-1/2"=1'-0"` (8), `1"=1'-0"` (12), `3/4"=1'-0
   "members": ["column", "base_plate"] }   // checked by W_WELD_SIZE
 ```
 Fillet: right triangle, vertical leg on the left, height = text height; size text right-aligned left of the symbol.
+
+**table** — a schedule: ruled grid of cells in paper inches (§26.1).
 
 **cite** rules: the LLM may only create `status: "suggested"`. Only the designer (UI action)
 sets `verified`. Export renders citations per style `citations` (default: append
@@ -1098,7 +1101,8 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
 - `kerf serve` serves a listed file with `GET /api/docs/:file/reference?path=<path>` (spec/SERVE.md).
 ## 24. Keyed notes (v0.2)
 - **View option** `notes_style`: `leader` (text at the leader end), `keyed` (a number tag at the leader end, the texts in a
-  DETAIL NOTES list) or `list` (the list only: no tags, no leaders, `target` not needed; typical-notes blocks). Without it the
+  DETAIL NOTES list; a note with neither `target` nor `at` is listed with no tag, §26.1) or `list` (the list only: no tags,
+  no leaders, `target` not needed; typical-notes blocks). Without it the
   style's `notes.mode` decides (`keynote` is accepted as an old name of `keyed`). Leader is the default; keyed output never
   changes leader output.
 - **Numbering** (deterministic): a note's integer `key` (1-999) is its number. The other notes take the lowest unused numbers
@@ -1108,7 +1112,7 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
   the text block: the number's width x one text height (`key_tag: "plain"`), or a circle / flat-top hexagon sized by the widest
   number (`circle`, `hex`; the leader starts on the outline). Tags go to the side nearer their landing (a note's `column` still
   forces a side).
-- **List**: heading `notes.list_title` (default `DETAIL NOTES`) over a rule, then `<n>.` and the text wrapped at
+- **List**: heading `notes.list_title` (default `DETAIL NOTES`; the view's `notes_title` replaces it, §26.1) over a rule, then `<n>.` and the text wrapped at
   1.25 x `wrap_chars` with a hanging indent, in number order, line pitch as notes, layer notes, text src = the entry's first
   note (heading and rule src `notes_list`). Placement by `notes_side`: `above` (and `both`) = left-aligned with the drawing
   extents (crop, tags, dimensions, labels), its bottom one `gutter_in` above them; `left` / `right` = top-aligned with them, one
@@ -1382,3 +1386,94 @@ members get no `views`; each scenario's members get `views: ["B"]`; no `omit` li
 - `array`: a numeric `z` places instance 0; it does not center the group.
 - `kerf version` adds `"build"`: `git describe --tags --always --dirty` of the source tree at build time (`KERF_BUILD`
   overrides; `unknown` outside a checkout). The core API `version` is unchanged (exports never carry it).
+
+## 26. v0.2.0-beta.1 drawing kinds
+
+### 26.1 beta.1: tables and schedule views
+From the MASS dogfood run (issue #6): every schedule in the library (lap and development lengths, anchor embedment,
+holdowns, headers, hangers, base-plate rods) was built from one `solid` per cell rule and one `label` per cell, or flattened
+into list notes, and a view holding only a schedule needed a dummy component, printed a model scale and could not rename
+DETAIL NOTES.
+
+**Table annotation** (`type: "table"`, any view kind):
+```jsonc
+{ "id": "t_lap", "type": "table",
+  "title": "CLASS B TENSION LAP SPLICE (IN.)",           // optional, centred and underlined above the border
+  "columns": [{ "width": 0.6 }, {}, {}, {}, {}],         // one entry per column (1-40)
+  "header": [                                            // optional grouped header rows
+    [{ "text": "BAR\nSIZE", "rowspan": 2 }, { "text": "f'c = 3,000 PSI", "colspan": 2 }, { "text": "f'c = 4,000 PSI", "colspan": 2 }],
+    ["OTHER", "TOP", "OTHER", "TOP"] ],
+  "rows": [ ["#3", 24, 28, 24, 25], ["#6", { "text": "SEE NOTE 2", "colspan": 2 }, 37, 49] ],
+  "notes": ["VERT. BARS: USE OTHER VALUES", "* VALUES IN INCHES"],   // optional, under the table
+  "rules": "all",                                        // all | header | outer | none
+  "at": [0, 0] }                                         // optional top-left corner of the border
+```
+- **Columns.** An entry is a header string or `{header, unit, width, align}`. `unit` prints as `(UNIT)` on its own line
+  under the header (a unit already in parentheses prints as written); with `header` rows it goes into the lowest header
+  cell over the column when that cell spans only this column, else `W_PARAM` says it is not printed. `width` is the printed
+  column width in paper inches, 0.1 to 30 (`E_PARAM` otherwise). `align` (left | center | right, default center) applies to
+  body cells; header cells are centred.
+- **Cells.** A cell is a string, a number (printed as written in JSON), null (empty) or `{text, colspan, rowspan, align}`.
+  `\n` in a text starts a new line. Placement is HTML's: each cell takes the next column of its row not covered by a
+  rowspan from a row above; a rowspan stays inside its section (header or rows). Every row must cover every column exactly:
+  a row with too many cells, a colspan past the last column or over a rowspan from above, or a row that leaves a column
+  empty is `E_PARAM` (path `.../rows/<r>` or `.../rows/<r>/<c>`), naming the columns and those covered by rowspans from above.
+  `header` rows and column headers in `columns` together are `E_PARAM` (one header form per table). Without `header`, the
+  column headers and units make one header row when any is given. A table needs at least one header or body row; at most
+  300 rows (header + body). Cell keys other than text/colspan/rowspan/align, and column keys other than
+  header/unit/width/align, warn `W_UNKNOWN_KEY`.
+- **Layout** (deterministic, paper inches times the view scale factor). Text height `h` = the style's note text height,
+  line pitch = `h` x `line_spacing`, cell padding 0.6 `h` left/right and 0.7 `h` top/bottom. A column without `width` is
+  as wide as its widest one-column cell: the cell's longest line, at most `wrap_chars` x 0.75 `h`, but never less than its
+  widest word, plus padding (at least 3 `h` + padding). Then spanning cells, fewest columns first, widen the columns they
+  span that have no `width` evenly by what they lack. Text wraps at its cell width (by stroke-font width, keeping a value
+  and its fraction or qualifier together, §25.5); a word never splits. Row height: the tallest one-row cell; spanning
+  cells, fewest rows first, add what they lack to their last row. Text blocks sit in the vertical middle of their cell,
+  aligned per cell.
+- **Rules** (layer notes): the border is a closed rectangle in the `title` pen; the rule under the header rows in the
+  `profile` pen; every other rule in the `anno` pen. A rule is drawn only between slots of different cells (spans cut it).
+  `all`: everything; `header`: no rules between body rows; `outer`: the border and the header rule; `none`: text only.
+- **Title** wraps at the table width, centred above the border with its last baseline 0.95 `h` above it, underlined
+  (`anno` pen) 0.6 `h` above the border. **Notes**: the first baseline 2 `h` under the border, `NOTE:` / `NOTES:` (by the count of numbered
+  notes), then `1.` `2.` ... with a hanging indent, wrapped at the larger of the table width and 1.25 x `wrap_chars` x 0.75 `h`;
+  a note starting with `*` is a footnote: no number, flush left.
+- **Placement.** `at` (a Ref or `[x, y]`; in an iso projected like a label's) is the top-left corner of the border. A
+  schedule view stacks its tables without `at` from `[0, 0]` (border corner) downward in annotation order, one `gutter_in`
+  apart (block to block, titles and notes included). Other views place them under everything else (the crop, notes,
+  dimensions, labels, the notes list), left-aligned with those extents, one `gutter_in` below, in order; the view title
+  then goes under them.
+- **Text rules.** Title, headers, cells and notes take the style case transform (§25.3: `f'c`, `db`, `16d` keep their case)
+  and `W_NOTE_STYLE` (path `.../title`, `.../columns/<k>`, `.../header/<r>/<c>`, `.../rows/<r>/<c>`, `.../notes/<k>`; no
+  repeat check, units are not linted; after 8 lines per table one more lists the other paths). Coverage (§25.3) gets three kinds of candidate per table, all reporting
+  `table <id>`: the title with every column header, unit and header cell; each body row (its cells, numbers included) with
+  that heading; each note.
+- **`W_TABLE_CELL`** (warning, id = the table, path = the cell): a cell's text (a word wider than its fixed-width columns)
+  runs over the rule. The message gives the paper width it needs and the columns' width; the fix the `width` that fits
+  (rounded up to 0.05"), or removing `width`.
+- **`W_TABLE_OVERLAP`** (warning, path `.../at`): a table placed with `at` whose block (1/20" paper inside its extents)
+  overlaps another table, a note, dimension, label or the notes list, or the drawing (a line crosses it or it sits on a
+  hatched or filled region). The fix: remove `at`, or (section and schedule views) an `at` that puts it under everything.
+- `W_VIEW_FIT` names a table that sets an overflowing side (`table '<id>'`) with the fix to narrow its columns or move it.
+- DXF/PDF/SVG/PNG: plain lines and text (DXF `TEXT`/`LWPOLYLINE` on the notes layer), editable in CAD.
+
+**Schedule views** (`kind: "schedule"`; `"sheet"` is accepted as the same kind). A view of tables, notes and labels with
+no geometry:
+- It draws no components: its membership set is empty (§25.4), so it has no crop, no geometry checks (it is not one of
+  the view sets of §9) and no `W_CROP_STALE`. `scale`, `crop`, `cut_z`, `from`, `cutaway`, `omit` and `only` are ignored with a
+  `W_PARAM` each (`"scale": "NTS"` is accepted silently). The drawing IR has `kind: "schedule"` and `scale: 1`: coordinates
+  are paper inches, y up, with the first auto-placed table's border corner at `[0, 0]`; the caption and title block print
+  `SCALE: NTS`.
+- Notes are always list notes (no target, no leader); the list goes by `notes_side`: `both` (default) and `above` put it
+  above the tables, `left`/`right` beside them (§24). Labels take `at` in paper inches. A `dim` or `weld` is `E_PARAM` (it
+  needs a section view).
+- The title goes under the lowest annotation, left-aligned with the content. When content and title exceed the sheet area
+  (§25.2), `W_VIEW_FIT` reads `schedule view <id> with its title needs W x H paper inches ...` with the size of each table,
+  the list and each label, and fixes to narrow the widest table, split the tallest, or move the list (`notes_side`).
+- A section view still rejects `"NTS"`; the message now points to `kind: "schedule"`.
+
+**Notes list heading and untargeted keyed notes.**
+- View `notes_title` (1-60 characters, `E_PARAM` otherwise) replaces `notes.list_title` (DETAIL NOTES) as the heading of
+  that view's notes list (§24), under the case transform: `"HEADER SCHEDULE NOTES"`.
+- In a keyed view a note with neither `target` nor `at` is a list-only entry: it is numbered like any keyed note (§24) and
+  listed, with no tag and no leader (it was `E_PARAM`). A leader view still requires `target` or `at`; the error now
+  suggests a keyed or list view for general notes.

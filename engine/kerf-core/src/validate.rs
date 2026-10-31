@@ -147,6 +147,9 @@ fn drawn_sets<'p, 'a>(scene: &'a Scene<'a>, doc: &'a Value, items: &'p [Pf<'a>])
             continue;
         }
         let members = Members::of(v);
+        if members.none {
+            continue;
+        }
         let mask: Vec<bool> =
             scene.comps.iter().map(|c| c.state == State::Ok && c.visible && members.draws(c)).collect();
         match groups.iter_mut().find(|g| g.0 == mask) {

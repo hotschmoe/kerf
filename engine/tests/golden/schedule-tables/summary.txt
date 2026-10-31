@@ -1,0 +1,9 @@
+DOC schedule-tables  2 components  2 views  0 errors  0 warnings  0 acknowledged
+ footing       concrete rect 1'-4" x 1'-0"                 x 0"..1'-4"       y 0"..1'-0"
+ stem          concrete rect 8" x 1'-6"                    x 4"..1'-0"       y 1'-0"..2'-6"
+COVERAGE  5/5 requested elements covered
+ ok       f'c = 3,000 psi           table t_lap
+ ok       HDU8 holdown              table t_hd
+ ok       header schedule           view B, note n_gen, table t_hdr
+ ok       #5 bar lap 36             table t_lap
+ ok       anchor bolt embedment     table t_hd

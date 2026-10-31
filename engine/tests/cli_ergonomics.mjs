@@ -360,7 +360,7 @@ section('8. v0.1.5 (SPEC 21): meta.requested coverage');
   write('req.json', { ops: [{ op: 'update', path: 'meta', value: { requested: ['stud wall', 'bond beam', 'H2.5A ties', 'sill'] } }], why: 'record the request' });
   r = kerf(['apply', 'c.kerf.json', 'req.json', '-w']);
   check('apply prints the COVERAGE block: ok with component ids, MISSING for the rest', r.code === 0 && /^COVERAGE  \d\/4 requested elements covered/m.test(r.out) && /^ MISSING  bond beam$/m.test(r.out) && /^ ok       sill\s+sill/m.test(r.out), r.out);
-  check('one W_REQUESTED_MISSING per missing item, with a fix', (r.out.match(/^WARN W_REQUESTED_MISSING/gm) || []).length >= 2 && /requested element "bond beam" \(meta\.requested\) matches no component \(id, type, label, model, size\) or annotation \(note, label, dim text, weld, view title\).* Fix: build it/.test(r.out), r.out);
+  check('one W_REQUESTED_MISSING per missing item, with a fix', (r.out.match(/^WARN W_REQUESTED_MISSING/gm) || []).length >= 2 && /requested element "bond beam" \(meta\.requested\) matches no component \(id, type, label, model, size\) or annotation \(note, label, dim text, weld, table, view title\).* Fix: build it/.test(r.out), r.out);
   const chk = kerf(['check', 'c.kerf.json']);
   check('check prints the same COVERAGE block', /^COVERAGE  /m.test(chk.out) && /^ MISSING  H2\.5A ties$/m.test(chk.out) && chk.code === 0, chk.out);
   write('req2.json', [{ op: 'add', path: 'components', value: { id: 'bond_beam', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'sill@top_left' } } },
@@ -1085,6 +1085,109 @@ section('19. #19 papercuts: check false positives, diagnostics that name their k
   check('schema: 3x and 8x sizes, 3/16" scale, cut_z in front of members, label align, weld length/pitch', /"3x8"/.test(r.out) && /3\/16\\?"=1'-0\\?"/.test(r.out) && /wholly in front of it \(z0 >= cut_z\) are not drawn/.test(r.out) && /^- align: left\|center\|right, default center/m.test(r.out) && /^- pitch: /m.test(r.out), r.out.slice(0, 300));
   r = kerf(['version']);
   check('kerf version stamps the build (git describe)', r.code === 0 && /^\{"engine":"kerf","version":"[^"]+","spec":"[^"]+","build":"[^"]+"\}$/m.test(r.out), r.out);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// issue #6: table annotation and geometry-free schedule views (SPEC 26.1)
+section('#6. tables and schedule views');
+{
+  let r = kerf(['schema', 'table']);
+  check('schema table: fields, cell forms, rules, example', r.code === 0 && /^- columns: \[string\|column\], required/m.test(r.out) && /^- header: \[\[cell\]\]/m.test(r.out) && /colspan/.test(r.out) && /^- rules: all\|header\|outer\|none, default all/m.test(r.out) && /"type":"table"/.test(r.out) && !/[^\x00-\x7f]/.test(r.out), r.out.slice(0, 300));
+  r = kerf(['schema', 'view']);
+  check('schema view: kind schedule, notes_title, table in annotations', /section\|iso\|schedule/.test(r.out) && /^- notes_title: string/m.test(r.out) && /\[note\|dim\|label\|weld\|table\]/.test(r.out), r.out.slice(0, 300));
+  r = kerf(['guide']);
+  check('guide names table as the way to draw a schedule, within 12 KB', /Schedules: `table` annotations/.test(r.out) && /"kind":"schedule"/.test(r.out) && Buffer.byteLength(r.out) <= 12288, Buffer.byteLength(r.out));
+
+  const lap = { id: 't_lap', type: 'table', title: 'CLASS B TENSION LAP SPLICE (IN.)', columns: [{ width: 0.6 }, {}, {}, {}, {}],
+    header: [[{ text: 'BAR\nSIZE', rowspan: 2 }, { text: "f'c = 3,000 PSI", colspan: 2 }, { text: "f'c = 4,000 PSI", colspan: 2 }], ['OTHER', 'TOP', 'OTHER', 'TOP']],
+    rows: [['#3', 24, 28, 24, 25], ['#4', 29, 38, 25, 33], ['#6', { text: 'SEE NOTE 2', colspan: 2 }, 37, 49]], notes: ['VERT. BARS: USE OTHER VALUES', '* VALUES IN INCHES'] };
+  const sched = (anns, extra = {}) => ({ kerf: '0.1', id: 'sch', meta: { requested: ["f'c = 4,000 psi", '#4 bar 38'] }, components: [],
+    views: [{ id: 'S', kind: 'sheet', number: '1', title: 'LAP SCHEDULE', annotations: anns, ...extra }] });
+  const three = [1, 2, 3].map((k) => ({ id: `n${k}`, type: 'note', text: ['GRADE 60 BARS', 'NORMALWEIGHT CONC.', 'CLASS B LAP U.N.O.'][k - 1] }));
+  write('t1.kerf.json', sched([...three, lap]));
+  r = kerf(['check', 't1.kerf.json']);
+  check('a "sheet" (schedule) view with one table and three notes checks clean: no components, no W_VIEW_FIT', r.code === 0 && /^DOC sch  0 components  1 view  0 errors  0 warnings/m.test(r.out), r.out);
+  check('table cells are coverage candidates (title + headers + one row)', /^ ok +f'c = 4,000 psi +table t_lap/m.test(r.out) && /^ ok +#4 bar 38 +table t_lap/m.test(r.out), r.out);
+  for (const fmt of ['png', 'svg', 'dxf', 'pdf']) {
+    r = kerf(['export', 't1.kerf.json', '--view', 'S', '--format', fmt, '--sheet', '-o', `t1.${fmt}`]);
+    check(`schedule view exports ${fmt}`, r.code === 0 && fs.statSync(path.join(tmp, `t1.${fmt}`)).size > 500, r);
+  }
+  check('DXF holds the table as lines and text on the notes layer', /S-ANNO-NOTE/.test(fs.readFileSync(path.join(tmp, 't1.dxf'), 'utf8')) && /CLASS B TENSION LAP SPLICE \(IN\.\)/.test(fs.readFileSync(path.join(tmp, 't1.dxf'), 'utf8')));
+  r = kerf(['drawing', 't1.kerf.json', '--view', 'S']);
+  const dr = r.code === 0 ? JSON.parse(r.out) : { items: [] };
+  const tp = dr.items.filter((i) => i.src === 't_lap' && i.t === 'path');
+  const border = tp.filter((p) => p.closed && p.pen === 'title');
+  check('drawing kind schedule at paper scale 1; one heavy closed border at [0, 0]', dr.kind === 'schedule' && dr.scale === 1 && border.length === 1 && border[0].pts[0][0] === 0 && border[0].pts[0][1] === 0, { kind: dr.kind, scale: dr.scale, border });
+  const hrule = tp.filter((p) => p.pen === 'profile');
+  check('one header rule (profile pen) under the two header rows', hrule.length === 1 && hrule[0].pts[0][0] === 0, hrule);
+  const inner = tp.filter((p) => p.pen === 'anno' && p.pts[0][1] === p.pts[1][1] && p.pts[0][1] > hrule[0]?.pts[0][1]);
+  check('the rule inside the header stops at the rowspan cell (BAR SIZE)', inner.some((p) => p.pts[0][0] > 0.5) && !inner.some((p) => p.pts[0][0] === 0 && p.pts[0][1] < 0), inner);
+  const vx = tp.filter((p) => p.pen === 'anno' && p.pts[0][0] === p.pts[1][0] && p.pts[0][0] > 1.0 && p.pts[0][0] < 1.5);
+  const last = Math.min(...border[0].pts.map((q) => q[1]));
+  check('the colspan cell (SEE NOTE 2) cuts the column rule under the f\'c header and above it', vx.length >= 1 && vx.every((p) => Math.min(p.pts[0][1], p.pts[1][1]) > last + 1e-6), vx);
+  const tt = dr.items.filter((i) => i.src === 't_lap' && i.t === 'text').map((i) => i.s);
+  check("cells keep f'c (house case) and print numbers; title above; notes numbered, * footnote unnumbered", tt.includes("f'c = 3,000 PSI") && tt.includes('38') && tt.includes('CLASS B TENSION LAP SPLICE (IN.)') && tt.includes('NOTE:') && tt.includes('1.') && tt.includes('* VALUES IN INCHES'), tt);
+  const list = dr.items.filter((i) => i.src === 'notes_list' && i.t === 'text');
+  check('the notes list of a schedule view sits above the table', list.length === 1 && list[0].s === 'DETAIL NOTES' && list[0].y > Math.max(...dr.items.filter((i) => i.src === 't_lap').map((i) => (i.t === 'text' ? i.y : -1e9))), list);
+
+  write('t2.kerf.json', sched([...three, lap], { notes_title: 'Lap Notes', scale: 'NTS', crop: { x: [0, 10], y: [0, 10] } }));
+  r = kerf(['drawing', 't2.kerf.json', '--view', 'S']);
+  const d2 = r.code === 0 ? JSON.parse(r.out) : { items: [], diagnostics: [] };
+  check('notes_title renames the list heading (case transform applies)', d2.items.some((i) => i.src === 'notes_list' && i.s === 'LAP NOTES'), d2.items.filter((i) => i.src === 'notes_list').slice(0, 2));
+  check('scale NTS is accepted on a schedule view; crop warns W_PARAM ignored', d2.diagnostics.filter((d) => d.code === 'W_PARAM').length === 1 && d2.diagnostics.some((d) => d.code === 'W_PARAM' && /schedule view.*"crop" has no meaning/.test(d.message)), d2.diagnostics);
+
+  const bad = [
+    { id: 'a1', type: 'table', columns: ['A', 'B', 'C'], rows: [['1', '2']] },
+    { id: 'a2', type: 'table', columns: ['A', 'B'], rows: [['1', '2', '3']] },
+    { id: 'a3', type: 'table', columns: ['A', 'B'], rows: [[{ text: 'X', rowspan: 2 }, 'Y'], [{ text: 'Z', colspan: 2 }]] },
+    { id: 'a4', type: 'table', columns: ['A'], header: [['H']], rows: [['1']] },
+    { id: 'a5', type: 'table', columns: ['A'], rows: [['1']], rules: 'grid' },
+    { id: 'a6', type: 'table', columns: ['A'], rows: [[{ text: 'X', colspn: 2 }]] },
+    { id: 'd1', type: 'dim', from: [0, 0], to: [5, 0] }];
+  write('t3.kerf.json', sched(bad));
+  r = kerf(['check', 't3.kerf.json']);
+  check('a short row names the empty column and the fix', /^ERROR E_PARAM a1: table 'a1': rows\/0 leaves column 3 empty .*Fix: add cells to the row \(""/m.test(r.out), r.out);
+  check('a long row names the extra cell', /^ERROR E_PARAM a2: table 'a2': rows\/0 has more cells than the table has columns: cell 2/m.test(r.out), r.out);
+  check('a colspan over a rowspan from above says so, with the colspan that fits', /^ERROR E_PARAM a3: table 'a3': rows\/1\/0 starts in column 2 and spans 2 columns, past the last column \(2\) \(column 1 of this row is covered by rowspans from rows above\) Fix: set its colspan to 1 or less/m.test(r.out), r.out);
+  check('header rows and column headers together: E_PARAM, use one', /^ERROR E_PARAM a4: table 'a4' has both "header" rows and column headers/m.test(r.out), r.out);
+  check('bad rules lists the four', /^ERROR E_PARAM a5: .*"rules" must be "all", "header", "outer" or "none" \(got "grid"\)/m.test(r.out), r.out);
+  check('unknown key in a cell object: W_UNKNOWN_KEY with the cell path', /^WARN W_UNKNOWN_KEY a6: unknown key "colspn" in views\/S\/annotations\/a6\/rows\/0\/0 \(table\).*Did you mean "colspan"/m.test(r.out), r.out);
+  check('a dim in a schedule view: E_PARAM, needs a section view', /^ERROR E_PARAM d1: dim 'd1' is in schedule view S, which draws no components/m.test(r.out), r.out);
+
+  const narrow = { id: 'tw', type: 'table', columns: [{ header: 'MODEL', width: 0.4 }], rows: [['HU3516/22-HUC3516']] };
+  write('t4.kerf.json', sched([narrow, { id: 'tc', type: 'table', columns: ['Size'], rows: [['two 2x6']] }]));
+  r = kerf(['check', 't4.kerf.json']);
+  check('W_TABLE_CELL: a word wider than a fixed column, with the width that fits', /^WARN W_TABLE_CELL tw: table 'tw' in view S: rows\/0\/0 "HU3516\/22-HUC3516" needs 1\.71" \(paper\) but column 1 is 0\.4" wide.* Fix: set columns\/0\/width to 1\.75 or more/m.test(r.out), r.out);
+  check('W_NOTE_STYLE on table text names the cell path and the fix', /^WARN W_NOTE_STYLE tc: table 'tc' in view S: columns\/0 breaks the house note style: lowercase.*Fix: set columns\/0 to "SIZE"/m.test(r.out) && /rows\/0\/0 breaks the house note style.*Fix: set rows\/0\/0 to "TWO 2X6"/m.test(r.out), r.out);
+  write('t4b.kerf.json', sched([{ id: 'tl', type: 'table', columns: ['A'], rows: Array.from({ length: 11 }, (_, k) => [`cell ${k}`]) }]));
+  r = kerf(['check', 't4b.kerf.json']);
+  check('W_NOTE_STYLE lists 8 cells of a table, then one line with the other paths', (r.out.match(/^WARN W_NOTE_STYLE tl: /gm) || []).length === 9 && /^WARN W_NOTE_STYLE tl: table 'tl' in view S: 3 more texts break the house note style: rows\/8\/0, rows\/9\/0, rows\/10\/0/m.test(r.out), r.out);
+  const tall = { id: 'tt', type: 'table', columns: ['ROW', 'VALUE'], rows: Array.from({ length: 60 }, (_, k) => [`R${k}`, k]) };
+  write('t5.kerf.json', sched([tall]));
+  r = kerf(['check', 't5.kerf.json']);
+  check('W_VIEW_FIT on a schedule names the table and its size, fix: split it', /^WARN W_VIEW_FIT S: schedule view S with its title needs .* Content \(paper inches\): table 'tt' [\d.]+ x [\d.]+\..*Fix: 1\) split the tallest table/m.test(r.out), r.out);
+
+  const sec = { kerf: '0.1', id: 'sec', components: [{ id: 'ftg', type: 'concrete', shape: 'rect', width: 16, height: 12 }],
+    views: [{ id: 'A', scale: '1"=1\'-0"', notes_style: 'keyed', notes_title: 'FOOTING NOTES', annotations: [
+      { id: 'n1', type: 'note', text: 'CONC. FTG.', target: 'ftg' },
+      { id: 'n2', type: 'note', text: 'FTG. PER SCHEDULE U.N.O.' },
+      { id: 't1', type: 'table', columns: ['MARK', 'SIZE'], rows: [['F1', '16" X 12"']] },
+      { id: 't2', type: 'table', at: 'ftg@top_left', columns: ['A', 'B'], rows: [['1', '2']] }] }] };
+  write('t6.kerf.json', sec);
+  r = kerf(['check', 't6.kerf.json']);
+  check('a keyed note without target or at is a list-only entry (no E_PARAM)', r.code === 0 && !/E_PARAM n2/.test(r.out), r.out);
+  check('W_TABLE_OVERLAP: a table placed with at over the drawing, fix gives an at below everything', /^WARN W_TABLE_OVERLAP t2: table 't2' in view A overprints the drawing \(its lines or hatched regions\) Fix: remove "at" to place the table under the drawing, or set "at": \[0, -?[\d.]+\]/m.test(r.out), r.out);
+  r = kerf(['drawing', 't6.kerf.json', '--view', 'A']);
+  const d6 = r.code === 0 ? JSON.parse(r.out) : { items: [] };
+  const tags = d6.items.filter((i) => i.src === 'n2' && i.t === 'text');
+  check('the list-only note: listed (2.) with no tag and no leader; heading renamed', tags.some((i) => i.s === '2.') && tags.some((i) => /SCHEDULE/.test(i.s)) && !d6.items.some((i) => i.src === 'n2' && i.t === 'path') && d6.items.some((i) => i.src === 'notes_list' && i.s === 'FOOTING NOTES'), d6.items.filter((i) => i.src === 'n2'));
+  const t1y = Math.max(...d6.items.filter((i) => i.src === 't1' && i.t === 'path').flatMap((p) => p.pts.map((q) => q[1])));
+  check('a table without at goes under the drawing (below the crop)', t1y < -6, t1y);
+  r = kerf(['apply', 't6.kerf.json', '--ops', JSON.stringify([{ op: 'add', path: 'views/A/annotations', value: { id: 't3', type: 'table', columns: ['X'], rows: [['1']] } }]), '-w', '--why', 'add a table']);
+  check('kerf apply adds a table annotation', r.code === 0 && readJson('t6.kerf.json').views[0].annotations.some((a) => a.id === 't3'), r);
+  write('t7.kerf.json', { ...sec, views: [{ id: 'A', scale: 'NTS', annotations: [] }] });
+  r = kerf(['check', 't7.kerf.json']);
+  check('NTS on a section view points to kind schedule', /NTS is for iso views; a view of tables and notes only is "kind": "schedule"/.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

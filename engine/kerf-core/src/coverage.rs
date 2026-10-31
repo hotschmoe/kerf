@@ -122,6 +122,33 @@ fn dim_text(scene: Option<&Scene>, an: &Value) -> (String, Option<String>) {
     (crate::units::fmt_ft_in(len), Some(house::length_word(len)))
 }
 
+/// A table offers its title with its column headers, units and header rows as one candidate, each body row with that
+/// heading as another, and each of its notes (SPEC 26.1).
+fn table_candidates(an: &Value, aid: &str, vid: &str, w: &Words, out: &mut Vec<Cand>) {
+    let texts = crate::annot::table::texts(an);
+    let heading: Vec<&str> =
+        texts.iter().filter(|(p, _)| !p.starts_with("rows/") && !p.starts_with("notes/")).map(|(_, t)| *t).collect();
+    let heading = heading.join(" ");
+    let mut push = |text: String, what: &str| {
+        let words = w.offered(&text);
+        if !words.is_empty() {
+            out.push(Cand {
+                found: format!("table {aid}"),
+                source: format!("table '{aid}' {what}in view {vid}"),
+                text,
+                words,
+            });
+        }
+    };
+    push(heading.clone(), "");
+    for (r, row) in crate::annot::table::row_texts(an).into_iter().enumerate() {
+        push(format!("{heading} {row}"), &format!("row {r} "));
+    }
+    for (p, t) in texts.iter().filter(|(p, _)| p.starts_with("notes/")) {
+        push(String::from(*t), &format!("{} ", p.replace('/', " ")));
+    }
+}
+
 fn candidates(doc: &Value, scene: Option<&Scene>, w: &Words) -> Vec<Cand> {
     let mut out = Vec::new();
     for c in doc.get("components").and_then(Value::arr).unwrap_or(&[]) {
@@ -151,6 +178,10 @@ fn candidates(doc: &Value, scene: Option<&Scene>, w: &Words) -> Vec<Cand> {
         for an in v.get("annotations").and_then(Value::arr).unwrap_or(&[]) {
             let aid = str_of(an, "id");
             let ty = str_of(an, "type");
+            if ty == "table" {
+                table_candidates(an, aid, vid, w, &mut out);
+                continue;
+            }
             let (text, words) = match ty {
                 "note" | "label" => {
                     let t = note_words_text(an);
