@@ -120,7 +120,12 @@ pub fn view_acked(doc: &Value, st: &Style, view_id: &str, view_diags: &[Diag]) -
     let members = view::Members::of(node);
     acked
         .into_iter()
-        .filter(|a| scene.find(&a.comp).is_some_and(|c| c.state == State::Ok && c.visible && members.draws(c)))
+        .filter(|a| match &a.owner {
+            lint::AckOwner::Component(id) => {
+                scene.find(id).is_some_and(|c| c.state == State::Ok && c.visible && members.draws(c))
+            }
+            other => other.view() == Some(view_id),
+        })
         .collect()
 }
 
@@ -285,16 +290,17 @@ fn acked_block(out: &mut String, acked: &[Acked]) {
     if acked.is_empty() {
         return;
     }
-    let mut groups: Vec<(&str, &str, usize, Vec<&str>)> = Vec::new();
+    let mut groups: Vec<(&str, &str, usize, Vec<String>)> = Vec::new();
     for a in acked {
+        let who = a.owner.label();
         match groups.iter_mut().find(|g| g.0 == a.warning.code && g.1 == a.reason) {
             Some(g) => {
                 g.2 += 1;
-                if !g.3.contains(&a.comp.as_str()) {
-                    g.3.push(&a.comp);
+                if !g.3.contains(&who) {
+                    g.3.push(who);
                 }
             }
-            None => groups.push((a.warning.code, &a.reason, 1, alloc::vec![a.comp.as_str()])),
+            None => groups.push((a.warning.code, &a.reason, 1, alloc::vec![who])),
         }
     }
     sort::stable(&mut groups, |x, y| x.0 < y.0);

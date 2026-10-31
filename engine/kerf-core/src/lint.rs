@@ -26,6 +26,7 @@ pub fn run(scene: &Scene, doc: &Value, cov: &[coverage::Item], diags: &Diags) {
     unknown_keys(doc, diags);
     layout_keys(doc, diags);
     note_style(doc, scene.style, diags);
+    abbrev_forms(doc, scene.style, diags);
     dim_zero(scene, doc, diags);
     ack_shape(doc, diags);
     members(doc, diags);
@@ -196,6 +197,9 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
         }
         let vbase = format!("views/{vid}");
         lint_object(diags, v, &schema::VIEW, &vbase, Some(vid));
+        for (i, it) in arr_of(v, "acknowledge").unwrap_or(&[]).iter().enumerate() {
+            lint_object(diags, it, &schema::ACK, &format!("{vbase}/acknowledge/{i}"), Some(vid));
+        }
         for an in arr_of(v, "annotations").unwrap_or(&[]) {
             if !matches!(an, Value::Object(_)) {
                 continue;
@@ -238,6 +242,9 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
             }
             for (i, ci) in arr_of(an, "cite").unwrap_or(&[]).iter().enumerate() {
                 lint_object(diags, ci, &schema::CITE, &format!("{apath}/cite/{i}"), Some(aid));
+            }
+            for (i, it) in arr_of(an, "acknowledge").unwrap_or(&[]).iter().enumerate() {
+                lint_object(diags, it, &schema::ACK, &format!("{apath}/acknowledge/{i}"), Some(aid));
             }
         }
     }
@@ -357,22 +364,6 @@ fn members(doc: &Value, diags: &Diags) {
 }
 
 // ---- note style -----------------------------------------------------------------------------------------
-
-struct Abbr {
-    word: &'static str,
-    abbr: &'static str,
-}
-
-/// Spelled-out word(s) the house style always abbreviates (matched as whole words, case-insensitive): the abbreviations
-/// that outnumber the spelled-out word by 3:1 or more in the MASS reference sets. Every other listed abbreviation and its
-/// words are both accepted (SPEC 25.3).
-static SPELLED_OUT: [Abbr; 5] = [
-    Abbr { word: "GYPSUM BOARD", abbr: "GYP. BD." },
-    Abbr { word: "ON CENTER", abbr: "O.C." },
-    Abbr { word: "MINIMUM", abbr: "MIN." },
-    Abbr { word: "MAXIMUM", abbr: "MAX." },
-    Abbr { word: "DIAMETER", abbr: "DIA." },
-];
 
 fn is_word_char(c: u8) -> bool {
     c.is_ascii_alphanumeric()
@@ -533,38 +524,13 @@ fn model_tokens(text: &[u8]) -> Vec<&[u8]> {
     out
 }
 
-/// Replace `word` by `abbr` everywhere (whole words), without doubling a period that follows (`EACH.` -> `EA.`).
-fn abbreviate(work: Vec<u8>, word: &str, abbr: &str) -> Vec<u8> {
-    let mut work = work;
-    let mut from = 0;
-    let mut guard = 0;
-    while let Some(at) = find_word(&work, word, from) {
-        if guard > 50 {
-            break;
-        }
-        guard += 1;
-        let mut end = at + word.len();
-        if abbr.ends_with('.') && work.get(end) == Some(&b'.') {
-            end += 1;
-        }
-        let mut next = Vec::with_capacity(work.len());
-        next.extend_from_slice(&work[..at]);
-        next.extend_from_slice(abbr.as_bytes());
-        next.extend_from_slice(&work[end..]);
-        from = at + abbr.len();
-        work = next;
-    }
-    work
-}
-
-/// The text (spelled-out words already abbreviated) ends on a period that is not part of an abbreviation, a dotted
-/// token (`O.C.`) or a number/inch mark.
-fn trailing_period(t: &[u8], st: &Style) -> bool {
+/// The text ends on a period that is not part of an abbreviation, a dotted token (`O.C.`) or a number/inch mark.
+fn trailing_period(t: &[u8], table: &house::Table) -> bool {
     if t.len() <= 1 || t[t.len() - 1] != b'.' {
         return false;
     }
     let base = trim_end(last_token(t), b".");
-    !(base.contains(&b'.') || house::is_period_abbr(base, st) || base.last().is_some_and(|&c| !c.is_ascii_alphabetic()))
+    !(base.contains(&b'.') || table.is_period_abbr(base) || base.last().is_some_and(|&c| !c.is_ascii_alphabetic()))
 }
 
 /// Check one note text against the house style (SPEC 19, 25.3). Pure. Penny sizes (`16d`), ACI symbols (`db`, `ld`,
@@ -586,23 +552,15 @@ pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
     if house::has_dash_fraction(tb) {
         add_issue(&mut issues, "dashed fraction like 1-1/2\" (house style is 1 1/2\")");
     }
-    for sp in &SPELLED_OUT {
-        if find_word(tb, sp.word, 0).is_some() {
-            add_issue(&mut issues, &format!("\"{}\" spelled out (use \"{}\")", sp.word, sp.abbr));
-        }
-    }
-    let mut work: Vec<u8> = tb.to_vec();
-    for sp in &SPELLED_OUT {
-        work = abbreviate(work, sp.word, sp.abbr);
-    }
+    let work: Vec<u8> = tb.to_vec();
     let trimmed = trim_end(&work, &WS);
-    let trailing = trailing_period(trimmed, st);
+    let trailing = trailing_period(trimmed, &house::Table::new(st));
     if trailing {
         let word = String::from_utf8_lossy(trim_end(last_token(trimmed), b"."));
         add_issue(
             &mut issues,
             &format!(
-                "trailing period (notes are not sentences; if \"{word}.\" is an abbreviation, add it to the style's notes.abbreviations)"
+                "trailing period (notes are not sentences; if \"{word}.\" is an abbreviation, add it to the style's notes.abbreviations.approved)"
             ),
         );
     }
@@ -772,6 +730,116 @@ fn note_style(doc: &Value, st: &Style, diags: &Diags) {
             } else {
                 seen.push((norm, aid, key));
             }
+        }
+    }
+}
+
+// ---- abbreviation forms (W_ABBREV, SPEC 25.6) -----------------------------------------------------------
+
+/// One text field the abbreviation rules read: who owns it (`note 'n1' in view A`), the op path that updates the owner,
+/// the field name and the text.
+struct AbbrField<'d> {
+    id: &'d str,
+    who: String,
+    owner: String,
+    field: &'static str,
+    text: &'d str,
+}
+
+fn abbr_fields(doc: &Value) -> Vec<AbbrField<'_>> {
+    let mut out = Vec::new();
+    for v in arr_of(doc, "views").unwrap_or(&[]) {
+        let vid = str_of(v, "id");
+        if vid.is_empty() {
+            continue;
+        }
+        if let Some(t) = v.get("title").and_then(Value::str) {
+            out.push(AbbrField {
+                id: vid,
+                who: format!("the title of view {vid}"),
+                owner: format!("views/{vid}"),
+                field: "title",
+                text: t,
+            });
+        }
+        for an in arr_of(v, "annotations").unwrap_or(&[]) {
+            let aid = str_of(an, "id");
+            let ty = str_of(an, "type");
+            let field = match ty {
+                "weld" => "tail",
+                "note" | "label" | "dim" | "" => "text",
+                _ => continue,
+            };
+            let Some(t) = an.get(field).and_then(Value::str) else { continue };
+            if aid.is_empty() {
+                continue;
+            }
+            out.push(AbbrField {
+                id: aid,
+                who: format!("{} '{aid}' in view {vid}", if ty.is_empty() { "note" } else { ty }),
+                owner: format!("views/{vid}/annotations/{aid}"),
+                field,
+                text: t,
+            });
+        }
+    }
+    out
+}
+
+/// W_ABBREV: every abbreviation of a note, label, dim text, weld tail or view title that is not written in the approved
+/// form of the style's table (rules `period_on_shortened`, `dotted_initials`, `bare_acronyms`, `variants`), and every
+/// spelled-out word of the style's `always` list. One warning per token; the fix rewrites only the flagged tokens.
+fn abbrev_forms(doc: &Value, st: &Style, diags: &Diags) {
+    let table = house::Table::new(st);
+    for f in abbr_fields(doc) {
+        let hits = house::abbrev_hits(f.text, st, &table);
+        if hits.is_empty() {
+            continue;
+        }
+        let fixed = house::apply_hits(f.text, &hits);
+        let mut val = Vec::new();
+        json::write_string(&mut val, &fixed);
+        let op = format!(
+            "{{\"op\":\"update\",\"path\":\"{}\",\"value\":{{\"{}\":{}}}}}",
+            f.owner,
+            f.field,
+            String::from_utf8_lossy(&val)
+        );
+        let path = format!("{}/{}", f.owner, f.field);
+        let others = hits.len() - 1;
+        for h in &hits {
+            let written = &f.text[h.start..h.end];
+            let meaning = if h.meaning.is_empty() { String::new() } else { format!(" ({})", h.meaning) };
+            let message = match h.rule {
+                house::Rule::Always => format!(
+                    "{} ({path}): \"{written}\" is spelled out, and the company style always abbreviates it (rule always): write \"{}\". Text: \"{}\"",
+                    f.who, h.approved, f.text
+                ),
+                rule => format!(
+                    "{} ({path}): \"{written}\" breaks rule {} ({}): write \"{}\"{meaning}{}. Text: \"{}\"",
+                    f.who,
+                    rule.name(),
+                    rule.what(),
+                    h.approved,
+                    h.why,
+                    f.text
+                ),
+            };
+            let also = match others {
+                0 => String::new(),
+                1 => ", and the other flagged abbreviation of this text".to_string(),
+                n => format!(", and the other {n} flagged abbreviations of this text"),
+            };
+            let style_off = match h.rule {
+                house::Rule::Always => format!("remove \"{}\" from notes.abbreviations.always", h.approved),
+                house::Rule::Variants => format!("add \"{written}\" to notes.abbreviations.approved"),
+                rule => format!("set notes.abbreviations.rules.{} to false", rule.name()),
+            };
+            let fix = format!(
+                "{op} (only \"{written}\" changes{also}). To keep it here: add {{\"code\":\"W_ABBREV\",\"reason\":\"...\"}} to the \"acknowledge\" of {}; everywhere: {style_off} in the company style",
+                f.owner
+            );
+            diags.add_fix(Level::Warning, "W_ABBREV", Some(f.id), Some(&path), message, fix);
         }
     }
 }
@@ -1003,22 +1071,136 @@ fn is_ackable(code: &str) -> bool {
     code.starts_with("W_") || code.starts_with("I_")
 }
 
-/// Shape errors of `acknowledge` (array of {code, reason}; codes must be warning codes).
-fn ack_shape(doc: &Value, diags: &Diags) {
+/// What holds an `acknowledge` list (SPEC 25.4, 25.6): a component, an annotation of a view (note, dim, label, weld),
+/// or a view (its title and the view-level warnings).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AckOwner {
+    Component(String),
+    Annotation { view: String, id: String },
+    View(String),
+}
+
+fn is_annotation_path(p: &str) -> bool {
+    p.starts_with("views/") && p.contains("/annotations/")
+}
+
+impl AckOwner {
+    /// The op path of the owner (`components/x`, `views/A/annotations/n1`, `views/A`).
+    pub fn path(&self) -> String {
+        match self {
+            AckOwner::Component(id) => format!("components/{id}"),
+            AckOwner::Annotation { view, id } => format!("views/{view}/annotations/{id}"),
+            AckOwner::View(v) => format!("views/{v}"),
+        }
+    }
+
+    /// How summaries and the review legend name it: `x`, `A/n1`, `view A`.
+    pub fn label(&self) -> String {
+        match self {
+            AckOwner::Component(id) => id.clone(),
+            AckOwner::Annotation { view, id } => format!("{view}/{id}"),
+            AckOwner::View(v) => format!("view {v}"),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        match self {
+            AckOwner::Component(id) | AckOwner::Annotation { id, .. } | AckOwner::View(id) => id,
+        }
+    }
+
+    /// The view an annotation or view owner belongs to.
+    pub fn view(&self) -> Option<&str> {
+        match self {
+            AckOwner::Component(_) => None,
+            AckOwner::Annotation { view, .. } | AckOwner::View(view) => Some(view),
+        }
+    }
+
+    fn describe(&self) -> String {
+        match self {
+            AckOwner::Component(id) => format!("'{id}'"),
+            AckOwner::Annotation { view, id } => format!("annotation '{id}' in view {view}"),
+            AckOwner::View(v) => format!("view {v}"),
+        }
+    }
+
+    /// `d` is a warning about this owner: a component the warning names (its `id`, or quoted in a W_OVERLAP /
+    /// W_NEAR_MISS / W_UNTREATED_CONTACT message) unless it is about an annotation; an annotation or view whose path
+    /// holds the warning's path (and whose id is the warning's id, when it has one).
+    fn matches(&self, d: &Diag) -> bool {
+        let path = d.path.as_deref().unwrap_or("");
+        let id_ok = |id: &str| d.id.as_deref().is_none_or(|x| x.is_empty() || x == id);
+        match self {
+            AckOwner::Component(cid) => !is_annotation_path(path) && mentions(d, cid),
+            AckOwner::Annotation { view, id } => {
+                let base = format!("views/{view}/annotations/{id}");
+                id_ok(id) && (path == base || path.strip_prefix(base.as_str()).is_some_and(|r| r.starts_with('/')))
+            }
+            AckOwner::View(v) => {
+                let base = format!("views/{v}");
+                id_ok(v)
+                    && (path == base
+                        || path
+                            .strip_prefix(base.as_str())
+                            .is_some_and(|r| r.starts_with('/') && !is_annotation_path(path)))
+            }
+        }
+    }
+}
+
+/// One object with an `acknowledge` key, in document order (components, then each view and its annotations).
+struct Holder<'d> {
+    owner: AckOwner,
+    node: &'d Value,
+}
+
+fn holders(doc: &Value) -> Vec<Holder<'_>> {
+    let mut out = Vec::new();
     for c in arr_of(doc, "components").unwrap_or(&[]) {
-        let Some(ak) = c.get("acknowledge") else { continue };
+        if c.get("acknowledge").is_some() {
+            out.push(Holder { owner: AckOwner::Component(str_of(c, "id").to_string()), node: c });
+        }
+    }
+    for v in arr_of(doc, "views").unwrap_or(&[]) {
+        let vid = str_of(v, "id");
+        if vid.is_empty() {
+            continue;
+        }
+        if v.get("acknowledge").is_some() {
+            out.push(Holder { owner: AckOwner::View(vid.to_string()), node: v });
+        }
+        for an in arr_of(v, "annotations").unwrap_or(&[]) {
+            let aid = str_of(an, "id");
+            if !aid.is_empty() && an.get("acknowledge").is_some() {
+                out.push(Holder {
+                    owner: AckOwner::Annotation { view: vid.to_string(), id: aid.to_string() },
+                    node: an,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Shape errors of `acknowledge` (array of {code, reason}; codes must be warning codes) on components, views and
+/// annotations.
+fn ack_shape(doc: &Value, diags: &Diags) {
+    for h in holders(doc) {
+        let Some(ak) = h.node.get("acknowledge") else { continue };
         if ak.is_null() {
             continue;
         }
-        let cid = str_of(c, "id");
-        let path = format!("components/{cid}/acknowledge");
+        let id = h.owner.id();
+        let who = h.owner.describe();
+        let path = format!("{}/acknowledge", h.owner.path());
         let Some(items) = ak.arr() else {
             diags.add_fix(
                 Level::Error,
                 "E_PARAM",
-                Some(cid),
+                Some(id),
                 Some(&path),
-                "'acknowledge' must be an array of {\"code\": \"W_...\", \"reason\": \"...\"}".to_string(),
+                format!("'acknowledge' of {who} must be an array of {{\"code\": \"W_...\", \"reason\": \"...\"}}"),
                 "e.g. \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}]".to_string(),
             );
             continue;
@@ -1031,16 +1213,16 @@ fn ack_shape(doc: &Value, diags: &Diags) {
                 diags.add_fix(
                     Level::Error,
                     "E_PARAM",
-                    Some(cid),
+                    Some(id),
                     Some(&ipath),
-                    format!("acknowledge entry {i} of '{cid}' needs a string \"code\" and a non-empty \"reason\""),
+                    format!("acknowledge entry {i} of {who} needs a string \"code\" and a non-empty \"reason\""),
                     "e.g. {\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"why this is fine\"}".to_string(),
                 );
             } else if !is_ackable(code) {
                 diags.add_fix(
                     Level::Error,
                     "E_PARAM",
-                    Some(cid),
+                    Some(id),
                     Some(&ipath),
                     format!("'{code}' cannot be acknowledged: only warnings (W_*) can (I_* is accepted and ignored); errors must be fixed"),
                     "fix the cause, or acknowledge a W_ code".to_string(),
@@ -1081,11 +1263,11 @@ fn quoted(msg: &str, id: &str) -> bool {
     false
 }
 
-/// A warning that a component's `acknowledge` entry suppressed (SPEC 25.4): the component, the entry's reason and the
-/// warning as it would have printed.
+/// A warning that an `acknowledge` entry suppressed (SPEC 25.4): who acknowledged it, the entry's reason and the warning
+/// as it would have printed.
 #[derive(Clone, Debug)]
 pub struct Acked {
-    pub comp: String,
+    pub owner: AckOwner,
     pub reason: String,
     pub warning: Diag,
 }
@@ -1094,9 +1276,13 @@ impl Acked {
     pub fn to_json(&self) -> Value {
         let mut m = alloc::vec![
             Member { key: "code".into(), value: Value::String(self.warning.code.into()) },
-            Member { key: "id".into(), value: Value::String(self.comp.clone()) },
-            Member { key: "reason".into(), value: Value::String(self.reason.clone()) },
+            Member { key: "id".into(), value: Value::String(self.owner.id().to_string()) },
         ];
+        if let Some(v) = self.owner.view() {
+            m.push(Member { key: "view".into(), value: Value::String(v.to_string()) });
+            m.push(Member { key: "on".into(), value: Value::String(self.owner.path()) });
+        }
+        m.push(Member { key: "reason".into(), value: Value::String(self.reason.clone()) });
         if let Some(p) = &self.warning.path {
             m.push(Member { key: "path".into(), value: Value::String(p.clone()) });
         }
@@ -1112,9 +1298,9 @@ pub fn acked_json(list: &[Acked]) -> Value {
     Value::Array(list.iter().map(Acked::to_json).collect())
 }
 
-/// The document has at least one `acknowledge` entry.
+/// The document has at least one `acknowledge` entry (on a component, a view or an annotation).
 pub fn has_acknowledge(doc: &Value) -> bool {
-    arr_of(doc, "components").unwrap_or(&[]).iter().any(|c| arr_of(c, "acknowledge").is_some_and(|a| !a.is_empty()))
+    holders(doc).iter().any(|h| arr_of(h.node, "acknowledge").is_some_and(|a| !a.is_empty()))
 }
 
 /// How `apply_acknowledge` treats acknowledged warnings.
@@ -1127,15 +1313,15 @@ pub struct AckMode {
     pub complete: bool,
 }
 
-/// One W_ACK_UNUSED for the entries of component `c` that suppressed nothing, with the exact op that removes them.
-fn unused_entries(c: &Value, used: &[bool]) -> Option<Diag> {
-    let cid = str_of(c, "id");
-    let all = entries(c);
+/// One W_ACK_UNUSED for the entries of `h` that suppressed nothing, with the exact op that removes them.
+fn unused_entries(h: &Holder<'_>, used: &[bool]) -> Option<Diag> {
+    let all = entries(h.node);
     let valid = |it: &Value| matches!(it, Value::Object(_)) && !str_of(it, "reason").trim_matches(' ').is_empty();
     let stale: Vec<usize> = (0..all.len()).filter(|&k| !used[k] && valid(&all[k])).collect();
     if stale.is_empty() {
         return None;
     }
+    let who = h.owner.describe();
     let mut buckets: [Vec<String>; 3] = [Vec::new(), Vec::new(), Vec::new()];
     for &k in &stale {
         let code = str_of(&all[k], "code");
@@ -1150,7 +1336,11 @@ fn unused_entries(c: &Value, used: &[bool]) -> Option<Diag> {
     }
     let mut parts: Vec<String> = Vec::new();
     if !buckets[0].is_empty() {
-        parts.push(format!("no {} names '{cid}' in any view", buckets[0].join(", ")));
+        let names = match h.owner {
+            AckOwner::Component(_) => format!("names {who} in any view"),
+            _ => format!("is about {who}"),
+        };
+        parts.push(format!("no {} {names}", buckets[0].join(", ")));
     }
     if !buckets[1].is_empty() {
         parts.push(format!(
@@ -1172,72 +1362,73 @@ fn unused_entries(c: &Value, used: &[bool]) -> Option<Diag> {
     json::write_compact(&mut value, &if keep.is_empty() { Value::Null } else { Value::Array(keep) });
     let value = String::from_utf8_lossy(&value);
     let (n, total) = (stale.len(), all.len());
+    let opath = h.owner.path();
     Some(Diag {
         level: Level::Warning,
         code: "W_ACK_UNUSED",
-        id: Some(cid.to_string()),
-        path: Some(format!("components/{cid}/acknowledge")),
+        id: Some(h.owner.id().to_string()),
+        path: Some(format!("{opath}/acknowledge")),
         message: format!(
-            "{n} of the {total} acknowledge entr{} of '{cid}' suppress{} nothing ({list}); a stale acknowledgement would hide the next real finding",
+            "{n} of the {total} acknowledge entr{} of {who} suppress{} nothing ({list}); a stale acknowledgement would hide the next real finding",
             if total == 1 { "y" } else { "ies" },
             if n == 1 { "es" } else { "" }
         ),
         fix: Some(format!(
-            "remove {}: {{\"op\":\"update\",\"path\":\"components/{cid}\",\"value\":{{\"acknowledge\":{value}}}}}",
+            "remove {}: {{\"op\":\"update\",\"path\":\"{opath}\",\"value\":{{\"acknowledge\":{value}}}}}",
             if n == 1 { "it" } else { "them" }
         )),
     })
 }
 
-/// Replace every warning that a component acknowledges with one `I_ACK` info line (code, component, reason) and
-/// return the suppressed warnings. Call after all other diagnostics are collected.
+/// Replace every warning that a component, view or annotation acknowledges with one `I_ACK` info line (code, owner,
+/// reason) and return the suppressed warnings. Call after all other diagnostics are collected.
 pub fn apply_acknowledge(doc: &Value, diags: &Diags, mode: AckMode) -> Vec<Acked> {
-    let Some(cs) = arr_of(doc, "components") else { return Vec::new() };
-    if !cs.iter().any(|c| c.get("acknowledge").is_some()) {
+    let hs = holders(doc);
+    if hs.is_empty() {
         return Vec::new();
     }
     let valid = |it: &Value| matches!(it, Value::Object(_)) && !str_of(it, "reason").trim_matches(' ').is_empty();
-    let mut used: Vec<Vec<bool>> = cs.iter().map(|c| alloc::vec![false; entries(c).len()]).collect();
+    let mut used: Vec<Vec<bool>> = hs.iter().map(|h| alloc::vec![false; entries(h.node).len()]).collect();
     let mut kept: Vec<Diag> = Vec::new();
     let mut infos: Vec<Diag> = Vec::new();
     let mut acked: Vec<Acked> = Vec::new();
     for mut d in diags.take() {
-        let mut matched: Option<(&str, &str)> = None;
+        let mut matched: Option<(&AckOwner, &str)> = None;
         if d.level == Level::Warning {
-            for (ci, c) in cs.iter().enumerate() {
-                let cid = str_of(c, "id");
-                for (k, it) in entries(c).iter().enumerate() {
-                    if !valid(it) || str_of(it, "code") != d.code || !mentions(&d, cid) {
+            for (hi, h) in hs.iter().enumerate() {
+                for (k, it) in entries(h.node).iter().enumerate() {
+                    if !valid(it) || str_of(it, "code") != d.code || !h.owner.matches(&d) {
                         continue;
                     }
-                    used[ci][k] = true;
-                    matched.get_or_insert((cid, str_of(it, "reason")));
+                    used[hi][k] = true;
+                    matched.get_or_insert((&h.owner, str_of(it, "reason")));
                     break;
                 }
             }
         }
-        let Some((cid, reason)) = matched else {
+        let Some((owner, reason)) = matched else {
             kept.push(d);
             continue;
         };
-        acked.push(Acked { comp: cid.to_string(), reason: reason.to_string(), warning: d.clone() });
+        let label = owner.label();
+        acked.push(Acked { owner: owner.clone(), reason: reason.to_string(), warning: d.clone() });
         if mode.strict {
-            d.message.push_str(&format!(" [acknowledged on '{cid}': {reason}]"));
+            d.message.push_str(&format!(" [acknowledged on '{label}': {reason}]"));
             kept.push(d);
         } else {
             infos.push(Diag {
                 level: Level::Info,
                 code: "I_ACK",
-                id: Some(cid.to_string()),
+                id: Some(owner.id().to_string()),
                 path: d.path.clone(),
-                message: format!("{} on '{cid}' acknowledged: {reason} (was: {})", d.code, d.message),
+                message: format!("{} on '{label}' acknowledged: {reason} (was: {})", d.code, d.message),
                 fix: None,
             });
         }
     }
     if mode.complete {
-        for (ci, c) in cs.iter().enumerate() {
-            if let Some(d) = unused_entries(c, &used[ci]) {
+        for (hi, h) in hs.iter().enumerate() {
+            if let Some(d) = unused_entries(h, &used[hi]) {
                 kept.push(d);
             }
         }

@@ -280,7 +280,7 @@
         {
           "id": "n_ftg_bars",
           "type": "note",
-          "text": "(2) #4 CONT. BOTT., 3\" CLR.",
+          "text": "(2) #4 CONT. BOT., 3\" CLR.",
           "target": "ftg_bars"
         },
         {
@@ -410,7 +410,7 @@
         {
           "id": "n_ftg",
           "type": "note",
-          "text": "(2) #5 CONT. BOTT., 3\" CLR.",
+          "text": "(2) #5 CONT. BOT., 3\" CLR.",
           "target": "slab_ftg_bars"
         }
       ]

@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"hss-column-base-plate","view":"A","kind":"section","scale":12,"bounds":[-51.9464,-33.3,55.1607,31.5],
+{"kerf_drawing":"0.1","doc":"hss-column-base-plate","view":"A","kind":"section","scale":12,"bounds":[-51.0893,-33.3,55.1607,31.5],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-PATT","lineweight_mm":0.09},{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-DETL-STL","lineweight_mm":0.35},{"name":"S-DETL-REBR","lineweight_mm":0.5},{"name":"S-DETL-BRKL","lineweight_mm":0.25},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-DIMS","lineweight_mm":0.13},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -75,7 +75,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"CONC. FOOTING PER PLAN","x":26.5,"y":-20.25,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","closed":false,"pts":[[26.02,-19.6875],[24.52,-19.6875],[0.4964,-11.0674]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_ftg","loops":[[[-0.5625,-10.6875],[0.3697,-11.4204],[0.623,-10.7145]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_bars","s":"#5 @ 10\" O.C. EA. WAY BOTT.","x":-51.9464,"y":-15.25,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_bars","s":"#5 @ 10\" O.C. EA. WAY BOT.","x":-51.0893,"y":-15.25,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_bars","closed":false,"pts":[[-26.02,-14.6875],[-24.52,-14.6875],[-6.0208,-14.6875]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_bars","loops":[[[-4.8958,-14.6875],[-6.0208,-14.3125],[-6.0208,-15.0625]]]},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"w_base","closed":false,"pts":[[-9,16.25],[-3.4432,3.284]]},

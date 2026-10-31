@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 pub const EXAMPLE_DOC: &str = concat!(
-    r#"{"kerf":"0.1","id":"wall-at-sill","title":"WALL AT PT SILL","meta":{"jurisdiction":{"code":"IRC","edition":2021}},"run":[-24,24],"#,
+    r#"{"kerf":"0.1","id":"wall-at-sill","title":"WALL AT P.T. SILL","meta":{"jurisdiction":{"code":"IRC","edition":2021}},"run":[-24,24],"#,
     "\n",
     r#""components":["#,
     "\n",
@@ -18,11 +18,11 @@ pub const EXAMPLE_DOC: &str = concat!(
     "\n",
     r#"{"id":"stud","type":"lumber","size":"2x6","run":"y","length":24,"at":{"anchor":"bottom_left","to":"sill@top_left"}}],"#,
     "\n",
-    r#""views":[{"id":"A","kind":"section","number":"1","title":"WALL AT PT SILL","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-12,18],"y":[-8,30]},"notes_side":"both","#,
+    r#""views":[{"id":"A","kind":"section","number":"1","title":"WALL AT P.T. SILL","scale":"1\"=1'-0\"","cut_z":0,"crop":{"x":[-12,18],"y":[-8,30]},"notes_side":"both","#,
     "\n",
     r#""annotations":["#,
     "\n",
-    r#"{"id":"n_sill","type":"note","text":"2X6 PT SILL PLATE","target":"sill","cite":[{"code":"IRC","edition":2021,"section":"R317.1","title":"Location required","status":"suggested"}]},"#,
+    r#"{"id":"n_sill","type":"note","text":"2X6 P.T. SILL PLATE","target":"sill","cite":[{"code":"IRC","edition":2021,"section":"R317.1","title":"Location required","status":"suggested"}]},"#,
     "\n",
     r#"{"id":"n_stud","type":"note","text":"2X6 STUDS @ 16\" O.C.","target":"stud"},"#,
     "\n",
@@ -164,7 +164,10 @@ const REFS_TEXT: &str = concat!(
 );
 
 pub const TOPICS_HINT: &str =
-    "doc view layout note dim label table ref cite ops at array acknowledge common refs <component type>";
+    "doc view layout note dim label table ref cite ops at array acknowledge abbreviations common refs <component type>";
+
+/// Heading of `kerf schema abbreviations` (the table itself is `house::abbreviations_markdown` of the active style).
+pub const ABBREV_HEAD: &str = "# Abbreviations (W_ABBREV, SPEC 25.6)\n\nSpell a word out or abbreviate it: both are fine. An abbreviation must be written in its approved form: shortened words take a period (`TYP.`), phrases take dotted initials (`O.C.`), material and product acronyms take none (`CMU`), and a listed variant takes the form it maps to (`BOTT.` -> `BOT.`). A bare form that is also an ordinary word (`SIM`, `TO`, `ID`) counts only with its periods. Tokens with a digit (`HU212-2`, `16d`), case-significant tokens (`f'c`) and quoted text are never read. Keep a deviation: `acknowledge` W_ABBREV on the note, label, dim, weld or view, with a reason. The company style (`kerf.kerfstyle.json`, `notes.abbreviations`) adds (`approved`), remaps (`variants`), removes (`remove`) entries, switches rules off (`rules`) and lists words always abbreviated (`always`).\n\n";
 
 pub fn render(topic: &str) -> Option<String> {
     if let Some(o) = fields::find_object(topic) {
@@ -204,6 +207,10 @@ pub fn index() -> String {
     }
     out.push_str(&format!("  {:<12} {}\n", "common", "fields every component accepts"));
     out.push_str(&format!("  {:<12} {}\n", "refs", "how to name points and anchors"));
+    out.push_str(&format!(
+        "  {:<12} {}\n",
+        "abbreviations", "approved abbreviation forms of the style in force (W_ABBREV)"
+    ));
     for e in &catalog::ENTRIES {
         out.push_str(&format!("  {:<12} {}\n", e.name(), first_sentence(e.summary)));
     }
@@ -253,7 +260,7 @@ pub fn compact_section() -> String {
         compact_line(&mut out, o);
     }
     out.push_str("- annotations go in a view's `annotations`; note `target` is a component id (or `comp.part`), `at`/dim `from`/`to` are Refs or [x,y]\n\n");
-    out.push_str("## Complete example (two components, a section view, two notes with one citation, a dim, a label; `kerf new x.kerf.json --template section` writes it)\n```json\n");
+    out.push_str("## Complete example (`kerf new x.kerf.json --template section` writes it)\n```json\n");
     out.push_str(EXAMPLE_DOC);
     out.push_str("\n```\n\n## Topics: `kerf schema <topic> [<topic> ...]`\n");
     out.push_str(TOPICS_HINT);

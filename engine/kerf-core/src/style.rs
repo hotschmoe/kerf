@@ -226,6 +226,77 @@ pub struct Layer {
     pub linetype: String,
 }
 
+/// The abbreviation-form rules of W_ABBREV (SPEC 25.6), each switchable in `notes.abbreviations.rules`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct AbbrevRules {
+    /// A shortened word takes a period (`TYP` -> `TYP.`).
+    pub period_on_shortened: bool,
+    /// A phrase takes dotted initials (`OC` -> `O.C.`).
+    pub dotted_initials: bool,
+    /// A material or product acronym takes no periods (`C.M.U.` -> `CMU`).
+    pub bare_acronyms: bool,
+    /// A listed variant takes its approved form (`BOTT.` -> `BOT.`).
+    pub variants: bool,
+}
+
+pub const ABBREV_RULE_NAMES: [&str; 4] = ["period_on_shortened", "dotted_initials", "bare_acronyms", "variants"];
+
+impl AbbrevRules {
+    pub fn get(&self, name: &str) -> bool {
+        match name {
+            "period_on_shortened" => self.period_on_shortened,
+            "dotted_initials" => self.dotted_initials,
+            "bare_acronyms" => self.bare_acronyms,
+            "variants" => self.variants,
+            _ => true,
+        }
+    }
+
+    fn set(&mut self, name: &str, on: bool) {
+        match name {
+            "period_on_shortened" => self.period_on_shortened = on,
+            "dotted_initials" => self.dotted_initials = on,
+            "bare_acronyms" => self.bare_acronyms = on,
+            "variants" => self.variants = on,
+            _ => {}
+        }
+    }
+}
+
+/// `notes.abbreviations` (SPEC 25.6): the company's changes to the built-in list. The list is the built-in one
+/// (`extends: "us-structural"`) or empty (`"none"`), less `remove`, plus `approved` (and the abbreviation keys written
+/// at the top level, the alpha.5 form), plus `variants`. `always` names approved forms whose spelled-out words warn.
+#[derive(Clone, Debug)]
+pub struct AbbrevStyle {
+    pub builtin: bool,
+    pub rules: AbbrevRules,
+    pub approved: Vec<(String, Vec<String>)>,
+    pub variants: Vec<(String, String)>,
+    pub remove: Vec<String>,
+    pub always: Vec<String>,
+}
+
+impl Default for AbbrevStyle {
+    fn default() -> AbbrevStyle {
+        AbbrevStyle {
+            builtin: true,
+            rules: AbbrevRules {
+                period_on_shortened: true,
+                dotted_initials: true,
+                bare_acronyms: true,
+                variants: true,
+            },
+            approved: Vec::new(),
+            variants: Vec::new(),
+            remove: Vec::new(),
+            always: Vec::new(),
+        }
+    }
+}
+
+/// The keys of `notes.abbreviations` that are not abbreviations.
+pub const ABBREV_KEYS: [&str; 6] = ["extends", "rules", "approved", "variants", "remove", "always"];
+
 #[derive(Clone, Debug)]
 pub struct Style {
     pub pens: Vec<PenDef>,
@@ -260,8 +331,8 @@ pub struct Style {
     pub key_tag: KeyTag,
     /// Heading of the keyed notes list.
     pub list_title: String,
-    /// `notes.abbreviations`: house abbreviations the style adds (abbreviation, the words it stands for), SPEC 25.3.
-    pub abbreviations: Vec<(String, Vec<String>)>,
+    /// `notes.abbreviations`: the company abbreviation rules over the built-in list (SPEC 25.3, 25.6).
+    pub abbrev: AbbrevStyle,
 
     pub dim_terminator: String,
     pub tick_len_in: f64,
@@ -319,7 +390,7 @@ impl Default for Style {
             arrow_width_in: 0.03125,
             key_tag: KeyTag::Plain,
             list_title: "DETAIL NOTES".to_string(),
-            abbreviations: Vec::new(),
+            abbrev: AbbrevStyle::default(),
             dim_terminator: "tick".to_string(),
             tick_len_in: 0.0625,
             ext_gap_in: 0.0625,
@@ -448,7 +519,12 @@ pub fn load(user: Option<&Value>) -> Result<Style, StyleError> {
     if let Some(msg) = validate(root) {
         return Err(StyleError::BadStyle(msg));
     }
-    from_value(root)
+    let s = from_value(root)?;
+    let problems = crate::house::Table::new(&s).problems();
+    if !problems.is_empty() {
+        return Err(StyleError::BadStyle(problems.join("; ")));
+    }
+    Ok(s)
 }
 
 // ---- validation: every number that later becomes a loop step, a character count or an array size is range-checked here once.
@@ -670,29 +746,98 @@ fn validate_keep_case(c: &mut Check, v: Option<&Value>) {
     }
 }
 
+fn words_ok(v: &Value) -> bool {
+    match v {
+        Value::String(w) => house_text_ok(w),
+        Value::Array(ws) => !ws.is_empty() && ws.len() <= 8 && ws.iter().all(|w| w.str().is_some_and(house_text_ok)),
+        _ => false,
+    }
+}
+
+fn token_ok(s: &str) -> bool {
+    house_text_ok(s) && !s.contains(' ')
+}
+
+/// `notes.abbreviations` (SPEC 25.6): the reserved keys `extends`, `rules`, `approved`, `variants`, `remove`, `always`;
+/// every other key is an approved abbreviation mapped to its word(s) (the alpha.5 form).
 fn validate_abbreviations(c: &mut Check, v: Option<&Value>) {
     let Some(v) = v.filter(|v| !v.is_null()) else { return };
-    let ok = match v {
-        Value::Object(m) => {
-            m.len() <= MAX_HOUSE_ENTRIES
-                && m.iter().all(|e| {
-                    house_text_ok(&e.key)
-                        && match &e.value {
-                            Value::String(w) => house_text_ok(w),
-                            Value::Array(ws) => {
-                                !ws.is_empty() && ws.len() <= 8 && ws.iter().all(|w| w.str().is_some_and(house_text_ok))
-                            }
-                            _ => false,
-                        }
-                })
-        }
-        _ => false,
-    };
-    if !ok {
+    let Value::Object(ms) = v else {
         c.bad(format!(
-            "style key 'notes.abbreviations' must be an object of up to {MAX_HOUSE_ENTRIES} abbreviations, each mapped to the word(s) it stands for (a string or an array of up to 8 strings, 1-{MAX_HOUSE_CHARS} characters), e.g. {{\"BRG.\": \"BEARING\", \"ARCH.\": [\"ARCHITECT\", \"ARCHITECTURAL\"]}} (got {})",
+            "style key 'notes.abbreviations' must be an object, e.g. {{\"approved\": {{\"BRG.\": \"BEARING\"}}, \"variants\": {{\"BTM.\": \"BOT.\"}}, \"always\": [\"O.C.\"], \"rules\": {{\"period_on_shortened\": true}}}} (got {})",
             Check::got_text(v)
         ));
+        return;
+    };
+    let words_hint = format!(
+        "each abbreviation maps to the word(s) it stands for: a string or an array of up to 8 strings, 1-{MAX_HOUSE_CHARS} characters, e.g. {{\"BRG.\": \"BEARING\", \"ARCH.\": [\"ARCHITECT\", \"ARCHITECTURAL\"]}}"
+    );
+    let legacy: Vec<&json::Member> = ms.iter().filter(|m| !ABBREV_KEYS.contains(&m.key.as_str())).collect();
+    if legacy.len() > MAX_HOUSE_ENTRIES || !legacy.iter().all(|m| house_text_ok(&m.key) && words_ok(&m.value)) {
+        c.bad(format!(
+            "style key 'notes.abbreviations': up to {MAX_HOUSE_ENTRIES} abbreviation keys besides {}; {words_hint}",
+            ABBREV_KEYS.join(", ")
+        ));
+    }
+    if let Some(x) = v.get("extends").filter(|x| !x.is_null())
+        && !matches!(x.str(), Some("us-structural" | "none"))
+    {
+        c.bad(format!(
+            "style key 'notes.abbreviations.extends' must be \"us-structural\" (the built-in list) or \"none\" (got {}; default \"us-structural\")",
+            Check::got_text(x)
+        ));
+    }
+    if let Some(x) = v.get("rules").filter(|x| !x.is_null()) {
+        let ok = match x {
+            Value::Object(rs) => {
+                rs.iter().all(|m| ABBREV_RULE_NAMES.contains(&m.key.as_str()) && matches!(m.value, Value::Bool(_)))
+            }
+            _ => false,
+        };
+        if !ok {
+            c.bad(format!(
+                "style key 'notes.abbreviations.rules' must be an object of booleans with keys {} (default all true)",
+                ABBREV_RULE_NAMES.join(", ")
+            ));
+        }
+    }
+    if let Some(x) = v.get("approved").filter(|x| !x.is_null()) {
+        let ok = match x {
+            Value::Object(ap) => {
+                ap.len() <= MAX_HOUSE_ENTRIES && ap.iter().all(|m| house_text_ok(&m.key) && words_ok(&m.value))
+            }
+            _ => false,
+        };
+        if !ok {
+            c.bad(format!(
+                "style key 'notes.abbreviations.approved' must be an object of up to {MAX_HOUSE_ENTRIES} entries; {words_hint}"
+            ));
+        }
+    }
+    if let Some(x) = v.get("variants").filter(|x| !x.is_null()) {
+        let ok = match x {
+            Value::Object(vs) => {
+                vs.len() <= MAX_HOUSE_ENTRIES
+                    && vs.iter().all(|m| token_ok(&m.key) && m.value.str().is_some_and(token_ok))
+            }
+            _ => false,
+        };
+        if !ok {
+            c.bad(format!(
+                "style key 'notes.abbreviations.variants' must be an object of up to {MAX_HOUSE_ENTRIES} spellings, each mapped to the approved abbreviation it should be written as, e.g. {{\"BTM.\": \"BOT.\", \"BOTT.\": \"BOT.\"}}"
+            ));
+        }
+    }
+    for key in ["remove", "always"] {
+        let Some(x) = v.get(key).filter(|x| !x.is_null()) else { continue };
+        let ok =
+            x.arr().is_some_and(|a| a.len() <= MAX_HOUSE_ENTRIES && a.iter().all(|s| s.str().is_some_and(token_ok)));
+        if !ok {
+            c.bad(format!(
+                "style key 'notes.abbreviations.{key}' must be an array of up to {MAX_HOUSE_ENTRIES} abbreviations as written, e.g. [\"O.C.\", \"MIN.\"] (got {})",
+                Check::got_text(x)
+            ));
+        }
     }
 }
 
@@ -811,6 +956,55 @@ fn validate_patterns(c: &mut Check, root: &Value) {
             }
         }
     }
+}
+
+fn words_of(v: &Value) -> Vec<String> {
+    match v {
+        Value::String(w) => alloc::vec![w.clone()],
+        Value::Array(ws) => ws.iter().filter_map(Value::str).map(String::from).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn strings_of(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::arr).unwrap_or(&[]).iter().filter_map(Value::str).map(String::from).collect()
+}
+
+fn abbrev_from(ab: &Value) -> AbbrevStyle {
+    let mut a =
+        AbbrevStyle { builtin: ab.get("extends").and_then(Value::str) != Some("none"), ..AbbrevStyle::default() };
+    if let Some(Value::Object(rs)) = ab.get("rules") {
+        for m in rs {
+            if let Value::Bool(on) = m.value {
+                a.rules.set(&m.key, on);
+            }
+        }
+    }
+    let Value::Object(ms) = ab else { return a };
+    for m in ms.iter().filter(|m| !ABBREV_KEYS.contains(&m.key.as_str())) {
+        let words = words_of(&m.value);
+        if !words.is_empty() {
+            a.approved.push((m.key.clone(), words));
+        }
+    }
+    if let Some(Value::Object(ap)) = ab.get("approved") {
+        for m in ap {
+            let words = words_of(&m.value);
+            if !words.is_empty() {
+                a.approved.push((m.key.clone(), words));
+            }
+        }
+    }
+    if let Some(Value::Object(vs)) = ab.get("variants") {
+        for m in vs {
+            if let Some(to) = m.value.str() {
+                a.variants.push((m.key.clone(), String::from(to)));
+            }
+        }
+    }
+    a.remove = strings_of(ab.get("remove"));
+    a.always = strings_of(ab.get("always"));
+    a
 }
 
 pub fn from_value(root: &Value) -> Result<Style, StyleError> {
@@ -954,17 +1148,8 @@ pub fn from_value(root: &Value) -> Result<Style, StyleError> {
             _ => KeyTag::Plain,
         };
         s.list_title = str_or(t.get("list_title"), &s.list_title);
-        if let Some(Value::Object(ab)) = t.get("abbreviations") {
-            for m in ab {
-                let words: Vec<String> = match &m.value {
-                    Value::String(w) => alloc::vec![w.clone()],
-                    Value::Array(ws) => ws.iter().filter_map(Value::str).map(String::from).collect(),
-                    _ => Vec::new(),
-                };
-                if !words.is_empty() {
-                    s.abbreviations.push((m.key.clone(), words));
-                }
-            }
+        if let Some(ab @ Value::Object(_)) = t.get("abbreviations") {
+            s.abbrev = abbrev_from(ab);
         }
     }
     if let Some(t) = root.get("dims") {

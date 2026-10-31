@@ -693,7 +693,7 @@
       "id": "D",
       "kind": "section",
       "number": "D",
-      "title": "FOOTING CORNER (TOP AND BOTT. BARS)",
+      "title": "FOOTING CORNER (TOP AND BOT. BARS)",
       "crop": {
         "x": [586, 666],
         "y": [-10, 70]
@@ -769,7 +769,7 @@
         {
           "id": "n_top",
           "type": "note",
-          "text": "CORNER BARS AT TOP AND BOTT. BARS WHERE TOP BARS OCCUR",
+          "text": "CORNER BARS AT TOP AND BOT. BARS WHERE TOP BARS OCCUR",
           "at": [628, 55.75],
           "key": 9
         },

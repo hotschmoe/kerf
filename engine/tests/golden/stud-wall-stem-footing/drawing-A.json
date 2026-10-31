@@ -139,7 +139,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_screed","s":"11.","x":21.1161,"y":49.7875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_screed","s":"'J' WEEP SCREED PER ARCH'L","x":25.5089,"y":49.7875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"12.","x":21.1161,"y":47.9875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X6 PT SILL PLATE W/ 1/2\" DIA. X","x":25.5089,"y":47.9875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X6 P.T. SILL PLATE W/ 1/2\" DIA. X","x":25.5089,"y":47.9875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"10\" ANCHOR BOLTS @ 48\" O.C. U.N.O.,","x":25.5089,"y":46.1875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"12\" MAX. FROM PLATE ENDS","x":25.5089,"y":44.3875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:A","closed":true,"pts":[[-10,-13.3,1],[-2.5,-13.3,1]]},

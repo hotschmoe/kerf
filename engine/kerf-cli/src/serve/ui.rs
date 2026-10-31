@@ -23,6 +23,24 @@ pub fn static_file(s: &Server, req: &Request, w: &mut Out, path: &str) -> io::Re
         http::send_error(w, 400, ka, "", "E_PATH", "bad path")?;
         return Ok(ka);
     }
+    if rel == "style.json"
+        && let Some(merged) = workspace_style_json(s)
+    {
+        let h = Head {
+            status: 200,
+            content_type: Some(http::mime_for(rel)),
+            keep_alive: ka,
+            no_store: true,
+            csp: Some(&s.ui_csp),
+            ..Head::default()
+        };
+        if head_only {
+            http::send_head_only(w, h, merged.len())?;
+        } else {
+            http::send(w, h, &merged)?;
+        }
+        return Ok(ka);
+    }
     if let Some((p, data)) = assets::FILES.iter().find(|f| f.0 == rel) {
         let h = Head {
             status: 200,
@@ -51,6 +69,19 @@ pub fn static_file(s: &Server, req: &Request, w: &mut Out, path: &str) -> io::Re
     }
     http::send_error(w, 404, ka, "", "E_NOT_FOUND", "not found")?;
     Ok(ka)
+}
+
+/// The style the web UI loads (`style.json`): the embedded default merged with the served folder's company style
+/// (`kerf.kerfstyle.json`, SPEC 25.6), so the browser engine and the header's STYLE name match the server. None when the
+/// folder has no company style or it is not a JSON object (the built-in asset is served).
+fn workspace_style_json(s: &Server) -> Option<Vec<u8>> {
+    use kerf_core::json::{self, Value};
+    let text = std::fs::read(crate::workspace::find_style(&s.dir_abs)?).ok()?;
+    let user = json::parse(crate::workspace::trim_ws(&text)).ok().filter(|v| matches!(v, Value::Object(_)))?;
+    let base = json::parse(kerf_core::api::DEFAULT_STYLE).ok()?;
+    let mut out = Vec::new();
+    json::write_compact(&mut out, &json::merge_patch(&base, &user));
+    Some(out)
 }
 
 const CSP_PREFIX: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'";

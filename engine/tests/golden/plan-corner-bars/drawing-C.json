@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"plan-corner-bars","view":"C","kind":"plan","scale":12,"bounds":[-10,-30.3,69.8393,44],
+{"kerf_drawing":"0.1","doc":"plan-corner-bars","view":"C","kind":"plan","scale":12,"bounds":[-10,-30.3,69.4107,44],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-PATT","lineweight_mm":0.09},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-DETL-REBR","lineweight_mm":0.5},{"name":"S-DETL-HIDN","lineweight_mm":0.18},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -24,7 +24,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n1","s":"CONC. FOOTING","x":56.5,"y":22.4375,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n1","closed":false,"pts":[[56.02,23],[54.52,23],[5.125,23]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n1","loops":[[[4,23],[5.125,22.625],[5.125,23.375]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n2","s":"#4 CONT. BOTT.","x":56.5,"y":13.6875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n2","s":"#4 CONT. BOT.","x":56.5,"y":13.6875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n2","closed":false,"pts":[[56.02,14.25],[54.52,14.25],[8.125,14.25]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n2","loops":[[[7,14.25],[8.125,13.875],[8.125,14.625]]]},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n3","s":"#5 DOWEL","x":56.5,"y":11.4375,"h":1.125,"rot":0,"align":"left","valign":"baseline"},

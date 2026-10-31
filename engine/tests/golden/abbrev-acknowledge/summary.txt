@@ -1,0 +1,11 @@
+DOC abbrev-acknowledge  2 components  1 view  0 errors  0 warnings  2 acknowledged
+ sill          lumber 2x6 PT flat run z                    x 0"..5 1/2"      y 0"..1 1/2"
+ stud          lumber 2x6 y wide run y L=2'-0"             x 0"..5 1/2"      y 1 1/2"..2'-1 1/2"
+COVERAGE  3/3 requested elements covered
+ ok       bottom plate              stud
+ ok       unless noted otherwise    stud
+ ok       pressure treated sill     view A, sill
+INFO I_UNVERIFIED_CITE: 1 citation(s) await designer verification (notes: A/n_sill). Citations print with a trailing * until verified.
+ACKNOWLEDGED  2 warnings suppressed by `acknowledge` (kerf check --strict prints each in full)
+ W_ABBREV            x1   view A: "title as issued on the permit set"
+ W_ABBREV            x1   A/n_sill: "matches the framing schedule"

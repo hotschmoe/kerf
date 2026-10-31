@@ -239,7 +239,7 @@
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","closed":true,"pts":[[138.8143,10.14,1],[153.8143,10.14,1]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","s":"D","x":146.3143,"y":10.14,"h":3.75,"rot":0,"align":"center","valign":"middle"},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","s":"FOOTING CORNER (TOP AND","x":157.4143,"y":10.62,"h":3.75,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","s":"BOTT. BARS)","x":157.4143,"y":5.37,"h":3.75,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","s":"BOT. BARS)","x":157.4143,"y":5.37,"h":3.75,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:D","closed":false,"pts":[[157.4143,3.69],[235.45,3.69]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:D","s":"SCALE: 1/2\" = 1'-0\"","x":157.4143,"y":0,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"notes_list","s":"DETAIL NOTES","x":251.4393,"y":213.0007,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
@@ -269,7 +269,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_each","s":"BARS EA. FACE WHERE DOUBLE MAT","x":260.225,"y":157.8757,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_each","s":"OCCURS","x":260.225,"y":154.2757,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_top","s":"9.","x":251.4393,"y":150.6757,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_top","s":"CORNER BARS AT TOP AND BOTT. BARS","x":260.225,"y":150.6757,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_top","s":"CORNER BARS AT TOP AND BOT. BARS","x":260.225,"y":150.6757,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_top","s":"WHERE TOP BARS OCCUR","x":260.225,"y":147.0757,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"10.","x":251.4393,"y":143.4757,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"CONT. FTG. PER PLAN","x":260.225,"y":143.4757,"h":2.25,"rot":0,"align":"left","valign":"baseline"}

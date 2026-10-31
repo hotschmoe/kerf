@@ -82,7 +82,7 @@ Rules: nothing lighter than 0.13 mm for reproduction; hatches always the lightes
 
 - **Leader notes**: text with an arrow (closed filled or open arrow; dot on a surface, arrow on an edge), 1 leader per note, text left/right justified at leader shoulder; used in structural details (S-sheets) almost universally.
 - **Keynotes**: numeric/alpha tag with a legend (CSI-based or sheet-local); more common on architectural (A-) sheets. Kerf should support both: `leader_note` (inline text) and `keynote` (tag + legend), and an ordering rule (top-to-bottom, left column then right).
-- Uppercase text for notes; abbreviations: TYP., U.N.O., MIN., CONT., EA., O.C., E.W., NTS, SIM., CLR., PT, OSB, LVL, GLB, CMU, GWB, CONC., REINF., GRTD., TOS (top of slab), TOW (top of wall), T.O. PLATE, B.O. BEAM.
+- Uppercase text for notes; abbreviations: TYP., U.N.O., MIN., CONT., EA., O.C., E.W., N.T.S., SIM., CLR., P.T., OSB, LVL, GLB, CMU, GWB, CONC., REINF., GRTD., T.O.S. (top of slab), T.O.W. (top of wall), T.O. PLATE, B.O. BEAM (approved forms: spec/styles/ABBREVIATIONS.md).
 - Detail callout (title): circle/bubble with detail number (top) over sheet number (bottom), title text beside, scale under title: `1-1/2" = 1'-0"`.
 - Cross-reference bubble on parent plans/sections: arrow + detail # / sheet #.
 

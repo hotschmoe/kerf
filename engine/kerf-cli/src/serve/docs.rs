@@ -82,7 +82,7 @@ pub fn api_list(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io::Resu
     for r in &mut rows {
         if r.info.is_none() {
             let Ok(rd) = s.read_doc(&r.name) else { continue };
-            let info = compute_info(&rd.bytes);
+            let info = compute_info(&rd.bytes, &s.style_member());
             r.mtime_ns = rd.mtime_ns;
             r.size = rd.size;
             s.store_info(&r.name, rd.mtime_ns, rd.size, info.clone());
@@ -174,7 +174,7 @@ pub fn api_create(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io::Re
         }
         Err(e) => return Err(e),
     }
-    let summary = workspace::check_summary(&text);
+    let summary = workspace::check_summary(&text, workspace::find_style(&s.dir_abs).as_deref());
     let created_ops = format!("[{{\"op\":\"create\",\"file\":\"{file}\"}}]");
     let line = workspace::build_entry(
         &LogMeta { who: "designer", tool: "kerf-serve", why: "create" },
@@ -294,6 +294,7 @@ pub fn api_apply(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &str
     let engine_actor = if who == "designer" { "designer" } else { "llm" };
     let mut input = b"{\"doc\":".to_vec();
     input.extend_from_slice(rd.bytes.trim_ascii());
+    input.extend(s.style_member());
     input.extend_from_slice(b",\"ops\":");
     input.extend_from_slice(&ops_text);
     input.extend_from_slice(format!(",\"actor\":\"{engine_actor}\"}}").as_bytes());
@@ -428,6 +429,7 @@ pub fn api_export(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &st
     };
     let mut input = b"{\"doc\":".to_vec();
     input.extend_from_slice(rd.bytes.trim_ascii());
+    input.extend(s.style_member());
     input.extend_from_slice(format!(",\"{key}\":").as_bytes());
     input.extend(http::json_string(&view));
     input.extend_from_slice(format!(",\"format\":\"{format}\",\"sheet\":{sheet}").as_bytes());

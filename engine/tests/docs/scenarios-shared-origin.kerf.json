@@ -103,7 +103,7 @@
       "id": "A",
       "kind": "section",
       "number": "1",
-      "title": "PT SILL",
+      "title": "P.T. SILL",
       "cut_z": 0,
       "notes_side": "right",
       "only": [
@@ -114,7 +114,7 @@
         {
           "id": "n_a_sill",
           "type": "note",
-          "text": "2X8 PT SILL PLATE",
+          "text": "2X8 P.T. SILL PLATE",
           "target": "a_sill"
         },
         {

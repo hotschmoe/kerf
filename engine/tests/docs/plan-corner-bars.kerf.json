@@ -24,12 +24,12 @@
       {"id": "n2", "type": "note", "text": "#4 CORNER BAR EA. FACE", "target": "corner_out"},
       {"id": "n3", "type": "note", "text": "#5 DOWEL @ 16\" O.C.", "target": "dowel"},
       {"id": "n4", "type": "note", "text": "CONC. FOOTING", "target": "ftg_x"},
-      {"id": "n5", "type": "note", "text": "2X6 PT SILL PLATE BEYOND", "target": "sill"},
+      {"id": "n5", "type": "note", "text": "2X6 P.T. SILL PLATE BEYOND", "target": "sill"},
       {"id": "d1", "type": "dim", "from": "wall_z@top_left", "to": "corner_out@end", "dir": "v", "offset": -10, "text": "24\" MIN. LAP"}
     ]},
     {"id": "C", "kind": "plan", "number": "3", "title": "FOOTING PLAN", "cut_y": 6, "crop": {"x": [-10, 52], "z": [-44, 18]}, "hidden_lines": true, "notes_side": "right", "annotations": [
       {"id": "n1", "type": "note", "text": "CONC. FOOTING", "target": "ftg_z"},
-      {"id": "n2", "type": "note", "text": "#4 CONT. BOTT.", "target": "ftg_bar"},
+      {"id": "n2", "type": "note", "text": "#4 CONT. BOT.", "target": "ftg_bar"},
       {"id": "n3", "type": "note", "text": "#5 DOWEL", "target": "dowel#1"}
     ]},
     {"id": "E", "kind": "elevation", "number": "4", "title": "STEM WALL", "hidden_lines": true, "crop": {"x": [-10, 40], "y": [-6, 44]}, "notes_side": "right", "annotations": [

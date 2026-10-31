@@ -1,0 +1,31 @@
+{
+  "kerfstyle": "0.1",
+  "id": "example-company",
+  "title": "EXAMPLE COMPANY STYLE (company rules over kerf-standard; copy to kerf.kerfstyle.json)",
+  "sheet": {
+    "firm": "EXAMPLE STRUCTURAL ENGINEERS"
+  },
+  "notes": {
+    "abbreviations": {
+      "extends": "us-structural",
+      "rules": {
+        "period_on_shortened": true,
+        "dotted_initials": true,
+        "bare_acronyms": true,
+        "variants": true
+      },
+      "approved": {
+        "ELEV.": "ELEVATION",
+        "GWB": "GYPSUM WALLBOARD",
+        "SHR.": "SHEAR",
+        "STIRR.": ["STIRRUP", "STIRRUPS"]
+      },
+      "variants": {
+        "BTW.": "BTWN.",
+        "G.W.B.": "GWB"
+      },
+      "remove": ["S.A.D."],
+      "always": ["O.C.", "MIN.", "MAX.", "DIA."]
+    }
+  }
+}

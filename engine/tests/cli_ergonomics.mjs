@@ -181,7 +181,7 @@ section('3. W_UNKNOWN_KEY, dim dir default + W_DIM_ZERO, W_NOTE_STYLE');
   check('no suggestion lists the valid keys', /unknown key "bogus".*Valid keys: id, type, text, target, at, place, (column, )?(key, )?cite/.test(r.out));
   check('unknown keys are preserved in the file', (() => { const d = readJson('k.kerf.json'); const n = d.views[0].annotations.find((a) => a.id === 'n3'); return n.citations && n.side && n.point && n.bogus === 1 && d.views[0].side === 'left'; })());
   check('W_DIM_ZERO for a dim measuring 0"', /WARN W_DIM_ZERO d_zero:.*measures 0"/.test(r.out) && !/W_DIM_ZERO d_v/.test(r.out), r.out);
-  check('W_NOTE_STYLE for GYPSUM BOARD', /W_NOTE_STYLE n3:.*GYP\. BD\./.test(r.out), r.out);
+  check('GYPSUM BOARD spelled out is fine: no abbreviation is forced by default (SPEC 25.6)', !/W_NOTE_STYLE n3:/.test(r.out) && !/W_ABBREV n3:/.test(r.out), r.out);
   const stored = readJson('k.kerf.json');
   check('dim dir default is not written into the document', stored.views[0].annotations.find((a) => a.id === 'd_v').dir === undefined);
   // the default dir makes d_v vertical: its text reads 1 1/2"
@@ -403,7 +403,7 @@ section('10. v0.1.5 (SPEC 21): note lint extensions');
     { op: 'add', path: 'views/A/annotations', value: { id: 'n_chat', type: 'note', text: 'SILL SHOULD BE TREATED, RIGHT?', target: 'sill' } },
     { op: 'add', path: 'views/A/annotations', value: { id: 'n_dangle', type: 'note', text: '2X6 STUD W/', target: 'stud' } },
     { op: 'add', path: 'views/A/annotations', value: { id: 'n_long', type: 'note', text: '2X4 STUD @ 16" O.C. W/ (2) 16D NAILS EA. END INTO SILL AND TOP PLATE, PLUS TWO MORE NAILS TOE-NAILED THROUGH THE SIDE, INSTALL PER MFR. SPECS AND TABLE', target: 'stud' } },
-    { op: 'add', path: 'views/A/annotations', value: { id: 'n_dup', type: 'note', text: '2x6 pt sill plate.', target: 'sill' } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'n_dup', type: 'note', text: '2x6 p.t. sill plate.', target: 'sill' } },
   ];
   let r = kerf(['apply', 'nl.kerf.json', '--ops', JSON.stringify(ops), '-w', '--why', 'sloppy notes']);
   check('apply succeeds (warnings only)', r.code === 0, r);
@@ -743,10 +743,10 @@ section('#18. house style lint, kept case, requested coverage normalization');
     note('b_trail', 'SHEATHING EDGE.'),
   ];
   r = kerf(['apply', 'hs.kerf.json', '--ops', JSON.stringify(bad), '-w', '--why', 'still wrong']);
-  check('lower-case words are still flagged, and the fix keeps 16d', /WARN W_NOTE_STYLE b_lower: .*lowercase letters.*Fix: set text to "\(2\) 16d NAILS EACH SIDE @ 6" O\.C\."$/m.test(r.out), r.out);
+  check('lower-case words are still flagged, and the fix keeps 16d (ON CENTER stays spelled out)', /WARN W_NOTE_STYLE b_lower: .*lowercase letters.*Fix: set text to "\(2\) 16d NAILS EACH SIDE @ 6" ON CENTER"$/m.test(r.out), r.out);
   check('a real dashed fraction is still flagged; the fix leaves HU212-2 alone', /WARN W_NOTE_STYLE b_frac: .*dashed fraction.*Fix: set text to "SIMPSON HU212-2 W\/ 1 1\/2" MIN\. BEARING"$/m.test(r.out), r.out);
-  check('MINIMUM. becomes MIN. (no doubled period); EACH and EMBED. are left as written', /WARN W_NOTE_STYLE b_period: .*Fix: set text to "6" EMBED\. MIN\."$/m.test(r.out), r.out);
-  check('a period after a plain word is still a trailing period, and the message names the style escape', /WARN W_NOTE_STYLE b_trail: .*trailing period \(notes are not sentences; if "EDGE\." is an abbreviation, add it to the style's notes\.abbreviations\).*Fix: set text to "SHEATHING EDGE"$/m.test(r.out), r.out);
+  check('MINIMUM. is a trailing period, not forced to MIN.; EMBED. is left as written', /WARN W_NOTE_STYLE b_period: .*trailing period.*Fix: set text to "6" EMBED\. MINIMUM"$/m.test(r.out), r.out);
+  check('a period after a plain word is still a trailing period, and the message names the style escape', /WARN W_NOTE_STYLE b_trail: .*trailing period \(notes are not sentences; if "EDGE\." is an abbreviation, add it to the style's notes\.abbreviations\.approved\).*Fix: set text to "SHEATHING EDGE"$/m.test(r.out), r.out);
 
   kerf(['new', 'cov.kerf.json', '--template', 'section']);
   const cov = [
@@ -1433,6 +1433,94 @@ section('#9. plan and elevation views, shown hidden / where_occurs, rebar plane 
   write('el.kerf.json', wall('solid', [{ id: 'P', kind: 'plan', cut_y: 10, annotations: [{ id: 'n1', type: 'note', text: '2X6 STUD', target: 'stud' }] }]));
   d = items('el.kerf.json', 'P');
   check('plan: studs (lumber run y) cut by the plane get the end-grain X', d.items.filter((i) => i.t === 'path' && /^stud/.test(i.src) && i.pen === 'beyond' && i.pts.length === 2).length >= 6, d.items.filter((i) => /^stud/.test(i.src ?? '')).length);
+}
+
+// house style: company abbreviation rules (W_ABBREV), workspace kerf.kerfstyle.json, acknowledge on annotations and views
+// (SPEC 25.6)
+section('house style: W_ABBREV, company style kerf.kerfstyle.json, acknowledge on annotations and views');
+{
+  kerf(['new', 'ab.kerf.json', '--template', 'section']);
+  const note = (id, text, extra = {}) => ({ op: 'add', path: 'views/A/annotations', value: { id, type: 'note', text, target: 'stud', ...extra } });
+  const ops = [
+    note('a_typ', 'SIMPSON HU212-2 HANGER TYP'),
+    note('a_oc', '#4 @ 16" OC E.W. UNO'),
+    note('a_cmu', '8" C.M.U. WALL W/ BOTT. BOND BEAM'),
+    note('a_pt', '2X PT SILL W/ 16d NAILS'),
+    note('a_fine', '(2) 16d NAILS TO 2-PLY HDR. SIM, EMBED 6" INTO CONC., T.O.F. TO E.N.'),
+    note('a_quote', 'f\'c = 3,000 psi CONC. PER "TYP OC" DETAIL, DF-L #2'),
+    note('a_spelled', 'CONCRETE FOOTING W/ (2) #5 CONTINUOUS BOTTOM @ 12" ON CENTER, 6" MINIMUM'),
+    { op: 'add', path: 'views/A/annotations', value: { id: 'a_lab', type: 'label', text: 'EXIST\'G WALL', at: 'stud@top_left' } },
+    { op: 'add', path: 'views/A/annotations', value: { id: 'a_dim', type: 'dim', from: 'stud@bottom_left', to: 'stud@bottom_right', offset: -8, text: 'EQ' } },
+    { op: 'update', path: 'views/A', value: { title: 'WALL AT PT SILL' } },
+    { op: 'update', path: 'meta', value: { requested: ['bottom bond beam', 'unless noted otherwise', 'pressure treated sill'] } },
+  ];
+  let r = kerf(['apply', 'ab.kerf.json', '--ops', JSON.stringify(ops), '-w', '--why', 'abbreviation forms']);
+  const line = (id, tok) => (r.out.match(new RegExp(`^WARN W_ABBREV ${id}: .*"${tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" .*$`, 'm')) || [''])[0];
+  check('TYP without its period: rule period_on_shortened, path named, fix op keeps HU212-2 and adds only the period',
+    /\(views\/A\/annotations\/a_typ\/text\): "TYP" breaks rule period_on_shortened .*write "TYP\." \(TYPICAL\)/.test(line('a_typ', 'TYP'))
+      && line('a_typ', 'TYP').includes('Fix: {"op":"update","path":"views/A/annotations/a_typ","value":{"text":"SIMPSON HU212-2 HANGER TYP."}}'), line('a_typ', 'TYP'));
+  check('OC and UNO: two warnings, rule dotted_initials, both carry the same op fixing both tokens',
+    /breaks rule dotted_initials .*write "O\.C\." \(ON CENTER\)/.test(line('a_oc', 'OC')) && /write "U\.N\.O\."/.test(line('a_oc', 'UNO'))
+      && [line('a_oc', 'OC'), line('a_oc', 'UNO')].every((l) => l.includes('{"text":"#4 @ 16\\" O.C. E.W. U.N.O."}') && /and the other flagged abbreviation of this text/.test(l)), r.out);
+  check('C.M.U. -> CMU (bare_acronyms), BOTT. -> BOT. (variants)', /breaks rule bare_acronyms .*write "CMU"/.test(line('a_cmu', 'C.M.U.')) && /breaks rule variants .*write "BOT\." \(BOTTOM\)/.test(line('a_cmu', 'BOTT.')), r.out);
+  check('PT -> P.T., the message says PT also reads as post-tensioned; the override names acknowledge and the style switch',
+    /write "P\.T\." \(PRESSURE TREATED\); PT also reads as post-tensioned/.test(line('a_pt', 'PT')) && /add \{"code":"W_ABBREV","reason":"\.\.\."\} to the "acknowledge" of views\/A\/annotations\/a_pt; everywhere: set notes\.abbreviations\.rules\.dotted_initials to false/.test(line('a_pt', 'PT')), line('a_pt', 'PT'));
+  check('never flagged: 16d, 2-PLY, SIM, EMBED, T.O.F., TO, E.N., f\'c, psi, quoted "TYP OC", DF-L, spelled-out words', !/W_ABBREV a_fine:/.test(r.out) && !/W_ABBREV a_quote:/.test(r.out) && !/W_ABBREV a_spelled:/.test(r.out), r.out);
+  check('label, dim text and view title are read too', /W_ABBREV a_lab: label 'a_lab' in view A .*"EXIST'G" breaks rule variants .*write "EXIST\."/.test(r.out) && /W_ABBREV a_dim: dim 'a_dim' .*"EQ" .*write "EQ\."/.test(r.out) && /W_ABBREV A: the title of view A \(views\/A\/title\): "PT"/.test(r.out) && /\{"op":"update","path":"views\/A","value":\{"title":"WALL AT P\.T\. SILL"\}\}/.test(r.out), r.out);
+  check('coverage reads variants as their words: BOTT. = bottom, UNO = unless noted otherwise, PT = pressure treated', /^ ok       bottom bond beam/m.test(r.out) && /^ ok       unless noted otherwise/m.test(r.out) && /^ ok       pressure treated sill/m.test(r.out), r.out);
+  const fixOp = line('a_cmu', 'BOTT.').match(/Fix: (\{"op".*?\}\}) \(only/)[1];
+  r = kerf(['apply', 'ab.kerf.json', '--ops', fixOp, '-w', '--why', 'apply the W_ABBREV fix']);
+  check('applying the printed fix clears both tokens of that note and changes nothing else', !/W_ABBREV a_cmu:/.test(r.out) && readJson('ab.kerf.json').views[0].annotations.find((a) => a.id === 'a_cmu').text === '8" CMU WALL W/ BOT. BOND BEAM', r.out);
+
+  const acks = [
+    { op: 'update', path: 'views/A/annotations/a_pt', value: { acknowledge: [{ code: 'W_ABBREV', reason: 'matches the framing schedule' }] } },
+    { op: 'update', path: 'views/A/annotations/a_fine', value: { acknowledge: [{ code: 'W_ABBREV', reason: 'nothing to keep' }] } },
+    { op: 'update', path: 'views/A', value: { acknowledge: [{ code: 'W_ABBREV', reason: 'client title' }] } },
+    note('a_trail', 'SHEATHING EDGE.', { acknowledge: [{ code: 'W_NOTE_STYLE', reason: 'quoted from the architect' }] }),
+  ];
+  r = kerf(['apply', 'ab.kerf.json', '--ops', JSON.stringify(acks), '-w', '--why', 'acknowledge on annotations']);
+  check('acknowledge on a note and on a view suppresses W_ABBREV there; the DOC line counts them', !/WARN W_ABBREV a_pt:/.test(r.out) && !/WARN W_ABBREV A:/.test(r.out) && /^DOC ab .* 3 acknowledged$/m.test(r.out), r.out.split('\n')[0]);
+  check('other annotation warnings acknowledge the same way (W_NOTE_STYLE on a note)', !/WARN W_NOTE_STYLE a_trail:/.test(r.out) && /^ W_NOTE_STYLE +x1 +A\/a_trail: "quoted from the architect"$/m.test(r.out), r.out);
+  check('ACKNOWLEDGED block lists annotations as view/id and views as "view A"', /^ W_ABBREV +x1 +A\/a_pt: "matches the framing schedule"$/m.test(r.out) && /^ W_ABBREV +x1 +view A: "client title"$/m.test(r.out), r.out);
+  check('a stale annotation acknowledgement is W_ACK_UNUSED with the op that removes it', /^WARN W_ACK_UNUSED a_fine: 1 of the 1 acknowledge entry of annotation 'a_fine' in view A suppresses nothing \(no W_ABBREV \(#0\) is about annotation 'a_fine' in view A\).*Fix: remove it: \{"op":"update","path":"views\/A\/annotations\/a_fine","value":\{"acknowledge":null\}\}$/m.test(r.out), r.out);
+  r = kerf(['check', 'ab.kerf.json', '--strict']);
+  check('--strict lists them as warnings, naming the annotation', r.code === 1 && /^WARN W_ABBREV a_pt: .*\[acknowledged on 'A\/a_pt': matches the framing schedule\] Fix: /m.test(r.out) && /\[acknowledged on 'view A': client title\]/.test(r.out), r.out);
+  r = kerf(['drawing', 'ab.kerf.json', '--view', 'A']);
+  const ir = r.code === 0 ? JSON.parse(r.out) : {};
+  const irAck = (ir.acknowledged || []).find((a) => a.id === 'a_pt');
+  check('drawing IR: acknowledged entries of annotations carry view and on', irAck && irAck.view === 'A' && irAck.on === 'views/A/annotations/a_pt' && irAck.code === 'W_ABBREV', ir.acknowledged);
+  r = kerf(['export', 'ab.kerf.json', '--view', 'A', '--format', 'dxf', '--sheet', '--review', '-o', 'ab-review.dxf']);
+  const rdxf = r.code === 0 ? fs.readFileSync(path.join(tmp, 'ab-review.dxf'), 'utf8') : '';
+  check('export --review tags and lists the annotation and view acknowledgements', /\n3 ACKNOWLEDGED WARNINGS\r?\n/.test(rdxf) && /\nACK \d  A\/A_PT: W_ABBREV X1 MATCHES THE FRAMING SCHEDULE\r?\n/.test(rdxf) && /\nACK \d  VIEW A: W_ABBREV X1 CLIENT TITLE\r?\n/.test(rdxf) && (rdxf.match(/\nACK \d\r?\n/g) || []).length === 3, r.err);
+  r = kerf(['apply', 'ab.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'views/A/annotations/a_pt', value: { acknowledge: 'yes' } })]);
+  check('a malformed annotation acknowledge is E_PARAM at its path', /^ERROR E_PARAM views\/A\/annotations\/a_pt\/acknowledge: 'acknowledge' of annotation 'a_pt' in view A must be an array/m.test(r.err), r.err);
+
+  fs.mkdirSync(path.join(tmp, 'co', 'proj'), { recursive: true });
+  write('co/kerf.kerfstyle.json', { kerfstyle: '0.1', id: 'co', notes: { abbreviations: { rules: { dotted_initials: false }, approved: { 'BOTT.': 'BOTTOM' }, always: ['O.C.', 'MIN.'] } } });
+  kerf(['new', 'co/proj/w.kerf.json', '--template', 'section']);
+  const cops = [
+    note('c_oc', '#4 @ 12" ON CENTER UNO, 6" MINIMUM. "ON CENTER"'),
+    note('c_bott', '(2) #5 CONT. BOTT.'),
+  ];
+  r = kerf(['apply', 'co/proj/w.kerf.json', '--ops', JSON.stringify(cops), '-w', '--why', 'company style']);
+  check('the nearest kerf.kerfstyle.json above the document applies without --style and is named on a STYLE line', r.code === 0 && /^STYLE .*co\/kerf\.kerfstyle\.json \(workspace style; --style overrides\)$/m.test(r.out.split('\n')[0]), r.out.split('\n')[0]);
+  check('always list: ON CENTER and MINIMUM. flagged (rule always), the quoted one is not; the fix absorbs the period', /W_ABBREV c_oc: .*"ON CENTER" is spelled out, and the company style always abbreviates it \(rule always\): write "O\.C\."/.test(r.out) && /"MINIMUM\." is spelled out/.test(r.out) && r.out.includes('{"text":"#4 @ 12\\" O.C. UNO, 6\\" MIN. \\"ON CENTER\\""}') && (r.out.match(/^WARN W_ABBREV c_oc:/gm) || []).length === 2, r.out);
+  check('style switches: dotted_initials off lets UNO and the template\'s PT pass, approved BOTT. is fine', !/"UNO" breaks/.test(r.out) && !/W_ABBREV c_bott:/.test(r.out) && !/W_ABBREV n_sill:/.test(r.out), r.out);
+  r = kerf(['check', 'co/proj/w.kerf.json', '--style', path.join(here, '..', '..', 'spec', 'styles', 'kerf-standard.kerfstyle.json')]);
+  check('--style wins over the workspace style', /^STYLE .*kerf-standard\.kerfstyle\.json \(--style\)$/m.test(r.out) && /"UNO" breaks rule dotted_initials/.test(r.out) && /"BOTT\." breaks rule variants/.test(r.out) && !/rule always/.test(r.out), r.out);
+  r = kerf(['check', 'ab.kerf.json']);
+  check('no STYLE line without a style file', !/^STYLE /m.test(r.out) && /^DOC ab /.test(r.out), r.out.split('\n')[0]);
+  write('co/proj/bad.kerfstyle.json', { notes: { abbreviations: { variants: { 'BOTTM.': 'BOTTOM.' }, always: ['OC'] } } });
+  r = kerf(['check', 'co/proj/w.kerf.json', '--style', 'co/proj/bad.kerfstyle.json']);
+  check('style mistakes are E_STYLE: a variant of nothing approved, an always entry that is not approved (did you mean)', r.code !== 0 && /the variant "BOTTM\." maps to "BOTTOM\.", which is not an approved abbreviation/.test(r.out + r.err) && /"OC" is not an approved abbreviation .*did you mean "O\.C\."\?/.test(r.out + r.err), r.out + r.err);
+  r = kerf(['schema', 'abbreviations']);
+  check('kerf schema abbreviations prints the built-in list: approved forms with their variants and counts', r.code === 0 && /^\| `BOT\.` \| 11 \| BOTTOM \| shortened word \| `BOTT\.` \(variants\), `BTM\.` \(17, variants\), `BOT` \(period_on_shortened\) \|$/m.test(r.out) && /^\| `SIM\.` .*`SIM` is an ordinary word: never flagged/m.test(r.out), r.out.slice(0, 400));
+  r = spawnSync(KERF, ['schema', 'abbreviations'], { cwd: path.join(tmp, 'co', 'proj'), encoding: 'utf8' });
+  check('...and, run inside a company folder, the company list (rules, always, approved BOTT.)', /dotted_initials off/.test(r.stdout) && /Always abbreviated \(notes\.abbreviations\.always\): O\.C\. MIN\./.test(r.stdout) && /^\| `BOTT\.` \| +\| BOTTOM \|/m.test(r.stdout), r.stdout.slice(0, 600));
+  r = kerf(['init', 'lib2']);
+  check('kerf init writes a starter kerf.kerfstyle.json (defaults) and AGENTS.md names it', /^wrote kerf\.kerfstyle\.json$/m.test(r.out) && readJson('lib2/kerf.kerfstyle.json').notes.abbreviations.extends === 'us-structural' && /kerf\.kerfstyle\.json/.test(fs.readFileSync(path.join(tmp, 'lib2', 'AGENTS.md'), 'utf8')), r.out);
+  r = kerf(['init', 'co/proj2']);
+  check('kerf init under a company folder keeps the company style (writes none)', /^company style: .*co\/kerf\.kerfstyle\.json \(found above; kerf applies it here\)$/m.test(r.out) && !fs.existsSync(path.join(tmp, 'co', 'proj2', 'kerf.kerfstyle.json')), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

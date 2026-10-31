@@ -1,0 +1,125 @@
+{
+  "kerf": "0.1",
+  "id": "abbrev-acknowledge",
+  "title": "ABBREVIATION FORMS",
+  "meta": {
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "requested": [
+      "bottom plate",
+      "unless noted otherwise",
+      "pressure treated sill"
+    ]
+  },
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "sill",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, 0]
+      },
+      "size": "2x6",
+      "orient": "flat",
+      "treated": true
+    },
+    {
+      "id": "stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "sill@top_left"
+      },
+      "size": "2x6",
+      "run": "y",
+      "length": 24
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "WALL AT PT SILL",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [-12, 18],
+        "y": [-8, 30]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "2X6 PT SILL PLATE",
+          "target": "sill",
+          "cite": [
+            {
+              "code": "IRC",
+              "edition": 2021,
+              "section": "R317.1",
+              "title": "Location required",
+              "status": "suggested"
+            }
+          ],
+          "acknowledge": [
+            {
+              "code": "W_ABBREV",
+              "reason": "matches the framing schedule"
+            }
+          ]
+        },
+        {
+          "id": "n_stud",
+          "type": "note",
+          "text": "2X6 STUDS @ 16\" O.C.",
+          "target": "stud"
+        },
+        {
+          "id": "d_sill",
+          "type": "dim",
+          "from": "sill@bottom_left",
+          "to": "sill@bottom_right",
+          "dir": "h",
+          "offset": -3
+        },
+        {
+          "id": "l_ext",
+          "type": "label",
+          "text": "EXTERIOR",
+          "at": "sill@top_left",
+          "offset": [-6, 6]
+        },
+        {
+          "id": "n_plate",
+          "type": "note",
+          "text": "(2) 16d NAILS TO BOTTOM PLATE @ 16\" O.C. U.N.O.",
+          "target": "stud"
+        },
+        {
+          "id": "n_model",
+          "type": "note",
+          "text": "SIMPSON HU212-2 HANGER TYP.",
+          "at": "stud@top_right"
+        },
+        {
+          "id": "l_exist",
+          "type": "label",
+          "text": "EXIST.",
+          "at": "sill@bottom_left",
+          "offset": [-6, -4]
+        }
+      ],
+      "acknowledge": [
+        {
+          "code": "W_ABBREV",
+          "reason": "title as issued on the permit set"
+        }
+      ]
+    }
+  ]
+}

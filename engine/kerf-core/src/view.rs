@@ -241,11 +241,8 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         }
     }
     let mut has_scale = node.get("scale").is_some_and(|v| !v.is_null());
-    let mut scale_text = node.get("scale").and_then(Value::str).unwrap_or(if kind.is_flat() {
-        DEFAULT_SECTION_SCALE
-    } else {
-        "NTS"
-    });
+    let mut scale_text =
+        node.get("scale").and_then(Value::str).unwrap_or(if kind.is_flat() { DEFAULT_SECTION_SCALE } else { "NTS" });
     let mut scale = 12.0;
     let spath = format!("{base}/scale");
     if kind == Kind::Schedule {

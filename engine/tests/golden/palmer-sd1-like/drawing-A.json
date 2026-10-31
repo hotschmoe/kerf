@@ -56,7 +56,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_dowel","s":"BAR","x":36.5,"y":16.455,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_dowel","closed":false,"pts":[[36.02,18.8175],[34.52,18.8175],[11.625,18.8175]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_dowel","loops":[[[10.5,18.8175],[11.625,18.4425],[11.625,19.1925]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg_bars","s":"(2) #4 CONT. BOTT., 3\" CLR.","x":36.5,"y":2.6875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg_bars","s":"(2) #4 CONT. BOT., 3\" CLR.","x":36.5,"y":2.6875,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg_bars","closed":false,"pts":[[36.02,3.25],[34.52,3.25],[21.875,3.25]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_ftg_bars","loops":[[[20.75,3.25],[21.875,2.875],[21.875,3.625]]]},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_wedge","s":"1/2\" DIA. WEDGE ANCHOR,","x":36.5,"y":37.7,"h":1.125,"rot":0,"align":"left","valign":"baseline"},

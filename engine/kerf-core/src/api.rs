@@ -28,6 +28,9 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The embedded default style (spec/styles/kerf-standard.kerfstyle.json, minified); a user style merges over it.
+pub const DEFAULT_STYLE: &[u8] = crate::style::DEFAULT_JSON;
 pub const ENGINE_NAME: &str = "kerf";
 
 /// `ok` false means `bytes` is `{"error":{code,message}}`.
@@ -62,7 +65,7 @@ const HELP_ROWS: [[&str; 3]; 11] = [
     ["catalog", "{format?: \"json\"|\"markdown\"}", "the component catalog (json default)"],
     [
         "schema",
-        "{topic?: \"view\"|\"note\"|\"dim\"|\"label\"|\"cite\"|\"ops\"|\"doc\"|<component type>}",
+        "{topic?: \"view\"|\"note\"|\"dim\"|\"label\"|\"cite\"|\"ops\"|\"doc\"|\"abbreviations\"|<component type>, style?}",
         "{topic, text}: field reference text; no topic lists the topics",
     ],
     ["fmt", "{doc}", "{doc, text}: canonical key order and indentation"],
@@ -112,6 +115,13 @@ fn help_fn() -> Output {
 fn schema_fn(inp: &Value) -> Output {
     let topic = inp.get("topic").and_then(Value::str);
     let text = match topic {
+        Some("abbreviations" | "abbreviation" | "abbrev") => {
+            let st = match get_style(inp) {
+                Ok(st) => st,
+                Err(e) => return e,
+            };
+            format!("{}{}", schema::ABBREV_HEAD, crate::house::abbreviations_markdown(&st))
+        }
         Some(tp) => {
             if let Some(t) = schema::render(tp) {
                 t

@@ -39,7 +39,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_stud","s":"1.","x":28.0714,"y":45.5125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_stud","s":"2X6 STUDS @ 16\" O.C.","x":31.3929,"y":45.5125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2.","x":28.0714,"y":43.7125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X8 PT SILL PLATE","x":31.3929,"y":43.7125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X8 P.T. SILL PLATE","x":31.3929,"y":43.7125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"3.","x":28.0714,"y":41.9125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"CONC. FTG. PER PLAN","x":31.3929,"y":41.9125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_stem","s":"4.","x":28.0714,"y":40.1125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},

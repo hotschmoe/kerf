@@ -72,7 +72,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"notes_list","s":"DETAIL NOTES","x":21.3571,"y":39.625,"h":0.375,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"notes_list","closed":false,"pts":[[21.3571,39.4375],[31.2679,39.4375]]},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"1.","x":21.3571,"y":38.8375,"h":0.375,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X6 PT SILL PLATE","x":22.4643,"y":38.8375,"h":0.375,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X6 P.T. SILL PLATE","x":22.4643,"y":38.8375,"h":0.375,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_anchor","s":"2.","x":21.3571,"y":38.2375,"h":0.375,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_anchor","s":"1/2\" DIA. X 10\" ANCHOR BOLT","x":22.4643,"y":38.2375,"h":0.375,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_anchor","s":"@ 48\" O.C.","x":22.4643,"y":37.6375,"h":0.375,"rot":0,"align":"left","valign":"baseline"},

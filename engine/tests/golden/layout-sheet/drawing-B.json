@@ -34,7 +34,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"2.","x":28.0714,"y":43.7125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"CONC. FTG. PER PLAN","x":31.3929,"y":43.7125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"3.","x":28.0714,"y":41.9125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X6 PT SILL PLATE","x":31.3929,"y":41.9125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_sill","s":"2X6 P.T. SILL PLATE","x":31.3929,"y":41.9125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_stem","s":"4.","x":28.0714,"y":40.1125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_stem","s":"8\" CONC. STEM WALL","x":31.3929,"y":40.1125,"h":1.125,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","closed":true,"pts":[[-2,-10.55,1],[5.5,-10.55,1]]},
