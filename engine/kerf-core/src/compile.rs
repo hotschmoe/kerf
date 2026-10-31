@@ -703,7 +703,6 @@ fn world_prisms(
     emb_override: Option<bool>,
     dashed: bool,
 ) -> Vec<Prism> {
-    let centered = built.nat_z.is_some();
     let mut world = Vec::with_capacity(inst.xfs.len() * built.prisms.len());
     for (ii, (xf, z)) in inst.xfs.iter().zip(&inst.zs).enumerate() {
         for pr in &built.prisms {
@@ -713,7 +712,7 @@ fn world_prisms(
             q.instance = ii as u32;
             q.z0 = z[0];
             q.z1 = z[1];
-            if centered && (pr.zhalf > 0.0 || pr.zoff != 0.0) {
+            if pr.zhalf > 0.0 || pr.zoff != 0.0 {
                 let zc = (z[0] + z[1]) / 2.0 + pr.zoff;
                 let half = if pr.zhalf > 0.0 { pr.zhalf } else { (z[1] - z[0]) / 2.0 };
                 q.z0 = zc - half;
@@ -790,14 +789,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
 
     let Some(inst) = instance_transforms(scene, &id, ty, &mut p, &built, &at, angle, zbase, &arr) else { return };
     let world = world_prisms(scene.style, index, &built, &inst, emb_override, dashed);
-    let mut pitch_angle = 0.0;
-    if ty.traits.has_pitch {
-        let default_pitch = Value::String("4:12".into());
-        let pv = node.get("pitch").unwrap_or(&default_pitch);
-        let th = units::parse_slope(pv).unwrap_or(0.0);
-        let right = node.get("exterior").and_then(Value::str).is_some_and(|s| s == "right");
-        pitch_angle = if right { -th } else { th };
-    }
+    let pitch_angle = if ty.traits.has_pitch { built.pitch } else { 0.0 };
     let comp = &mut scene.comps[idx];
     comp.angle = angle;
     comp.pitch_angle = pitch_angle;

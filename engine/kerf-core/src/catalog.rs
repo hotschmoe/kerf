@@ -41,6 +41,9 @@ pub struct Traits {
     pub takes_voids: bool,
     /// Subtracted from the hosts its `through` names (sleeve).
     pub passes_through: bool,
+    /// Minimum bearing of a member seen lengthwise on what is under it: [at an end, at an intermediate support] (ijoist;
+    /// zero: not checked, W_BEARING).
+    pub min_bearing: [f64; 2],
 }
 
 impl Traits {
@@ -59,6 +62,7 @@ impl Traits {
         shape_table: false,
         takes_voids: false,
         passes_through: false,
+        min_bearing: [0.0, 0.0],
     };
 }
 
@@ -82,6 +86,7 @@ pub enum Type {
     AnchorBolt,
     Connector,
     Truss,
+    Ijoist,
     Membrane,
     Fill,
     Insulation,
@@ -94,7 +99,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub const ALL: [Type; 17] = [
+    pub const ALL: [Type; 18] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -103,6 +108,7 @@ impl Type {
         Type::AnchorBolt,
         Type::Connector,
         Type::Truss,
+        Type::Ijoist,
         Type::Membrane,
         Type::Fill,
         Type::Insulation,
@@ -124,6 +130,7 @@ impl Type {
             Type::AnchorBolt => "anchor_bolt",
             Type::Connector => "connector",
             Type::Truss => "truss",
+            Type::Ijoist => "ijoist",
             Type::Membrane => "membrane",
             Type::Fill => "fill",
             Type::Insulation => "insulation",
@@ -315,7 +322,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 17] = [
+pub static ENTRIES: [Entry; 18] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -391,14 +398,28 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Truss,
-        summary: "Prefab wood truss heel and tail in side view.",
-        parts: "top_chord, bottom_chord, heel_web (raised only), plate, tail",
-        anchors: "9 box anchors + bearing_outer (local origin: outer edge of bearing at bottom of bottom chord), bearing_inner, tail_bottom, tail_top, top_chord_at_bearing, top_chord_bottom_at_bearing (lower edge of the top chord at the bearing plane), heel_outer (middle of the heel's outer vertical face, between the bottom chord's top and the top chord's top at the bearing: where ties and straps land), top_chord_end, bottom_chord_top_inner",
-        draws: "Standard heel: bottom chord from the bearing outer edge inward; top chord lower edge passes through (bearing_outer.x, top of bottom chord) at the pitch and extends to the plumb tail at x=-overhang. Members are in-plane, z thickness 1.5: set `z` and `array` for spacing.",
+        summary: "Prefab wood truss: roof heel (pitched, scissor, mono), parallel_chord floor/flat truss, or end_on. Profiles and bearings: `kerf schema truss`.",
+        parts: "top_chord, bottom_chord, heel_web (raised heel), end_vertical (mono, bearing face, parallel_chord), web (parallel_chord diagonals; end_on web strips), plate (heel profiles), tail",
+        anchors: "9 box anchors + bearing_outer (local origin: outer edge of bearing at bottom of bottom chord; top_chord bearing: at the underside of the top chord), bearing_inner, tail_bottom, tail_top, top_chord_at_bearing, top_chord_bottom_at_bearing (lower edge of the top chord at the bearing plane), heel_outer (middle of the heel's outer vertical face, between the bottom chord's top and the top chord's top at the bearing: where ties and straps land), heel_block_top (top of the top chord above the bearing's outer edge: `until` target for full-height eave blocking between trusses), top_chord_end, bottom_chord_top_inner; end_vertical, end_top, end_bottom (mono, face, parallel_chord: the end vertical's outer face middle, top, bottom); parallel_chord also bottom_chord_end. End-on: top_chord, top_chord_bottom, bottom_chord, bottom_chord_top, web_center (box middle across the plies)",
+        draws: "Side: members in-plane, natural z thickness = chord thickness (1 1/2; 3 1/2 for 4x2 chords): set `z` and `array` for spacing. Standard heel: top chord lower edge passes through (bearing_outer.x, top of bottom chord) at the pitch and extends to the tail at x=-overhang. Scissor: bottom chord flat over bearing_width, then rising at bottom_pitch. Mono: end vertical heel_height tall at the bearing, top chord falling inward (`slope: \"@truss\"` follows it down). Parallel_chord: level chords `depth` apart, an end vertical at the bearing (top_chord bearing: just inside the support, the top chord over it), diagonals alternating down and up every web_spacing, break at span_shown. End_on: chord plies cut with the wood X (top chord taller by 1/cos(pitch)), a web strip between them behind the cut every web_spacing along z.",
         example: "{\"id\":\"truss\",\"type\":\"truss\",\"pitch\":\"4:12\",\"top_chord\":\"2x4\",\"bottom_chord\":\"2x4\",\"bearing_width\":7.25,\"overhang\":18,\"at\":{\"anchor\":\"bearing_outer\",\"to\":[0,0]}}",
         traits: Traits {
             has_pitch: true,
             slope_host: Some(SlopeHost { part: "top_chord", end_anchor: "top_chord_end" }),
+            ..Traits::NONE
+        },
+    },
+    Entry {
+        ty: Type::Ijoist,
+        summary: "Wood I-joist (depth x flange series): side, end-on, stiffeners. Floor/roof joists and I-joist blocking.",
+        parts: "top_flange, web, bottom_flange, stiffener (with stiffeners), squash_block (with squash_blocks)",
+        anchors: "9 box anchors (the joist only: (0,0)-(length or flange width, depth)). Run x: levels top_flange, top_flange_bottom, web_center, bottom_flange_top, bottom_flange at mid-length, each also <name>_start and <name>_end at the ends; bearing_left, bearing_right (underside at the ends). Run z: top_flange, bottom_flange (face centres), web_center, web_left, web_right (web faces), top_flange_tip_left/right (underside of the top flange at its edges), bottom_flange_tip_left/right (top of the bottom flange at its edges)",
+        draws: "Run x (side): flange lines and the web outline, never hatched or grained, even where the section plane passes through the joist; stiffeners and squash blocks as rectangles at their ends. Run z (end-on): flanges cut with the wood X (blocking: one diagonal), the OSB web as a thin open strip, stiffeners/squash blocks cut beside it. True 3D slabs (iso, plan, mesh). W_BEARING: a run x joist bearing on a member under its end needs 1 3/4 in (3 1/2 in at an intermediate support).",
+        example: "{\"id\":\"joist\",\"type\":\"ijoist\",\"size\":\"11-7/8 x 2-5/16\",\"length\":48,\"stiffeners\":\"left\",\"at\":{\"anchor\":\"bottom_left\",\"to\":\"plate@top_left\"}}",
+        traits: Traits {
+            near_miss: true,
+            slope_host: Some(SlopeHost { part: "top_flange", end_anchor: "" }),
+            min_bearing: [1.75, 3.5],
             ..Traits::NONE
         },
     },

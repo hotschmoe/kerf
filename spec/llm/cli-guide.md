@@ -180,5 +180,13 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   filleted). The plan draws the bent bar; a section shows a dot where it crosses `cut_z` and a line where it runs behind.
 - `shown`: `"hidden"` = dashed, no suffix (a base plate under a pour, a stiffener behind a web); `"where_occurs"` =
   dashed and notes end in (WHERE OCCURS). The old `"dashed"` warns `W_SHOWN_DASHED`: pick one of the two.
+- Floor and roof framing (SPEC 27.1): an I-joist is ONE `ijoist` (`"size": "11-7/8 x 2-5/16"`, run x side view or
+  run z end-on, `stiffeners`/`squash_blocks` `left|right|both`, anchors `top_flange_end`, `bottom_flange_start`,
+  `bearing_left` ... for hangers and notes); never three lumber pieces. A floor truss is ONE `truss` with
+  `"profile": "parallel_chord", "depth": 18` (4x2 chords and open webs; `"bearing": "top_chord"` on a ledger or
+  plate, `"face"` in a hanger). Trusses parallel to the section: `"orient": "end_on", "depth": <height at the cut>`
+  (`plies` for girders). Roof: `"profile": "scissor"` (`bottom_pitch`), `"mono"` (`heel_height` = the high end;
+  sheathing `slope: "@truss"` falls with it). Full-height eave blocking: `"until": "truss@heel_block_top"`.
+  `W_BEARING` warns when an I-joist bears under 1 3/4" at an end (3 1/2" inside) and prints the length to add.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

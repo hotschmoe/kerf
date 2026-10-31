@@ -18,6 +18,8 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::f64::consts::PI;
 
+mod bearing;
+
 const FLAT_TOL: f64 = geom::FLAT_TOL;
 
 struct Pf<'a> {
@@ -109,6 +111,7 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     each_set(&sets, &ids, diags, untreated);
     each_set(&sets, &ids, diags, cover);
     each_set(&sets, &ids, diags, near_miss);
+    each_set(&sets, &ids, diags, bearing::check);
     let crop = explicit_crop(doc);
     each_set(&sets, &ids, diags, |s, d| short_slope(s, crop, d));
     crate::steelcheck::run(scene, doc, diags);

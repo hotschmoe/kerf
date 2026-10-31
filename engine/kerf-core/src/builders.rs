@@ -22,6 +22,7 @@ pub mod concrete;
 pub mod connector;
 pub mod fill;
 pub mod flashing;
+pub mod ijoist;
 pub mod insulation;
 pub mod joint;
 pub mod lumber;
@@ -46,6 +47,7 @@ pub fn build(ty: Type, ctx: &mut Ctx) -> Option<Built> {
         Type::AnchorBolt => anchor_bolt::build(ctx),
         Type::Connector => connector::build(ctx),
         Type::Truss => truss::build(ctx),
+        Type::Ijoist => ijoist::build(ctx),
         Type::Membrane => membrane::build(ctx),
         Type::Fill => fill::build(ctx),
         Type::Insulation => insulation::build(ctx),
@@ -69,6 +71,7 @@ pub fn params_rows(ty: Type) -> Vec<Row> {
         Type::AnchorBolt => anchor_bolt::Params::rows(),
         Type::Connector => connector::Params::rows(),
         Type::Truss => truss::Params::rows(),
+        Type::Ijoist => ijoist::Params::rows(),
         Type::Membrane => membrane::Params::rows(),
         Type::Fill => fill::Params::rows(),
         Type::Insulation => insulation::Params::rows(),
@@ -92,6 +95,7 @@ pub fn params_has_key(ty: Type, key: &str) -> bool {
         Type::AnchorBolt => anchor_bolt::Params::has_key(key),
         Type::Connector => connector::Params::has_key(key),
         Type::Truss => truss::Params::has_key(key),
+        Type::Ijoist => ijoist::Params::has_key(key),
         Type::Membrane => membrane::Params::has_key(key),
         Type::Fill => fill::Params::has_key(key),
         Type::Insulation => insulation::Params::has_key(key),

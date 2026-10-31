@@ -1523,5 +1523,83 @@ section('house style: W_ABBREV, company style kerf.kerfstyle.json, acknowledge o
   check('kerf init under a company folder keeps the company style (writes none)', /^company style: .*co\/kerf\.kerfstyle\.json \(found above; kerf applies it here\)$/m.test(r.out) && !fs.existsSync(path.join(tmp, 'co', 'proj2', 'kerf.kerfstyle.json')), r.out);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #10: I-joists and truss profiles (SPEC 27.1)
+section('#10. ijoist component, truss profiles, end-on trusses, W_BEARING');
+{
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const floor = (extra, views) => ({ kerf: '0.1', id: 'ij', title: 'I-JOIST', run: [-24, 24], components: [
+    { id: 'plate', type: 'lumber', size: '2x6', orient: 'flat', plies: 2, at: { anchor: 'bottom_left', to: [0, 0] } },
+    { id: 'rim', type: 'lumber', size: '1.25x11.875', product: 'lsl', at: { anchor: 'bottom_left', to: 'plate@top_left' } },
+    ...extra], views: views ?? [{ id: 'A', kind: 'section', cut_z: 0 }] });
+  const joist = (o) => ({ id: 'j', type: 'ijoist', size: '11-7/8 x 2-5/16', length: 36, at: { anchor: 'bottom_left', to: 'rim@bottom_right' }, ...o });
+
+  let r = kerf(['schema', 'ijoist', 'truss']);
+  check('schema ijoist lists the series sizes and the flange/web/bearing anchors', /^- size: /m.test(r.out) && /11-7\/8 x 2-5\/16/.test(r.out) && /<name>_start/.test(r.out) && /bearing_left, bearing_right/.test(r.out) && /web_left/.test(r.out) && /stiffener/.test(r.out), r.out.slice(0, 300));
+  check('schema truss lists the profiles, bearings and the new anchors', /parallel_chord/.test(r.out) && /^- bearing: /m.test(r.out) && /^- orient: /m.test(r.out) && /heel_block_top/.test(r.out) && /end_vertical/.test(r.out), r.out.slice(0, 300));
+
+  write('ij1.kerf.json', floor([joist({ stiffeners: 'left' }), { id: 'sub', type: 'panel', material: 'plywood', thickness: 0.75, length: 40, at: { anchor: 'bottom_left', to: 'rim@top_left' } }],
+    [{ id: 'A', kind: 'section', cut_z: 0, annotations: [{ id: 'n1', type: 'note', text: 'I-JOIST', target: 'j' }, { id: 'n2', type: 'note', text: 'WEB STIFFENER', target: 'j.stiffener' }] }]));
+  r = kerf(['check', 'ij1.kerf.json']);
+  check('I-joist on a rim over a plate: 0 warnings, the summary names the series', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /ijoist 11-7\/8 x 2-5\/16 \(flange 2 5\/16" x 1 3\/8", web 3\/8"\) run x L=3'-0" \+ stiffeners left/.test(r.out), r.out);
+  let d = items('ij1.kerf.json', 'A');
+  check('side view cut through the joist: outlines only (no hatch, no grain), notes land on the joist and its stiffener', !d.items.some((i) => i.t === 'hatch' && i.src === 'j') && d.items.filter((i) => i.t === 'path' && i.src === 'j').length >= 4 && d.items.some((i) => i.t === 'text' && i.src === 'n2'), d.err);
+  check('engineered lumber cut end-on keeps its lamination hatch', d.items.some((i) => i.t === 'hatch' && i.src === 'rim'));
+
+  write('ij2.kerf.json', floor([joist({ run: 'z', length: undefined, stiffeners: 'both', at: { anchor: 'bottom_left', to: 'plate@top_left', offset: [1.5, 0] } })]));
+  d = items('ij2.kerf.json', 'A');
+  check('end-on joist: flanges and stiffeners cut (wood X lines), the OSB web unhatched', d.items.filter((i) => i.t === 'path' && i.src === 'j').length >= 6 && !d.items.some((i) => i.t === 'hatch' && i.src === 'j'), d.items.filter((i) => i.src === 'j').length);
+
+  write('ij3.kerf.json', floor([{ id: 'beam', type: 'lumber', size: '1.75x11.875', product: 'lvl', run: 'x', length: 40, at: { anchor: 'bottom_left', to: [0, 30] } }]));
+  check('engineered lumber seen lengthwise draws no lamination hatch', !items('ij3.kerf.json', 'A').items.some((i) => i.t === 'hatch' && i.src === 'beam'));
+
+  const bad = (o) => { write('ij4.kerf.json', floor([joist(o)])); return kerf(['check', 'ij4.kerf.json']); };
+  r = bad({ size: '12 x 2-5/16' });
+  check('a size off the series table: E_PARAM with the table and the nearest size', /^ERROR E_PARAM j: ijoist size "12 x 2-5\/16": it is not in the series table\. .*Nearest: \{"size": "11-7\/8 x 2-5\/16"\}/m.test(r.out), r.out);
+  r = bad({ size: 'TJI 230' });
+  check('a brand series name: E_PARAM says to give depth x flange width', /^ERROR E_PARAM j: ijoist size "TJI 230": brand series names .* give the series' depth and flange width/m.test(r.out), r.out);
+  r = bad({ run: 'z', until: 'rim@top_left' });
+  check('until on a run z joist: E_PARAM', /^ERROR E_PARAM j: 'until' only applies to run x/m.test(r.out), r.out);
+  r = bad({ at: { anchor: 'bottom_left', to: 'plate@top_left', offset: [4.5, 0] } });
+  check('W_BEARING: 1" on the plate at the left end, the fix gives the length to add and the x to reach', /^WARN W_BEARING j: 'j' bears 1" on 'plate' at its left end; an I-joist needs 1 3\/4" .*Fix: lengthen 'j' by 3\/4" at its left end so it reaches x = 3\.75 over 'plate'/m.test(r.out), r.out);
+  write('ij5.kerf.json', floor([joist({ length: 80 }), { id: 'mid', type: 'lumber', size: '2x4', at: { anchor: 'top_left', to: [40, 3] } }]));
+  r = kerf(['check', 'ij5.kerf.json']);
+  check('W_BEARING at an intermediate support narrower than 3 1/2"', !/on 'plate'/.test(r.out) && /^WARN W_BEARING j: 'j' bears 1 1\/2" on 'mid' at an intermediate support/m.test(r.out), r.out);
+
+  const roof = (truss, sheet) => ({ kerf: '0.1', id: 'tr', title: 'TRUSS', run: [-24, 24], components: [
+    { id: 'plate', type: 'lumber', size: '2x4', orient: 'flat', plies: 2, at: { anchor: 'bottom_left', to: [0, 0] } },
+    { id: 't', type: 'truss', span_shown: 42, at: { anchor: 'bearing_outer', to: 'plate@top_left' }, ...truss },
+    ...(sheet ? [{ id: 'sh', type: 'panel', material: 'osb', thickness: 0.4375, slope: '@t', until: 't@top_chord_end', at: { anchor: 'bottom_left', to: sheet } }] : [])],
+    views: [{ id: 'A', kind: 'section', cut_z: 0 }] });
+  write('tr1.kerf.json', roof({ profile: 'mono', pitch: '3:12', heel_height: 24 }, 't@top_chord_at_bearing'));
+  r = kerf(['check', 'tr1.kerf.json']);
+  const shLoop = (file) => (items(file, 'A').items.find((i) => i.t === 'region' && i.src === 'sh')?.loops ?? [[]])[0];
+  let lp = shLoop('tr1.kerf.json');
+  const yAt = (pts, pick) => pts.reduce((a, p) => (pick(p[0], a[0]) ? p : a), pts[0] ?? [0, 0])[1];
+  check('mono: end vertical heel_height tall, sheathing with slope "@t" falls with the top chord (0 warnings)', /0 errors  0 warnings/.test(r.out) && /truss 3:12 mono high end 2'-0"/.test(r.out) && lp.length > 0 && yAt(lp, (x, b) => x > b) < yAt(lp, (x, b) => x < b) - 8, r.out);
+  write('tr2.kerf.json', roof({ profile: 'scissor', pitch: '6:12', bottom_pitch: '3:12' }, 't@tail_top'));
+  r = kerf(['check', 'tr2.kerf.json']);
+  check('scissor: bottom chord at bottom_pitch, sheathing follows the top chord', /0 errors  0 warnings/.test(r.out) && /truss 6:12 scissor \(bottom 3:12\)/.test(r.out), r.out);
+  write('tr3.kerf.json', roof({ profile: 'scissor', pitch: '4:12', bottom_pitch: '5:12' }));
+  check('scissor bottom_pitch steeper than pitch: E_PARAM', /^ERROR E_PARAM t: a scissor truss's bottom_pitch must be flatter than its pitch 4:12 \(got 5:12\)/m.test(kerf(['check', 'tr3.kerf.json']).out));
+  write('tr4.kerf.json', roof({ profile: 'parallel_chord' }));
+  check('parallel_chord without depth: E_PARAM names depth', /^ERROR E_PARAM t: profile "parallel_chord" needs 'depth'/m.test(kerf(['check', 'tr4.kerf.json']).out));
+  write('tr5.kerf.json', roof({ bearing: 'top_chord' }));
+  check('top_chord bearing on a pitched truss: E_PARAM points to parallel_chord', /^ERROR E_PARAM t: bearing "top_chord" is drawn for profile "parallel_chord"/m.test(kerf(['check', 'tr5.kerf.json']).out));
+  write('tr6.kerf.json', roof({ profile: 'parallel_chord', depth: 18, bearing: 'top_chord' }));
+  r = kerf(['check', 'tr6.kerf.json']);
+  d = items('tr6.kerf.json', 'A');
+  check('floor truss, top chord bearing: one component, 4x2 chords, open webs (no overlap warnings)', /0 errors  0 warnings/.test(r.out) && /truss parallel chord 1'-6" deep, 4x2\+4x2 chords, top chord bearing/.test(r.out) && d.items.filter((i) => i.t === 'region' && i.src === 't').length >= 5, r.out);
+  write('tr7.kerf.json', roof({ profile: 'parallel_chord', orient: 'end_on', depth: 18, plies: 2, at: { anchor: 'bottom_left', to: 'plate@top_left' } }));
+  r = kerf(['check', 'tr7.kerf.json']);
+  d = items('tr7.kerf.json', 'A');
+  check('end-on floor truss girder: chords cut per ply, a web strip beyond', /truss \(2-ply\) end-on 1'-6" deep at the cut/.test(r.out) && d.items.some((i) => i.t === 'path' && i.src === 't' && i.pen === 'cut') && d.items.some((i) => i.t === 'path' && i.src === 't' && i.pen === 'beyond'), r.out);
+  write('tr8.kerf.json', roof({ heel: 'standard', pitch: '4:12' }));
+  const blk = { id: 'blk', type: 'lumber', size: '2x6', run: 'y', face: 'narrow', z: -12, until: 't@heel_block_top', at: { anchor: 'bottom_left', to: 'plate@top_left' } };
+  write('tr8.kerf.json', { ...readJson('tr8.kerf.json'), components: [...readJson('tr8.kerf.json').components, blk] });
+  r = kerf(['check', 'tr8.kerf.json']);
+  check('standard heel: until heel_block_top gives full-height eave blocking (to the top of the top chord)', /blk .* L=7 3\/16" \(until t@heel_block_top\)/.test(r.out), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
