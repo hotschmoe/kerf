@@ -134,15 +134,15 @@
 <path d="M447.857 178.875L447.857 196.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 <path d="M495.857 178.875L495.857 196.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 <path d="M447.857 190.875L495.857 190.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
-<path d="M495.857 190.875L507.857 190.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
-<path d="M514.929 188.089L515.786 187.661L517.071 186.375L517.071 195.375M523.071 187.232L522.643 186.804L523.071 186.375L523.5 186.804L523.5 187.661L523.071 188.518L522.643 188.946M526.929 191.518L534.643 191.518M541.929 186.375L537.643 192.375L544.071 192.375M541.929 186.375L541.929 195.375M546.643 186.375L546.643 189.375M550.071 186.375L550.071 189.375" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M495.857 190.875L551.786 190.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M510.429 179.089L511.286 178.661L512.571 177.375L512.571 186.375M518.571 178.232L518.143 177.804L518.571 177.375L519 177.804L519 178.661L518.571 179.518L518.143 179.946M522.429 182.518L530.143 182.518M537.429 177.375L533.143 183.375L539.571 183.375M537.429 177.375L537.429 186.375M542.143 177.375L542.143 180.375M545.571 177.375L545.571 180.375" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 </g>
 <g data-src="d_depth">
 <path d="M501.857 172.875L513.857 172.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 <path d="M501.857 124.875L513.857 124.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 <path d="M507.857 172.875L507.857 124.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
-<path d="M507.857 124.875L507.857 112.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
-<path d="M505.071 105.804L504.643 104.946L503.357 103.661L512.357 103.661M504.214 97.661L503.786 98.089L503.357 97.661L503.786 97.232L504.643 97.232L505.5 97.661L505.929 98.089M508.5 93.804L508.5 86.089M503.357 78.804L509.357 83.089L509.357 76.661M503.357 78.804L512.357 78.804M503.357 74.089L506.357 74.089M503.357 70.661L506.357 70.661" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M507.857 124.875L507.857 68.946" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M496.071 110.304L495.643 109.446L494.357 108.161L503.357 108.161M495.214 102.161L494.786 102.589L494.357 102.161L494.786 101.732L495.643 101.732L496.5 102.161L496.929 102.589M499.5 98.304L499.5 90.589M494.357 83.304L500.357 87.589L500.357 81.161M494.357 83.304L503.357 83.304M494.357 78.589L497.357 78.589M494.357 75.161L497.357 75.161" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 </g>
 <g data-src="d_lap">
 <path d="M570.67 70.875L540.67 70.875" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>

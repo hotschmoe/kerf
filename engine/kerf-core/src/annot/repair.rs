@@ -139,8 +139,9 @@ impl Clearance<'_> {
 }
 
 /// Clear a dimension's text off the note leaders that hit it. First the text slides along the dimension line (in
-/// half text heights, staying between the extension lines), so the line stays where the author put it; when no slide
-/// clears it, the dimension is pushed out by whole dimension spacings (0.25 paper inch). A pinned dimension stays.
+/// half text heights, staying between the extension lines), so the line stays where the author put it; text that does
+/// not fit moves to the other end first (`slide` +1 / -1 then marks the end it avoids). When neither clears it, the
+/// dimension is pushed out by whole dimension spacings (0.25 paper inch). A pinned dimension stays.
 pub fn repair_dim(
     env: &Env,
     o: &Obstacle,
@@ -165,7 +166,13 @@ pub fn repair_dim(
             let t = p.dot(u);
             (lo.min(t), hi.max(t))
         });
-        let room = 0.5 * (spec.span() - (hi - lo)) - env.style.tick_len_in * env.s;
+        let tick = env.style.tick_len_in * env.s;
+        if hi - lo + 2.0 * env.style.dim_text_gap_in * env.s > spec.span() - tick {
+            let mid = spec.from.mid(spec.to).dot(u);
+            *slide = if 0.5 * (lo + hi) > mid { 1.0 } else { -1.0 };
+            return true;
+        }
+        let room = 0.5 * (spec.span() - (hi - lo)) - tick;
         let mut k = 1.0;
         while k * 0.5 * h <= room {
             for sg in [1.0, -1.0] {
@@ -368,19 +375,34 @@ pub fn report_moves(env: &Env, notes: &[NoteIn], dl: &DimLab, best: &Best) {
         {
             why.push(format!("the leader of note '{}'", n.id));
         }
+        let chained: Vec<String> =
+            dl.dspecs.iter().filter(|o| o.chain == d.chain && o.id != d.id).map(|o| format!("'{}'", o.id)).collect();
+        let from = if chained.is_empty() || (d.off0 - d.authored).abs() < 1e-9 {
+            format!("its offset {}", num2(d.off0))
+        } else {
+            format!(
+                "offset {} (its chain with {} lines up there; written {})",
+                num2(d.off0),
+                and_list(&chained),
+                num2(d.authored)
+            )
+        };
+        let reason = if why.is_empty() && !chained.is_empty() {
+            format!("together with its chain ({})", and_list(&chained))
+        } else {
+            format!("to clear {}", and_list(&why))
+        };
         env.diags.add_fix(
             Level::Info,
             "I_ANNOT_MOVED",
             Some(d.id),
             Some(&format!("views/{vid}/annotations/{}/offset", d.id)),
             format!(
-                "view {vid}: dimension '{}' is drawn at offset {} instead of its offset {}: moved {} ({}\" paper) outward to clear {}",
+                "view {vid}: dimension '{}' is drawn at offset {} instead of {from}: moved {} ({}\" paper) outward {reason}",
                 d.id,
                 num2(eff),
-                num2(d.off0),
                 units::fmt_ft_in(moved),
                 paper(moved, s),
-                and_list(&why)
             ),
             format!(
                 "keep it there: set \"offset\": {}; or keep {} by moving what it collides with, or set \"pin\": true (drawn exactly at {}, overlaps then warn W_LABEL_OVERLAP)",

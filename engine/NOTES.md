@@ -339,6 +339,26 @@ geometrically (tolerance 1e-3).
   tags 14-16 against list entries 14-16 (was 1-3 against the schedule notes); s-70-08 D without `omit:["*"]` draws only
   its bubble; s-50-08 auto (no scale) picks 36x24 at 1/2" where the author chose 24x18 at 5/16".
 
+- Dimensions in plan and elevation, chains (issue #23, SPEC 28.3): the drawing already resolved plan-view dims in plan
+  coordinates (`plan::scene`); the lints did not. `lint::view_scene` gives `W_DIM_ZERO`, the default `dir`
+  (`with_dim_dirs`) and coverage's measured length the plan scene for plan views, so `rod_2@center` -> `rod_4@center`
+  (same x, different z) is a 9" `v` dim instead of `W_DIM_ZERO`. Elevations always worked (model XY is their plane);
+  only `kerf schema dim` said "Section views only". `dims::chain_dims` links h/v dims (same sign of offset) whose spans
+  meet end to end at a shared point, or at a shared coordinate with lines within one stacking step, never two overlapping
+  spans in one chain, and sets every member's `off0` to the chain's outermost line (`authored` keeps the written value).
+  `stack_dims` places chains as units (overall span, one k for all members, largest repair push). Outside text: variants
+  0/1 now sit beside the line extended under the text (they were centred on the axis: the leader stub read as the line
+  striking the text, claude8's "1'-0\" crossed"); 7/8 the same on the side away from the object (taken when the
+  reading side lands on the object); 6 (chain members only) centred on the own span one row out with a leader; beside a
+  sibling's span counts as a collision. When a note leader hits text that does not fit, `repair_dim` first moves it to
+  the other end (`slide` = +-1 marks the avoided end) before pushing the dim out. Goldens: 11 drawings change only in the
+  2 items (extension line, text) of each outside dim text; `layout-corner-reinf` S1 shifts because view B grew 5".
+  47 MASS details (`check --strict`, fresh copies, base = 542cb40): 0 errors both; warnings 14 -> 15 (+1 W_LEADER_HIT
+  0.04" between two note leaders in s-30-01 F after re-routing); infos 32 -> 29 (I_ANNOT_MOVED 11 -> 8). Proofs on
+  copies: s-80-02 A/B/D/E dims rebuilt from Refs (E / EQ. / E chains in both directions, no `pin`, no literal points),
+  s-80-01 P1-P3 rod spacing and end-A.B. dims added, s-50-09 section D dropped and the end-length / CLR. SPAN chain put
+  on elevations A-C; warning counts unchanged on all three.
+
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
   picks a free port). A token is the default, also on loopback; `--token-file F` / `KERF_TOKEN` keep it out of `ps`;
@@ -717,6 +737,12 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   the silent misplacement for exactly the anchor an agent writes most.
 - #20: a component drawn in no view (every view excludes it) is checked by none of the per-view checks, as before for
   W_OVERLAP; a holdown whose rod is excluded from a view skips the anchorage check in that view.
+- #23 chains: "collinear dims sharing end points" read as same dir and offset side, spans meeting end to end at the
+  same point (or the same coordinate with lines within 1/4" paper); the chain takes its outermost written line, so a
+  member written closer moves out silently (no I_ANNOT_MOVED, since that is the requested alignment). `pin` on one
+  member pins the whole chain at that line rather than keeping each member's own offset. `aligned` dims never chain.
+- #23 "text never overprints its own line": also applied to horizontal dims (outside text was centred on the axis there
+  too), which is why 11 section goldens change.
 
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the
@@ -762,3 +788,6 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   (owner path) and should be shown on the note/view. `apps/web/test/fixtures/make-fixtures.mjs` still writes
   `2X8 PT SILL PLATE` (W_ABBREV now asks for `P.T.`); the browser engine takes the served `style.json`, which
   `kerf serve` now merges with the folder's `kerf.kerfstyle.json` (the header's STYLE shows its `id`).
+- (#23, outside its scope) An unknown anchor on a component used in a layout is reported three times (once per view
+  build and once for the layout), e.g. `E_ANCHOR_UNKNOWN d_lo: reference 'strap@start'`; `connector` paths have only
+  `vertex_k` anchors, so a strap's ends are not `start`/`end` as on rebar (the S-50.09 rebuild used `vertex_1`/`vertex_2`).

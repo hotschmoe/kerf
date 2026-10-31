@@ -192,6 +192,9 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   [x, -z]; a plan `crop` also takes `{"x": [x0, x1], "z": [z0, z1]}`; Refs resolve by themselves (box anchors on the
   plan footprint). `"kind": "elevation"` cuts nothing: nearer members hide farther ones, the crop break-lines every
   member it cuts, and a strap on a face shows without touching `cut_z`. `"hidden_lines": true` dashes what is hidden.
+  Dims work in both with Refs (a plan's `v` measures along z: rod spacing `"from": "rod_2@center", "to": "rod_4@center"`);
+  h/v dims on one side that share end points chain on one line (E / EQ. / E: `plate@top_left` -> `rod_1@center` ->
+  `rod_2@center` -> `plate@top_right`, same `offset`): no literal points or `pin` needed.
   Plan titles print as `PLAN - <title>` unless the title says PLAN (style `text.plan_title`): do not type "(PLAN)".
 - Corner and intersection bars: rebar `"plane": "xz"`, `"y": <height or Ref>`, `"points": [[x, z], ...]` (bends are
   filleted). The plan draws the bent bar; a section shows a dot where it crosses `cut_z` and a line where it runs behind.

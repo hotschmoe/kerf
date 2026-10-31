@@ -140,7 +140,7 @@ pub enum DimDir {
     Aligned,
 }
 
-pub const DIM_VARIANTS: usize = 6;
+pub const DIM_VARIANTS: usize = 9;
 
 fn str_member<'v>(an: &'v Value, key: &str) -> Option<&'v str> {
     an.get(key).and_then(Value::str)
@@ -471,7 +471,19 @@ fn read_dim<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: 
     let off =
         model::length_or_diag(env.diags, Some(id), &format!("{apath}/offset"), an.get("offset"), "dim offset", 0.0)?;
     let pin = read_pin(env, an, id, apath);
-    Some(DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text"), pin })
+    Some(DimSpec {
+        k,
+        id,
+        from,
+        to,
+        dir,
+        off0: off,
+        text: str_member(an, "text"),
+        pin,
+        authored: off,
+        chain: 0,
+        shared: [false; 2],
+    })
 }
 
 /// A label and its offset from the `at` point.
@@ -643,7 +655,8 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
 /// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
 /// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
 pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
-    let Gathered { notes, note_slot, per, meta, dspecs, lspecs, mut welds, tables, listed } = gather(env);
+    let Gathered { notes, note_slot, per, meta, mut dspecs, lspecs, mut welds, tables, listed } = gather(env);
+    dims::chain_dims(&mut dspecs, 0.25 * env.s);
     let style = env.notes_style();
     if style == NotesStyle::Leader && env.spec.notes_side == NotesSide::Above {
         let vid = env.spec.id;

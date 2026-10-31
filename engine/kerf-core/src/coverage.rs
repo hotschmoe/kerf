@@ -169,7 +169,8 @@ fn candidates(doc: &Value, scene: Option<&Scene>, w: &Words) -> Vec<Cand> {
     }
     for v in doc.get("views").and_then(Value::arr).unwrap_or(&[]) {
         let vid = str_of(v, "id");
-        let measure = if str_of(v, "kind") == "iso" { None } else { scene };
+        let plan = scene.and_then(|sc| lint::view_scene(sc, v));
+        let measure = if str_of(v, "kind") == "iso" { None } else { plan.as_ref().or(scene) };
         let title = str_of(v, "title");
         if !title.is_empty() {
             out.push(Cand {
