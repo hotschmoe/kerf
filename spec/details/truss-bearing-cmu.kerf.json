@@ -127,7 +127,7 @@
     {
       "id": "bird_block",
       "type": "lumber",
-      "size": "2x6",
+      "size": "2x4",
       "orient": "upright",
       "blocking": true,
       "at": {
@@ -313,7 +313,7 @@
         {
           "id": "n_block",
           "type": "note",
-          "text": "2X6 BIRD BLOCKING BETWEEN TRUSSES",
+          "text": "2X4 BIRD BLOCKING BETWEEN TRUSSES",
           "target": "bird_block"
         },
         {
@@ -444,7 +444,7 @@
         {
           "id": "n_block",
           "type": "note",
-          "text": "2X6 BIRD BLOCKING",
+          "text": "2X4 BIRD BLOCKING",
           "target": "bird_block"
         },
         {

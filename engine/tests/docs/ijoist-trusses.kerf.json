@@ -19,7 +19,7 @@
     {"id": "b_truss", "type": "truss", "profile": "parallel_chord", "bearing": "top_chord", "depth": 18, "bearing_width": 1.5, "span_shown": 54, "views": ["B"], "at": {"anchor": "bearing_outer", "to": "b_ledger@top_left"}},
     {"id": "b_sub", "type": "panel", "material": "plywood", "thickness": 0.75, "length": 54, "views": ["B"], "at": {"anchor": "bottom_left", "to": "b_truss@top_chord_at_bearing"}},
     {"id": "c_plate", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["C"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
-    {"id": "c_truss", "type": "truss", "profile": "scissor", "pitch": "6:12", "bottom_pitch": "2:12", "overhang": 12, "span_shown": 42, "views": ["C"], "at": {"anchor": "bearing_outer", "to": "c_plate@top_left"}},
+    {"id": "c_truss", "type": "truss", "profile": "scissor", "z": -24, "pitch": "6:12", "bottom_pitch": "2:12", "overhang": 12, "span_shown": 42, "views": ["C"], "at": {"anchor": "bearing_outer", "to": "c_plate@top_left"}},
     {"id": "c_block", "type": "lumber", "size": "2x6", "run": "y", "face": "narrow", "views": ["C"], "z": -12, "until": "c_truss@heel_block_top", "at": {"anchor": "bottom_left", "to": "c_plate@top_left"}},
     {"id": "c_sheathing", "type": "panel", "material": "osb", "thickness": 0.4375, "slope": "@c_truss", "until": "c_truss@top_chord_end", "views": ["C"], "at": {"anchor": "bottom_left", "to": "c_truss@tail_top"}},
     {"id": "c2_plate", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["C"], "at": {"anchor": "bottom_left", "to": [80, 0]}},

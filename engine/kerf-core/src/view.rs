@@ -83,6 +83,8 @@ pub struct ViewSpec<'a> {
     pub crop: Box,
     /// The author set `crop` / `scale` explicitly (SPEC 19). When false, drawview auto-fits them.
     pub has_crop: bool,
+    /// Iso views: `crop.z`, the z range the members are cut to (SPEC 28.5).
+    pub crop_z: Option<[f64; 2]>,
     pub has_scale: bool,
     pub from: From,
     pub cutaway: bool,
@@ -274,19 +276,28 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     }
     let mut crop = Box::default();
     let mut has_crop = false;
+    let mut crop_z = None;
     if let Some(cv) = node.get("crop").filter(|v| !v.is_null() && kind != Kind::Schedule) {
         let ry = match (kind, cv.get("z")) {
             (Kind::Plan, Some(zv)) if cv.get("y").is_none() => parse_range(Some(zv)).map(|[z0, z1]| [-z1, -z0]),
             _ => parse_range(cv.get("y")),
         };
-        match (parse_range(cv.get("x")), ry) {
-            (Some([x0, x1]), Some([y0, y1])) if x0 < x1 && y0 < y1 => {
+        let rz = match (kind, cv.get("z")) {
+            (Kind::Iso, Some(zv)) => parse_range(Some(zv)).filter(|[z0, z1]| z0 < z1).map(Some),
+            (Kind::Iso, None) => Some(None),
+            _ => Some(None),
+        };
+        match (parse_range(cv.get("x")), ry, rz) {
+            (Some([x0, x1]), Some([y0, y1]), Some(z)) if x0 < x1 && y0 < y1 => {
                 crop = Box { x0, y0, x1, y1 };
+                crop_z = z;
                 has_crop = true;
             }
             _ => {
                 let plan = if kind == Kind::Plan {
                     " (a plan view also takes {\"x\": [x0, x1], \"z\": [z0, z1]} in model z)"
+                } else if kind == Kind::Iso {
+                    " (an iso view may add \"z\": [z0, z1], z0 < z1, to cut members running along z)"
                 } else {
                     ""
                 };
@@ -480,6 +491,7 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         hidden_lines,
         crop,
         has_crop,
+        crop_z,
         has_scale,
         from,
         cutaway,

@@ -1,0 +1,53 @@
+{
+  "kerf": "0.1",
+  "id": "truss-webs",
+  "title": "TRUSS WEBS, HEELS AND PARAPETS",
+  "meta": {"author": "kerf test", "discipline": "structural", "jurisdiction": {"code": "IRC", "edition": 2021}, "tags": ["truss", "fink", "howe", "scissor", "mono", "raised heel", "parapet", "iso crop z"]},
+  "run": [-24, 24],
+  "components": [
+    {"id": "a_plate", "type": "lumber", "size": "2x6", "orient": "flat", "plies": 2, "views": ["A", "G"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "a_truss", "type": "truss", "pitch": "6:12", "bearing_width": 5.5, "overhang": 18, "span_shown": 48, "z": -12, "array": {"axis": "z", "count": 2, "spacing": 24}, "views": ["A", "G"], "at": {"anchor": "bearing_outer", "to": "a_plate@top_left"}},
+    {"id": "a_block", "type": "lumber", "size": "2x6", "run": "y", "face": "narrow", "z": 0, "until": "a_truss@heel_block_top", "views": ["A", "G"], "at": {"anchor": "bottom_left", "to": "a_plate@top_left"}},
+    {"id": "b_plate", "type": "lumber", "size": "2x6", "orient": "flat", "plies": 2, "views": ["B"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "b_truss", "type": "truss", "pitch": "4:12", "heel": "raised", "bearing_width": 5.5, "overhang": 12, "span_shown": 60, "views": ["B"], "at": {"anchor": "bearing_outer", "to": "b_plate@top_left"}},
+    {"id": "c_plate", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["C"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "c_plate2", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["C"], "at": {"anchor": "bottom_right", "to": [288, 0]}},
+    {"id": "c_truss", "type": "truss", "pitch": "5:12", "span": 288, "span_shown": 288, "overhang": 12, "views": ["C"], "at": {"anchor": "bearing_outer", "to": "c_plate@top_left"}},
+    {"id": "d_plate", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["D"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "d_truss", "type": "truss", "profile": "scissor", "pitch": "6:12", "span": 240, "span_shown": 240, "overhang": 12, "views": ["D"], "at": {"anchor": "bearing_outer", "to": "d_plate@top_left"}},
+    {"id": "e_ledger", "type": "lumber", "size": "2x10", "views": ["E"], "at": {"anchor": "bottom_right", "to": [0, 0]}},
+    {"id": "e_truss", "type": "truss", "profile": "mono", "pitch": "3:12", "heel_height": 24, "bearing": "face", "span_shown": 72, "views": ["E"], "at": {"anchor": "end_bottom", "to": "e_ledger@bottom_right"}},
+    {"id": "f_plate", "type": "lumber", "size": "2x6", "orient": "flat", "plies": 2, "views": ["F"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "f_truss", "type": "truss", "pitch": "0.25:12", "parapet": 30, "heel": "raised", "heel_height": 16, "bearing_width": 5.5, "span_shown": 48, "views": ["F"], "at": {"anchor": "bearing_outer", "to": "f_plate@top_left"}},
+    {"id": "h_plate", "type": "lumber", "size": "2x4", "orient": "flat", "plies": 2, "views": ["H"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "h_truss", "type": "truss", "pitch": "4:12", "span": 432, "span_shown": 432, "heel": "raised", "heel_height": 10, "overhang": 0, "views": ["H"], "at": {"anchor": "bearing_outer", "to": "h_plate@top_left"}},
+    {"id": "p_plate", "type": "lumber", "size": "2x6", "orient": "flat", "plies": 2, "views": ["P"], "at": {"anchor": "bottom_left", "to": [0, 0]}},
+    {"id": "p_truss", "type": "truss", "profile": "parallel_chord", "depth": 24, "parapet": 30, "span_shown": 48, "views": ["P"], "at": {"anchor": "bearing_outer", "to": "p_plate@top_left"}},
+    {"id": "p_shtg", "type": "panel", "material": "plywood", "thickness": 0.5, "length": 36, "run": "y", "views": ["P"], "at": {"anchor": "top_right", "to": "p_truss@parapet_top"}}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "number": "1", "title": "STANDARD HEEL", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n1", "type": "note", "text": "PREFAB. WOOD TRUSS @ 24\" O.C.", "target": "a_truss"},
+       {"id": "n2", "type": "note", "text": "2X6 BLOCKING", "target": "a_block"}
+     ]},
+    {"id": "B", "kind": "section", "number": "2", "title": "RAISED HEEL", "cut_z": 0, "notes_side": "right", "annotations": []},
+    {"id": "C", "kind": "section", "number": "3", "title": "FINK TRUSS", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n_c", "type": "note", "text": "FINK TRUSS, 24'-0\" SPAN", "target": "c_truss"}
+     ]},
+    {"id": "D", "kind": "section", "number": "4", "title": "SCISSOR TRUSS", "cut_z": 0, "notes_side": "right", "annotations": []},
+    {"id": "E", "kind": "section", "number": "5", "title": "MONO TRUSS HUNG AT LEDGER", "cut_z": 0, "notes_side": "right", "annotations": []},
+    {"id": "F", "kind": "section", "number": "6", "title": "INTEGRAL TRUSS PARAPET", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n_f", "type": "note", "text": "PREFAB. ROOF TRUSS W/ INTEGRAL PARAPET", "target": "f_truss"}
+     ]},
+    {"id": "G", "kind": "iso", "number": "7", "title": "HEEL AT PLATE", "from": "front_right", "crop": {"x": [-20, 30], "y": [-4, 30], "z": [-16, 16]}, "annotations": []},
+    {"id": "H", "kind": "section", "number": "8", "title": "HOWE TRUSS, RAISED HEELS", "cut_z": 0, "notes_side": "right", "annotations": []},
+    {"id": "P", "kind": "section", "number": "9", "title": "PARALLEL CHORD TRUSS W/ PARAPET", "cut_z": 0, "notes_side": "right",
+     "annotations": [
+       {"id": "n_p", "type": "note", "text": "PARALLEL CHORD TRUSS W/ INTEGRAL PARAPET", "target": "p_truss"},
+       {"id": "n_ps", "type": "note", "text": "1/2\" PLYWD. PARAPET SHEATHING", "target": "p_shtg"}
+     ]}
+  ]
+}

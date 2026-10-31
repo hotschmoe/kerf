@@ -548,9 +548,23 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   joists only, a sloped I-joist rafter on a birdsmouth plate is not checked) and does not know hangers (a joist end in a
   hanger has no support under it, which is not reported); parallel-chord webs are a Warren pattern from the bearing end
   (no verticals at panel points, no ribbon notch, no cantilever or dropped bottom chord); end-on webs are vertical
-  strips along z (2.5D: diagonals in the truss plane cannot be XY prisms); mono and scissor draw only the bearing end
-  (no peak); a pitched truss cannot bear on its top chord (only parallel_chord); there is no `hanger` (issue #11) or
-  truss-plate detail; iso shows sloped chords at their 2D slope (the known 2.5D limit).
+  strips along z (2.5D: diagonals in the truss plane cannot be XY prisms); a pitched truss cannot bear on its top chord
+  (only parallel_chord); there is no truss-plate detail beyond the dashed heel plate; iso shows sloped chords at their 2D
+  slope (the known 2.5D limit).
+- Truss webs and heels (issue #25, SPEC 28.5, `builders/truss.rs` `heel_side`): pitched, scissor and mono trusses are
+  built from an `Outline` of the whole span (top chord underside, bottom chord top, mirrored at the ridge): chords by
+  polygon booleans (the bottom chord is the band under the top chord's underside, so a standard heel cuts its end),
+  webs as 3 1/2 strips between chord-centreline panel points, united (`clip::boolean` Unite) and intersected with the
+  clear space, one `web` prism per resulting loop. Gaps: webs are not drawn on end-on trusses (still the strip of
+  #10); no double-Fink/queen-post/attic patterns; panel points follow textbook fractions, not a truss designer's
+  layout; plates are drawn at the heel(s) only; a mono's low end has no tail; a scissor's webs are the Fink layout
+  (no centre vertical); the iso of a truss gets no break mark where `span_shown` or the crop cuts it (iso has no break
+  lines for any member); mono webs stop where the chords are under 6" apart, so a short shallow hung mono (S-70.01:
+  9 1/4" high end at 2:12) shows no webs, which is what it is. The 47-detail set (`check --strict`): 25 warnings before,
+  32 after; the 7 new ones are all `W_OVERLAP` in S-40.03, S-70.02 and S-70.06, 2x6/2x8 eave blocks (and one wall
+  sheathing top) sized for the old 7"-deep standard heel poking through the corrected ~3 3/4" heel into the roof
+  sheathing: real conflicts the drafts should fix (2x4 blocks or `until: heel_block_top`); with those edits the four
+  proof copies (S-40.03, S-70.02, S-70.06, S-70.10 switched to pitched trusses) check clean.
 
 - Framing hardware (#11, SPEC 27.2, `builders/hardware.rs`, `hwcheck.rs`): hangers follow members running along x
   or z only (no skew; a sloped joist rotated about its corner has an unplumb end that pokes into the carrying member,
@@ -805,9 +819,27 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   across the wall): the holdown goes on the front/back face with a standard 1 3/8" seat reach; the 3D rod stays where
   the document puts it (inside the post), which no check reports since anchor bolts are embedded.
 
+- #25 standard heel: §5.8 put the top chord's underside through the top of the bottom chord at the bearing, which makes
+  a 2x4 standard heel about 7 1/4" deep (a raised heel by another name). Every reference heel in refs/ (0121, 0699, 0764,
+  0979, 0980, 1209, 1288) puts it through the bearing's outer top corner (heel about one chord deep: 3 11/16" at 4:12),
+  so §28.5 moves it there. This changes `heel_block_top`, `heel_outer`, `tail_*` and `top_chord_*` anchors of every
+  standard-heel truss by about the bottom chord depth (anchored members follow; literal sizes may now overlap, see the
+  status note) and the truss-bearing-cmu reference detail (its bird block is now 2x4, as REFERENCE-CONTENT.md says).
+- #25 `span` default: the issue asks that a truss at a wall need only pitch, bearing and `span_shown`, and that webs
+  show; a real span puts the first Fink web 6' in, past every heel detail's `span_shown`. Chose a schematic span (about
+  2 1/4 x span_shown, or longer so the first top-chord panel point has 8" between the chords and the peak 8"), named
+  "schematic" in the summary, with `span` to give the real one. Auto patterns by span apply only to an explicit span.
+- #25 iso "cropped like the section": an iso already clipped x/y to `crop`; the missing part was z (run-z plates and
+  arrays could not be shortened, which is why claude8 built a second model). Added `crop.z` for iso views rather than
+  tying the iso to a section view's crop.
+
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the
   engine default (90 px per sheet inch, 3240 px for 36x24).
+- #25 -> #24 (hardware): `cutaway: true` iso drops every prism with z0 >= cut_z, hardware included (claude8: "cutaway
+  iso clipped away the hardware"); hardware mounted on a kept member should survive the cutaway. A truss has no faces
+  for `on:` (`truss.top_chord.face_front` ...), so ties on trusses stay hand polylines; the side-view truss now has
+  parts `top_chord`, `bottom_chord`, `end_vertical`/`heel_web`, `web` and anchors `heel_outer`, `heel_joint` to build on.
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,
   `web_left/right` (run z); `truss` parallel_chord exposes `end_top`, `end_bottom`, `end_vertical` and
   `bearing: "face"`. A hanger that seats a joist end would also let `W_BEARING` count the seat as the support (today a

@@ -4,6 +4,7 @@
 //! and a web strip beyond them.
 
 use super::common::{Ctx, fmt_ft_in, fmt_num, mirror_built, parse_sawn, quad_of, zone_rect};
+use crate::clip;
 use crate::geom::{self, Box, Pt, V2};
 use crate::json::Value;
 use crate::math;
@@ -22,6 +23,7 @@ param_enum! { pub enum Tail { Plumb = "plumb", Square = "square" } }
 param_enum! { pub enum Profile { Pitched = "pitched", Scissor = "scissor", Mono = "mono", ParallelChord = "parallel_chord" } }
 param_enum! { pub enum Orient { Side = "side", EndOn = "end_on" } }
 param_enum! { pub enum Bearing { BottomChord = "bottom_chord", TopChord = "top_chord", Face = "face" } }
+param_enum! { pub enum Webs { Auto = "auto", Bare = "none", KingPost = "king_post", Fink = "fink", Howe = "howe", Warren = "warren" } }
 
 params! {
     pub struct Params {
@@ -32,10 +34,13 @@ params! {
         bottom_pitch: OptRaw => { def: "scissor: half the pitch", desc: "scissor: rise:run of the bottom chord, less than pitch" },
         top_chord: Str = "2x4" => { def: "2x4 (parallel_chord: 4x2)", desc: "sawn nominal size, depth in-plane; \"4x2\" is a 2x4 laid flat (floor truss chord: 1 1/2 in-plane, 3 1/2 thick)" },
         bottom_chord: Str = "2x4" => { def: "2x4 (parallel_chord: 4x2)", desc: "as top_chord" },
-        heel: Enum(Heel) = Heel::Standard => { desc: "standard | raised" },
-        heel_height: OptLenPos => { desc: "raised heel, mono, bearing face: vertical height at the bearing outer edge from top of bottom chord to top of top chord" },
+        heel: Enum(Heel) = Heel::Standard => { desc: "standard (top chord's lower edge through the bottom of the bottom chord at the bearing's outer edge) | raised (energy heel: a heel vertical heel_height tall)" },
+        heel_height: OptLenPos => { def: "raised: 12; bearing face: top chord + bottom chord depth; mono: from span", desc: "raised heel, mono high end, bearing face: vertical height at the bearing outer edge from top of bottom chord to top of top chord" },
+        span: OptLenPos => { def: "schematic: about 2 1/4 x span_shown (mono with heel_height: where its low end closes)", desc: "pitched, scissor, mono: overall span, bearing outer edge to the far bearing's outer edge; places the web panel points; span_shown >= span draws the whole truss" },
+        webs: Enum(Webs) = Webs::Auto => { desc: "pitched/scissor: auto (by span: king_post to 16', fink to 32', howe beyond; fink when span is schematic) | fink | howe | king_post | none; mono: auto (warren) | warren | howe | none" },
+        parapet: OptLenPos => { desc: "integral parapet: the end vertical at the bearing runs this far above the top of the top chord, which butts into it (no overhang; pitched, scissor, mono, parallel_chord)" },
         depth: OptLenPos => { desc: "parallel_chord: overall depth, bottom of bottom chord to top of top chord (e.g. 18); end_on: the truss height at the cut" },
-        bearing: Enum(Bearing) = Bearing::BottomChord => { desc: "bottom_chord: bears under its bottom chord | top_chord (parallel_chord): the top chord runs over the support, the bottom chord and end vertical drop inside it | face: hung at a beam or ledger face by its end vertical (no overhang; pitched/scissor/mono need heel_height)" },
+        bearing: Enum(Bearing) = Bearing::BottomChord => { desc: "bottom_chord: bears under its bottom chord | top_chord (parallel_chord): the top chord runs over the support, the bottom chord and end vertical drop inside it | face: hung at a beam or ledger face by its end vertical (no overhang; heel_height = the end height)" },
         bearing_width: LenPos = 3.5 => { desc: "width of the support under the bearing" },
         overhang: Len = 12.0 => { def: "12 (parallel_chord and mono: 0)", desc: "horizontal distance from outer face of bearing to the tail end" },
         tail: Enum(Tail) = Tail::Plumb => { desc: "plumb | square cut" },
@@ -112,6 +117,22 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail("bearing", "bearing \"top_chord\" is drawn for profile \"parallel_chord\" (floor and flat trusses); a pitched truss bears on its bottom chord or hangs at a face (bearing \"face\")".into());
         return None;
     }
+    let side_only: &[&str] = if tp.orient == Orient::EndOn {
+        &["span", "webs", "parapet"]
+    } else if parallel {
+        &["span", "webs"]
+    } else {
+        &[]
+    };
+    if let Some(key) = side_only.iter().find(|k| ctx.p.has(k)) {
+        let what = if tp.orient == Orient::EndOn {
+            "a side-view truss (orient \"side\"): an end-on truss is cut across"
+        } else {
+            "profiles pitched, scissor and mono (a parallel_chord truss spaces its webs by web_spacing)"
+        };
+        ctx.p.fail(key, format!("'{key}' only applies to {what}"));
+        return None;
+    }
     if tp.orient == Orient::EndOn {
         return end_on(ctx, &tp, &ch);
     }
@@ -130,10 +151,6 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     })
 }
 
-fn lower(x: f64, y0: f64, sl: f64) -> f64 {
-    y0 + sl * x
-}
-
 fn parse_pitch(ctx: &mut Ctx, key: &str, v: &Value) -> Option<f64> {
     let Some(theta) = units::parse_slope(v) else {
         ctx.p.fail(
@@ -149,13 +166,250 @@ fn parse_pitch(ctx: &mut Ctx, key: &str, v: &Value) -> Option<f64> {
     Some(theta)
 }
 
-/// Pitched, scissor and mono trusses in side view: the heel (or the mono's high end) at the bearing and the tail.
+/// In-plane width of a heel-profile web or heel vertical (a 2x4 on edge).
+const WEB_W: f64 = 3.5;
+
+/// The outline of a pitched, scissor or mono truss over its whole span, in local coordinates (the drawn end's bearing
+/// outer edge at the origin, the truss rising toward +x): the top chord's lower edge and the bottom chord's top edge.
+struct Outline {
+    l: f64,
+    y0: f64,
+    sl: f64,
+    mono: bool,
+    scissor: bool,
+    sb: f64,
+    bw: f64,
+    db: f64,
+    db_v: f64,
+    v_thick: f64,
+}
+
+impl Outline {
+    fn half(&self, x: f64) -> f64 {
+        if self.mono { x } else { x.min(self.l - x) }
+    }
+    /// Lower edge of the top chord (extended past the bearings for the tails).
+    fn yt(&self, x: f64) -> f64 {
+        self.y0 + self.sl * self.half(x)
+    }
+    /// Underside of the bottom chord.
+    fn yb0(&self, x: f64) -> f64 {
+        if self.scissor { self.sb * (self.half(x) - self.bw).max(0.0) } else { 0.0 }
+    }
+    /// Top edge of the bottom chord.
+    fn yb(&self, x: f64) -> f64 {
+        if self.scissor { self.yb0(x) + self.db_v } else { self.db }
+    }
+    /// Direction of the top chord's lower edge at x (left to right).
+    fn top_dir(&self, x: f64) -> V2 {
+        V2::init(1.0, if self.mono || x < self.l / 2.0 { self.sl } else { -self.sl })
+    }
+    /// Direction of the bottom chord's top edge at x.
+    fn bot_dir(&self, x: f64) -> V2 {
+        let x0 = self.half(x);
+        let rising = self.scissor && x0 > self.bw;
+        let slope = if !rising {
+            0.0
+        } else if self.mono || x < self.l / 2.0 {
+            self.sb
+        } else {
+            -self.sb
+        };
+        V2::init(1.0, slope)
+    }
+    fn top(&self, x: f64) -> V2 {
+        V2::init(x, self.yt(x))
+    }
+    fn bot(&self, x: f64) -> V2 {
+        V2::init(x, self.yb(x))
+    }
+    /// A web panel point on the top chord's centreline.
+    fn top_panel(&self, x: f64) -> V2 {
+        V2::init(x, self.yt(x) + self.v_thick / 2.0)
+    }
+    /// A web panel point on the bottom chord's centreline.
+    fn bot_panel(&self, x: f64) -> V2 {
+        V2::init(x, self.yb(x) - self.db_v / 2.0)
+    }
+    /// The x in [lo, hi] where the top chord's lower edge comes down to the bottom chord's top (the heel joint), by
+    /// bisection on a stretch where the clear height rises from <= 0 at `lo`.
+    fn meet(&self, lo: f64, hi: f64) -> f64 {
+        let (mut a, mut b) = (lo, hi);
+        for _ in 0..60 {
+            let m = (a + b) / 2.0;
+            if self.yt(m) - self.yb(m) > 0.0 {
+                b = m;
+            } else {
+                a = m;
+            }
+        }
+        (a + b) / 2.0
+    }
+    /// Everything under the top chord's lower edge, from `x0` to `x1`.
+    fn under(&self, x0: f64, x1: f64) -> Vec<V2> {
+        let deep = -1.0e4;
+        let mut pts = vec![V2::init(x0, deep), V2::init(x1, deep), self.top(x1)];
+        if !self.mono && x0 < self.l / 2.0 && self.l / 2.0 < x1 {
+            pts.push(self.top(self.l / 2.0));
+        }
+        pts.push(self.top(x0));
+        pts
+    }
+    /// Everything above the bottom chord's top edge, from `x0` to `x1`.
+    fn above(&self, x0: f64, x1: f64) -> Vec<V2> {
+        let high = 1.0e4;
+        let mut pts = vec![self.bot(x0)];
+        if self.scissor {
+            for x in [self.bw, self.l / 2.0, self.l - self.bw] {
+                if x0 < x && x < x1 {
+                    pts.push(self.bot(x));
+                }
+            }
+        }
+        pts.push(self.bot(x1));
+        pts.push(V2::init(x1, high));
+        pts.push(V2::init(x0, high));
+        pts
+    }
+    /// The bottom chord band from `x0` to `x1` (both edges).
+    fn band(&self, x0: f64, x1: f64) -> Vec<V2> {
+        let mut xs = vec![x0];
+        if self.scissor {
+            for x in [self.bw, self.l / 2.0, self.l - self.bw] {
+                if x0 < x && x < x1 {
+                    xs.push(x);
+                }
+            }
+        }
+        xs.push(x1);
+        let mut pts: Vec<V2> = xs.iter().map(|&x| V2::init(x, self.yb0(x))).collect();
+        pts.extend(xs.iter().rev().map(|&x| V2::init(x, self.yb(x))));
+        pts
+    }
+}
+
+/// Wood prisms (one per outer loop, with the holes inside it) from a boolean result.
+fn region_prisms(part: &str, region: &[Vec<V2>]) -> Vec<Prism> {
+    let mut out = Vec::new();
+    for outer in region.iter().filter(|l| geom::signed_area_v(l) > 1e-6) {
+        let mut loops = vec![outer.iter().map(|&p| Pt::at(p, 0.0)).collect::<Vec<Pt>>()];
+        for h in region.iter().filter(|h| geom::signed_area_v(h) < -1e-6) {
+            if h.first().is_some_and(|&p| geom::point_in_loop_eo(p, outer)) {
+                loops.push(h.iter().map(|&p| Pt::at(p, 0.0)).collect());
+            }
+        }
+        out.push(Prism { part: part.to_string(), material: "wood".into(), loops, ..Prism::default() });
+    }
+    out
+}
+
+/// A web strip `w` wide along the centreline `a`-`b` (`a` on the top chord running along `ca`, `b` on the bottom chord
+/// along `cb`), run on past both ends far enough that clipping it to the clear space between the chords cuts both of its
+/// edges on the chord edges.
+fn web_strip(a: V2, b: V2, ca: V2, cb: V2, w: f64) -> Vec<V2> {
+    let d = b.sub(a).norm();
+    let n = d.perp().scale(w / 2.0);
+    let ext = |c: V2| (w / 2.0 / d.cross(c.norm()).abs().max(0.05)).min(48.0) + 1.0;
+    let (a, b) = (a.sub(d.scale(ext(ca))), b.add(d.scale(ext(cb))));
+    let mut lp = vec![a.add(n), b.add(n), b.sub(n), a.sub(n)];
+    clip::orient_ccw(&mut lp);
+    lp
+}
+
+/// The web centrelines of `pattern` over the whole truss, as (top chord point, bottom chord point) pairs. `xl`/`xr`: the
+/// inner faces of the end verticals (heel ends: the bearing outer edges).
+fn web_lines(o: &Outline, pattern: Webs, xl: f64, xr: f64, tall: [bool; 2]) -> Vec<(V2, V2)> {
+    let l = o.l;
+    let clear = |x: f64| o.yt(x) - o.yb(x);
+    let mut half: Vec<(f64, f64)> = Vec::new();
+    let mut center: Vec<(f64, f64)> = Vec::new();
+    if o.mono {
+        let mut xs = vec![xl];
+        let mut x = xl;
+        while clear(x) >= 6.0 && x < xr - 1.0 && xs.len() < 64 {
+            x = (x + clear(x)).min(xr);
+            if xr - x < 6.0 {
+                x = xr;
+            }
+            xs.push(x);
+        }
+        let mut out = Vec::new();
+        match pattern {
+            Webs::Howe => {
+                for w in xs.windows(2) {
+                    out.push((o.top_panel(w[1]), o.bot_panel(w[1])));
+                    out.push((o.top_panel(w[0]), o.bot_panel(w[1])));
+                }
+            }
+            Webs::Warren | Webs::Auto => {
+                for (k, w) in xs.windows(2).enumerate() {
+                    out.push(if k % 2 == 0 {
+                        (o.top_panel(w[0]), o.bot_panel(w[1]))
+                    } else {
+                        (o.top_panel(w[1]), o.bot_panel(w[0]))
+                    });
+                }
+            }
+            _ => {}
+        }
+        return out.into_iter().filter(|(t, b)| clear(t.x) >= 2.0 && clear(b.x) >= 2.0).collect();
+    }
+    let mut first_bottom = None;
+    match pattern {
+        Webs::KingPost => center.push((l / 2.0, l / 2.0)),
+        Webs::Fink | Webs::Auto => {
+            half.push((l / 4.0, l / 3.0));
+            half.push((l / 2.0, l / 3.0));
+            first_bottom = Some(l / 3.0);
+        }
+        Webs::Howe => {
+            let n = howe_panels(l);
+            let p = l / n as f64;
+            center.push((l / 2.0, l / 2.0));
+            for k in 1..n / 2 {
+                half.push((k as f64 * p, k as f64 * p));
+                half.push((k as f64 * p, (k + 1) as f64 * p));
+            }
+            first_bottom = Some(p);
+        }
+        _ => {}
+    }
+    let mut out: Vec<(V2, V2)> = center.iter().map(|&(t, b)| (o.top_panel(t), o.bot_panel(b))).collect();
+    for &(t, b) in &half {
+        out.push((o.top_panel(t), o.bot_panel(b)));
+        out.push((o.top_panel(l - t), o.bot_panel(l - b)));
+    }
+    if let Some(fb) = first_bottom {
+        if tall[0] {
+            out.push((o.top_panel(xl), o.bot_panel(fb)));
+        }
+        if tall[1] {
+            out.push((o.top_panel(xr), o.bot_panel(l - fb)));
+        }
+    }
+    out.into_iter().filter(|(t, b)| clear(t.x) >= 2.0 && clear(b.x) >= 2.0).collect()
+}
+
+/// Howe panel count for a span: 4 up to 28', 6 up to 40', else 8.
+fn howe_panels(l: f64) -> usize {
+    if l <= 28.0 * 12.0 {
+        4
+    } else if l <= 40.0 * 12.0 {
+        6
+    } else {
+        8
+    }
+}
+
+/// Pitched, scissor and mono trusses in side view: the drawn end (heel, raised heel, hung end, mono high end or integral
+/// parapet), the tail, the chords and the web pattern of the whole truss, cut at `span_shown` (or the whole truss).
 fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let theta = parse_pitch(ctx, "pitch", &tp.pitch)?;
     let (dt, db) = (ch.dt, ch.db);
     let mono = tp.profile == Profile::Mono;
     let scissor = tp.profile == Profile::Scissor;
     let face = tp.bearing == Bearing::Face;
+    let parapet = tp.parapet;
     let sigma = if mono { -1.0 } else { 1.0 };
     let s = math::tan(theta);
     let c = math::cos(theta);
@@ -181,29 +435,106 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         ctx.p.fail("bottom_pitch", "'bottom_pitch' only applies to profile \"scissor\"".into());
         return None;
     }
+    if mono && matches!(tp.webs, Webs::KingPost | Webs::Fink) {
+        ctx.p.fail("webs", format!("webs \"{}\" is a pitched-truss pattern; a mono truss takes \"warren\" (the default), \"howe\" or \"none\"", tp.webs.tag()));
+        return None;
+    }
+    if !mono && tp.webs == Webs::Warren {
+        ctx.p.fail("webs", "webs \"warren\" is the mono pattern; a pitched or scissor truss takes \"fink\", \"howe\", \"king_post\" or \"none\" (default \"auto\": by span)".into());
+        return None;
+    }
     let sb = math::tan(theta_b);
     let db_v = db / math::cos(theta_b);
-    let tall_end = tp.heel == Heel::Raised || mono || face;
-    let mut y_low0 = db_v;
-    if tall_end {
-        let Some(hh) = tp.heel_height else {
-            let why = if mono {
-                "profile \"mono\" needs 'heel_height' (vertical height of its high end at the bearing outer edge, top of bottom chord to top of top chord)"
-            } else if face {
-                "bearing \"face\" needs 'heel_height' (vertical height of the end vertical at the face, top of bottom chord to top of top chord)"
-            } else {
-                "heel 'raised' needs 'heel_height' (vertical height at the bearing outer edge from top of bottom chord to top of top chord)"
-            };
-            ctx.p.fail("heel_height", why.into());
-            return None;
-        };
-        if hh < v_thick {
-            ctx.p.fail("heel_height", format!("heel_height {} is smaller than the top chord's vertical thickness {}; the raised heel must be at least that tall", fmt_num(hh), fmt_num(v_thick)));
+    if let Some(h) = parapet {
+        if h < 2.0 {
+            ctx.p.fail("parapet", format!("parapet {} is too short: it is the height of the end vertical above the top of the top chord (e.g. 24)", fmt_ft_in(h)));
             return None;
         }
-        y_low0 = db_v + hh - v_thick;
+        if ctx.p.has("overhang") && tp.overhang != 0.0 {
+            ctx.p.fail("overhang", format!("a truss with an integral parapet has no overhang (its end vertical runs up past the top chord): remove 'overhang' (got {})", fmt_ft_in(tp.overhang)));
+            return None;
+        }
     }
-    let overhang = if (mono || face) && !ctx.p.has("overhang") { 0.0 } else { tp.overhang };
+    let tall_end = tp.heel == Heel::Raised || mono || face || parapet.is_some();
+    let explicit_span = tp.span;
+    let mut heel_height = tp.heel_height;
+    if heel_height.is_none() && tall_end && !mono {
+        heel_height = Some(if face {
+            v_thick + db
+        } else if tp.heel == Heel::Raised {
+            12.0
+        } else {
+            v_thick
+        });
+    }
+    let y0_of = |hh: f64| db_v + hh - v_thick;
+    let peak_span =
+        |clear: f64, y0: f64| 2.0 * (clear + db_v - y0 - sb * tp.bearing_width).max(0.0) / (s - sb).max(1e-3);
+    let schematic = |y0: f64| -> f64 {
+        let fink = if tall_end { 0.0 } else { 4.0 * (8.0 + db_v) / (s - sb).max(1e-3) };
+        math::ceil(2.25 * tp.span_shown).max(math::ceil(fink)).max(math::ceil(peak_span(8.0, y0)))
+    };
+    let (l, y0) = if mono {
+        match (heel_height, explicit_span) {
+            (Some(hh), Some(l)) => {
+                if hh < v_thick {
+                    ctx.p.fail("heel_height", format!("heel_height {} is smaller than the top chord's vertical thickness {}; the high end must be at least that tall", fmt_num(hh), fmt_num(v_thick)));
+                    return None;
+                }
+                let y0 = y0_of(hh);
+                if y0 - s * l < -1e-6 {
+                    ctx.p.fail("span", format!("the mono top chord falls below the bottom chord before its far end: at {}:12 a {} high end reaches the bottom of the bottom chord at x = {}: set span to at most {}, or heel_height to at least {} (or remove one: the other follows)", fmt_num(s * 12.0), fmt_ft_in(hh), fmt_num(y0 / s), fmt_num(math::floor(y0 / s)), fmt_num(math::ceil((s * l - db_v + v_thick) * 8.0) / 8.0)));
+                    return None;
+                }
+                (l, y0)
+            }
+            (Some(hh), None) => {
+                if hh < v_thick {
+                    ctx.p.fail("heel_height", format!("heel_height {} is smaller than the top chord's vertical thickness {}; the high end must be at least that tall", fmt_num(hh), fmt_num(v_thick)));
+                    return None;
+                }
+                let y0 = y0_of(hh);
+                (y0 / s, y0)
+            }
+            (None, l) => {
+                let l = l.unwrap_or_else(|| math::ceil(2.25 * tp.span_shown));
+                heel_height = Some(s * l + v_thick - db_v);
+                (l, s * l)
+            }
+        }
+    } else {
+        let y0 = match heel_height.filter(|_| tall_end) {
+            Some(hh) => {
+                if hh < v_thick {
+                    ctx.p.fail("heel_height", format!("heel_height {} is smaller than the top chord's vertical thickness {}; the raised heel must be at least that tall", fmt_num(hh), fmt_num(v_thick)));
+                    return None;
+                }
+                y0_of(hh)
+            }
+            None => 0.0,
+        };
+        (explicit_span.unwrap_or_else(|| schematic(y0)), y0)
+    };
+    let o = Outline { l, y0, sl: sigma * s, mono, scissor, sb, bw: tp.bearing_width.min(l / 2.0), db, db_v, v_thick };
+    if !mono && o.yt(l / 2.0) - o.yb(l / 2.0) < 3.0 {
+        let heel = if tall_end { "a taller heel_height" } else { "a raised heel" };
+        let what = if scissor {
+            "a flatter bottom_pitch, a steeper pitch or a longer span".to_string()
+        } else {
+            format!("a steeper pitch, {heel} or a longer span")
+        };
+        ctx.p.fail(
+            "span",
+            format!(
+                "span {} leaves {} between the chords at the peak (3\" minimum); give {what} (span at least {} at this pitch and heel)",
+                fmt_ft_in(l),
+                fmt_ft_in((o.yt(l / 2.0) - o.yb(l / 2.0)).max(0.0)),
+                fmt_num(math::ceil(peak_span(3.0, y0)))
+            ),
+        );
+        return None;
+    }
+    let overhang = if (mono || face || parapet.is_some()) && !ctx.p.has("overhang") { 0.0 } else { tp.overhang };
     if face && overhang != 0.0 {
         ctx.p.fail(
             "overhang",
@@ -214,117 +545,229 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         );
         return None;
     }
-    let sl = sigma * s;
+    let full = tp.span_shown >= l - 1e-9;
+    let xe = tp.span_shown.min(l);
     let x_tail = -overhang;
-    let xe = tp.span_shown;
-    let bot_top = |x: f64| if scissor { db_v + sb * (x - tp.bearing_width).max(0.0) } else { db };
-    if lower(xe, y_low0, sl) < bot_top(xe) - 1e-9 {
-        let meet = (bot_top(0.0) - y_low0) / sl;
-        ctx.p.fail(
-            "span_shown",
-            format!(
-                "the top chord meets the bottom chord at x = {} before span_shown {}: set span_shown to at most {} or raise heel_height",
-                fmt_num(meet),
-                fmt_num(xe),
-                fmt_num(math::floor(meet))
-            ),
-        );
-        return None;
-    }
-    let tail_bottom = V2::init(x_tail, lower(x_tail, y_low0, sl));
+    let far_tail = if full && !mono { l + overhang } else { xe };
+    let ev_w = if parapet.is_some() || mono || face { dt.max(WEB_W) } else { WEB_W }.min(xe / 2.0);
+    let tall_far_end = if mono { o.yt(l) >= db_v - 1e-9 } else { tall_end };
+    let tall_far = full && tall_far_end;
+    let y_par = parapet.map(|h| o.yt(0.0) + v_thick + h);
+    let mut prisms: Vec<Prism> = Vec::new();
+    let mut zones: Vec<Zone> = Vec::new();
+
+    let tail_bottom = V2::init(x_tail, o.yt(x_tail));
     let mut tail_top = V2::init(x_tail, tail_bottom.y + v_thick);
     if tp.tail == Tail::Square {
         tail_top = tail_bottom.add(V2::init(-sigma * math::sin(theta), math::cos(theta)).scale(dt));
     }
-    let top_loop = vec![
-        Pt::at(tail_bottom, 0.0),
-        Pt::new(xe, lower(xe, y_low0, sl)),
-        Pt::new(xe, lower(xe, y_low0, sl) + v_thick),
-        Pt::at(tail_top, 0.0),
-    ];
-    let bot_loop = if scissor {
-        let bw = tp.bearing_width.min(xe);
+    let x_tc0 = if parapet.is_some() { ev_w } else { x_tail };
+    let mut top_loops: Vec<Vec<Pt>> = Vec::new();
+    let xa = if mono { xe } else { xe.min(l / 2.0) };
+    top_loops.push(if parapet.is_some() {
         vec![
-            Pt::new(0.0, 0.0),
-            Pt::new(bw, 0.0),
-            Pt::new(xe, sb * (xe - bw)),
-            Pt::new(xe, sb * (xe - bw) + db_v),
-            Pt::new(bw, db_v),
-            Pt::new(0.0, db_v),
+            Pt::at(o.top(x_tc0), 0.0),
+            Pt::at(o.top(xa), 0.0),
+            Pt::new(xa, o.yt(xa) + v_thick),
+            Pt::new(x_tc0, o.yt(x_tc0) + v_thick),
         ]
     } else {
-        model::rect_loop(0.0, 0.0, xe, db)
-    };
-    let mut prisms = vec![wood("bottom_chord", bot_loop.clone()), wood("top_chord", top_loop.clone())];
-    let mut zones: Vec<Zone> = vec![zone_of("bottom_chord", &bot_loop), zone_of("top_chord", &top_loop)];
-    let mut extra: Vec<NamedAnchor> = Vec::new();
-    if tall_end {
-        let (part, web_w) = if mono || face { ("end_vertical", dt.max(3.5).min(xe)) } else { ("heel_web", 1.5) };
-        let web = vec![
-            Pt::new(0.0, db_v),
-            Pt::new(web_w, bot_top(web_w)),
-            Pt::new(web_w, lower(web_w, y_low0, sl)),
-            Pt::new(0.0, y_low0),
+        vec![Pt::at(tail_bottom, 0.0), Pt::at(o.top(xa), 0.0), Pt::new(xa, o.yt(xa) + v_thick), Pt::at(tail_top, 0.0)]
+    });
+    if !mono && far_tail > l / 2.0 + 1e-9 {
+        let xm = l / 2.0;
+        let mut far_top = V2::init(far_tail, o.yt(far_tail) + v_thick);
+        if full && tp.tail == Tail::Square {
+            far_top = V2::init(l - tail_top.x, tail_top.y);
+        }
+        let mut lp = vec![
+            Pt::at(o.top(xm), 0.0),
+            Pt::at(o.top(far_tail), 0.0),
+            Pt::at(far_top, 0.0),
+            Pt::new(xm, o.yt(xm) + v_thick),
         ];
-        zones.push(zone_of(part, &web));
-        prisms.push(wood(part, web));
-        if part == "end_vertical" {
-            extra.push(anchor("end_vertical", V2::init(0.0, (db_v + y_low0) / 2.0)));
-            extra.push(anchor("end_top", V2::init(0.0, y_low0 + v_thick)));
-            extra.push(anchor("end_bottom", V2::init(0.0, 0.0)));
+        if full && parapet.is_some() {
+            lp = vec![
+                Pt::at(o.top(xm), 0.0),
+                Pt::at(o.top(l - ev_w), 0.0),
+                Pt::new(l - ev_w, o.yt(l - ev_w) + v_thick),
+                Pt::new(xm, o.yt(xm) + v_thick),
+            ];
+        }
+        top_loops.push(lp);
+    }
+    let xbe = xe;
+    let bot_region =
+        clip::boolean(&[o.band(0.0, xbe)], &[o.under(x_tail - 10.0, far_tail + 10.0)], clip::Op::Intersect);
+    let bots = region_prisms("bottom_chord", &bot_region);
+    for pr in &bots {
+        if let Some(lp) = pr.loops.first() {
+            zones.push(zone_of("bottom_chord", lp));
         }
     }
-    if tp.plate {
-        let py1 = (db_v + 0.5).max(y_low0.min(lower(5.25, y_low0, sl)) + 0.5);
-        let pl = model::rect_loop(0.25, 0.25, 5.25, py1);
-        prisms.push(Prism {
-            part: "plate".into(),
-            material: "steel".into(),
-            loops: model::one_loop(pl),
-            kind: Kind::Ghost,
-            pen: Some(Pen::Hidden),
-            embedded: true,
-            ..Prism::default()
-        });
-        zones.push(zone_rect("plate", 0.25, 0.25, 5.25, py1));
+    prisms.extend(bots);
+    for lp in &top_loops {
+        zones.push(zone_of("top_chord", lp));
+        prisms.push(wood("top_chord", lp.clone()));
     }
-    {
+    let mut extra: Vec<NamedAnchor> = Vec::new();
+    let ev_part = if mono || face || parapet.is_some() { "end_vertical" } else { "heel_web" };
+    let vertical = |x0: f64, x1: f64, top: Option<f64>| -> Vec<Pt> {
+        match top {
+            Some(yp) => vec![Pt::at(o.bot(x0), 0.0), Pt::at(o.bot(x1), 0.0), Pt::new(x1, yp), Pt::new(x0, yp)],
+            None => {
+                vec![Pt::at(o.bot(x0), 0.0), Pt::at(o.bot(x1), 0.0), Pt::at(o.top(x1), 0.0), Pt::at(o.top(x0), 0.0)]
+            }
+        }
+    };
+    if tall_end {
+        let lp = vertical(0.0, ev_w, y_par);
+        zones.push(zone_of(ev_part, &lp));
+        prisms.push(wood(ev_part, lp));
+        if ev_part == "end_vertical" {
+            extra.push(anchor("end_vertical", V2::init(0.0, (db_v + o.y0) / 2.0)));
+            extra.push(anchor("end_top", V2::init(0.0, y_par.unwrap_or(o.y0 + v_thick))));
+            extra.push(anchor("end_bottom", V2::init(0.0, 0.0)));
+        }
+        if let Some(yp) = y_par {
+            extra.push(anchor("parapet_top", V2::init(0.0, yp)));
+            extra.push(anchor("parapet_top_inner", V2::init(ev_w, yp)));
+        }
+    }
+    if tall_far {
+        let lp = vertical(l - ev_w, l, y_par);
+        prisms.push(wood(ev_part, lp));
+    }
+    let pattern = match tp.webs {
+        Webs::Auto if mono => Webs::Warren,
+        Webs::Auto if explicit_span.is_some() => {
+            if l <= 16.0 * 12.0 {
+                Webs::KingPost
+            } else if l <= 32.0 * 12.0 {
+                Webs::Fink
+            } else {
+                Webs::Howe
+            }
+        }
+        Webs::Auto => Webs::Fink,
+        w => w,
+    };
+    let xl = if tall_end { ev_w } else { 0.0 };
+    let xr = if tall_far_end { l - ev_w } else { l };
+    let lines = web_lines(&o, pattern, xl, xr, [tall_end, tall_far_end]);
+    let mut first_panel: Option<f64> = None;
+    if !lines.is_empty() && xr.min(xe) > xl + 0.5 {
+        let mut strips: Vec<Vec<V2>> = Vec::new();
+        for &(a, b) in &lines {
+            strips = clip::boolean(&strips, &[web_strip(a, b, o.top_dir(a.x), o.bot_dir(b.x), WEB_W)], clip::Op::Unite);
+            let x = a.x.min(b.x);
+            first_panel = Some(first_panel.map_or(x, |f: f64| f.min(x)));
+        }
+        let clear = clip::boolean(&[o.under(xl, xr.min(xe))], &[o.above(xl, xr.min(xe))], clip::Op::Intersect);
+        let webs = clip::boolean(&strips, &clear, clip::Op::Intersect);
+        let wps = region_prisms("web", &webs);
+        if !wps.is_empty() {
+            let b = box_of(&wps);
+            zones.push(zone_rect("web", b.x0, b.y0, b.x1, b.y1));
+        }
+        prisms.extend(wps);
+    }
+    let x_h = if tall_end { 0.0 } else { o.meet(0.0, l / 2.0) };
+    if tp.plate {
+        let (px0, px1, py0, py1) = if tall_end {
+            let py1 = (db_v + 0.5).max(o.y0.min(o.yt(5.25)) + 0.5);
+            (0.25, 5.25, 0.25, py1)
+        } else {
+            (0.25, x_h.clamp(4.0, 8.0).min(xe), 0.25, db.min(v_thick) - 0.25)
+        };
+        let mut plates = vec![(px0, px1)];
+        if full && !mono {
+            plates.push((l - px1, l - px0));
+        }
+        plates.retain(|&(a, b)| b > a + 0.25 && py1 > py0 + 0.25);
+        for &(a, b) in &plates {
+            prisms.push(Prism {
+                part: "plate".into(),
+                material: "steel".into(),
+                loops: model::one_loop(model::rect_loop(a, py0, b, py1)),
+                kind: Kind::Ghost,
+                pen: Some(Pen::Hidden),
+                embedded: true,
+                ..Prism::default()
+            });
+        }
+        if !plates.is_empty() {
+            zones.push(zone_rect("plate", px0, py0, px1, py1));
+        }
+    }
+    if parapet.is_none() {
         let mut tb = Box::default();
         tb.add_point(tail_bottom.x, tail_bottom.y);
         tb.add_point(tail_top.x, tail_top.y);
-        tb.add_point(0.0, lower(0.0, y_low0, sl));
-        tb.add_point(0.0, lower(0.0, y_low0, sl) + v_thick);
+        tb.add_point(0.0, o.yt(0.0));
+        tb.add_point(0.0, o.yt(0.0) + v_thick);
         zones.push(Zone {
             name: "tail".into(),
             loops: model::one_loop(model::rect_loop(tb.x0, tb.y0, tb.x1, tb.y1)),
             box_: tb,
         });
     }
-    let top_at_bearing = lower(0.0, y_low0, sl) + v_thick;
-    let mut anchors = vec![
-        anchor("bearing_outer", V2::init(0.0, 0.0)),
-        anchor("bearing_inner", V2::init(tp.bearing_width, 0.0)),
-        anchor("tail_bottom", tail_bottom),
-        anchor("tail_top", tail_top),
+    let top_at_bearing = o.yt(0.0) + v_thick;
+    let x_end = if full { far_tail } else { xe };
+    let mut anchors =
+        vec![anchor("bearing_outer", V2::init(0.0, 0.0)), anchor("bearing_inner", V2::init(tp.bearing_width, 0.0))];
+    if parapet.is_none() {
+        anchors.push(anchor("tail_bottom", tail_bottom));
+        anchors.push(anchor("tail_top", tail_top));
+    }
+    anchors.extend([
         anchor("top_chord_at_bearing", V2::init(0.0, top_at_bearing)),
-        anchor("heel_outer", V2::init(0.0, (db_v + top_at_bearing) / 2.0)),
-        anchor("top_chord_bottom_at_bearing", V2::init(0.0, lower(0.0, y_low0, sl))),
+        anchor(
+            "heel_outer",
+            V2::init(0.0, if tall_end { (db_v + top_at_bearing) / 2.0 } else { top_at_bearing / 2.0 }),
+        ),
+        anchor("top_chord_bottom_at_bearing", V2::init(0.0, o.yt(0.0))),
         anchor("heel_block_top", V2::init(0.0, top_at_bearing)),
-        anchor("top_chord_end", V2::init(xe, lower(xe, y_low0, sl) + v_thick)),
-        anchor("bottom_chord_top_inner", V2::init(xe, bot_top(xe))),
-    ];
+        anchor("top_chord_end", V2::init(x_end, o.yt(x_end) + v_thick)),
+        anchor("bottom_chord_top_inner", V2::init(xbe, o.yb(xbe))),
+    ]);
+    if !tall_end {
+        anchors.push(anchor("heel_joint", o.bot(x_h)));
+    }
+    if !mono && xe >= l / 2.0 - 1e-9 {
+        anchors.push(anchor("peak", V2::init(l / 2.0, o.yt(l / 2.0) + v_thick)));
+    }
+    if full {
+        anchors.push(anchor("bearing_far", V2::init(l, 0.0)));
+    }
     anchors.extend(extra);
     let profile = match tp.profile {
         Profile::Scissor => format!(" scissor (bottom {}:12)", fmt_num(sb * 12.0)),
         Profile::Mono => " mono".to_string(),
         _ => String::new(),
     };
-    let end = if face {
+    let end = if let Some(h) = parapet {
+        format!(" integral parapet {}", fmt_ft_in(h))
+    } else if face {
         " hung at face".to_string()
     } else if mono {
-        format!(" high end {}", fmt_ft_in(tp.heel_height.unwrap_or(0.0)))
+        format!(" high end {}", fmt_ft_in(heel_height.unwrap_or(0.0)))
+    } else if tp.heel == Heel::Raised {
+        format!(" raised heel {}", fmt_ft_in(heel_height.unwrap_or(0.0)))
     } else {
-        format!(" {} heel", tp.heel.tag())
+        " standard heel".to_string()
+    };
+    let span_txt = if explicit_span.is_some() || mono && tp.heel_height.is_some() {
+        fmt_ft_in(l)
+    } else {
+        format!("{} schematic", fmt_ft_in(l))
+    };
+    let webs_txt = match (pattern, first_panel) {
+        (Webs::Bare, _) => "no webs".to_string(),
+        (_, Some(x)) if x >= xe => {
+            format!("{} webs from x={} (past span_shown)", pattern.tag(), fmt_num(math::floor(x)))
+        }
+        (_, _) => format!("{} webs", pattern.tag()),
     };
     Some(Built {
         box_: box_of(&prisms),
@@ -334,7 +777,7 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         nat_z: Some(ch.tt.max(ch.tb)),
         pitch: sigma * theta,
         info: format!(
-            "truss {}:12{profile}{end}, {}+{} chords, ovh {}",
+            "truss {}:12{profile}{end}, {}+{} chords, ovh {}, span {span_txt}, {webs_txt}",
             fmt_num(s * 12.0),
             ch.top,
             ch.bot,
@@ -384,6 +827,20 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let tcb = tp.bearing == Bearing::TopChord;
     let face = tp.bearing == Bearing::Face;
     let overhang = if ctx.p.has("overhang") { tp.overhang } else { 0.0 };
+    if let Some(h) = tp.parapet {
+        if tcb {
+            ctx.p.fail("parapet", "an integral parapet stands on the end vertical at the bearing: use bearing \"bottom_chord\" (a top-chord-bearing truss runs its top chord over the wall)".into());
+            return None;
+        }
+        if h < 2.0 {
+            ctx.p.fail("parapet", format!("parapet {} is too short: it is the height of the end vertical above the top of the top chord (e.g. 24)", fmt_ft_in(h)));
+            return None;
+        }
+        if overhang != 0.0 {
+            ctx.p.fail("overhang", format!("a truss with an integral parapet has no overhang (its end vertical runs up past the top chord): remove 'overhang' (got {})", fmt_ft_in(overhang)));
+            return None;
+        }
+    }
     if face && overhang != 0.0 {
         ctx.p.fail(
             "overhang",
@@ -409,9 +866,11 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         );
         return None;
     }
-    let top_loop = model::rect_loop(-overhang, d - dt, xe, d);
+    let y_ev = tp.parapet.map_or(d - dt, |h| d + h);
+    let x_top0 = if tp.parapet.is_some() { x_body + w } else { -overhang };
+    let top_loop = model::rect_loop(x_top0, d - dt, xe, d);
     let bot_loop = model::rect_loop(x_body, 0.0, xe, db);
-    let ev = model::rect_loop(x_body, db, x_body + w, d - dt);
+    let ev = model::rect_loop(x_body, db, x_body + w, y_ev);
     let mut prisms = vec![
         wood("bottom_chord", bot_loop.clone()),
         wood("top_chord", top_loop.clone()),
@@ -463,13 +922,17 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         anchor("bottom_chord_top_inner", V2::init(xe, db)),
         anchor("bottom_chord_end", V2::init(xe, 0.0)),
         anchor("end_vertical", V2::init(x_body, (db + d - dt) / 2.0)),
-        anchor("end_top", V2::init(x_body, d)),
+        anchor("end_top", V2::init(x_body, y_ev.max(d))),
         anchor("end_bottom", V2::init(x_body, 0.0)),
         anchor("heel_outer", V2::init(x_body, (db + d - dt) / 2.0)),
     ];
     if overhang > 0.0 {
         anchors.push(anchor("tail_bottom", V2::init(-overhang, d - dt)));
         anchors.push(anchor("tail_top", V2::init(-overhang, d)));
+    }
+    if let Some(h) = tp.parapet {
+        anchors.push(anchor("parapet_top", V2::init(x_body, d + h)));
+        anchors.push(anchor("parapet_top_inner", V2::init(x_body + w, d + h)));
     }
     let bearing = match tp.bearing {
         Bearing::BottomChord => "bottom chord bearing",

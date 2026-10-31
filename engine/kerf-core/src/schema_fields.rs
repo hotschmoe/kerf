@@ -174,7 +174,7 @@ pub static VIEW: Object = Object {
         Field {
             name: "crop",
             ty: "{\"x\":[x0,x1],\"y\":[y0,y1]}",
-            desc: "model-inch window (x right, y up; a plan view takes {\"x\":[x0,x1],\"z\":[z0,z1]} in model z, or y = -z). When omitted it auto-fits all non-fill components plus 6\" (fills are clipped to that box). Solids cut by the window get break lines. After an edit that leaves a member mostly outside an explicit crop, W_CROP_STALE says so (remove crop and scale to re-fit)",
+            desc: "model-inch window (x right, y up; a plan view takes {\"x\":[x0,x1],\"z\":[z0,z1]} in model z, or y = -z; an iso view may add \"z\":[z0,z1] to cut members running along z). When omitted it auto-fits all non-fill components plus 6\" (fills are clipped to that box). Solids cut by the window get break lines. After an edit that leaves a member mostly outside an explicit crop, W_CROP_STALE says so (remove crop and scale to re-fit)",
             ..Field::NONE
         },
         Field {

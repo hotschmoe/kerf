@@ -216,6 +216,15 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   plate, `"face"` in a hanger). Trusses parallel to the section: `"orient": "end_on", "depth": <height at the cut>`
   (`plies` for girders). Roof: `"profile": "scissor"` (`bottom_pitch`), `"mono"` (`heel_height` = the high end;
   sheathing `slope: "@truss"` falls with it). Full-height eave blocking: `"until": "truss@heel_block_top"`.
+- Roof truss webs and heels (SPEC 28.5): pitched, scissor and mono trusses draw their webs (`webs`: `auto`, `fink`,
+  `howe`, `king_post`, `none`; mono `warren`, `howe`) at the panel points of `span`. Without `span` the span is
+  schematic (about 2 1/4 x `span_shown`, so the first webs fall in the drawn part); give the real span to place them
+  truly, and `span_shown` >= `span` draws the whole truss. The summary line says which pattern and where the first
+  web is. Standard heel: the top chord's underside meets the bearing's outer top corner, so the heel is about one
+  chord deep (2x4 blocking fits under it). `"heel": "raised"` (energy heel, `heel_height` default 12) adds a heel
+  vertical; hung at a face only needs `"bearing": "face"`. Integral parapet: `"parapet": 30` runs the end vertical
+  30" above the top chord (also on `parallel_chord`). A small iso of one truss from the section's model:
+  `"crop": {"x": [...], "y": [...], "z": [z0, z1]}` (iso only) cuts members running along z too.
   `W_BEARING` warns when an I-joist bears under 1 3/4" at an end (3 1/2" inside) and prints the length to add.
 - Nailing (SPEC 27.4): draw fasteners with a `nailing` component, never notes alone. It is placed from `members` (the
   member the heads are on first), so it moves with them: plate splice `{"type":"nailing","members":["upper_plate",
