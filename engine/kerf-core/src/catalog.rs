@@ -37,6 +37,10 @@ pub struct Traits {
     pub slope_host: Option<SlopeHost>,
     /// Sizes come from the steel shape table, which the catalog lists (steel).
     pub shape_table: bool,
+    /// A host that `voids` and sleeves cut (concrete, cmu_wall; SPEC 26.4).
+    pub takes_voids: bool,
+    /// Subtracted from the hosts its `through` names (sleeve).
+    pub passes_through: bool,
 }
 
 impl Traits {
@@ -53,6 +57,8 @@ impl Traits {
         rigid_sheet: false,
         slope_host: None,
         shape_table: false,
+        takes_voids: false,
+        passes_through: false,
     };
 }
 
@@ -81,13 +87,14 @@ pub enum Type {
     Insulation,
     Flashing,
     Joint,
+    Sleeve,
     Steel,
     Bolt,
     Solid,
 }
 
 impl Type {
-    pub const ALL: [Type; 16] = [
+    pub const ALL: [Type; 17] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -101,6 +108,7 @@ impl Type {
         Type::Insulation,
         Type::Flashing,
         Type::Joint,
+        Type::Sleeve,
         Type::Steel,
         Type::Bolt,
         Type::Solid,
@@ -121,6 +129,7 @@ impl Type {
             Type::Insulation => "insulation",
             Type::Flashing => "flashing",
             Type::Joint => "joint",
+            Type::Sleeve => "sleeve",
             Type::Steel => "steel",
             Type::Bolt => "bolt",
             Type::Solid => "solid",
@@ -306,7 +315,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 16] = [
+pub static ENTRIES: [Entry; 17] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -342,7 +351,7 @@ pub static ENTRIES: [Entry; 16] = [
         anchors: "9 box anchors + bond_beam_center, top_center, cell_center_top; cell_left, cell_center, cell_right (inside faces of the face shells and the cell middle at the wall bottom) and cell_left_top, cell_right_top: vertical path bars in the cell follow the wall width with {\"ref\": \"wall@cell_left\", \"offset\": [1.5, -12]}",
         draws: "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. 3D: 15.625\" units with 0.375\" head joints, running bond.",
         example: "{\"id\":\"cmu\",\"type\":\"cmu_wall\",\"width\":8,\"courses\":3,\"bond_beam_courses\":1,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
-        traits: Traits::NONE,
+        traits: Traits { takes_voids: true, ..Traits::NONE },
     },
     Entry {
         ty: Type::Concrete,
@@ -351,7 +360,7 @@ pub static ENTRIES: [Entry; 16] = [
         anchors: "9 box anchors; polygon adds vertex_1..vertex_n at the points (in `points` order) and edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge); slab_edge adds top_exterior (datum (0,0) at the exterior face), slab_top, footing_bottom_exterior, footing_bottom_interior, slab_bottom_interior, haunch_top, recess_bottom_exterior, recess_bottom_interior, recess_top_interior, base_bottom_interior and base_bottom_footing (with base)",
         draws: "slab_edge local origin: exterior face at x=0, top of slab at y=0, footing bottom at y=-footing_depth. Cut region with the material hatch; parts are zones (rebar place.in, cover), not separate outlines.",
         example: "{\"id\":\"slab\",\"type\":\"concrete\",\"shape\":\"slab_edge\",\"slab_thickness\":4,\"footing_width\":12,\"footing_depth\":18,\"at\":{\"anchor\":\"top_exterior\",\"to\":[0,0]}}",
-        traits: Traits::NONE,
+        traits: Traits { takes_voids: true, ..Traits::NONE },
     },
     Entry {
         ty: Type::Rebar,
@@ -437,6 +446,15 @@ pub static ENTRIES: [Entry; 16] = [
         draws: "Local origin: top surface, joint centerline (tooled_edge: the sharp corner). Expansion: filler strip width x depth with the joint_filler hatch (place it in the gap between two concrete pieces). Control and tooled_edge are void shapes (embedded: they cut a hole in the host hatch; not in 3D/iso). Sealant: bead (filled) over a backer rod circle. Spans the document run along Z.",
         example: "{\"id\":\"ej\",\"type\":\"joint\",\"kind\":\"expansion\",\"width\":0.5,\"depth\":4,\"at\":{\"anchor\":\"joint_top\",\"to\":[0,0]}}",
         traits: Traits::NONE,
+    },
+    Entry {
+        ty: Type::Sleeve,
+        summary: "Pipe sleeve through concrete or CMU: sleeve, packing, pipe; `through` cuts the host.",
+        parts: "sleeve, fill (with fill), pipe (with pipe)",
+        anchors: "the 9 box anchors (center = the pipe axis for run z; the default placement anchor)",
+        draws: "Run z: rings seen end-on, centered on the placement point; run x/y: the sleeve cut along its axis (walls as strips over `length`, natural z thickness = od). Cut sleeve and pipe walls take their material's fill (steel: solid), the packing its hatch, the pipe bore stays open. `through` subtracts the sleeve's outside from those hosts in section, iso and 3D (the same as naming the sleeve in the host's `voids`); a sleeve inside concrete without it is W_OVERLAP. A block-out with no sleeve is a host `voids` shape.",
+        example: "{\"id\":\"sleeve\",\"type\":\"sleeve\",\"pipe\":4,\"fill\":\"joint_filler\",\"through\":\"stem\",\"at\":{\"to\":[36,26]}}",
+        traits: Traits { default_anchor: "center", passes_through: true, ..Traits::NONE },
     },
     Entry {
         ty: Type::Steel,

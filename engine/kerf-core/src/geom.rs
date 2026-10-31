@@ -735,3 +735,38 @@ pub fn arc_seg(p0: V2, p1: V2, bulge: f64, b0: V2, b1: V2, ta: &mut [f64; 2], tb
     }
     n
 }
+
+/// Parameter intervals of the straight segment a-b not lying on any of `edges` (collinear overlap within 1e-6).
+pub fn uncovered(a: V2, b: V2, edges: &[[V2; 2]]) -> Vec<[f64; 2]> {
+    let d = b.sub(a);
+    let l = d.len();
+    if l < 1e-12 {
+        return Vec::new();
+    }
+    let u = d.scale(1.0 / l);
+    let mut covered: Vec<[f64; 2]> = Vec::new();
+    for e in edges {
+        if u.cross(e[0].sub(a)).abs() > 1e-6 || u.cross(e[1].sub(a)).abs() > 1e-6 {
+            continue;
+        }
+        let t0 = e[0].sub(a).dot(u) / l;
+        let t1 = e[1].sub(a).dot(u) / l;
+        let (lo, hi) = (t0.min(t1).max(0.0), t0.max(t1).min(1.0));
+        if hi - lo > 1e-9 {
+            covered.push([lo, hi]);
+        }
+    }
+    crate::sort::stable(&mut covered, |x, y| x[0] < y[0]);
+    let mut keep = Vec::new();
+    let mut t = 0.0;
+    for c in covered {
+        if c[0] > t + 1e-9 {
+            keep.push([t, c[0]]);
+        }
+        t = t.max(c[1]);
+    }
+    if t < 1.0 - 1e-9 {
+        keep.push([t, 1.0]);
+    }
+    keep
+}

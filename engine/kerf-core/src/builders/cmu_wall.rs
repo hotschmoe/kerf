@@ -19,6 +19,7 @@ params! {
         face_shell: LenPos = 1.25 => { desc: "face shell thickness drawn in section" },
         top_joint: Bool = false => { desc: "mortar joint above the top course" },
         cover: OptRaw => { def: "{sides:1.5, top:1.5, bottom:0.5}", desc: "required clear cover for rebar (W_COVER); supports cover.parts.<part> overrides" },
+        voids: OptRaw => { def: "null", desc: "what the host loses (SPEC 26.4): component ids (\"column\", \"plate.part\": its outline over its z extent, so the hole follows the member) and shapes {\"rect\": [w, h], \"at\": Ref, \"anchor\": \"center\"} | {\"circle\": d, \"at\": Ref} | {\"points\": [...]}, each with optional \"z\": [z0, z1] (default: through). Cut in section, iso and 3D; embedded steel then shows with its own fill. W_COVER measures to the void edge" },
     }
 }
 

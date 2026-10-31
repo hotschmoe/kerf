@@ -38,6 +38,8 @@ pub struct Comp<'a> {
     pub angle: f64,
     pub pitch_angle: f64,
     pub world: Vec<Prism>,
+    /// What this host's voids and sleeves take away (SPEC 26.4), for W_COVER.
+    pub voids: Vec<crate::voids::Cutter>,
 }
 
 impl<'a> Comp<'a> {
@@ -60,6 +62,7 @@ impl<'a> Comp<'a> {
             angle: 0.0,
             pitch_angle: 0.0,
             world: Vec::new(),
+            voids: Vec::new(),
         }
     }
 }

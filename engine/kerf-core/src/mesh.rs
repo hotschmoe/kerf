@@ -7,6 +7,7 @@ use crate::math;
 use crate::model::{Kind, Prism};
 use crate::scene::{Scene, State};
 use crate::style::{Role, Style};
+use crate::voids;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -82,9 +83,14 @@ pub fn ear_clip(pts: &[V2]) -> Vec<u32> {
         let cr = pb.sub(pa).cross(pc.sub(pb));
         let mut ear = if ccw { cr > 1e-12 } else { cr < -1e-12 };
         if ear {
-            ear = !idx[..remaining]
-                .iter()
-                .any(|&iv| iv != ia && iv != ib && iv != ic && point_in_tri(pts[iv as usize], pa, pb, pc));
+            ear = !idx[..remaining].iter().any(|&iv| {
+                let v = pts[iv as usize];
+                iv != ia
+                    && iv != ib
+                    && iv != ic
+                    && !(v.eql(pa, 1e-12) || v.eql(pb, 1e-12) || v.eql(pc, 1e-12))
+                    && point_in_tri(v, pa, pb, pc)
+            });
         }
         if ear {
             out.extend_from_slice(&[ia, ib, ic]);
@@ -118,7 +124,7 @@ fn turn_angle(prev: V2, cur: V2, next: V2) -> f64 {
     math::atan2(u.cross(w), u.dot(w)).abs()
 }
 
-fn extrude(b: &mut Part, loop_in: &[V2], z0: f64, z1: f64, smooth_deg: f64) {
+fn clean_loop(loop_in: &[V2]) -> Vec<V2> {
     let mut lp: Vec<V2> = Vec::new();
     for &p in loop_in {
         if lp.last().is_some_and(|l| l.eql(p, 1e-9)) {
@@ -129,19 +135,86 @@ fn extrude(b: &mut Part, loop_in: &[V2], z0: f64, z1: f64, smooth_deg: f64) {
     if lp.len() > 1 && lp[0].eql(lp[lp.len() - 1], 1e-9) {
         lp.pop();
     }
-    let n = lp.len();
-    if n < 3 {
+    lp
+}
+
+/// Two segments cross at a point inside both (touching at an end does not count).
+fn crosses(a: V2, b: V2, c: V2, d: V2) -> bool {
+    let o1 = b.sub(a).cross(c.sub(a));
+    let o2 = b.sub(a).cross(d.sub(a));
+    let o3 = d.sub(c).cross(a.sub(c));
+    let o4 = d.sub(c).cross(b.sub(c));
+    ((o1 > 1e-12 && o2 < -1e-12) || (o1 < -1e-12 && o2 > 1e-12))
+        && ((o3 > 1e-12 && o4 < -1e-12) || (o3 < -1e-12 && o4 > 1e-12))
+}
+
+/// The outer loop with every hole joined to it by a two-way bridge (rightmost hole vertex to the nearest visible outer
+/// vertex), so the ear clipper triangulates a face with holes.
+fn bridge_holes(outer: &[V2], holes: &[Vec<V2>]) -> Vec<V2> {
+    let mut poly = outer.to_vec();
+    let right =
+        |h: &[V2]| h.iter().enumerate().fold((0, f64::NEG_INFINITY), |b, (i, p)| if p.x > b.1 { (i, p.x) } else { b });
+    let mut order: Vec<usize> = (0..holes.len()).collect();
+    crate::sort::stable(&mut order, |&x, &y| right(&holes[x]).1 > right(&holes[y]).1);
+    for (n, &hi) in order.iter().enumerate() {
+        let h = &holes[hi];
+        let mi = right(h).0;
+        let m = h[mi];
+        let blocked = |p: V2, lp: &[V2]| {
+            lp.iter().enumerate().any(|(k, &c)| {
+                let d = lp[(k + 1) % lp.len()];
+                !(c.eql(p, 1e-9) || d.eql(p, 1e-9) || c.eql(m, 1e-9) || d.eql(m, 1e-9)) && crosses(m, p, c, d)
+            })
+        };
+        let mut cand: Vec<usize> = (0..poly.len()).collect();
+        crate::sort::stable(&mut cand, |&x, &y| poly[x].dist(m) < poly[y].dist(m));
+        let Some(pi) = cand.into_iter().find(|&k| {
+            let p = poly[k];
+            !blocked(p, &poly) && !order[n..].iter().any(|&o| blocked(p, &holes[o]))
+        }) else {
+            continue;
+        };
+        let mut np = Vec::with_capacity(poly.len() + h.len() + 2);
+        np.extend_from_slice(&poly[..=pi]);
+        for k in 0..=h.len() {
+            np.push(h[(mi + k) % h.len()]);
+        }
+        np.push(poly[pi]);
+        np.extend_from_slice(&poly[pi + 1..]);
+        poly = np;
+    }
+    poly
+}
+
+/// A prism over [z0, z1] from its loops (outer first, then holes). `seam` lists, per cap (z0, z1), the outline of the
+/// touching slab of the same member where a void split it: cap edges along it are not feature edges.
+fn extrude(b: &mut Part, loops_in: &[Vec<V2>], z0: f64, z1: f64, smooth_deg: f64, seam: [&[[V2; 2]]; 2]) {
+    let Some(first) = loops_in.first() else { return };
+    let lp = clean_loop(first);
+    if lp.len() < 3 {
         return;
     }
     let ccw = geom::signed_area_v(&lp) >= 0.0;
-    let tris = ear_clip(&lp);
+    let holes: Vec<Vec<V2>> = loops_in[1..]
+        .iter()
+        .map(|h| {
+            let mut h = clean_loop(h);
+            if (geom::signed_area_v(&h) >= 0.0) == ccw {
+                h.reverse();
+            }
+            h
+        })
+        .filter(|h| h.len() >= 3)
+        .collect();
+    let cap = if holes.is_empty() { lp.clone() } else { bridge_holes(&lp, &holes) };
+    let tris = ear_clip(&cap);
     {
         let base_top = (b.positions.len() / 3) as u32;
-        for p in &lp {
+        for p in &cap {
             b.vert(p.x, p.y, z1, 0.0, 0.0, 1.0);
         }
         let base_bot = (b.positions.len() / 3) as u32;
-        for p in &lp {
+        for p in &cap {
             b.vert(p.x, p.y, z0, 0.0, 0.0, -1.0);
         }
         for &[i0, i1, i2] in tris.as_chunks::<3>().0 {
@@ -159,6 +232,14 @@ fn extrude(b: &mut Part, loop_in: &[V2], z0: f64, z1: f64, smooth_deg: f64) {
             }
         }
     }
+    walls(b, &lp, ccw, z0, z1, smooth_deg, seam);
+    for h in &holes {
+        walls(b, h, ccw, z0, z1, smooth_deg, seam);
+    }
+}
+
+fn walls(b: &mut Part, lp: &[V2], ccw: bool, z0: f64, z1: f64, smooth_deg: f64, seam: [&[[V2; 2]]; 2]) {
+    let n = lp.len();
     let smooth_rad = smooth_deg * (PI / 180.0);
     for (i, &p) in lp.iter().enumerate() {
         let q = lp[(i + 1) % n];
@@ -193,8 +274,16 @@ fn extrude(b: &mut Part, loop_in: &[V2], z0: f64, z1: f64, smooth_deg: f64) {
             b.tri(v00, v11, v10);
             b.tri(v00, v01, v11);
         }
-        b.edge([p.x, p.y, z0], [q.x, q.y, z0]);
-        b.edge([p.x, p.y, z1], [q.x, q.y, z1]);
+        for (k, z) in [z0, z1].into_iter().enumerate() {
+            if seam[k].is_empty() {
+                b.edge([p.x, p.y, z], [q.x, q.y, z]);
+                continue;
+            }
+            for [t0, t1] in geom::uncovered(p, q, seam[k]) {
+                let (a, c) = (p.lerp(q, t0), p.lerp(q, t1));
+                b.edge([a.x, a.y, z], [c.x, c.y, z]);
+            }
+        }
         if turn_angle(prev, p, q) >= 20.0 * (PI / 180.0) {
             b.edge([p.x, p.y, z0], [p.x, p.y, z1]);
         }
@@ -272,7 +361,7 @@ pub const CMU_JOINT: f64 = 0.375;
 pub fn cmu_split(pr: &Prism) -> Vec<ZSeg> {
     let mut out = Vec::new();
     let offset = if pr.course.is_multiple_of(2) { 8.0 } else { 0.0 };
-    let mut z = pr.z0 - offset;
+    let mut z = pr.bond_z0.unwrap_or(pr.z0) - offset;
     while z < pr.z1 {
         let a0 = z.max(pr.z0);
         let a1 = (z + CMU_UNIT_LEN).min(pr.z1);
@@ -320,17 +409,28 @@ pub fn build(scene: &Scene<'_>, include_fills: bool) -> Vec<Part> {
                 parts.push(part);
                 continue;
             }
-            let Some(l0) = pr.loops.first() else { continue };
-            let lp = flatten_for_mesh(l0);
+            if pr.loops.is_empty() {
+                continue;
+            }
+            let lp: Vec<Vec<V2>> = pr.loops.iter().map(|l| flatten_for_mesh(l)).collect();
+            let seams = [false, true].map(|hi| {
+                voids::seam_neighbors(&c.world, pr, hi, |q| q.loops.iter().map(|l| flatten_for_mesh(l)).collect())
+            });
+            let seam_at = |a: f64, b: f64| -> [&[[V2; 2]]; 2] {
+                [
+                    if (a - pr.z0).abs() < 1e-9 { &seams[0] } else { &[] },
+                    if (b - pr.z1).abs() < 1e-9 { &seams[1] } else { &[] },
+                ]
+            };
             if pr.cmu_unit && pr.role != Role::Grout {
                 let offset = if pr.course % 2 == 0 { 8.0 } else { 0.0 };
-                let mut z = pr.z0 - offset;
+                let mut z = pr.bond_z0.unwrap_or(pr.z0) - offset;
                 let mut joints: Vec<[f64; 2]> = Vec::new();
                 while z < pr.z1 {
                     let uu0 = z.max(pr.z0);
                     let uu1 = (z + CMU_UNIT_LEN).min(pr.z1);
                     if uu1 - uu0 > 1e-6 {
-                        extrude(&mut part, &lp, uu0, uu1, 20.0);
+                        extrude(&mut part, &lp, uu0, uu1, 20.0, seam_at(uu0, uu1));
                     }
                     let j0 = z + CMU_UNIT_LEN;
                     let j1 = (z + CMU_UNIT_LEN + CMU_JOINT).min(pr.z1);
@@ -350,13 +450,13 @@ pub fn build(scene: &Scene<'_>, include_fills: bool) -> Vec<Part> {
                         ..Part::default()
                     };
                     for j in &joints {
-                        extrude(&mut mortar, &lp, j[0], j[1], 20.0);
+                        extrude(&mut mortar, &lp, j[0], j[1], 20.0, seam_at(j[0], j[1]));
                     }
                     parts.push(mortar);
                 }
                 continue;
             }
-            extrude(&mut part, &lp, pr.z0, pr.z1, 20.0);
+            extrude(&mut part, &lp, pr.z0, pr.z1, 20.0, seam_at(pr.z0, pr.z1));
             parts.push(part);
         }
     }

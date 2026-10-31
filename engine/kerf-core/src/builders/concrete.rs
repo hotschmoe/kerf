@@ -33,6 +33,7 @@ params! {
         recess: OptRaw => { desc: "slab_edge: {width, depth, from_edge} depression at the top exterior edge (door sill); from_edge 0 = at the exterior face" },
         recess_slope: Len = 0.0 => { desc: "slab_edge: recess floor falls this many inches toward the exterior over its width" },
         base: OptRaw => { desc: "slab_edge: {material: gravel|sand|compacted_fill, thickness} uniform base course under the slab soffit and along the haunch (soil side), stopping at the footing bottom; part `base` with the fill hatch. Replaces hand-drawn fill polygons under the slab" },
+        voids: OptRaw => { def: "null", desc: "what the host loses (SPEC 26.4): component ids (\"column\", \"plate.part\": its outline over its z extent, so the hole follows the member) and shapes {\"rect\": [w, h], \"at\": Ref, \"anchor\": \"center\"} | {\"circle\": d, \"at\": Ref} | {\"points\": [...]}, each with optional \"z\": [z0, z1] (default: through). Cut in section, iso and 3D; embedded steel then shows with its own fill. W_COVER measures to the void edge" },
     }
 }
 

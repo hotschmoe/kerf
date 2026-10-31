@@ -98,6 +98,7 @@ pub fn compile<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags) -> Scene<'a>
         }
         place_component(&mut scene, i);
     }
+    crate::voids::apply(&mut scene);
     scene
 }
 

@@ -28,6 +28,7 @@ pub mod lumber;
 pub mod membrane;
 pub mod panel;
 pub mod rebar;
+pub mod sleeve;
 pub mod solid;
 pub mod steel;
 pub mod steel_shapes;
@@ -51,6 +52,7 @@ pub fn build(ty: Type, ctx: &mut Ctx) -> Option<Built> {
         Type::Solid => solid::build(ctx),
         Type::Flashing => flashing::build(ctx),
         Type::Joint => joint::build(ctx),
+        Type::Sleeve => sleeve::build(ctx),
         Type::Steel => steel::build(ctx),
         Type::Bolt => bolt::build(ctx),
     }
@@ -73,6 +75,7 @@ pub fn params_rows(ty: Type) -> Vec<Row> {
         Type::Solid => solid::Params::rows(),
         Type::Flashing => flashing::Params::rows(),
         Type::Joint => joint::Params::rows(),
+        Type::Sleeve => sleeve::Params::rows(),
         Type::Steel => steel::Params::rows(),
         Type::Bolt => bolt::Params::rows(),
     }
@@ -95,6 +98,7 @@ pub fn params_has_key(ty: Type, key: &str) -> bool {
         Type::Solid => solid::Params::has_key(key),
         Type::Flashing => flashing::Params::has_key(key),
         Type::Joint => joint::Params::has_key(key),
+        Type::Sleeve => sleeve::Params::has_key(key),
         Type::Steel => steel::Params::has_key(key),
         Type::Bolt => bolt::Params::has_key(key),
     }

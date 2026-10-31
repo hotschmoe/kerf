@@ -15,6 +15,7 @@ params! {
         points: OptRaw => { def: "required", desc: "polygon [x,y] or Refs" },
         outline: Enum(Outline) = Outline::Top => { desc: "top (stroke only edges with outward normal up: the grade line) | full | none" },
         grade_label: Str = "" => { def: "null", desc: "optional text for annotations" },
+        except: OptRaw => { def: "null", desc: "[ids] of solids this fill is not clipped by (SPEC 26.4: a fill draws under every solid a view cuts with it, so a plain rectangle around a footing needs no notches)" },
     }
 }
 
