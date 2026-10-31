@@ -385,7 +385,9 @@
       "views": [
         "C"
       ],
-      "thickness": 96,
+      "lay": "face",
+      "thickness": 0.4375,
+      "height": 96,
       "length": 48,
       "run": "x"
     },
@@ -400,7 +402,9 @@
       "views": [
         "C"
       ],
-      "thickness": 96,
+      "lay": "face",
+      "thickness": 0.4375,
+      "height": 96,
       "length": 48,
       "run": "x"
     },

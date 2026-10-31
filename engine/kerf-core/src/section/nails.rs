@@ -25,18 +25,19 @@ impl Section<'_> {
         if self.spec.kind == ViewKind::Plan { (V2::init(p[0], -p[2]), p[1]) } else { (V2::init(p[0], p[1]), p[2]) }
     }
 
-    /// A cut solid covers the point, or a beyond solid that is not one of the nailing's members lies wholly in front of
-    /// depth `w`. Embedded members (bolts, bars) never hide a nail.
+    /// A solid that is not one of the nailing's members covers the point: cut by the plane, or beyond it and wholly in
+    /// front of depth `w`. The nailing's own members never hide it, cut or not: a fastener inside a cut member draws
+    /// over its section (SPEC 28.6). Embedded members (bolts, bars) never hide a nail.
     fn nail_hidden(&self, p: V2, w: f64, stack: &[u32]) -> bool {
         self.occs.iter().any(|o| {
             if !o.bx.contains(p) {
                 return false;
             }
             let pr = &self.prisms[o.prism];
-            if pr.embedded {
+            if pr.embedded || stack.contains(&pr.comp) {
                 return false;
             }
-            if !o.cut && (stack.contains(&pr.comp) || pr.z0 < w - EPS) {
+            if !o.cut && pr.z0 < w - EPS {
                 return false;
             }
             geom::locate_even_odd(p, &o.loops, 1e-9) == Loc::Inside
@@ -51,6 +52,7 @@ impl Section<'_> {
         let crop = self.spec.crop;
         let pen = self.pen_for(Pen::Steel);
         let mut dots: Vec<V2> = Vec::new();
+        let mut shanks: Vec<(V2, V2)> = Vec::new();
         for c in &scene.comps {
             if !scene.nails_shown(c, &self.spec.members) {
                 continue;
@@ -59,6 +61,9 @@ impl Section<'_> {
             let mut in_crop = 0usize;
             let mut drawn = 0usize;
             for n in &c.built.nails {
+                if !scene.nail_on_shown(n, &self.spec.members) {
+                    continue;
+                }
                 let (h, hw) = self.nail_view(n.head);
                 let (t, tw) = self.nail_view(n.tip);
                 let (wmin, wmax) = (hw.min(tw), hw.max(tw));
@@ -88,6 +93,10 @@ impl Section<'_> {
                     dots.push(h);
                     self.nail_dot(n, h, s, pen, &c.id);
                 } else {
+                    if shanks.iter().any(|(a, b)| a.eql(h, EPS) && b.eql(t, EPS)) {
+                        continue;
+                    }
+                    shanks.push((h, t));
                     self.nail_shank(n, h, t, s, pen, &c.id);
                 }
             }

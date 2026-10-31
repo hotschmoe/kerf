@@ -540,7 +540,7 @@ fn nails_hidden_diags(hidden: &[crate::section::NailsHidden], spec: &ViewSpec, d
             Some(&h.id),
             Some(&format!("views/{vid}")),
             format!(
-                "'{}' draws none of its fasteners in view {vid}: every one in the window is in front of the {plane} at {} or inside a solid the plane cuts",
+                "'{}' draws none of its fasteners in view {vid}: every one in the window is in front of the {plane} at {} or inside a cut solid that is not one of its members",
                 h.id,
                 fmt_num(spec.cut_z)
             ),
@@ -550,6 +550,133 @@ fn nails_hidden_diags(hidden: &[crate::section::NailsHidden], spec: &ViewSpec, d
                 if plan { "" } else { " or \"kind\": \"elevation\"" },
                 h.id
             ),
+        );
+    }
+}
+
+/// Iso views: a nailing whose heads are all on faces turned away from the view or under other solids (SPEC 28.6).
+fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &ViewSpec, diags: &Diags) {
+    let vid = spec.id;
+    let view_op = |key: &str, value: &str| {
+        format!("{{\"op\":\"update\",\"path\":\"views/{vid}\",\"value\":{{\"{key}\":{value}}}}}")
+    };
+    let from = match spec.from {
+        view::From::FrontRight => "front_right",
+        view::From::FrontLeft => "front_left",
+        view::From::BackRight => "back_right",
+        view::From::BackLeft => "back_left",
+    };
+    for h in hidden {
+        let comp = scene.find(&h.id);
+        let node = comp.map(|c| c.node);
+        let flip = comp.is_some_and(|c| c.built.nail_flip);
+        let pattern = node.and_then(|n| n.get("pattern")).and_then(Value::str).unwrap_or("face");
+        let members: Vec<&str> = node
+            .and_then(|n| n.get("members"))
+            .and_then(Value::arr)
+            .map_or(Vec::new(), |a| a.iter().filter_map(Value::str).collect());
+        let comp_op = |key: &str, value: &str| {
+            format!("{{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"{key}\":{value}}}}}", h.id)
+        };
+        let mut fixes: Vec<String> = Vec::new();
+        let mut push = |f: String| {
+            if !fixes.contains(&f) {
+                fixes.push(f);
+            }
+        };
+        let mut why: Vec<String> = Vec::new();
+        for r in &h.why {
+            if let Some(x) = &r.against {
+                let head = format!("the heads on the {} face of '{}' are covered by '", r.face, r.on);
+                match why.iter_mut().find(|w| w.starts_with(&head)) {
+                    Some(w) => {
+                        if !w.contains(&format!("'{x}'")) {
+                            w.push_str(&format!(" and '{x}'"));
+                        }
+                    }
+                    None => why.push(format!("{head}{x}'")),
+                }
+                continue;
+            }
+            match &r.under {
+                None => {
+                    why.push(format!(
+                        "the heads on the {} face of '{}' are turned away from this view (from {from}{})",
+                        r.face,
+                        r.on,
+                        if r.face == "bottom" { "; an iso looks from above" } else { "" }
+                    ));
+                    let opposite = match r.face {
+                        "left" => "right",
+                        "right" => "left",
+                        "front" => "back",
+                        "back" => "front",
+                        "top" => "bottom",
+                        _ => "top",
+                    };
+                    if pattern == "face" && flip && members.len() >= 2 {
+                        let rev: Vec<String> = members.iter().rev().map(|m| format!("\"{m}\"")).collect();
+                        push(format!(
+                            "drive them from the other side (heads on the far face of '{}'): {}",
+                            members[members.len() - 1],
+                            comp_op("members", &format!("[{}]", rev.join(",")))
+                        ));
+                    } else if pattern == "toenail" && !h.why.iter().any(|o| o.face == opposite && o.on == r.on) {
+                        push(format!(
+                            "start them on the {opposite} face: {}",
+                            comp_op("faces", &format!("[\"{opposite}\"]"))
+                        ));
+                    }
+                    let toward = match r.face {
+                        "left" => Some(if from.starts_with("back") { "back_left" } else { "front_left" }),
+                        "right" => Some(if from.starts_with("back") { "back_right" } else { "front_right" }),
+                        "front" => Some(if from.ends_with("left") { "front_left" } else { "front_right" }),
+                        "back" => Some(if from.ends_with("left") { "back_left" } else { "back_right" }),
+                        _ => None,
+                    };
+                    if let Some(q) = toward {
+                        push(format!("look from that side: {}", view_op("from", &format!("\"{q}\""))));
+                    }
+                }
+                Some(u) => {
+                    let head = format!("the heads on the {} face of '{}' are under '", r.face, r.on);
+                    match why.iter_mut().find(|w| w.starts_with(&head)) {
+                        Some(w) => w.push_str(&format!(", '{u}'")),
+                        None => why.push(format!("{head}{u}'")),
+                    }
+                    let uid = u.split('#').next().unwrap_or(u);
+                    if uid != r.on {
+                        push(format!(
+                            "leave '{uid}' out of this view: {} (add to the existing omit list)",
+                            view_op("omit", &format!("[\"{uid}\"]"))
+                        ));
+                    }
+                }
+            }
+        }
+        let on = h.why.first().map_or("", |r| r.on.as_str());
+        push(format!(
+            "keep the nailing out of this view and give the schedule in a note on '{on}': {} (add to the existing omit list)",
+            view_op("omit", &format!("[\"{}\"]", h.id))
+        ));
+        diags.add_fix(
+            Level::Warning,
+            "W_NAIL_HIDDEN",
+            Some(&h.id),
+            Some(&format!("views/{vid}")),
+            format!(
+                "'{}' draws none of its fasteners in view {vid}: {}",
+                h.id,
+                why.iter()
+                    .map(|w| if w.contains(" are covered by ") {
+                        format!("{w}, which lies against that face (no view can show them)")
+                    } else {
+                        w.clone()
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+            fixes.join("; or "),
         );
     }
 }
@@ -1066,6 +1193,7 @@ pub fn build_with<'a>(
                 None => (fitted + 0.5 * trial as f64).max(need),
             };
             let res = iso::build(&mut iso, scene, spec, st, factor);
+            iso_nails_hidden_diags(&iso.nails_hidden, scene, spec, &tdiags);
             if trial == 0 {
                 fitted = res.scale;
             }

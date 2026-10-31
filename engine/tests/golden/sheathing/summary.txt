@@ -1,0 +1,27 @@
+DOC sheathing  19 components  5 views  0 errors  0 warnings  0 acknowledged
+ w_sill        lumber 2x4 x PT narrow run x L=8'-0"        x 0"..8'-0"       y 0"..1 1/2"
+ w_stud        lumber 2x4 y narrow run y L=7'-9" [x7 x @ 1'-3 3/4"] x 0"..8'-0"       y 1 1/2"..7'-10 1/2"
+ w_tp          lumber 2x4 x narrow run x L=8'-0"           x 0"..8'-0"       y 7'-10 1/2"..8'-0"
+ w_sh1         panel osb 7/16" x 4'-0" x 8'-0" lay face run x on w_stud.face_front x 0"..4'-0"       y 0"..8'-0"
+ w_sh2         panel osb 7/16" x 4'-0" x 8'-0" lay face run x on w_stud.face_front x 4'-0"..8'-0"    y 0"..8'-0"
+ w_en          nailing edge 8d @ 6" O.C. EDGE NAILING: 96 nails (0.131 x 2 1/2"), w_sh1 -> w_sh2 -> w_stud -> w_sill -> w_tp x 3/8"..7'-11 5/8" y 3/8"..7'-11 5/8"
+ w_fn          nailing field 8d @ 12" O.C. FIELD NAILING: 28 nails (0.131 x 2 1/2"), w_sh1 -> w_sh2 -> w_stud x 1'-4 1/2"..6'-7 1/2" y 1'-0 5/16"..6'-11 3/4"
+ f_j           lumber 2x10 upright run z [x5 x @ 1'-4"]    x 0"..5'-5 1/2"   y 0"..9 1/4"
+ f_p1          panel plywood 3/4" x 2'-8 3/4" run x        x 0"..2'-8 3/4"   y 9 1/4"..10"
+ f_p2          panel plywood 3/4" x 2'-8 3/4" run x        x 2'-8 3/4"..5'-5 1/2" y 9 1/4"..10"
+ f_p3          panel plywood 3/4" x 5'-5 1/2" run x        x 0"..5'-5 1/2"   y 9 1/4"..10"
+ f_en          nailing edge 10d @ 6" O.C. EDGE NAILING: 58 nails (0.148 x 3"), f_p1 -> f_p2 -> f_p3 -> f_j x 3/8"..5'-5 1/8" y 7"..10"
+ f_fn          nailing field 10d @ 12" O.C. FIELD NAILING: 15 nails (0.148 x 3"), f_p1 -> f_p2 -> f_p3 -> f_j x 1'-4 3/4"..4'-0 3/4" y 7"..10"
+ d_pl1         lumber 2x4 flat run z L=2'-0"               x 0"..3 1/2"      y 0"..1 1/2"
+ d_pl2         lumber 2x4 flat run z L=2'-0"               x 0"..3 1/2"      y 1 1/2"..3"
+ d_j           lumber 2x10 x wide run x L=2'-0" [x2 z @ 1'-4"] x 0"..2'-0"       y 3"..1'-0 1/4"
+ d_blk         lumber 2x10 upright run z                   x 1"..2 1/2"      y 3"..1'-0 1/4"
+ d_end         nailing face (2) 16d NAILS: 4 nails (0.162 x 3 1/2"), d_j -> d_blk x 1 3/4"..1 3/4"  y 4 5/8"..10 5/8"
+ d_toe         nailing toenail (2) 16d TOENAILS: 2 nails (0.162 x 3 1/2"), d_blk -> d_pl2 -> d_pl1 x 3/4"..2 3/4"    y 1 1/8"..4 3/16"
+COVERAGE  6/6 requested elements covered
+ ok       shear wall sheathing      w_sh1, w_sh2
+ ok       8d @ 6" edge nailing      w_en
+ ok       8d @ 12" field nailing    w_fn
+ ok       unblocked floor diaphragm f_p3
+ ok       (2) 16d end nails         d_end
+ ok       16d toenails              d_toe

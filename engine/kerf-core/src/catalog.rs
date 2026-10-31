@@ -482,10 +482,10 @@ pub static ENTRIES: [Entry; 19] = [
     },
     Entry {
         ty: Type::Panel,
-        summary: "Sheathing, boards, gypsum, soffit, fascia/trim boards as a thin rectangle.",
+        summary: "Sheathing, boards, gypsum, soffit, fascia/trim boards as a thin rectangle; `lay: face` for a sheet seen face-on.",
         parts: "none",
         anchors: "the 9 box anchors",
-        draws: "Cut rectangle with the material's hatch / cut mark (wood_board: one diagonal). Spans the document run along Z. Use `slope` for roof sheathing (rotates about the placement anchor).",
+        draws: "Edge-on (default): cut rectangle with the material's hatch / cut mark (wood_board: one diagonal), spanning the document run along Z. Use `slope` for roof sheathing (rotates about the placement anchor). `lay: face`: the sheet in the XY plane (`length` x `height`, `thickness` along Z, `on: \"stud.face_front\"` sets z): its outline in elevations and iso, a thin strip in plans; shear walls, portal frames and wall sheathing take edge and field `nailing` on it.",
         example: "{\"id\":\"roof_sheathing\",\"type\":\"panel\",\"material\":\"osb\",\"thickness\":0.4375,\"length\":66,\"run\":\"x\",\"slope\":\"4:12\",\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
         traits: Traits {
             sheet: true,
@@ -643,7 +643,7 @@ pub static ENTRIES: [Entry; 19] = [
         summary: "Nails/screws from their `members`: face, toenail, panel edge, field.",
         parts: "none",
         anchors: "the 9 box anchors of the fasteners' extent",
-        draws: "Section, plan, elevation: a nail lying in the drawing plane is its shank with a head bar (toenails angled), one seen end-on is a dot (screws: a circle with a cross); in iso a dot on the face the heads are on. Placement comes from `members` (the first holds the heads): face finds the joint face of the first two and lays `rows` x `count` (or @ `spacing`) on it; edge rows run at `edge_distance` inside each panel edge and keep only nails with framing behind; field rows follow the intermediate framing. Own members never hide the nails; a section draws the nails at or behind its cut that no cut solid covers, and a row seen end-on where it crosses the cut. A note targeting it without `text` prints its text form. Checks: W_NAIL_MEMBERS (members do not touch), W_NAIL_EDGE (edge distance, edges without framing), W_NAIL_SPACING, W_NAIL_LENGTH (points out the far face, short penetration), W_NAIL_HIDDEN (a view draws none of them).",
+        draws: "Section, plan, elevation: a nail lying in the drawing plane is its shank with a head bar (toenails angled), one seen end-on is a dot (screws: a circle with a cross); in iso a dot on the face the heads are on. Placement comes from `members` (the first holds the heads): face finds the joint face of the first two and lays `rows` x `count` (or @ `spacing`) on it; edge rows run at `edge_distance` inside each panel edge and keep only nails with framing behind; field rows follow the intermediate framing. Own members never hide the nails, cut or not (end nails and toenails inside a cut block draw); a section draws the nails at or behind its cut that no other cut solid covers, and a row seen end-on where it crosses the cut. Several sheets side by side: list them all first in `members`. A note targeting it without `text` prints its text form. Checks: W_NAIL_MEMBERS (members do not touch), W_NAIL_EDGE (edge distance, edges without framing), W_NAIL_SPACING, W_NAIL_LENGTH (points out the far face, short penetration), W_NAIL_HIDDEN (a view draws none of them; in iso it names the face turned away or the piece covering the heads).",
         example: "{\"id\":\"splice_nails\",\"type\":\"nailing\",\"members\":[\"upper_plate\",\"lower_plate\"],\"size\":\"16d\",\"count\":8,\"rows\":2,\"through\":true}",
         traits: Traits::NONE,
     },

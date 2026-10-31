@@ -361,6 +361,8 @@ pub struct Built {
     pub nails: Vec<Nail>,
     /// Indices of the components a `nailing` joins: its own members never hide its nails.
     pub nail_stack: Vec<u32>,
+    /// A face `nailing` whose members also work listed the other way round (the last member is thinner than the nail).
+    pub nail_flip: bool,
     /// Without an explicit `z` the component is centred here (hardware placed on its host members, SPEC 27.2).
     pub nat_zc: Option<f64>,
     /// What the hardware checks need after every component is placed (SPEC 27.2).
@@ -378,6 +380,10 @@ pub struct Nail {
     /// sees end-on as cut within half a spacing of the plane.
     pub row: [f64; 3],
     pub pitch: f64,
+    /// The component the head is on: the nail shows only in views that draw it.
+    pub on: u32,
+    /// Outward unit normal (world) of the face the head is on.
+    pub face: [f64; 3],
 }
 
 /// A post base's bearing: plate bottom `y`, plan extent x0..x1 × z0..z1, the post and its standoff.

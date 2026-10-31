@@ -21,12 +21,12 @@ DOC nailing  28 components  4 views  0 errors  0 warnings  0 acknowledged
  c_chord       lumber 2x6 y narrow run y L=7'-9" [x2 x @ 7'-10 1/2"] x 0"..8'-0"       y 1 1/2"..7'-10 1/2"
  c_stud        lumber 2x6 y narrow run y L=7'-9" [x5 x @ 1'-4"] x 1'-3 1/4"..6'-8 3/4" y 1 1/2"..7'-10 1/2"
  c_tp          lumber 2x6 x narrow run x L=8'-0"           x 0"..8'-0"       y 7'-10 1/2"..8'-0"
- c_shtg_l      panel plywood 8'-0" x 4'-0" run x           x 0"..4'-0"       y 0"..8'-0"
- c_shtg_r      panel plywood 8'-0" x 4'-0" run x           x 4'-0"..8'-0"    y 0"..8'-0"
+ c_shtg_l      panel plywood 7/16" x 4'-0" x 8'-0" lay face run x x 0"..4'-0"       y 0"..8'-0"
+ c_shtg_r      panel plywood 7/16" x 4'-0" x 8'-0" lay face run x x 4'-0"..8'-0"    y 0"..8'-0"
  c_en_l        nailing edge 8d @ 6" O.C. EDGE NAILING: 48 nails (0.131 x 2 1/2"), c_shtg_l -> c_sill -> c_chord#0 -> c_stud#2 -> c_tp x 3/8"..3'-11 5/8" y 3/8"..7'-11 5/8"
- c_fn_l        nailing field 8d @ 12" O.C. FIELD NAILING: 18 nails (0.131 x 2 1/2"), c_shtg_l -> c_stud x 1'-4"..2'-8"    y 1 1/2"..7'-10 1/2"
+ c_fn_l        nailing field 8d @ 12" O.C. FIELD NAILING: 14 nails (0.131 x 2 1/2"), c_shtg_l -> c_stud x 1'-4"..2'-8"    y 1'-0 5/16"..6'-11 3/4"
  c_en_r        nailing edge 8d @ 6" O.C. EDGE NAILING: 48 nails (0.131 x 2 1/2"), c_shtg_r -> c_sill -> c_stud#2 -> c_chord#1 -> c_tp x 4'-0 3/8"..7'-11 5/8" y 3/8"..7'-11 5/8"
- c_fn_r        nailing field 8d @ 12" O.C. FIELD NAILING: 18 nails (0.131 x 2 1/2"), c_shtg_r -> c_stud x 5'-4"..6'-8"    y 1 1/2"..7'-10 1/2"
+ c_fn_r        nailing field 8d @ 12" O.C. FIELD NAILING: 14 nails (0.131 x 2 1/2"), c_shtg_r -> c_stud x 5'-4"..6'-8"    y 1'-0 5/16"..6'-11 3/4"
 COVERAGE  6/6 requested elements covered
  ok       (8) 16d each side of splice a_nail_l, a_nail_lap
  ok       8d toenails               a_toe, b_toe

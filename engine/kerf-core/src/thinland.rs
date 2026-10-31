@@ -91,7 +91,10 @@ pub fn candidates(
     text_h: f64,
     prefer: V2,
 ) -> Option<Vec<V2>> {
-    let panel_t = comp.node.get("thickness").map_or(1.0, |t| units::parse_length(t).unwrap_or(1.0));
+    let face_on = comp.node.get("lay").and_then(crate::json::Value::str) == Some("face")
+        && sec.spec.kind != crate::view::Kind::Plan;
+    let panel_t =
+        if face_on { 1.0 } else { comp.node.get("thickness").map_or(1.0, |t| units::parse_length(t).unwrap_or(1.0)) };
     let prisms = Rc::clone(&sec.prisms);
     let mut skels: Vec<Skeleton> = Vec::new();
     for (i, p) in prisms.iter().enumerate() {
