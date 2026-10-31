@@ -378,6 +378,7 @@ fn run_x(ctx: &mut Ctx, cp: &Params, wall: &Wall) -> Option<Built> {
                 zoff: side * (half - fs / 2.0),
                 zhalf: fs / 2.0,
                 face_lines: lines.clone(),
+                face_on: true,
                 ..Prism::default()
             });
         }
@@ -388,6 +389,7 @@ fn run_x(ctx: &mut Ctx, cp: &Params, wall: &Wall) -> Option<Built> {
                 material: "grout".into(),
                 loops: model::one_loop(model::rect_loop(xa, y0, xb, y1)),
                 zhalf: half - fs,
+                face_on: true,
                 ..Prism::default()
             });
         }
@@ -397,6 +399,7 @@ fn run_x(ctx: &mut Ctx, cp: &Params, wall: &Wall) -> Option<Built> {
             part: format!("joint_{n}"),
             material: "mortar".into(),
             loops: model::one_loop(model::rect_loop(0.0, units_h, len, total_h)),
+            face_on: true,
             ..Prism::default()
         });
     }

@@ -85,7 +85,7 @@ impl Section<'_> {
         for pc in face {
             self.add_clipped(Target::Strokes, &pc.pts, false, Pen::Beyond, &src, false);
         }
-        if p.lengthwise && !elevation {
+        if (p.lengthwise && !elevation) || p.face_on {
             pieces = self.off_nearer_slabs(i, p, pieces);
         }
         if let Some(e) = self.joins.get(i).filter(|e| !e.is_empty()) {
@@ -167,7 +167,15 @@ impl Section<'_> {
         let mut edges: Vec<[V2; 2]> = Vec::new();
         let prisms = alloc::rc::Rc::clone(&self.prisms);
         for (k, q) in prisms.iter().enumerate() {
-            if k == i || !q.lengthwise || q.comp != p.comp || q.instance != p.instance || q.z1 <= p.z1 + 1e-9 {
+            if k == i
+                || !(q.lengthwise || q.face_on)
+                || q.comp != p.comp
+                || q.instance != p.instance
+                || q.z1 <= p.z1 + 1e-9
+            {
+                continue;
+            }
+            if q.face_on && self.cls[k] == Class::Drop {
                 continue;
             }
             for lp in self.flat_of(k).iter() {

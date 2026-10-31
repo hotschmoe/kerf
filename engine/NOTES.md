@@ -386,6 +386,10 @@ unavailable, tree kill by job object, `.gitattributes` forcing LF (CRLF in embed
 over-long command lines. CI runs the Windows gates against the shipped build on real Windows runners.
 
 ## Known gaps
+- Masonry and footprints (#27): iso views still draw the edges between different components of one `pour` (sections,
+  plans and elevations join them); a `cmu_wall run: "x"` shows its joint pattern in elevation and section only (iso and
+  3D show plain shells); `reinforced` grout in a run x wall does not model the vertical-bar cells; W_COVER takes a
+  footprint's host outline as its x extent by y range (a bar in the notch of an L is judged inside).
 - `solid` / `polygon` profiles with holes are not supported (profiles are single loops); holes come from `voids` and
   sleeves (SPEC 26.4).
 - Subtracted solids (#14): the mesh does not clip fills (`mesh` with `include_fills` still shows earth through a footing; only
@@ -664,6 +668,21 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - #11: hardware hidden by nearer members draws dashed in section, plan and elevation without `hidden_lines` (SPEC 26.3
   makes hidden lines opt-in per view); the issue asks for it for hardware, so `hw_dash` prisms always get their hidden
   outline. Existing `connector` polylines (no `kind`, no `on`) are unchanged, so the goldens are byte-identical.
+- #27 (SPEC 28.7): bond-beam courses are always grouted, also with `grout: "none"` (the catalog said so; the builder
+  left them hollow with grout none, no golden had that combination). `bond_beam` stays the highest run of bond-beam
+  courses so documents written for `bond_beam_courses` keep their Refs; intermediate runs are `bond_beam_<k>`.
+- #27: a wall seen face-on is `cmu_wall run: "x"` rather than a new type: its face shells carry `face_lines` (the joint
+  pattern) drawn thin where the face is visible, and its layers are `face_on`, so an edge a nearer layer of the same wall
+  shares is drawn once in the profile pen (the same rule `off_nearer_slabs` applies to steel seen lengthwise). Joint
+  lines sit at the joint centrelines (one line per joint, the drafting convention), the unit outlines are not drawn.
+- #27: a plan footprint is concrete `shape: "footprint"` (points `[x, z]`, `height`, `top`), not a new type: its model
+  is z slabs with seams, so every check and voids keep working unchanged. Only an outline with an angled edge needs the
+  exact form; it rides on the first slab (`footprint`, `fp_y`, the slabs `fp_proxy`) the way an XZ bar rides on its
+  first leg, and plan/section/elevation/iso/mesh draw it from there. Voids on such a footprint are E_PARAM rather than
+  silently not drawn.
+- #27: "union of touching concrete" is opt-in (`pour`), because a footing and its stem or a slab on a stem are separate
+  pours and the joint line between them is correct. The slabs one member is split into (voids, footprints) always join,
+  which removes the hairline the dogfood plans showed at a void's z edge (S-00.01, S-10.06 D) with no document change.
 
 ## REQUESTS
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,

@@ -1,0 +1,11 @@
+DOC masonry-footprints  10 components  5 views  0 errors  0 warnings  0 acknowledged
+ e_ftg         concrete footing 13'-4" x 1'-0"             x 0"..13'-4"      y -1'-0"..0"
+ e_wall        cmu_wall 8" x 6 courses run x L=13'-4" (bond beams at courses 3, 6), 1 control joint minus rect x 0"..13'-4"      y 0"..3'-11 5/8"
+ e_bb          rebar #5 path L=12'-10"                     x 3"..13'-1"      y 3'-7 1/2"..3'-8 1/8"
+ s_ftg         concrete footing 1'-8" x 10"                x -6"..1'-2"      y -10"..0"
+ s_wall        cmu_wall 8" x 6 courses (bond beams at courses 4), grouted courses 1-2 x 0"..7 5/8"      y 0"..3'-11 5/8"
+ s_bb          rebar (1) #5 along z @ bottom face          x 3 1/2"..4 1/8"  y 2'-2"..2'-2 5/8"
+ f_ftg         concrete footprint 7 points, 10" thick, z -3'-8"..1'-8" x 0"..3'-4"       y -10"..0"
+ f_stem        concrete footprint 4 points, 1'-6" thick, z -10"..1'-8" x 5"..11"         y 0"..1'-6"
+ f_slab        concrete rect 2'-6" x 4"                    x 11"..3'-5"      y 1'-2"..1'-6"
+ f_edge        concrete rect 8" x 4"                       x 11"..1'-7"      y 10"..1'-2"

@@ -177,6 +177,15 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   `"voids": [{"rect": [8, 4], "at": "stem@top_center", "anchor": "top_center"}]`, `{"circle": 4, "at": ..., "z": [-6, 6]}`.
   Pipe through a wall or footing: `{"type": "sleeve", "pipe": 4, "fill": "joint_filler", "through": "stem", "at": {"to":
   "stem@center"}}` (run x/y + `length` to cut it along its axis). `W_VOID_MISS` prints the op that drops a void that misses.
+- Masonry and footprints (SPEC 28.7). A bond beam at a slab or ledger is ONE wall, never stacked walls:
+  `{"type":"cmu_wall","courses":7,"bond_beams":[4]}` (zones `bond_beam_1`.., anchors `bond_beam_1_center`..; bars
+  `"place":{"in":"wall.bond_beam_1",...}`); partial grout `"grout":"none","grout_courses":[[1,3]]`. A fence or retaining
+  wall elevation is the wall itself seen face-on: `{"type":"cmu_wall","run":"x","length":480,"courses":9,
+  "bond_beam_courses":1,"control_joints":[240],"at":{"anchor":"bottom_left","to":[0,0]}}` in a `kind: "elevation"` view
+  draws courses, running bond and the control joints; drainage blocks are `voids`. A footing or slab that is not a
+  rectangle in plan (L, T, notch, 45-degree block-out ends, angled wall) is one concrete `"shape":"footprint"` with
+  `"points":[[x, z], ...]`, `"height"` and `"top"`, never a box with z-ranged voids. Pieces cast together (slab,
+  thickened edge, block-out fill) take the same `"pour":"slab"` and draw without joint lines.
 - Plans and elevations (SPEC 26.3): model once, in the real orientation (Y up, Z toward the section viewer: a wall
   running across the section is a profile extruded along z, a wall running along x is a long profile with its thickness
   in `z`), then add views. `"kind": "plan"` cuts at `cut_y` (default 1" below the highest top): crossed members are
