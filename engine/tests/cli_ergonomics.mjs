@@ -646,5 +646,71 @@ section('14. steel shapes, bolts and weld symbols: table errors, W_BOLT_EDGE, W_
   check('fillet weld without size: E_PARAM with a fix', /ERROR E_PARAM w2: weld 'w2': a fillet weld needs "size".*Fix: e\.g\. "size": "3\/16"/.test(r.out), r.out);
 }
 
+// issues #15 (cut fill vs embedded parts) and #16 (rebar placement in polygons, bar anchors)
+section('15. #15 cut fill under rotated bolts; #16 rebar place in polygons, E_PLACE_OUTSIDE, W_BAR_OUTSIDE, path/polygon anchors');
+{
+  const doc = (components, annotations = []) => ({ kerf: '0.1', id: 'g', title: 'G', components, views: [{ id: 'A', kind: 'section', title: 'G', annotations }] });
+  const fillArea = (items, src) => items.filter((i) => i.t === 'fill' && i.src === src).reduce((a, i) => a + i.loops.reduce((b, l) => b + l.reduce((c, p, k) => { const q = l[(k + 1) % l.length]; return c + (p[0] * q[1] - q[0] * p[1]) / 2; }, 0), 0), 0);
+  for (const rot of [0, 90, 180, 270]) {
+    write('b.kerf.json', doc([
+      { id: 'beam', type: 'steel', shape: 'W12x26', at: { anchor: 'top_flange', to: [0, 0] } },
+      { id: 'nailer', type: 'lumber', size: '3x8', orient: 'flat', at: { anchor: 'bottom_center', to: 'beam@top_flange' } },
+      { id: 'stud', type: 'bolt', diameter: 0.5, grip: 2.5, rotate: rot, at: { to: 'beam@top_flange' } },
+    ]));
+    const r = kerf(['drawing', 'b.kerf.json', '--view', 'A']);
+    const d = r.code === 0 ? JSON.parse(r.out) : { items: [], diagnostics: [] };
+    const a = fillArea(d.items, 'beam');
+    check(`bolt rotate ${rot} at a W flange: the W keeps its solid fill (6.4..7.65 sq in) and no W_CUT_FILL`, a > 6.4 && a < 7.66 && !d.diagnostics.some((g) => g.code === 'W_CUT_FILL'), [a, r.err]);
+  }
+  write('c.kerf.json', doc([
+    { id: 'pl', type: 'steel', shape: 'PL1/2x2', at: { anchor: 'center', to: [0, 0] } },
+    { id: 'cover', type: 'solid', material: 'steel', embedded: true, profile: { rect: [4, 4] }, at: { anchor: 'center', to: [0, 0] } },
+  ]));
+  let r = kerf(['drawing', 'c.kerf.json', '--view', 'A']);
+  check('a cut part fully inside an embedded part: W_CUT_FILL names both', r.code === 0 && JSON.parse(r.out).diagnostics.some((g) => g.code === 'W_CUT_FILL' && /'pl' draws no cut fill in view A: embedded 'cover' covers all of its cut/.test(g.message)), r.out.slice(0, 400));
+
+  const slab = { id: 'slab', type: 'concrete', shape: 'polygon', points: [[0, 0], [60, 0], [60, -12], [76, -12], [76, 4], [0, 4]], at: { to: [0, 0] } };
+  write('p.kerf.json', doc([slab, { id: 'bars', type: 'rebar', size: '#4', place: { in: 'slab', face: 'bottom', cover: 3, count: 2 } }]));
+  r = kerf(['check', 'p.kerf.json']);
+  check('place bottom in an L slab: both bars in the thickened footing, 3" clear of its bottom and sides', r.code === 0 && /bars +rebar \(2\) #4 along z @ bottom face +x 5'-3"\.\.6'-1" +y -9"\.\.-8 1\/2"/.test(r.out) && !/W_COVER|W_BAR_OUTSIDE/.test(r.out), r.out);
+  write('p.kerf.json', doc([slab, { id: 'bars', type: 'rebar', size: '#4', place: { in: 'slab', face: 'bottom', cover: 1.5, station: 20 } }]));
+  r = kerf(['check', 'p.kerf.json']);
+  check('place station: the bar sits above the bottom face at that x (the slab soffit, not the footing)', /bars +rebar \(1\) #4 along z @ bottom face +x 1'-7 3\/4"\.\.1'-8 1\/4" +y 1 1\/2"\.\.2"/.test(r.out), r.out);
+  write('p.kerf.json', doc([slab, { id: 'bars', type: 'rebar', size: '#4', place: { in: 'slab', face: 'top', cover: 6 } }]));
+  r = kerf(['check', 'p.kerf.json']);
+  check('cover deeper than the host: E_PLACE_OUTSIDE with the bar position and a fix', r.code === 1 && /ERROR E_PLACE_OUTSIDE bars: the bar would sit at x 3'-2", y -2 1\/4", outside its host 'slab'.*Fix: lower place\.cover/.test(r.out), r.out);
+  write('p.kerf.json', doc([slab, { id: 'loose', type: 'rebar', size: '#4', at: { to: [30, -6] } }, { id: 'bent', type: 'rebar', size: '#4', mode: 'path', points: [[3, 2], [40, 2], [40, -9], [50, -9]] }, { id: 'dowel', type: 'rebar', size: '#4', mode: 'path', points: [[70, -9], [70, 30]] }]));
+  r = kerf(['check', 'p.kerf.json']);
+  check('W_BAR_OUTSIDE: a dot in the air names the nearest host and the fix', /WARN W_BAR_OUTSIDE loose: rebar 'loose' is not inside concrete or masonry: its centre \(x 2'-6 1\/4", y -5 3\/4"\) lies in no host; the nearest host is 'slab', 5 3\/4" away Fix: move the bar into 'slab'/.test(r.out), r.out);
+  check('W_BAR_OUTSIDE: a path bar with a bend in the air', /WARN W_BAR_OUTSIDE bent: .*a bend \(x 3'-4/.test(r.out), r.out);
+  check('a dowel that leaves the concrete in a straight leg is not flagged', !/W_BAR_OUTSIDE dowel/.test(r.out), r.out);
+
+  write('p.kerf.json', doc([slab, { id: 'bar', type: 'rebar', size: '#4', mode: 'path', points: [[3, 2], [73, 2], [73, -9], [63, -9]] }], [
+    { id: 'n1', type: 'note', text: '#4 CORNER BAR', at: 'bar@bend_1' },
+    { id: 'n2', type: 'note', text: 'HOOK', at: 'bar@seg_3_mid' },
+    { id: 'd1', type: 'dim', from: 'slab@vertex_3', to: 'slab@vertex_4', offset: -6 },
+    { id: 'n3', type: 'note', text: 'EDGE', at: 'slab@edge_3_mid' },
+  ]));
+  r = kerf(['drawing', 'p.kerf.json', '--view', 'A']);
+  const its = r.code === 0 ? JSON.parse(r.out).items : [];
+  const tip = (id) => {
+    const p = its.find((i) => i.src === id && i.t === 'path' && !i.closed);
+    const f = its.find((i) => i.src === id && i.t === 'fill');
+    if (!p || !f) return null;
+    const e = p.pts[p.pts.length - 1];
+    return f.loops[0].reduce((b, q) => (Math.hypot(q[0] - e[0], q[1] - e[1]) > Math.hypot(b[0] - e[0], b[1] - e[1]) ? q : b), e);
+  };
+  const near = (p, x, y, tol) => p && Math.hypot(p[0] - x, p[1] - y) < tol;
+  check('note at bar@bend_1 lands on the bend (72.49, 1.49), not a box corner', near(tip('n1'), 72.49, 1.49, 0.05), tip('n1'));
+  check('note at bar@seg_3_mid lands on the hook leg (y -9)', tip('n2') && Math.abs(tip('n2')[1] + 9) < 0.3 && tip('n2')[0] > 63 && tip('n2')[0] < 73, tip('n2'));
+  check('note at slab@edge_3_mid lands on the footing bottom (68, -12)', near(tip('n3'), 68, -12, 0.05), tip('n3'));
+  check('dim between polygon vertices measures 1\'-4"', its.some((i) => i.src === 'd1' && i.t === 'text' && i.s === "1'-4\""), its.filter((i) => i.src === 'd1' && i.t === 'text'));
+  write('p.kerf.json', doc([slab], [{ id: 'n1', type: 'note', text: 'X', at: 'slab@vertex_9' }]));
+  r = kerf(['check', 'p.kerf.json']);
+  check('unknown vertex anchor: the error lists vertex_1..vertex_6 and edge_k_mid', /vertex_6/.test(r.out) && /edge_6_mid/.test(r.out), r.out);
+  r = kerf(['schema', 'cmu_wall', 'rebar']);
+  check('schema documents cmu cell anchors and path bar anchors', /cell_left/.test(r.out) && /bend_k/.test(r.out) && /seg_k_mid/.test(r.out) && /E_PLACE_OUTSIDE/.test(r.out), r.out.slice(0, 300));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

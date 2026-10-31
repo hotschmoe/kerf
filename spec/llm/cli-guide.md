@@ -107,5 +107,14 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   view (a finding seen in only some views ends with `(in views A, C)`), so never acknowledge cross-scenario overlaps.
 - Dimension offset sign, example: below a footing `{"from":"ftg@bottom_left","to":"ftg@bottom_right","dir":"h","offset":-6}`;
   its depth on the outside (left) face `{"from":"ftg@bottom_left","to":"ftg@top_left","dir":"v","offset":-6}`.
+- Rebar in a polygon host: `place` follows the outline (face `bottom` = the lowest bottom edge run, e.g. the thickened
+  footing of an L slab; `in: "slab.footing"` cuts it to a part). A bar that cannot fit is `E_PLACE_OUTSIDE`; a bar in
+  no concrete or masonry is `W_BAR_OUTSIDE`. Vertical bars in a CMU cell follow the wall width:
+  `"points": [{"ref":"wall@cell_left","offset":[1.5,-12]}, {"ref":"wall@cell_left_top","offset":[1.5,-3]}]`.
+- Aim notes and dims at bent bars and polygons with their own anchors, not box anchors (those sit in empty space):
+  path rebar `start`, `end`, `bend_1`.., `seg_1_mid`..; polygons and point lists `vertex_1`.., `edge_1_mid`...
+  A dowel that laps a wall bar: `"points": [{"ref":"ftg@bottom_center","offset":[2,3]}, {"ref":"wall_bar@start","offset":[2,24]}]`.
+- `W_CUT_FILL`: an embedded part (bolt, bar) emptied a cut member's fill; the member keeps its fill and the warning
+  says which part.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

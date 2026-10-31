@@ -1,0 +1,11 @@
+DOC rebar-polygon-place  10 components  1 view  0 errors  0 warnings
+ slab          concrete polygon                            x 0"..6'-4"       y -1'-0"..4"
+ ftg_bars      rebar (2) #4 along z @ bottom face          x 5'-3"..6'-1"    y -9"..-8 1/2"
+ slab_bar      rebar (1) #4 along z @ bottom face          x 2'-5 3/4"..2'-6 1/4" y 1 1/2"..2"
+ corner        rebar #4 path L=6'-6 1/4"                   x 1'-0"..6'-1"    y -9"..2 1/4"
+ footing       concrete footing 2'-0" x 1'-0"              x 7'-8"..9'-8"    y -1'-0"..0"
+ wall          cmu_wall 8" x 4 courses                     x 8'-4 3/16"..8'-11 13/16" y 0"..2'-7 5/8"
+ ftg_long      rebar (3) #5 along z @ bottom face          x 7'-11"..9'-5"   y -9"..-8 3/8"
+ vert          rebar #5 path L=2'-4 1/8"                   x 8'-8 3/4"..8'-9 3/8" y 2"..2'-6 1/8"
+ dowel         rebar #5 path L=3'-1 5/8"                   x 8'-0"..8'-7 1/4" y -9"..1'-10"
+ bb_bar        rebar (1) #5 along z @ top face             x 8'-7 11/16"..8'-8 5/16" y 2'-5"..2'-5 5/8"
