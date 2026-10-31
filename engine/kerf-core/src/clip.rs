@@ -132,52 +132,7 @@ pub fn boolean<LA: AsRef<[V2]>, LB: AsRef<[V2]>>(a: &[LA], b: &[LB], op: Op) -> 
             if !bxa.overlaps(seg_box(eb), SNAP) {
                 continue;
             }
-            let mut ta = [0.0; 2];
-            let mut tb = [0.0; 2];
-            let n = geom::seg_seg(ea.a, ea.b, eb.a, eb.b, &mut ta, &mut tb);
-            if n == 0 {
-                continue;
-            }
-            if n == 1 {
-                let t = ta[0];
-                let u = tb[0];
-                let p = if t <= 0.0 {
-                    ea.a
-                } else if t >= 1.0 {
-                    ea.b
-                } else if u <= 0.0 {
-                    eb.a
-                } else if u >= 1.0 {
-                    eb.b
-                } else {
-                    ea.a.lerp(ea.b, t)
-                };
-                cuts[i].push(Cut { t, p });
-                cuts[j].push(Cut { t: u, p });
-            } else {
-                let ab = ea.b.sub(ea.a);
-                let l2 = ab.dot(ab);
-                let tb0 = eb.a.sub(ea.a).dot(ab) / l2;
-                let tb1 = eb.b.sub(ea.a).dot(ab) / l2;
-                let p_lo = if ta[0] <= 0.0 {
-                    ea.a
-                } else if tb0 < tb1 {
-                    eb.a
-                } else {
-                    eb.b
-                };
-                let p_hi = if ta[1] >= 1.0 {
-                    ea.b
-                } else if tb0 > tb1 {
-                    eb.a
-                } else {
-                    eb.b
-                };
-                cuts[i].push(Cut { t: ta[0], p: p_lo });
-                cuts[i].push(Cut { t: ta[1], p: p_hi });
-                cuts[j].push(Cut { t: tb[0], p: p_lo });
-                cuts[j].push(Cut { t: tb[1], p: p_hi });
-            }
+            split_pair(ea, eb, i, j, &mut cuts);
         }
     }
 
@@ -296,6 +251,40 @@ pub fn boolean<LA: AsRef<[V2]>, LB: AsRef<[V2]>>(a: &[LA], b: &[LB], op: Op) -> 
     let fin: Vec<Sub> = out_edges.iter().zip(&alive).filter(|(_, ok)| **ok).map(|(e, _)| *e).collect();
 
     chain(&pos, &fin)
+}
+
+fn seg_param(p: V2, e: Edge) -> f64 {
+    let ab = e.b.sub(e.a);
+    (p.sub(e.a).dot(ab) / ab.dot(ab)).clamp(0.0, 1.0)
+}
+
+/// Cut points of the edge pair (`i` of A, `j` of B). An endpoint within `SNAP` of the other edge splits that edge at the
+/// endpoint's own position, so edges that run together (coincident, or off by rounding noise such as a 180 degree
+/// rotation leaves) share their vertices and classify as boundary; a proper crossing found by the exact predicates
+/// splits both edges at one shared point.
+fn split_pair(ea: Edge, eb: Edge, i: usize, j: usize, cuts: &mut [Vec<Cut>]) {
+    for p in [eb.a, eb.b] {
+        if geom::dist_point_seg(p, ea.a, ea.b) <= SNAP {
+            cuts[i].push(Cut { t: seg_param(p, ea), p });
+        }
+    }
+    for p in [ea.a, ea.b] {
+        if geom::dist_point_seg(p, eb.a, eb.b) <= SNAP {
+            cuts[j].push(Cut { t: seg_param(p, eb), p });
+        }
+    }
+    let mut ta = [0.0; 2];
+    let mut tb = [0.0; 2];
+    if geom::seg_seg(ea.a, ea.b, eb.a, eb.b, &mut ta, &mut tb) != 1 {
+        return;
+    }
+    let (t, u) = (ta[0], tb[0]);
+    if t <= 0.0 || t >= 1.0 || u <= 0.0 || u >= 1.0 {
+        return;
+    }
+    let p = ea.a.lerp(ea.b, t);
+    cuts[i].push(Cut { t, p });
+    cuts[j].push(Cut { t: u, p });
 }
 
 fn append_loop_edges(edges: &mut Vec<Edge>, src: &mut Vec<u8>, l: &[V2], s: u8) {

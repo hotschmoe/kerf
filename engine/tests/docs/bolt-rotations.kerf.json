@@ -1,0 +1,24 @@
+{
+  "kerf": "0.1",
+  "id": "bolt-rotations",
+  "title": "BOLTS ROTATED IN CUT STEEL",
+  "components": [
+    {"id": "w0", "type": "steel", "shape": "W12x26", "at": {"anchor": "top_flange", "to": [0, 0]}},
+    {"id": "n0", "type": "lumber", "size": "3x8", "orient": "flat", "at": {"anchor": "bottom_center", "to": "w0@top_flange"}},
+    {"id": "b0", "type": "bolt", "diameter": 0.5, "grip": 2.88, "at": {"to": "n0@top_center"}},
+    {"id": "w180", "type": "steel", "shape": "W12x26", "at": {"anchor": "top_flange", "to": [16, 0]}},
+    {"id": "n180", "type": "lumber", "size": "3x8", "orient": "flat", "at": {"anchor": "bottom_center", "to": "w180@top_flange"}},
+    {"id": "b180", "type": "bolt", "diameter": 0.5, "grip": 2.5, "rotate": 180, "at": {"to": "w180@top_flange"}},
+    {"id": "w90", "type": "steel", "shape": "W12x26", "at": {"anchor": "top_flange", "to": [32, 0]}},
+    {"id": "b90", "type": "bolt", "diameter": 0.75, "grip": 0.23, "rotate": 90, "at": {"to": "w90@web_left"}},
+    {"id": "w270", "type": "steel", "shape": "W12x26", "at": {"anchor": "top_flange", "to": [48, 0]}},
+    {"id": "b270", "type": "bolt", "diameter": 0.75, "grip": 0.23, "rotate": 270, "at": {"to": "w270@web_right"}},
+    {"id": "col", "type": "steel", "shape": "HSS6x6x3/8", "at": {"anchor": "center", "to": [66, -6]}},
+    {"id": "bcol", "type": "bolt", "diameter": 0.75, "grip": 0.349, "rotate": 90, "at": {"to": "col@middle_left"}},
+    {"id": "hss", "type": "steel", "shape": "HSS6x6x3/8", "orient": "elevation", "length": 18, "at": {"anchor": "bottom_left", "to": [76, -12]}},
+    {"id": "bend", "type": "bolt", "diameter": 0.75, "grip": 6, "orient": "end", "at": {"to": [85, -9]}}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "title": "BOLTS ROTATED IN CUT STEEL", "annotations": []}
+  ]
+}
