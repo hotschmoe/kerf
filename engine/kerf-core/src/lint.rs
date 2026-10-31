@@ -613,32 +613,66 @@ pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
     NoteStyle { issues, fixed, rewrite, fix_safe }
 }
 
-/// `W_NOTE_STYLE` on every text of a table (title, headers, units, cells, notes); cells repeat by nature, so no repeat check.
+/// The linted texts of a table (title, headers, cells, notes; not units), one entry per distinct text with every path
+/// that holds it, in first-seen order: a schedule repeats cells by nature, and one finding covers every copy.
+fn table_texts(an: &Value) -> Vec<(&str, Vec<String>)> {
+    let mut out: Vec<(&str, Vec<String>)> = Vec::new();
+    for (sub, text) in crate::annot::table::texts(an).into_iter().filter(|(p, _)| !p.ends_with("/unit")) {
+        match out.iter_mut().find(|(t, _)| *t == text) {
+            Some((_, subs)) => subs.push(sub),
+            None => out.push((text, alloc::vec![sub])),
+        }
+    }
+    out
+}
+
+/// ` (<lead> in 2 more cells: rows/1/1, rows/2/1)` for the paths after the first (empty for one path), at most 12 listed.
+fn also_in(lead: &str, subs: &[String]) -> String {
+    match subs.len() {
+        0 | 1 => String::new(),
+        n => format!(
+            " ({lead} in {} more cell{}: {}{})",
+            n - 1,
+            if n == 2 { "" } else { "s" },
+            subs[1..].iter().take(12).cloned().collect::<Vec<_>>().join(", "),
+            if n > 13 { format!(", +{} more", n - 13) } else { String::new() }
+        ),
+    }
+}
+
+/// `W_NOTE_STYLE` on every text of a table (title, headers, cells, notes; not units), once per distinct text; cells repeat
+/// by nature, so no repeat check.
 fn table_style(an: &Value, vid: &str, st: &Style, diags: &Diags) {
     let aid = str_of(an, "id");
     let mut listed = 0usize;
     let mut more: Vec<String> = Vec::new();
-    for (sub, text) in crate::annot::table::texts(an).into_iter().filter(|(p, _)| !p.ends_with("/unit")) {
+    for (text, subs) in table_texts(an) {
         let ns = check_note_text(text, st);
         if ns.issues.is_empty() {
             continue;
         }
+        let sub = &subs[0];
         if listed == TABLE_STYLE_LISTED {
-            more.push(sub);
+            more.extend(subs.iter().cloned());
             continue;
         }
         listed += 1;
+        let every = if subs.len() > 1 { format!(" and the {} other cells with this text", subs.len() - 1) } else { String::new() };
         let fix = if !ns.fix_safe || ns.rewrite || ns.fixed == text {
             "edit the text by hand to fix the problems listed".to_string()
         } else {
-            format!("set {sub} to \"{}\"", ns.fixed)
+            format!("set {sub}{every} to \"{}\"", ns.fixed)
         };
         diags.add_fix(
             Level::Warning,
             "W_NOTE_STYLE",
             Some(aid),
             Some(&format!("views/{vid}/annotations/{aid}/{sub}")),
-            format!("table '{aid}' in view {vid}: {sub} breaks the house note style: {}. Text: \"{text}\"", ns.issues),
+            format!(
+                "table '{aid}' in view {vid}: {sub}{} breaks the house note style: {}. Text: \"{text}\"",
+                also_in("the same text", &subs),
+                ns.issues
+            ),
             fix,
         );
     }
@@ -841,6 +875,98 @@ fn abbrev_forms(doc: &Value, st: &Style, diags: &Diags) {
             );
             diags.add_fix(Level::Warning, "W_ABBREV", Some(f.id), Some(&path), message, fix);
         }
+    }
+    for v in arr_of(doc, "views").unwrap_or(&[]) {
+        let vid = str_of(v, "id");
+        for an in arr_of(v, "annotations").unwrap_or(&[]) {
+            let aid = str_of(an, "id");
+            if !vid.is_empty() && !aid.is_empty() && str_of(an, "type") == "table" {
+                table_abbrev(an, vid, aid, st, &table, diags);
+            }
+        }
+    }
+}
+
+/// One flagged spelling of a table's texts (as written, with its rule) and every cell that holds it.
+struct AbbrGroup<'a> {
+    written: &'a str,
+    approved: &'a str,
+    rule: house::Rule,
+    meaning: &'a str,
+    why: &'a str,
+    subs: Vec<String>,
+    text: &'a str,
+    fixed: String,
+}
+
+/// W_ABBREV on the texts of a table, one warning per flagged spelling however many cells hold it; the message lists the
+/// cells and the fix gives the first cell's text with every flagged token replaced.
+fn table_abbrev(an: &Value, vid: &str, aid: &str, st: &Style, table: &house::Table, diags: &Diags) {
+    let mut groups: Vec<AbbrGroup> = Vec::new();
+    for (text, subs) in table_texts(an) {
+        let hits = house::abbrev_hits(text, st, table);
+        if hits.is_empty() {
+            continue;
+        }
+        let fixed = house::apply_hits(text, &hits);
+        for h in &hits {
+            let written = &text[h.start..h.end];
+            match groups.iter_mut().find(|g| g.written == written && g.approved == h.approved && g.rule == h.rule) {
+                Some(g) => g.subs.extend(subs.iter().cloned()),
+                None => groups.push(AbbrGroup {
+                    written,
+                    approved: h.approved,
+                    rule: h.rule,
+                    meaning: h.meaning,
+                    why: h.why,
+                    subs: subs.clone(),
+                    text,
+                    fixed: fixed.clone(),
+                }),
+            }
+        }
+    }
+    let owner = format!("views/{vid}/annotations/{aid}");
+    for g in groups {
+        let sub = &g.subs[0];
+        let path = format!("{owner}/{sub}");
+        let who = format!("table '{aid}' in view {vid} ({path}){}", also_in("also", &g.subs));
+        let message = match g.rule {
+            house::Rule::Always => format!(
+                "{who}: \"{}\" is spelled out, and the company style always abbreviates it (rule always): write \"{}\". Text: \"{}\"",
+                g.written, g.approved, g.text
+            ),
+            rule => format!(
+                "{who}: \"{}\" breaks rule {} ({}): write \"{}\"{}{}. Text: \"{}\"",
+                g.written,
+                rule.name(),
+                rule.what(),
+                g.approved,
+                if g.meaning.is_empty() { String::new() } else { format!(" ({})", g.meaning) },
+                g.why,
+                g.text
+            ),
+        };
+        let style_off = match g.rule {
+            house::Rule::Always => format!("remove \"{}\" from notes.abbreviations.always", g.approved),
+            house::Rule::Variants => format!("add \"{}\" to notes.abbreviations.approved", g.written),
+            rule => format!("set notes.abbreviations.rules.{} to false", rule.name()),
+        };
+        let others = if g.subs.len() > 1 {
+            format!(
+                ", and replace \"{}\" by \"{}\" the same way in the other {} cells",
+                g.written,
+                g.approved,
+                g.subs.len() - 1
+            )
+        } else {
+            String::new()
+        };
+        let fix = format!(
+            "set {sub} to \"{}\"{others}. To keep it here: add {{\"code\":\"W_ABBREV\",\"reason\":\"...\"}} to the \"acknowledge\" of {owner}; everywhere: {style_off} in the company style",
+            g.fixed
+        );
+        diags.add_fix(Level::Warning, "W_ABBREV", Some(aid), Some(&path), message, fix);
     }
 }
 

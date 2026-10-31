@@ -55,7 +55,7 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_lap","s":"1.","x":0,"y":-1.6875,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_lap","s":"VERT. BARS: USE OTHER VALUES","x":0.2768,"y":-1.6875,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_lap","s":"2.","x":0,"y":-1.8375,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_lap","s":"SPLICE #6 AND LARGER PER EOR","x":0.2768,"y":-1.8375,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_lap","s":"SPLICE #6 AND LARGER PER E.O.R.","x":0.2768,"y":-1.8375,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_lap","s":"* VALUES IN INCHES","x":0,"y":-1.9875,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_hd","s":"HOLDOWN","x":0.3911,"y":-2.5969,"h":0.0938,"rot":0,"align":"center","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"t_hd","s":"ANCHOR BOLT","x":1.8228,"y":-2.5969,"h":0.0938,"rot":0,"align":"center","valign":"baseline"},

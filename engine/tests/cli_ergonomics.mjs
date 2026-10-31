@@ -1887,6 +1887,14 @@ section('#28. round-2 papercuts');
   let r = kerf(['apply', 'p28.kerf.json', '--ops', JSON.stringify(ops), '-w', '--why', 'coverage word forms']);
   check('coverage word forms: END NAILED = END NAIL, BRACING = BRACE, STEPPED = STEP, SPECIFIED = SPECIFY', /^ ok       end nailed\s+stud/m.test(r.out) && /^ ok       diagonal bracing\s+stud/m.test(r.out) && /^ ok       stepped footing\s+stud/m.test(r.out) && /^ ok       specified grout\s+stud/m.test(r.out), r.out);
   check('BLOCKING is not BLOCK, TOPPING is not TOP', /^ MISSING  blocking/m.test(r.out) && /^ MISSING  topping slab/m.test(r.out), r.out);
+
+  const rows = [];
+  for (let i = 1; i <= 9; i++) rows.push([`H${i}`, 'PER CALC.', 'BOTT. CONT.', 'per span']);
+  const tbl = { op: 'add', path: 'views/A/annotations', value: { id: 't1', type: 'table', columns: [{ header: 'MARK' }, { header: 'SIZE' }, { header: 'BOTT. PL' }, { header: 'NOTE' }], rows } };
+  r = kerf(['apply', 'p28.kerf.json', '--ops', JSON.stringify(tbl), '-w', '--why', 'table lint']);
+  check('CALC. is an approved abbreviation: PER CALC. is not a trailing period', !/W_NOTE_STYLE t1: .*PER CALC/.test(r.out) && !/W_ABBREV t1: .*"CALC/.test(r.out), r.out);
+  check('W_ABBREV reads table cells: one warning per spelling, listing the cells', (r.out.match(/^WARN W_ABBREV t1:/gm) || []).length === 1 && /^WARN W_ABBREV t1: table 't1' in view A \(views\/A\/annotations\/t1\/columns\/2\/header\) \(also in 9 more cells: rows\/0\/2, rows\/1\/2, .*\): "BOTT\." breaks rule variants .*Fix: set columns\/2\/header to "BOT\. PL", and replace "BOTT\." by "BOT\." the same way in the other 9 cells\./m.test(r.out), r.out);
+  check('W_NOTE_STYLE on a repeated table cell: one warning for the text, listing every cell', (r.out.match(/^WARN W_NOTE_STYLE t1:/gm) || []).length === 1 && /^WARN W_NOTE_STYLE t1: table 't1' in view A: rows\/0\/3 \(the same text in 8 more cells: rows\/1\/3, .*rows\/8\/3\) breaks the house note style: lowercase letters.* Fix: set rows\/0\/3 and the 8 other cells with this text to "PER SPAN"$/m.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

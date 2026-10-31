@@ -50,7 +50,7 @@
             ["#5", 36, 47, 31, 41],
             ["#6", { "text": "SEE NOTE 2", "colspan": 2 }, 37, 49]
           ],
-          "notes": ["VERT. BARS: USE OTHER VALUES", "SPLICE #6 AND LARGER PER EOR", "* VALUES IN INCHES"]
+          "notes": ["VERT. BARS: USE OTHER VALUES", "SPLICE #6 AND LARGER PER E.O.R.", "* VALUES IN INCHES"]
         },
         {
           "id": "t_hd",

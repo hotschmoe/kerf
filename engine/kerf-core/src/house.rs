@@ -33,7 +33,7 @@ impl Abbr {
 /// The approved forms of the built-in list `us-structural`: US structural practice as written in the MASS reference sets
 /// (US Southwest firms, 2014-2024), periods on shortened words, dotted initials for phrases, none on material/product
 /// acronyms (SPEC 25.3, 25.6). A note may end on any of these with its period; coverage reads each as its words.
-pub static ABBREVIATIONS: [Abbr; 140] = [
+pub static ABBREVIATIONS: [Abbr; 141] = [
     ab("A.B.", &["ANCHOR BOLT"]).refs(25),
     ab("ABV.", &["ABOVE"]).refs(27),
     ab("ADD'L", &["ADDITIONAL"]),
@@ -53,6 +53,7 @@ pub static ABBREVIATIONS: [Abbr; 140] = [
     ab("BOT.", &["BOTTOM"]).refs(11),
     ab("BRG.", &["BEARING"]).refs(1),
     ab("BTWN.", &["BETWEEN"]).refs(2),
+    ab("CALC.", &["CALCULATION", "CALCULATIONS"]),
     ab("C.I.P.", &["CAST IN PLACE"]).refs(1),
     ab("C.J.", &["CONTROL JOINT"]).refs(7),
     ab("CLG.", &["CEILING"]).refs(29),
