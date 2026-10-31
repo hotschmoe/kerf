@@ -223,6 +223,28 @@ pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Opt
     ok.then_some(out)
 }
 
+/// Anchors on a point list (SPEC 25.1): `vertex_k` at point k (1-based, after repeated points are dropped) and
+/// `edge_k_mid` at the middle of the edge from point k to the next (the arc's midpoint for a bulged edge); `closed`
+/// adds the edge from the last point back to the first.
+pub fn vertex_anchors(pts: &[Pt], closed: bool) -> Vec<model::NamedAnchor> {
+    let n = pts.len();
+    let mut out: Vec<model::NamedAnchor> =
+        pts.iter().enumerate().map(|(i, p)| model::NamedAnchor { name: format!("vertex_{}", i + 1), p: p.v() }).collect();
+    let edges = if closed { n } else { n.saturating_sub(1) };
+    for i in 0..edges {
+        let (a, b) = (pts[i], pts[(i + 1) % n].v());
+        let p = if a.b == 0.0 {
+            a.v().mid(b)
+        } else {
+            let arc = geom::arc_of(a.v(), b, a.b);
+            let t = arc.a0 + arc.sweep / 2.0;
+            V2::init(arc.c.x + arc.r * math::cos(t), arc.c.y + arc.r * math::sin(t))
+        };
+        out.push(model::NamedAnchor { name: format!("edge_{}_mid", i + 1), p });
+    }
+    out
+}
+
 pub fn drop_duplicate_points(pts: &[Pt]) -> Vec<Pt> {
     let mut out: Vec<Pt> = Vec::new();
     for p in pts {

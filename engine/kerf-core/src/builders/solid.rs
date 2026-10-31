@@ -1,6 +1,6 @@
 //! solid (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, drop_duplicate_points, material_ok, one_prism, oriented_ccw, parse_point_list};
+use super::common::{Ctx, drop_duplicate_points, material_ok, one_prism, oriented_ccw, parse_point_list, vertex_anchors};
 use crate::geom;
 use crate::model::{self, Built, Prism};
 use crate::params::params;
@@ -31,6 +31,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let lp;
     let mut points_mode = false;
+    let mut anchors = alloc::vec::Vec::new();
     if let Some(rv) = prof.get("rect") {
         let Some([wv, hv]) = rv.arr().and_then(|a| <&[_; 2]>::try_from(a).ok()).map(|a| [&a[0], &a[1]]) else {
             ctx.p.fail("profile/rect", "profile.rect must be [width, height]".into());
@@ -60,6 +61,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ctx.p.fail("profile/points", "profile.points needs at least 3 points".into());
             return None;
         }
+        anchors = vertex_anchors(&clean, true);
         lp = oriented_ccw(clean);
         points_mode = true;
     } else {
@@ -70,6 +72,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let prism = Prism { material: sp.material.clone(), loops: model::one_loop(lp), ..Prism::default() };
     Some(Built {
         prisms: one_prism(prism),
+        anchors,
         box_,
         points_mode,
         info: format!("solid {} (escape hatch)", sp.material),

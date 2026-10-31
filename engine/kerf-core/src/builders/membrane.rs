@@ -1,6 +1,6 @@
 //! membrane (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
-use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, vs_of};
+use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, vertex_anchors, vs_of};
 use crate::geom::{self, V2};
 use crate::json::Value;
 use crate::math;
@@ -95,6 +95,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let box_ = geom::loop_box(&rib);
     let info =
         format!("membrane {} {} thick L={}{}", material, fmt_ft_in(t), fmt_ft_in(path_len(&vs_of(&clean))), until_note);
+    let anchors = vertex_anchors(&clean, false);
     let prism = Prism {
         material: material.to_string(),
         loops: model::one_loop(rib),
@@ -104,5 +105,5 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         centerline: clean,
         ..Prism::default()
     };
-    Some(Built { prisms: vec![prism], box_, points_mode: true, info, ..Built::default() })
+    Some(Built { prisms: vec![prism], anchors, box_, points_mode: true, info, ..Built::default() })
 }

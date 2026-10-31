@@ -445,6 +445,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
             continue;
         }
         let r = bar.built.bar_d / 2.0;
+        let mut outside: Vec<(V2, &str)> = Vec::new();
         for bp in &bar.world {
             let centre;
             let mut dir = V2::init(0.0, 0.0);
@@ -470,6 +471,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                 let Some(l0) = bp.loops.first() else { continue };
                 centre = geom::loop_box(l0).center();
             }
+            let mut hosted = false;
             for h in &s.comps {
                 let Some(host) = h.built.host.as_ref() else { continue };
                 let Some(hz0) = h.zs.first() else { continue };
@@ -568,11 +570,89 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     break;
                 }
                 if found {
+                    hosted = true;
                     break;
                 }
             }
+            if pieces.is_empty() {
+                if !hosted {
+                    outside.push((centre, "its centre"));
+                }
+            } else if let Some(o) = path_outside(s, bp, &pieces, centre) {
+                outside.push(o);
+            }
+        }
+        bar_outside(s, bar, &outside, diags);
+    }
+}
+
+/// Whether `p` lies in (or on) a concrete or masonry host of the set whose z range meets the bar's.
+fn in_host(s: &Drawn<'_, '_>, bp: &Prism, p: V2) -> bool {
+    s.comps.iter().any(|h| {
+        let Some(host) = h.built.host.as_ref() else { return false };
+        h.xfs.iter().zip(&h.zs).any(|(xf, hz)| {
+            if bp.z1 < hz[0] - 1e-6 || bp.z0 > hz[1] + 1e-6 {
+                return false;
+            }
+            let fl = geom::flatten_loop(&xf.apply_loop(&host.outline), FLAT_TOL);
+            geom::locate(p, core::slice::from_ref(&fl), 1e-6) != Loc::Outside
+                || geom::point_in_loop_eo(p, &fl)
+        })
+    })
+}
+
+/// The point that puts a path bar outside its hosts: the middle of a bend in no host, else (when no point of the bar is
+/// in a host) the middle of its longest leg. A straight leg may run out of the concrete (a dowel, a bar welded to steel).
+fn path_outside(s: &Drawn<'_, '_>, bp: &Prism, pieces: &[Piece], centre: V2) -> Option<(V2, &'static str)> {
+    for pc in pieces.iter().filter(|pc| pc.is_bend) {
+        let m = pc.segs.get(pc.segs.len() / 2).map_or(pc.p0, |sg| sg[0]);
+        if !in_host(s, bp, m) {
+            return Some((m, "a bend"));
         }
     }
+    let any = pieces.iter().flat_map(|pc| pc.segs.iter()).any(|sg| in_host(s, bp, sg[0]) || in_host(s, bp, sg[0].mid(sg[1])));
+    let last = pieces.last().and_then(|pc| pc.segs.last()).is_some_and(|sg| in_host(s, bp, sg[1]));
+    if any || last { None } else { Some((centre, "the middle of its longest leg")) }
+}
+
+/// `W_BAR_OUTSIDE` (SPEC 25.1): an along-z bar centred in no concrete or masonry host drawn with it, or a path bar
+/// with a bend outside every host or no point in any. Silent when the set draws no host at all.
+fn bar_outside(s: &Drawn<'_, '_>, bar: &Comp<'_>, outside: &[(V2, &str)], diags: &Diags) {
+    let Some(&(c, what)) = outside.first() else { return };
+    let mut nearest: Option<(&str, f64)> = None;
+    for h in &s.comps {
+        let Some(host) = h.built.host.as_ref() else { continue };
+        for xf in &h.xfs {
+            let fl = geom::flatten_loop(&xf.apply_loop(&host.outline), FLAT_TOL);
+            let d = (0..fl.len())
+                .map(|i| geom::dist_point_seg(c, fl[i], fl[(i + 1) % fl.len()]))
+                .fold(f64::INFINITY, f64::min);
+            if nearest.is_none_or(|(_, nd)| d < nd) {
+                nearest = Some((h.id.as_str(), d));
+            }
+        }
+    }
+    let Some((host, dist)) = nearest else { return };
+    let total = bar.world.len();
+    let which = if total == 1 {
+        format!("{what} (x {}, y {})", fmt_ft_in(c.x), fmt_ft_in(c.y))
+    } else {
+        format!("{} of its {total} bars (the first at x {}, y {})", outside.len(), fmt_ft_in(c.x), fmt_ft_in(c.y))
+    };
+    diags.add_fix(
+        Level::Warning,
+        "W_BAR_OUTSIDE",
+        Some(&bar.id),
+        None,
+        format!(
+            "rebar '{}' is not inside concrete or masonry: {which} lies in no host; the nearest host is '{host}', {} away",
+            bar.id,
+            fmt_ft_in(dist),
+        ),
+        format!(
+            "move the bar into '{host}' (\"place\": {{\"in\": \"{host}\", \"face\": \"bottom\", \"cover\": 3}} puts bars at cover inside its outline) or correct its at/points; acknowledge W_BAR_OUTSIDE only if the bar really stands outside the concrete (a dowel into future work)"
+        ),
+    );
 }
 
 fn unverified_count(doc: &Value, diags: &Diags) {

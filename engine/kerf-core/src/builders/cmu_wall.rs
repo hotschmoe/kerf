@@ -129,10 +129,16 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         }
     }
     let anchor = |name: &str, p: V2| NamedAnchor { name: name.into(), p };
+    zones.push(zone_rect("cell", fs, 0.0, w - fs, total_h));
     let anchors = alloc::vec![
         anchor("bond_beam_center", bb_center),
         anchor("top_center", V2::init(w / 2.0, total_h)),
         anchor("cell_center_top", V2::init(w / 2.0, total_h)),
+        anchor("cell_left", V2::init(fs, 0.0)),
+        anchor("cell_center", V2::init(w / 2.0, 0.0)),
+        anchor("cell_right", V2::init(w - fs, 0.0)),
+        anchor("cell_left_top", V2::init(fs, total_h)),
+        anchor("cell_right_top", V2::init(w - fs, total_h)),
     ];
     let outline = model::rect_loop(0.0, 0.0, w, total_h);
     let nom = if (w - 5.625).abs() < 1e-3 {

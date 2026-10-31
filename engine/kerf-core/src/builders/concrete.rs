@@ -2,7 +2,7 @@
 
 use super::common::{
     Ctx, ParsedCover, drop_duplicate_points, fmt_ft_in, fmt_num, material_ok, mirror_built, one_prism, oriented_ccw,
-    parse_cover, parse_point_list, zone_rect,
+    parse_cover, parse_point_list, vertex_anchors, zone_rect,
 };
 use crate::geom::{self, Pt, V2};
 use crate::math;
@@ -97,11 +97,13 @@ fn polygon(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Opti
         ctx.p.fail("points", format!("polygon needs at least 3 distinct points (got {})", clean.len()));
         return None;
     }
+    let anchors = vertex_anchors(&clean, true);
     let lp = oriented_ccw(clean);
     let box_ = geom::loop_box(&lp);
     let prism = Prism { material: material.into(), loops: model::one_loop(lp.clone()), ..Prism::default() };
     Some(Built {
         prisms: one_prism(prism),
+        anchors,
         box_,
         points_mode: true,
         host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
