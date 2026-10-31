@@ -650,11 +650,18 @@ pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
 /// `W_NOTE_STYLE` on every text of a table (title, headers, units, cells, notes); cells repeat by nature, so no repeat check.
 fn table_style(an: &Value, vid: &str, st: &Style, diags: &Diags) {
     let aid = str_of(an, "id");
+    let mut listed = 0usize;
+    let mut more: Vec<String> = Vec::new();
     for (sub, text) in crate::annot::table::texts(an).into_iter().filter(|(p, _)| !p.ends_with("/unit")) {
         let ns = check_note_text(text, st);
         if ns.issues.is_empty() {
             continue;
         }
+        if listed == TABLE_STYLE_LISTED {
+            more.push(sub);
+            continue;
+        }
+        listed += 1;
         let fix = if !ns.fix_safe || ns.rewrite || ns.fixed == text {
             "edit the text by hand to fix the problems listed".to_string()
         } else {
@@ -669,7 +676,25 @@ fn table_style(an: &Value, vid: &str, st: &Style, diags: &Diags) {
             fix,
         );
     }
+    if !more.is_empty() {
+        diags.add_fix(
+            Level::Warning,
+            "W_NOTE_STYLE",
+            Some(aid),
+            Some(&format!("views/{vid}/annotations/{aid}")),
+            format!(
+                "table '{aid}' in view {vid}: {} more texts break the house note style: {}{}",
+                more.len(),
+                more.iter().take(12).cloned().collect::<Vec<_>>().join(", "),
+                if more.len() > 12 { format!(", +{} more", more.len() - 12) } else { String::new() }
+            ),
+            "fix the texts listed above the same way, then run kerf check again for the rest".to_string(),
+        );
+    }
 }
+
+/// `W_NOTE_STYLE` lines per table before the rest are summed up in one.
+const TABLE_STYLE_LISTED: usize = 8;
 
 fn note_style(doc: &Value, st: &Style, diags: &Diags) {
     for v in arr_of(doc, "views").unwrap_or(&[]) {

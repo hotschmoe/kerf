@@ -1441,7 +1441,7 @@ DETAIL NOTES.
   then goes under them.
 - **Text rules.** Title, headers, cells and notes take the style case transform (§25.3: `f'c`, `db`, `16d` keep their case)
   and `W_NOTE_STYLE` (path `.../title`, `.../columns/<k>`, `.../header/<r>/<c>`, `.../rows/<r>/<c>`, `.../notes/<k>`; no
-  repeat check, units are not linted). Coverage (§25.3) gets three kinds of candidate per table, all reporting
+  repeat check, units are not linted; after 8 lines per table one more lists the other paths). Coverage (§25.3) gets three kinds of candidate per table, all reporting
   `table <id>`: the title with every column header, unit and header cell; each body row (its cells, numbers included) with
   that heading; each note.
 - **`W_TABLE_CELL`** (warning, id = the table, path = the cell): a cell's text (a word wider than its fixed-width columns)
