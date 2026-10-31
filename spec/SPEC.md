@@ -612,7 +612,8 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_WELD_SIZE` | warning | a fillet weld symbol with `members` is larger than the thinner part allows (t, or t − 1/16 when t ≥ 1/4; AISC 360 J2.2b) or smaller than Table J2.4 (1/8, 3/16, 1/4, 5/16 by thinner part ≤ 1/4, 1/2, 3/4, over). Thickness of a W or channel is its thinner element, of an HSS or pipe the design wall |
 | `I_SOLID_USED` | info | `solid` escape hatch used |
 | `W_REF_UNKNOWN` | warning | a view `omit` / `only` entry (id or `*` glob) that matches no component; it has no effect (§25.4) |
-| `W_ACK_UNUSED` | warning | `acknowledge` entries of a component that suppressed nothing in any view (stale, repeated, or an `I_*` code); one per component, the fix is the `update` op that removes them. Only when every view was built and the document has no errors (§25.4) |
+| `W_ABBREV` | warning | an abbreviation in a note, label, dim text, weld tail or view title not written in the company style's approved form (`TYP` -> `TYP.`, `OC` -> `O.C.`, `C.M.U.` -> `CMU`, `BOTT.` -> `BOT.`), or a spelled-out word its `always` list abbreviates; one per token, the fix is the `update` op that rewrites only the flagged tokens (§25.6) |
+| `W_ACK_UNUSED` | warning | `acknowledge` entries of a component (or a view or annotation, §25.6) that suppressed nothing in any view (stale, repeated, or an `I_*` code); one per owner, the fix is the `update` op that removes them. Only when every view was built and the document has no errors (§25.4) |
 | `I_ACK` | info | a warning suppressed by `acknowledge` (code, component, reason, the original message); `diagnostics` only, the summary groups them (§25.4) |
 
 **Per-view geometry checks.** `W_OVERLAP`, `W_FLOATING`, `W_UNTREATED_CONTACT`, `W_COVER`, `W_NEAR_MISS` and
