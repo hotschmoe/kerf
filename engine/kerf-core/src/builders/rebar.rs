@@ -3,8 +3,8 @@
 use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, world_box};
 use crate::clip;
 use crate::geom::{self, Box, FLAT_TOL, Pt, V2, Xf};
-use crate::math;
 use crate::json::Value;
+use crate::math;
 use crate::model::fmt_num;
 use crate::model::{self, Built, Level, NamedAnchor, Prism};
 use crate::num;
@@ -147,12 +147,18 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
         }
     };
     let Some(arr) = rp.points.as_ref().and_then(Value::arr) else {
-        ctx.p.fail("points", "plane \"xz\" needs 'points': [[x, z], ...], the bar's corners seen from above (model x and z)".to_string());
+        ctx.p.fail(
+            "points",
+            "plane \"xz\" needs 'points': [[x, z], ...], the bar's corners seen from above (model x and z)".to_string(),
+        );
         return None;
     };
     let mut vs: Vec<V2> = Vec::new();
     for (i, e) in arr.iter().enumerate() {
-        let xz = e.arr().filter(|a| a.len() == 2).and_then(|a| Some(V2::init(units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
+        let xz = e
+            .arr()
+            .filter(|a| a.len() == 2)
+            .and_then(|a| Some(V2::init(units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
         let Some(v) = xz else {
             ctx.p.fail(&format!("points/{i}"), format!("point {i} of a plane \"xz\" bar must be [x, z], two lengths (model x and z; the height is 'y'), got {}", model::kind_or_text(e)));
             return None;

@@ -77,9 +77,7 @@ impl<'s> Section<'s> {
         let cls = prisms
             .iter()
             .map(|p| {
-                if elevation {
-                    Class::Beyond
-                } else if p.lengthwise && p.z1 > spec.cut_z + eps && reaches_behind(p) {
+                if elevation || (p.lengthwise && p.z1 > spec.cut_z + eps && reaches_behind(p)) {
                     Class::Beyond
                 } else if p.z0 < spec.cut_z - eps && p.z1 > spec.cut_z + eps {
                     Class::Cut

@@ -52,7 +52,7 @@ struct Strip {
 /// The y intervals of `flat` on the vertical line through x, as (lo, hi) pairs.
 fn column(flat: &[Vec<V2>], x: f64) -> Vec<[f64; 2]> {
     let ys = pathclip::scan(flat, x, true);
-    ys.chunks_exact(2).map(|c| [c[0], c[1]]).collect()
+    ys.as_chunks::<2>().0.to_vec()
 }
 
 /// The lowest y and the top (capped at `cap`) of the parts of the column at x below `cap`.
@@ -77,7 +77,7 @@ fn strips(flat: &[Vec<V2>], cut_y: f64) -> Vec<Strip> {
     let mut cuts: Vec<[f64; 2]> = Vec::new();
     if bx.y1 > cut_y + EPS {
         let xs = pathclip::scan(flat, cut_y, false);
-        cuts = xs.chunks_exact(2).map(|c| [c[0], c[1]]).filter(|c| c[1] - c[0] > EPS).collect();
+        cuts = xs.as_chunks::<2>().0.iter().copied().filter(|c| c[1] - c[0] > EPS).collect();
     }
     let mut xs: Vec<f64> = flat.iter().flatten().map(|v| v.x).collect();
     xs.extend(cuts.iter().flatten());

@@ -1086,5 +1086,105 @@ section('19. #19 papercuts: check false positives, diagnostics that name their k
   check('kerf version stamps the build (git describe)', r.code === 0 && /^\{"engine":"kerf","version":"[^"]+","spec":"[^"]+","build":"[^"]+"\}$/m.test(r.out), r.out);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #9: view kinds plan and elevation (SPEC 26.3), shown hidden vs where_occurs, rebar plane xz
+section('#9. plan and elevation views, shown hidden / where_occurs, rebar plane xz');
+{
+  const corner = (views) => ({ kerf: '0.1', id: 'vk', title: 'CORNER', components: [
+    { id: 'ftg', type: 'concrete', shape: 'rect', width: 54, height: 10, at: { anchor: 'bottom_left', to: [-6, 0] }, z: [-6, 14] },
+    { id: 'wall_x', type: 'concrete', shape: 'rect', width: 48, height: 30, cover: { bottom: 3, top: 1.5, sides: 2 }, at: { anchor: 'bottom_left', to: [0, 10] }, z: [0, 8] },
+    { id: 'wall_z', type: 'concrete', shape: 'rect', width: 8, height: 30, cover: { bottom: 3, top: 1.5, sides: 2 }, at: { anchor: 'bottom_left', to: [0, 10] }, z: [-40, 0] },
+    { id: 'dowel', type: 'rebar', size: '#5', mode: 'path', points: [[4, 3], [4, 36]], z: 4 },
+    { id: 'cbar', type: 'rebar', size: '#4', plane: 'xz', y: 30, points: [[30, 5.5], [2.5, 5.5], [2.5, -26]] }], views });
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const texts = (d, src) => d.items.filter((i) => i.t === 'text' && (src === undefined || i.src === src)).map((i) => i.s);
+
+  write('vk1.kerf.json', corner([
+    { id: 'A', kind: 'section', cut_z: 4, annotations: [{ id: 'n1', type: 'note', text: 'CORNER BAR', target: 'cbar' }] },
+    { id: 'B', kind: 'plan', title: 'CORNER REINFORCING', annotations: [{ id: 'n1', type: 'note', text: 'CORNER BAR', target: 'cbar' }, { id: 'n2', type: 'note', text: 'DOWEL', target: 'dowel' }] },
+    { id: 'C', kind: 'plan', title: 'BASE PLATE PLAN', crop: { x: [-10, 52], z: [-44, 18] } },
+    { id: 'D', kind: 'plan', title: 'Z', crop: { x: [-10, 52], y: [-18, 44] } }]));
+  let r = kerf(['check', 'vk1.kerf.json']);
+  check('a footing, stem walls, a dowel and an xz corner bar: section and plan from one model, 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  let d = items('vk1.kerf.json', 'B');
+  check('plan drawing kind is "plan"', d.kind === 'plan', d.kind);
+  check('plan: the dowel crossing the cut is a filled dot', d.items.some((i) => i.t === 'fill' && i.src === 'dowel'), d.items.filter((i) => i.src === 'dowel'));
+  const bar = d.items.find((i) => i.t === 'path' && i.src === 'cbar' && i.pen === 'rebar');
+  check('plan: the xz corner bar is one rebar path with its bend (plan y = -z)', bar && bar.pts.length > 4 && bar.pts.some((p) => p[0] === 30 && p[1] === -5.5) && bar.pts.some((p) => p[0] === 2.5 && p[1] === 26), bar);
+  check('plan: the walls the plane crosses are hatched', d.items.some((i) => i.t === 'hatch' && i.src === 'wall_x') && d.items.some((i) => i.t === 'hatch' && i.src === 'wall_z'));
+  check('plan: the footing below the cut is an outline, not hatched', d.items.some((i) => i.t === 'path' && i.src === 'ftg') && !d.items.some((i) => i.t === 'hatch' && i.src === 'ftg'));
+  check('plan title: text.plan_title "PLAN - {title}"', texts(d, 'title:B').includes('PLAN - CORNER REINFORCING'), texts(d, 'title:B'));
+  check('plan title already naming PLAN prints as written', texts(items('vk1.kerf.json', 'C'), 'title:C').includes('BASE PLATE PLAN'), texts(items('vk1.kerf.json', 'C'), 'title:C'));
+  const cz = items('vk1.kerf.json', 'C'), cy = items('vk1.kerf.json', 'D');
+  check('plan crop {"x", "z"} (model z) equals {"x", "y"} with y = -z', JSON.stringify(cz.items.filter((i) => i.t === 'path' && i.src === 'wall_x')) === JSON.stringify(cy.items.filter((i) => i.t === 'path' && i.src === 'wall_x')));
+  d = items('vk1.kerf.json', 'A');
+  check('section: the xz bar is a dot where it crosses cut_z', d.items.some((i) => i.t === 'fill' && i.src === 'cbar'), d.items.filter((i) => i.src === 'cbar'));
+
+  const sfile = write('vk-style.kerfstyle.json', { text: { plan_title: '{title} (PLAN)' } });
+  r = kerf(['drawing', 'vk1.kerf.json', '--view', 'B', '--style', sfile]);
+  check('style text.plan_title "{title} (PLAN)"', r.code === 0 && texts(JSON.parse(r.out), 'title:B').includes('CORNER REINFORCING (PLAN)'), r.err);
+  write('vk-bad.kerfstyle.json', { text: { plan_title: 'PLAN' } });
+  r = kerf(['check', 'vk1.kerf.json', '--style', path.join(tmp, 'vk-bad.kerfstyle.json')]);
+  check('style text.plan_title without {title} is E_STYLE', r.code !== 0 && /text\.plan_title' must be a string .* contains \{title\}/.test(r.out + r.err), r.out + r.err);
+
+  write('vk2.kerf.json', corner([
+    { id: 'A', kind: 'planview' },
+    { id: 'B', kind: 'plan', cut_z: 4, cut_y: 'x' }]));
+  r = kerf(['check', 'vk2.kerf.json']);
+  check('unknown view kind lists section, plan, elevation, iso', /ERROR E_PARAM A: view kind must be "section", "plan", "elevation" or "iso" \(got "planview"\)/.test(r.out), r.out);
+  check('plan cut_y not a length is E_PARAM', /ERROR E_PARAM B: cut_y must be a length/.test(r.out), r.out);
+  write('vk2.kerf.json', corner([
+    { id: 'A', kind: 'section', cut_y: 30, hidden_lines: true },
+    { id: 'B', kind: 'plan', cut_z: 4 }]));
+  r = kerf(['check', 'vk2.kerf.json']);
+  check('cut_y on a section warns W_PARAM (ignored)', /^WARN W_PARAM A: view A: cut_y is the cut height of a plan view; this section view ignores it/m.test(r.out), r.out);
+  check('hidden_lines on a section warns W_PARAM', /^WARN W_PARAM A: view A: hidden_lines applies to plan and elevation views/m.test(r.out), r.out);
+  check('cut_z on a plan warns W_PARAM (ignored)', /^WARN W_PARAM B: view B: a plan view cuts at the height cut_y, so its cut_z is ignored/m.test(r.out), r.out);
+  check('cut_y and hidden_lines are schema keys (no W_UNKNOWN_KEY)', !/W_UNKNOWN_KEY/.test(r.out), r.out);
+  write('vk2.kerf.json', corner([{ id: 'B', kind: 'plan', cut_y: 20, annotations: [{ id: 'n1', type: 'note', text: 'CORNER BAR', target: 'cbar' }] }]));
+  r = kerf(['check', 'vk2.kerf.json']);
+  check('plan: a target above cut_y is W_NOTE_TARGET naming cut_y and hidden_lines', /^WARN W_NOTE_TARGET n1: .*above the cut plane cut_y.*Fix: move the view crop or cut_y .*"hidden_lines": true/m.test(r.out), r.out);
+
+  const bad = (extra) => { write('vk3.kerf.json', corner([{ id: 'A', kind: 'section' }])); const doc = readJson('vk3.kerf.json'); Object.assign(doc.components[4], extra); write('vk3.kerf.json', doc); return kerf(['check', 'vk3.kerf.json']); };
+  r = bad({ y: undefined });
+  check('rebar plane xz without y: E_PARAM with the fix', /^ERROR E_PARAM cbar: plane "xz" needs 'y'/m.test(r.out), r.out);
+  r = bad({ points: [[0, 1, 2], [3, 4]] });
+  check('rebar plane xz: a point that is not [x, z] is E_PARAM', /^ERROR E_PARAM cbar: point 0 of a plane "xz" bar must be \[x, z\]/m.test(r.out), r.out);
+  r = bad({ place: { in: 'wall_x' } });
+  check('rebar plane xz with place: E_PARAM', /^ERROR E_PARAM cbar: plane "xz" bars are drawn from 'points'/m.test(r.out), r.out);
+  r = kerf(['schema', 'view', 'rebar']);
+  check('schema: view kinds plan|elevation, cut_y, hidden_lines; rebar plane and y', /section\|plan\|elevation\|iso/.test(r.out) && /^- cut_y: /m.test(r.out) && /^- hidden_lines: /m.test(r.out) && /^- plane: default xy/m.test(r.out) && /^- y: plane xz: required/m.test(r.out), r.out.slice(0, 300));
+
+  const wall = (shown, views) => ({ kerf: '0.1', id: 'el', title: 'STRAP', components: [
+    { id: 'stud', type: 'lumber', size: '2x6', run: 'y', face: 'narrow', length: 60, at: { anchor: 'bottom_left', to: [0, -30] }, z: [-2.75, 2.75], array: { axis: 'x', count: 3, spacing: 16 } },
+    { id: 'plate', type: 'lumber', size: '2x6', run: 'x', face: 'narrow', length: 40, at: { anchor: 'bottom_left', to: [-4, 30] }, z: [-2.75, 2.75] },
+    { id: 'strap', type: 'connector', model: 'CMST14', lay: 'face', points: [[17, -20], [17, 28]], z: [2.75, 2.85] },
+    { id: 'blk', type: 'lumber', size: '2x4', run: 'x', face: 'wide', length: 1.5, at: { anchor: 'bottom_left', to: [16, 0] }, z: [-2.75, -1.25], shown }], views });
+  write('el.kerf.json', wall('hidden', [
+    { id: 'S', kind: 'section', cut_z: 0, crop: { x: [-6, 40], y: [-20, 40] }, annotations: [{ id: 'n1', type: 'note', text: 'CMST14 STRAP', target: 'strap' }] },
+    { id: 'E', kind: 'elevation', crop: { x: [-6, 40], y: [-20, 40] }, annotations: [{ id: 'n1', type: 'note', text: 'CMST14 STRAP', target: 'strap' }, { id: 'n2', type: 'note', text: '2X4 BLOCKING', target: 'blk' }] }]));
+  r = kerf(['check', 'el.kerf.json']);
+  check('section with cut_z in the wall: the strap in front is not drawn (W_NOTE_TARGET)', /^WARN W_NOTE_TARGET n1: note 'n1' in view S/m.test(r.out) && !/view E/.test(r.out), r.out);
+  d = items('el.kerf.json', 'E');
+  check('elevation draws the strap on the wall face without touching cut_z', d.kind === 'elevation' && d.items.some((i) => i.t === 'path' && i.src === 'strap') && texts(d, 'n1').length > 0, d.err);
+  check('elevation: studs the crop cuts get break lines (lumber included)', d.items.filter((i) => i.t === 'path' && i.src === 'crop' && i.pen === 'break').length >= 2, d.items.filter((i) => i.src === 'crop').length);
+  check('elevation: visible outlines in the profile pen', d.items.some((i) => i.t === 'path' && i.src === 'plate' && i.pen === 'profile'));
+  check('shown "hidden": dashed, and its note has no (WHERE OCCURS)', d.items.some((i) => i.t === 'path' && i.src === 'blk' && i.pen === 'hidden') && texts(d, 'n2').join(' ') === '2X4 BLOCKING', texts(d, 'n2'));
+  write('el.kerf.json', wall('where_occurs', [{ id: 'E', kind: 'elevation', annotations: [{ id: 'n2', type: 'note', text: '2X4 BLOCKING', target: 'blk' }] }]));
+  check('shown "where_occurs": the note ends in (WHERE OCCURS)', /\(WHERE OCCURS\)/.test(texts(items('el.kerf.json', 'E'), 'n2').join(' ')), texts(items('el.kerf.json', 'E'), 'n2'));
+  write('el.kerf.json', wall('dashed', [{ id: 'E', kind: 'elevation', annotations: [{ id: 'n2', type: 'note', text: '2X4 BLOCKING', target: 'blk' }] }]));
+  r = kerf(['check', 'el.kerf.json']);
+  check('shown "dashed" still draws as where_occurs and warns W_SHOWN_DASHED with both ops', /\(WHERE OCCURS\)/.test(texts(items('el.kerf.json', 'E'), 'n2').join(' ')) && /^WARN W_SHOWN_DASHED blk: .*Fix: \{"op":"update","path":"components\/blk","value":\{"shown":"where_occurs"\}\} or \{"op":"update","path":"components\/blk","value":\{"shown":"hidden"\}\}/m.test(r.out), r.out);
+  write('el.kerf.json', wall('solid', [{ id: 'E', kind: 'elevation', hidden_lines: true, annotations: [{ id: 'n2', type: 'note', text: '2X4 BLOCKING', target: 'blk' }] },
+    { id: 'F', kind: 'elevation', annotations: [{ id: 'n2', type: 'note', text: '2X4 BLOCKING', target: 'blk' }] }]));
+  r = kerf(['check', 'el.kerf.json']);
+  d = items('el.kerf.json', 'E');
+  check('hidden_lines: hidden parts draw dashed and a note lands on a member hidden everywhere', d.items.some((i) => i.t === 'path' && i.src === 'blk' && i.pen === 'hidden') && texts(d, 'n2').length > 0 && !/n2: note 'n2' in view E/.test(r.out), r.out);
+  check('elevation without hidden_lines: W_NOTE_TARGET says hidden behind nearer members and names hidden_lines', /^WARN W_NOTE_TARGET n2: note 'n2' in view F: .*hidden behind nearer members.*Fix: set "hidden_lines": true/m.test(r.out), r.out);
+  write('el.kerf.json', wall('solid', [{ id: 'P', kind: 'plan', cut_y: 10, annotations: [{ id: 'n1', type: 'note', text: '2X6 STUD', target: 'stud' }] }]));
+  d = items('el.kerf.json', 'P');
+  check('plan: studs (lumber run y) cut by the plane get the end-grain X', d.items.filter((i) => i.t === 'path' && /^stud/.test(i.src) && i.pen === 'beyond' && i.pts.length === 2).length >= 6, d.items.filter((i) => /^stud/.test(i.src ?? '')).length);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

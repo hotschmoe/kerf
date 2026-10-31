@@ -43,6 +43,9 @@ impl Section<'_> {
             Pen::Beyond
         };
         let top_only = elevation && p.outline == OutlineMode::Top;
+        if elevation && p.role == Role::Soil {
+            self.soil_hatch(i, p, &src);
+        }
         if elevation && p.outline == OutlineMode::None {
             return;
         }
@@ -82,9 +85,6 @@ impl Section<'_> {
         }
         if elevation {
             self.end_grain_marks(i, p, &src);
-        }
-        if elevation && p.role == Role::Soil {
-            self.soil_hatch(i, p, &src);
         }
     }
 

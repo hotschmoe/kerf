@@ -234,7 +234,11 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
                 has_crop = true;
             }
             _ => {
-                let plan = if kind == Kind::Plan { " (a plan view also takes {\"x\": [x0, x1], \"z\": [z0, z1]} in model z)" } else { "" };
+                let plan = if kind == Kind::Plan {
+                    " (a plan view also takes {\"x\": [x0, x1], \"z\": [z0, z1]} in model z)"
+                } else {
+                    ""
+                };
                 diags.add(Level::Error, "E_PARAM", Some(id), Some(&format!("{base}/crop")), format!("crop must be {{\"x\": [x0, x1], \"y\": [y0, y1]}} with x0 < x1 and y0 < y1{plan}, every value a length of at most {} inches in magnitude (got {})", model::fmt_num(limits::MAX_COORD_IN), model::kind_or_text(cv)));
                 ok = false;
             }
@@ -299,7 +303,10 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
                 "W_PARAM",
                 Some(id),
                 Some(&format!("{base}/hidden_lines")),
-                format!("view {id}: hidden_lines applies to plan and elevation views; this {} view ignores it", kind.name()),
+                format!(
+                    "view {id}: hidden_lines applies to plan and elevation views; this {} view ignores it",
+                    kind.name()
+                ),
                 "remove hidden_lines, or give the members to show dashed \"shown\": \"hidden\"".to_string(),
             );
             false
