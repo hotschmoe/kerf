@@ -374,11 +374,30 @@ fn read_label<'a>(
         off = model::offset_pair_or_diag(env.diags, Some(id), &format!("{apath}/offset"), "label offset", ov)?;
         p = p.add(off);
     }
+    let align = match non_null(an, "align").map(|v| v.str()) {
+        None | Some(Some("center")) => crate::drawing::Align::Center,
+        Some(Some("left")) => crate::drawing::Align::Left,
+        Some(Some("right")) => crate::drawing::Align::Right,
+        Some(_) => {
+            env.diags.add_fix(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("{apath}/align")),
+                format!(
+                    "label '{id}': \"align\" must be \"left\", \"center\" or \"right\" (got {})",
+                    model::kind_or_text(an.get("align").unwrap_or(&Value::Null))
+                ),
+                "left puts the start of each line on `at`, right its end, center (the default) its middle".to_string(),
+            );
+            return None;
+        }
+    };
     let base = match &mut env.landing {
         Landing::Section(_) => Some(p),
         Landing::Iso(iso) => iso.project(p),
     };
-    Some((LabelSpec { k, id, text, base, off }, off))
+    Some((LabelSpec { k, id, text, align, base, off }, off))
 }
 
 /// Reads every annotation of the view; the invalid ones are diagnosed and skipped.

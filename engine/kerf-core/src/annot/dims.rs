@@ -184,10 +184,18 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, out: &
     sh
 }
 
-pub fn label_items(env: &mut Env, id: &str, text: &str, at: V2, out: &mut Vec<Item>) {
+/// A label: one text item per line (a newline in `text` breaks it), the block centered vertically on `at` and each line
+/// aligned on it.
+pub fn label_items(env: &mut Env, id: &str, text: &str, at: V2, align: Align, out: &mut Vec<Item>) {
     let t = upper_if(env, text).into_owned();
     let h = env.style.label_height_in * env.s;
-    out.push(text_item(env, LayerKey::Notes, Pen::Anno, id, &t, at.x, at.y, h, 0.0, Align::Center, VAlign::Middle));
+    let pitch = h * env.style.line_spacing;
+    let lines: Vec<&str> = t.split('\n').map(|l| l.trim_end_matches('\r')).collect();
+    let top = at.y + pitch * (lines.len() - 1) as f64 / 2.0;
+    for (i, line) in lines.iter().enumerate() {
+        let y = top - pitch * i as f64;
+        out.push(text_item(env, LayerKey::Notes, Pen::Anno, id, line, at.x, y, h, 0.0, align, VAlign::Middle));
+    }
 }
 
 pub fn poly_hits_seg(poly: &[V2; 4], a: V2, b: V2) -> bool {

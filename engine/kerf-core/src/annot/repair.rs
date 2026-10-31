@@ -43,7 +43,7 @@ pub fn render_dim_labels<'a>(
         let mut its = Vec::new();
         let push = lpush.get(i).copied().unwrap_or_default();
         if let Some(p) = l.base {
-            label_items(env, l.id, l.text, p.add(push), &mut its);
+            label_items(env, l.id, l.text, p.add(push), l.align, &mut its);
         }
         for it in &its {
             if let Item::Text(t) = it {

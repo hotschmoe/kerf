@@ -282,15 +282,28 @@ pub static LABEL: Object = Object {
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"label\"", required: true, desc: "annotation type", ..Field::NONE },
-        Field { name: "text", ty: "string", required: true, desc: "UPPERCASE text", ..Field::NONE },
+        Field {
+            name: "text",
+            ty: "string",
+            required: true,
+            desc: "UPPERCASE text; a newline (\"\\n\" in JSON) starts a new line",
+            ..Field::NONE
+        },
         Field {
             name: "at",
             ty: "point",
             required: true,
-            desc: "\"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y]",
+            desc: "\"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y]. The text block is centered vertically on it",
             ..Field::NONE
         },
         Field { name: "offset", ty: "[dx, dy]", def: "[0, 0]", desc: "model inches added to `at`", ..Field::NONE },
+        Field {
+            name: "align",
+            ty: "left|center|right",
+            def: "center",
+            desc: "which part of each line sits on `at`: its start (left), middle or end (right)",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"l_ext\",\"type\":\"label\",\"text\":\"EXTERIOR\",\"at\":\"sill@top_left\",\"offset\":[-6,6]}",
     ..Object::NONE

@@ -169,6 +169,8 @@ pub struct LabelSpec<'a> {
     pub k: usize,
     pub id: &'a str,
     pub text: &'a str,
+    /// Which end (or the middle) of each line sits on `at`.
+    pub align: crate::drawing::Align,
     /// Drawing-space position (author offset applied); None when an iso label does not project.
     pub base: Option<V2>,
     pub off: V2,
