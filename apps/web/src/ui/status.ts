@@ -24,7 +24,8 @@ export function mountStatus(app: App, el: HTMLElement, ws: Workspace | null = nu
     else state = h('span', app.doc ? 'READY' : 'NO DETAIL LOADED');
     segs.push([state]);
     segs.push(['opt', h('span', `${c.components} COMPONENT${c.components === 1 ? '' : 'S'}`)]);
-    segs.push([h('span', { class: c.err ? 'bad' : '' }, `${c.err} ERR`), ' ', h('span', { class: c.warn ? 'warn' : '' }, `${c.warn} WARN`)]);
+    segs.push([h('span', { class: c.err ? 'bad' : '' }, `${c.err} ERR`), ' ', h('span', { class: c.warn ? 'warn' : '' }, `${c.warn} WARN`),
+      ...(c.ack ? [' ', h('span.ackn', `${c.ack} ACK`)] : [])]);
     const v = app.view;
     if (v && app.mode === 'view') {
       const scale = typeof v.scale === 'string' ? v.scale : '';

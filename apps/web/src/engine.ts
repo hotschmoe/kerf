@@ -103,7 +103,7 @@ function wrap(c: Caller, stats: CallStat[], meta: { loadMs: number; wasmBytes: n
       try { outDoc = (await c.json<{ doc: KerfDoc }>('fmt', { doc: r.doc })).doc; } catch (err) { if (!missing(err)) throw err; compat.add('fmt'); }
       let chk: CheckResult = { diagnostics: [], summary: '' };
       try { chk = await c.json<CheckResult>('check', { doc: outDoc, style }); } catch (err) { if (!missing(err)) throw err; compat.add('check'); }
-      return { ok: true, doc: outDoc, diagnostics: chk.diagnostics, summary: chk.summary, changed: r.changed };
+      return { ok: true, doc: outDoc, diagnostics: chk.diagnostics, acknowledged: chk.acknowledged ?? [], summary: chk.summary, changed: r.changed };
     },
     inspect: async (doc, style, query) => {
       if (!compat.has('inspect')) {

@@ -1,7 +1,7 @@
 // Inspector: PARTS / NOTES / DIFF / DIAG tabs, selected-item detail (component params + anchors, note editor with
 // citations and the designer-only VERIFIED toggle), and the export buttons.
 import type { App } from '../app';
-import type { Annotation, Citation, Diagnostic, Op } from '../types';
+import type { Acknowledged, Annotation, Citation, Diagnostic, Op } from '../types';
 import { h, clear, btn } from './dom';
 import { exportActive } from '../export';
 
@@ -31,8 +31,10 @@ export function mountInspector(app: App, el: HTMLElement) {
   const setTab = (t: Tab) => { tab = t; renderTabs(); renderBody(); };
   function renderTabs() {
     clear(tabsEl);
-    const nd = app.diagnostics.length;
-    const defs: [Tab, string][] = [['parts', 'PARTS'], ['notes', 'NOTES'], ['diff', 'DIFF'], ['diag', nd ? `DIAG ${nd}` : 'DIAG']];
+    const nd = shownDiags().length;
+    const na = app.acknowledged.length;
+    const dl = (nd ? `DIAG ${nd}` : 'DIAG') + (na ? `\u00b7${na}A` : '');
+    const defs: [Tab, string][] = [['parts', 'PARTS'], ['notes', 'NOTES'], ['diff', 'DIFF'], ['diag', dl]];
     for (const [t, l] of defs) tabsEl.append(h('button.tab', { type: 'button', class: tab === t ? 'on' : '', on: { click: () => setTab(t) } }, `[${l}]`));
     clear(phRight);
     phRight.append(app.view ? `VIEW ${app.view.id}` : '');
@@ -108,12 +110,26 @@ export function mountInspector(app: App, el: HTMLElement) {
     return wrap;
   }
 
+  /** The diagnostics list without the I_ACK lines: acknowledged warnings get their own section. */
+  function shownDiags(): Diagnostic[] { return app.diagnostics.filter((d) => d.code !== 'I_ACK'); }
   function diagList(): HTMLElement {
-    const ds = app.diagnostics;
-    if (!ds.length) return h('div.empty', 'NO DIAGNOSTICS. 0 ERR 0 WARN.');
+    const ds = shownDiags();
+    const acks = app.acknowledged;
+    if (!ds.length && !acks.length) return h('div.empty', 'NO DIAGNOSTICS. 0 ERR 0 WARN.');
     const wrap = h('div');
     for (const d of ds) wrap.append(diagRow(d));
+    if (acks.length) {
+      wrap.append(h('div.logbar.ackbar', h('span', `${acks.length} ACKNOWLEDGED WARNING${acks.length === 1 ? '' : 'S'}`),
+        h('span.ts', 'REVIEW EACH REASON')));
+      for (const a of acks) wrap.append(ackRow(a));
+    }
     return wrap;
+  }
+  function ackRow(a: Acknowledged): HTMLElement {
+    const target = a.id.replace(/#\d+$/, '');
+    return h('div.diag.ack', { title: `Select ${target}`, on: { click: () => app.setSelection(target) } },
+      h('span.dtag', { class: 'A' }, 'A'),
+      h('div', h('div.dc', `${a.code} · ${a.id}`), h('div.dr', 'REASON: ' + a.reason), h('div.dm', a.message)));
   }
   function diagRow(d: Diagnostic): HTMLElement {
     const L = d.level === 'error' ? 'E' : d.level === 'warning' ? 'W' : 'I';
