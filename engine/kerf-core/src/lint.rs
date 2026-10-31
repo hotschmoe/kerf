@@ -947,12 +947,21 @@ pub fn dim_measure(from: V2, to: V2, dir: &str) -> f64 {
     }
 }
 
+/// The scene a view's dimensions resolve in when it is not the model's: a plan view's Refs are plan points (x, -z),
+/// SPEC 26.3. None for every other kind (model XY is their drawing plane). Built only when the view has a dim.
+pub fn view_scene<'a>(scene: &Scene<'a>, v: &Value) -> Option<Scene<'a>> {
+    let has_dim = arr_of(v, "annotations").unwrap_or(&[]).iter().any(|an| str_of(an, "type") == "dim");
+    (has_dim && str_of(v, "kind") == "plan").then(|| crate::plan::scene(scene))
+}
+
 fn dim_zero(scene: &Scene, doc: &Value, diags: &Diags) {
     for v in arr_of(doc, "views").unwrap_or(&[]) {
         if str_of(v, "kind") == "iso" {
             continue;
         }
         let vid = str_of(v, "id");
+        let plan = view_scene(scene, v);
+        let scene = plan.as_ref().unwrap_or(scene);
         for an in arr_of(v, "annotations").unwrap_or(&[]) {
             if str_of(an, "type") != "dim" {
                 continue;
@@ -1026,7 +1035,7 @@ fn set_member(obj: &mut Value, key: &str, val: Value) {
     }
 }
 
-/// The document with `dir` filled in on every section-view dim that lacks one (dominant axis). The stored document is
+/// The document with `dir` filled in on every dim that lacks one (dominant axis of the view's plane). The stored document is
 /// never changed: renderers get this copy. Unresolvable endpoints are left alone (the view build reports them).
 pub fn with_dim_dirs<'d>(scene: &Scene, doc: &'d Value) -> Cow<'d, Value> {
     if !needs_dim_dirs(doc) {
@@ -1038,6 +1047,8 @@ pub fn with_dim_dirs<'d>(scene: &Scene, doc: &'d Value) -> Cow<'d, Value> {
         if !matches!(v, Value::Object(_)) {
             continue;
         }
+        let plan = view_scene(scene, v);
+        let scene = plan.as_ref().unwrap_or(scene);
         let Some(Value::Array(anns)) = v.get_mut("annotations") else { continue };
         for an in anns {
             if !matches!(an, Value::Object(_)) || str_of(an, "type") != "dim" {

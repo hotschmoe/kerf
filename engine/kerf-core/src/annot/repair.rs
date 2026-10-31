@@ -368,16 +368,31 @@ pub fn report_moves(env: &Env, notes: &[NoteIn], dl: &DimLab, best: &Best) {
         {
             why.push(format!("the leader of note '{}'", n.id));
         }
+        let chained: Vec<String> = dl
+            .dspecs
+            .iter()
+            .filter(|o| o.chain == d.chain && o.id != d.id)
+            .map(|o| format!("'{}'", o.id))
+            .collect();
+        let from = if chained.is_empty() || (d.off0 - d.authored).abs() < 1e-9 {
+            format!("its offset {}", num2(d.off0))
+        } else {
+            format!(
+                "offset {} (its chain with {} lines up there; written {})",
+                num2(d.off0),
+                and_list(&chained),
+                num2(d.authored)
+            )
+        };
         env.diags.add_fix(
             Level::Info,
             "I_ANNOT_MOVED",
             Some(d.id),
             Some(&format!("views/{vid}/annotations/{}/offset", d.id)),
             format!(
-                "view {vid}: dimension '{}' is drawn at offset {} instead of its offset {}: moved {} ({}\" paper) outward to clear {}",
+                "view {vid}: dimension '{}' is drawn at offset {} instead of {from}: moved {} ({}\" paper) outward to clear {}",
                 d.id,
                 num2(eff),
-                num2(d.off0),
                 units::fmt_ft_in(moved),
                 paper(moved, s),
                 and_list(&why)
