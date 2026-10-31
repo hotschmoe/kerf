@@ -42,7 +42,10 @@ fn on_face(ctx: &mut Ctx, on: &str, t: f64) -> Option<f64> {
         Some((a, b)) => match b.parse::<u32>() {
             Ok(k) => (a, Some(k)),
             Err(_) => {
-                ctx.p.fail("on", format!("'on': \"{name}\" is not a member name; use \"<id>\" or \"<id>#<k>\" for array instance k"));
+                ctx.p.fail(
+                    "on",
+                    format!("'on': \"{name}\" is not a member name; use \"<id>\" or \"<id>#<k>\" for array instance k"),
+                );
                 return None;
             }
         },

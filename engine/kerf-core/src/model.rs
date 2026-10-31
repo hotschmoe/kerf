@@ -336,6 +336,8 @@ pub struct Built {
     pub nails: Vec<Nail>,
     /// Indices of the components a `nailing` joins: its own members never hide its nails.
     pub nail_stack: Vec<u32>,
+    /// A face `nailing` whose members also work listed the other way round (the last member is thinner than the nail).
+    pub nail_flip: bool,
     /// Without an explicit `z` the component is centred here (hardware placed on its host members, SPEC 27.2).
     pub nat_zc: Option<f64>,
     /// What the hardware checks need after every component is placed (SPEC 27.2).

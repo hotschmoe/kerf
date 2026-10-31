@@ -52,6 +52,7 @@ impl Section<'_> {
         let crop = self.spec.crop;
         let pen = self.pen_for(Pen::Steel);
         let mut dots: Vec<V2> = Vec::new();
+        let mut shanks: Vec<(V2, V2)> = Vec::new();
         for c in &scene.comps {
             if !scene.nails_shown(c, &self.spec.members) {
                 continue;
@@ -92,6 +93,10 @@ impl Section<'_> {
                     dots.push(h);
                     self.nail_dot(n, h, s, pen, &c.id);
                 } else {
+                    if shanks.iter().any(|(a, b)| a.eql(h, EPS) && b.eql(t, EPS)) {
+                        continue;
+                    }
+                    shanks.push((h, t));
                     self.nail_shank(n, h, t, s, pen, &c.id);
                 }
             }

@@ -555,7 +555,9 @@ fn nails_hidden_diags(hidden: &[crate::section::NailsHidden], spec: &ViewSpec, d
 /// Iso views: a nailing whose heads are all on faces turned away from the view or under other solids (SPEC 28.6).
 fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &ViewSpec, diags: &Diags) {
     let vid = spec.id;
-    let view_op = |key: &str, value: &str| format!("{{\"op\":\"update\",\"path\":\"views/{vid}\",\"value\":{{\"{key}\":{value}}}}}");
+    let view_op = |key: &str, value: &str| {
+        format!("{{\"op\":\"update\",\"path\":\"views/{vid}\",\"value\":{{\"{key}\":{value}}}}}")
+    };
     let from = match spec.from {
         view::From::FrontRight => "front_right",
         view::From::FrontLeft => "front_left",
@@ -563,11 +565,17 @@ fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &Vie
         view::From::BackLeft => "back_left",
     };
     for h in hidden {
-        let node = scene.find(&h.id).map(|c| c.node);
+        let comp = scene.find(&h.id);
+        let node = comp.map(|c| c.node);
+        let flip = comp.is_some_and(|c| c.built.nail_flip);
         let pattern = node.and_then(|n| n.get("pattern")).and_then(Value::str).unwrap_or("face");
-        let members: Vec<&str> =
-            node.and_then(|n| n.get("members")).and_then(Value::arr).map_or(Vec::new(), |a| a.iter().filter_map(Value::str).collect());
-        let comp_op = |key: &str, value: &str| format!("{{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"{key}\":{value}}}}}", h.id);
+        let members: Vec<&str> = node
+            .and_then(|n| n.get("members"))
+            .and_then(Value::arr)
+            .map_or(Vec::new(), |a| a.iter().filter_map(Value::str).collect());
+        let comp_op = |key: &str, value: &str| {
+            format!("{{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"{key}\":{value}}}}}", h.id)
+        };
         let mut fixes: Vec<String> = Vec::new();
         let mut push = |f: String| {
             if !fixes.contains(&f) {
@@ -576,6 +584,18 @@ fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &Vie
         };
         let mut why: Vec<String> = Vec::new();
         for r in &h.why {
+            if let Some(x) = &r.against {
+                let head = format!("the heads on the {} face of '{}' are covered by '", r.face, r.on);
+                match why.iter_mut().find(|w| w.starts_with(&head)) {
+                    Some(w) => {
+                        if !w.contains(&format!("'{x}'")) {
+                            w.push_str(&format!(" and '{x}'"));
+                        }
+                    }
+                    None => why.push(format!("{head}{x}'")),
+                }
+                continue;
+            }
             match &r.under {
                 None => {
                     why.push(format!(
@@ -592,7 +612,7 @@ fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &Vie
                         "top" => "bottom",
                         _ => "top",
                     };
-                    if pattern == "face" && members.len() >= 2 {
+                    if pattern == "face" && flip && members.len() >= 2 {
                         let rev: Vec<String> = members.iter().rev().map(|m| format!("\"{m}\"")).collect();
                         push(format!(
                             "drive them from the other side (heads on the far face of '{}'): {}",
@@ -600,7 +620,10 @@ fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &Vie
                             comp_op("members", &format!("[{}]", rev.join(",")))
                         ));
                     } else if pattern == "toenail" && !h.why.iter().any(|o| o.face == opposite && o.on == r.on) {
-                        push(format!("start them on the {opposite} face: {}", comp_op("faces", &format!("[\"{opposite}\"]"))));
+                        push(format!(
+                            "start them on the {opposite} face: {}",
+                            comp_op("faces", &format!("[\"{opposite}\"]"))
+                        ));
                     }
                     let toward = match r.face {
                         "left" => Some(if from.starts_with("back") { "back_left" } else { "front_left" }),
@@ -614,7 +637,11 @@ fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &Vie
                     }
                 }
                 Some(u) => {
-                    why.push(format!("the heads on the {} face of '{}' are under '{u}'", r.face, r.on));
+                    let head = format!("the heads on the {} face of '{}' are under '", r.face, r.on);
+                    match why.iter_mut().find(|w| w.starts_with(&head)) {
+                        Some(w) => w.push_str(&format!(", '{u}'")),
+                        None => why.push(format!("{head}{u}'")),
+                    }
                     let uid = u.split('#').next().unwrap_or(u);
                     if uid != r.on {
                         push(format!(
@@ -635,7 +662,18 @@ fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &Vie
             "W_NAIL_HIDDEN",
             Some(&h.id),
             Some(&format!("views/{vid}")),
-            format!("'{}' draws none of its fasteners in view {vid}: {}", h.id, why.join("; ")),
+            format!(
+                "'{}' draws none of its fasteners in view {vid}: {}",
+                h.id,
+                why.iter()
+                    .map(|w| if w.contains(" are covered by ") {
+                        format!("{w}, which lies against that face (no view can show them)")
+                    } else {
+                        w.clone()
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
             fixes.join("; or "),
         );
     }

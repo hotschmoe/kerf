@@ -117,6 +117,8 @@ pub struct HeadHidden {
     pub face: &'static str,
     /// The solid in front of the head, or None when its face is turned away from the viewer.
     pub under: Option<String>,
+    /// A solid lying against the head's face (framing nailed up after): no view shows those heads.
+    pub against: Option<String>,
 }
 
 pub struct Iso {
@@ -1206,7 +1208,20 @@ fn hidden_head(iso: &Iso, scene: &Scene, n: &crate::model::Nail, fi: usize) -> H
     } else {
         iso.faces.get(fi).and_then(|f| iso.prisms.get(f.prism)).map(|p| p.src.clone())
     };
-    HeadHidden { on, face, under }
+    let probe = [n.head[0] + out[0] * 0.05, n.head[1] + out[1] * 0.05, n.head[2] + out[2] * 0.05];
+    let against = iso
+        .prisms
+        .iter()
+        .find(|p| {
+            p.comp != n.on
+                && !p.embedded
+                && !p.is_fill
+                && probe[2] > p.z0
+                && probe[2] < p.z1
+                && p.loops.first().is_some_and(|l| geom::point_in_loop_eo(V2::init(probe[0], probe[1]), l))
+        })
+        .map(|p| p.src.clone());
+    HeadHidden { on, face, under, against }
 }
 
 /// Grade-line chain (or full outline) of a fill's cut face.
