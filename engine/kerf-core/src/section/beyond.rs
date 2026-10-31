@@ -88,6 +88,9 @@ impl Section<'_> {
         if p.lengthwise && !elevation {
             pieces = self.off_nearer_slabs(i, p, pieces);
         }
+        if let Some(e) = self.joins.get(i).filter(|e| !e.is_empty()) {
+            pieces = super::joins::off_edges(pieces, &e.clone());
+        }
         for pc in pieces {
             self.add_clipped(Target::Strokes, &pc.pts, pc.closed, pen, &src, p.embedded);
         }

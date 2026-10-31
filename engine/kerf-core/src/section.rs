@@ -4,6 +4,7 @@ mod beyond;
 mod breaks;
 mod cut;
 mod hardware;
+mod joins;
 mod nails;
 mod occlusion;
 mod strokes;
@@ -67,6 +68,8 @@ pub struct Section<'s> {
     /// Where each drawn fastener of a `nailing` component is (component index, point): its notes land there.
     pub nail_marks: Vec<(u32, V2)>,
     pub nails_hidden: Vec<NailsHidden>,
+    /// Per prism, the edges it shares with the bodies of the same casting (not drawn).
+    joins: Vec<Vec<[V2; 2]>>,
 }
 
 impl<'s> Section<'s> {
@@ -116,6 +119,7 @@ impl<'s> Section<'s> {
             crop_loop,
             nail_marks: Vec::new(),
             nails_hidden: Vec::new(),
+            joins: Vec::new(),
         }
     }
 
@@ -181,6 +185,7 @@ impl<'s> Section<'s> {
     }
 
     pub fn build(&mut self) {
+        self.joins = self.join_edges();
         let crop = self.spec.crop;
         let margin = 1e-6;
         let prisms = Rc::clone(&self.prisms);
@@ -195,6 +200,7 @@ impl<'s> Section<'s> {
             }
             self.occs.push(Occ { loops: f, bx, z1: p.z1, cut: self.cls[i] == Class::Cut, prism: i });
         }
+        self.join_occluders();
         let holes: Vec<usize> = prisms
             .iter()
             .enumerate()

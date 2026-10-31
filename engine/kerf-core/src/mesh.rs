@@ -41,6 +41,19 @@ impl Part {
     fn edge(&mut self, a: [f64; 3], b: [f64; 3]) {
         self.edges.extend_from_slice(&[a[0] as f32, a[1] as f32, a[2] as f32, b[0] as f32, b[1] as f32, b[2] as f32]);
     }
+
+    /// Swaps y and z of everything added from vertex `v0`, triangle index `i0` and edge float `e0` on (a solid built
+    /// from an (x, z) outline extruded along "z" becomes one extruded along y); the winding flips with the handedness.
+    fn swap_yz(&mut self, v0: usize, i0: usize, e0: usize) {
+        for xs in [&mut self.positions[v0 * 3..], &mut self.normals[v0 * 3..], &mut self.edges[e0..]] {
+            for c in xs.as_chunks_mut::<3>().0 {
+                c.swap(1, 2);
+            }
+        }
+        for t in self.indices[i0..].as_chunks_mut::<3>().0 {
+            t.swap(1, 2);
+        }
+    }
 }
 
 fn arc_step_for(r: f64) -> f64 {
@@ -407,6 +420,14 @@ pub fn build(scene: &Scene<'_>, include_fills: bool) -> Vec<Part> {
                 let cl = geom::flatten_polyline(&pr.centerline, false, 0.02);
                 tube(&mut part, &cl, pr.sweep_r, (pr.z0 + pr.z1) / 2.0);
                 parts.push(part);
+                continue;
+            }
+            if pr.fp_proxy {
+                if pr.footprint.len() >= 3 {
+                    extrude(&mut part, core::slice::from_ref(&pr.footprint), pr.fp_y[0], pr.fp_y[1], 20.0, [&[], &[]]);
+                    part.swap_yz(0, 0, 0);
+                    parts.push(part);
+                }
                 continue;
             }
             if pr.loops.is_empty() {

@@ -60,6 +60,22 @@ pub fn apply(scene: &mut Scene) {
     crate::sort::stable(&mut hosts, |a, b| a < b);
     hosts.dedup();
     let mut worlds: Vec<(usize, Vec<Prism>)> = Vec::new();
+    for v in voids.iter().filter(|v| scene.comps[v.host].world.iter().any(|p| p.fp_proxy)) {
+        let host = &scene.comps[v.host].id;
+        err(
+            scene,
+            "E_PARAM",
+            host,
+            &v.path,
+            format!(
+                "'{host}' is a footprint with an angled edge: it takes no voids or sleeves ({} would not show in its views)",
+                v.name
+            ),
+            Some("draw the opening in the footprint's own points, or split the footprint where the opening is".into()),
+        );
+    }
+    hosts.retain(|&h| !scene.comps[h].world.iter().any(|p| p.fp_proxy));
+    voids.retain(|v| hosts.contains(&v.host));
     for &h in &hosts {
         let mine: Vec<usize> = (0..voids.len()).filter(|&i| voids[i].host == h).collect();
         let mut out: Vec<Prism> = Vec::new();

@@ -212,6 +212,12 @@ pub struct Prism {
     /// Lines on the face toward the viewer (the joints of a masonry wall seen face-on, SPEC 28.7): drawn thin where the
     /// prism is seen beyond the cut and not hidden.
     pub face_lines: Vec<[V2; 2]>,
+    /// A slab of a concrete footprint with an angled edge (SPEC 28.7): the checks use the slabs, and section, plan,
+    /// elevation, iso and 3D draw the exact `footprint` carried on the first slab instead.
+    pub fp_proxy: bool,
+    /// The plan outline [x, z] (CCW) of an angled footprint, with its y range `fp_y`.
+    pub footprint: Vec<V2>,
+    pub fp_y: [f64; 2],
 }
 
 impl Default for Prism {
@@ -250,6 +256,9 @@ impl Default for Prism {
             hw_dash: false,
             nails: Vec::new(),
             face_lines: Vec::new(),
+            fp_proxy: false,
+            footprint: Vec::new(),
+            fp_y: [0.0; 2],
         }
     }
 }
@@ -273,6 +282,13 @@ impl Prism {
         for c in &mut q.path3 {
             let w = xf.apply(V2::init(c[0], c[1]));
             *c = [w.x, w.y, c[2]];
+        }
+        if !self.footprint.is_empty() {
+            let x0 = self.footprint[0].x;
+            let (a, b) = (xf.apply(V2::init(x0, self.fp_y[0])), xf.apply(V2::init(x0, self.fp_y[1])));
+            let dx = a.x - x0;
+            q.footprint = self.footprint.iter().map(|v| V2::init(v.x + dx, v.y)).collect();
+            q.fp_y = [a.y.min(b.y), a.y.max(b.y)];
         }
         q
     }

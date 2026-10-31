@@ -171,6 +171,7 @@ fn rect_prism(src: &Prism, x0: f64, x1: f64, z0: f64, z1: f64, d0: f64, d1: f64)
         blocking: src.blocking,
         dashed: src.dashed,
         hw_dash: src.hw_dash,
+        seam: src.seam,
         ..Prism::default()
     }
 }
@@ -353,6 +354,60 @@ fn xz_bar_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     out.push(bar_prism(p, center, r, d0, d1));
 }
 
+/// A prism of `src` over the XY loop `lp` and the z range z0..z1 (in plan views: the plan loop and the depth range).
+fn footprint_prism(src: &Prism, lp: Vec<Pt>, z0: f64, z1: f64) -> Prism {
+    Prism {
+        comp: src.comp,
+        part: src.part.clone(),
+        instance: src.instance,
+        material: src.material.clone(),
+        loops: model::one_loop(lp),
+        z0,
+        z1,
+        kind: src.kind,
+        outline: src.outline,
+        pen: src.pen,
+        role: src.role,
+        dashed: src.dashed,
+        ..Prism::default()
+    }
+}
+
+/// An angled footprint in plan (SPEC 28.7): its exact outline, cut when the plane passes through its y range.
+fn footprint_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
+    let [y0, y1] = p.fp_y;
+    if p.footprint.len() < 3 || y0 >= cut_y - EPS {
+        return;
+    }
+    let mut lp: Vec<Pt> = p.footprint.iter().map(|v| Pt::at(plan_pt(v.x, v.y), 0.0)).collect();
+    lp.reverse();
+    out.push(footprint_prism(p, lp, y0, y1));
+}
+
+/// Angled footprints in a section (cut plane z = `cut_z`) or an elevation (`f64::INFINITY`): the strips of the exact
+/// outline seen from the front, cut where the plane crosses it (SPEC 28.7). The other slabs of the footprint are not
+/// drawn; every other prism passes through unchanged.
+pub fn footprints_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
+    if !world.iter().any(|p| p.fp_proxy) {
+        return world;
+    }
+    let mut out = Vec::with_capacity(world.len());
+    for p in world {
+        if !p.fp_proxy {
+            out.push(p);
+            continue;
+        }
+        if p.footprint.len() < 3 {
+            continue;
+        }
+        let [y0, y1] = p.fp_y;
+        for s in strips(core::slice::from_ref(&p.footprint), cut_z) {
+            out.push(footprint_prism(&p, model::rect_loop(s.x0, y0, s.x1, y1), s.lo, s.top));
+        }
+    }
+    out
+}
+
 /// The plan prisms of the drawn world prisms, cut at `cut_y`. Loose fill (earth, gravel) is not drawn in plan.
 pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
     let mut out = Vec::new();
@@ -362,6 +417,10 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
         }
         if p.xz_bar {
             xz_bar_plan(p, cut_y, &mut out);
+            continue;
+        }
+        if p.fp_proxy {
+            footprint_plan(p, cut_y, &mut out);
             continue;
         }
         match p.kind {
@@ -464,6 +523,9 @@ fn plan_box<'p>(ps: impl Iterator<Item = &'p Prism>) -> Box {
         }
         b.add_point(xb.x0, -p.z1);
         b.add_point(xb.x1, -p.z0);
+        for v in &p.footprint {
+            b.add_point(v.x, -v.y);
+        }
     }
     b
 }
