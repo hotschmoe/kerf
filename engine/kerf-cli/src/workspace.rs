@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::sys;
+
 pub const DOC_SUFFIX: &str = ".kerf.json";
 pub const LOG_SUFFIX: &str = ".log.jsonl";
 
@@ -254,10 +256,10 @@ impl RefMiss {
     }
 }
 
-/// The regular file a reference path names inside `root` (a canonical directory). Symbolic links are followed, but
+/// The regular file a reference path names inside `root` (a canonical directory, `sys::plain_path`ed). Symbolic links are followed, but
 /// the resolved file must still lie inside `root`. `rel` must already be free of `references::path_problem`s.
 pub fn resolve_reference(root: &Path, rel: &str) -> Result<PathBuf, RefMiss> {
-    let canon = fs::canonicalize(root.join(rel)).map_err(|_| RefMiss::Missing)?;
+    let canon = fs::canonicalize(root.join(rel)).map(sys::plain_path).map_err(|_| RefMiss::Missing)?;
     if !canon.starts_with(root) {
         return Err(RefMiss::Outside);
     }
@@ -274,7 +276,7 @@ pub fn reference_files_member(doc: &Value, folder: &Path) -> String {
     if lookups.is_empty() {
         return String::new();
     }
-    let root = fs::canonicalize(folder);
+    let root = fs::canonicalize(folder).map(sys::plain_path);
     let mut out = b"\"reference_files\":{".to_vec();
     let mut first = true;
     for p in lookups {
