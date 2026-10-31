@@ -67,10 +67,17 @@ impl<'s> Section<'s> {
     pub fn new(scene: &'s Scene<'s>, spec: &'s ViewSpec<'s>, prisms_in: &[Prism]) -> Section<'s> {
         let prisms: Rc<[Prism]> = hardware::thicken_thin_hardware(prisms_in, spec.scale).into();
         let eps = 1e-9;
+        let reaches_behind = |p: &Prism| {
+            prisms
+                .iter()
+                .any(|q| q.lengthwise && q.comp == p.comp && q.instance == p.instance && q.z0 < spec.cut_z - eps)
+        };
         let cls = prisms
             .iter()
             .map(|p| {
-                if p.z0 < spec.cut_z - eps && p.z1 > spec.cut_z + eps {
+                if p.lengthwise && p.z1 > spec.cut_z + eps && reaches_behind(p) {
+                    Class::Beyond
+                } else if p.z0 < spec.cut_z - eps && p.z1 > spec.cut_z + eps {
                     Class::Cut
                 } else if p.z1 <= spec.cut_z + eps {
                     Class::Beyond
@@ -206,6 +213,9 @@ impl<'s> Section<'s> {
                     let src = self.src_name(p);
                     for l in &p.loops {
                         self.add_clipped(Target::Ghosts, l, true, pen, &src, true);
+                    }
+                    if p.line_pts.len() >= 2 {
+                        self.add_clipped(Target::Ghosts, &p.line_pts, false, pen, &src, true);
                     }
                 }
                 Kind::Line => {

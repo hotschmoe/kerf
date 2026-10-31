@@ -12,6 +12,7 @@ pub mod notes;
 pub mod repair;
 pub mod text;
 pub mod title;
+pub mod weld;
 
 use crate::drawing::Item;
 use crate::font::Font;
@@ -143,6 +144,7 @@ struct Gathered<'a> {
     meta: Vec<Meta<'a>>,
     dspecs: Vec<DimSpec<'a>>,
     lspecs: Vec<LabelSpec<'a>>,
+    welds: Vec<(usize, Vec<Item>)>,
 }
 
 /// The id of annotation `k`, or a diagnostic and `None` when it has none or repeats an earlier one.
@@ -390,9 +392,10 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
         meta: Vec::new(),
         dspecs: Vec::new(),
         lspecs: Vec::new(),
+        welds: Vec::new(),
     };
     let mut seen: Vec<&'a str> = Vec::new();
-    let types = ["note", "dim", "label"];
+    let types = ["note", "dim", "label", "weld"];
     for (k, an) in spec.annotations.iter().enumerate() {
         let mut slot: Option<usize> = None;
         let mut cur_meta = Meta::default();
@@ -419,6 +422,14 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
                     }
                 }
                 "dim" => {}
+                "weld" if spec.kind != Kind::Iso => {
+                    if let Some(ws) = weld::read(env, an, id, &apath) {
+                        let its = weld::items(env, &ws);
+                        env.labels_box.add_box(items_box(env.font, &its));
+                        g.welds.push((k, its));
+                    }
+                }
+                "weld" => {}
                 "label" => {
                     if let Some((ls, off)) = read_label(env, an, k, id, &apath) {
                         cur_meta = Meta {
@@ -457,7 +468,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
 /// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
 /// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
 pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
-    let Gathered { notes, note_slot, per, meta, dspecs, lspecs } = gather(env);
+    let Gathered { notes, note_slot, per, meta, dspecs, lspecs, mut welds } = gather(env);
     let style = env.notes_style();
     if style == NotesStyle::Leader && env.spec.notes_side == NotesSide::Above {
         let vid = env.spec.id;
@@ -519,6 +530,9 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     let mut result: Vec<Item> = Vec::new();
     for (k, its) in rd.per.into_iter().enumerate() {
         result.extend(its);
+        if let Some(w) = welds.iter_mut().find(|w| w.0 == k) {
+            result.append(&mut w.1);
+        }
         if let Some(Some(sl)) = note_slot.get(k)
             && let Some(o) = outs.get_mut(*sl)
         {

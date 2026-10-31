@@ -35,6 +35,8 @@ pub struct Traits {
     pub rigid_sheet: bool,
     /// Can carry a sloped sheet (lumber, panel, truss).
     pub slope_host: Option<SlopeHost>,
+    /// Sizes come from the steel shape table, which the catalog lists (steel).
+    pub shape_table: bool,
 }
 
 impl Traits {
@@ -50,6 +52,7 @@ impl Traits {
         sheet: false,
         rigid_sheet: false,
         slope_host: None,
+        shape_table: false,
     };
 }
 
@@ -78,11 +81,13 @@ pub enum Type {
     Insulation,
     Flashing,
     Joint,
+    Steel,
+    Bolt,
     Solid,
 }
 
 impl Type {
-    pub const ALL: [Type; 14] = [
+    pub const ALL: [Type; 16] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -96,6 +101,8 @@ impl Type {
         Type::Insulation,
         Type::Flashing,
         Type::Joint,
+        Type::Steel,
+        Type::Bolt,
         Type::Solid,
     ];
 
@@ -114,6 +121,8 @@ impl Type {
             Type::Insulation => "insulation",
             Type::Flashing => "flashing",
             Type::Joint => "joint",
+            Type::Steel => "steel",
+            Type::Bolt => "bolt",
             Type::Solid => "solid",
         }
     }
@@ -292,7 +301,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 14] = [
+pub static ENTRIES: [Entry; 16] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -425,6 +434,24 @@ pub static ENTRIES: [Entry; 14] = [
         traits: Traits::NONE,
     },
     Entry {
+        ty: Type::Steel,
+        summary: "Structural steel shape from the AISC table: W, HSS (rect, square, round), pipe, angle, channel (C, MC), plate. Drawn true to the tabulated dimensions in section (end-on), elevation (side) or plan (top).",
+        parts: "section: one piece (HSS and pipe: two `wall` halves); elevation/plan: top_flange, web, bottom_flange (W, channel), wall / tube (HSS, pipe), vertical_leg, horizontal_leg (angle), plate; hidden (dashed hidden lines, with hidden_lines)",
+        anchors: "9 box anchors + per shape. Section: W top_flange, bottom_flange (face centers), web_center, web_left, web_right (web faces), top_flange_tip_left/right (underside of the top flange at its tips), bottom_flange_tip_left/right (top of the bottom flange at its tips); HSS/pipe inner_top, inner_bottom, inner_left, inner_right (inside wall faces); angle heel (outside corner), heel_inside, toe_vertical, toe_horizontal, vertical_leg_face, horizontal_leg_top; channel web_back, web_face, top_flange, bottom_flange, top_flange_tip, bottom_flange_tip; plate edge_left, edge_right, face_top, face_bottom. Elevation/plan: the levels across the member (W top_flange, top_flange_bottom, web_center, bottom_flange_top, bottom_flange; HSS/pipe inner_top, center_line, inner_bottom; plan W flange_tip_left, web_left, web_center, web_right, flange_tip_right ...) at mid-length, each also as <name>_start and <name>_end at the member ends",
+        draws: "Local box: section (0,0)-(width, depth) of the cross-section, bottom-left at the flange tip / heel / outside corner. Section: cut => solid steel fill, beyond => outline (pen steel); W with k-fillets, HSS with corner radii. Elevation/plan: outlines only, never filled: the silhouette in the visible steel pen (a W in elevation also shows its flanges as lines), hidden faces omitted unless `hidden_lines`, a break line where the crop cuts the member off; the member is a stack of slabs at their true z, so iso/3D and occlusion are right. Natural z thickness in elevation/plan = the cross-section dimension along z; section spans the doc run unless `length`. Pipe and round HSS seen lengthwise are boxes in 3D (2.5D: use orient section with `z` for a round member in 3D).",
+        example: "{\"id\":\"beam\",\"type\":\"steel\",\"shape\":\"W8x18\",\"orient\":\"elevation\",\"length\":96,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
+        traits: Traits { shape_table: true, ..Traits::NONE },
+    },
+    Entry {
+        ty: Type::Bolt,
+        summary: "Structural bolt group: heavy hex bolts with nut and washer through steel plies, seen from the side (axis in-plane) or end-on (hex head).",
+        parts: "shank, head, washer, nut (one set per bolt)",
+        anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing)",
+        draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
+        example: "{\"id\":\"cap_bolts\",\"type\":\"bolt\",\"diameter\":0.75,\"grip\":0.875,\"count\":2,\"spacing\":3.5,\"at\":{\"to\":[0,0]}}",
+        traits: Traits { default_anchor: "head_bearing", ..Traits::NONE },
+    },
+    Entry {
         ty: Type::Solid,
         summary: "Escape hatch: any extruded profile with an explicit material (flagged I_SOLID_USED).",
         parts: "none",
@@ -486,6 +513,9 @@ pub fn entry_json(e: &Entry) -> Value {
     if e.traits.hardware {
         m.push(("models", Value::Array(HARDWARE.iter().map(|h| Value::String(hardware_line(h))).collect())));
     }
+    if e.traits.shape_table {
+        m.push(("shapes", s(&builders::steel_shapes::catalog_text())));
+    }
     m.push(("parts", s(e.parts)));
     m.push(("anchors", s(e.anchors)));
     m.push(("draws", s(e.draws)));
@@ -512,6 +542,9 @@ pub fn append_entry_markdown(out: &mut String, e: &Entry) {
         for h in &HARDWARE {
             out.push_str(&format!("- {}\n", hardware_line(h)));
         }
+    }
+    if e.traits.shape_table {
+        out.push_str(&format!("\nShape table: {}\n", builders::steel_shapes::catalog_text()));
     }
     out.push_str(&format!("\n- Parts: {}\n- Anchors: {}\n- Draws: {}\n\n", e.parts, e.anchors, e.draws));
 }

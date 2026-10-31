@@ -203,6 +203,7 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
             let o = match str_of(an, "type") {
                 "dim" => &schema::DIM,
                 "label" => &schema::LABEL,
+                "weld" => &schema::WELD,
                 _ => &schema::NOTE,
             };
             let apath = format!("{vbase}/annotations/{aid}");

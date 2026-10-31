@@ -188,8 +188,12 @@ pub struct Prism {
     pub course: u32,
     pub ticks: bool,
     pub zhalf: f64,
+    /// Offset of the prism's z center from the component's z center (members seen lengthwise: flanges, legs, walls).
+    pub zoff: f64,
     pub dashed: bool,
     pub face_tie: bool,
+    /// Seen lengthwise (steel in elevation or plan): a section cut through it draws as an elevation (outlines, no fill).
+    pub lengthwise: bool,
 }
 
 impl Default for Prism {
@@ -217,8 +221,10 @@ impl Default for Prism {
             course: 0,
             ticks: false,
             zhalf: 0.0,
+            zoff: 0.0,
             dashed: false,
             face_tie: false,
+            lengthwise: false,
         }
     }
 }

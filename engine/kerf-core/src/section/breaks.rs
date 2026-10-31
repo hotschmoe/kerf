@@ -1,4 +1,4 @@
-//! Break lines where cut members run off the crop.
+//! Break lines where cut members, and steel seen lengthwise, run off the crop.
 
 use super::Class;
 use super::Section;
@@ -40,14 +40,19 @@ impl Section<'_> {
         for e in edges {
             let mut ivs: Vec<Iv> = Vec::new();
             for i in 0..self.prisms.len() {
-                let (kind, embedded, role, comp) = {
+                let (kind, embedded, role, comp, lengthwise) = {
                     let p = &self.prisms[i];
-                    (p.kind, p.embedded, p.role, p.comp)
+                    (p.kind, p.embedded, p.role, p.comp, p.lengthwise)
                 };
-                if self.cls[i] != Class::Cut || kind != Kind::Body || embedded {
+                if kind != Kind::Body || embedded {
                     continue;
                 }
-                if role == Role::Soil || self.style.material(&self.prisms[i].material).is_some_and(|m| m.fill) {
+                let seen_lengthwise = lengthwise && self.cls[i] == Class::Beyond;
+                if !seen_lengthwise
+                    && (self.cls[i] != Class::Cut
+                        || role == Role::Soil
+                        || self.style.material(&self.prisms[i].material).is_some_and(|m| m.fill))
+                {
                     continue;
                 }
                 let f = self.flat_of(i);

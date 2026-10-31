@@ -42,6 +42,7 @@ mod section;
 mod shape;
 mod sheet;
 mod sort;
+mod steelcheck;
 mod style;
 mod svg;
 mod textgeom;

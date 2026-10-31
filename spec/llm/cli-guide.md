@@ -54,10 +54,10 @@ kerf guide --full
 ## Diagnostics you will meet (each prints its own fix)
 W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
 W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
-W_NOTE_STYLE (house style and commentary: no sentences, `?`, `NOTE:`, `W/` or `AND` at the end), W_UNKNOWN_KEY (misspelled field),
+W_NOTE_STYLE (house style: no sentences, `?`, `NOTE:`, trailing `W/` or `AND`), W_UNKNOWN_KEY (misspelled field),
 W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit left a member outside an explicit
-`crop`: remove `crop` and `scale` to re-fit; typical after a pitch change), W_REFERENCE_FILE (a `meta.references` image path is
-not relative, leaves the folder, or the file is missing), I_* (info only).
+`crop`: remove `crop` and `scale` to re-fit; typical after a pitch change), W_REFERENCE_FILE (bad or missing
+`meta.references` image), I_* (info only).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.
@@ -67,6 +67,8 @@ not relative, leaves the folder, or the file is missing), I_* (info only).
 - Inches, X right, Y up, Z toward the viewer; lengths are numbers or strings like `"7-5/8"`, `"3'-4 1/2\""`. Use actual
   sizes through typed components (`"2x6"`, not 1.5x5.5). Rebar: `"place":{"in":"footing","face":"bottom","cover":3,"count":2}`.
 - `"until": "<Ref>"` instead of `length` grows a member to another one's edge (no stale numbers).
+- Steel: `steel` takes AISC shapes (`W8x18`, `HSS4x4x1/4`, `L4x3x3/8`, `PL1/2x8`), `orient`
+  section|elevation|plan; `bolt` groups; `weld` annotation = AWS symbol (`kerf schema steel bolt weld`).
 
 ## Roof pitch: change it in ONE place
 Trusses own the pitch; sheathing and roofing follow it and run to the truss end. Never type a literal length or pitch on them.
@@ -89,8 +91,8 @@ the designer verifies. Never present a design as engineered: capacities, spacing
 ## Views and annotations
 `crop` and `scale` are optional on a section view (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
 set them only to frame deliberately (`W_VIEW_FIT` then checks). Notes split to both sides and the layout resolves leader
-collisions itself; add `column` to a note only to force a side. Keyed notes (when asked): view `"notes_style":"keyed"` puts a
-number at each leader and the texts in a DETAIL NOTES list (`notes_side` above|left|right); same `key` = one entry, two tags. Dim `dir` defaults to the dominant axis. Dim `offset` sign: h > 0
+collisions itself; add `column` to a note only to force a side. Keyed notes: view `"notes_style":"keyed"` (numbered
+leaders + DETAIL NOTES list; `notes_side` above|left|right; same `key` = one entry). Dim `dir` defaults to the dominant axis. Dim `offset` sign: h > 0
 puts the line above the higher point, < 0 below the lower; v > 0 right of the rightmost, < 0 left of the leftmost.
 Beam in a wall (flush beam, header): draw the elevation along the wall unless asked for the end-on section; say which you drew.
 Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
@@ -103,5 +105,5 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - `acknowledge` prints an `I_ACK` line per suppressed warning, logged by `kerf apply -w`.
 - Dimension offset sign, example: below a footing `{"from":"ftg@bottom_left","to":"ftg@bottom_right","dir":"h","offset":-6}`;
   its depth on the outside (left) face `{"from":"ftg@bottom_left","to":"ftg@top_left","dir":"v","offset":-6}`.
-- Full spec: https://github.com/hotschmoe/kerf/blob/main/spec/SPEC.md.
-  The three reference details in `spec/details/` are complete documents to copy from.
+- Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
+  The reference details in `spec/details/` are complete documents to copy from.

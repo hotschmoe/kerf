@@ -1,0 +1,251 @@
+{
+  "kerf": "0.1",
+  "id": "steel-beam-cap-plate",
+  "title": "W BEAM OVER HSS COLUMN W/ CAP PLATE",
+  "meta": {
+    "discipline": "structural",
+    "jurisdiction": {
+      "code": "IBC",
+      "edition": 2021
+    },
+    "tags": [
+      "steel",
+      "cap plate",
+      "bolts",
+      "nailer"
+    ]
+  },
+  "run": [-12, 12],
+  "components": [
+    {
+      "id": "column",
+      "type": "steel",
+      "at": {
+        "anchor": "top_center",
+        "to": [0, 0]
+      },
+      "z": 0,
+      "shape": "HSS4x4x1/4",
+      "orient": "elevation",
+      "run": "y",
+      "length": 30
+    },
+    {
+      "id": "cap",
+      "type": "steel",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "column@top_center"
+      },
+      "z": 0,
+      "shape": "PL3/4x8",
+      "orient": "elevation",
+      "length": 10
+    },
+    {
+      "id": "beam",
+      "type": "steel",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "cap@top_center"
+      },
+      "z": 0,
+      "shape": "W10x22",
+      "orient": "elevation",
+      "length": 48,
+      "grade": "A992"
+    },
+    {
+      "id": "stiffener",
+      "type": "steel",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "beam@bottom_flange_top"
+      },
+      "z": 1.37,
+      "shape": "PL1/4x2-1/2",
+      "orient": "elevation",
+      "run": "y",
+      "until": "beam@top_flange_bottom"
+    },
+    {
+      "id": "cap_bolts",
+      "type": "bolt",
+      "at": {
+        "to": {
+          "ref": "beam@bottom_flange_top",
+          "offset": [-3.5, 0]
+        }
+      },
+      "z": -1.375,
+      "array": {
+        "axis": "z",
+        "count": 2,
+        "spacing": 2.75
+      },
+      "diameter": 0.75,
+      "grip": 1.11,
+      "count": 2,
+      "spacing": 7
+    },
+    {
+      "id": "nailer",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "beam@top_flange_start"
+      },
+      "z": 0,
+      "size": "2x6",
+      "run": "x",
+      "face": "narrow",
+      "length": 48,
+      "treated": false
+    },
+    {
+      "id": "nailer_bolts",
+      "type": "bolt",
+      "at": {
+        "to": {
+          "ref": "nailer@top_left",
+          "offset": [12, 0]
+        }
+      },
+      "z": 1.5,
+      "diameter": 0.5,
+      "grade": "A307",
+      "grip": 1.86,
+      "count": 2,
+      "spacing": 24
+    },
+    {
+      "id": "tab_bolts",
+      "type": "bolt",
+      "at": {
+        "to": {
+          "ref": "beam@web_center_end",
+          "offset": [-8, -2]
+        }
+      },
+      "z": 0.4,
+      "diameter": 0.75,
+      "grip": 0.61,
+      "orient": "end",
+      "count": 3,
+      "spacing": 2,
+      "line": "y"
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "W BEAM OVER HSS COLUMN",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 6,
+      "crop": {
+        "x": [-20, 20],
+        "y": [-24, 16]
+      },
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_beam",
+          "type": "note",
+          "text": "W10X22 STEEL BEAM",
+          "target": "beam"
+        },
+        {
+          "id": "n_col",
+          "type": "note",
+          "text": "HSS4X4X1/4 STEEL COLUMN",
+          "target": "column"
+        },
+        {
+          "id": "n_cap",
+          "type": "note",
+          "text": "PL 3/4\" X 8\" X 10\" CAP PLATE",
+          "target": "cap"
+        },
+        {
+          "id": "n_bolts",
+          "type": "note",
+          "text": "(4) 3/4\" DIA. A325 BOLTS",
+          "target": "cap_bolts"
+        },
+        {
+          "id": "n_stiff",
+          "type": "note",
+          "text": "1/4\" STIFFENER PL. EA. SIDE",
+          "target": "stiffener"
+        },
+        {
+          "id": "n_nailer",
+          "type": "note",
+          "text": "2X6 NAILER W/ 1/2\" DIA. BOLTS @ 24\" O.C. STAGGERED",
+          "target": "nailer"
+        },
+        {
+          "id": "w_cap",
+          "type": "weld",
+          "at": "column@top_right",
+          "offset": [6, -5],
+          "size": "3/16",
+          "all_around": true,
+          "members": [
+            "column",
+            "cap"
+          ]
+        },
+        {
+          "id": "w_stiff",
+          "type": "weld",
+          "at": "stiffener@middle_left",
+          "offset": [-5, -7],
+          "size": "3/16",
+          "sides": "both",
+          "field": true,
+          "tail": "TYP.",
+          "members": [
+            "stiffener",
+            "beam"
+          ]
+        },
+        {
+          "id": "w_cjp",
+          "type": "weld",
+          "at": {
+            "ref": "beam@bottom_flange_end",
+            "offset": [-6, 0]
+          },
+          "offset": [-12, -14],
+          "weld": "cjp"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "iso",
+      "number": "2",
+      "title": "W BEAM OVER HSS COLUMN - ISO",
+      "scale": "NTS",
+      "cut_z": 6,
+      "crop": {
+        "x": [-20, 20],
+        "y": [-24, 16]
+      },
+      "from": "front_right",
+      "cutaway": false,
+      "notes_side": "both",
+      "annotations": [
+        {
+          "id": "n_beam",
+          "type": "note",
+          "text": "W10X22",
+          "target": "beam"
+        }
+      ]
+    }
+  ]
+}

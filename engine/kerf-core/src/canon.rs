@@ -120,6 +120,7 @@ pub fn order(ctx: &KeyCtx) -> Vec<String> {
             return match type_of(ctx).as_str() {
                 "dim" => keys_of(&schema::DIM),
                 "label" => keys_of(&schema::LABEL),
+                "weld" => keys_of(&schema::WELD),
                 _ => keys_of(&schema::NOTE),
             };
         }

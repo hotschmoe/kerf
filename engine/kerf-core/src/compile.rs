@@ -686,10 +686,11 @@ fn world_prisms(
             q.instance = ii as u32;
             q.z0 = z[0];
             q.z1 = z[1];
-            if centered && pr.zhalf > 0.0 {
-                let zc = (z[0] + z[1]) / 2.0;
-                q.z0 = zc - pr.zhalf;
-                q.z1 = zc + pr.zhalf;
+            if centered && (pr.zhalf > 0.0 || pr.zoff != 0.0) {
+                let zc = (z[0] + z[1]) / 2.0 + pr.zoff;
+                let half = if pr.zhalf > 0.0 { pr.zhalf } else { (z[1] - z[0]) / 2.0 };
+                q.z0 = zc - half;
+                q.z1 = zc + half;
             }
             if let Some(e) = emb_override {
                 q.embedded = e;
