@@ -1114,24 +1114,71 @@ impl Words {
         out
     }
 
-    /// The normalized words a `meta.requested` item asks for.
-    pub fn wanted(&self, text: &str) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
+    /// The normalized words a `meta.requested` item asks for, each with its word forms (`forms`): the word is found
+    /// when a candidate offers any of them.
+    pub fn wanted(&self, text: &str) -> Vec<Vec<String>> {
+        let mut out: Vec<Vec<String>> = Vec::new();
         for t in self.rewrite(raw_tokens(text)) {
-            if t.req && !out.contains(&t.s) {
-                out.push(t.s);
+            if t.req && !out.iter().any(|w| w[0] == t.s) {
+                let mut w = alloc::vec![t.s.clone()];
+                w.extend(forms(&t.s));
+                out.push(w);
             }
         }
         out
     }
 
-    /// The normalized words a candidate text offers, sorted (binary search).
+    /// The normalized words a candidate text offers with their word forms, sorted (binary search).
     pub fn offered(&self, text: &str) -> Vec<String> {
-        let mut out: Vec<String> = self.rewrite(raw_tokens(text)).into_iter().map(|t| t.s).collect();
+        let mut out: Vec<String> = Vec::new();
+        for t in self.rewrite(raw_tokens(text)) {
+            out.extend(forms(&t.s));
+            out.push(t.s);
+        }
         crate::sort::stable(&mut out, |a, b| a < b);
         out.dedup();
         out
     }
+}
+
+/// `-ing` and `-ed` words whose base word names something else on a structural drawing (`BLOCKING` is not `BLOCK`,
+/// `TOPPING` is not `TOP`), so they keep only their own form.
+const UNSTEMMED: [&str; 22] = [
+    "bedding", "blocking", "building", "casing", "ceiling", "coping", "covering", "during", "engineered", "fitting",
+    "footing", "headed", "lagging", "landing", "netting", "opening", "planed", "setting", "siding", "spacing", "spring",
+    "topping",
+];
+
+/// The base forms of an `-ing` / `-ed` word, used besides the word itself: `nailed`, `nailing` -> `nail`; `bracing` ->
+/// `brac`, `brace`; `lapped` -> `lap`; `specified` -> `specify`. The stem keeps at least 4 letters and a vowel, a doubled
+/// final consonant (not l, s, z) is undoubled, `-eed` words and `UNSTEMMED` stay as written.
+fn forms(w: &str) -> Vec<String> {
+    let b = w.as_bytes();
+    if !b.iter().all(u8::is_ascii_lowercase) || UNSTEMMED.contains(&w) {
+        return Vec::new();
+    }
+    if w.len() >= 6 && w.ends_with("ied") {
+        return alloc::vec![alloc::format!("{}y", &w[..w.len() - 3])];
+    }
+    let stem = if let Some(s) = w.strip_suffix("ing") {
+        s
+    } else if let Some(s) = w.strip_suffix("ed").filter(|_| !w.ends_with("eed")) {
+        s
+    } else {
+        return Vec::new();
+    };
+    let sb = stem.as_bytes();
+    if sb.len() < 4 || !sb.iter().any(|c| b"aeiouy".contains(c)) {
+        return Vec::new();
+    }
+    let last = sb[sb.len() - 1];
+    if last == sb[sb.len() - 2] && !b"aeiouylsz".contains(&last) {
+        return alloc::vec![String::from(&stem[..stem.len() - 1])];
+    }
+    if last == b'e' {
+        return alloc::vec![String::from(stem)];
+    }
+    alloc::vec![String::from(stem), alloc::format!("{stem}e")]
 }
 
 /// A length in 1/16 in as the coverage word a measured dimension offers.

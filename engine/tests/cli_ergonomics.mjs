@@ -1868,5 +1868,26 @@ section('#11. framing hardware');
   check('schema connector: kind, on, carried/carrying, post, rod and the hardware families', /^- kind: /m.test(r.out) && /^- on: /m.test(r.out) && /^- carried: /m.test(r.out) && /^- rod: /m.test(r.out) && /Hardware families .*HDU holdown 10/.test(r.out), r.out.slice(0, 400));
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #28: round-2 papercuts (SPEC 28.8): coverage word forms, W_ABBREV per table, CALC., untreated contact on cut
+// members, fills under slab_edge base, leader landings and crossings, rebar station, ref bubbles, steel and stone.
+section('#28. round-2 papercuts');
+{
+  kerf(['new', 'p28.kerf.json', '--template', 'section']);
+  const note = (id, text) => ({ op: 'add', path: 'views/A/annotations', value: { id, type: 'note', text, target: 'stud' } });
+  const ops = [
+    { op: 'update', path: 'meta', value: { requested: ['end nailed', 'diagonal bracing', 'stepped footing', 'blocking', 'topping slab', 'specified grout'] } },
+    note('c1', '(2) 16d END NAIL'),
+    note('c2', 'DIAGONAL BRACE'),
+    note('c3', 'FOOTING STEP'),
+    note('c4', 'CMU BLOCK'),
+    note('c5', 'TOP OF SLAB'),
+    note('c6', 'GROUT AS SPECIFY'),
+  ];
+  let r = kerf(['apply', 'p28.kerf.json', '--ops', JSON.stringify(ops), '-w', '--why', 'coverage word forms']);
+  check('coverage word forms: END NAILED = END NAIL, BRACING = BRACE, STEPPED = STEP, SPECIFIED = SPECIFY', /^ ok       end nailed\s+stud/m.test(r.out) && /^ ok       diagonal bracing\s+stud/m.test(r.out) && /^ ok       stepped footing\s+stud/m.test(r.out) && /^ ok       specified grout\s+stud/m.test(r.out), r.out);
+  check('BLOCKING is not BLOCK, TOPPING is not TOP', /^ MISSING  blocking/m.test(r.out) && /^ MISSING  topping slab/m.test(r.out), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
