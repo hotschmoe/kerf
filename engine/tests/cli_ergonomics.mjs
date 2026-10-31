@@ -1435,5 +1435,71 @@ section('#9. plan and elevation views, shown hidden / where_occurs, rebar plane 
   check('plan: studs (lumber run y) cut by the plane get the end-grain X', d.items.filter((i) => i.t === 'path' && /^stud/.test(i.src) && i.pen === 'beyond' && i.pts.length === 2).length >= 6, d.items.filter((i) => /^stud/.test(i.src ?? '')).length);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #13: nailing and fastener symbols (SPEC 27.4)
+section('#13. nailing: face, toenail, edge and field fasteners placed from their members');
+{
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const texts = (d, src) => d.items.filter((i) => i.t === 'text' && (src === undefined || i.src === src)).map((i) => i.s);
+  fs.copyFileSync(path.join(DOCS, 'nailing.kerf.json'), path.join(tmp, 'nl.kerf.json'));
+  let r = kerf(['check', 'nl.kerf.json']);
+  check('golden nailing doc: 0 warnings, every requested item covered by the nailing text forms', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /COVERAGE  6\/6/.test(r.out), r.out);
+  check('summary line: pattern, text form, count, size, members', /^ a_nail_lap +nailing face \(8\) 16d NAILS EA\. SIDE OF SPLICE: 8 nails \(0\.162 x 3 1\/2"\), a_up_r -> a_lo_l/m.test(r.out), r.out);
+  let d = items('nl.kerf.json', 'A');
+  const shanks = d.items.filter((i) => i.t === 'path' && i.src === 'a_nail_lap' && i.pen === 'steel');
+  check('elevation: splice nails are shanks with head bars in the steel pen (8 nails, 16 strokes)', shanks.length === 16, shanks.length);
+  const toe = d.items.filter((i) => i.t === 'path' && i.src === 'a_toe' && i.pts.length === 2);
+  const angled = toe.filter((i) => Math.abs(i.pts[0][0] - i.pts[1][0]) > 0.5 && Math.abs(i.pts[0][1] - i.pts[1][1]) > 0.5);
+  check('elevation: toenails are angled shanks', angled.length >= 8, toe.map((i) => i.pts));
+  check('keyed note without text lists the nailing text', texts(d).some((t) => /\(8\) 16d NAILS EA\. SIDE OF SPLICE/.test(t)) && texts(d).some((t) => /\(2\) 8d TOENAILS/.test(t)), texts(d));
+  d = items('nl.kerf.json', 'B');
+  check('section: sill nails seen end-on along the wall show as 2 ticks (2 staggered rows), not one per nail', d.items.filter((i) => i.t === 'path' && i.src === 'b_sill_nails' && i.pts.length === 2 && i.pts[0][0] === i.pts[1][0]).length === 2, d.items.filter((i) => i.src === 'b_sill_nails'));
+  check('section: a note without text prints the text form', texts(d, 'n_toe').join(' ') === '(2) 8d TOENAILS' && /SDS25300 SCREWS/.test(texts(d, 'n_sds').join(' ')), texts(d));
+  check('section: screws carry thread ticks (more strokes than a nail)', d.items.filter((i) => i.t === 'path' && i.src === 'b_sds').length === 12, d.items.filter((i) => i.src === 'b_sds').length);
+  d = items('nl.kerf.json', 'C');
+  check('iso: edge and field nailing are dots on the panel face', d.items.filter((i) => i.t === 'fill' && i.src === 'c_en_l').length > 30 && d.items.filter((i) => i.t === 'fill' && i.src === 'c_fn_l').length > 10);
+  d = items('nl.kerf.json', 'D');
+  check('plan: face nails driven down are dots', d.items.filter((i) => i.t === 'fill' && i.src === 'a_nail_l').length === 8, d.items.filter((i) => i.src === 'a_nail_l').length);
+
+  const base = () => ({ kerf: '0.1', id: 'nb', title: 'NAILS', components: [
+    { id: 'lower', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 48, z: [-1.75, 1.75], at: { to: [0, 0] } },
+    { id: 'upper', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 48, z: [-1.75, 1.75], at: { to: 'lower@top_left' } },
+    { id: 'far', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 48, z: [-1.75, 1.75], at: { to: [0, 10] } },
+    { id: 'shtg', type: 'panel', material: 'osb', thickness: 24, length: 48, run: 'x', z: [1.75, 2.1875], at: { to: [0, 0] } }],
+    views: [{ id: 'A', kind: 'elevation', title: 'E', annotations: [] }] });
+  const withNail = (n, extra = {}) => { const doc = base(); doc.components.push({ id: 'nl', type: 'nailing', ...n }); Object.assign(doc, extra); write('nb.kerf.json', doc); return kerf(['check', 'nb.kerf.json']); };
+  r = withNail({ members: ['upper', 'far'], size: '16d', count: 4 });
+  check('W_NAIL_MEMBERS: the gap and the update op naming a member that touches', /^WARN W_NAIL_MEMBERS nl: 'nl': 'upper' and 'far' do not touch \(7" apart along y\).*Fix: members touching 'upper': lower, shtg\. E\.g\. \{"op":"update","path":"components\/nl","value":\{"members":\["upper","lower"\]\}\}/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '16d', count: 4 });
+  check('W_NAIL_LENGTH: points out of the far face, fix: a size that stays inside or through', /^WARN W_NAIL_LENGTH nl: 'nl': 16d \(3 1\/2"\) is longer than the 3" stack .* Fix: 10d stays inside: \{"op":"update","path":"components\/nl","value":\{"size":"10d"\}\}; or .*\{"op":"update","path":"components\/nl","value":\{"through":true\}\}/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '16d', count: 4, through: true });
+  check('through: true clears it', !/W_NAIL_LENGTH/.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '10d', count: 40 });
+  check('W_NAIL_SPACING: under 10D in a row, fix names rows / spacing', /^WARN W_NAIL_SPACING nl: 'nl': nails of one row are .* under the 10D minimum .*\{"op":"update","path":"components\/nl","value":\{"rows":2\}\}/m.test(r.out), r.out);
+  r = withNail({ pattern: 'edge', members: ['shtg', 'lower', 'upper'], size: '8d', spacing: 6, edge_distance: 0.25 });
+  check('W_NAIL_EDGE: edge distance under 3/8"', /^WARN W_NAIL_EDGE nl: 'nl': edge_distance 1\/4" is under the 3\/8" minimum .*\{"edge_distance":0\.375\}/m.test(r.out), r.out);
+  check('W_NAIL_EDGE: a panel edge with no framing behind it, fix: leave it out of edges', /^WARN W_NAIL_EDGE nl: 'nl': the top edge of 'shtg' has no framing behind it .*\{"op":"update","path":"components\/nl","value":\{"edges":\["left","right","bottom"\]\}\}/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '16d', count: 4, rows: 2, through: true }, { views: [{ id: 'S', kind: 'section', cut_z: 0, title: 'S', annotations: [] }] });
+  check('W_NAIL_HIDDEN: a section cut through the plates shows none; fix: cut_z in front', /^WARN W_NAIL_HIDDEN nl: 'nl' draws none of its fasteners in view S.*\{"op":"update","path":"views\/S","value":\{"cut_z":3\}\}/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '17d', count: 4 });
+  check('bad size: E_PARAM listing the forms', /^ERROR E_PARAM nl: size "17d" is not a fastener size\. Use penny sizes/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lowr'], size: '16d', count: 4 });
+  check('unknown member: E_REF_UNKNOWN with the nearest id', /^ERROR E_REF_UNKNOWN nl: member 'lowr' is not a component\. Did you mean 'lower'\?/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '16d', count: 4, at: { to: [0, 0] } });
+  check('at on a nailing is E_PARAM (placed from its members)', /^ERROR E_PARAM nl: a nailing is placed from its members; remove "at"/m.test(r.out), r.out);
+  r = withNail({ members: ['upper', 'lower'], size: '16d', through: true });
+  check('face nailing without count or spacing: E_PARAM', /^ERROR E_PARAM nl: face nailing needs "count"/m.test(r.out), r.out);
+
+  write('nb.kerf.json', { ...base(), components: [...base().components.filter((c) => c.id !== 'shtg'), { id: 'nl', type: 'nailing', members: ['upper', 'lower'], size: '16d', count: 2, through: true }] });
+  const before = items('nb.kerf.json', 'A').items.filter((i) => i.src === 'nl').map((i) => i.pts);
+  r = kerf(['apply', 'nb.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/lower', value: { at: { to: [12, 0] } } }), '-w', '--why', 'move']);
+  const after = items('nb.kerf.json', 'A').items.filter((i) => i.src === 'nl').map((i) => i.pts);
+  check('the nails follow their members (placement from members)', r.code === 0 && before.length === after.length && after.every((pts, k) => Math.abs(pts[0][0] - before[k][0][0] - 12) < 1e-6), { before, after });
+  r = kerf(['apply', 'nb.kerf.json', '--ops', JSON.stringify({ op: 'remove', path: 'components/lower' })]);
+  check('removing a member a nailing lists is refused', r.code === 1 && /nl/.test(r.err), r.err);
+  r = kerf(['schema', 'nailing']);
+  check('kerf schema nailing: params, patterns and the example', r.code === 0 && /members/.test(r.out) && /toenail/.test(r.out) && /edge_distance/.test(r.out) && /splice_nails/.test(r.out), r.out.slice(0, 300));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
