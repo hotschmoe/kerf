@@ -4,7 +4,7 @@ members = ["kerf-core", "kerf-cli", "kerf-wasm"]
 default-members = ["kerf-core", "kerf-cli"]
 
 [workspace.package]
-version = "0.2.0-alpha.5"
+version = "0.2.0-beta.1"
 edition = "2024"
 rust-version = "1.96"
 license = "MIT"
