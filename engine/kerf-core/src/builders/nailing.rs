@@ -441,6 +441,8 @@ struct Job<'a> {
     sheets: usize,
     /// The range entries as written (points resolved to world XY; numbers are z).
     range_pts: Option<[RangeEnd; 2]>,
+    /// The nailing's `views` (its scenario): fixes only name components drawn in one of them.
+    views: Option<&'a Value>,
 }
 
 #[derive(Clone, Copy)]
@@ -459,6 +461,15 @@ fn quoted_list(items: &[String]) -> String {
 }
 
 impl Job<'_> {
+    /// `c` is drawn in a view the nailing is drawn in (either without `views` counts as every view).
+    fn shares_view(&self, c: &Comp) -> bool {
+        let names = |v: &Value| -> Vec<String> { v.arr().map_or(Vec::new(), |a| a.iter().filter_map(Value::str).map(String::from).collect()) };
+        match (self.views.map(names), c.node.get("views").filter(|v| !v.is_null()).map(names)) {
+            (Some(mine), Some(theirs)) => mine.iter().any(|v| theirs.contains(v)),
+            _ => true,
+        }
+    }
+
     fn members_json(&self) -> Vec<String> {
         match self.cp.members.as_ref().and_then(Value::arr) {
             Some(a) => a.iter().filter_map(Value::str).map(String::from).collect(),
@@ -472,7 +483,7 @@ impl Job<'_> {
         let listed: Vec<u32> = self.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
         let mut out: Vec<String> = Vec::new();
         for c in &self.scene.comps {
-            if c.state != State::Ok || c.index == a.comp || listed.contains(&c.index) || c.built.prisms.is_empty() {
+            if c.state != State::Ok || c.index == a.comp || listed.contains(&c.index) || c.built.prisms.is_empty() || !self.shares_view(c) {
                 continue;
             }
             if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
@@ -497,7 +508,7 @@ impl Job<'_> {
         let listed: Vec<u32> = self.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
         let mut out: Vec<String> = Vec::new();
         for c in &self.scene.comps {
-            if c.state != State::Ok || c.index == a.comp || listed.contains(&c.index) || c.built.prisms.is_empty() {
+            if c.state != State::Ok || c.index == a.comp || listed.contains(&c.index) || c.built.prisms.is_empty() || !self.shares_view(c) {
                 continue;
             }
             if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
@@ -569,6 +580,7 @@ impl Job<'_> {
             row: if pitch > 0.0 { dir_world(a, row) } else { [0.0; 3] },
             pitch,
             on: a.comp,
+            face: dir_world(a, [-dir[0], -dir[1], -dir[2]]),
         }
     }
 
@@ -973,8 +985,6 @@ fn row_spacing(pos: &[(f64, usize)], rows: usize) -> f64 {
 fn toenail_pattern(job: &Job, out: &mut Out, faces_in: &[String]) {
     let cp = job.cp;
     let len = job.size.len;
-    let th = cp.angle.to_radians();
-    let (ct_cos, ct_sin) = (math::cos(th), math::sin(th));
     let Some(b_group) = job.groups.get(1) else { return };
     let mut any = false;
     let mut first_miss: Option<(Member, Member)> = None;
@@ -1018,8 +1028,6 @@ fn toenail_pattern(job: &Job, out: &mut Out, faces_in: &[String]) {
             let nf = faces.len();
             let w_of = |n: usize| (0..3).find(|&o| o != k && o != n).unwrap_or(2);
             let joint = if ct.side > 0.0 { a.hi[k] } else { a.lo[k] };
-            let back = (len / 3.0).min((a.hi[k] - a.lo[k]) * 0.75);
-            let head_k = joint - ct.side * back;
             let mut placed: Vec<(usize, f64)> = Vec::new();
             match (cp.count.map(usize::from), cp.spacing) {
                 (count, Some(s)) => {
@@ -1048,47 +1056,17 @@ fn toenail_pattern(job: &Job, out: &mut Out, faces_in: &[String]) {
                     }
                 }
             }
-            for (m, x) in placed {
-                let (n_axis, n_sign) = faces[m];
-                let w = w_of(n_axis);
-                let mut h = [0.0; 3];
-                h[k] = head_k;
-                h[n_axis] = if n_sign > 0.0 { a.hi[n_axis] } else { a.lo[n_axis] };
-                h[w] = x;
-                let mut dir = [0.0; 3];
-                dir[k] = ct_cos * ct.side;
-                dir[n_axis] = -ct_sin * n_sign;
-                let tip = [h[0] + dir[0] * len, h[1] + dir[1] * len, h[2] + dir[2] * len];
-                let inside_b = (0..3).all(|o| tip[o] >= blo[o] - TOL && tip[o] <= bhi[o] + TOL)
-                    || job.groups.iter().skip(2).flatten().any(|m| {
-                        let (lo, hi) = box_in(a, m);
-                        (0..3).all(|o| tip[o] >= lo[o] - TOL && tip[o] <= hi[o] + TOL)
-                    });
-                if !inside_b && !job.through {
-                    let fit = shorter_toenail(job.size, a, &blo, &bhi, h, dir);
-                    let mut fix = String::new();
-                    if let Some(f) = fit {
-                        fix.push_str(&format!(
-                            "{f} stays inside: {}; or ",
-                            op_update(job.id, "size", &format!("\"{f}\""))
-                        ));
-                    }
-                    fix.push_str(&format!("a steeper angle: {}", op_update(job.id, "angle", "45")));
-                    out.warn(
-                        "W_NAIL_LENGTH",
-                        format!(
-                            "'{}': a {} toenail started {} from the end of '{}' at {} deg leaves '{}' through its side: the point ends outside the member",
-                            job.id,
-                            job.size.text,
-                            fmt_ft_in(back),
-                            member_name(job.scene, a),
-                            fmt_num(cp.angle),
-                            member_name(job.scene, b)
-                        ),
-                        fix,
-                    );
-                }
-                out.push(job.nail(a, h, dir, unit(w, 1.0), cp.spacing.unwrap_or(0.0)));
+            let toe = Toe { a, k, side: ct.side, joint, t: a.hi[k] - a.lo[k], faces: &faces, w_of: &w_of };
+            let mut bodies: Vec<([f64; 3], [f64; 3])> = vec![(blo, bhi)];
+            bodies.extend(job.groups.iter().skip(2).flatten().map(|m| box_in(a, m)));
+            for &(m, x) in &placed {
+                let (h, dir) = toe.nail(m, x, len, cp.angle);
+                let mut n = job.nail(a, h, dir, unit(w_of(faces[m].0), 1.0), cp.spacing.unwrap_or(0.0));
+                n.face = dir_world(a, unit(faces[m].0, faces[m].1));
+                out.push(n);
+            }
+            if !job.through {
+                toenail_check(job, out, &toe, &placed, &bodies, b);
             }
         }
     }
@@ -1097,26 +1075,179 @@ fn toenail_pattern(job: &Job, out: &mut Out, faces_in: &[String]) {
     }
 }
 
-fn shorter_toenail(
-    s: &Size,
-    _a: &Member,
-    blo: &[f64; 3],
-    bhi: &[f64; 3],
-    h: [f64; 3],
-    dir: [f64; 3],
-) -> Option<String> {
-    if !is_penny(s) {
-        return None;
+/// One toenailed joint: the first member `a`, the joint axis `k` and side, its thickness along k and the side faces.
+struct Toe<'a> {
+    a: &'a Member,
+    k: usize,
+    side: f64,
+    joint: f64,
+    t: f64,
+    faces: &'a [(usize, f64)],
+    w_of: &'a dyn Fn(usize) -> usize,
+}
+
+impl Toe<'_> {
+    /// Head and unit direction of a toenail of length `len` at `angle` on face `m`, at `x` along the joint: started
+    /// min(len/3, 3/4 of the member) back from the joint.
+    fn nail(&self, m: usize, x: f64, len: f64, angle: f64) -> ([f64; 3], [f64; 3]) {
+        let (n_axis, n_sign) = self.faces[m];
+        let th = angle.to_radians();
+        let back = (len / 3.0).min(self.t * 0.75);
+        let mut h = [0.0; 3];
+        h[self.k] = self.joint - self.side * back;
+        h[n_axis] = if n_sign > 0.0 { self.a.hi[n_axis] } else { self.a.lo[n_axis] };
+        h[(self.w_of)(n_axis)] = x;
+        let mut dir = [0.0; 3];
+        dir[self.k] = math::cos(th) * self.side;
+        dir[n_axis] = -math::sin(th) * n_sign;
+        (h, dir)
     }
-    let suffix = suffix_of(s);
-    same_kind_table(s)
-        .iter()
-        .rev()
-        .find(|e| {
-            let t = [h[0] + dir[0] * e.2, h[1] + dir[1] * e.2, h[2] + dir[2] * e.2];
-            e.2 < s.len && (0..3).all(|o| t[o] >= blo[o] - TOL && t[o] <= bhi[o] + TOL)
-        })
-        .map(|e| format!("{}d{suffix}", e.0))
+
+    /// The nails (indices into `placed`) whose points end outside every box of `bodies`.
+    fn outside(&self, placed: &[(usize, f64)], len: f64, angle: f64, bodies: &[([f64; 3], [f64; 3])]) -> Vec<usize> {
+        (0..placed.len())
+            .filter(|&q| {
+                let (m, x) = placed[q];
+                let (h, d) = self.nail(m, x, len, angle);
+                let tip = [h[0] + d[0] * len, h[1] + d[1] * len, h[2] + d[2] * len];
+                !bodies.iter().any(|(lo, hi)| (0..3).all(|o| tip[o] >= lo[o] - TOL && tip[o] <= hi[o] + TOL))
+            })
+            .collect()
+    }
+}
+
+/// W_NAIL_LENGTH for toenails whose points leave the members. Every fix offered is checked with the same geometry (head
+/// started len/3 back, the size's own length, the angle), so applying one clears the warning.
+fn toenail_check(job: &Job, out: &mut Out, toe: &Toe, placed: &[(usize, f64)], bodies: &[([f64; 3], [f64; 3])], b: &Member) {
+    let cp = job.cp;
+    let a = toe.a;
+    let len = job.size.len;
+    let bad = toe.outside(placed, len, cp.angle, bodies);
+    let Some(&first) = bad.first() else { return };
+    let (m, x) = placed[first];
+    let (h, d) = toe.nail(m, x, len, cp.angle);
+    let tip = [h[0] + d[0] * len, h[1] + d[1] * len, h[2] + d[2] * len];
+    let (blo, bhi) = bodies[0];
+    let mut worst = (0usize, 0.0f64, 1.0f64);
+    for o in 0..3 {
+        for (gap, sign) in [(blo[o] - tip[o], -1.0), (tip[o] - bhi[o], 1.0)] {
+            if gap > worst.1 {
+                worst = (o, gap, sign);
+            }
+        }
+    }
+    let bn = member_name(job.scene, b);
+    let an = member_name(job.scene, a);
+    let face_of = |m: usize| face_name(a, toe.faces[m].0, toe.faces[m].1);
+    let mut bad_faces: Vec<&str> = Vec::new();
+    for &q in &bad {
+        let f = face_of(placed[q].0);
+        if !bad_faces.contains(&f) {
+            bad_faces.push(f);
+        }
+    }
+    let msg = format!(
+        "'{}': {} of {} {} toenails (from the {} face of '{an}', started {} from its end at {} deg) end outside '{bn}' and the other members: the point is {} past the {} face of '{bn}'",
+        job.id,
+        bad.len(),
+        placed.len(),
+        job.size.text,
+        bad_faces.join(" and "),
+        fmt_ft_in((len / 3.0).min(toe.t * 0.75)),
+        fmt_num(cp.angle),
+        fmt_ft_in(worst.1),
+        face_name(a, worst.0, worst.2)
+    );
+    let mut fixes: Vec<String> = Vec::new();
+    let mut more: Vec<([f64; 3], [f64; 3])> = bodies.to_vec();
+    let mut extra: Vec<String> = Vec::new();
+    for &q in &bad {
+        let (m, x) = placed[q];
+        let (h, d) = toe.nail(m, x, len, cp.angle);
+        let tip = [h[0] + d[0] * len, h[1] + d[1] * len, h[2] + d[2] * len];
+        if let Some((name, lo, hi)) = solid_at(job, a, tip) {
+            if !extra.contains(&name) {
+                extra.push(name);
+            }
+            more.push((lo, hi));
+        }
+    }
+    let members_with = |names: &[String]| {
+        let mut ms = job.members_json();
+        for n in names {
+            if !ms.contains(n) {
+                ms.push(n.clone());
+            }
+        }
+        quoted_list(&ms)
+    };
+    let still = toe.outside(placed, len, cp.angle, &more);
+    let ok_faces: Vec<String> = (0..toe.faces.len())
+        .filter(|&f| placed.iter().any(|p| p.0 == f) && !still.iter().any(|&q| placed[q].0 == f))
+        .map(|f| face_of(f).to_string())
+        .collect();
+    if !extra.is_empty() {
+        if still.is_empty() {
+            fixes.push(format!(
+                "the points end in {}: list it after '{bn}': {}",
+                scene::join_ids(&extra),
+                op_update(job.id, "members", &members_with(&extra))
+            ));
+        } else if !ok_faces.is_empty() {
+            fixes.push(format!(
+                "some points end in {}: list it and nail from the {} face only: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"members\":{},\"faces\":{}}}}}",
+                scene::join_ids(&extra),
+                ok_faces.join(" and "),
+                job.id,
+                members_with(&extra),
+                quoted_list(&ok_faces)
+            ));
+        }
+    } else if !ok_faces.is_empty() {
+        fixes.push(format!("nail from the {} face only: {}", ok_faces.join(" and "), op_update(job.id, "faces", &quoted_list(&ok_faces))));
+    }
+    let mut angles: Vec<f64> = (3..=12).map(|s| f64::from(s) * 5.0).filter(|g| (g - cp.angle).abs() > 1e-9).collect();
+    crate::sort::stable(&mut angles, |x, y| (x - cp.angle).abs() < (y - cp.angle).abs());
+    if let Some(g) = angles.iter().find(|&&g| toe.outside(placed, len, g, bodies).is_empty()) {
+        fixes.push(format!("{} at {} deg stays inside: {}", job.size.text, fmt_num(*g), op_update(job.id, "angle", &fmt_num(*g))));
+    }
+    if is_penny(job.size) {
+        let suffix = suffix_of(job.size);
+        if let Some(e) = same_kind_table(job.size)
+            .iter()
+            .rev()
+            .find(|e| (e.2 - len).abs() > 1e-9 && toe.outside(placed, e.2, cp.angle, bodies).is_empty())
+        {
+            let f = format!("{}d{suffix}", e.0);
+            fixes.push(format!("{f} stays inside at {} deg: {}", fmt_num(cp.angle), op_update(job.id, "size", &format!("\"{f}\""))));
+        }
+    }
+    fixes.push(format!(
+        "where the schedule calls for this nail and the points may come through: {}",
+        op_update(job.id, "through", "true")
+    ));
+    out.warn("W_NAIL_LENGTH", msg, fixes.join("; or "));
+}
+
+/// The first drawn solid (not a member, not hardware, not a nailing) whose box holds `p` (in `a`'s frame): its name and
+/// box.
+fn solid_at(job: &Job, a: &Member, p: [f64; 3]) -> Option<(String, [f64; 3], [f64; 3])> {
+    let listed: Vec<u32> = job.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
+    for c in &job.scene.comps {
+        if c.state != State::Ok || listed.contains(&c.index) || c.built.prisms.is_empty() || !job.shares_view(c) {
+            continue;
+        }
+        if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
+            continue;
+        }
+        for m in members_of(c, None) {
+            let (lo, hi) = box_in(a, &m);
+            if (0..3).all(|o| p[o] >= lo[o] - TOL && p[o] <= hi[o] + TOL) {
+                return Some((member_name(job.scene, &m), lo, hi));
+            }
+        }
+    }
+    None
 }
 
 /// A framing member behind a panel and the low / high corners of its box clipped to the panel (`box_in`).
@@ -1518,7 +1649,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     }
     let sheets = if matches!(cp.pattern, Pattern::Edge | Pattern::Field) { sheet_count(&groups, &panels) } else { 1 };
-    let job = Job { id: ctx.p.id, size: &size, cp: &cp, through: cp.through, scene, groups, sheets, range_pts };
+    let views = ctx.p.raw("views");
+    let job = Job { id: ctx.p.id, size: &size, cp: &cp, through: cp.through, scene, groups, sheets, range_pts, views };
     let mut out = Out { nails: Vec::new(), warns: Vec::new() };
     match cp.pattern {
         Pattern::Face => face_pattern(&job, &mut out),

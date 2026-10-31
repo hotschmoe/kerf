@@ -102,6 +102,23 @@ pub struct Vis {
     pub cut: bool,
 }
 
+/// A `nailing` component whose heads all lie on faces turned away from the view or under other solids.
+pub struct NailsHidden {
+    pub id: String,
+    /// Each distinct reason, in nail order.
+    pub why: Vec<HeadHidden>,
+}
+
+/// Why a fastener head does not show in an iso view.
+#[derive(PartialEq)]
+pub struct HeadHidden {
+    /// The component the head is on and the world face it sits on (left right top bottom front back).
+    pub on: String,
+    pub face: &'static str,
+    /// The solid in front of the head, or None when its face is turned away from the viewer.
+    pub under: Option<String>,
+}
+
 pub struct Iso {
     pub sx: f64,
     pub sz: f64,
@@ -112,6 +129,8 @@ pub struct Iso {
     pub vis: Vec<Vis>,
     /// Where each visible fastener head of a `nailing` component is (component index, paper-projected point).
     pub nail_marks: Vec<(u32, V2)>,
+    /// `nailing` components with heads in the view but none visible (SPEC 28.6).
+    pub nails_hidden: Vec<NailsHidden>,
     gx0: f64,
     gy0: f64,
     gw: f64,
@@ -134,6 +153,7 @@ impl Default for Iso {
             prisms: Vec::new(),
             vis: Vec::new(),
             nail_marks: Vec::new(),
+            nails_hidden: Vec::new(),
             gx0: 0.0,
             gy0: 0.0,
             gw: 1.0,
@@ -294,8 +314,12 @@ impl Iso {
     }
 
     fn occluded_at(&self, m: V2, dm: f64, skip: &[usize], cand: &[u32]) -> bool {
-        cand.iter().any(|&fi| {
-            let fi = fi as usize;
+        self.occluder_at(m, dm, skip, cand).is_some()
+    }
+
+    /// The first face in `cand` that lies in front of depth `dm` at `m`.
+    fn occluder_at(&self, m: V2, dm: f64, skip: &[usize], cand: &[u32]) -> Option<usize> {
+        cand.iter().map(|&fi| fi as usize).find(|&fi| {
             if skip.contains(&fi) {
                 return false;
             }
@@ -1093,10 +1117,13 @@ fn nail_dots(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, s: f6
     let mut cand: Vec<u32> = Vec::new();
     let mut placed: Vec<V2> = Vec::new();
     let mut marks: Vec<(u32, V2)> = Vec::new();
+    let mut hidden: Vec<NailsHidden> = Vec::new();
     for c in &scene.comps {
         if !scene.nails_shown(c, &spec.members) {
             continue;
         }
+        let mut why: Vec<HeadHidden> = Vec::new();
+        let mut drawn = 0usize;
         for n in &c.built.nails {
             if !scene.nail_on_shown(n, &spec.members) {
                 continue;
@@ -1112,9 +1139,14 @@ fn nail_dots(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, s: f6
             let mut bb = Box::default();
             bb.add_point(p.x, p.y);
             iso.candidates(bb.expand(1e-9), &mut cand);
-            if iso.occluded_at(p, d, &[], &cand) {
+            if let Some(fi) = iso.occluder_at(p, d, &[], &cand) {
+                let h = hidden_head(iso, scene, n, fi);
+                if !why.contains(&h) {
+                    why.push(h);
+                }
                 continue;
             }
+            drawn += 1;
             marks.push((c.index, p));
             if placed.iter().any(|q| q.eql(p, 1e-6)) {
                 continue;
@@ -1147,8 +1179,34 @@ fn nail_dots(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, s: f6
                 }));
             }
         }
+        if drawn == 0 && !why.is_empty() {
+            hidden.push(NailsHidden { id: c.id.clone(), why });
+        }
     }
     iso.nail_marks = marks;
+    iso.nails_hidden = hidden;
+}
+
+/// Why a head is hidden: the face it sits on is turned away from the viewer, or face `fi` of a solid lies in front of it.
+fn hidden_head(iso: &Iso, scene: &Scene, n: &crate::model::Nail, fi: usize) -> HeadHidden {
+    let out = n.face;
+    let toward = out[0] * iso.sx + out[1] + out[2] * iso.sz;
+    let ax = (0..3).fold(0, |b, k| if out[k].abs() > out[b].abs() + 1e-9 { k } else { b });
+    let face = match (ax, out[ax] > 0.0) {
+        (0, true) => "right",
+        (0, false) => "left",
+        (1, true) => "top",
+        (1, false) => "bottom",
+        (_, true) => "front",
+        (_, false) => "back",
+    };
+    let on = scene.comps.get(n.on as usize).map_or(String::new(), |h| h.id.clone());
+    let under = if toward <= 1e-9 {
+        None
+    } else {
+        iso.faces.get(fi).and_then(|f| iso.prisms.get(f.prism)).map(|p| p.src.clone())
+    };
+    HeadHidden { on, face, under }
 }
 
 /// Grade-line chain (or full outline) of a fill's cut face.

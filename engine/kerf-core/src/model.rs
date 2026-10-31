@@ -355,6 +355,8 @@ pub struct Nail {
     pub pitch: f64,
     /// The component the head is on: the nail shows only in views that draw it.
     pub on: u32,
+    /// Outward unit normal (world) of the face the head is on.
+    pub face: [f64; 3],
 }
 
 /// A post base's bearing: plate bottom `y`, plan extent x0..x1 × z0..z1, the post and its standoff.

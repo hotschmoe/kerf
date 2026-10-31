@@ -25,18 +25,19 @@ impl Section<'_> {
         if self.spec.kind == ViewKind::Plan { (V2::init(p[0], -p[2]), p[1]) } else { (V2::init(p[0], p[1]), p[2]) }
     }
 
-    /// A cut solid covers the point, or a beyond solid that is not one of the nailing's members lies wholly in front of
-    /// depth `w`. Embedded members (bolts, bars) never hide a nail.
+    /// A solid that is not one of the nailing's members covers the point: cut by the plane, or beyond it and wholly in
+    /// front of depth `w`. The nailing's own members never hide it, cut or not: a fastener inside a cut member draws
+    /// over its section (SPEC 28.6). Embedded members (bolts, bars) never hide a nail.
     fn nail_hidden(&self, p: V2, w: f64, stack: &[u32]) -> bool {
         self.occs.iter().any(|o| {
             if !o.bx.contains(p) {
                 return false;
             }
             let pr = &self.prisms[o.prism];
-            if pr.embedded {
+            if pr.embedded || stack.contains(&pr.comp) {
                 return false;
             }
-            if !o.cut && (stack.contains(&pr.comp) || pr.z0 < w - EPS) {
+            if !o.cut && pr.z0 < w - EPS {
                 return false;
             }
             geom::locate_even_odd(p, &o.loops, 1e-9) == Loc::Inside
