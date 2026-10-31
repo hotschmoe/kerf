@@ -138,5 +138,11 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   A dowel that laps a wall bar: `"points": [{"ref":"ftg@bottom_center","offset":[2,3]}, {"ref":"wall_bar@start","offset":[2,24]}]`.
 - `W_CUT_FILL`: an embedded part (bolt, bar) emptied a cut member's fill; the member keeps its fill and the warning
   says which part.
+- Subtracted solids (SPEC 26.4): earth and gravel are plain rectangles around footings, stems and pours (a fill draws
+  under every solid the view cuts; `except` keeps one from clipping it). A pour around a column is ONE polygon with
+  `"voids": ["col", "base_plate", "grout"]`: the steel shows with its own fill and the hole follows a resize. Block-outs:
+  `"voids": [{"rect": [8, 4], "at": "stem@top_center", "anchor": "top_center"}]`, `{"circle": 4, "at": ..., "z": [-6, 6]}`.
+  Pipe through a wall or footing: `{"type": "sleeve", "pipe": 4, "fill": "joint_filler", "through": "stem", "at": {"to":
+  "stem@center"}}` (run x/y + `length` to cut it along its axis). `W_VOID_MISS` prints the op that drops a void that misses.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

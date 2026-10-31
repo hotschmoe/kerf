@@ -147,6 +147,7 @@ fn dependents(c: &Ctx, id: &str) -> Vec<String> {
         }
         let mut deps = Vec::new();
         compile::collect_deps(&comp, &mut deps);
+        compile::collect_subtract_refs(&comp, &mut deps);
         if deps.contains(&id) {
             out.push(cid.to_string());
         }

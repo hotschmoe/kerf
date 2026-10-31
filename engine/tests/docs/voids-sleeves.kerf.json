@@ -1,0 +1,49 @@
+{
+  "kerf": "0.1",
+  "id": "voids-sleeves",
+  "title": "SUBTRACTED SOLIDS",
+  "run": [-12, 12],
+  "components": [
+    {"id": "ftg", "type": "concrete", "views": ["A", "I"], "at": {"anchor": "top_center", "to": [0, -18]}, "shape": "footing", "width": 36, "height": 12},
+    {"id": "ftg_bars", "type": "rebar", "views": ["A", "I"], "size": "#5", "place": {"in": "ftg", "face": "bottom", "cover": 3, "count": 3}},
+    {"id": "slab_l", "type": "concrete", "views": ["A", "I"], "at": {"anchor": "top_right", "to": [-12, 0]}, "shape": "rect", "cover": {"bottom": 1.5, "top": 1.5}, "width": 18, "height": 4},
+    {"id": "slab_r", "type": "concrete", "views": ["A", "I"], "at": {"anchor": "top_left", "to": [12, 0]}, "shape": "rect", "cover": {"bottom": 1.5, "top": 1.5}, "width": 18, "height": 4},
+    {"id": "gravel", "type": "fill", "views": ["A", "I"], "material": "gravel", "outline": "none", "points": [[-30, -8], [30, -8], [30, -4], [-30, -4]]},
+    {"id": "earth", "type": "fill", "views": ["A", "I"], "material": "earth", "outline": "none", "points": [[-30, -34], [30, -34], [30, -8], [-30, -8]]},
+    {"id": "grout", "type": "concrete", "views": ["A", "I"], "material": "grout", "at": {"to": "ftg@top_center"}, "z": [-7.5, 7.5], "shape": "polygon", "points": [[-7.5, 0], [7.5, 0], [6, 1.5], [-6, 1.5]]},
+    {"id": "plate", "type": "steel", "views": ["A", "I"], "at": {"anchor": "face_bottom", "to": "grout@top_center"}, "shape": "PL3/4x12", "length": 12},
+    {"id": "col", "type": "steel", "views": ["A", "I"], "at": {"anchor": "bottom_center", "to": "plate@face_top"}, "shape": "HSS6x6x1/4", "orient": "elevation", "run": "y", "length": 36},
+    {"id": "rod_l", "type": "anchor_bolt", "views": ["A", "I"], "at": {"to": {"ref": "ftg@top_center", "offset": [-4.5, 0]}}, "diameter": 0.75, "embed": 7, "projection": 3, "hook": "headed"},
+    {"id": "rod_r", "type": "anchor_bolt", "views": ["A", "I"], "at": {"to": {"ref": "ftg@top_center", "offset": [4.5, 0]}}, "diameter": 0.75, "embed": 7, "projection": 3, "hook": "headed"},
+    {"id": "pour", "type": "concrete", "views": ["A", "I"], "at": {"to": [0, 0]}, "shape": "polygon", "points": [[-12, 0], [12, 0], [12, -18], [-12, -18]], "voids": ["col", "plate", "grout"]},
+    {"id": "b_ftg", "type": "concrete", "views": ["B"], "at": {"to": [100, 0]}, "shape": "rect", "width": 72, "height": 12},
+    {"id": "b_stem", "type": "concrete", "views": ["B"], "at": {"to": [100, 12]}, "shape": "rect", "width": 72, "height": 24, "voids": [{"rect": [8, 4], "at": "b_stem@top_center", "anchor": "top_center"}]},
+    {"id": "b_sleeve", "type": "sleeve", "views": ["B"], "pipe": 4, "fill": "joint_filler", "through": "b_stem", "at": {"to": [118, 24]}},
+    {"id": "c_wall", "type": "concrete", "views": ["C"], "at": {"to": [300, 0]}, "shape": "rect", "width": 8, "height": 36},
+    {"id": "c_ftg", "type": "concrete", "views": ["C"], "at": {"anchor": "top_center", "to": [304, 0]}, "shape": "footing", "width": 24, "height": 10},
+    {"id": "c_earth", "type": "fill", "views": ["C"], "material": "earth", "points": [[280, 0], [328, 0], [328, -16], [280, -16]]},
+    {"id": "c_sleeve", "type": "sleeve", "views": ["C"], "pipe": 3, "run": "x", "length": 8, "fill": "joint_filler", "through": ["c_wall"], "at": {"anchor": "middle_left", "to": [300, 20]}}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "title": "CLOSURE POUR AROUND COLUMN", "scale": "1\"=1'-0\"", "crop": {"x": [-24, 24], "y": [-32, 10]},
+      "annotations": [
+        {"id": "n1", "type": "note", "text": "CONC. CLOSURE POUR, ONE POLYGON MINUS COLUMN, PLATE AND GROUT", "target": "pour"},
+        {"id": "n2", "type": "note", "text": "HSS6X6X1/4 COLUMN", "target": "col"},
+        {"id": "n3", "type": "note", "text": "EARTH, ONE RECTANGLE", "target": "earth"},
+        {"id": "n4", "type": "note", "text": "NON-SHRINK GROUT", "target": "grout"}
+      ]},
+    {"id": "B", "kind": "section", "title": "SLEEVE AND BLOCK-OUT IN STEM WALL", "scale": "1\"=1'-0\"", "crop": {"x": [96, 176], "y": [-2, 40]},
+      "annotations": [
+        {"id": "n1", "type": "note", "text": "SLEEVE", "target": "b_sleeve.sleeve"},
+        {"id": "n2", "type": "note", "text": "COMPRESSIBLE FILL", "target": "b_sleeve.fill"},
+        {"id": "n3", "type": "note", "text": "PIPE", "target": "b_sleeve.pipe"},
+        {"id": "n4", "type": "note", "text": "BLOCK-OUT", "at": {"ref": "b_stem@top_center", "offset": [0, -2]}}
+      ]},
+    {"id": "C", "kind": "section", "title": "SLEEVE THROUGH WALL", "scale": "1\"=1'-0\"", "crop": {"x": [284, 324], "y": [-14, 40]},
+      "annotations": [
+        {"id": "n1", "type": "note", "text": "SLEEVE", "target": "c_sleeve.sleeve"},
+        {"id": "n2", "type": "note", "text": "EARTH", "target": "c_earth"}
+      ]},
+    {"id": "I", "kind": "iso", "title": "CLOSURE POUR, ISOMETRIC", "cutaway": true, "cut_z": 0}
+  ]
+}

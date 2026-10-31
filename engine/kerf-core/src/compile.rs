@@ -84,6 +84,31 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     }
 }
 
+/// The components a node names in `voids`, a sleeve's `through` and a fill's `except` (SPEC 26.4). They are not
+/// placement dependencies (subtraction runs after placement), but removing one leaves the reference dangling.
+pub fn collect_subtract_refs<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
+    for v in node.get("voids").and_then(Value::arr).unwrap_or(&[]) {
+        match v {
+            Value::String(s) => out.push(s.split('.').next().unwrap_or(s)),
+            _ => {
+                if let Some(a) = v.get("at") {
+                    add_ref_dep(a, out);
+                }
+                for p in v.get("points").and_then(Value::arr).unwrap_or(&[]) {
+                    add_ref_dep(p, out);
+                }
+            }
+        }
+    }
+    for key in ["through", "except"] {
+        match node.get(key) {
+            Some(Value::String(s)) => out.push(s),
+            Some(Value::Array(a)) => out.extend(a.iter().filter_map(Value::str)),
+            _ => {}
+        }
+    }
+}
+
 pub fn compile<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags) -> Scene<'a> {
     let mut scene = Scene::new(st, diags, DEFAULT_RUN);
     if !read_settings(&mut scene, doc) {

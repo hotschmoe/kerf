@@ -232,6 +232,7 @@ ungrouted ⇒ empty with the cross web shown as a beyond line), mortar joints as
 | `shape` | — | `rect`, `polygon`, `slab_edge`, `footing` |
 | `material` | `"concrete"` | |
 | `cover` | `{ "bottom": 3, "sides": 3, "top": 1.5 }` | REQUIRED clear cover for bars in this host, used by `W_COVER` |
+| `voids` | null | what the host loses: component ids (`"col"`, `"plate.part"`) and shapes (`rect`, `circle`, `points`, optional `z`); also on `cmu_wall`; a `sleeve` cuts the hosts in its `through` (§26.4) |
 `rect`: `width`, `height`. `footing`: same as rect (semantic name; parts `footing`).
 `polygon`: `points` (§3.3).
 `slab_edge` — monolithic slab with turned-down (thickened) edge footing:
@@ -319,6 +320,9 @@ Drawn per style pen (vapor retarder: dashed heavy line; shingles: thick line wit
 `material`: `earth` `gravel` `sand` `compacted_fill`; `points` polygon (§3.3); `outline`:
 `"top"` (default — only the uppermost edge chain is stroked, as a grade line), `"full"`,
 `"none"`. Hatched per material. `grade_label` optional text placed by the annotation system.
+A fill draws under every solid a view cuts with it: its region (hatch, outline, picking) is clipped by those solids, and
+fill vs solid is exempt from `W_OVERLAP`, so earth around a footing is a plain rectangle; `except: [ids]` names solids
+that do not clip it (§26.4).
 
 ### 5.11 `insulation`
 `form`: `rigid` | `batt`; `width`, `height` (rect) or `points`. Rigid hatched per style; batt
@@ -522,7 +526,8 @@ Materials (MVP): `concrete`, `grout`, `cmu`, `mortar`, `earth`, `gravel`, `sand`
 2. **Expand builders** into parts: each part is a **Prism** `{ comp, part, instance, material,
    profile: Region (outer loop + holes; segments line or arc), z0, z1, role flags (embedded,
    cut_mark, blocking, outline mode) }`.
-3. **Resolve placement** DAG; apply translate / rotate / mirror; expand arrays.
+3. **Resolve placement** DAG; apply translate / rotate / mirror; expand arrays. Then subtract voids and sleeves
+   from their hosts (§26.4): hosts are split into z slabs, each slab minus the voids that span it.
 4. **Validate** (§9) → diagnostics.
 5. **Views** → Drawing IR (§10): section (§8.1) or iso (§8.2), then annotations, title, crop,
    break lines.
@@ -543,6 +548,7 @@ Look direction −Z, cut plane z = `cut_z`.
   the union of occluders' interiors (2D boolean, exact with arcs). Draw with pen `beyond`.
 - `embedded` items are never occluded: they draw over cut regions and nearer prisms, in their
   own pen (cut ⇒ `rebar`/`steel` fill; beyond ⇒ outline in `rebar`/`steel` pen).
+- Fills (role soil) that are cut are first clipped by the solids the plane cuts with them (§26.4).
 - Crop: clip everything to `crop`. Where a **cut** region's boundary is clipped by the crop
   rectangle, draw a break line (style `break_line`) along that crop edge segment instead of a
   plain edge, extended `overshoot_in` past the region. Fills (earth, gravel, sand,
@@ -591,7 +597,8 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `E_REF_UNKNOWN` | error | ref to missing component/part; suggest nearest id (edit distance) |
 | `E_ANCHOR_UNKNOWN` | error | unknown anchor; list the component's anchors |
 | `E_CYCLE` | error | placement cycle |
-| `W_OVERLAP` | warning | two cut regions overlap by > 0.01 in² (report overlap bbox in ft-in). Exempt: `embedded` items, membranes, connectors, and fills vs membranes |
+| `W_OVERLAP` | warning | two cut regions overlap by > 0.01 in² (report overlap bbox in ft-in). Exempt: `embedded` items, membranes, connectors, and fills vs any non-fill solid (§26.4). A member inside concrete/cmu gets the `voids` (or sleeve `through`) op as its fix |
+| `W_VOID_MISS` | warning | a `voids` entry or a sleeve `through` host that removes nothing from its host; the fix drops it (§26.4) |
 | `W_FLOATING` | warning | a component touches nothing (gap > 1/32" to every other; concrete/masonry pieces facing across a joint < 1" touch), or some instances of an `array` touch nothing while others do (§25.5) |
 | `E_PLACE_OUTSIDE` | error | a `rebar.place` bar centre falls outside its zone (cover deeper than the host, or a `station` past the face); the bar is not drawn (§25.1) |
 | `W_BAR_OUTSIDE` | warning | an along-z bar centred in no concrete/masonry host drawn with it, or a path bar with a bend outside every host or no point in one; names the nearest host (§25.1) |
@@ -1379,3 +1386,60 @@ members get no `views`; each scenario's members get `views: ["B"]`; no `omit` li
 - `array`: a numeric `z` places instance 0; it does not center the group.
 - `kerf version` adds `"build"`: `git describe --tags --always --dirty` of the source tree at build time (`KERF_BUILD`
   overrides; `unknown` outside a checkout). The core API `version` is unchanged (exports never carry it).
+
+## 26. v0.2.0-beta.1 drawing kinds
+
+### 26.4 beta.1: fills under solids, voids and sleeves
+Solids subtract each other (#14), so no fill, pour or wall is traced by hand around what it surrounds.
+
+**Fills under solids** (§5.10). In a section view a cut fill (role soil) is clipped by every solid the cut plane also
+cuts in that view: per component instance whose bodies (not `embedded`, not `shown: dashed`, not soil or void) reach
+across `cut_z`, the union of their outer outlines (holes filled, so a tube or a W seen lengthwise clips as its whole
+silhouette). The fill keeps the rest, split into one region per piece; its hatch, picking region and `top` / `full`
+outline follow the clipped region, so the grade line stops at a stem. Fills are not clipped by fills (gravel over
+earth still meets edge to edge). `fill.except: [ids]` names solids that do not clip it. Cutaway iso views clip the fill's
+cap the same way. A fill overlapping a non-fill solid is exempt from `W_OVERLAP` (§9); fill against fill is still checked.
+So earth around a footing and stem is one rectangle.
+
+**Voids** (§5.4). `concrete` and `cmu_wall` take `voids`: a list of
+- a component id, `"col"`, or a part, `"col.part"`: per instance, the union of the outer outlines of its bodies (holes
+  filled: concrete does not get inside a tube) over its whole z extent (min z0..max z1 of those bodies). Because it is
+  the member's own outline, the hole follows the member when it is resized or moved;
+- a shape `{"rect": [w, h], "at": Ref, "anchor": "center"}` (the box anchor of the rect that lands on `at`),
+  `{"circle": d, "at": Ref}` (centered on `at`) or `{"points": [...]}` (§3.3; literal points relative to `at` when given),
+  each with an optional `"z": [z0, z1]` (default: through the host).
+After every component is placed (§8 step 3), each host's world prisms lose their voids: a prism is split along z at the
+void ends inside its z range into slabs (consecutive slabs with the same voids merge), and each slab is its region minus
+the voids that span it, one prism per remaining outer loop with its holes. A slab that loses nothing keeps its loops; a
+void wholly inside the region adds its exact outline (arcs kept) as a hole, otherwise the region is flattened (0.005").
+The split marks the caps between slabs as seams: iso and the mesh draw a seam cap's edges only where the touching slab of
+the same member does not continue them (the void's end faces), so the outside of the host shows no split lines. A
+`cmu_wall` keeps its running bond across slabs. Sections, iso, the mesh, landing, picking and every check see the cut
+host; voids apply in every view (they are geometry, not view membership). The summary line of the host ends with
+`minus <what>` (ids, shape kinds, `sleeve <id>`). `W_COVER` (§9) also measures to the void edges (classified by the
+concrete's outward normal, which points into the void). Removing a component a `voids` entry, a `through` or an `except`
+names is refused like any referenced component (§14).
+
+**Sleeves.** Component type `sleeve` (default placement anchor `center`): `pipe` (pipe outside diameter, null = an empty
+sleeve), `od` (sleeve outside diameter, default `pipe + 2·clearance + 2·wall`), `clearance` 0.5, `wall` 0.25,
+`pipe_wall` 0.25, `fill` (packing material between pipe and sleeve, e.g. `joint_filler`; null = open), `material` and
+`pipe_material` (`steel`), `run` `z` | `x` | `y`, `length` (required for run x/y; run z optional as lumber), `through`
+(a host id or a list of them). Parts `sleeve`, `fill`, `pipe`. Run z: three rings seen end-on (box od × od); run x/y: the
+sleeve cut along its axis: sleeve and pipe as rectangular tubes (top and bottom walls full depth, front and back walls
+the wall thickness), packing as two strips, natural z thickness od (2.5D, like pipe seen lengthwise, §5.13). Each host in
+`through` loses the sleeve's envelope as if it listed the sleeve in its `voids`; a sleeve inside concrete without it is
+`W_OVERLAP`. A block-out without a sleeve is a `voids` shape.
+
+**Diagnostics.**
+- `E_REF_UNKNOWN` (path `components/<host>/voids/<k>`, `.../through/<k>`, `.../except/<k>`): no component with that id
+  (nearest id as the fix), or no such part (lists the parts).
+- `E_PARAM`: a host voiding itself, a fill named as a void (fills are clipped, never cut), an id with `@` or `#`, a
+  component with no solid outline, a shape without `at` (rect, circle), with no area, a bad `z`, an unknown key or not
+  exactly one of rect / circle / points (fix: an example list); a `through` naming a type that takes no voids; a sleeve whose
+  pipe does not fit, whose wall is half the od or more, or run x/y without `length`.
+- `W_VOID_MISS` (warning, id = the host, or the sleeve for `through`; path = the entry): a void that removes nothing from
+  its host. The message gives both boxes and z ranges and whether the outlines miss or only the z ranges; the fix is the
+  `update` op that drops the entry (or, for a sleeve, move it into the host or drop the host from `through`).
+- `W_OVERLAP` between a concrete/cmu host and a non-masonry solid (or grout) prints, before the usual fix, the op that
+  subtracts it: `{"op": "update", "path": "components/<host>", "value": {"voids": [..., "<id>"]}}`, or for a sleeve
+  `{"op": "update", "path": "components/<sleeve>", "value": {"through": "<host>"}}`.

@@ -15,20 +15,20 @@ pub struct Shape<'a> {
 }
 
 pub fn shapes_of<L: AsRef<[V2]>>(loops: &[L]) -> Vec<Shape<'_>> {
-    let mut out = Vec::new();
-    for l in loops {
-        let l = l.as_ref();
-        if l.len() < 3 || geom::signed_area_v(l) <= 0.0 {
-            continue;
-        }
-        let mut holes = Vec::new();
-        for h in loops {
-            let h = h.as_ref();
-            if h.len() >= 3 && geom::signed_area_v(h) < 0.0 && geom::point_in_loop_eo(h[0], l) {
-                holes.push(h);
+    let outers: Vec<&[V2]> =
+        loops.iter().map(AsRef::as_ref).filter(|l| l.len() >= 3 && geom::signed_area_v(l) > 0.0).collect();
+    let mut out: Vec<Shape> = outers.iter().map(|&outer| Shape { outer, holes: Vec::new() }).collect();
+    for h in loops.iter().map(AsRef::as_ref).filter(|h| h.len() >= 3 && geom::signed_area_v(h) < 0.0) {
+        let mut best: Option<(usize, f64)> = None;
+        for (k, l) in outers.iter().enumerate() {
+            let a = geom::signed_area_v(l);
+            if geom::point_in_loop_eo(h[0], l) && best.is_none_or(|(_, ba)| a < ba) {
+                best = Some((k, a));
             }
         }
-        out.push(Shape { outer: l, holes });
+        if let Some((k, _)) = best {
+            out[k].holes.push(h);
+        }
     }
     out
 }

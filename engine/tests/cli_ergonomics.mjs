@@ -1086,5 +1086,89 @@ section('19. #19 papercuts: check false positives, diagnostics that name their k
   check('kerf version stamps the build (git describe)', r.code === 0 && /^\{"engine":"kerf","version":"[^"]+","spec":"[^"]+","build":"[^"]+"\}$/m.test(r.out), r.out);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// issue #14: subtracted solids: fills clipped under solids, concrete voids, sleeves (SPEC 26.4)
+section('#14 fills under solids, voids around embedded members, sleeves');
+{
+  const doc = (components, annotations = [], view = {}) => ({ kerf: '0.1', id: 'v', title: 'V', run: [-12, 12], components, views: [{ id: 'A', kind: 'section', title: 'V', annotations, ...view }] });
+  const crop = { scale: '1"=1\'-0"', crop: { x: [-30, 30], y: [-40, 16] } };
+  const area = (loops) => loops.reduce((b, l) => b + l.reduce((c, p, k) => { const q = l[(k + 1) % l.length]; return c + (p[0] * q[1] - q[0] * p[1]) / 2; }, 0), 0);
+  const items = (r) => (r.code === 0 ? JSON.parse(r.out).items : []);
+  const srcArea = (its, t, src) => its.filter((i) => i.t === t && i.src === src).reduce((a, i) => a + area(i.loops), 0);
+  const ftg = { id: 'ftg', type: 'concrete', shape: 'footing', width: 24, height: 10, at: { anchor: 'top_center', to: [0, -24] } };
+  const stem = { id: 'stem', type: 'concrete', shape: 'rect', width: 8, height: 36, at: { anchor: 'bottom_center', to: 'ftg@top_center' } };
+  const earth = { id: 'earth', type: 'fill', material: 'earth', points: [[-30, 0], [30, 0], [30, -40], [-30, -40]] };
+  write('v1.kerf.json', doc([ftg, stem, earth], [], crop));
+  let r = kerf(['check', 'v1.kerf.json']);
+  check('an earth rectangle around a footing and stem: 0 warnings (a fill over a solid is not W_OVERLAP)', r.code === 0 && /0 errors +0 warnings/.test(r.out), r.out);
+  r = kerf(['drawing', 'v1.kerf.json', '--view', 'A']);
+  let a = srcArea(items(r), 'hatch', 'earth');
+  check('the earth hatch is the rectangle minus the footing and the buried stem (2400 - 240 - 192 sq in)', Math.abs(a - 1968) < 0.01, a);
+  check('the grade line stops at the stem', items(r).filter((i) => i.t === 'path' && i.src === 'earth').map((i) => JSON.stringify(i.pts)).join(' ') === '[[30,0],[4,0]] [[-4,0],[-30,0]]', items(r).filter((i) => i.t === 'path' && i.src === 'earth'));
+  write('v1.kerf.json', doc([ftg, stem, { ...earth, except: ['stem'] }], [], crop));
+  a = srcArea(items(kerf(['drawing', 'v1.kerf.json', '--view', 'A'])), 'hatch', 'earth');
+  check('fill.except: the stem no longer clips the earth', Math.abs(a - 2160) < 0.01, a);
+  write('v1.kerf.json', doc([ftg, stem, { ...earth, except: ['stme'] }]));
+  r = kerf(['check', 'v1.kerf.json']);
+  check('fill.except naming no component: E_REF_UNKNOWN with the nearest id', r.code === 1 && /ERROR E_REF_UNKNOWN earth: fill 'earth' except: no component with id 'stme'; did you mean 'stem'\?/.test(r.out), r.out);
+
+  const grout = { id: 'grout', type: 'concrete', material: 'grout', at: { to: 'ftg@top_center' }, z: [-7.5, 7.5], shape: 'polygon', points: [[-7.5, 0], [7.5, 0], [6, 1.5], [-6, 1.5]] };
+  const plate = { id: 'plate', type: 'steel', at: { anchor: 'face_bottom', to: 'grout@top_center' }, shape: 'PL3/4x12', length: 12 };
+  const col = { id: 'col', type: 'steel', at: { anchor: 'bottom_center', to: 'plate@face_top' }, shape: 'HSS6x6x1/4', orient: 'elevation', run: 'y', length: 36 };
+  const pour = { id: 'pour', type: 'concrete', at: { to: [0, 0] }, shape: 'polygon', points: [[-12, 0], [12, 0], [12, -24], [-12, -24]] };
+  write('v2.kerf.json', doc([ftg, grout, plate, col, pour]));
+  r = kerf(['check', 'v2.kerf.json']);
+  check('a pour around a column without voids: W_OVERLAP whose fix is the voids op', /WARN W_OVERLAP col: 'col' and 'pour' overlap .*Fix: if 'col' is cast into 'pour', subtract it \(the hole follows the member\): \{"op": "update", "path": "components\/pour", "value": \{"voids": \["col"\]\}\}/.test(r.out), r.out);
+  write('v2.kerf.json', doc([ftg, grout, plate, col, { ...pour, voids: ['col', 'plate', 'grout'] }]));
+  r = kerf(['check', 'v2.kerf.json']);
+  check('pour.voids [col, plate, grout]: 0 warnings, the summary names what the pour lost', r.code === 0 && /0 errors +0 warnings/.test(r.out) && /^ pour +concrete polygon minus col, plate, grout /m.test(r.out), r.out);
+  a = srcArea(items(kerf(['drawing', 'v2.kerf.json', '--view', 'A'])), 'region', 'pour');
+  check('the cut pour is 576 sq in less the column (6 x 21.75), plate (12 x 0.75) and grout (20.25)', Math.abs(a - (576 - 130.5 - 9 - 20.25)) < 0.01, a);
+  r = kerf(['apply', 'v2.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/col', value: { shape: 'HSS8x8x1/4' } }]), '-w', '--why', 'bigger column']);
+  a = srcArea(items(kerf(['drawing', 'v2.kerf.json', '--view', 'A'])), 'region', 'pour');
+  check('resizing the column needs no change to the pour: still 0 warnings, the hole is 8" wide', r.code === 0 && /0 errors +0 warnings/.test(r.out) && Math.abs(a - (576 - 174 - 9 - 20.25)) < 0.01, [a, r.out]);
+  r = kerf(['apply', 'v2.kerf.json', '--ops', JSON.stringify([{ op: 'remove', path: 'components/col' }])]);
+  check('removing a voided member names the host that subtracts it', r.code === 1 && /cannot remove 'col': still referenced by pour/.test(r.err), r.err);
+  r = kerf(['mesh', 'v2.kerf.json']);
+  const mz = r.code === 0 ? JSON.parse(r.out).parts.filter((p) => p.src === 'pour').map((p) => [Math.min(...p.positions.filter((_, k) => k % 3 === 2)), Math.max(...p.positions.filter((_, k) => k % 3 === 2))]) : [];
+  const slabs = [...new Set(mz.map((z) => z.join()))];
+  check('3D: the pour is split into 7 slabs where the column, plate and grout end along z (the column slab in two pieces)', slabs.join(' ') === '-12,-7.5 -7.5,-6 -6,-4 -4,4 4,6 6,7.5 7.5,12' && mz.length === 8 && Math.min(...mz.map((z) => z[0])) === -12 && Math.max(...mz.map((z) => z[1])) === 12, mz);
+
+  write('v3.kerf.json', doc([{ ...pour, voids: ['colum', 'pour', 'ftg.web', { rect: [2, 2] }, { circle: 2, at: [100, 100] }, { circle: 2, at: [0, -6], bogus: 1 }] }, ftg]));
+  r = kerf(['check', 'v3.kerf.json']);
+  check('voids naming a missing component: E_REF_UNKNOWN with the nearest id', /ERROR E_REF_UNKNOWN pour: 'pour' voids: no component with id 'colum'; did you mean 'pour'\?/.test(r.out) || /ERROR E_REF_UNKNOWN pour: 'pour' voids: no component with id 'colum'/.test(r.out), r.out);
+  check('a host voiding itself is E_PARAM', /ERROR E_PARAM pour: 'pour' cannot void itself/.test(r.out), r.out);
+  check('a missing part lists the parts', /ERROR E_REF_UNKNOWN pour: 'pour' voids 'ftg\.web': component 'ftg' has no part 'web'\. Parts: footing/.test(r.out), r.out);
+  check('a shape without at, and an unknown key, are E_PARAM with an example', /ERROR E_PARAM pour: 'pour' voids\[3\]: a rect needs "at"/.test(r.out) && /ERROR E_PARAM pour: 'pour' voids\[5\]: unknown key 'bogus'; a void shape takes rect, circle, points, at, anchor, z Fix: "voids": \[/.test(r.out), r.out);
+  check('a void that misses its host: W_VOID_MISS with both boxes and the op that drops it', /WARN W_VOID_MISS pour: void voids\[4\] \(circle\) of 'pour' removes nothing: the void \(x 8'-3"\.\.8'-5", y 8'-3"\.\.8'-5", through\) and 'pour' .*their outlines do not overlap Fix: move the void or 'pour' so they overlap, or remove the entry: \{"op": "update", "path": "components\/pour", "value": \{"voids": \[/.test(r.out), r.out);
+  write('v3.kerf.json', doc([ftg, { id: 'pc', type: 'concrete', shape: 'rect', width: 4, height: 4, z: [-6, 6], at: { to: [40, 0] } }, { ...pour, voids: ['pc'] }]));
+  r = kerf(['check', 'v3.kerf.json']);
+  check('W_VOID_MISS names a component void and the z ranges', /WARN W_VOID_MISS pour: void 'pc' of 'pour' removes nothing/.test(r.out), r.out);
+
+  const wall = { id: 'wall', type: 'concrete', shape: 'rect', width: 72, height: 24, at: { to: [0, 0] } };
+  const sl = { id: 'sl', type: 'sleeve', pipe: 4, fill: 'joint_filler', at: { to: [36, 12] } };
+  write('v4.kerf.json', doc([wall, sl]));
+  r = kerf(['check', 'v4.kerf.json']);
+  check('a sleeve inside concrete without through: W_OVERLAP whose fix sets through', /WARN W_OVERLAP wall: 'wall' and 'sl' overlap .*Fix: if 'sl' passes through 'wall', cut its hole: \{"op": "update", "path": "components\/sl", "value": \{"through": "wall"\}\}/.test(r.out), r.out);
+  write('v4.kerf.json', doc([wall, { ...sl, through: 'wall' }, { id: 'bar', type: 'rebar', size: '#4', at: { anchor: 'center', to: [36, 16] } }], [{ id: 'n1', type: 'note', text: 'PIPE', target: 'sl.pipe' }]));
+  r = kerf(['check', 'v4.kerf.json']);
+  check('sleeve through the wall: 5 1/2" OD (4" pipe, 1/2" clearance, 1/4" wall), the wall loses it', /^ sl +sleeve 5 1\/2" OD x 1\/4" wall, pipe 4", joint_filler fill run z through wall /m.test(r.out) && /^ wall +concrete rect 6'-0" x 2'-0" minus sleeve sl /m.test(r.out) && !/W_OVERLAP/.test(r.out), r.out);
+  check('W_COVER measures to the sleeve: a bar 1" clear above it', /WARN W_COVER bar: clear cover from .* to the bottom of 'wall' is 1" < required 3" \(cover\.bottom, default\)/.test(r.out), r.out);
+  const its = items(kerf(['drawing', 'v4.kerf.json', '--view', 'A']));
+  const reg = its.filter((i) => i.t === 'region' && i.src === 'wall');
+  check('section: the wall is cut with a hole (outer + one hole loop), the sleeve and pipe walls fill, the packing hatches, the note lands', reg.length === 1 && reg[0].loops.length === 2 && its.some((i) => i.t === 'fill' && i.src === 'sl') && its.some((i) => i.t === 'hatch' && i.src === 'sl' && i.pattern === 'KERF-FILLER') && its.some((i) => i.t === 'path' && i.src === 'n1'), reg.map((x) => x.loops.length));
+  write('v4.kerf.json', doc([wall, { id: 'stud', type: 'lumber', size: '2x4', at: { to: [-20, 0] } }, { ...sl, through: ['stud'] }]));
+  r = kerf(['check', 'v4.kerf.json']);
+  check('a sleeve through a non-host: E_PARAM naming the types that take a sleeve', /ERROR E_PARAM sl: sleeve 'sl' through 'stud': 'stud' is a lumber; only concrete and cmu_wall take a sleeve or void/.test(r.out), r.out);
+  write('v4.kerf.json', doc([{ ...wall, width: 8, height: 36 }, { ...sl, pipe: 3, run: 'x', length: 8, through: 'wall', at: { anchor: 'middle_left', to: [0, 18] } }]));
+  r = kerf(['check', 'v4.kerf.json']);
+  check('a sleeve seen lengthwise (run x) through an 8" wall: 0 warnings', r.code === 0 && /0 errors +0 warnings/.test(r.out) && /run x L=8" through wall/.test(r.out), r.out);
+  write('v4.kerf.json', doc([{ ...sl, run: 'x' }]));
+  r = kerf(['check', 'v4.kerf.json']);
+  check('a sleeve along x without length: E_PARAM', r.code === 1 && /ERROR E_PARAM sl: .*length/.test(r.out), r.out);
+  r = kerf(['schema', 'sleeve', 'concrete', 'fill']);
+  check('schema documents sleeve.through, concrete.voids and fill.except', /through/.test(r.out) && /clearance/.test(r.out) && /^- voids/m.test(r.out) && /^- except/m.test(r.out), r.out.slice(0, 400));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

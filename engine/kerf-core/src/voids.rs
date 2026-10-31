@@ -37,6 +37,8 @@ struct Void {
     owner: usize,
     /// How messages name the void: `'col'`, `voids[2] (rect)`, `sleeve 'sl'`.
     what: String,
+    /// How the host's summary line names it: `col`, `rect`, `sleeve sl`.
+    name: String,
     path: String,
     /// The entry of the host's `voids` this void came from (None: a sleeve's `through`).
     entry: Option<usize>,
@@ -70,11 +72,15 @@ pub fn apply(scene: &mut Scene) {
         }
     }
     for (h, w) in worlds {
-        let cutters: Vec<Cutter> =
-            voids.iter().filter(|v| v.host == h).flat_map(|v| v.cutters.iter().cloned()).collect();
+        let mine: Vec<&Void> = voids.iter().filter(|v| v.host == h).collect();
+        let cutters: Vec<Cutter> = mine.iter().flat_map(|v| v.cutters.iter().cloned()).collect();
+        let names: Vec<&str> = mine.iter().filter(|v| v.removed).map(|v| v.name.as_str()).collect();
         let c = &mut scene.comps[h];
         c.world = w;
         c.voids = cutters;
+        if !names.is_empty() {
+            c.built.info.push_str(&format!(" minus {}", names.join(", ")));
+        }
     }
 }
 
@@ -184,6 +190,10 @@ fn collect(scene: &Scene) -> Vec<Void> {
                                 Value::String(s) => format!("'{s}'"),
                                 _ => format!("voids[{k}] ({})", shape_kind(e)),
                             },
+                            name: match e {
+                                Value::String(s) => s.clone(),
+                                _ => shape_kind(e).to_string(),
+                            },
                             path: p,
                             entry: Some(k),
                             cutters,
@@ -281,6 +291,7 @@ fn through(scene: &Scene, si: usize) -> Vec<Void> {
             host: hi,
             owner: si,
             what: format!("sleeve '{}'", c.id),
+            name: format!("sleeve {}", c.id),
             path: p,
             entry: None,
             cutters: cutters.clone(),

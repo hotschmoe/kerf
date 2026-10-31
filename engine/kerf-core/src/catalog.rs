@@ -346,7 +346,7 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::CmuWall,
-        summary: "Concrete masonry wall in section: face shells, grouted cells, mortar joints, bond beam.",
+        summary: "CMU wall in section: face shells, grouted cells, mortar joints, bond beam.",
         parts: "course_1..course_n (1 = bottom), bond_beam, grout",
         anchors: "9 box anchors + bond_beam_center, top_center, cell_center_top; cell_left, cell_center, cell_right (inside faces of the face shells and the cell middle at the wall bottom) and cell_left_top, cell_right_top: vertical path bars in the cell follow the wall width with {\"ref\": \"wall@cell_left\", \"offset\": [1.5, -12]}",
         draws: "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. 3D: 15.625\" units with 0.375\" head joints, running bond.",
@@ -355,10 +355,10 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Concrete,
-        summary: "Cast-in-place concrete: rect/footing, free polygon, or a monolithic slab with turned-down edge.",
+        summary: "Cast-in-place concrete: rect/footing, polygon or slab with turned-down edge; `voids` cuts cast-in members.",
         parts: "footing (turndown zone), slab (slab zone), base (when base is set) for slab_edge; footing for shape footing",
         anchors: "9 box anchors; polygon adds vertex_1..vertex_n at the points (in `points` order) and edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge); slab_edge adds top_exterior (datum (0,0) at the exterior face), slab_top, footing_bottom_exterior, footing_bottom_interior, slab_bottom_interior, haunch_top, recess_bottom_exterior, recess_bottom_interior, recess_top_interior, base_bottom_interior and base_bottom_footing (with base)",
-        draws: "slab_edge local origin: exterior face at x=0, top of slab at y=0, footing bottom at y=-footing_depth. Cut region with the material hatch; parts are zones (rebar place.in, cover), not separate outlines.",
+        draws: "slab_edge local origin: exterior face at x=0, top of slab at y=0, footing bottom at y=-footing_depth. Cut region with the material hatch; parts are zones (rebar place.in, cover), not separate outlines. `voids` (also on cmu_wall) subtracts members cast into it (an HSS column, base plate and grout in a closure pour: `[\"col\", \"plate\", \"grout\"]`) or shapes (block-outs) in section, iso and 3D, so the embedded steel shows with its own fill and the hole follows the member; a void that misses is W_VOID_MISS.",
         example: "{\"id\":\"slab\",\"type\":\"concrete\",\"shape\":\"slab_edge\",\"slab_thickness\":4,\"footing_width\":12,\"footing_depth\":18,\"at\":{\"anchor\":\"top_exterior\",\"to\":[0,0]}}",
         traits: Traits { takes_voids: true, ..Traits::NONE },
     },
@@ -382,7 +382,7 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Connector,
-        summary: "Schematic steel hardware: straps, ties, embedded anchors, drawn as a thickened polyline.",
+        summary: "Schematic steel hardware (straps, ties, embedded anchors) as a thickened polyline.",
         parts: "none",
         anchors: "9 box anchors of the resolved profile + vertex_1..vertex_n at the points (in `points` order), edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge)",
         draws: "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets.",
@@ -413,10 +413,10 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Fill,
-        summary: "Earth, gravel, sand, compacted fill as a hatched polygon.",
+        summary: "Earth, gravel, sand, compacted fill: drawn under solids, never notched.",
         parts: "none",
         anchors: "9 box anchors of the polygon + vertex_1..vertex_n at the points (in `points` order) and edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge)",
-        draws: "Hatched cut region; the hatch stops at the crop and fills never get break lines.",
+        draws: "Hatched cut region, drawn under every solid the view cuts with it: its hatch and grade line stop at them (SPEC 26.4; `except` lists solids that do not clip it), and a fill over a solid is not W_OVERLAP. So earth around a footing and stem is one rectangle. The hatch stops at the crop and fills never get break lines.",
         example: "{\"id\":\"gravel\",\"type\":\"fill\",\"material\":\"gravel\",\"points\":[[0,0],[48,0],[48,-4],[0,-4]]}",
         traits: Traits::NONE,
     },
@@ -440,7 +440,7 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Joint,
-        summary: "Concrete joints: expansion filler strip, control (saw-cut) notch, tooled edge radius, sealant bead on backer rod.",
+        summary: "Concrete joints: expansion filler, saw-cut control notch, tooled edge, sealant on backer rod.",
         parts: "expansion: filler (+ sealant with cap); control: notch; tooled_edge: radius; sealant: bead, rod",
         anchors: "9 box anchors + joint_top (local (0,0): top surface at the joint centerline); tooled_edge adds corner",
         draws: "Local origin: top surface, joint centerline (tooled_edge: the sharp corner). Expansion: filler strip width x depth with the joint_filler hatch (place it in the gap between two concrete pieces). Control and tooled_edge are void shapes (embedded: they cut a hole in the host hatch; not in 3D/iso). Sealant: bead (filled) over a backer rod circle. Spans the document run along Z.",
@@ -449,7 +449,7 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Sleeve,
-        summary: "Pipe sleeve through concrete or CMU: sleeve, packing, pipe; `through` cuts the host.",
+        summary: "Pipe sleeve, packing and pipe; `through` cuts its hole in concrete or CMU.",
         parts: "sleeve, fill (with fill), pipe (with pipe)",
         anchors: "the 9 box anchors (center = the pipe axis for run z; the default placement anchor)",
         draws: "Run z: rings seen end-on, centered on the placement point; run x/y: the sleeve cut along its axis (walls as strips over `length`, natural z thickness = od). Cut sleeve and pipe walls take their material's fill (steel: solid), the packing its hatch, the pipe bore stays open. `through` subtracts the sleeve's outside from those hosts in section, iso and 3D (the same as naming the sleeve in the host's `voids`); a sleeve inside concrete without it is W_OVERLAP. A block-out with no sleeve is a host `voids` shape.",
@@ -458,7 +458,7 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Steel,
-        summary: "Structural steel shape from the AISC table: W, HSS (rect, square, round), pipe, angle, channel (C, MC), plate. Drawn true to the tabulated dimensions in section (end-on), elevation (side) or plan (top).",
+        summary: "AISC steel: W, HSS (rect, square, round), pipe, angle, channel (C, MC), plate. Drawn true to the tabulated dimensions in section (end-on), elevation (side) or plan (top).",
         parts: "section: one piece (HSS and pipe: two `wall` halves); elevation/plan: top_flange, web, bottom_flange (W, channel), wall / tube (HSS, pipe), vertical_leg, horizontal_leg (angle), plate; hidden (dashed hidden lines, with hidden_lines)",
         anchors: "9 box anchors + per shape. Section: W top_flange, bottom_flange (face centers), web_center, web_left, web_right (web faces), top_flange_tip_left/right (underside of the top flange at its tips), bottom_flange_tip_left/right (top of the bottom flange at its tips); HSS/pipe inner_top, inner_bottom, inner_left, inner_right (inside wall faces); angle heel (outside corner), heel_inside, toe_vertical, toe_horizontal, vertical_leg_face, horizontal_leg_top; channel web_back, web_face, top_flange, bottom_flange, top_flange_tip, bottom_flange_tip; plate edge_left, edge_right, face_top, face_bottom. Elevation/plan: the levels across the member (W top_flange, top_flange_bottom, web_center, bottom_flange_top, bottom_flange; HSS/pipe inner_top, center_line, inner_bottom; plan W flange_tip_left, web_left, web_center, web_right, flange_tip_right ...) at mid-length, each also as <name>_start and <name>_end at the member ends",
         draws: "Local box: section (0,0)-(width, depth) of the cross-section, bottom-left at the flange tip / heel / outside corner. Section: cut => solid steel fill, beyond => outline (pen steel); W with k-fillets, HSS with corner radii. Elevation/plan: outlines only, never filled: the silhouette in the visible steel pen (a W in elevation also shows its flanges as lines), hidden faces omitted unless `hidden_lines`, a break line where the crop cuts the member off; the member is a stack of slabs at their true z, so iso/3D and occlusion are right. Natural z thickness in elevation/plan = the cross-section dimension along z; section spans the doc run unless `length`. Pipe and round HSS seen lengthwise are boxes in 3D (2.5D: use orient section with `z` for a round member in 3D).",
@@ -467,7 +467,7 @@ pub static ENTRIES: [Entry; 17] = [
     },
     Entry {
         ty: Type::Bolt,
-        summary: "Structural bolt group: heavy hex bolts with nut and washer through steel plies, seen from the side (axis in-plane) or end-on (hex head).",
+        summary: "Bolt group (heavy hex, nut, washer) through steel plies, side (axis in-plane) or end-on.",
         parts: "shank, head, washer, nut (one set per bolt)",
         anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing)",
         draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
