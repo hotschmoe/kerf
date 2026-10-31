@@ -27,8 +27,20 @@ const DEFAULT_GAP_IN: f64 = 0.5;
 const MAX_GAP_IN: f64 = 4.0;
 const MIN_SHEET_IN: f64 = 5.0;
 const MAX_SHEET_IN: f64 = 60.0;
-/// Sheets a `W_VIEW_FIT` fix may suggest, smallest first (ANSI B, ANSI C, ARCH D landscape).
-const LARGER_SHEETS: [(f64, f64, &str); 3] = [(17.0, 11.0, "17x11"), (22.0, 17.0, "22x17"), (36.0, 24.0, "36x24")];
+/// The standard sheets, smallest first (ANSI A, ANSI B, ANSI C, ARCH C, ARCH D landscape): `sheet: "auto"` picks one
+/// and a `W_VIEW_FIT` fix may suggest a larger one.
+const SHEETS: [(f64, f64, &str); 5] = [
+    (11.0, 8.5, "11x8.5"),
+    (17.0, 11.0, "17x11"),
+    (22.0, 17.0, "22x17"),
+    (24.0, 18.0, "24x18"),
+    (36.0, 24.0, "36x24"),
+];
+/// `sheet: "auto"` with a common scale takes the smallest sheet at which the views reach this scale (1" = 1'-0"), or
+/// the largest scale any sheet reaches when none reaches it.
+const AUTO_TARGET_SCALE: f64 = 12.0;
+const MIN_ISO_RATIO: f64 = 0.1;
+const MAX_ISO_RATIO: f64 = 4.0;
 
 /// `"17x11"` or `[17, 11]`: width and height in paper inches.
 fn sheet_size(v: &Value) -> Option<(f64, f64)> {
@@ -100,13 +112,17 @@ pub struct Layout<'a> {
     /// None = `common`; else the scale every view without its own `scale` is drawn at.
     pub scale: Option<(f64, &'a str)>,
     pub gap: f64,
-    /// Sheet size (paper inches, width x height); None = the style's.
+    /// Sheet size (paper inches, width x height); None = the style's (or, with `auto_sheet`, not picked yet).
     pub sheet: Option<(f64, f64)>,
+    /// `sheet: "auto"`: the smallest standard sheet that holds the views (SPEC 28.2).
+    pub auto_sheet: bool,
+    /// An iso view without its own scale is drawn at the common scale over this ratio (1 = the sections' size).
+    pub iso_ratio: f64,
 }
 
-/// A view keeps its own scale in a layout: an explicit (or document) `scale`, or an iso view, which stays NTS.
+/// A view keeps its own scale in a layout: an explicit (or document) `scale`.
 fn fixed_scale(s: &ViewSpec) -> bool {
-    s.has_scale || s.kind == Kind::Iso
+    s.has_scale
 }
 
 impl Layout<'_> {
@@ -145,6 +161,15 @@ impl Layout<'_> {
 pub fn layout_ids(doc: &Value) -> Vec<&str> {
     let Some(ls) = doc.get("layouts").and_then(Value::arr) else { return Vec::new() };
     ls.iter().filter_map(|l| l.get("id").and_then(Value::str)).collect()
+}
+
+/// Some layout of the document names view `vid` (it is then fit-checked as part of that layout, SPEC 28.2).
+pub fn names_view(doc: &Value, vid: &str) -> bool {
+    let Some(ls) = doc.get("layouts").and_then(Value::arr) else { return false };
+    ls.iter().filter_map(|l| l.get("views").and_then(Value::arr)).flatten().any(|v| match v.arr() {
+        Some(inner) => inner.iter().any(|x| x.str() == Some(vid)),
+        None => v.str() == Some(vid),
+    })
 }
 
 fn find_layout<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
@@ -420,8 +445,10 @@ pub fn parse<'a>(doc: &'a Value, node: &'a Value, i: usize, diags: &Diags) -> Op
             }
         },
     };
+    let auto_sheet = str_field("sheet").and_then(Value::str) == Some("auto");
     let sheet = match str_field("sheet") {
         None => None,
+        Some(_) if auto_sheet => None,
         Some(sv) => match sheet_size(sv) {
             Some(s) => Some(s),
             None => {
@@ -430,15 +457,37 @@ pub fn parse<'a>(doc: &'a Value, node: &'a Value, i: usize, diags: &Diags) -> Op
                     Some(id),
                     &format!("{base}/sheet"),
                     format!(
-                        "layout {id}: \"sheet\" is the paper size \"<width>x<height>\" in inches, each {}-{} (got {})",
+                        "layout {id}: \"sheet\" is \"auto\" or the paper size \"<width>x<height>\" in inches, each {}-{} (got {})",
                         model::fmt_num(MIN_SHEET_IN),
                         model::fmt_num(MAX_SHEET_IN),
                         model::kind_or_text(sv)
                     ),
-                    "e.g. \"sheet\": \"17x11\" (ANSI B landscape) or \"36x24\"",
+                    "e.g. \"sheet\": \"auto\" (the smallest standard sheet that holds the views), \"17x11\" (ANSI B landscape) or \"36x24\"",
                 );
                 ok = false;
                 None
+            }
+        },
+    };
+    let iso_ratio = match str_field("iso_ratio") {
+        None => 1.0,
+        Some(rv) => match rv.num().filter(|r| (MIN_ISO_RATIO..=MAX_ISO_RATIO).contains(r)) {
+            Some(r) => r,
+            None => {
+                err(
+                    diags,
+                    Some(id),
+                    &format!("{base}/iso_ratio"),
+                    format!(
+                        "layout {id}: \"iso_ratio\" is the size of the iso views against the common scale, {} to {} (got {})",
+                        model::fmt_num(MIN_ISO_RATIO),
+                        model::fmt_num(MAX_ISO_RATIO),
+                        model::kind_or_text(rv)
+                    ),
+                    "e.g. \"iso_ratio\": 0.5 draws the iso views at half the sections' scale",
+                );
+                ok = false;
+                1.0
             }
         },
     };
@@ -446,7 +495,20 @@ pub fn parse<'a>(doc: &'a Value, node: &'a Value, i: usize, diags: &Diags) -> Op
     if !ok {
         return None;
     }
-    Some(Layout { id, title: text("title"), number: text("number"), entries, arrange, shared, side, scale, gap, sheet })
+    Some(Layout {
+        id,
+        title: text("title"),
+        number: text("number"),
+        entries,
+        arrange,
+        shared,
+        side,
+        scale,
+        gap,
+        sheet,
+        auto_sheet,
+        iso_ratio,
+    })
 }
 
 /// Document checks of `layouts` and `scale` (run with the other document checks).
@@ -519,7 +581,7 @@ fn shared_keys<'a>(lay: &Layout, specs: &[ViewSpec<'a>], st: &Style, diags: &Dia
     let mut member: Vec<Vec<(String, usize)>> = Vec::new();
     for spec in specs {
         let mut mine = Vec::new();
-        if spec.notes_style.unwrap_or(st.notes_mode) != NotesStyle::Leader {
+        if spec.kind == Kind::Schedule || spec.notes_style.unwrap_or(st.notes_mode) != NotesStyle::Leader {
             for an in spec.annotations {
                 if an.get("type").and_then(Value::str) != Some("note") {
                     continue;
@@ -708,6 +770,7 @@ fn place(s: &Shape, sizes: &[(f64, f64)], gap: f64, bx: [f64; 4], out: &mut [(f6
 }
 
 /// One view of the layout as built: its drawing and the paper size of its extents.
+#[derive(Clone)]
 struct Built<'s> {
     d: Drawing<'s>,
     diags: Vec<Diag>,
@@ -729,10 +792,15 @@ struct Ctx<'c, 'a> {
     share: (f64, f64),
 }
 
-fn build_view<'a>(c: &Ctx<'_, 'a>, spec: &ViewSpec, keys: Option<&[(String, u32)]>) -> Option<Built<'a>> {
+fn build_view<'a>(
+    c: &Ctx<'_, 'a>,
+    spec: &ViewSpec,
+    keys: Option<&[(String, u32)]>,
+    iso_factor: Option<f64>,
+) -> Option<Built<'a>> {
     let vd = Diags::new();
-    let d =
-        drawview::build_with(c.doc, c.st, c.scene, spec, &vd, ViewOpts { keys, in_layout: true, fit: Some(c.share) })?;
+    let opts = ViewOpts { keys, in_layout: true, fit: Some(c.share), iso_factor, own_sheet: false };
+    let d = drawview::build_with(c.doc, c.st, c.scene, spec, &vd, opts)?;
     Some(Built { d, diags: vd.into_vec() })
 }
 
@@ -751,20 +819,30 @@ fn merge_entries(lay: &Layout, built: &[Built], diags: &Diags) -> Vec<KeyedEntry
     for b in built {
         for e in &b.d.keyed {
             match out.iter().find(|(o, _)| o.num == e.num) {
-                Some((o, v)) if o.text != e.text => diags.add_fix(
-                    Level::Warning,
-                    "W_PARAM",
-                    Some(&e.first),
-                    Some(&format!("views/{}/annotations/{}/text", b.d.view, e.first)),
-                    format!(
-                        "layout {}: note '{}' in view {} prints as shared note {} but its text differs from note '{}' in view {v} (\"{}\" vs \"{}\"); the DETAIL NOTES list shows the text of '{}'",
-                        lay.id, e.first, b.d.view, e.num, o.first, e.body, o.body, o.first
-                    ),
-                    format!(
-                        "give both notes the same text (or drop the text of '{}' and keep the key), or give '{}' its own \"key\"",
-                        e.first, e.first
-                    ),
-                ),
+                Some((o, v)) if o.text != e.text => {
+                    let (field, mine, theirs) = if o.body == e.body {
+                        ("cite", cite_part(e), cite_part(o))
+                    } else if cite_part(o) == cite_part(e) {
+                        ("text", format!("\"{}\"", e.body), format!("\"{}\"", o.body))
+                    } else {
+                        ("text and cite", format!("\"{}\"", e.text), format!("\"{}\"", o.text))
+                    };
+                    let path_field = if field == "cite" { "cite" } else { "text" };
+                    diags.add_fix(
+                        Level::Warning,
+                        "W_PARAM",
+                        Some(&e.first),
+                        Some(&format!("views/{}/annotations/{}/{path_field}", b.d.view, e.first)),
+                        format!(
+                            "layout {}: note '{}' in view {} prints as shared note {} but its {field} differs from note '{}' in view {v} ({mine} vs {theirs}); the DETAIL NOTES list shows the {field} of '{}'",
+                            lay.id, e.first, b.d.view, e.num, o.first, o.first
+                        ),
+                        format!(
+                            "drop the text and cite of '{}' and keep its key (it then takes them from '{}'), or give '{}' its own \"key\"",
+                            e.first, o.first, e.first
+                        ),
+                    );
+                }
                 Some(_) => {}
                 None => out.push((e.clone(), &b.d.view)),
             }
@@ -773,6 +851,12 @@ fn merge_entries(lay: &Layout, built: &[Built], diags: &Diags) -> Vec<KeyedEntry
     let mut v: Vec<KeyedEntry> = out.into_iter().map(|(e, _)| e).collect();
     crate::sort::stable(&mut v, |a, b| a.num < b.num);
     v
+}
+
+/// The printed citation of a list entry (its text after the note body), quoted, or `no cite`.
+fn cite_part(e: &KeyedEntry) -> String {
+    let c = e.text.strip_prefix(e.body.as_str()).unwrap_or(&e.text).trim();
+    if c.is_empty() { "no cite".to_string() } else { format!("\"{c}\"") }
 }
 
 fn map_pts(pts: &[Pt], m: &impl Fn(f64, f64) -> (f64, f64)) -> Vec<Pt> {
@@ -902,7 +986,6 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
     let li = doc.get("layouts").and_then(Value::arr).and_then(|ls| ls.iter().position(|l| core::ptr::eq(l, node)));
     let lay = parse(doc, node, li.unwrap_or(0), diags)?;
     let font = font::embedded();
-    let c = Ctx { doc, st, scene, font, share: lay.share(st) };
     let views = lay.views();
     let all = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let mut specs: Vec<ViewSpec> = Vec::new();
@@ -912,46 +995,125 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
     }
     let keys = if lay.shared { shared_keys(&lay, &specs, st, diags) } else { alloc::vec![Vec::new(); specs.len()] };
     let key_of = |k: usize| if lay.shared { Some(keys[k].as_slice()) } else { None };
+    let sheets: Vec<Option<(f64, f64)>> =
+        if lay.auto_sheet { SHEETS.iter().map(|&(w, h, _)| Some((w, h))).collect() } else { alloc::vec![lay.sheet] };
+    let first = Layout { sheet: sheets[0], ..lay.clone() };
+    let c0 = Ctx { doc, st, scene, font, share: first.share(st) };
     let fixed: Vec<Option<Built>> = specs
         .iter()
         .enumerate()
-        .map(|(k, s)| if fixed_scale(s) { build_view(&c, s, key_of(k)) } else { None })
+        .map(|(k, s)| if fixed_scale(s) { build_view(&c0, s, key_of(k), None) } else { None })
         .collect();
     if specs.iter().zip(&fixed).any(|(s, f)| fixed_scale(s) && f.is_none()) {
         return None;
     }
-    let (aw, ah) = lay.area(st);
-    let gutter = st.gutter_in;
-    let free: Vec<usize> = (0..specs.len()).filter(|&k| !fixed_scale(&specs[k])).collect();
+    let flat_free = specs.iter().any(|s| !fixed_scale(s) && s.kind.is_flat());
     let candidates: Vec<f64> = match lay.scale {
         Some((f, _)) => alloc::vec![f],
-        None if free.is_empty() => alloc::vec![0.0],
+        None if !flat_free => alloc::vec![0.0],
         None => drawview::STANDARD_SCALES.to_vec(),
     };
-    let mut chosen: Option<(f64, Vec<Built>)> = None;
-    for (n, &sc) in candidates.iter().enumerate() {
-        let label = units::scale_label(sc);
-        let mut built: Vec<Built> = Vec::new();
-        for (k, s) in specs.iter().enumerate() {
-            let b = match &fixed[k] {
-                Some(f) => Built { d: f.d.clone(), diags: f.diags.clone() },
-                None => build_view(&c, &with_scale(s, sc, &label), key_of(k))?,
+    let reached = |sc: f64| lay.scale.is_some() || !flat_free || sc <= AUTO_TARGET_SCALE + 1e-9;
+    let mut trials: Vec<Trial> = Vec::new();
+    let mut picks: Vec<(Layout, usize, bool)> = Vec::new();
+    for &sheet in &sheets {
+        let l = Layout { sheet, ..lay.clone() };
+        let c = Ctx { share: l.share(st), ..c0 };
+        let (aw, ah) = l.area(st);
+        let mut pick = None;
+        for (n, &sc) in candidates.iter().enumerate() {
+            let t = match trials.iter().position(|t| t.sc == sc && (sc > 0.0 || t.share == c.share)) {
+                Some(t) => t,
+                None => {
+                    trials.push(trial(&c, &l, &specs, &fixed, &key_of, sc)?);
+                    trials.len() - 1
+                }
             };
-            built.push(b);
+            let total = trials[t].total;
+            let fits = total.0 <= aw + 1e-6 && total.1 <= ah + 1e-6;
+            if fits || n + 1 == candidates.len() {
+                pick = Some((t, fits));
+                break;
+            }
         }
-        let last = n + 1 == candidates.len();
-        let sizes: Vec<(f64, f64)> = built.iter().map(Built::paper).collect();
-        let entries = if lay.shared { merge_entries(&lay, &built, &Diags::new()) } else { Vec::new() };
-        let probe = arrange(&lay, lay.arrange, lay.side, &sizes, (0.0, 0.0), gutter);
-        let list = list_size(st, font, &entries, lay.side, probe.arr.1);
-        let ar = arrange(&lay, lay.arrange, lay.side, &sizes, list, gutter);
-        if last || (ar.total.0 <= aw + 1e-6 && ar.total.1 <= ah + 1e-6) {
-            chosen = Some((sc, built));
+        let (t, fits) = pick?;
+        let done = fits && reached(trials[t].sc);
+        picks.push((l, t, fits));
+        if done {
             break;
         }
     }
-    let (common, built) = chosen?;
-    compose(&c, &lay, common, built, diags)
+    let best = picks.iter().filter(|p| p.2).map(|p| trials[p.1].sc).fold(f64::INFINITY, f64::min);
+    let k = picks
+        .iter()
+        .position(|p| p.2 && (reached(trials[p.1].sc) || trials[p.1].sc <= best + 1e-9))
+        .unwrap_or(picks.len() - 1);
+    let (l, t, fits) = picks.swap_remove(k);
+    let common = trials[t].sc;
+    let built = trials.swap_remove(t).built;
+    let c = Ctx { share: l.share(st), ..c0 };
+    if lay.auto_sheet
+        && let Some((w, h)) = l.sheet
+    {
+        let name = SHEETS.iter().find(|s| s.0 == w && s.1 == h).map_or("", |s| s.2);
+        let at = if common > 0.0 { format!(" with the views at {}", units::scale_label(common)) } else { String::new() };
+        let why = if !fits {
+            "no standard sheet holds it, so the largest is used"
+        } else if reached(common) {
+            "the smallest standard sheet that holds it"
+        } else {
+            "no standard sheet holds it at 1\" = 1'-0\"; the smallest that reaches the largest scale"
+        };
+        diags.add_fix(
+            Level::Info,
+            "I_LAYOUT_SHEET",
+            Some(lay.id),
+            Some(&format!("layouts/{}", lay.id)),
+            format!("layout {}: \"sheet\": \"auto\" picked {name}{at} ({why})", lay.id),
+            "nothing to do; set \"sheet\" (e.g. \"22x17\") or a numeric layout \"scale\" to choose yourself".to_string(),
+        );
+    }
+    compose(&c, &l, common, built, diags)
+}
+
+/// The views of a layout built at one common scale, with the paper size the arrangement and the list need.
+struct Trial<'a> {
+    sc: f64,
+    share: (f64, f64),
+    built: Vec<Built<'a>>,
+    total: (f64, f64),
+}
+
+/// Builds the views without their own scale at common scale `sc` (0: none to pick; an iso view then fits its share of
+/// the sheet), an iso view at `sc` over the layout's `iso_ratio`.
+fn trial<'a, 'k>(
+    c: &Ctx<'_, 'a>,
+    lay: &Layout,
+    specs: &[ViewSpec],
+    fixed: &[Option<Built<'a>>],
+    key_of: &impl Fn(usize) -> Option<&'k [(String, u32)]>,
+    sc: f64,
+) -> Option<Trial<'a>> {
+    let label = units::scale_label(sc);
+    let mut built: Vec<Built> = Vec::new();
+    for (k, s) in specs.iter().enumerate() {
+        let b = match &fixed[k] {
+            Some(f) => f.clone(),
+            None if s.kind == Kind::Iso => {
+                build_view(c, s, key_of(k), (sc > 0.0).then(|| sc / lay.iso_ratio))?
+            }
+            None if s.kind.is_flat() && sc > 0.0 => build_view(c, &with_scale(s, sc, &label), key_of(k), None)?,
+            None => build_view(c, s, key_of(k), None)?,
+        };
+        built.push(b);
+    }
+    let gutter = c.st.gutter_in;
+    let sizes: Vec<(f64, f64)> = built.iter().map(Built::paper).collect();
+    let entries = if lay.shared { merge_entries(lay, &built, &Diags::new()) } else { Vec::new() };
+    let probe = arrange(lay, lay.arrange, lay.side, &sizes, (0.0, 0.0), gutter);
+    let list = list_size(c.st, c.font, &entries, lay.side, probe.arr.1);
+    let total = arrange(lay, lay.arrange, lay.side, &sizes, list, gutter).total;
+    Some(Trial { sc, share: c.share, built, total })
 }
 
 fn compose<'a>(
@@ -1044,7 +1206,7 @@ fn compose<'a>(
     d.diagnostics = out_diags;
     d.number = lay.number.to_string();
     d.title = if lay.title.is_empty() { first.doc_title.clone() } else { lay.title.to_string() };
-    let one = cells.iter().all(|cl| cl.scale == cells[0].scale);
+    let one = cells.iter().all(|cl| cl.scale_label == cells[0].scale_label);
     d.scale_label = if one { cells[0].scale_label.clone() } else { "AS NOTED".to_string() };
     d.sheet_no = first.sheet_no.clone();
     d.date = first.date.clone();
@@ -1107,7 +1269,7 @@ fn layout_fit(
     let mut fixes: Vec<String> = Vec::new();
     let (sw, sh) = lay.sheet.unwrap_or((st.sheet_w_in, st.sheet_h_in));
     let now = arrange(lay, lay.arrange, lay.side, sizes, list, gutter).total;
-    for (w, h, name) in LARGER_SHEETS {
+    for (w, h, name) in SHEETS {
         let (bw, bh) = drawview::fit_area_of(st, w, h);
         if w * h > sw * sh && now.0 <= bw + 1e-6 && now.1 <= bh + 1e-6 {
             let grow = if lay.scale.is_none() && common > 0.0 {
@@ -1165,7 +1327,7 @@ fn layout_fit(
         }
     }
     for b in built {
-        if common > 0.0 && b.d.scale < common - 1e-9 {
+        if common > 0.0 && b.d.kind.is_flat() && b.d.scale < common - 1e-9 {
             fixes.push(format!(
                 "view {} has its own larger scale {} (the others are at {scale_text}): remove its \"scale\" or set a smaller one",
                 b.d.view, b.d.scale_label

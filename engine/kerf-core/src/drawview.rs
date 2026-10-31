@@ -460,6 +460,10 @@ pub struct ViewOpts<'a> {
     pub in_layout: bool,
     /// The paper area an NTS view fits (its share of a layout); None = the whole sheet area.
     pub fit: Option<(f64, f64)>,
+    /// An iso view drawn at this scale factor instead of fitted (a layout's common scale over its `iso_ratio`).
+    pub iso_factor: Option<f64>,
+    /// The view is exported on its own sheet: it is fit-checked against the style's sheet even when a layout names it.
+    pub own_sheet: bool,
 }
 
 /// The width a view title may take in a layout: the drawing with its notes, less the bubble, and at least 3" (paper).
@@ -581,6 +585,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.shared_keys = keys;
+    env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let ann = annot::annotate(&mut env, &mut base_items);
     let unverified = env.unverified;
     let mut all: Vec<Item> = base_items;
@@ -625,6 +630,7 @@ fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut env = Env::new(st, font, scene, spec, 1.0, origin, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.shared_keys = keys;
+    env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let mut all = annot::annotate(&mut env, &mut []);
     let unverified = env.unverified;
     let mut detail = annot::items_box(font, &all);
@@ -817,11 +823,33 @@ struct SecResolved {
 /// Resolve an omitted crop and/or scale (SPEC 19) and run the section pass. The scale is the first of the
 /// standard scales (largest first) at which view + notes + dimensions + title fit the sheet frame; every
 /// candidate is evaluated in order, so the result is stable. Explicit crop and scale are used as given.
+/// The crop of a "see other detail" view (only `ref`s, no model, SPEC 28.2): the point at the centre of its bubbles, so
+/// the view is as large as its refs and title.
+fn ref_crop(inp: SectionInputs, spec: &ViewSpec) -> Box {
+    let mut probe = spec.clone();
+    probe.crop = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
+    if !probe.has_scale {
+        probe.scale = 12.0;
+    }
+    let td = Diags::new();
+    let pass = section_pass(SectionInputs { diags: &td, ..inp }, &probe);
+    let ids: Vec<&str> = spec.annotations.iter().filter_map(|an| an.get("id").and_then(Value::str)).collect();
+    let mut b = Box::default();
+    for it in pass.items.iter().filter(|it| ids.contains(&it.src())) {
+        b.add_box(annot::items_box(inp.font, core::slice::from_ref(it)));
+    }
+    if b.is_empty() {
+        return probe.crop;
+    }
+    let (cx, cy) = ((b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5);
+    Box { x0: cx, y0: cy, x1: cx, y1: cy }
+}
+
 fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
     let SectionInputs { st, prisms, diags, .. } = inp;
     let mut rs = spec.clone();
     if !spec.has_crop {
-        rs.crop = auto_crop(prisms, spec.cut_z);
+        rs.crop = if spec.members.none { ref_crop(inp, spec) } else { auto_crop(prisms, spec.cut_z) };
     }
     if spec.has_scale {
         let pass = section_pass(inp, &rs);
@@ -915,8 +943,9 @@ pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
     }
 }
 
-/// Build the Drawing for `view_id`. Returns None (with diagnostics) if the view does not exist or is invalid.
-pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Option<Drawing<'a>> {
+/// Build the Drawing for `view_id` (`own_sheet`: it is exported on its own sheet). Returns None (with diagnostics) if
+/// the view does not exist or is invalid.
+pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, own_sheet: bool, diags: &Diags) -> Option<Drawing<'a>> {
     let Some(vnode) = view::find_view(doc, view_id) else {
         let ids = view::view_ids(doc);
         diags.add(
@@ -935,7 +964,7 @@ pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Op
         .unwrap_or(0);
     let spec = crate::layout::view_spec(doc, vnode, idx, diags)?;
     let scene = compile::compile(doc, st, diags);
-    build_from_scene(doc, st, &scene, &spec, diags)
+    build_with(doc, st, &scene, &spec, diags, ViewOpts { own_sheet, ..ViewOpts::default() })
 }
 
 /// Build a view's Drawing from an already compiled scene. `diags` receives view-level diagnostics.
@@ -1030,7 +1059,11 @@ pub fn build_with<'a>(
         loop {
             let tdiags = Diags::new();
             let mut iso = Iso::default();
-            let factor = if trial == 0 { 0.0 } else { (fitted + 0.5 * trial as f64).max(need) };
+            let factor = match opts.iso_factor {
+                Some(f) => f,
+                None if trial == 0 => 0.0,
+                None => (fitted + 0.5 * trial as f64).max(need),
+            };
             let res = iso::build(&mut iso, scene, spec, st, factor);
             if trial == 0 {
                 fitted = res.scale;
@@ -1041,6 +1074,7 @@ pub fn build_with<'a>(
             let mut env = Env::new(st, font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&iso));
             env.work = Some(&work);
             env.shared_keys = opts.keys;
+            env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
             let ann = annot::annotate(&mut env, &mut res.items);
             let un = env.unverified;
             let mut all: Vec<Item> = res.items;
@@ -1085,7 +1119,7 @@ pub fn build_with<'a>(
                     need = (gw / room_w).max(gh / room_h);
                 }
             }
-            if fits || spec.scale != 0.0 || trial >= 16 {
+            if fits || spec.scale != 0.0 || opts.iso_factor.is_some() || trial >= 16 {
                 diags.extend(tdiags.take());
                 items = all;
                 bounds = b;
@@ -1104,7 +1138,8 @@ pub fn build_with<'a>(
         let pw = (bounds.x1 - bounds.x0) / scale;
         let ph = (bounds.y1 - bounds.y0) / scale;
         let (aw, ah) = fit_area(st);
-        if !opts.in_layout && (pw > aw + 1e-6 || ph > ah + 1e-6) {
+        let checked = !opts.in_layout && (opts.own_sheet || !crate::layout::names_view(doc, view_id));
+        if checked && (pw > aw + 1e-6 || ph > ah + 1e-6) {
             let culprits = if spec.kind.is_flat() && !spec.has_crop {
                 crop_culprits(scene, prisms, &fv.spec, crop_out)
             } else {
