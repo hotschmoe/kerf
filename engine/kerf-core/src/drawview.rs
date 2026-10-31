@@ -131,6 +131,7 @@ fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
             let name = match b.kind {
                 AnnKind::Dim => format!("dimension '{}'", b.id),
                 AnnKind::List => "the DETAIL NOTES list".to_string(),
+                AnnKind::Table => format!("table '{}'", b.id),
                 _ => format!("label '{}'", b.id),
             };
             best = Culprit { name, ext: e, kind: Some(b.kind), id: b.id.clone() };
@@ -276,6 +277,14 @@ fn view_fit(
         }
         match big.kind {
             Some(AnnKind::Dim) => dim_offset_fix(fit, big, need, &mut nfix, &mut fixes),
+            Some(AnnKind::Table) => {
+                nfix += 1;
+                fixes.push_str(&format!(
+                    "{}{nfix}) table '{}' is paper sized: narrow its columns (columns[k].width) or move it (\"at\")",
+                    sep(nfix),
+                    big.id
+                ));
+            }
             Some(AnnKind::Note) if leader && spec.notes_side == NotesSide::Both => {
                 nfix += 1;
                 let (keep, drop) = if lc.ext >= rc.ext { ("right", "left") } else { ("left", "right") };
@@ -326,6 +335,14 @@ fn view_fit(
         let big = if tc.ext >= bc.ext { &tc } else { &bc };
         match big.kind {
             Some(AnnKind::Dim) => dim_offset_fix(fit, big, need, &mut nfix, &mut fixes),
+            Some(AnnKind::Table) => {
+                nfix += 1;
+                fixes.push_str(&format!(
+                    "{}{nfix}) table '{}' is paper sized: narrow its columns (columns[k].width) or move it (\"at\")",
+                    sep(nfix),
+                    big.id
+                ));
+            }
             Some(AnnKind::List) if !matches!(spec.notes_side, NotesSide::Left | NotesSide::Right) => {
                 nfix += 1;
                 fixes.push_str(&format!(
@@ -388,13 +405,17 @@ fn schedule_fit(spec: &ViewSpec, need: (f64, f64), area: (f64, f64), fit: &FitIn
     }
     let mut fixes: Vec<String> = Vec::new();
     if pw > aw + 1e-6 {
-        fixes.push("narrow the widest table (smaller columns[k].width, or remove widths so long text wraps)".to_string());
+        fixes.push(
+            "narrow the widest table (smaller columns[k].width, or remove widths so long text wraps)".to_string(),
+        );
         if matches!(spec.notes_side, NotesSide::Left | NotesSide::Right) {
             fixes.push("set notes_side to \"above\" to put the notes list above the tables".to_string());
         }
     }
     if ph > ah + 1e-6 {
-        fixes.push("split the tallest table: move some of its rows to a second table in another schedule view".to_string());
+        fixes.push(
+            "split the tallest table: move some of its rows to a second table in another schedule view".to_string(),
+        );
         if !matches!(spec.notes_side, NotesSide::Left | NotesSide::Right) {
             fixes.push("set notes_side to \"right\" to put the notes list beside the tables".to_string());
         }

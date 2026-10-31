@@ -714,7 +714,16 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     }
     crate::sort::stable(&mut drawn, |a, b| a.0 < b.0);
     let boxes: Vec<(usize, Box)> = drawn.iter().map(|(k, its)| (*k, items_box(env.font, its))).collect();
-    table_overlaps(env, &tables, &boxes, &base_segs);
+    let regions: Vec<Vec<V2>> = base_items
+        .iter()
+        .flat_map(|it| match it {
+            Item::Hatch(h) => h.loops.as_slice(),
+            Item::Fill(f) => f.loops.as_slice(),
+            _ => &[],
+        })
+        .map(|lp| lp.iter().map(|q| q.v()).collect())
+        .collect();
+    table_overlaps(env, &tables, &boxes, &base_segs, &regions);
     for ((_, its), (k, bx)) in drawn.into_iter().zip(&boxes) {
         let id = tables.iter().find(|t| t.k == *k).map_or("", |t| t.id);
         env.ann_boxes.push(AnnBox { id: id.to_string(), kind: AnnKind::Table, bbox: *bx, offset: 0.0 });
@@ -725,7 +734,13 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
 
 /// `W_TABLE_OVERLAP` (SPEC 26.1): a table placed with `at` overprints another table, a note, dimension, label or the
 /// notes list, or the drawing's lines.
-fn table_overlaps(env: &Env, tables: &[table::Table], boxes: &[(usize, Box)], base_segs: &[[V2; 2]]) {
+fn table_overlaps(
+    env: &Env,
+    tables: &[table::Table],
+    boxes: &[(usize, Box)],
+    base_segs: &[[V2; 2]],
+    regions: &[Vec<V2>],
+) {
     let vid = env.spec.id;
     let pad = 0.05 * env.s;
     for (i, &(k, bx)) in boxes.iter().enumerate() {
@@ -745,8 +760,12 @@ fn table_overlaps(env: &Env, tables: &[table::Table], boxes: &[(usize, Box)], ba
                 _ => format!("the {} list", env.spec.notes_title.unwrap_or("DETAIL NOTES")),
             });
         }
-        if base_segs.iter().any(|sg| crate::pathclip::clip_seg(sg[0], sg[1], inner).is_some()) {
-            hits.push("lines of the drawing".to_string());
+        let on_region = regions.iter().any(|lp| {
+            crate::geom::point_in_loop_eo(inner.center(), lp)
+                || (0..lp.len()).any(|i| crate::pathclip::clip_seg(lp[i], lp[(i + 1) % lp.len()], inner).is_some())
+        });
+        if on_region || base_segs.iter().any(|sg| crate::pathclip::clip_seg(sg[0], sg[1], inner).is_some()) {
+            hits.push("the drawing (its lines or hatched regions)".to_string());
         }
         if hits.is_empty() {
             continue;

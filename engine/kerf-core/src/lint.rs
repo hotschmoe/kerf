@@ -222,7 +222,13 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
                     for (r, row) in arr_of(an, key).unwrap_or(&[]).iter().enumerate() {
                         for (c, cell) in row.arr().unwrap_or(&[]).iter().enumerate() {
                             if matches!(cell, Value::Object(_)) {
-                                lint_object(diags, cell, &schema::TABLE_CELL, &format!("{apath}/{key}/{r}/{c}"), Some(aid));
+                                lint_object(
+                                    diags,
+                                    cell,
+                                    &schema::TABLE_CELL,
+                                    &format!("{apath}/{key}/{r}/{c}"),
+                                    Some(aid),
+                                );
                             }
                         }
                     }

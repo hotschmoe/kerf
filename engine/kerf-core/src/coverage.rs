@@ -132,7 +132,12 @@ fn table_candidates(an: &Value, aid: &str, vid: &str, w: &Words, out: &mut Vec<C
     let mut push = |text: String, what: &str| {
         let words = w.offered(&text);
         if !words.is_empty() {
-            out.push(Cand { found: format!("table {aid}"), source: format!("table '{aid}' {what}in view {vid}"), text, words });
+            out.push(Cand {
+                found: format!("table {aid}"),
+                source: format!("table '{aid}' {what}in view {vid}"),
+                text,
+                words,
+            });
         }
     };
     push(heading.clone(), "");

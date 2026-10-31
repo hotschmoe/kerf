@@ -216,14 +216,19 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
                 "E_PARAM",
                 Some(id),
                 Some(&format!("{base}/kind")),
-                format!("view kind must be \"section\", \"iso\" or \"schedule\" (tables and notes only) (got \"{kind_s}\")"),
+                format!(
+                    "view kind must be \"section\", \"iso\" or \"schedule\" (tables and notes only) (got \"{kind_s}\")"
+                ),
             );
             ok = false;
         }
     }
     let mut has_scale = node.get("scale").is_some_and(|v| !v.is_null());
-    let mut scale_text =
-        node.get("scale").and_then(Value::str).unwrap_or(if kind == Kind::Section { DEFAULT_SECTION_SCALE } else { "NTS" });
+    let mut scale_text = node.get("scale").and_then(Value::str).unwrap_or(if kind == Kind::Section {
+        DEFAULT_SECTION_SCALE
+    } else {
+        "NTS"
+    });
     let mut scale = 12.0;
     let spath = format!("{base}/scale");
     if kind == Kind::Schedule {
@@ -339,7 +344,10 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
                     "E_PARAM",
                     Some(id),
                     Some(&format!("{base}/notes_title")),
-                    format!("view {id}: \"notes_title\" must be a string of 1 to 60 characters (got {})", model::kind_or_text(tv)),
+                    format!(
+                        "view {id}: \"notes_title\" must be a string of 1 to 60 characters (got {})",
+                        model::kind_or_text(tv)
+                    ),
                     "use e.g. \"notes_title\": \"HEADER SCHEDULE NOTES\", or remove it for DETAIL NOTES".to_string(),
                 );
                 ok = false;

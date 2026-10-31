@@ -102,14 +102,21 @@ struct RawCell {
 
 const CELL_FORMS: &str = "a cell is a string, a number, null (empty) or {\"text\": ..., \"colspan\": n, \"rowspan\": n, \"align\": \"left|center|right\"}";
 
-fn read_cell(env: &Env, tid: &str, path: &str, v: &Value, max_cs: usize, max_rs: usize) -> Option<RawCell> {
+fn read_cell(
+    env: &Env,
+    tid: &str,
+    (path, full): (&str, &str),
+    v: &Value,
+    max_cs: usize,
+    max_rs: usize,
+) -> Option<RawCell> {
     let obj = matches!(v, Value::Object(_));
     let tv = if obj { v.get("text") } else { Some(v) };
     let Some(text) = plain_text(tv) else {
         param_error(
             env,
             tid,
-            path,
+            full,
             format!("table '{tid}': {path} is {}; {CELL_FORMS}", model::kind_or_text(v)),
             "write the cell as a string, e.g. \"24\", or \"\" for an empty cell",
         );
@@ -119,7 +126,7 @@ fn read_cell(env: &Env, tid: &str, path: &str, v: &Value, max_cs: usize, max_rs:
         param_error(
             env,
             tid,
-            path,
+            full,
             format!("table '{tid}': {path} has {} characters (at most {})", text.len(), crate::limits::MAX_TEXT_CHARS),
             "shorten the cell text; long remarks belong in the table's \"notes\"",
         );
@@ -137,15 +144,19 @@ fn read_cell(env: &Env, tid: &str, path: &str, v: &Value, max_cs: usize, max_rs:
                 param_error(
                     env,
                     tid,
-                    &format!("{path}/{key}"),
+                    &format!("{full}/{key}"),
                     format!(
                         "table '{tid}': {path} \"{key}\" must be a whole number from 1 to {max} (got {})",
                         model::kind_or_text(sv)
                     ),
-                    if key == "colspan" {
-                        "a colspan counts the columns the cell covers, from its own column to the right"
+                    &if key == "colspan" {
+                        format!(
+                            "set \"colspan\" to at most {max}: it counts the columns the cell covers, from its own column to the right"
+                        )
                     } else {
-                        "a rowspan counts the rows the cell covers, from its own row down, within the header or within the rows"
+                        format!(
+                            "set \"rowspan\" to at most {max}: it counts the rows the cell covers from its own row down, within its section (header or rows)"
+                        )
                     },
                 );
                 None
@@ -160,7 +171,7 @@ fn read_cell(env: &Env, tid: &str, path: &str, v: &Value, max_cs: usize, max_rs:
             param_error(
                 env,
                 tid,
-                &format!("{path}/align"),
+                &format!("{full}/align"),
                 format!("table '{tid}': {path} \"align\" must be \"left\", \"center\" or \"right\" (got {got})"),
                 "use \"left\", \"center\" or \"right\", or remove it to take the column's align",
             );
@@ -172,7 +183,6 @@ fn read_cell(env: &Env, tid: &str, path: &str, v: &Value, max_cs: usize, max_rs:
 
 /// Places the rows of one section (`header` or `rows`) on the grid, HTML style: each cell takes the next free slot of
 /// its row (slots covered by a rowspan from above are skipped) and must fit the columns and the section.
-#[allow(clippy::too_many_arguments)]
 fn place_section(
     env: &mut Env,
     t: &mut Table,
@@ -199,6 +209,18 @@ fn place_section(
             );
             return None;
         };
+        let from_above: Vec<String> =
+            (0..ncols).filter(|&cc| t.owner[r * ncols + cc] != none).map(|cc| (cc + 1).to_string()).collect();
+        let above = if from_above.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " (column{} {} of this row {} covered by rowspans from rows above)",
+                if from_above.len() == 1 { "" } else { "s" },
+                from_above.join(", "),
+                if from_above.len() == 1 { "is" } else { "are" }
+            )
+        };
         let mut c = 0usize;
         for (ci, cv) in cells.iter().enumerate() {
             while c < ncols && t.owner[r * ncols + c] != none {
@@ -212,20 +234,22 @@ fn place_section(
                     tid,
                     &full,
                     format!(
-                        "table '{tid}': {rpath} has more cells than the table has columns: cell {ci} would start after column {ncols} (the table has {ncols} columns; cells covered by a rowspan from a row above count)"
+                        "table '{tid}': {rpath} has more cells than the table has columns: cell {ci} would start after column {ncols}{above}"
                     ),
-                    &format!("remove cell {ci} of {rpath}, reduce a colspan in that row, or add a column to \"columns\""),
+                    &format!(
+                        "remove cell {ci} of {rpath}, reduce a colspan in that row, or add a column to \"columns\""
+                    ),
                 );
                 return None;
             }
-            let raw = read_cell(env, tid, &full, cv, ncols, end - r)?;
+            let raw = read_cell(env, tid, (&path, &full), cv, ncols, end - r)?;
             if c + raw.cs > ncols {
                 param_error(
                     env,
                     tid,
                     &format!("{full}/colspan"),
                     format!(
-                        "table '{tid}': {path} starts in column {} and spans {} columns, past the last column ({ncols})",
+                        "table '{tid}': {path} starts in column {} and spans {} columns, past the last column ({ncols}){above}",
                         c + 1,
                         raw.cs
                     ),
@@ -266,7 +290,7 @@ fn place_section(
                 tid,
                 &format!("{}/{rpath}", t.apath),
                 format!(
-                    "table '{tid}': {rpath} leaves column{} {} empty (the table has {ncols} columns; every row must cover all of them, counting colspans and rowspans from rows above)",
+                    "table '{tid}': {rpath} leaves column{} {} empty (the table has {ncols} columns; every row must cover all of them, with colspans){above}",
                     if empty.len() == 1 { "" } else { "s" },
                     empty.join(", ")
                 ),
@@ -358,7 +382,9 @@ fn read_columns(env: &Env, tid: &str, apath: &str, an: &Value) -> Option<Vec<Col
                     env,
                     tid,
                     &format!("{path}/align"),
-                    format!("table '{tid}': columns/{k} \"align\" must be \"left\", \"center\" or \"right\" (got {got})"),
+                    format!(
+                        "table '{tid}': columns/{k} \"align\" must be \"left\", \"center\" or \"right\" (got {got})"
+                    ),
                     "use \"left\", \"center\" (the default) or \"right\"",
                 );
                 return None;
@@ -410,7 +436,11 @@ pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apa
         );
         return None;
     }
-    let nhead = if header.is_empty() { usize::from(col_heads || cols.iter().any(|c| !c.unit.is_empty())) } else { header.len() };
+    let nhead = if header.is_empty() {
+        usize::from(col_heads || cols.iter().any(|c| !c.unit.is_empty()))
+    } else {
+        header.len()
+    };
     let nrows = nhead + rows.len();
     if rows.is_empty() && nhead == 0 {
         param_error(
@@ -446,7 +476,7 @@ pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apa
                     "table '{id}': \"rules\" must be \"all\", \"header\", \"outer\" or \"none\" (got {})",
                     model::kind_or_text(an.get("rules").unwrap_or(&Value::Null))
                 ),
-                "all = every cell ruled; header = no rules between body rows; outer = border and header rule; none = text only",
+                "use \"all\" (every cell ruled), \"header\" (no rules between body rows), \"outer\" (border and header rule) or \"none\" (text only)",
             );
             return None;
         }
@@ -745,7 +775,8 @@ fn report_overflow(env: &Env, t: &Table, g: &Grid, m: &Metrics) {
         }
         let s = env.s;
         let need = (widest + 2.0 * m.padx) / s;
-        let cols = if c.cs == 1 { format!("column {}", c.col + 1) } else { format!("columns {}-{}", c.col + 1, c.col + c.cs) };
+        let cols =
+            if c.cs == 1 { format!("column {}", c.col + 1) } else { format!("columns {}-{}", c.col + 1, c.col + c.cs) };
         let fixed: Vec<String> =
             (c.col..c.col + c.cs).filter(|&k| t.widths[k].is_some()).map(|k| format!("columns/{k}/width")).collect();
         let widen = if c.cs == 1 {
