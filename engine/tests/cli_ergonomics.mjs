@@ -682,10 +682,11 @@ section('#18. house style lint, kept case, requested coverage normalization');
 
   kerf(['new', 'cov.kerf.json', '--template', 'section']);
   const cov = [
-    { op: 'update', path: 'meta', value: { requested: ['bars each face', 'clear span', 'clr. span', 'single mat', 't-intersection', '3/16 fillet weld all around', 'stud 2 ft long', '(8) 16d each side', 'masonry wall opening'] } },
+    { op: 'update', path: 'meta', value: { requested: ['bars each face', 'clear span', 'clr. span', 'single mat', 't-intersection', '3/16 fillet weld all around', 'stud 2 ft long', '(8) 16d each side', 'masonry wall opening', "6'-0in chord lap"] } },
     { op: 'update', path: 'views/A', value: { title: 'SINGLE MAT T-INTERSECTION' } },
     note('c1', '(2) #5 BARS EA. FACE CONT. UNDER OPENING'),
     note('c2', '(2) 16d NAILS EA. SIDE'),
+    note('c3', '6\'-0" MIN. CHORD LAP'),
     { op: 'add', path: 'views/A/annotations', value: { id: 'd_span', type: 'dim', from: 'stud@bottom_left', to: 'stud@top_left', offset: -4, text: 'CLR. SPAN' } },
     { op: 'add', path: 'views/A/annotations', value: { id: 'd_len', type: 'dim', from: 'stud@bottom_right', to: 'stud@top_right', offset: 4 } },
     { op: 'add', path: 'views/A/annotations', value: { id: 'w1', type: 'weld', at: 'stud@bottom_right', offset: [6, 6], size: '3/16', all_around: true } },
@@ -698,6 +699,7 @@ section('#18. house style lint, kept case, requested coverage normalization');
   check('a dim\'s measured 2\'-0" alone does not cover "stud 2 ft long" (one candidate must hold every word)', /^ MISSING  stud 2 ft long\s+closest: /m.test(r.out), r.out);
   check('(8) 16d each side is not covered by a (2) 16d note: MISSING names the closest note and the lacking word', /^ MISSING  \(8\) 16d each side\s+closest: note 'c2' in view A \(lacks "8"\)$/m.test(r.out), r.out);
   check('W_REQUESTED_MISSING quotes the closest candidate text', /WARN W_REQUESTED_MISSING: requested element "masonry wall opening" .*closest: note 'c1' in view A "\(2\) #5 BARS EA\. FACE CONT\. UNDER OPENING" \(1 of 3 words; lacks "masonry", "wall"\)/.test(r.out), r.out);
+  check('feet-inches with a unit word: "6\'-0in" = 6\'-0"', /^ ok       6'-0in chord lap\s+stud/m.test(r.out), r.out);
   r = kerf(['apply', 'cov.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/stud', value: { label: 'stud 24in long' } }), '--dry-run']);
   check('lengths compare across units: "2 ft" = "24in"', /^ ok       stud 2 ft long\s+stud/m.test(r.out), r.out);
 

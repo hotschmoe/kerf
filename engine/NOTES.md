@@ -137,7 +137,8 @@ geometrically (tolerance 1e-3).
   and 100 -> 55. Every W_NOTE_STYLE that went away is a 16d/8d, an ACI symbol or a `PER ARCH.`; the 17 left are real
   (spelled-out CONTINUOUS/EACH/BOTTOM/CONCRETE). The 27 coverage items that now match were each checked by hand (EA. =
   EACH, CONT. = continuous, dim text `4" TYP.`, view titles, the weld, `15 ft` = `15'-0"`, `ftg` = footing); the 31 left
-  are true misses (not built yet, `(3) #4` vs `(2) #4`, `hooked` vs `HOOK`, `bearing` vs `BEAR`: no stemming). Drawing
+  are true misses (not built yet, `(3) #4` vs `(2) #4`, `hooked` vs `HOOK`, `bearing` vs `BEAR`: no stemming).
+  S-50.02 with its label stuffing removed (`48in min lap`, `(8) 16d each side` in plate labels) covers 12/12 (was 9/12). Drawing
   text changes on the 47: 12 items (s-00-02 labels `f'c` now print as written, s-80-02 `1926.755(a)(1)`). Wasm without
   wasm-opt: 768,557 -> 795,385 raw, 312,380 -> 324,074 gzip (the tables and the tokenizer).
 

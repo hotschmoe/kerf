@@ -1123,7 +1123,7 @@ transform and coverage.
   numeral, not first-person commentary.
 - **Coverage normalization.** Item and candidate texts become word lists: lower case, `’`/`”` folded; letters joined
   across `.` (`o.c.`), `&` (`t&b`) and `'` (`req'd`, `f'c`); a plural `s` dropped (not after `s`); stop words `w with and
-  at of the a an to for in on per` dropped. Lengths become one word: `15'-0"`, `4'`, `2'-2`, `1 1/2"`, `5/8"`, `48in`,
+  at of the a an to for in on per` dropped. Lengths become one word: `15'-0"`, `4'`, `2'-2`, `6'-0in`, `1 1/2"`, `5/8"`, `48in`,
   `15 ft`, `2.5 in.` (to the nearest 1/16"). On the item side a length with units counts only as the length (`15 ft` =
   `15'-0"` = `180"`); a bare proper fraction (`3/16`) counts as its digits, and a candidate offers both. Then every
   abbreviation and every spelling of its words is rewritten to the canonical words, longest match first, on both sides

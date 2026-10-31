@@ -117,7 +117,7 @@ pub static ABBREVIATIONS: [Abbr; 90] = [
 ];
 
 /// Abbreviations that end a note with their period although they stand for no word coverage should expand.
-pub const PERIOD_ONLY: [&str; 3] = ["NO", "NOS", "DWGS"];
+pub const PERIOD_ONLY: [&str; 2] = ["NO", "NOS"];
 
 /// ACI / AISC / NDS symbols and units whose lower case is significant (`48 db`, `ld`, `f'c`, `Fy`, `3,000 psi`). Matched
 /// exactly, optionally after a number (`8db`).
@@ -342,6 +342,9 @@ fn length_at(b: &[u8], i: usize) -> Option<(usize, i64, bool)> {
         if let Some((inch, e2)) = inches(k) {
             if b.get(e2) == Some(&b'"') {
                 return Some((e2 + 1, sixteenths(feet * 12.0 + inch), true));
+            }
+            if let Some(e3) = unit_word(e2, &["inches", "inch", "in"]) {
+                return Some((e3, sixteenths(feet * 12.0 + inch), true));
             }
             if b.get(e) == Some(&b'\'') && b.get(e + 1) == Some(&b'-') && word_end(e2) && b.get(e2) != Some(&b'/') {
                 return Some((e2, sixteenths(feet * 12.0 + inch), true));
