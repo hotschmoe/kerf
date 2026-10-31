@@ -4,7 +4,7 @@ use super::occlusion::{Occ, visible_open};
 use super::{Section, Target};
 use crate::clip;
 use crate::drawing::FillItem;
-use crate::geom::{self, FLAT_TOL, V2};
+use crate::geom::{self, FLAT_TOL, Pt, V2};
 use crate::model::{self, Kind, Prism};
 use crate::num;
 use crate::pathgeom;
@@ -231,6 +231,26 @@ impl Section<'_> {
             }
         }
         self.strokes = out;
+        let front: Vec<&Occ> = occs.iter().filter(|o| self.front[o.prism]).collect();
+        if front.is_empty() {
+            return;
+        }
+        for h in &mut self.hatches {
+            let hb = geom::loop_box(h.loops.first().map_or(&[][..], |l| l.as_slice()));
+            if !front.iter().any(|o| o.bx.overlaps(hb, 1e-9)) {
+                continue;
+            }
+            let mut kept = Vec::with_capacity(h.lines.len());
+            for l in &h.lines {
+                let seg = [Pt::new(l[0], l[1]), Pt::new(l[2], l[3])];
+                for pc in visible_open(&seg, false, &front) {
+                    for w in pc.pts.windows(2) {
+                        kept.push([w[0].x, w[0].y, w[1].x, w[1].y]);
+                    }
+                }
+            }
+            h.lines = kept;
+        }
     }
 
     /// A strap seen face-on: outline in the steel pen, nail dots along its centerline.

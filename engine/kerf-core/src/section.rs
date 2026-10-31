@@ -329,9 +329,9 @@ impl<'s> Section<'s> {
     /// Items in paint order, with coincident collinear edges deduplicated.
     pub fn finish(&mut self) -> Vec<Item> {
         let mut items: Vec<Item> = Vec::new();
+        self.knock_out_face_ties();
         items.extend(self.hatches.iter().cloned().map(Item::Hatch));
         items.extend(self.fills.iter().cloned().map(Item::Fill));
-        self.knock_out_face_ties();
         let mut deduped = chain_strokes(dedupe(&self.strokes, self.style));
         sort::stable(&mut deduped, |x, y| if x.rank != y.rank { x.rank < y.rank } else { x.seq < y.seq });
         for s in deduped.into_iter().chain(self.ghosts.iter().cloned()) {

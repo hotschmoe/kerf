@@ -293,7 +293,7 @@ const fn ser(
     Series { prefix, kind, mount, gauge, width, desc }
 }
 
-pub const SERIES: [Series; 67] = [
+pub const SERIES: [Series; 68] = [
     ser("LUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
     ser("MUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
     ser("HUS", "hanger", "face", 16, 0.0, "heavy face-mount hanger"),
@@ -306,6 +306,7 @@ pub const SERIES: [Series; 67] = [
     ser("U", "hanger", "face", 16, 0.0, "face-mount joist hanger"),
     ser("SUR", "hanger", "face", 16, 0.0, "skewed face-mount hanger"),
     ser("SUL", "hanger", "face", 16, 0.0, "skewed face-mount hanger"),
+    ser("LSSU", "hanger", "face", 18, 0.0, "sloped/skewed face-mount hanger"),
     ser("ITS", "hanger", "top_flange", 18, 0.0, "top-flange I-joist hanger"),
     ser("MIT", "hanger", "top_flange", 16, 0.0, "top-flange I-joist hanger"),
     ser("HIT", "hanger", "top_flange", 14, 0.0, "top-flange I-joist hanger"),

@@ -1805,7 +1805,7 @@ section('#11. framing hardware');
   r = kerf(['check', 'hw3.kerf.json']);
   check('face-mount hanger from carried/carrying: one component, sized from the joist, 0 warnings', /hgr +connector LUS28 hanger \(face\) 18 ga, 6 1\/8" tall x 1 1\/2" seat, carries joist from hdr/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
   d = items('hw3.kerf.json', 'A');
-  check('section: the hanger side behind the cut joist draws dashed and the note lands on it', d.items.some((i) => i.t === 'path' && i.src === 'hgr' && i.pen === 'hidden') && texts(d, 'n1').length > 0, d.items.filter((i) => i.src === 'hgr').length);
+  check('section: the hanger of the cut joist draws solid in front (SPEC 28.4) and the note lands on it', d.items.some((i) => i.t === 'path' && i.src === 'hgr' && i.pen === 'steel') && !d.items.some((i) => i.t === 'path' && i.src === 'hgr' && i.pen === 'hidden') && texts(d, 'n1').length > 0, d.items.filter((i) => i.src === 'hgr').length);
   r = kerf(['mesh', 'hw3.kerf.json']);
   check('mesh: the hanger plates are in the 3D mesh', r.code === 0 && /"hgr"/.test(r.out), r.err);
   write('hw3.kerf.json', doc([hdr, joist, { id: 'hgr', type: 'connector', model: 'HU210', carried: 'joist', carrying: 'hdr' }]));
@@ -1866,6 +1866,91 @@ section('#11. framing hardware');
   check('a stud seen end-on: E_PARAM (studs are side only, rotate them)', /^ERROR E_PARAM hs: a headed_stud is welded to a face and drawn side-on/m.test(r.out), r.out);
   r = kerf(['schema', 'connector']);
   check('schema connector: kind, on, carried/carrying, post, rod and the hardware families', /^- kind: /m.test(r.out) && /^- on: /m.test(r.out) && /^- carried: /m.test(r.out) && /^- rod: /m.test(r.out) && /Hardware families .*HDU holdown 10/.test(r.out), r.out.slice(0, 400));
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Issue #24: hardware in front in sections, ties and angles from two members, sloped hangers, holdown rod under the
+// post (SPEC 28.4)
+section('#24. hardware visibility, member ties and angles, sloped hangers');
+{
+  const doc = (components, views) => ({ kerf: '0.1', id: 'ht', title: 'TIES', run: [-24, 24], components, views: views ?? [{ id: 'A', kind: 'section', cut_z: 0 }] });
+  const items = (file, v) => { const r = kerf(['drawing', file, '--view', v]); return r.code === 0 ? JSON.parse(r.out) : { items: [], err: r.err }; };
+  const paths = (d, src, pen) => d.items.filter((i) => i.t === 'path' && i.src === src && (pen === undefined || i.pen === pen));
+  const plate = { id: 'plate', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: [0, 0] } };
+  const joist = (z) => ({ id: 'j', type: 'lumber', size: '2x6', run: 'x', length: 30, z, at: { anchor: 'bottom_left', to: [-6, 1.5] } });
+  const tie = (extra = {}) => ({ id: 't', type: 'connector', model: 'H2.5A', members: ['j', 'plate'], ...extra });
+  const note = [{ id: 'A', kind: 'section', cut_z: 0, annotations: [{ id: 'n1', type: 'note', text: 'H2.5A', target: 't' }] }, { id: 'I', kind: 'iso' }];
+
+  write('ht1.kerf.json', doc([plate, joist([-0.75, 0.75]), tie()], note));
+  let r = kerf(['check', 'ht1.kerf.json']);
+  check('H2.5A from members [joist, plate]: a tie on the joist face wrapping the plate, 0 warnings', /t +connector H2.5A hurricane tie 18 ga, tie j to plate on the front face of j/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  let d = items('ht1.kerf.json', 'A');
+  check('section through the joist: the tie draws solid in front with nail dots, the note lands on it', paths(d, 't', 'steel').length > 0 && paths(d, 't', 'hidden').length === 0 && d.items.some((i) => i.t === 'fill' && i.src === 't') && d.items.some((i) => i.t === 'text' && i.src === 'n1'), d.items.filter((i) => i.src === 't'));
+  d = items('ht1.kerf.json', 'I');
+  check('iso: the tie is drawn from its 3D plates', paths(d, 't').length > 0, d.err);
+  r = kerf(['mesh', 'ht1.kerf.json']);
+  check('mesh: the tie plates are in the 3D mesh', r.code === 0 && /"t"/.test(r.out), r.err);
+  write('ht1.kerf.json', doc([plate, joist([-0.75, 0.75]), tie({ front: false })], note));
+  d = items('ht1.kerf.json', 'A');
+  check('front: false keeps the true place: the tie in front of the cut is not drawn solid', paths(d, 't', 'steel').length === 0, d.items.filter((i) => i.src === 't'));
+  write('ht1.kerf.json', doc([plate, joist([-12.75, -11.25]), tie()], note));
+  d = items('ht1.kerf.json', 'A');
+  check('a tie on a joist behind the cut draws as seen (its members are not cut)', paths(d, 't').length > 0, d.err);
+
+  write('ht2.kerf.json', doc([plate, joist([-0.75, 0.75]), tie({ members: ['j'] })]));
+  r = kerf(['check', 'ht2.kerf.json']);
+  check('members with one id: E_PARAM asking for two', /^ERROR E_PARAM t: a tie placed from members needs exactly two/m.test(r.out), r.out);
+  write('ht2.kerf.json', doc([plate, { ...joist([-0.75, 0.75]), at: { anchor: 'bottom_left', to: [-6, 4] } }, tie()]));
+  r = kerf(['check', 'ht2.kerf.json']);
+  check('members that do not touch: E_PARAM with both extents and the fix', /^ERROR E_PARAM t: tie: 'j' and 'plate' do not meet on paper.*'j' spans x .*Fix: name the two members that touch/m.test(r.out), r.out);
+  write('ht2.kerf.json', doc([plate, joist([-0.75, 0.75]), tie({ z: 3 })]));
+  r = kerf(['check', 'ht2.kerf.json']);
+  check('z on a face-on tie: E_PARAM (its z is the member face)', /^ERROR E_PARAM t: on face front the tie's z is the members' face; remove 'z'/m.test(r.out), r.out);
+  write('ht2.kerf.json', doc([plate, joist([-0.75, 0.75]), { id: 't', type: 'connector', model: 'CS16', legs: [2, 2], points: [[0, 0], [0, 6]] }]));
+  r = kerf(['check', 'ht2.kerf.json']);
+  check('legs on a strap: E_PARAM naming the tie/angle', /^ERROR E_PARAM t: 'legs' belongs to a tie or angle placed from "members"/m.test(r.out), r.out);
+
+  const top2 = { id: 'p2', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'plate@top_left' } };
+  write('ht3.kerf.json', doc([plate, top2, { id: 'a', type: 'connector', model: 'A35', members: ['p2', 'plate'] }]));
+  r = kerf(['check', 'ht3.kerf.json']);
+  check('angle between flush members: E_PARAM (no inside corner) with the alternatives', /^ERROR E_PARAM a: angle: 'p2' and 'plate' are flush on the left side of their joint.*kind tie/m.test(r.out), r.out);
+  write('ht3.kerf.json', doc([plate, top2, { id: 'a', type: 'connector', model: 'LTP4', members: ['p2', 'plate'], z: 6 }]));
+  r = kerf(['check', 'ht3.kerf.json']);
+  check('tie between two plates running along z: on their flush side, z moves it along them', /a +connector LTP4 lateral tie plate 20 ga, tie p2 to plate on the left side of the joint/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+  const stud = { id: 'stud', type: 'lumber', size: '2x6', run: 'y', face: 'wide', length: 40, at: { anchor: 'bottom_left', to: [0, -20] } };
+  const ledger = { id: 'led', type: 'lumber', size: '2x10', run: 'z', at: { anchor: 'bottom_right', to: [0, -5] } };
+  write('ht3.kerf.json', doc([stud, ledger, { id: 'a', type: 'connector', model: 'A35', members: ['stud', 'led'] }]));
+  r = kerf(['check', 'ht3.kerf.json']);
+  check('A35 from a stud and the ledger on its face: an angle on top of the ledger', /a +connector A35 framing angle, 1-7\/16 legs 18 ga, angle stud to led on the top side of the joint/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+  write('ht3.kerf.json', doc([stud, ledger, { id: 'a', type: 'connector', model: 'A35', members: ['stud', 'led'], face: 'left' }]));
+  r = kerf(['check', 'ht3.kerf.json']);
+  check('face left on side-by-side members: E_PARAM naming top or bottom', /^ERROR E_PARAM a: angle: 'stud' and 'led' meet side by side, so the sides of their joint are top or bottom/m.test(r.out), r.out);
+
+  const hdr = { id: 'hdr', type: 'lumber', size: '4x12', run: 'z', at: { anchor: 'bottom_left', to: [0, 0] } };
+  const sj = (extra) => ({ id: 'sj', type: 'lumber', size: '2x8', run: 'x', length: 30, slope: '-3:12', at: { anchor: 'bottom_right', to: { ref: 'hdr@bottom_left', offset: [0, 1] } }, ...extra });
+  write('ht4.kerf.json', doc([hdr, sj({}), { id: 'h', type: 'connector', model: 'LSSU28', kind: 'hanger', carried: 'sj', carrying: 'hdr' }]));
+  r = kerf(['check', 'ht4.kerf.json']);
+  check('sloped joist running into the header: E_PARAM whose fix is the trim cut op', /^ERROR E_PARAM h: hanger: 'sj' runs into 'hdr' .*Fix: \{"op":"update","path":"components\/sj","value":\{"cuts":\[\{"type":"trim","end":"end","to":"hdr"\}\]\}\}/m.test(r.out), r.out);
+  write('ht4.kerf.json', doc([hdr, sj({ cuts: [{ type: 'trim', end: 'end', to: 'hdr' }] }), { id: 'h', type: 'connector', model: 'LSSU28', kind: 'hanger', carried: 'sj', carrying: 'hdr' }]));
+  r = kerf(['check', 'ht4.kerf.json']);
+  check('with the trim cut the sloped hanger builds, sides following the joist', /h +connector LSSU28 hanger \(face\) 18 ga, 6 5\/16" tall/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+  const ij = { id: 'ij', type: 'ijoist', size: '11-7/8 x 2-5/16', length: 30, slope: '-3:12', cuts: [{ type: 'trim', end: 'end', to: 'hdr' }], at: { anchor: 'bottom_right', to: { ref: 'hdr@bottom_left', offset: [0, 0.5] } } };
+  write('ht4.kerf.json', doc([{ ...hdr, size: '5.25x14', product: 'lvl' }, ij, { id: 'h', type: 'connector', model: 'IUS2.37/11.88', carried: 'ij', carrying: 'hdr' }]));
+  r = kerf(['check', 'ht4.kerf.json']);
+  check('an I-joist takes end cuts too: sloped I-joist in a hanger', /ij +ijoist .* cuts: trim to hdr end/m.test(r.out) && /h +connector IUS2.37\/11.88 hanger/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+
+  const stem = { id: 'stem', type: 'concrete', shape: 'rect', width: 12, height: 16, at: { anchor: 'top_left', to: [-6, 0] } };
+  const sill = { id: 'sill', type: 'lumber', size: '2x6', orient: 'flat', treated: true, at: { anchor: 'bottom_center', to: [0, 0] } };
+  const post = { id: 'post', type: 'lumber', size: '2x6', run: 'y', face: 'wide', length: 30, at: { anchor: 'bottom_center', to: 'sill@top_center' } };
+  const rod = { id: 'rod', type: 'anchor_bolt', diameter: 0.625, embed: 12, projection: 4.5, hook: 'headed', at: { to: [0, 0] } };
+  write('ht5.kerf.json', doc([stem, sill, post, rod, { id: 'hd', type: 'connector', model: 'HDU5', post: 'post', rod: 'rod' }], [{ id: 'A', kind: 'section', cut_z: 0, annotations: [{ id: 'n1', type: 'note', text: 'HDU5', target: 'hd' }] }]));
+  r = kerf(['check', 'ht5.kerf.json']);
+  check('holdown with the rod under the post (2D section): on the front face, seat 1 3/8" out, no error', /hd +connector HDU5 holdown 10 ga, 10" tall, front face of post, rod rod \(rod under the post: seat 1 3\/8" out from the face\)/m.test(r.out) && !/ERROR/.test(r.out), r.out);
+  d = items('ht5.kerf.json', 'A');
+  check('section through the post: the holdown draws solid in front of it', paths(d, 'hd', 'steel').length > 0 && paths(d, 'hd', 'hidden').length === 0, d.err);
+  write('ht5.kerf.json', doc([stem, sill, post, rod, { id: 'hd', type: 'connector', model: 'HDU5', post: 'post', rod: 'rod', face: 'left' }]));
+  r = kerf(['check', 'ht5.kerf.json']);
+  check('holdown on a side face with the rod inside the post: E_PARAM whose fix is face front', /^ERROR E_PARAM hd: holdown: the rod is .* inside or against the post.*\{"op":"update","path":"components\/hd","value":\{"face":"front"\}\}/m.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
