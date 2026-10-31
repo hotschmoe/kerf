@@ -246,7 +246,9 @@ fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
                     fmt_ft_in(p.prism.z0.max(q.prism.z0)),
                     fmt_ft_in(p.prism.z1.min(q.prism.z1)),
                 ),
-                overlap_fix(p, q),
+                crate::cuts::birdmouth_overlap_fix(p.comp, q.comp, &s.comps, b.height())
+                    .or_else(|| crate::cuts::birdmouth_overlap_fix(q.comp, p.comp, &s.comps, b.height()))
+                    .unwrap_or_else(|| overlap_fix(p, q)),
             );
         }
     }

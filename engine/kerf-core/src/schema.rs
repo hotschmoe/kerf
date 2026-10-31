@@ -163,8 +163,7 @@ const REFS_TEXT: &str = concat!(
     "- Coordinates: inches, X right, Y up, Z toward the viewer; sections look along -Z.\n",
 );
 
-pub const TOPICS_HINT: &str =
-    "doc view layout note dim label table ref cite ops at array acknowledge abbreviations common refs <component type>";
+pub const TOPICS_HINT: &str = "doc view layout note dim label table ref cite ops at array cuts acknowledge abbreviations common refs <component type>";
 
 /// Heading of `kerf schema abbreviations` (the table itself is `house::abbreviations_markdown` of the active style).
 pub const ABBREV_HEAD: &str = "# Abbreviations (W_ABBREV, SPEC 25.6)\n\nSpell a word out or abbreviate it: both are fine. An abbreviation must be written in its approved form: shortened words take a period (`TYP.`), phrases take dotted initials (`O.C.`), material and product acronyms take none (`CMU`), and a listed variant takes the form it maps to (`BOTT.` -> `BOT.`). A bare form that is also an ordinary word (`SIM`, `TO`, `ID`) counts only with its periods. Tokens with a digit (`HU212-2`, `16d`), case-significant tokens (`f'c`) and quoted text are never read. Keep a deviation: `acknowledge` W_ABBREV on the note, label, dim, weld or view, with a reason. The company style (`kerf.kerfstyle.json`, `notes.abbreviations`) adds (`approved`), remaps (`variants`), removes (`remove`) entries, switches rules off (`rules`) and lists words always abbreviated (`always`).\n\n";

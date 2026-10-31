@@ -327,7 +327,7 @@ pub static ENTRIES: [Entry; 18] = [
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
         parts: "barrier (when set)",
-        anchors: "the 9 box anchors",
+        anchors: "the 9 box anchors; with cuts or from/to also start_top, start_bottom, end_top, end_bottom (cut corners) and seat_outer, seat_inner, heel_bottom (birdmouth)",
         draws: "Section: run z cut => outline + wood X mark per ply (blocking: one diagonal); run x/y cut lengthwise => outline only; beyond => outline. Actual sizes: 1x 3/4 thick, 2x 1 1/2, 3x 2 1/2, 4x 3 1/2, 6x 5 1/2, 8x 7 1/2; depths x3 2 1/2, x4 3 1/2, x6 5 1/2, x8 7 1/4, x10 9 1/4, x12 11 1/4, x14 13 1/4 (6x and 8x: x6 5 1/2, x8 7 1/2, x10 9 1/2, x12 11 1/2). Natural z thickness for run x/y; run z with `length` is that long along z.",
         example: "{\"id\":\"stud\",\"type\":\"lumber\",\"size\":\"2x4\",\"run\":\"y\",\"face\":\"narrow\",\"length\":92.625,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,1.5]}}",
         traits: Traits {

@@ -1,0 +1,35 @@
+{"kerf":"0.1","id":"lumber-cuts","title":"LUMBER CUTS AND TWO-POINT MEMBERS","run":[-24,24],
+"meta":{"jurisdiction":{"code":"IRC","edition":2021}},
+"components":[
+{"id":"stud","type":"lumber","size":"2x4","run":"y","length":30,"views":["A","P","E","I"],"at":{"anchor":"bottom_left","to":[0,-30]}},
+{"id":"plate1","type":"lumber","size":"2x4","orient":"flat","views":["A","P","E","I"],"at":{"anchor":"bottom_left","to":"stud@top_left"}},
+{"id":"plate2","type":"lumber","size":"2x4","orient":"flat","views":["A","P","E","I"],"at":{"anchor":"bottom_left","to":"plate1@top_left"}},
+{"id":"rafter","type":"lumber","size":"2x8","run":"x","slope":"6:12","length":54,"views":["A","P","E","I"],"cuts":[{"type":"birdmouth","on":"plate2","tail":12},{"type":"plumb","end":"both"}]},
+{"id":"shtg","type":"panel","material":"osb","thickness":0.4375,"slope":"@rafter","until":"rafter@end_top","views":["A","E"],"at":{"anchor":"bottom_left","to":"rafter@start_top"}},
+{"id":"tie","type":"connector","model":"H2.5A","views":["A"],"points":[{"ref":"rafter@seat_outer","offset":[0,3]},{"ref":"plate2@middle_left"}],"lay":"edge","side":"right"},
+{"id":"bot_chord","type":"lumber","size":"2x4","run":"x","face":"narrow","length":36,"views":["B"],"at":{"anchor":"bottom_left","to":[100,0]}},
+{"id":"top_chord","type":"lumber","size":"2x4","run":"x","face":"narrow","length":36,"views":["B"],"at":{"anchor":"bottom_left","to":[100,14]}},
+{"id":"end_web","type":"lumber","size":"2x4","run":"y","face":"narrow","views":["B"],"at":{"anchor":"bottom_left","to":"bot_chord@top_left"},"until":"top_chord@bottom_left"},
+{"id":"web","type":"lumber","size":"2x4","face":"narrow","views":["B"],"from":{"ref":"bot_chord@top_left","offset":[4,0]},"to":{"ref":"top_chord@bottom_left","offset":[16.5,0]}},
+{"id":"web2","type":"lumber","size":"2x4","face":"narrow","views":["B"],"from":{"ref":"top_chord@bottom_left","offset":[19.5,0]},"to":{"ref":"bot_chord@top_left","offset":[32,0]},"align":"bottom"},
+{"id":"post","type":"lumber","size":"4x4","run":"y","length":36,"views":["C"],"at":{"anchor":"bottom_left","to":[200,-36]}},
+{"id":"beam","type":"lumber","product":"glulam","size":"3.5x12","run":"x","length":48,"views":["C"],"at":{"anchor":"bottom_left","to":"post@top_left"},"cuts":[{"type":"notch","by":"cplate"},{"type":"notch","at":"bottom_right","w":3.5,"d":1.5}]},
+{"id":"cplate","type":"lumber","size":"2x4","run":"x","face":"narrow","length":24,"views":["C"],"at":{"anchor":"top_left","to":{"ref":"beam@top_left","offset":[-12,0]}}},
+{"id":"kicker","type":"steel","shape":"L3x3x1/4","orient":"elevation","views":["C"],"from":{"ref":"post@middle_right","offset":[0,-6]},"to":{"ref":"beam@bottom_left","offset":[18,0]}}
+],
+"views":[
+{"id":"A","kind":"section","number":"A","title":"RAFTER ON PLATE","cut_z":0,"notes_style":"keyed","annotations":[
+{"id":"n1","type":"note","text":"2X8 RAFTER W/ BIRDMOUTH @ PLATE","target":"rafter","key":1},
+{"id":"n2","type":"note","text":"DBL. 2X4 TOP PLATE","target":"plate1","key":2},
+{"id":"n3","type":"note","text":"SIMPSON H2.5A EA. RAFTER, INSTALL PER MFR.","target":"tie","key":3},
+{"id":"n4","type":"note","text":"7/16\" OSB ROOF SHTG.","target":"shtg","key":4}]},
+{"id":"B","kind":"section","number":"B","title":"FLOOR TRUSS WEBS","cut_z":0,"annotations":[
+{"id":"m1","type":"note","text":"2X4 WEB","target":"web"},
+{"id":"m2","type":"note","text":"2X4 CHORD","target":"top_chord"}]},
+{"id":"C","kind":"elevation","number":"C","title":"NOTCHED BEAM AND KICKER","cut_z":0,"annotations":[
+{"id":"k1","type":"note","text":"GLB NOTCHED FOR 2X4 PLATE","target":"beam"},
+{"id":"k2","type":"note","text":"L3X3X1/4 KICKER","target":"kicker"}]},
+{"id":"P","kind":"plan","number":"P","title":"RAFTER BEARING","cut_y":1},
+{"id":"E","kind":"elevation","number":"E","title":"RAFTER","cut_z":0},
+{"id":"I","kind":"iso","number":"I","title":"RAFTER ISO"}
+]}

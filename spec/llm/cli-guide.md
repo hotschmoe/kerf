@@ -2,7 +2,7 @@
 
 You build construction details with the `kerf` command-line engine. A detail is one JSON file
 (`<id>.kerf.json`) in the current folder. The designer reviews it in
-the Kerf web UI (`kerf serve`) and verifies citations. You describe construction
+`kerf serve` and verifies citations. You describe construction
 with typed components; the engine places, draws, lays out notes and checks.
 
 ## Shell rules (the sandbox rejects compound commands)
@@ -24,8 +24,8 @@ kerf new truss-cmu.kerf.json --ops ops.json --title "PREFAB TRUSS BEARING AT CMU
 ```
 4. Read the summary (every component with resolved x/y extents), the `COVERAGE` block and the diagnostics. Fix every ERROR;
    fix or justify every WARN. Every `meta.requested` item must read `ok` (build the `MISSING` ones, or drop an item only if the
-   designer dropped it): do not finish before full coverage, a clean check is not a finished detail. An item is covered when
-   one component (id/type/label/model) or note/dim/weld/table/view title has all its words (EA.=EACH). Then LOOK at it:
+   designer dropped it): do not finish before full coverage, a clean check is not a finished detail. Covered = a
+   component (id/type/label/model) or note/dim/weld/table/view title holds all its words (EA.=EACH). Then LOOK at it:
 ```sh
 kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png
 ```
@@ -35,7 +35,6 @@ kerf apply truss-cmu.kerf.json ops.json -w --why "Add HETA20 anchors at 16 in o.
 kerf apply truss-cmu.kerf.json ops.json --dry-run
 kerf check truss-cmu.kerf.json
 kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
-kerf export truss-cmu.kerf.json --layout S1 --format png -o t.png
 kerf schema note dim cite
 kerf guide --full
 ```
@@ -50,12 +49,9 @@ kerf guide --full
 - Unknown keys warn (`W_UNKNOWN_KEY` names the right one). `kerf schema <topic>` before guessing a field name.
 
 ## Diagnostics you will meet (each prints its own fix)
-W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
-W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
-W_NOTE_STYLE (no sentences, `?`, `NOTE:`, trailing `W/`), W_ABBREV (abbreviation form), W_UNKNOWN_KEY (misspelled field),
-W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit moved a member out of an
-explicit `crop`: remove `crop` and `scale` to re-fit), W_REFERENCE_FILE (bad or missing `meta.references` image),
-W_ACK_UNUSED (stale `acknowledge`: remove it), I_* (info only).
+W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
+W_SHORT_SLOPE, W_LEADER_HIT / W_VIEW_FIT (layout), W_NOTE_STYLE / W_ABBREV (note text), W_UNKNOWN_KEY,
+W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, I_* (info).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.
@@ -65,6 +61,8 @@ W_ACK_UNUSED (stale `acknowledge`: remove it), I_* (info only).
 - Inches, X right, Y up, Z toward the viewer; lengths are numbers or strings like `"7-5/8"`, `"3'-4 1/2\""`. Use actual
   sizes through typed components (`"2x6"`, not 1.5x5.5). Rebar: `"place":{"in":"footing","face":"bottom","cover":3,"count":2}`.
 - `"until": "<Ref>"` instead of `length` grows a member to another one's edge (no stale numbers).
+- Braces/webs: `"from":"tie@top_center","to":"chord@bottom_center"` (ends cut to the faces they meet). Rafter seat:
+  `"cuts":[{"type":"birdmouth","on":"plate"}]`; plumb ends, notches: `kerf schema cuts`.
 - Steel: `steel` takes AISC shapes (`W8x18`, `HSS4x4x1/4`, `L4x3x3/8`, `PL1/2x8`), `orient`
   section|elevation|plan; `bolt` groups; `weld` annotation = AWS symbol (`kerf schema steel bolt weld`).
 
@@ -84,7 +82,7 @@ Spell out or abbreviate; abbreviations in approved form (`TYP.` `U.N.O.` `CMU` `
 `16d`, `db`, `f'c` keep case.
 6-12 notes per detail: every structural element and connection, hardware model in the note, `INSTALL PER MFR.`.
 Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you are sure exist, always `"status":"suggested"`;
-the designer verifies. Never present a design as engineered: capacities, spacing and nailing are the manufacturer's / EOR's.
+the designer verifies. Never present a design as engineered: capacities, spacing, nailing are the mfr.'s / EOR's.
 
 ## Views and annotations
 `crop` and `scale` are optional (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
@@ -145,6 +143,17 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   overprint. Views keep 1/8" clear of the frame and title block.
 - Dimension offset sign, example: below a footing `{"from":"ftg@bottom_left","to":"ftg@bottom_right","dir":"h","offset":-6}`;
   its depth on the outside (left) face `{"from":"ftg@bottom_left","to":"ftg@top_left","dir":"v","offset":-6}`.
+- Lumber cuts and two-point members (`kerf schema cuts`). A brace, kicker, truss web or outlooker runs between two
+  anchors: `{"id":"brace","type":"lumber","size":"2x4","face":"wide","from":{"ref":"tie@top_left","offset":[0.5,0]},
+  "to":"blk@bottom_left","align":"top"}`: no `at`, `length`, `rotate` or `slope`; each end at a Ref is cut to the face of
+  that member it meets, so it bears flat on both and follows them when they move (`align` top/bottom: that face runs between
+  the points). A rafter on a plate: `{"type":"lumber","size":"2x10","run":"x","slope":"6:12","length":72,"cuts":[{"type":
+  "birdmouth","on":"plate","tail":14},{"type":"plumb","end":"start"}]}`, no `at`: the seat lands on the plate's outer top
+  corner (anchor `seat_outer`), `tail` is the horizontal overhang past the plate face; sheathing follows with
+  `"slope":"@rafter","at":{"to":"rafter@start_top"},"until":"rafter@end_top"`. `W_BIRDMOUTH_DEPTH` past 1/3 of the depth;
+  a W_OVERLAP of the rafter with the wall under its plate prints the `heel` that lifts it clear. A flush beam notched for
+  a plate: `"cuts":[{"type":"notch","by":"top_plate"}]` (the plate's outline, where it meets the beam in z); a cope or
+  end notch: `{"type":"notch","at":"top_right","w":3.5,"d":1.5}`. Steel in elevation/plan takes the same `from`/`to`/`cuts`.
 - Rebar in a polygon host: `place` follows the outline (face `bottom` = the lowest bottom edge run, e.g. the thickened
   footing of an L slab; `in: "slab.footing"` cuts it to a part). A bar that cannot fit is `E_PLACE_OUTSIDE`; a bar in
   no concrete or masonry is `W_BAR_OUTSIDE`. Vertical bars in a CMU cell follow the wall width:

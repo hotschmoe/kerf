@@ -10,6 +10,7 @@ mod clip;
 mod compile;
 mod coverage;
 mod crop;
+mod cuts;
 mod drawing;
 mod drawview;
 mod dxf;
