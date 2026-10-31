@@ -1804,9 +1804,9 @@ the wall thickness), packing as two strips, natural z thickness od (2.5D, like p
   subtracts it: `{"op": "update", "path": "components/<host>", "value": {"voids": [..., "<id>"]}}`, or for a sleeve
   `{"op": "update", "path": "components/<sleeve>", "value": {"through": "<host>"}}`.
 
-## 27. v0.2.0-beta.2 wood framing
+## 27. v0.2.0-beta.1 wood framing
 
-### 27.1 beta.2: I-joists and truss profiles
+### 27.1 beta.1: I-joists and truss profiles
 From the MASS details dogfood run (issue #10): floor and roof framing in the S-40/60/70/80 families is mostly I-joists,
 open-web floor trusses and trusses seen end-on. Agents built I-joists from three engineered `lumber` pieces (the web drew
 as a block of lamination lines), floor trusses from rotated lumber (webs swept across the chords, `W_OVERLAP` acks) and
@@ -1893,7 +1893,7 @@ any lumber) draws no material hatch: the `wood_engineered` lamination lines appe
 **Compile.** A prism's `zhalf`/`zoff` now apply whether or not the component has a natural z thickness (relative to the
 instance's z centre), so a run z member that spans the doc run can carry pieces at the section (stiffeners, end-on webs).
 
-### 27.2 beta.2: framing hardware
+### 27.2 beta.1: framing hardware
 
 From the MASS details dogfood run (issue #11): hangers, post caps, post bases and holdowns were hand-drawn `connector`
 polylines (`side` flipping with point order) or stacks of `solid` plates (16 in one detail); straps on a member face
@@ -1984,7 +1984,7 @@ component).
 Limits (2.5D): hangers follow members that run along x or z; skewed (plan-angle) hangers are not modelled, and a
 z-normal holdown's tapered sides are slabs. A post cap under a beam that ends on the post draws as a full cap.
 
-### 27.3 beta.2: lumber cuts and two-point members
+### 27.3 beta.1: lumber cuts and two-point members
 
 From the MASS details dogfood run (issue #12): lumber was a rotated box. A rafter rested on the corner of its plate, a
 flush beam could not be notched for the plate, sloped chords ended square and their rotated box ran through the member
@@ -2060,7 +2060,7 @@ with `minus notch <id>`.
 | `W_BIRDMOUTH_DEPTH` | warning | a birdmouth seat cuts more than 1/3 of the member depth; fix: the op with the largest seat that keeps 2/3 |
 | `W_CUT_MISS` | warning | a birdmouth seat off the top of its `on` member, a trim whose line misses its member, a `notch.by` that removes nothing; each fix is an op |
 
-### 27.4 beta.2: nailing and fastener symbols
+### 27.4 beta.1: nailing and fastener symbols
 From the MASS details dogfood run (issue #13): nailing is the main graphic of shear wall, diaphragm, splice and blocking
 details, and kerf could not draw it, so agents wrote the schedule into notes and left the drawing bare. Component type
 `nailing` draws nails and screws, placed from the members they join.
