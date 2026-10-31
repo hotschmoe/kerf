@@ -160,7 +160,7 @@ pub fn default_role(name: &str) -> Role {
     match name {
         "earth" | "gravel" | "sand" | "compacted_fill" => Role::Soil,
         "wood" | "wood_engineered" | "wood_board" => Role::Wood,
-        "concrete" | "cmu" | "mortar" => Role::Masonry,
+        "concrete" | "cmu" | "mortar" | "stone" => Role::Masonry,
         "grout" => Role::Grout,
         "steel" => Role::Steel,
         "rebar" => Role::Rebar,

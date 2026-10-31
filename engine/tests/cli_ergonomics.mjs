@@ -1942,6 +1942,15 @@ section('#28. round-2 papercuts');
   write('st28.kerf.json', stDoc(-24, 'slab@vertexx_6'));
   r = kerf(['check', 'st28.kerf.json']);
   check('a bad Ref station: E_ANCHOR_UNKNOWN listing the anchors', /^ERROR E_ANCHOR_UNKNOWN b1: reference 'slab@vertexx_6'.*vertex_6/m.test(r.out + r.err), r.out + r.err);
+
+  write('sto28.kerf.json', { kerf: '0.1', id: 'sto28', title: 'STONE', components: [
+    { id: 'ven', type: 'solid', material: 'stone', profile: { rect: [3, 24] }, at: { anchor: 'bottom_left', to: [0, 0] } },
+    { id: 'stud', type: 'lumber', size: '2x4', orient: 'upright', at: { anchor: 'bottom_left', to: 'ven@bottom_right' } },
+  ], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'sto28.kerf.json']);
+  check('material stone exists (masonry: untreated wood against it warns)', /^ ven +solid stone/m.test(r.out) && !/E_PARAM/.test(r.out) && /^WARN W_UNTREATED_CONTACT stud: untreated wood 'stud' touches stone 'ven'/m.test(r.out), r.out);
+  dr = kerf(['drawing', 'sto28.kerf.json', '--view', 'A']);
+  check('stone is hatched ANSI33', dr.code === 0 && JSON.parse(dr.out).items.some((it) => it.t === 'hatch' && it.src === 'ven' && it.pattern === 'ANSI33'), dr.err);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

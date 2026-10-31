@@ -538,7 +538,7 @@ Hatch rendering: patterns are AutoCAD `.pat` line families in paper inches, mult
 `scale`, rotated by `angle`, anchored at model origin (so adjacent regions of the same material
 align). Engines clip family lines to the region (even-odd, holes for embedded items).
 
-Materials (MVP): `concrete`, `grout`, `cmu`, `mortar`, `earth`, `gravel`, `sand`,
+Materials (MVP): `concrete`, `grout`, `cmu`, `mortar`, `stone` (§28.8), `earth`, `gravel`, `sand`,
 `compacted_fill`, `wood`, `wood_engineered`, `plywood`, `osb`, `gypsum`, `fiber_cement`,
 `wood_board`, `steel`, `rebar`, `insulation_rigid`, `insulation_batt`, `membrane`,
 `underlayment`, `vapor_retarder`, `wrb`, `shingles`, `generic`.

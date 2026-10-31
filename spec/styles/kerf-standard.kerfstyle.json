@@ -109,6 +109,18 @@
       "color3d": "#8F8A80",
       "role": "masonry"
     },
+    "stone": {
+      "hatch": [
+        {
+          "pattern": "ANSI33",
+          "scale": 1.0,
+          "angle": 0
+        }
+      ],
+      "cut_mark": null,
+      "color3d": "#A39C8E",
+      "role": "masonry"
+    },
     "earth": {
       "hatch": [
         {
@@ -381,6 +393,24 @@
         0,
         0,
         0.125
+      ]
+    ],
+    "ANSI33": [
+      [
+        45,
+        0,
+        0,
+        0,
+        0.25
+      ],
+      [
+        45,
+        0.1768,
+        0,
+        0,
+        0.25,
+        0.125,
+        -0.0625
       ]
     ],
     "KERF-LAM": [
