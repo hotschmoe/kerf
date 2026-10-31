@@ -1,0 +1,7 @@
+DOC papercuts-19  6 components  2 views  0 errors  0 warnings
+ slab_l        concrete rect 2'-6" x 6"                    x 0"..2'-6"       y 0"..6"
+ slab_r        concrete rect 2'-6" x 6"                    x 2'-6 1/2"..5'-0 1/2" y 0"..6"
+ sill          lumber 3x8 PT flat run z                    x 4'-5 1/4"..5'-0 1/2" y 6"..8 1/2"
+ blocking      lumber 2x6 upright run z L=1'-2 1/2"        x 4'-11"..5'-0 1/2" y 8 1/2"..1'-2"
+ plate         steel PL1/2x8 section L=8"                  x 10"..1'-6"      y 6"..6 1/2"
+ post          steel HSS4x4x1/4 elevation run y L=1'-6"    x 1'-0"..1'-4"    y 6 1/2"..2'-0 1/2"

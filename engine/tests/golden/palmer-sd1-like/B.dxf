@@ -25,7 +25,7 @@ $LTSCALE
 9
 $EXTMIN
 10
-52.142857
+53.142857
 20
 -38.66
 30
@@ -85,7 +85,7 @@ AcDbViewportTableRecord
 21
 1
 12
-119.7
+120.2
 22
 -19.246667
 13
@@ -115,7 +115,7 @@ AcDbViewportTableRecord
 40
 42.709333
 41
-3.479935
+3.45418
 42
 50
 43
@@ -2565,7 +2565,7 @@ S-ANNO-NOTE
 100
 AcDbText
 10
-52.142857
+60.357143
 20
 -1.55
 30
@@ -2573,7 +2573,7 @@ AcDbText
 40
 1.5
 1
-4" CONC. SLAB W/ #4 @ 16"
+4" CONC. SLAB W/ #4
 7
 KERF
 100
@@ -2593,7 +2593,7 @@ S-ANNO-NOTE
 100
 AcDbText
 10
-52.142857
+60.357143
 20
 -3.95
 30
@@ -2601,7 +2601,7 @@ AcDbText
 40
 1.5
 1
-O.C. EA. WAY
+@ 16" O.C. EA. WAY
 7
 KERF
 100
