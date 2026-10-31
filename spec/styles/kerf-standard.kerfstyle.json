@@ -629,7 +629,8 @@
     "arrow": "closed_filled",
     "arrow_len_in": 0.09375,
     "arrow_width_in": 0.03125,
-    "keynote_tag": "hex"
+    "key_tag": "plain",
+    "list_title": "DETAIL NOTES"
   },
   "dims": {
     "terminator": "tick",

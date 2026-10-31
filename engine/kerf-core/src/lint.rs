@@ -485,7 +485,8 @@ pub fn check_note_text(text: &str) -> NoteStyle {
 fn note_style(doc: &Value, diags: &Diags) {
     for v in arr_of(doc, "views").unwrap_or(&[]) {
         let vid = str_of(v, "id");
-        let mut seen: Vec<(String, &str)> = Vec::new();
+        let keyed = matches!(v.get("notes_style").and_then(Value::str), Some("keyed" | "list"));
+        let mut seen: Vec<(String, &str, Option<f64>)> = Vec::new();
         for an in arr_of(v, "annotations").unwrap_or(&[]) {
             if str_of(an, "type") != "note" {
                 continue;
@@ -518,17 +519,30 @@ fn note_style(doc: &Value, diags: &Diags) {
             if norm.is_empty() {
                 continue;
             }
-            if let Some(&(_, first)) = seen.iter().find(|(t, _)| *t == norm) {
+            let key = an.get("key").and_then(Value::num);
+            if let Some(&(_, first, first_key)) = seen.iter().find(|(t, _, _)| *t == norm) {
+                if key.is_some() && key == first_key {
+                    continue;
+                }
+                let fix = if keyed {
+                    format!(
+                        "give '{aid}' the \"key\" of '{first}' (one DETAIL NOTES entry, two tags) and drop its text, or remove '{aid}'"
+                    )
+                } else {
+                    format!(
+                        "remove '{aid}', or give it text that says something different (one note per element or connection)"
+                    )
+                };
                 diags.add_fix(
                     Level::Warning,
                     "W_NOTE_STYLE",
                     Some(aid),
                     Some(&path),
                     format!("note '{aid}' in view {vid} repeats note '{first}' (same text: \"{text}\")"),
-                    format!("remove '{aid}', or give it text that says something different (one note per element or connection)"),
+                    fix,
                 );
             } else {
-                seen.push((norm, aid));
+                seen.push((norm, aid, key));
             }
         }
     }

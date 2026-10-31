@@ -5,6 +5,7 @@
 use crate::json::{self, Value};
 use crate::num;
 pub use crate::pen::{LayerKey, Pen};
+use crate::view::NotesStyle;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -77,6 +78,14 @@ pub enum CutMark {
     None,
     X,
     Diagonal,
+}
+
+/// The tag drawn at the leader end of a keyed note.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum KeyTag {
+    Plain,
+    Circle,
+    Hex,
 }
 
 /// What a material is, for the rules the engine applies by kind. A style sets it with `"role": "steel"` on a
@@ -232,7 +241,8 @@ pub struct Style {
     pub dxf_style: String,
     pub dxf_font: String,
 
-    pub notes_mode_keynote: bool,
+    /// `notes.mode`: the notes style of views without `notes_style` ("keynote" is the old name of keyed).
+    pub notes_mode: NotesStyle,
     pub wrap_chars: f64,
     pub gutter_in: f64,
     pub shoulder_in: f64,
@@ -240,7 +250,10 @@ pub struct Style {
     pub arrow: String,
     pub arrow_len_in: f64,
     pub arrow_width_in: f64,
-    pub keynote_tag: String,
+    /// Keyed-note tag at the leader end: plain (the bare number), circle or hex.
+    pub key_tag: KeyTag,
+    /// Heading of the keyed notes list.
+    pub list_title: String,
 
     pub dim_terminator: String,
     pub tick_len_in: f64,
@@ -285,7 +298,7 @@ impl Default for Style {
             line_spacing: 1.6,
             dxf_style: "KERF".to_string(),
             dxf_font: "romans.shx".to_string(),
-            notes_mode_keynote: false,
+            notes_mode: NotesStyle::Leader,
             wrap_chars: 28.0,
             gutter_in: 0.375,
             shoulder_in: 0.125,
@@ -293,7 +306,8 @@ impl Default for Style {
             arrow: "closed_filled".to_string(),
             arrow_len_in: 0.09375,
             arrow_width_in: 0.03125,
-            keynote_tag: "hex".to_string(),
+            key_tag: KeyTag::Plain,
+            list_title: "DETAIL NOTES".to_string(),
             dim_terminator: "tick".to_string(),
             tick_len_in: 0.0625,
             ext_gap_in: 0.0625,
@@ -479,6 +493,19 @@ impl Check {
         ));
     }
 
+    /// `v` (if present and not null) must be one of `names`.
+    fn one_of(&mut self, path: &str, v: Option<&Value>, names: &[&str], def: &str) {
+        let Some(x) = v.filter(|x| !x.is_null()) else { return };
+        if x.str().is_some_and(|s| names.contains(&s)) {
+            return;
+        }
+        self.bad(format!(
+            "style key '{path}' must be one of {} (got {}; default \"{def}\")",
+            names.join(", "),
+            Self::got_text(x)
+        ));
+    }
+
     fn section<'a>(&mut self, root: &'a Value, key: &str) -> Option<&'a Value> {
         let v = root.get(key)?;
         match v {
@@ -556,6 +583,10 @@ fn validate(root: &Value) -> Option<String> {
                 Check::got_text(sz)
             )),
         }
+    }
+    if let Some(sec) = c.section(root, "notes") {
+        c.one_of("notes.mode", sec.get("mode"), &["leader", "keyed", "list", "keynote"], "leader");
+        c.one_of("notes.key_tag", sec.get("key_tag"), &["plain", "circle", "hex"], "plain");
     }
     validate_pens(&mut c, root);
     validate_materials(&mut c, root);
@@ -823,7 +854,11 @@ pub fn from_value(root: &Value) -> Result<Style, StyleError> {
         s.dxf_font = str_or(t.get("dxf_font"), &s.dxf_font);
     }
     if let Some(t) = root.get("notes") {
-        s.notes_mode_keynote = t.get("mode").and_then(Value::str).unwrap_or("leader") == "keynote";
+        s.notes_mode = match t.get("mode").and_then(Value::str) {
+            Some("keyed" | "keynote") => NotesStyle::Keyed,
+            Some("list") => NotesStyle::List,
+            _ => NotesStyle::Leader,
+        };
         s.wrap_chars = num_or(t.get("wrap_chars"), s.wrap_chars);
         s.gutter_in = num_or(t.get("gutter_in"), s.gutter_in);
         s.shoulder_in = num_or(t.get("shoulder_in"), s.shoulder_in);
@@ -831,7 +866,12 @@ pub fn from_value(root: &Value) -> Result<Style, StyleError> {
         s.arrow = str_or(t.get("arrow"), &s.arrow);
         s.arrow_len_in = num_or(t.get("arrow_len_in"), s.arrow_len_in);
         s.arrow_width_in = num_or(t.get("arrow_width_in"), s.arrow_width_in);
-        s.keynote_tag = str_or(t.get("keynote_tag"), &s.keynote_tag);
+        s.key_tag = match t.get("key_tag").and_then(Value::str) {
+            Some("circle") => KeyTag::Circle,
+            Some("hex") => KeyTag::Hex,
+            _ => KeyTag::Plain,
+        };
+        s.list_title = str_or(t.get("list_title"), &s.list_title);
     }
     if let Some(t) = root.get("dims") {
         s.dim_terminator = str_or(t.get("terminator"), &s.dim_terminator);

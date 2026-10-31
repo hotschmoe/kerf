@@ -1,4 +1,5 @@
-//! Annotations (SPEC 6, 16): leader notes with deterministic column layout, dimensions, labels, and the title block under a view.
+//! Annotations (SPEC 6, 16, 23): leader or keyed notes with deterministic column layout, dimensions, labels, and the title
+//! block under a view.
 //!
 //! This file holds the layout context (`Env`) and the main entry `annotate` (parse, route, repair, assemble); the parts live in
 //! `annot/`: `text` (glyph folding, wrapping, text boxes), `notes` (landing, obstacles, routing, citations), `dims` (one
@@ -18,11 +19,12 @@ use crate::geom::{Box, V2};
 use crate::iso::Iso;
 use crate::json::Value;
 use crate::model::{self, Diags, Level};
+use crate::num;
 use crate::route;
 use crate::scene::{self, Scene};
 use crate::section::Section;
 use crate::style::Style;
-use crate::view::{Kind, ViewSpec};
+use crate::view::{Kind, NotesSide, NotesStyle, ViewSpec};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -91,6 +93,11 @@ impl<'a, 's> Env<'a, 's> {
             work: None,
         }
     }
+
+    /// The view's `notes_style`, else the style's `notes.mode`.
+    pub fn notes_style(&self) -> NotesStyle {
+        self.spec.notes_style.unwrap_or(self.style.notes_mode)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -98,6 +105,8 @@ pub enum AnnKind {
     Note,
     Dim,
     Label,
+    /// The keyed notes list (one box per view).
+    List,
 }
 
 #[derive(Clone, Debug)]
@@ -163,11 +172,53 @@ fn annotation_id<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, seen: &mut Vec<
     Some(id)
 }
 
+/// A note's `key` (keyed views): a whole number from 1 to 999; anything else warns and is ignored.
+fn read_key(env: &Env, an: &Value, id: &str, apath: &str) -> Option<u32> {
+    let kv = non_null(an, "key")?;
+    let whole = kv.num().and_then(|k| num::to_int::<u32>(k).filter(|&n| f64::from(n) == k));
+    if let Some(n) = whole.filter(|n| (1..=999).contains(n)) {
+        return Some(n);
+    }
+    env.diags.add_fix(
+        Level::Warning,
+        "W_PARAM",
+        Some(id),
+        Some(&format!("{apath}/key")),
+        format!(
+            "note '{id}' in view {}: \"key\" must be a whole number from 1 to 999 (got {}); ignored, the note is numbered in order",
+            env.spec.id,
+            model::kind_or_text(kv)
+        ),
+        "use e.g. \"key\": 3, or remove it".to_string(),
+    );
+    None
+}
+
+/// The text of the first note in the view with key `key` (keyed views: a note with a shared key may omit its text).
+fn shared_key_text<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a str> {
+    env.spec.annotations.iter().find_map(|an| {
+        let k = non_null(an, "key").and_then(Value::num)?;
+        if k != f64::from(key) {
+            return None;
+        }
+        str_member(an, "text")
+    })
+}
+
 /// A note, or `None` (with a diagnostic) when it cannot be drawn.
 fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) -> Option<NoteIn<'a>> {
     let vid = env.spec.id;
-    let Some(text0) = str_member(an, "text") else {
-        env.diags.add(Level::Error, "E_PARAM", Some(id), Some(apath), format!("note '{id}' needs a string \"text\""));
+    let style = env.notes_style();
+    let key = if style == NotesStyle::Leader { None } else { read_key(env, an, id, apath) };
+    let Some(text0) = str_member(an, "text").or_else(|| key.and_then(|k| shared_key_text(env, k))) else {
+        let alt = if style == NotesStyle::Leader { "" } else { " (or a \"key\" shared with a note that has one)" };
+        env.diags.add(
+            Level::Error,
+            "E_PARAM",
+            Some(id),
+            Some(apath),
+            format!("note '{id}' needs a string \"text\"{alt}"),
+        );
         return None;
     };
     if notes::text_too_long(env, "note", id, apath, text0) {
@@ -177,6 +228,9 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     let text = scene::where_occurs_text(env.scene, target, text0);
     let cites: &[Value] = an.get("cite").and_then(Value::arr).unwrap_or(&[]);
     let full = notes::note_text(env, &text, cites);
+    if style == NotesStyle::List {
+        return Some(NoteIn { id, text: full, cands: Vec::new(), movable: false, place: None, column: None, key });
+    }
     let target = str_member(an, "target").unwrap_or("");
     let mut landing: Option<Vec<V2>> = None;
     let mut movable = true;
@@ -238,7 +292,7 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
         }
     }
     if let Some(cands) = landing {
-        return Some(NoteIn { id, text: full, cands, movable, place, column });
+        return Some(NoteIn { id, text: full, cands, movable, place, column, key });
     }
     if at_v.is_none() {
         env.diags.add_fix(
@@ -404,6 +458,20 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
 /// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
 pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
     let Gathered { notes, note_slot, per, meta, dspecs, lspecs } = gather(env);
+    let style = env.notes_style();
+    if style == NotesStyle::Leader && env.spec.notes_side == NotesSide::Above {
+        let vid = env.spec.id;
+        env.diags.add_fix(
+            Level::Warning,
+            "W_PARAM",
+            Some(vid),
+            Some(&format!("views/{vid}/notes_side")),
+            format!("view {vid}: notes_side \"above\" places the DETAIL NOTES list of keyed notes; leader notes use \"both\" here"),
+            "set \"notes_style\": \"keyed\" on the view, or notes_side to right, left or both".to_string(),
+        );
+    }
+    let numbers = if style == NotesStyle::Leader { Vec::new() } else { notes::key_numbers(&notes) };
+    let routed: &[NoteIn<'a>] = if style == NotesStyle::List { &[] } else { &notes };
     let mut base_segs: Vec<[V2; 2]> = Vec::new();
     for it in base_items.iter() {
         if let Item::Path(p) = it {
@@ -420,12 +488,12 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         }
     }
     let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs };
-    let prep = notes::prep_notes(env, &notes);
+    let prep = notes::prep_notes(env, routed, if routed.is_empty() { &[] } else { &numbers });
 
-    let best = repair::solve(env, &notes, &prep, &dl, &per, &meta);
+    let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
     let Some(fin) = best else { return Vec::new() };
     let rd = fin.rd;
-    notes::report_hits(env, &notes, &rd.obstacles, &fin.r, &prep.g);
+    notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep.g);
     for (its, m) in rd.per.iter().zip(&rd.meta) {
         let bx = items_box(env.font, its);
         match m.kind {
@@ -440,9 +508,9 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
             MetaKind::None => {}
         }
     }
-    let mut outs: Vec<Vec<Item>> = (0..notes.len()).map(|_| Vec::new()).collect();
-    notes::emit_notes(env, &notes, &prep, &fin.r, &mut outs);
-    for (o, n) in outs.iter().zip(&notes) {
+    let mut outs: Vec<Vec<Item>> = (0..routed.len()).map(|_| Vec::new()).collect();
+    notes::emit_notes(env, routed, &prep, &fin.r, &mut outs);
+    for (o, n) in outs.iter().zip(routed) {
         let bx = items_box(env.font, o);
         env.notes_box.add_box(bx);
         env.ann_boxes.push(AnnBox { id: n.id.to_string(), kind: AnnKind::Note, bbox: bx, offset: 0.0 });
@@ -457,8 +525,15 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
             result.append(o);
         }
     }
-    if env.style.notes_mode_keynote && !notes.is_empty() {
-        notes::legend_items(env, &notes, &mut result);
+    if !numbers.is_empty() {
+        let entries = notes::list_entries(env, &notes, &numbers);
+        let mut ext = items_box(env.font, &result);
+        ext.add_box(env.crop);
+        let list = notes::list_items(env, &entries, ext);
+        let bx = items_box(env.font, &list);
+        env.notes_box.add_box(bx);
+        env.ann_boxes.push(AnnBox { id: "notes_list".to_string(), kind: AnnKind::List, bbox: bx, offset: 0.0 });
+        result.extend(list);
     }
     result
 }

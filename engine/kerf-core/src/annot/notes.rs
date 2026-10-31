@@ -1,10 +1,11 @@
-//! Leader notes (SPEC 6.3): landing points, obstacles, routing of the note column and its legend, hit reporting, and note text with citations.
+//! Leader notes (SPEC 6.3) and keyed notes (SPEC 23): landing points, obstacles, routing of the note column, key tags and
+//! the DETAIL NOTES list, hit reporting, and note text with citations.
 
 use super::text::{ascii_fold, layer_name, path_item, text_item, upper_if, wrap};
-use super::{Env, Landing, items_box};
+use super::{Env, Landing};
 use crate::clip;
 use crate::compile;
-use crate::drawing::{Align, FillItem, Item, VAlign};
+use crate::drawing::{Align, FillItem, Item, PathItem, VAlign};
 use crate::geom::{Box, Pt, V2};
 use crate::json::{self, Value};
 use crate::limits;
@@ -14,7 +15,10 @@ use crate::pen::{LayerKey, Pen};
 use crate::route;
 use crate::scene::Scene;
 use crate::shape;
+use crate::sort;
+use crate::style::KeyTag;
 use crate::thinland;
+use crate::view::NotesSide;
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
@@ -118,6 +122,8 @@ pub struct NoteIn<'a> {
     pub place: Option<V2>,
     /// `column` hint of the note.
     pub column: Option<route::Side>,
+    /// Explicit `key` (keyed notes): the note's number in the list.
+    pub key: Option<u32>,
 }
 
 /// A dimension text or label box that leaders must keep away from, with what is needed to propose a fix.
@@ -334,13 +340,16 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
 pub struct NotePrep {
     pub g: route::Geo,
     pub gutter: f64,
+    /// Circle/hex key tag radius (keyed views).
     pub tag_r: f64,
+    pub keyed: bool,
     pub lines_of: Vec<Vec<String>>,
     /// (w, hgt) of each note's text block.
     pub sizes: Vec<(f64, f64)>,
 }
 
-pub fn prep_notes(env: &Env, notes: &[NoteIn]) -> NotePrep {
+/// `numbers` holds each note's key number in a keyed view and is empty otherwise.
+pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
     let st = env.style;
     let sc = env.s;
     let h = st.text_height_in * sc;
@@ -352,27 +361,35 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn]) -> NotePrep {
         pad: 0.04 * sc,
     };
     let wrap_n = st.wrap_cols();
-    let keynote = st.notes_mode_keynote;
-    let tag_r = 0.14 * sc;
+    // circle and hex tags share one size, set by the widest number
+    let widest = numbers.iter().map(|k| env.font.width(k.to_string(), h)).fold(0.0, f64::max);
+    let tag_r = match st.key_tag {
+        KeyTag::Plain => 0.0,
+        KeyTag::Circle => (0.5 * widest + 0.35 * h).max(0.8 * h),
+        // the hexagon's inscribed circle holds the number
+        KeyTag::Hex => (0.5 * widest + 0.35 * h).max(0.8 * h) * 2.0 / math::sqrt(3.0),
+    };
     let mut lines_of = Vec::with_capacity(notes.len());
     let mut sizes = Vec::with_capacity(notes.len());
     for (i, n) in notes.iter().enumerate() {
-        let mut w = 2.0 * tag_r;
-        let mut hgt = 2.0 * tag_r;
-        if keynote {
-            lines_of.push(alloc::vec![(i + 1).to_string()]);
+        if let Some(&num) = numbers.get(i) {
+            let label = num.to_string();
+            sizes.push(match st.key_tag {
+                KeyTag::Plain => (env.font.width(&label, h), h),
+                KeyTag::Circle | KeyTag::Hex => (2.0 * tag_r, 2.0 * tag_r),
+            });
+            lines_of.push(alloc::vec![label]);
         } else {
             let lines = wrap(&n.text, wrap_n);
-            w = 0.0;
+            let mut w: f64 = 0.0;
             for l in &lines {
                 w = w.max(env.font.width(ascii_fold(l), h));
             }
-            hgt = h + (lines.len() as f64 - 1.0) * g.pitch;
+            sizes.push((w, h + (lines.len() as f64 - 1.0) * g.pitch));
             lines_of.push(lines);
         }
-        sizes.push((w, hgt));
     }
-    NotePrep { g, gutter: st.gutter_in * sc, tag_r, lines_of, sizes }
+    NotePrep { g, gutter: st.gutter_in * sc, tag_r, keyed: !numbers.is_empty(), lines_of, sizes }
 }
 
 pub fn route_notes(
@@ -398,10 +415,12 @@ pub fn route_notes(
             column: n.column,
         })
         .collect();
+    // key tags go to the side nearer their landing point; notes_side places the list instead
     let side = match env.spec.notes_side {
-        crate::view::NotesSide::Left => route::Side::Left,
-        crate::view::NotesSide::Right => route::Side::Right,
-        crate::view::NotesSide::Both => route::Side::Both,
+        _ if prep.keyed => route::Side::Both,
+        NotesSide::Left => route::Side::Left,
+        NotesSide::Right => route::Side::Right,
+        NotesSide::Both | NotesSide::Above => route::Side::Both,
     };
     let mut p = route::Params::new(prep.g, crop, crop.x0.min(ext.x0), crop.x1.max(ext.x1), prep.gutter, side);
     p.light = light;
@@ -414,7 +433,6 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
     let sc = env.s;
     let h = st.text_height_in * sc;
     let g = prep.g;
-    let keynote = st.notes_mode_keynote;
     let tag_r = prep.tag_r;
     for (i, n) in notes.iter().enumerate() {
         let (Some(lines), Some(o), Some(&px), Some(&ptop), Some(&left), Some(l), Some(&land)) = (
@@ -428,15 +446,36 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
         ) else {
             continue;
         };
-        if keynote {
-            let cx = px + tag_r;
-            let cy = ptop - tag_r;
-            let mut hex = [V2::default(); 6];
-            for (k, hp) in hex.iter_mut().enumerate() {
-                let ang = math::PI / 6.0 + k as f64 * math::PI / 3.0;
-                *hp = V2::init(cx + tag_r * math::cos(ang), cy + tag_r * math::sin(ang));
+        let mut start = l[0];
+        if prep.keyed {
+            let (bw, bh) = prep.sizes.get(i).copied().unwrap_or_default();
+            let c = V2::init(px + 0.5 * bw, ptop - 0.5 * bh);
+            match st.key_tag {
+                KeyTag::Plain => {}
+                KeyTag::Circle => {
+                    // the leader starts on the circle, not a text gap away from it
+                    start.x += if left { -g.pad } else { g.pad };
+                    let quarter = core::f64::consts::SQRT_2 - 1.0;
+                    let pts = [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)]
+                        .map(|(dx, dy)| Pt::at(V2::init(c.x + dx * tag_r, c.y + dy * tag_r), quarter));
+                    o.push(Item::Path(PathItem {
+                        layer: String::from(env.style.layer_for_pen(Pen::Anno)),
+                        pen: Pen::Anno,
+                        src: String::from(n.id),
+                        closed: true,
+                        pts: pts.to_vec(),
+                    }));
+                }
+                KeyTag::Hex => {
+                    start.x += if left { -g.pad } else { g.pad };
+                    let mut hex = [V2::default(); 6];
+                    for (k, hp) in hex.iter_mut().enumerate() {
+                        let ang = k as f64 * math::PI / 3.0;
+                        *hp = V2::init(c.x + tag_r * math::cos(ang), c.y + tag_r * math::sin(ang));
+                    }
+                    o.push(path_item(env, Pen::Anno, n.id, &hex, true));
+                }
             }
-            o.push(path_item(env, Pen::Anno, n.id, &hex, true));
             let num = lines.first().map_or("", String::as_str);
             o.push(text_item(
                 env,
@@ -444,8 +483,8 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
                 Pen::Anno,
                 n.id,
                 num,
-                cx,
-                cy,
+                c.x,
+                c.y,
                 h,
                 0.0,
                 Align::Center,
@@ -492,7 +531,7 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
         let aw = st.arrow_width_in * sc;
         let base = land.sub(d.scale(alen));
         let perp = d.perp();
-        o.push(path_item(env, Pen::Anno, n.id, &[l[0], l[1], base], false));
+        o.push(path_item(env, Pen::Anno, n.id, &[start, l[1], base], false));
         let tri = alloc::vec![
             Pt::at(land, 0.0),
             Pt::at(base.add(perp.scale(aw)), 0.0),
@@ -506,65 +545,170 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
     }
 }
 
-/// Keynote legend: numbered full texts in a block under the view (left aligned with the crop).
-pub fn legend_items(env: &mut Env, notes: &[NoteIn], result: &mut Vec<Item>) {
+/// One entry of the keyed notes list: its number, its text, and the first note with that number (the src of its text).
+pub struct ListEntry<'a> {
+    pub num: u32,
+    pub text: &'a str,
+    pub first: &'a str,
+}
+
+/// Keyed numbering (SPEC 23): a note's `key` is its number; the other notes take the lowest unused numbers in note order.
+pub fn key_numbers(notes: &[NoteIn]) -> Vec<u32> {
+    let mut used: Vec<u32> = notes.iter().filter_map(|n| n.key).collect();
+    let mut next = 1u32;
+    notes
+        .iter()
+        .map(|n| {
+            n.key.unwrap_or_else(|| {
+                while used.contains(&next) {
+                    next += 1;
+                }
+                used.push(next);
+                next
+            })
+        })
+        .collect()
+}
+
+/// The list entries in number order; notes sharing a key share the first one's text (a different text warns).
+pub fn list_entries<'a>(env: &Env, notes: &'a [NoteIn], numbers: &[u32]) -> Vec<ListEntry<'a>> {
+    let vid = env.spec.id;
+    let mut out: Vec<ListEntry<'a>> = Vec::new();
+    for (n, &num) in notes.iter().zip(numbers) {
+        match out.iter().find(|e| e.num == num) {
+            Some(e) if e.text != n.text => env.diags.add_fix(
+                crate::model::Level::Warning,
+                "W_PARAM",
+                Some(n.id),
+                Some(&format!("views/{vid}/annotations/{}/text", n.id)),
+                format!(
+                    "note '{}' in view {vid} shares key {num} with note '{}' but its text differs; the DETAIL NOTES list shows the text of '{}'",
+                    n.id, e.first, e.first
+                ),
+                format!(
+                    "remove \"text\" from '{}' (a note with a shared key takes the key's text), or give it its own \"key\"",
+                    n.id
+                ),
+            ),
+            Some(_) => {}
+            None => out.push(ListEntry { num, text: &n.text, first: n.id }),
+        }
+    }
+    sort::stable(&mut out, |a, b| a.num < b.num);
+    out
+}
+
+/// Lines a list keeps in one column (above the drawing, or beside one shorter than that).
+const ONE_COLUMN_LINES: usize = 8;
+
+/// The DETAIL NOTES list (SPEC 23): heading, rule, then `<n>.` and the wrapped text with a hanging indent. It sits beside
+/// (`notes_side` left/right) or above (`above`, `both`) `ext`, the drawing with its tags, dimensions and labels, and
+/// splits into two columns past 8 lines, or beside a taller drawing, once one column would be taller than the drawing.
+pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
     let st = env.style;
     let sc = env.s;
     let h = st.text_height_in * sc;
     let pitch = h * st.line_spacing;
-    let mut bx = items_box(env.font, result);
-    bx.add_box(env.crop);
-    let top = env.crop.y1;
+    let gap = st.gutter_in * sc;
     let wrap_n = num::to_int_clamped::<usize>(st.wrap_chars * 1.25, 5, 250);
-    let x0 = bx.x1 + 0.35 * sc;
-    let mut y = top;
-    result.push(text_item(
+    let font = env.font;
+    let widest = entries.iter().map(|e| font.width(format!("{}.", e.num), h)).fold(0.0, f64::max);
+    let indent = widest + font.width("  ", h);
+    let wrapped: Vec<Vec<String>> = entries.iter().map(|e| wrap(e.text, wrap_n)).collect();
+    let text_w = wrapped.iter().flatten().map(|l| font.width(ascii_fold(l), h)).fold(0.0, f64::max);
+    let title = upper_if(env, &st.list_title).into_owned();
+    let col_w = (indent + text_w).max(font.width(ascii_fold(&title), h));
+    let total: usize = wrapped.iter().map(Vec::len).sum();
+    let side = env.spec.notes_side;
+    let beside = matches!(side, NotesSide::Left | NotesSide::Right);
+    let two = total > ONE_COLUMN_LINES && (!beside || total as f64 * pitch > ext.height());
+    // the first column ends at the entry that makes the taller column shortest (ties: the longer first column)
+    let mut split = entries.len();
+    if two {
+        let mut best = usize::MAX;
+        let mut acc = 0;
+        for (k, w) in wrapped.iter().enumerate().take(entries.len() - 1) {
+            acc += w.len();
+            let tall = acc.max(total - acc);
+            if tall <= best {
+                best = tall;
+                split = k + 1;
+            }
+        }
+    }
+    let ncols = if split < entries.len() { 2.0 } else { 1.0 };
+    let block_w = ncols * col_w + (ncols - 1.0) * gap;
+    let first: usize = wrapped[..split].iter().map(Vec::len).sum();
+    let rows = first.max(total - first) as f64;
+    // heading, its rule half a text height under the baseline, the first entry's cap 0.6 text heights under the rule
+    let (rule_drop, lead) = (1.5 * h, 1.6 * h);
+    let block_h = rule_drop + lead + (rows - 1.0) * pitch;
+    let (x0, top) = match side {
+        NotesSide::Left => (ext.x0 - gap - block_w, ext.y1),
+        NotesSide::Right => (ext.x1 + gap, ext.y1),
+        NotesSide::Both | NotesSide::Above => (ext.x0, ext.y1 + gap + block_h),
+    };
+    let rule_y = top - rule_drop;
+    let col_x = |c: usize| x0 + c as f64 * (col_w + gap);
+    let mut out = Vec::new();
+    out.push(text_item(
         env,
         LayerKey::Notes,
         Pen::Anno,
-        "legend",
-        "KEYNOTES",
+        "notes_list",
+        &title,
         x0,
-        y - h,
+        top - h,
         h,
         0.0,
         Align::Left,
         VAlign::Baseline,
     ));
-    y -= pitch * 1.4;
-    for (i, n) in notes.iter().enumerate() {
-        let lines = wrap(&n.text, wrap_n);
-        let num = (i + 1).to_string();
-        result.push(text_item(
+    for c in 0..ncols as usize {
+        out.push(path_item(
+            env,
+            Pen::Anno,
+            "notes_list",
+            &[V2::init(col_x(c), rule_y), V2::init(col_x(c) + col_w, rule_y)],
+            false,
+        ));
+    }
+    let mut y = [rule_y - lead; 2];
+    for (i, (e, lines)) in entries.iter().zip(&wrapped).enumerate() {
+        let c = usize::from(i >= split);
+        let cx = col_x(c);
+        let label = format!("{}.", e.num);
+        out.push(text_item(
             env,
             LayerKey::Notes,
             Pen::Anno,
-            "legend",
-            &num,
-            x0,
-            y - h,
+            e.first,
+            &label,
+            cx,
+            y[c],
             h,
             0.0,
             Align::Left,
             VAlign::Baseline,
         ));
-        for (j, line) in lines.iter().enumerate() {
-            result.push(text_item(
+        for line in lines {
+            out.push(text_item(
                 env,
                 LayerKey::Notes,
                 Pen::Anno,
-                "legend",
+                e.first,
                 line,
-                x0 + 0.35 * sc,
-                y - h - j as f64 * pitch,
+                cx + indent,
+                y[c],
                 h,
                 0.0,
                 Align::Left,
                 VAlign::Baseline,
             ));
+            y[c] -= pitch;
         }
-        y -= pitch * lines.len() as f64 + 0.25 * pitch;
     }
+    out
 }
 
 pub fn note_text(env: &mut Env, text: &str, cites: &[Value]) -> String {
