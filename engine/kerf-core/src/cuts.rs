@@ -232,6 +232,7 @@ pub fn lengthwise(ty: Type, node: &Value, two_point: bool) -> Option<bool> {
             Some("elevation" | "plan") => Some(run == Some("y")),
             _ => None,
         },
+        Type::Ijoist => (run != Some("z")).then_some(false),
         _ => None,
     }
 }

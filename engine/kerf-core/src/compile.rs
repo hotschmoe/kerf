@@ -83,6 +83,14 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
         out.push(s.split('.').next().unwrap_or(s));
     }
     crate::cuts::collect_deps(node, out, add_ref_dep);
+    if node.get("type").and_then(Value::str) == Some("connector") {
+        for m in node.get("members").and_then(Value::arr).unwrap_or(&[]) {
+            match m {
+                Value::Array(a) => out.extend(a.iter().filter_map(Value::str).map(host_id)),
+                _ => out.extend(m.str().map(host_id)),
+            }
+        }
+    }
     if node.get("type").and_then(Value::str) == Some("nailing") {
         for m in node.get("members").and_then(Value::arr).unwrap_or(&[]) {
             if let Some(s) = m.str() {

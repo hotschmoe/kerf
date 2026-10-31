@@ -21,12 +21,15 @@ param_enum! { pub enum Lay { Edge = "edge", Face = "face" } }
 param_enum! { pub enum Side { Left = "left", Right = "right" } }
 param_enum! { pub enum Kind { Strap = "strap", Tie = "tie", Angle = "angle", Hanger = "hanger", PostCap = "post_cap", PostBase = "post_base", Holdown = "holdown" } }
 param_enum! { pub enum Mount { Face = "face", TopFlange = "top_flange" } }
-param_enum! { pub enum Face { Left = "left", Right = "right", Front = "front", Back = "back" } }
+param_enum! { pub enum Face { Left = "left", Right = "right", Front = "front", Back = "back", Top = "top", Bottom = "bottom" } }
 
 params! {
     pub struct Params {
         model: Str = "" => { def: "null", desc: "manufacturer part for the note and the summary, e.g. MSTA36, H2.5A, LUS210, ITS2.06/11.88, CCQ44, ABU44, HDU5: a table model fills width/gauge/length, a known family (`kerf schema connector` lists them) fills kind, mount and gauge; anything else is W_UNKNOWN_MODEL unless you give gauge (and width for a strap)" },
-        kind: OptEnum(Kind) => { def: "strap with points or on, else the model's family", desc: "strap | tie | angle: the polyline below (`points`, or `on` a member face); hanger: carried + carrying; post_cap: post + beam; post_base: post (+ standoff); holdown: post + rod. Hanger, cap, base and holdown are sized from their members (no points, no at, no z)" },
+        kind: OptEnum(Kind) => { def: "strap with points or on, else the model's family (tie or angle with members)", desc: "strap | tie | angle: the polyline below (`points`, or `on` a member face), or tie | angle placed from two `members`; hanger: carried + carrying; post_cap: post + beam; post_base: post (+ standoff); holdown: post + rod. Hanger, cap, base, holdown and member ties are sized from their members (no points, no at)" },
+        members: OptRaw => { def: "null", desc: "tie | angle: the two members it joins, e.g. [\"rafter\", \"plate\"] (id, id#k or a list drawn as one): tie wraps the joint (H2.5A, H3, RSP4, LTP4), angle sits in the inside corner (A34, A35)" },
+        legs: OptRaw => { def: "tie: half the model length each (2 3/4); angle 1 7/16", desc: "tie | angle with members: [on the first member, on the second] leg lengths" },
+        front: OptBool => { def: "null: in front where a section cuts one of its members", desc: "true: hardware draws solid over what it overlaps in sections and elevations (as engineers draw it), false: at its true place, dashed where hidden" },
         points: OptRaw => { def: "required for a strap without on", desc: "polyline [x,y] or Refs of the bearing face (lay edge) or centerline (lay face)" },
         on: OptStr => { def: "null", desc: "\"<member>.face_left|face_right|face_top|face_bottom|face_front|face_back\": the strap lies flush on that face in 3D (outside it, gauge thick, no z arithmetic, no `side`): points snap onto the face (default: the whole face along the member), width centered on the member (left/right/top/bottom) or in-plane (front/back)" },
         lay: Enum(Lay) = Lay::Edge => { desc: "edge: seen edge-on, gauge in-plane growing to `side`, width along Z; face: seen face-on, `width` in-plane centered on the polyline, gauge along Z (with `on` the face sets it)" },
@@ -40,7 +43,7 @@ params! {
         post: OptRaw => { def: "required for post_cap, post_base, holdown", desc: "the post (id, or a list for a built-up stud pack) the cap, base or holdown fits" },
         beam: OptRaw => { def: "required for post_cap", desc: "post_cap: the beam (id or list of plies) sitting on the post" },
         rod: OptStr => { def: "null (W_HOLDOWN_ROD)", desc: "holdown: the anchor_bolt or bolt through its seat; the seat reaches the rod and the body centers on it" },
-        face: OptEnum(Face) => { def: "holdown: toward the rod; post_base: left", desc: "holdown: the post face it is screwed to; post_base: left/right puts the side plates on the x faces, front/back on the z faces" },
+        face: OptEnum(Face) => { def: "holdown: toward the rod; post_base: left; tie/angle: front", desc: "holdown: the post face it is screwed to; post_base: left/right puts the side plates on the x faces, front/back on the z faces; tie/angle with members: front/back on the z faces (seen face-on), left/right (top/bottom for side-by-side members) on that side of the joint (seen edge-on)" },
         height: OptLenPos => { def: "hanger 0.85 x carried depth; cap 1/2 beam depth (max 7); base 3 1/2; holdown 10", desc: "hanger: side height; post_cap: side plates up the beam; post_base: side plates up the post; holdown: body height" },
         seat: OptLenPos => { def: "hanger 2, holdown 3/8", desc: "hanger: seat length under the carried member; holdown: seat thickness" },
         standoff: OptLen => { def: "1", desc: "post_base: post bottom above the base plate bottom (0: post on the plate)" },
@@ -67,7 +70,7 @@ impl ModelInfo {
         self.table.map(|h| f64::from(h.gauge)).or(self.series.map(|s| f64::from(s.gauge)))
     }
 
-    fn strap_width(&self) -> Option<f64> {
+    pub fn strap_width(&self) -> Option<f64> {
         self.table.map(|h| h.width).or(self.series.map(|s| s.width).filter(|w| *w > 0.0))
     }
 
@@ -126,7 +129,15 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ModelMatch::Unknown => ModelInfo { name, table: None, series: None },
     };
     let polyline = cp.points.is_some() || cp.on.is_some();
-    let kind = cp.kind.unwrap_or_else(|| if polyline { Kind::Strap } else { mi.kind().unwrap_or(Kind::Strap) });
+    let kind = cp.kind.unwrap_or_else(|| {
+        if polyline {
+            Kind::Strap
+        } else if cp.members.is_some() {
+            if mi.desc().contains("angle") { Kind::Angle } else { Kind::Tie }
+        } else {
+            mi.kind().unwrap_or(Kind::Strap)
+        }
+    });
     if !ctx.p.ok {
         return None;
     }
@@ -139,18 +150,47 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     {
         warns.push(unknown_model(ctx, &mi, strap));
     }
-    let mut built = if strap { build_strap(ctx, &cp, &mi, kind)? } else { hardware::build(ctx, &cp, &mi, kind)? };
+    let mut built = if strap && cp.members.is_some() {
+        hardware::build(ctx, &cp, &mi, kind)?
+    } else if strap {
+        build_strap(ctx, &cp, &mi, kind)?
+    } else {
+        hardware::build(ctx, &cp, &mi, kind)?
+    };
+    built.hw.front = cp.front;
     warns.append(&mut built.hw.warns);
     built.hw.warns = warns;
     Some(built)
 }
 
 fn build_strap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<Built> {
-    for key in
-        ["mount", "carried", "carrying", "post", "beam", "rod", "face", "height", "seat", "standoff", "seat_height"]
-    {
+    for key in [
+        "mount",
+        "carried",
+        "carrying",
+        "post",
+        "beam",
+        "rod",
+        "face",
+        "height",
+        "seat",
+        "standoff",
+        "seat_height",
+        "legs",
+    ] {
         if ctx.p.has(key) {
-            ctx.p.fail(key, format!("'{key}' belongs to kind hanger, post_cap, post_base or holdown; this connector is kind {}: set \"kind\" or remove '{key}'", kind.tag()));
+            let owner = if key == "legs" {
+                "a tie or angle placed from \"members\""
+            } else {
+                "kind hanger, post_cap, post_base or holdown"
+            };
+            ctx.p.fail(
+                key,
+                format!(
+                    "'{key}' belongs to {owner}; this connector is kind {}: set \"kind\" or remove '{key}'",
+                    kind.tag()
+                ),
+            );
         }
     }
     let gauge_n = cp.gauge.or(mi.gauge()).unwrap_or(18.0);

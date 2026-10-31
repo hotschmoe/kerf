@@ -53,6 +53,8 @@ pub struct Section<'s> {
     pub spec: &'s ViewSpec<'s>,
     pub prisms: Rc<[Prism]>,
     pub cls: Vec<Class>,
+    /// Framing hardware drawn in front (SPEC 28.4): solid, over what it overlaps on paper.
+    pub front: Vec<bool>,
     flat: Vec<Option<Flat>>,
     pub occs: Vec<Occ>,
     pub strokes: Vec<Stroke>,
@@ -73,6 +75,7 @@ impl<'s> Section<'s> {
     pub fn new(scene: &'s Scene<'s>, spec: &'s ViewSpec<'s>, prisms_in: &[Prism]) -> Section<'s> {
         let clipped = crate::voids::clip_fills(scene, prisms_in, spec.cut_z);
         let prisms: Rc<[Prism]> = hardware::thicken_thin_hardware(&clipped, spec.scale).into();
+        let front = hardware::front_hardware(scene, spec, &prisms);
         let eps = 1e-9;
         let reaches_behind = |p: &Prism| {
             prisms
@@ -82,8 +85,9 @@ impl<'s> Section<'s> {
         let elevation = spec.kind == ViewKind::Elevation;
         let cls = prisms
             .iter()
-            .map(|p| {
-                if elevation || (p.lengthwise && p.z1 > spec.cut_z + eps && reaches_behind(p)) {
+            .zip(&front)
+            .map(|(p, &f)| {
+                if f || elevation || (p.lengthwise && p.z1 > spec.cut_z + eps && reaches_behind(p)) {
                     Class::Beyond
                 } else if p.z0 < spec.cut_z - eps && p.z1 > spec.cut_z + eps {
                     Class::Cut
@@ -104,6 +108,7 @@ impl<'s> Section<'s> {
             flat: alloc::vec![None; prisms.len()],
             prisms,
             cls,
+            front,
             occs: Vec::new(),
             strokes: Vec::new(),
             hatches: Vec::new(),
@@ -185,7 +190,7 @@ impl<'s> Section<'s> {
         let margin = 1e-6;
         let prisms = Rc::clone(&self.prisms);
         for (i, p) in prisms.iter().enumerate() {
-            if self.cls[i] == Class::Drop || p.kind != Kind::Body || p.face_tie {
+            if self.cls[i] == Class::Drop || p.kind != Kind::Body || p.face_tie || self.front[i] {
                 continue;
             }
             let f = self.flat_of(i);

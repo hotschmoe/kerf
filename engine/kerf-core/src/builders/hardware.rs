@@ -32,6 +32,8 @@ pub struct Member {
     pub z0: f64,
     pub z1: f64,
     pub flat: Vec<Vec<V2>>,
+    /// Every (component index, instance) the member is made of.
+    pub parts: Vec<(u32, u32)>,
 }
 
 impl Member {
@@ -91,22 +93,23 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
         ctx.p.fail(key, format!("'{key}': '{id}' has no solid body to mount on"));
         return None;
     }
-    Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat })
+    let parts = vec![(c.index, u32::try_from(inst).unwrap_or(0))];
+    Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat, parts })
 }
 
 /// Plates collected in world coordinates.
-struct Kit {
-    prisms: Vec<Prism>,
+pub(super) struct Kit {
+    pub(super) prisms: Vec<Prism>,
     zlo: f64,
     zhi: f64,
 }
 
 impl Kit {
-    fn new() -> Kit {
+    pub(super) fn new() -> Kit {
         Kit { prisms: Vec::new(), zlo: f64::INFINITY, zhi: f64::NEG_INFINITY }
     }
 
-    fn poly(&mut self, part: &str, pts: Vec<Pt>, z: [f64; 2], nails: Vec<V2>) {
+    pub(super) fn poly(&mut self, part: &str, pts: Vec<Pt>, z: [f64; 2], nails: Vec<V2>) {
         let (z0, z1) = (z[0].min(z[1]), z[0].max(z[1]));
         if z1 - z0 < 1e-6 || geom::signed_area(&pts).abs() < 1e-9 {
             return;
@@ -125,7 +128,7 @@ impl Kit {
         });
     }
 
-    fn rect(&mut self, part: &str, x: [f64; 2], y: [f64; 2], z: [f64; 2], nails: Vec<V2>) {
+    pub(super) fn rect(&mut self, part: &str, x: [f64; 2], y: [f64; 2], z: [f64; 2], nails: Vec<V2>) {
         let (x0, x1) = (x[0].min(x[1]), x[0].max(x[1]));
         let (y0, y1) = (y[0].min(y[1]), y[0].max(y[1]));
         if x1 - x0 < 1e-6 || y1 - y0 < 1e-6 {
@@ -168,7 +171,7 @@ impl Kit {
     }
 
     /// The Built: prisms local to `origin`, centred on the kit's z middle.
-    fn finish(self, origin: V2, anchors: Vec<NamedAnchor>, info: String, hw: model::HwInfo) -> Built {
+    pub(super) fn finish(self, origin: V2, anchors: Vec<NamedAnchor>, info: String, hw: model::HwInfo) -> Built {
         let zc = (self.zlo + self.zhi) / 2.0;
         let prisms: Vec<Prism> = self
             .prisms
@@ -182,6 +185,9 @@ impl Kit {
                     .map(|l| l.iter().map(|q| Pt { x: q.x - origin.x, y: q.y - origin.y, b: q.b }).collect())
                     .collect();
                 p.nails = p.nails.iter().map(|n| n.sub(origin)).collect();
+                for q in &mut p.centerline {
+                    (q.x, q.y) = (q.x - origin.x, q.y - origin.y);
+                }
                 p
             })
             .collect();
@@ -230,7 +236,7 @@ fn reject_placement(ctx: &mut Ctx, kind: Kind) -> bool {
 }
 
 /// The member (or the union of the members listed) a host key names; None when missing or bad (reported).
-fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint: &str) -> Option<Member> {
+pub(super) fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint: &str) -> Option<Member> {
     let Some(v) = v else {
         ctx.p.fail(key, format!("kind {} needs '{key}': {hint}", kind.tag()));
         return None;
@@ -257,6 +263,7 @@ fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint: &str) -> 
                 u.z0 = u.z0.min(m.z0);
                 u.z1 = u.z1.max(m.z1);
                 u.flat.extend(m.flat);
+                u.parts.extend(m.parts);
                 u
             }
         });
@@ -265,15 +272,50 @@ fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint: &str) -> 
 }
 
 pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<Built> {
-    if !reject_placement(ctx, kind) {
+    let tie = matches!(kind, Kind::Strap | Kind::Tie | Kind::Angle);
+    if tie {
+        if kind == Kind::Strap {
+            ctx.p.fail("kind", "a connector placed from \"members\" is kind tie (it wraps the joint: H2.5A, H3, RSP4, LTP4) or angle (in the inside corner: A34, A35); set \"kind\" to one of them, or remove \"members\" and give \"points\" or \"on\" for a strap".to_string());
+        }
+        for key in ["at", "rotate", "slope", "mirror", "points", "on", "lay"] {
+            if ctx.p.has(key) {
+                ctx.p.fail(
+                    key,
+                    format!(
+                        "'{key}' is not used by a {} placed from \"members\": it is shaped from them; remove '{key}'",
+                        kind.tag()
+                    ),
+                );
+            }
+        }
+    } else if !reject_placement(ctx, kind) {
         return None;
     }
     let only: &[&str] = match kind {
         Kind::Hanger => &["mount", "carried", "carrying", "height", "seat", "width"],
         Kind::PostCap => &["post", "beam", "height"],
         Kind::PostBase => &["post", "standoff", "height", "face"],
-        _ => &["post", "rod", "face", "height", "seat", "seat_height", "width"],
+        Kind::Holdown => &["post", "rod", "face", "height", "seat", "seat_height", "width"],
+        _ => &["members", "legs", "face", "width"],
     };
+    if !tie && ctx.p.has("members") {
+        ctx.p
+            .fail("members", format!("'members' places a tie or angle; kind {} takes {}", kind.tag(), only.join(", ")));
+    }
+    if !tie && ctx.p.has("legs") {
+        ctx.p.fail(
+            "legs",
+            format!(
+                "'legs' belongs to a tie or angle placed from \"members\"; kind {} takes {}",
+                kind.tag(),
+                only.join(", ")
+            ),
+        );
+    }
+    if matches!(kind, Kind::Holdown | Kind::PostBase) && matches!(cp.face, Some(Face::Top | Face::Bottom)) {
+        ctx.p
+            .fail("face", format!("kind {} is on a side face of the post: use left, right, front or back", kind.tag()));
+    }
     for key in [
         "mount",
         "carried",
@@ -305,15 +347,16 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<B
         Kind::Hanger => hanger(ctx, cp, mi, gauge_i, t),
         Kind::PostCap => post_cap(ctx, cp, mi, gauge_i, t),
         Kind::PostBase => post_base(ctx, cp, mi, gauge_i, t),
-        _ => holdown(ctx, cp, mi, gauge_i, t),
+        Kind::Holdown => holdown(ctx, cp, mi, gauge_i, t),
+        _ => super::tie::build(ctx, cp, mi, kind, gauge_i, t),
     }
 }
 
-fn model_text(mi: &ModelInfo) -> String {
+pub(super) fn model_text(mi: &ModelInfo) -> String {
     if mi.name.is_empty() { String::new() } else { format!("{} ", mi.name) }
 }
 
-fn warn(ctx: &Ctx, code: &'static str, key: &str, message: String, fix: String) -> Diag {
+pub(super) fn warn(ctx: &Ctx, code: &'static str, key: &str, message: String, fix: String) -> Diag {
     let id = ctx.p.id;
     Diag {
         level: Level::Warning,
@@ -334,7 +377,7 @@ fn num_json(x: f64) -> String {
 }
 
 /// The y range of a profile on the vertical line x (lowest bottom, highest top), if it crosses it.
-fn y_at(flat: &[Vec<V2>], x: f64) -> Option<(f64, f64)> {
+pub(super) fn y_at(flat: &[Vec<V2>], x: f64) -> Option<(f64, f64)> {
     let ys = pathclip::scan(flat, x, true);
     Some((*ys.first()?, *ys.last()?))
 }
@@ -390,6 +433,23 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
             _ => Some(*k),
         });
     let Some((gap, along_x, f, s)) = pick else {
+        if yo && zo && xo && matches!(c.ty, "lumber" | "ijoist" | "steel") && !c.id.contains('+') {
+            let end = if c.bx.x0 + c.bx.x1 < b.bx.x0 + b.bx.x1 { "end" } else { "start" };
+            ctx.p.fail(
+                "carried",
+                format!(
+                    "hanger: '{}' runs into '{}' (x {}..{} against {}..{}): a sloped or overlong member must be cut at the face it hangs from. Fix: {} (a plumb cut at that face; keep any other cuts in the list)",
+                    c.id,
+                    b.id,
+                    fmt_ft_in(c.bx.x0),
+                    fmt_ft_in(c.bx.x1),
+                    fmt_ft_in(b.bx.x0),
+                    fmt_ft_in(b.bx.x1),
+                    update_op(&c.id, "cuts", &format!("[{{\"type\":\"trim\",\"end\":\"{end}\",\"to\":\"{}\"}}]", b.id))
+                ),
+            );
+            return None;
+        }
         ctx.p.fail(
             "carried",
             format!(
@@ -537,7 +597,8 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
     );
     let origin = ctx.origin;
     let joins = [c.id.split('+').map(String::from).collect(), b.id.split('+').map(String::from).collect()];
-    let hw = model::HwInfo { warns, joins, ..Default::default() };
+    let members = c.parts.iter().chain(&b.parts).copied().collect();
+    let hw = model::HwInfo { warns, joins, members, ..Default::default() };
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: seat_pt }], info, hw))
 }
 
@@ -595,12 +656,8 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
         p.id
     );
     let origin = ctx.origin;
-    Some(kit.finish(
-        origin,
-        vec![NamedAnchor { name: "seat".into(), p: V2::init((px0 + px1) / 2.0, top) }],
-        info,
-        model::HwInfo::default(),
-    ))
+    let hw = model::HwInfo { members: p.parts.iter().chain(&b.parts).copied().collect(), ..Default::default() };
+    Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: V2::init((px0 + px1) / 2.0, top) }], info, hw))
 }
 
 fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
@@ -638,7 +695,7 @@ fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -
         post_y0: py0,
         standoff: so,
     };
-    let hw = model::HwInfo { bears: Some(bears), ..Default::default() };
+    let hw = model::HwInfo { bears: Some(bears), members: p.parts.clone(), ..Default::default() };
     let origin = ctx.origin;
     Some(kit.finish(
         origin,
@@ -678,25 +735,30 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
         }
         (V2::init((bx.x0 + bx.x1) / 2.0, (z0 + z1) / 2.0), bx.width().min(z1 - z0), bx.y1)
     });
+    let inside = rod_axis.is_some_and(|(a, _, _)| a.x > p.bx.x0 && a.x < p.bx.x1 && a.y > p.z0 && a.y < p.z1);
     let face = match (cp.face, rod_axis) {
         (Some(f), _) => f,
         (None, Some((a, _, _))) if a.x < p.bx.x0 => Face::Left,
         (None, Some((a, _, _))) if a.x > p.bx.x1 => Face::Right,
         (None, Some((a, _, _))) if a.y > p.z1 => Face::Front,
         (None, Some((a, _, _))) if a.y < p.z0 => Face::Back,
-        (None, Some(_)) => {
-            ctx.p.fail("rod", format!("holdown: the rod passes through post '{}'; a holdown sits beside the post with the rod outside it (set \"face\" and move the rod)", p.id));
-            return None;
+        _ => {
+            if inside {
+                Face::Front
+            } else {
+                Face::Left
+            }
         }
-        (None, None) => Face::Left,
     };
     let fr = match face {
-        Face::Left => Frame { along_x: true, f: p.bx.x0, s: -1.0 },
+        Face::Left | Face::Top | Face::Bottom => Frame { along_x: true, f: p.bx.x0, s: -1.0 },
         Face::Right => Frame { along_x: true, f: p.bx.x1, s: 1.0 },
         Face::Front => Frame { along_x: false, f: p.z1, s: 1.0 },
         Face::Back => Frame { along_x: false, f: p.z0, s: -1.0 },
     };
+    let along_face = !fr.along_x && inside;
     let (d, vc, rod_r) = match rod_axis {
+        Some((a, dia, _)) if along_face => ((dia / 2.0 + t + 0.5).max(1.375), a.x, dia / 2.0),
         Some((a, dia, _)) => {
             let (ru, rv) = if fr.along_x { (a.x, a.y) } else { (a.y, a.x) };
             ((ru - fr.f) * fr.s, rv, dia / 2.0)
@@ -705,7 +767,15 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
     };
     let id = ctx.p.id.to_string();
     if d <= rod_r + t {
-        ctx.p.fail("face", format!("holdown: the rod is {} from the {} face of '{}', inside or against the post; the seat must reach past the rod", fmt_ft_in(d), face.tag(), p.id));
+        let fix = if inside {
+            format!(
+                "; the rod is inside the post outline, which reads as a rod under the post in a section through it: put the holdown on the post's front or back face, {}",
+                update_op(&id, "face", "\"front\"")
+            )
+        } else {
+            String::new()
+        };
+        ctx.p.fail("face", format!("holdown: the rod is {} from the {} face of '{}', inside or against the post; the seat must reach past the rod{fix}", fmt_ft_in(d), face.tag(), p.id));
         return None;
     }
     let h = cp.height.unwrap_or(10.0);
@@ -768,14 +838,19 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
     }
     let seat_pt = if fr.along_x { V2::init(fr.f + fr.s * d, seat_top) } else { V2::init(vc, seat_top) };
     let info = format!(
-        "connector {}holdown {gauge_i} ga, {} tall, {} face of {}{}",
+        "connector {}holdown {gauge_i} ga, {} tall, {} face of {}{}{}",
         model_text(mi),
         fmt_ft_in(h),
         face.tag(),
         p.id,
-        rod.as_ref().map_or(String::new(), |m| format!(", rod {}", m.id))
+        rod.as_ref().map_or(String::new(), |m| format!(", rod {}", m.id)),
+        if along_face {
+            format!(" (rod under the post: seat {} out from the face)", fmt_ft_in(d))
+        } else {
+            String::new()
+        }
     );
-    let hw = model::HwInfo { warns, rod: rod.map(|m| m.id), ..Default::default() };
+    let hw = model::HwInfo { warns, rod: rod.map(|m| m.id), members: p.parts.clone(), ..Default::default() };
     let origin = ctx.origin;
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat_top".into(), p: seat_pt }], info, hw))
 }
@@ -951,6 +1026,7 @@ pub fn build_on(
         nat_zc: Some(zc),
         points_mode: true,
         info: strap_info(mi, gauge_i, width, lay, Some(on)),
+        hw: model::HwInfo { members: m.parts.clone(), ..Default::default() },
         ..Built::default()
     })
 }
