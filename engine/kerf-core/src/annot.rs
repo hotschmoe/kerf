@@ -196,14 +196,11 @@ fn read_key(env: &Env, an: &Value, id: &str, apath: &str) -> Option<u32> {
     None
 }
 
-/// The text of the first note in the view with key `key` (keyed views: a note with a shared key may omit its text).
-fn shared_key_text<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a str> {
-    env.spec.annotations.iter().find_map(|an| {
-        let k = non_null(an, "key").and_then(Value::num)?;
-        if k != f64::from(key) {
-            return None;
-        }
-        str_member(an, "text")
+/// The first note in the view with key `key` that has a text (keyed views: a note with a shared key may omit its text,
+/// and then takes that note's text and, unless it has its own, its `cite`).
+fn shared_key_note<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a Value> {
+    env.spec.annotations.iter().find(|an| {
+        non_null(an, "key").and_then(Value::num) == Some(f64::from(key)) && str_member(an, "text").is_some()
     })
 }
 
@@ -212,7 +209,8 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     let vid = env.spec.id;
     let style = env.notes_style();
     let key = if style == NotesStyle::Leader { None } else { read_key(env, an, id, apath) };
-    let Some(text0) = str_member(an, "text").or_else(|| key.and_then(|k| shared_key_text(env, k))) else {
+    let shared = if str_member(an, "text").is_none() { key.and_then(|k| shared_key_note(env, k)) } else { None };
+    let Some(text0) = str_member(an, "text").or_else(|| shared.and_then(|sn| str_member(sn, "text"))) else {
         let alt = if style == NotesStyle::Leader { "" } else { " (or a \"key\" shared with a note that has one)" };
         env.diags.add(
             Level::Error,
@@ -228,10 +226,12 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     }
     let target = an.get("target").map_or("", |x| x.str().unwrap_or(""));
     let text = scene::where_occurs_text(env.scene, target, text0);
-    let cites: &[Value] = an.get("cite").and_then(Value::arr).unwrap_or(&[]);
+    let cite_src = if an.get("cite").is_some() { an } else { shared.unwrap_or(an) };
+    let cites: &[Value] = cite_src.get("cite").and_then(Value::arr).unwrap_or(&[]);
     let full = notes::note_text(env, &text, cites);
+    let body = text::upper_if(env, &text).into_owned();
     if style == NotesStyle::List {
-        return Some(NoteIn { id, text: full, cands: Vec::new(), movable: false, place: None, column: None, key });
+        return Some(NoteIn { id, text: full, body, cands: Vec::new(), movable: false, place: None, column: None, key });
     }
     let target = str_member(an, "target").unwrap_or("");
     let mut landing: Option<Vec<V2>> = None;
@@ -294,7 +294,7 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
         }
     }
     if let Some(cands) = landing {
-        return Some(NoteIn { id, text: full, cands, movable, place, column, key });
+        return Some(NoteIn { id, text: full, body, cands, movable, place, column, key });
     }
     if at_v.is_none() {
         env.diags.add_fix(

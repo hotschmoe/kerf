@@ -226,7 +226,7 @@ pub static NOTE: Object = Object {
         Field {
             name: "key",
             ty: "integer",
-            desc: "keyed views: the note's number in the DETAIL NOTES list (1-999; keeps numbers stable across edits). Notes with the same key share one entry and each draws its tag. Unkeyed notes take the lowest free numbers in note order",
+            desc: "keyed views: the note's number in the DETAIL NOTES list (1-999; keeps numbers stable across edits). Notes with the same key share one entry and each draws its tag; a repeat may omit `text` (it then also takes the first one's `cite`). Unkeyed notes take the lowest free numbers in note order",
             ..Field::NONE
         },
         Field {

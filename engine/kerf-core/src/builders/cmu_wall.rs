@@ -150,7 +150,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         anchors,
         zones,
         box_: Box { x0: 0.0, y0: 0.0, x1: w, y1: total_h },
-        host: Some(HostInfo { outline, cover: cov.cover, part_cover: cov.parts }),
+        host: Some(HostInfo { outline, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set }),
         info: format!("cmu_wall {}\" x {n} courses{bb_text}", fmt_num(nom)),
         ..Built::default()
     })

@@ -9,7 +9,7 @@ use crate::geom::{self, Loc, Pt, V2, Xf};
 use crate::json::Value;
 use crate::limits;
 use crate::math;
-use crate::model::{Cover, Diag, Diags, HostInfo, Kind, Level, Prism};
+use crate::model::{self, Cover, Diag, Diags, HostInfo, Kind, Level, Prism};
 use crate::scene::{Comp, Scene, State, join_ids};
 use crate::style::Role;
 use crate::units::{self, fmt_ft_in};
@@ -349,13 +349,47 @@ fn host_edges(outline: &[Pt], xf: &Xf) -> Vec<Edge> {
     out
 }
 
-fn cover_for(h: &HostInfo, zones_world: &[ZoneBox<'_>], c: V2) -> Cover {
+/// The cover required at `c` and the part zone it comes from: the first part override whose zone holds `c`, else the
+/// host's cover with the first zone that holds `c` (the part a `cover.parts.<part>` override would apply to).
+fn cover_for<'z>(h: &HostInfo, zones_world: &[ZoneBox<'z>], c: V2) -> (Cover, Option<&'z str>) {
     for pc in &h.part_cover {
-        if zones_world.iter().any(|z| z.name == pc.part && z.box_.contains(c)) {
-            return pc.cover;
+        if let Some(z) = zones_world.iter().find(|z| z.name == pc.part && z.box_.contains(c)) {
+            return (pc.cover, Some(z.name));
         }
     }
-    h.cover
+    (h.cover, zones_world.iter().find(|z| z.box_.contains(c)).map(|z| z.name))
+}
+
+fn cover_json(c: Cover, face: Option<usize>, value: f64) -> String {
+    let mut v = [c.bottom, c.top, c.sides];
+    if let Some(k) = face {
+        v[k] = value;
+    }
+    format!(
+        "\"bottom\": {}, \"top\": {}, \"sides\": {}",
+        model::num_text(v[0]),
+        model::num_text(v[1]),
+        model::num_text(v[2])
+    )
+}
+
+/// The op that lowers one face (0 bottom, 1 top, 2 sides) of a host's required cover to `value` and keeps the rest:
+/// on `part`'s override when the bar sits in a part zone, else on the host's own cover.
+fn cover_op(host_id: &str, h: &HostInfo, part: Option<&str>, face: usize, value: f64) -> String {
+    let base = cover_json(h.cover, if part.is_none() { Some(face) } else { None }, value);
+    let mut parts: Vec<String> = h
+        .part_cover
+        .iter()
+        .map(|pc| {
+            let f = if part == Some(pc.part.as_str()) { Some(face) } else { None };
+            format!("\"{}\": {{{}}}", pc.part, cover_json(pc.cover, f, value))
+        })
+        .collect();
+    if let Some(p) = part.filter(|p| !h.part_cover.iter().any(|pc| pc.part == *p)) {
+        parts.push(format!("\"{p}\": {{{}}}", cover_json(h.cover, Some(face), value)));
+    }
+    let parts = if parts.is_empty() { String::new() } else { format!(", \"parts\": {{{}}}", parts.join(", ")) };
+    format!("{{\"op\": \"update\", \"path\": \"components/{host_id}\", \"value\": {{\"cover\": {{{base}{parts}}}}}}}")
 }
 
 struct Piece {
@@ -498,7 +532,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     let edges = host_edges(&host.outline, xf);
                     let zw: Vec<ZoneBox<'_>> =
                         h.built.zones.iter().map(|z| ZoneBox { name: &z.name, box_: world_box(xf, z.box_) }).collect();
-                    let req = cover_for(host, &zw, centre);
+                    let (req, part) = cover_for(host, &zw, centre);
                     let mut min_clear = [f64::INFINITY; 3];
                     let mut min_piece = [0usize; 3];
                     for e in &edges {
@@ -537,12 +571,38 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     }
                     let reqs = [req.bottom, req.top, req.sides];
                     let names = ["bottom", "top", "sides"];
+                    let depth = geom::loop_box(&host.outline).height();
                     for k in 0..3 {
                         if min_clear[k] < reqs[k] - 1e-3 {
-                            let fix = "move the bar inward (increase place.cover / side_cover or the offset) or lower the host's cover requirement".to_string();
+                            let actual = (math::floor(min_clear[k].max(0.0) * 16.0 + 1e-6) / 16.0).max(0.0);
+                            let knob = match part {
+                                Some(p) => format!("cover.parts.{p}.{}", names[k]),
+                                None => format!("cover.{}", names[k]),
+                            };
+                            let mut fix = format!(
+                                "move the bar inward (increase place.cover / side_cover or the offset), or if {} is the intended cover set {knob} of '{}' to {}: {}",
+                                fmt_ft_in(actual),
+                                h.id,
+                                model::num_text(actual),
+                                cover_op(&h.id, host, part, k, actual)
+                            );
+                            if !host.cover_set && req.bottom + req.top + 2.0 * r > depth + 1e-6 {
+                                fix.push_str(&format!(
+                                    "; '{}' uses the default cover (bottom {}, top {}, sides {}), which no bar fits in its {} depth: give it its own \"cover\" (slab on grade with mid-depth bars, e.g. {{\"bottom\": 1.5, \"top\": 1.5}})",
+                                    h.id,
+                                    fmt_ft_in(req.bottom),
+                                    fmt_ft_in(req.top),
+                                    fmt_ft_in(req.sides),
+                                    fmt_ft_in(depth)
+                                ));
+                            }
+                            let src = match part.filter(|p| host.part_cover.iter().any(|pc| pc.part == *p)) {
+                                Some(p) => format!("cover.parts.{p}.{}", names[k]),
+                                None => format!("cover.{}{}", names[k], if host.cover_set { "" } else { ", default" }),
+                            };
                             let message = if !pieces.is_empty() {
                                 format!(
-                                    "clear cover from {}, {}, to the {} of '{}' is {} < required {}",
+                                    "clear cover from {}, {}, to the {} of '{}' is {} < required {} ({src})",
                                     bar.built.info,
                                     piece_text(&pieces, min_piece[k]),
                                     names[k],
@@ -552,7 +612,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                                 )
                             } else {
                                 format!(
-                                    "clear cover from {} bar to the {} of '{}' is {} < required {}; bar center at x {}, y {}",
+                                    "clear cover from {} bar to the {} of '{}' is {} < required {} ({src}); bar center at x {}, y {}",
                                     bar.built.info,
                                     names[k],
                                     h.id,
