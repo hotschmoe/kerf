@@ -127,8 +127,7 @@ pub fn boolean<LA: AsRef<[V2]>, LB: AsRef<[V2]>>(a: &[LA], b: &[LB], op: Op) -> 
     for i in 0..na {
         let ea = edges[i];
         let bxa = seg_box(ea);
-        for j in na..ne {
-            let eb = edges[j];
+        for (j, &eb) in edges.iter().enumerate().skip(na) {
             if !bxa.overlaps(seg_box(eb), SNAP) {
                 continue;
             }

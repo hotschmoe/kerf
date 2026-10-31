@@ -138,8 +138,8 @@ fn path_anchors(vs: &[V2], center: &[geom::Pt]) -> Vec<NamedAnchor> {
         NamedAnchor { name: "start".to_string(), p: flat[0] },
         NamedAnchor { name: "end".to_string(), p: flat[flat.len() - 1] },
     ];
-    for k in 1..n - 1 {
-        out.push(NamedAnchor { name: format!("bend_{k}"), p: nearest(vs[k]) });
+    for (k, &v) in vs.iter().enumerate().take(n - 1).skip(1) {
+        out.push(NamedAnchor { name: format!("bend_{k}"), p: nearest(v) });
     }
     for k in 0..n - 1 {
         let (a, b) = (vs[k], vs[k + 1]);

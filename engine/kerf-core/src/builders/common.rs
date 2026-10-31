@@ -228,8 +228,11 @@ pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Opt
 /// adds the edge from the last point back to the first.
 pub fn vertex_anchors(pts: &[Pt], closed: bool) -> Vec<model::NamedAnchor> {
     let n = pts.len();
-    let mut out: Vec<model::NamedAnchor> =
-        pts.iter().enumerate().map(|(i, p)| model::NamedAnchor { name: format!("vertex_{}", i + 1), p: p.v() }).collect();
+    let mut out: Vec<model::NamedAnchor> = pts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| model::NamedAnchor { name: format!("vertex_{}", i + 1), p: p.v() })
+        .collect();
     let edges = if closed { n } else { n.saturating_sub(1) };
     for i in 0..edges {
         let (a, b) = (pts[i], pts[(i + 1) % n].v());

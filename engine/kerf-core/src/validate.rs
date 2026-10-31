@@ -595,8 +595,7 @@ fn in_host(s: &Drawn<'_, '_>, bp: &Prism, p: V2) -> bool {
                 return false;
             }
             let fl = geom::flatten_loop(&xf.apply_loop(&host.outline), FLAT_TOL);
-            geom::locate(p, core::slice::from_ref(&fl), 1e-6) != Loc::Outside
-                || geom::point_in_loop_eo(p, &fl)
+            geom::locate(p, core::slice::from_ref(&fl), 1e-6) != Loc::Outside || geom::point_in_loop_eo(p, &fl)
         })
     })
 }
@@ -610,7 +609,8 @@ fn path_outside(s: &Drawn<'_, '_>, bp: &Prism, pieces: &[Piece], centre: V2) -> 
             return Some((m, "a bend"));
         }
     }
-    let any = pieces.iter().flat_map(|pc| pc.segs.iter()).any(|sg| in_host(s, bp, sg[0]) || in_host(s, bp, sg[0].mid(sg[1])));
+    let any =
+        pieces.iter().flat_map(|pc| pc.segs.iter()).any(|sg| in_host(s, bp, sg[0]) || in_host(s, bp, sg[0].mid(sg[1])));
     let last = pieces.last().and_then(|pc| pc.segs.last()).is_some_and(|sg| in_host(s, bp, sg[1]));
     if any || last { None } else { Some((centre, "the middle of its longest leg")) }
 }

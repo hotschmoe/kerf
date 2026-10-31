@@ -402,7 +402,9 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
         } else {
             (
                 format!("'{host}' draws no cut fill in view {view_id}: embedded '{hole}' covers all of its cut"),
-                format!("move or resize '{host}' or '{hole}' so '{host}' shows, or delete '{host}' if '{hole}' replaces it"),
+                format!(
+                    "move or resize '{host}' or '{hole}' so '{host}' shows, or delete '{host}' if '{hole}' replaces it"
+                ),
             )
         };
         diags.add_fix(Level::Warning, "W_CUT_FILL", Some(host), Some(&format!("views/{view_id}")), msg, fix);
