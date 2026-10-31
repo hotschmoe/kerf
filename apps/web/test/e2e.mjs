@@ -98,6 +98,40 @@ await t('notes: edit text, add + verify citation (designer), op log, undo', asyn
   await page.close();
 });
 
+// Issue #8: acknowledged warnings stay visible in the diagnostics panel and the status line.
+await t('diagnostics: acknowledged warnings get their own section (code, component, reason) and an ACK count', async () => {
+  const page = await open('sample=truss-bearing-cmu&tab=diag');
+  await page.waitForFunction('window.__rendered===true');
+  await ev(page, `window.__kerf.app.applyOps([{ op: 'update', path: 'components/sill_plate', value: { treated: false, acknowledge: [{ code: 'W_UNTREATED_CONTACT', reason: 'sill sealer by others' }] } }], 'designer', 'ack the sill')`);
+  await page.waitForFunction(`window.__kerf.app.acknowledged.length === 1`);
+  if (fixture) { await page.close(); return; }
+  await ev(page, `[...document.querySelectorAll('.itabs .tab')].find(b => /DIAG/.test(b.textContent)).click()`);
+  await page.waitForSelector('.diag.ack');
+  const s = await ev(page, `(() => ({
+    tab: [...document.querySelectorAll('.itabs .tab')].find(b => /DIAG/.test(b.textContent)).textContent,
+    bar: document.querySelector('.ackbar').textContent,
+    row: document.querySelector('.diag.ack').textContent,
+    tag: document.querySelector('.diag.ack .dtag').textContent,
+    iack: [...document.querySelectorAll('.diag .dc')].some(e => /^I_ACK/.test(e.textContent)),
+    status: document.getElementById('status').textContent,
+    warn: window.__kerf.app.counts().warn,
+  }))()`);
+  assert.match(s.tab, /DIAG 1\u00b71A/);
+  assert.match(s.bar, /1 ACKNOWLEDGED WARNING/);
+  assert.match(s.row, /W_UNTREATED_CONTACT · sill_plate/);
+  assert.match(s.row, /REASON: sill sealer by others/);
+  assert.match(s.row, /untreated wood 'sill_plate'/);
+  assert.equal(s.tag, 'A');
+  assert.equal(s.iack, false);
+  assert.match(s.status, /0 WARN 1 ACK/);
+  assert.equal(s.warn, 0);
+  await page.click('.diag.ack');
+  assert.equal(await ev(page, 'window.__kerf.app.selection?.id'), 'sill_plate');
+  assert.deepEqual(page.errors, []);
+  await page.screenshot({ path: path.join(outDir, 'diag-acknowledged.png') });
+  await page.close();
+});
+
 await t('2D: click selects by src; dragging a note issues an update op with place', async () => {
   const page = await open('sample=truss-bearing-cmu');
   await page.waitForFunction('window.__rendered===true');

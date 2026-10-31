@@ -1,14 +1,14 @@
 # Kerf CLI: guide for agents (Claude Code, Grok, ...)
 
 You build construction details with the `kerf` command-line engine. A detail is one JSON file
-(`<id>.kerf.json`) in the current folder; the folder is the designer's library. The designer reviews it in
+(`<id>.kerf.json`) in the current folder. The designer reviews it in
 the Kerf web UI (`kerf serve`), edits notes, verifies citations and exports DXF/PDF. You describe construction
-with typed components (lumber, cmu_wall, concrete, rebar, truss, ...); the engine places, draws, lays out notes and checks.
+with typed components; the engine places, draws, lays out notes and checks.
 
 ## Shell rules (the sandbox rejects compound commands)
 - ONE kerf command per call. Do NOT chain with `&&`, `;` or `|`, do NOT use heredocs (`<<EOF`) or `echo '...' | kerf`.
-- Create JSON files with your file-writing tool (Write), then point kerf at the file. Never hand-edit a `.kerf.json`.
-- Works the same on Windows PowerShell, where inline JSON quoting breaks.
+- Create JSON files with your file-writing tool (Write), then point kerf at the file (inline JSON breaks on PowerShell).
+  Never hand-edit a `.kerf.json`.
 
 ## Workflow
 1. Ambiguity: ask ONE short question only if the answer changes the structural system or the load path (CMU vs
@@ -41,13 +41,14 @@ kerf schema note dim cite
 kerf schema lumber
 kerf guide --full
 ```
-- Always pass `--why "..."` with `-w`/`new`: one line for the designer, logged to `<file>.log.jsonl` and shown live in the web UI.
+- Always pass `--why "..."` with `-w`/`new`: one line for the designer, logged to `<file>.log.jsonl`.
 - A failed apply prints `ERROR <code> <path>: <message>  Fix: <fix>` for every error, then `nothing written` (exit 1).
 - Ops: `add` (path `components` | `views` | `views/<id>/annotations`), `update` (path `components/<id>` | `views/<id>` |
   `views/<id>/annotations/<id>` | `meta`; value = merge patch, null deletes a key), `remove` (path), `set` (path `doc`).
-- A warning that is right for this detail is acknowledged on the component, with a logged reason:
-  `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]` (I_* codes are accepted and ignored). Wood on concrete
-  or CMU usually wants `"barrier":"sill_seal"` instead. Do not add fake geometry to silence a warning.
+- Fix warnings; acknowledge one only if it is right for this detail, on the component, with a reason:
+  `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]`. The summary counts and lists them (`kerf check --strict`
+  prints each). Wood on CMU wants `"barrier":"sill_seal"`. No fake geometry.
+- Scenarios: one view each, all at one origin; scenario members get `"views":["B"]`, shared members none.
 - Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one: `citations` -> `cite`, `side` -> `notes_side`, `point` -> `at`,
   `kind` -> `type`, `pos` -> `place`). `kerf schema <topic>` before guessing a field name.
 
@@ -57,7 +58,7 @@ W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (se
 W_NOTE_STYLE (house style: no sentences, `?`, `NOTE:`, trailing `W/` or `AND`), W_UNKNOWN_KEY (misspelled field),
 W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit left a member outside an explicit
 `crop`: remove `crop` and `scale` to re-fit; typical after a pitch change), W_REFERENCE_FILE (bad or missing
-`meta.references` image), I_* (info only).
+`meta.references` image), W_ACK_UNUSED (stale `acknowledge`: remove it), I_* (info only).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.
@@ -103,9 +104,17 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
 - `apply` on stdin (`kerf apply x.kerf.json - -w`) and inline (`--ops '[...]'`) exist for interactive shells; in an agent
   sandbox prefer an ops file. `kerf call help` lists the raw API functions with their input shapes.
 - `kerf fmt <doc> -w` canonicalizes a document; `kerf drawing` / `kerf mesh` print the drawing IR / mesh JSON.
-- `acknowledge` prints an `I_ACK` line per suppressed warning, logged by `kerf apply -w`.
-- Scenarios A/B/C in one document: one view per scenario, `omit` the other scenarios' members. Geometry checks run per
-  view (a finding seen in only some views ends with `(in views A, C)`), so never acknowledge cross-scenario overlaps.
+- Acknowledged warnings stay visible: the DOC line counts them (`0 errors  1 warning  3 acknowledged`) and an
+  `ACKNOWLEDGED` block lists them by code with components and reasons (logged by `kerf apply -w`). `kerf check --strict`
+  prints each as a warning and exits 1 on any warning; `kerf export ... --review` boxes the acknowledged components and
+  stamps the sheet `N ACKNOWLEDGED WARNINGS`. `W_ACK_UNUSED` names entries that suppress nothing and prints the op that
+  removes them. Never acknowledge a warning you have not read in this check.
+- Scenarios A/B/C in one document: one view per scenario, every scenario at the same origin (no model-space offsets, so
+  anchors between shared and scenario members stay meaningful). Shared members get no `views`; a scenario's members get
+  `"views":["B"]` (or several). A view can instead list `"only":["shared_*","b_*"]` or `"omit":["a_*","c_*"]` (ids or
+  `*` globs; one that matches nothing warns `W_REF_UNKNOWN`, so ops can arrive in any order). Excluded members are not
+  drawn (not even as beyond outlines) and skip that view's checks, so never acknowledge cross-scenario overlaps; a
+  finding seen in only some views ends with `(in views A, C)`.
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
   (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens and a plural
   s, and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the

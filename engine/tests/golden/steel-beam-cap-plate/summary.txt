@@ -1,4 +1,4 @@
-DOC steel-beam-cap-plate  8 components  2 views  0 errors  0 warnings
+DOC steel-beam-cap-plate  8 components  2 views  0 errors  0 warnings  0 acknowledged
  column        steel HSS4x4x1/4 elevation run y L=2'-6"    x -2"..2"         y -2'-6"..0"
  cap           steel PL3/4x8 elevation run x L=10"         x -5"..5"         y 0"..3/4"
  beam          steel W10x22 A992 elevation run x L=4'-0"   x -2'-0"..2'-0"   y 3/4"..10 15/16"

@@ -32,6 +32,9 @@ for doc in ../spec/details/*.kerf.json tests/docs/*.kerf.json; do
     $K export "$doc" --view "$v" --format pdf -o "$d/$v.pdf"
     $K export "$doc" --view "$v" --format png -o "$d/$v.raster.png"
     $K export "$doc" --view "$v" --format png --sheet -o "$d/$v-sheet.raster.png"
+    if grep -q '"acknowledge"' "$doc"; then
+      $K export "$doc" --view "$v" --format svg --sheet --review -o "$d/$v-review.svg"
+    fi
     if [ $PNG = 1 ]; then
       $T/svg2png.sh "$d/$v-sheet.svg" "$d/$v.png" 1400
       $T/dxf_check.py "$d/$v.dxf" --png "$d/$v-dxf.png" --png-size 1400 >/dev/null

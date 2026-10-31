@@ -2,6 +2,7 @@
 
 use crate::geom::{self, Pt};
 use crate::json;
+use crate::lint::{self, Acked};
 use crate::model::{self, Diag};
 use crate::style::Style;
 use alloc::string::String;
@@ -151,6 +152,9 @@ pub struct Drawing<'a> {
     pub items: Vec<Item>,
     pub layers: Vec<LayerDef>,
     pub diagnostics: Vec<Diag>,
+    /// The warnings `acknowledge` suppressed on components this view draws (SPEC 25.4); None when the document has
+    /// no `acknowledge` entries (the IR then has no `acknowledged` key).
+    pub acknowledged: Option<Vec<Acked>>,
     pub style: &'a Style,
 
     // --- exporter extras (not part of the JSON IR) ---
@@ -184,6 +188,7 @@ impl<'a> Drawing<'a> {
             items: Vec::new(),
             layers: Vec::new(),
             diagnostics: Vec::new(),
+            acknowledged: None,
             style,
             number: String::new(),
             title: String::new(),
@@ -379,6 +384,11 @@ pub fn to_json(d: &Drawing) -> Vec<u8> {
         }
         json::write_compact(&mut out, &model::diag_to_json(dg));
     }
-    raw(&mut out, "]}\n");
+    raw(&mut out, "]");
+    if let Some(acked) = &d.acknowledged {
+        raw(&mut out, ",\n\"acknowledged\":");
+        json::write_compact(&mut out, &lint::acked_json(acked));
+    }
+    raw(&mut out, "}\n");
     out
 }

@@ -1,4 +1,4 @@
-DOC beam-on-post-iso-at  2 components  2 views  0 errors  0 warnings
+DOC beam-on-post-iso-at  2 components  2 views  0 errors  0 warnings  0 acknowledged
  post          lumber 4x4 y wide run y L=3'-0" "4x4 post"  x 0"..3 1/2"      y 0"..3'-0"
  beam          lumber 4x8 upright run z "4x8 beam"         x 0"..3 1/2"      y 3'-0"..3'-7 1/4"
 INFO I_ANNOT_MOVED d_beam2: view B: dimension 'd_beam2' is drawn at offset -5 instead of its offset -3: moved 2" (0.25" paper) outward to clear dimension 'd_beam' Fix: keep it there: set "offset": -5; or keep -3 by moving what it collides with, or set "pin": true (drawn exactly at -3, overlaps then warn W_LABEL_OVERLAP)

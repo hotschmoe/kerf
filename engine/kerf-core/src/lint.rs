@@ -6,13 +6,14 @@ use crate::compile;
 use crate::coverage;
 use crate::geom::V2;
 use crate::house;
-use crate::json::{Member, Value};
+use crate::json::{self, Member, Value};
 use crate::model::{self, Diag, Diags, Level};
 use crate::references;
-use crate::scene::Scene;
+use crate::scene::{self, Scene};
 use crate::schema_fields::{self as schema, Object};
 use crate::style::Style;
 use crate::units;
+use crate::view;
 use alloc::borrow::Cow;
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -26,6 +27,7 @@ pub fn run(scene: &Scene, doc: &Value, cov: &[coverage::Item], diags: &Diags) {
     note_style(doc, scene.style, diags);
     dim_zero(scene, doc, diags);
     ack_shape(doc, diags);
+    members(doc, diags);
     requested_missing(doc, cov, diags);
     references::lint(doc, diags);
 }
@@ -211,6 +213,110 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
             lint_object(diags, an, o, &apath, Some(aid));
             for (i, ci) in arr_of(an, "cite").unwrap_or(&[]).iter().enumerate() {
                 lint_object(diags, ci, &schema::CITE, &format!("{apath}/cite/{i}"), Some(aid));
+            }
+        }
+    }
+}
+
+// ---- view membership (SPEC 25.4) -----------------------------------------------------------------------
+
+fn did_you_mean(x: &str, names: &[&str]) -> String {
+    model::nearest(x, names).map(|n| format!(" Did you mean '{n}'?")).unwrap_or_default()
+}
+
+/// Component `views` must name existing views; view `omit` / `only` are lists of ids or `*` globs. An id or glob that
+/// matches no component warns (it may name a component a later edit adds), so ops can arrive in any order.
+fn members(doc: &Value, diags: &Diags) {
+    let comps = arr_of(doc, "components").unwrap_or(&[]);
+    let cids: Vec<&str> = comps.iter().map(|c| str_of(c, "id")).filter(|s| !s.is_empty()).collect();
+    let views = arr_of(doc, "views").unwrap_or(&[]);
+    let vids: Vec<&str> = views.iter().map(|v| str_of(v, "id")).filter(|s| !s.is_empty()).collect();
+    let view_list =
+        if vids.is_empty() { "(none: the document has no views)".to_string() } else { scene::join_ids(&vids) };
+    for c in comps {
+        let Some(vv) = c.get("views").filter(|v| !v.is_null()) else { continue };
+        let cid = str_of(c, "id");
+        let path = format!("components/{cid}/views");
+        let Some(list) = vv.arr().filter(|a| !a.is_empty() && a.iter().all(|x| x.str().is_some())) else {
+            diags.add_fix(
+                Level::Error,
+                "E_PARAM",
+                Some(cid),
+                Some(&path),
+                format!("'views' of '{cid}' must be a non-empty array of view ids (got {}). Views: {view_list}", model::kind_or_text(vv)),
+                format!("e.g. \"views\": [\"{}\"]; remove \"views\" to draw '{cid}' in every view, or use \"visible\": false to hide it everywhere", vids.first().copied().unwrap_or("A")),
+            );
+            continue;
+        };
+        for v in list.iter().filter_map(Value::str) {
+            if !vids.contains(&v) {
+                diags.add_fix(
+                    Level::Error,
+                    "E_REF_UNKNOWN",
+                    Some(cid),
+                    Some(&path),
+                    format!("'{cid}' lists view '{v}' in \"views\", but there is no view '{v}'. Views: {view_list}"),
+                    format!(
+                        "list existing view ids only, or add view '{v}' (op add, path \"views\") in the same batch"
+                    ),
+                );
+            }
+        }
+    }
+    for v in views {
+        let vid = str_of(v, "id");
+        if vid.is_empty() {
+            continue;
+        }
+        for key in ["omit", "only"] {
+            let Some(pv) = v.get(key).filter(|x| !x.is_null()) else { continue };
+            let path = format!("views/{vid}/{key}");
+            let Some(pats) = pv.arr().filter(|a| a.iter().all(|x| x.str().is_some())) else {
+                diags.add_fix(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(vid),
+                    Some(&path),
+                    format!(
+                        "view {vid}: \"{key}\" must be an array of component ids or `*` globs (got {})",
+                        model::kind_or_text(pv)
+                    ),
+                    format!("e.g. \"{key}\": [\"b_*\", \"roof_sheathing\"]"),
+                );
+                continue;
+            };
+            if key == "only" && pats.is_empty() {
+                diags.add_fix(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(vid),
+                    Some(&path),
+                    format!("view {vid}: \"only\": [] draws no component"),
+                    "list the ids or globs the view draws (e.g. [\"shared_*\", \"a_*\"]), or remove \"only\" to draw every component".to_string(),
+                );
+                continue;
+            }
+            for p in pats.iter().filter_map(Value::str) {
+                if cids.iter().any(|id| view::glob_match(p, id)) {
+                    continue;
+                }
+                let verb = if key == "omit" { "omits" } else { "lists in \"only\"" };
+                let message = if view::is_glob(p) {
+                    format!("view {vid} {verb} '{p}', a pattern that matches no component id, so it has no effect")
+                } else {
+                    format!(
+                        "view {vid} {verb} '{p}', which is not a component id (yet), so it has no effect.{}",
+                        did_you_mean(p, &cids)
+                    )
+                };
+                diags.add_fix(
+                    Level::Warning,
+                    "W_REF_UNKNOWN",
+                    Some(vid),
+                    Some(&path),
+                    message,
+                    format!("fix the id or pattern (`*` matches any run of characters), add the component, or remove '{p}' from views/{vid}/{key}"),
+                );
             }
         }
     }
@@ -860,6 +966,10 @@ fn ack_shape(doc: &Value, diags: &Diags) {
     }
 }
 
+fn entries(c: &Value) -> &[Value] {
+    arr_of(c, "acknowledge").unwrap_or(&[])
+}
+
 fn mentions(d: &Diag, id: &str) -> bool {
     if d.id.as_deref() == Some(id) {
         return true;
@@ -887,47 +997,168 @@ fn quoted(msg: &str, id: &str) -> bool {
     false
 }
 
-/// Replace every warning that a component acknowledges with one `I_ACK` info line (code, component, reason).
-/// Call after all other diagnostics are collected.
-pub fn apply_acknowledge(doc: &Value, diags: &Diags) {
-    let Some(cs) = arr_of(doc, "components") else { return };
-    if !cs.iter().any(|c| c.get("acknowledge").is_some()) {
-        return;
+/// A warning that a component's `acknowledge` entry suppressed (SPEC 25.4): the component, the entry's reason and the
+/// warning as it would have printed.
+#[derive(Clone, Debug)]
+pub struct Acked {
+    pub comp: String,
+    pub reason: String,
+    pub warning: Diag,
+}
+
+impl Acked {
+    pub fn to_json(&self) -> Value {
+        let mut m = alloc::vec![
+            Member { key: "code".into(), value: Value::String(self.warning.code.into()) },
+            Member { key: "id".into(), value: Value::String(self.comp.clone()) },
+            Member { key: "reason".into(), value: Value::String(self.reason.clone()) },
+        ];
+        if let Some(p) = &self.warning.path {
+            m.push(Member { key: "path".into(), value: Value::String(p.clone()) });
+        }
+        m.push(Member { key: "message".into(), value: Value::String(self.warning.message.clone()) });
+        if let Some(f) = &self.warning.fix {
+            m.push(Member { key: "fix".into(), value: Value::String(f.clone()) });
+        }
+        Value::Object(m)
     }
+}
+
+pub fn acked_json(list: &[Acked]) -> Value {
+    Value::Array(list.iter().map(Acked::to_json).collect())
+}
+
+/// The document has at least one `acknowledge` entry.
+pub fn has_acknowledge(doc: &Value) -> bool {
+    arr_of(doc, "components").unwrap_or(&[]).iter().any(|c| arr_of(c, "acknowledge").is_some_and(|a| !a.is_empty()))
+}
+
+/// How `apply_acknowledge` treats acknowledged warnings.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct AckMode {
+    /// `kerf check --strict`: acknowledged warnings stay warnings (their message says who acknowledged them and why).
+    pub strict: bool,
+    /// Every diagnostic of the document is in the list (all views built, no errors), so an entry that matched
+    /// nothing is stale: report it as W_ACK_UNUSED.
+    pub complete: bool,
+}
+
+/// One W_ACK_UNUSED for the entries of component `c` that suppressed nothing, with the exact op that removes them.
+fn unused_entries(c: &Value, used: &[bool]) -> Option<Diag> {
+    let cid = str_of(c, "id");
+    let all = entries(c);
+    let valid = |it: &Value| matches!(it, Value::Object(_)) && !str_of(it, "reason").trim_matches(' ').is_empty();
+    let stale: Vec<usize> = (0..all.len()).filter(|&k| !used[k] && valid(&all[k])).collect();
+    if stale.is_empty() {
+        return None;
+    }
+    let mut buckets: [Vec<String>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    for &k in &stale {
+        let code = str_of(&all[k], "code");
+        let b = if code.starts_with("I_") {
+            1
+        } else if all[..k].iter().any(|e| valid(e) && str_of(e, "code") == code) {
+            2
+        } else {
+            0
+        };
+        buckets[b].push(format!("{code} (#{k})"));
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if !buckets[0].is_empty() {
+        parts.push(format!("no {} names '{cid}' in any view", buckets[0].join(", ")));
+    }
+    if !buckets[1].is_empty() {
+        parts.push(format!(
+            "{} {} info, never suppressed",
+            buckets[1].join(", "),
+            if buckets[1].len() == 1 { "is" } else { "are" }
+        ));
+    }
+    if !buckets[2].is_empty() {
+        parts.push(format!(
+            "{} repeat{} an earlier entry",
+            buckets[2].join(", "),
+            if buckets[2].len() == 1 { "s" } else { "" }
+        ));
+    }
+    let list = parts.join("; ");
+    let keep: Vec<Value> = (0..all.len()).filter(|k| !stale.contains(k)).map(|k| all[k].clone()).collect();
+    let mut value = Vec::new();
+    json::write_compact(&mut value, &if keep.is_empty() { Value::Null } else { Value::Array(keep) });
+    let value = String::from_utf8_lossy(&value);
+    let (n, total) = (stale.len(), all.len());
+    Some(Diag {
+        level: Level::Warning,
+        code: "W_ACK_UNUSED",
+        id: Some(cid.to_string()),
+        path: Some(format!("components/{cid}/acknowledge")),
+        message: format!(
+            "{n} of the {total} acknowledge entr{} of '{cid}' suppress{} nothing ({list}); a stale acknowledgement would hide the next real finding",
+            if total == 1 { "y" } else { "ies" },
+            if n == 1 { "es" } else { "" }
+        ),
+        fix: Some(format!(
+            "remove {}: {{\"op\":\"update\",\"path\":\"components/{cid}\",\"value\":{{\"acknowledge\":{value}}}}}",
+            if n == 1 { "it" } else { "them" }
+        )),
+    })
+}
+
+/// Replace every warning that a component acknowledges with one `I_ACK` info line (code, component, reason) and
+/// return the suppressed warnings. Call after all other diagnostics are collected.
+pub fn apply_acknowledge(doc: &Value, diags: &Diags, mode: AckMode) -> Vec<Acked> {
+    let Some(cs) = arr_of(doc, "components") else { return Vec::new() };
+    if !cs.iter().any(|c| c.get("acknowledge").is_some()) {
+        return Vec::new();
+    }
+    let valid = |it: &Value| matches!(it, Value::Object(_)) && !str_of(it, "reason").trim_matches(' ').is_empty();
+    let mut used: Vec<Vec<bool>> = cs.iter().map(|c| alloc::vec![false; entries(c).len()]).collect();
     let mut kept: Vec<Diag> = Vec::new();
-    let mut acks: Vec<Diag> = Vec::new();
-    for d in diags.take() {
+    let mut infos: Vec<Diag> = Vec::new();
+    let mut acked: Vec<Acked> = Vec::new();
+    for mut d in diags.take() {
         let mut matched: Option<(&str, &str)> = None;
         if d.level == Level::Warning {
-            'outer: for c in cs {
+            for (ci, c) in cs.iter().enumerate() {
                 let cid = str_of(c, "id");
-                let Some(items) = c.get("acknowledge").and_then(Value::arr) else { continue };
-                for it in items {
-                    if !matches!(it, Value::Object(_)) || str_of(it, "code") != d.code {
+                for (k, it) in entries(c).iter().enumerate() {
+                    if !valid(it) || str_of(it, "code") != d.code || !mentions(&d, cid) {
                         continue;
                     }
-                    if str_of(it, "reason").trim_matches(' ').is_empty() {
-                        continue;
-                    }
-                    if mentions(&d, cid) {
-                        matched = Some((cid, str_of(it, "reason")));
-                        break 'outer;
-                    }
+                    used[ci][k] = true;
+                    matched.get_or_insert((cid, str_of(it, "reason")));
+                    break;
                 }
             }
         }
-        match matched {
-            Some((cid, reason)) => acks.push(Diag {
+        let Some((cid, reason)) = matched else {
+            kept.push(d);
+            continue;
+        };
+        acked.push(Acked { comp: cid.to_string(), reason: reason.to_string(), warning: d.clone() });
+        if mode.strict {
+            d.message.push_str(&format!(" [acknowledged on '{cid}': {reason}]"));
+            kept.push(d);
+        } else {
+            infos.push(Diag {
                 level: Level::Info,
                 code: "I_ACK",
                 id: Some(cid.to_string()),
                 path: d.path.clone(),
                 message: format!("{} on '{cid}' acknowledged: {reason} (was: {})", d.code, d.message),
                 fix: None,
-            }),
-            None => kept.push(d),
+            });
         }
     }
-    kept.extend(acks);
+    if mode.complete {
+        for (ci, c) in cs.iter().enumerate() {
+            if let Some(d) = unused_entries(c, &used[ci]) {
+                kept.push(d);
+            }
+        }
+    }
+    kept.extend(infos);
     diags.set(kept);
+    acked
 }

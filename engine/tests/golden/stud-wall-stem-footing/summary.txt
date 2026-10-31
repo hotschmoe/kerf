@@ -1,4 +1,4 @@
-DOC stud-wall-stem-footing  14 components  2 views  0 errors  0 warnings
+DOC stud-wall-stem-footing  14 components  2 views  0 errors  0 warnings  0 acknowledged
  ftg           concrete footing 1'-4" x 10"                x 0"..1'-4"       y 0"..10"
  stem          concrete rect 8" x 2'-0"                    x 4"..1'-0"       y 10"..2'-10"
  slab          concrete rect 2'-6" x 4"                    x 1'-0 1/2"..3'-6 1/2" y 2'-6"..2'-10"

@@ -164,9 +164,16 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "omit",
-            ty: "[component id]",
+            ty: "[id|glob]",
             def: "[]",
-            desc: "components hidden in this view only",
+            desc: "components not drawn (or checked) in this view; ids or `*` globs (\"b_*\"). An entry that matches no component warns W_REF_UNKNOWN",
+            ..Field::NONE
+        },
+        Field {
+            name: "only",
+            ty: "[id|glob]",
+            def: "",
+            desc: "the view draws only the components matching one of these ids or `*` globs ([\"shared_*\", \"a_*\"]); `omit` and component `views` still apply",
             ..Field::NONE
         },
         Field {
@@ -482,7 +489,7 @@ pub static ARRAY: Object = Object {
 pub static ACK: Object = Object {
     name: "acknowledge",
     brief: "suppress a warning with a logged reason",
-    summary: "`acknowledge` on a component: suppress a warning for that component with a reason that is logged.",
+    summary: "`acknowledge` on a component: suppress a warning for that component with a reason that is logged and stays visible (counted in the summary).",
     fields: &[
         Field {
             name: "code",
@@ -495,11 +502,11 @@ pub static ACK: Object = Object {
             name: "reason",
             ty: "string",
             required: true,
-            desc: "why it is fine; prints in the summary as an I_ACK line and is logged by `kerf apply -w`",
+            desc: "why it is fine; listed in the summary's ACKNOWLEDGED block (by code, with the components) and logged by `kerf apply -w`",
             ..Field::NONE
         },
     ],
-    notes: "Usage: \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}] on the component the warning names. Errors (E_*) cannot be acknowledged; an I_* info code is accepted and ignored (no error, nothing to suppress). Prefer fixing the cause; for wood on masonry use `\"barrier\": \"sill_seal\"` (lumber) instead.",
+    notes: "Usage: \"acknowledge\": [{\"code\": \"W_UNTREATED_CONTACT\", \"reason\": \"truss seat moisture barrier by mfr.\"}] on the component the warning names. Errors (E_*) cannot be acknowledged; an I_* info code is accepted but suppresses nothing (W_ACK_UNUSED). The DOC line counts acknowledged warnings (`0 errors  0 warnings  3 acknowledged`), `kerf check --strict` reports them as warnings (exit 1), `kerf export --review` marks them on the drawing, and an entry that suppresses nothing in any view is W_ACK_UNUSED (its fix is the update op that removes it). Prefer fixing the cause; for wood on masonry use `\"barrier\": \"sill_seal\"` (lumber) instead.",
     example: "[{\"code\":\"W_UNTREATED_CONTACT\",\"reason\":\"truss seat moisture barrier by mfr.\"}]",
 };
 

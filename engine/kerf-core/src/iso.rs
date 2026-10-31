@@ -6,7 +6,6 @@
 //! side face per profile segment); edges are tested against front-facing faces on a uniform grid.
 
 use crate::clip;
-use crate::compile;
 use crate::drawing::{HatchItem, Item, PathItem, RegionItem};
 use crate::geom::{self, Box, Pt, V2};
 use crate::hatch;
@@ -411,7 +410,7 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
         if c.state != State::Ok || !c.visible {
             continue;
         }
-        if compile::is_omitted(&spec.omit, &c.id) {
+        if !spec.members.draws(c) {
             continue;
         }
         for p in &c.world {

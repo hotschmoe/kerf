@@ -72,6 +72,16 @@ export interface Diagnostic {
   fix?: string;
 }
 
+/** A warning an `acknowledge` entry suppressed (SPEC 25.4): the acknowledging component, its reason, the warning as it would have printed. */
+export interface Acknowledged {
+  code: string;
+  id: string;
+  reason: string;
+  path?: string;
+  message: string;
+  fix?: string;
+}
+
 export interface Drawing {
   kerf_drawing: string;
   doc: string;
@@ -83,6 +93,7 @@ export interface Drawing {
   layers?: { name: string; lineweight_mm?: number }[];
   items: DrawItem[];
   diagnostics?: Diagnostic[];
+  acknowledged?: Acknowledged[];
 }
 
 export interface MeshPart {
@@ -109,13 +120,14 @@ export interface ApplyResult {
   ok: boolean;
   doc?: KerfDoc;
   diagnostics: Diagnostic[];
+  acknowledged?: Acknowledged[];
   summary: string;
   changed?: string[];
   error?: string;
   [k: string]: unknown;
 }
 
-export interface CheckResult { diagnostics: Diagnostic[]; summary: string }
+export interface CheckResult { diagnostics: Diagnostic[]; acknowledged?: Acknowledged[]; summary: string }
 
 export type Actor = 'llm' | 'designer';
 

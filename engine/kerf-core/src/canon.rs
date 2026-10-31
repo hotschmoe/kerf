@@ -21,7 +21,7 @@ const META_KEYS: [&str; 10] = [
 const REFERENCE_KEYS: [&str; 2] = ["path", "caption"];
 const CLASS_KEYS: [&str; 2] = ["uniformat", "masterformat"];
 const JURIS_KEYS: [&str; 2] = ["code", "edition"];
-const COMMON_KEYS: [&str; 14] = [
+const COMMON_KEYS: [&str; 15] = [
     "id",
     "type",
     "label",
@@ -34,6 +34,7 @@ const COMMON_KEYS: [&str; 14] = [
     "array",
     "embedded",
     "visible",
+    "views",
     "shown",
     "acknowledge",
 ];

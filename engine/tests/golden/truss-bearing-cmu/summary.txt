@@ -1,4 +1,4 @@
-DOC truss-bearing-cmu  14 components  2 views  0 errors  0 warnings
+DOC truss-bearing-cmu  14 components  2 views  0 errors  0 warnings  0 acknowledged
  cmu           cmu_wall 8" x 4 courses (1 bond beam)       x 0"..7 5/8"      y -2'-7 5/8"..0"
  bb_bars       rebar (2) #5 along z @ bottom face          x 2 1/4"..5 3/8"  y -6 1/8"..-5 1/2"
  vert_bar      rebar #5 path L=2'-5 5/8" (#5 @ 32" O.C.)   x 3 1/2"..4 1/8"  y -2'-7 5/8"..-2"

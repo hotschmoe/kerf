@@ -18,8 +18,10 @@ usage:
       local workspace server: web UI + /api over the folder of *.kerf.json (see spec/SERVE.md). A random access token is the
       default even on loopback (printed in the first banner line as ?token=); also KERF_TOKEN; --no-token opts out.
       Agents from <dir>/.kerf/agents.json run only with --trust-agents (or an interactive yes).
-  kerf check <doc>                 summary + diagnostics (exit 1 on errors)
-  kerf export <doc> --view A --format png|svg|dxf|pdf [--px 1600] [--sheet] -o <file>
+  kerf check <doc> [--strict]      summary + diagnostics (exit 1 on errors); --strict lists acknowledged warnings as
+                                   warnings and exits 1 on any warning
+  kerf export <doc> --view A --format png|svg|dxf|pdf [--px 1600] [--sheet] [--review] -o <file>
+      --review marks components with acknowledged warnings and stamps "N ACKNOWLEDGED WARNINGS" (for review only)
   kerf catalog [--markdown]
   kerf fmt <doc> [-w]
   kerf drawing <doc> --view A [-o out.json]

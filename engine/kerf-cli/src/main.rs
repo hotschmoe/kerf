@@ -213,6 +213,8 @@ struct Opts {
     style: Option<String>,
     out: Option<String>,
     sheet: bool,
+    review: bool,
+    strict: bool,
     markdown: bool,
     full: bool,
     write: bool,
@@ -241,6 +243,8 @@ fn parse_opts(args: &[String]) -> Result<Opts, ()> {
             "--style" => o.style = Some(value(a)?),
             "-o" => o.out = Some(value(a)?),
             "--sheet" => o.sheet = true,
+            "--review" => o.review = true,
+            "--strict" => o.strict = true,
             "--markdown" => o.markdown = true,
             "--full" => o.full = true,
             "-w" => o.write = true,
@@ -632,6 +636,12 @@ struct DocCall {
 /// Check the command line of a document command and fill `call`. Returns an exit code (after printing why) when it is wrong.
 fn prepare_doc_call(cmd: &str, o: &Opts, call: &mut DocCall) -> Res<Option<u8>> {
     call.ops_text = "[]".to_string();
+    for (on, flag, only) in [(o.strict, "--strict", "check"), (o.review, "--review", "export")] {
+        if on && cmd != only {
+            stderr(&format!("kerf {cmd}: {flag} only applies to `kerf {only}`\n"));
+            return Ok(Some(2));
+        }
+    }
     match cmd {
         "drawing" => {
             let Some(v) = &o.view else {
@@ -646,7 +656,13 @@ fn prepare_doc_call(cmd: &str, o: &Opts, call: &mut DocCall) -> Res<Option<u8>> 
                 return Ok(Some(2));
             };
             let f = o.format.as_deref().unwrap_or("svg");
-            call.extra = format!("\"view\":{},\"format\":{},\"sheet\":{}", json_string(v), json_string(f), o.sheet);
+            call.extra = format!(
+                "\"view\":{},\"format\":{},\"sheet\":{},\"review\":{}",
+                json_string(v),
+                json_string(f),
+                o.sheet,
+                o.review
+            );
             if let Some(px) = &o.px {
                 let Some(pxn) = units::parse_finite(px) else {
                     stderr(&format!("kerf export: --px must be a number (got \"{px}\")\n"));
@@ -763,13 +779,14 @@ fn finish_apply_check(
         say(txt)?;
     }
     if cmd == "check" {
-        let has_error = res
+        let failing = if o.strict { ["error", "warning"].as_slice() } else { ["error"].as_slice() };
+        let fails = res
             .get("diagnostics")
             .and_then(Value::arr)
             .unwrap_or(&[])
             .iter()
-            .any(|d| d.get("level").and_then(Value::str) == Some("error"));
-        return Ok(u8::from(has_error));
+            .any(|d| d.get("level").and_then(Value::str).is_some_and(|l| failing.contains(&l)));
+        return Ok(u8::from(fails));
     }
     if !matches!(res.get("ok"), Some(Value::Bool(true))) {
         print_error_diags(&res);
@@ -826,6 +843,9 @@ fn cmd_doc(actor: &str, cmd: &str, o: &Opts) -> Res<u8> {
             _ => std::path::Path::new("."),
         };
         call.extra = workspace::reference_files_member(&parsed, folder);
+        if o.strict {
+            call.extra.push_str(if call.extra.is_empty() { "\"strict\":true" } else { ",\"strict\":true" });
+        }
     }
     let input = build_input(&doc, o.style.as_deref(), &call.extra)?;
     let r = api::call(cmd.as_bytes(), &input);

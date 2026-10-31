@@ -42,7 +42,7 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 | `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
 | `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 8 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
 | `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (40 files); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 265 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/cli_ergonomics.mjs` | 290 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
 | `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
 | `tests/serve_smoke.mjs` | 224 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
 | `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
@@ -111,6 +111,25 @@ geometrically (tolerance 1e-3).
   overlaps), plus near-misses that another scenario's lumber used to hide and two real misses the global check could
   not see (S-60.03 view D: the parallel joist floats; S-40.02 view B: bottom chord 3" short of the ledger). Near-miss
   blockers are still lumber only, so a panel in the gap (subfloor under a wall plate) does not block.
+- Scenario membership (issue #8, SPEC 25.4): `view::Members` (component `views`, view `only` / `omit`, `*` globs via
+  `view::glob_match`) is the one test of "does view V draw component C"; `compile::view_prisms`, iso `gather`, note
+  landings, `validate::drawn_sets`, `crop` (W_CROP_STALE) and `inspect at` all use it (`inspect at` used every visible
+  prism before). The checks of the lists themselves are document lints (`lint::members`): unknown view in `views` is
+  E_REF_UNKNOWN, an `omit`/`only` entry matching nothing is W_REF_UNKNOWN (was a per-build E_REF_UNKNOWN in drawview).
+  S-80.01 rewritten at one origin (scenario members `views`, no `omit`): same check output, view A PNG byte-identical,
+  the others differ only in hatch phase (patterns are anchored to the model origin).
+- Acknowledgements (issue #8, SPEC 25.4): `lint::apply_acknowledge(doc, diags, AckMode {strict, complete})` returns
+  the suppressed warnings (`Acked`) to `Loaded.acked`; the summary prints the count on the DOC line and an ACKNOWLEDGED
+  block instead of per-warning I_ACK lines (I_ACK stays in the JSON diagnostics); W_ACK_UNUSED needs `complete`
+  (`check`/`apply` with views built and no errors). The drawing IR gets `acknowledged` from `load::view_acked`
+  (compile + validate + lint + crop again, plus the view's own diagnostics) only when the document has `acknowledge`:
+  +3..7 ms per `drawing` call on the MASS details that have acks (s-70-03 18 -> 21 ms). `review.rs` draws the export
+  overlay; on a sheet it scans the frame for a free spot against every drawn item's box (0.1" steps).
+  Wasm (wasm-opt -Oz): 687,182 -> 708,082 raw (+20.9 KB), 304,169 -> 313,054 gzip.
+  On the 47 MASS details: 1,278 acknowledge entries, 291 warnings suppressed (by 250 entries), 1,028 entries stale
+  (W_ACK_UNUSED, on 490 components: W_FLOATING 398, W_NEAR_MISS 253, W_OVERLAP 211, W_SHORT_SLOPE 74,
+  W_UNTREATED_CONTACT 60, W_CROP_STALE 32); `--strict` turns the 18 visible warnings into 309 (+291: W_OVERLAP 208,
+  W_NEAR_MISS 63, W_FLOATING 13, W_UNTREATED_CONTACT 4, W_SHORT_SLOPE 2, W_CROP_STALE 1).
 - Lengths print as `3'-0 1/4"` (feet with zero inches keep the `0`). Keyed notes (SPEC 24, view `notes_style` or style
   `notes.mode`) route the number tags through the same column layout as leader text, then place the DETAIL NOTES list
   outside everything else (`list_items`), so leader output is unchanged by the feature.
@@ -323,3 +342,18 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   the dimension line is not reported (the line stays where the author put it).
 - The frame clearance is a constant 1/8" (paper), not a style key; the sheet still centres the view, so the clearance
   shows as at least 1/8" on every side when the view fits.
+- Issue #8 (SPEC 25.4): the issue reads as if ops inside one batch had to be ordered around `omit`; ops are validated at
+  the end of the batch, so only an `omit` sent in an earlier `apply` than its component failed. Chose: unknown `omit` /
+  `only` entries warn W_REF_UNKNOWN (also globs matching nothing), unknown views in component `views` stay
+  E_REF_UNKNOWN (a typo there silently drops the member from every view). `views: []` and `only: []` are E_PARAM
+  rather than "drawn nowhere" (`visible: false` exists for that).
+- W_ACK_UNUSED is one diagnostic per component (not per entry): the MASS set has 1,028 stale entries and a line each
+  drowned everything else; the fix is the full `update` op with the remaining entries. It is suppressed while the
+  document has errors or views were not built, since missing diagnostics would make live entries look stale. An
+  acknowledged `I_*` code now gets W_ACK_UNUSED (SPEC 20 made it a silent no-op; it still is not an error).
+- "Compact by-code listing" read as: group by (code, reason), one line each with the count and up to six components;
+  per-warning I_ACK lines left the summary (they are still in the JSON and in `--strict`). The DOC line always shows
+  `N acknowledged`, so every golden summary.txt changed by that suffix.
+- The drawing IR's `acknowledged` is per view: acknowledged warnings whose acknowledging component that view draws.
+  It is omitted (not `[]`) for documents without `acknowledge`, so no existing drawing golden changed.
+

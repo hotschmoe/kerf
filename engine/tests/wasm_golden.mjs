@@ -27,5 +27,16 @@ for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-s
     n++; if (!out.equals(fs.readFileSync(path.join(here, `golden/${d}/drawing-${v}.json`)))) { bad++; console.log('DIFF', d, 'drawing', v); }
   }
 }
+// Issue #8: scenario membership (views/only/omit globs) and the acknowledged list + review overlay.
+{
+  const d = 'scenarios-shared-origin';
+  const doc = JSON.parse(fs.readFileSync(path.join(here, `docs/${d}.kerf.json`), 'utf8'));
+  for (const v of ['A', 'B', 'C']) {
+    const out = call('drawing', JSON.stringify({ doc, view: v }));
+    n++; if (!out.equals(fs.readFileSync(path.join(here, `golden/${d}/drawing-${v}.json`)))) { bad++; console.log('DIFF', d, 'drawing', v); }
+    const rev = call('export', JSON.stringify({ doc, view: v, format: 'svg', sheet: true, review: true }));
+    n++; if (!rev.equals(fs.readFileSync(path.join(here, `golden/${d}/${v}-review.svg`)))) { bad++; console.log('DIFF', d, `${v}-review.svg`); }
+  }
+}
 console.log(`wasm vs native goldens: ${n - bad}/${n} byte-identical`);
 if (bad) process.exitCode = 1; // a CI gate: a mismatch must fail the step

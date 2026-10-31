@@ -4,6 +4,7 @@ use crate::geom::Box;
 use crate::json::Value;
 use crate::limits;
 use crate::model::{self, Diags, Level};
+use crate::scene::Comp;
 use crate::units;
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -71,7 +72,73 @@ pub struct ViewSpec<'a> {
     /// `notes_style` of the view; None = the style's `notes.mode`.
     pub notes_style: Option<NotesStyle>,
     pub annotations: &'a [Value],
+    pub members: Members<'a>,
+}
+
+/// Which components a view draws (SPEC 25.4): a component's own `views` list, then the view's `only` and `omit`
+/// patterns (component ids, `*` matching any run of characters).
+#[derive(Clone, Debug, Default)]
+pub struct Members<'a> {
+    pub view: &'a str,
     pub omit: Vec<&'a str>,
+    pub only: Option<Vec<&'a str>>,
+}
+
+impl<'a> Members<'a> {
+    pub fn of(node: &'a Value) -> Members<'a> {
+        let pats = |k: &str| node.get(k).and_then(Value::arr).map(|a| a.iter().filter_map(Value::str).collect());
+        Members {
+            view: node.get("id").and_then(Value::str).unwrap_or(""),
+            omit: pats("omit").unwrap_or_default(),
+            only: pats("only"),
+        }
+    }
+
+    /// The component with this id and document node is drawn (and checked) in the view.
+    pub fn includes(&self, id: &str, node: &Value) -> bool {
+        if let Some(vs) = node.get("views").and_then(Value::arr)
+            && !vs.iter().any(|v| v.str() == Some(self.view))
+        {
+            return false;
+        }
+        if let Some(only) = &self.only
+            && !only.iter().any(|p| glob_match(p, id))
+        {
+            return false;
+        }
+        !self.omit.iter().any(|p| glob_match(p, id))
+    }
+
+    pub fn draws(&self, c: &Comp<'_>) -> bool {
+        self.includes(&c.id, c.node)
+    }
+}
+
+pub fn is_glob(pat: &str) -> bool {
+    pat.contains('*')
+}
+
+/// `*` matches any run of characters (also none); everything else matches itself.
+pub fn glob_match(pat: &str, s: &str) -> bool {
+    let (p, t) = (pat.as_bytes(), s.as_bytes());
+    let (mut pi, mut ti) = (0, 0);
+    let mut star: Option<(usize, usize)> = None;
+    while ti < t.len() {
+        if pi < p.len() && p[pi] == b'*' {
+            star = Some((pi, ti));
+            pi += 1;
+        } else if pi < p.len() && p[pi] == t[ti] {
+            pi += 1;
+            ti += 1;
+        } else if let Some((sp, st)) = star {
+            pi = sp + 1;
+            ti = st + 1;
+            star = Some((sp, st + 1));
+        } else {
+            return false;
+        }
+    }
+    p[pi..].iter().all(|&b| b == b'*')
 }
 
 pub fn find_view<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
@@ -226,8 +293,6 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     if !ok {
         return None;
     }
-    let omit =
-        node.get("omit").and_then(Value::arr).map(|oa| oa.iter().filter_map(Value::str).collect()).unwrap_or_default();
     let anns = node.get("annotations").map_or(&[][..], |av| av.arr().unwrap_or(&[]));
     if anns.len() > limits::MAX_ANNOTATIONS_PER_VIEW {
         let msg = limits::message(
@@ -258,6 +323,6 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         notes_side,
         notes_style,
         annotations: anns,
-        omit,
+        members: Members::of(node),
     })
 }

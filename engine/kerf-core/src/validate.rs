@@ -4,7 +4,6 @@
 
 use crate::builders::world_box;
 use crate::clip::{self, Op};
-use crate::compile;
 use crate::geom::{self, Loc, Pt, V2, Xf};
 use crate::json::Value;
 use crate::limits;
@@ -13,6 +12,7 @@ use crate::model::{Cover, Diag, Diags, HostInfo, Kind, Level, Prism};
 use crate::scene::{Comp, Scene, State, join_ids};
 use crate::style::Role;
 use crate::units::{self, fmt_ft_in};
+use crate::view::Members;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -146,13 +146,9 @@ fn drawn_sets<'p, 'a>(scene: &'a Scene<'a>, doc: &'a Value, items: &'p [Pf<'a>])
         if ids.contains(&id) {
             continue;
         }
-        let omit: Vec<&str> =
-            v.get("omit").and_then(Value::arr).map_or(Vec::new(), |oa| oa.iter().filter_map(Value::str).collect());
-        let mask: Vec<bool> = scene
-            .comps
-            .iter()
-            .map(|c| c.state == State::Ok && c.visible && !compile::is_omitted(&omit, &c.id))
-            .collect();
+        let members = Members::of(v);
+        let mask: Vec<bool> =
+            scene.comps.iter().map(|c| c.state == State::Ok && c.visible && members.draws(c)).collect();
         match groups.iter_mut().find(|g| g.0 == mask) {
             Some(g) => g.1.push(ids.len()),
             None => groups.push((mask, alloc::vec![ids.len()])),

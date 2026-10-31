@@ -327,7 +327,19 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     if let Some(cands) = landing {
         return Some(NoteIn { id, text: full, cands, movable, place, column, key });
     }
-    if at_v.is_none() {
+    let base = target.split(['.', '#']).next().unwrap_or("");
+    if at_v.is_none()
+        && let Some(c) = env.scene.find(base).filter(|c| !env.spec.members.draws(c))
+    {
+        env.diags.add_fix(
+            Level::Warning,
+            "W_NOTE_TARGET",
+            Some(id),
+            Some(apath),
+            format!("note '{id}' in view {vid}: target '{target}' is not drawn in this view (its \"views\" or the view's \"omit\" / \"only\" exclude '{}'). The note was not drawn.", c.id),
+            format!("move the note to a view that draws '{}', target a member of view {vid}, or include '{}' in view {vid}", c.id, c.id),
+        );
+    } else if at_v.is_none() {
         env.diags.add_fix(
             Level::Warning,
             "W_NOTE_TARGET",

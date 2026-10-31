@@ -213,6 +213,12 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 
 .dtag { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--paper); flex: none; }
 .dtag.E { background: var(--red); } .dtag.W { background: var(--amber); } .dtag.I { background: var(--ink-2); }
+.dtag.A { background: var(--paper); color: var(--amber); outline: 1.5px dashed var(--amber); outline-offset: -1.5px; }
+.ackbar { border-top: 1px dashed var(--amber); }
+.diag.ack { background: repeating-linear-gradient(-45deg, transparent 0 6px, var(--paper-2) 6px 7px); }
+.diag.ack .dm { color: var(--ink-2); }
+.diag .dr { color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.ackn { color: var(--amber); }
 .diag { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--rule-soft); cursor: pointer; font-size: 12px; }
 .diag:hover { background: var(--paper-2); }
 .diag .dc { font-weight: 500; }

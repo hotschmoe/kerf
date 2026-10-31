@@ -255,7 +255,7 @@ pub fn hardware_line(h: &Hardware) -> String {
     format!("{}: {}, {w}\" wide, {g} ga, {}\" long", h.model, h.kind, crate::model::fmt_num(h.length))
 }
 
-const COMMON: [(&[&str], &str, &str); 13] = [
+const COMMON: [(&[&str], &str, &str); 14] = [
     (&["id"], "required", "unique slug [a-z][a-z0-9_]*; annotations and refs name it"),
     (&["type"], "required", "one of the catalog types"),
     (&["label"], "null", "short human label for summaries"),
@@ -284,6 +284,11 @@ const COMMON: [(&[&str], &str, &str); 13] = [
     (&["embedded"], "type default", "drawn over cut solids and never occluded (rebar, anchor bolts)"),
     (&["visible"], "true", "false hides the component from views and mesh"),
     (
+        &["views"],
+        "null (every view)",
+        "[view id]: the component is drawn and checked only in these views (one scenario per view: shared members get no `views`, a scenario's members `views: [\"B\"]`, all at one origin). Excluded components are not drawn, not even as beyond outlines, and skip the geometry checks and W_CROP_STALE of that view. Unknown view ids are E_REF_UNKNOWN",
+    ),
+    (
         &["shown"],
         "solid",
         "dashed = \"where occurs\" graphics: all edges in the hidden (dashed) pen, no hatch or cut mark, never hides anything, exempt from W_FLOATING / W_NEAR_MISS / W_OVERLAP; notes targeting it get \" (WHERE OCCURS)\" appended. Section views only (iso omits it)",
@@ -291,7 +296,7 @@ const COMMON: [(&[&str], &str, &str); 13] = [
     (
         &["acknowledge"],
         "null",
-        "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged; I_* codes are accepted and ignored (`kerf schema acknowledge`)",
+        "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; it is counted on the summary's DOC line and listed with the reason in its ACKNOWLEDGED block (`kerf check --strict` shows it as a warning), and logged. Errors cannot be acknowledged; an entry that suppresses nothing is W_ACK_UNUSED (`kerf schema acknowledge`)",
     ),
 ];
 

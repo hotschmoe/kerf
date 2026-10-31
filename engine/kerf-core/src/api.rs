@@ -5,7 +5,7 @@ use crate::catalog;
 use crate::drawing;
 use crate::drawview;
 use crate::dxf;
-use crate::font::{self, Font};
+use crate::font;
 use crate::json::{self, Value};
 use crate::limits;
 use crate::lint;
@@ -16,6 +16,7 @@ use crate::ops::{self, Actor};
 use crate::pdf;
 use crate::raster;
 use crate::references;
+use crate::review;
 use crate::schema;
 use crate::schema_fields;
 use crate::sheet;
@@ -66,25 +67,29 @@ const HELP_ROWS: [[&str; 3]; 11] = [
     ["fmt", "{doc}", "{doc, text}: canonical key order and indentation"],
     [
         "check",
-        "{doc, style?, reference_files?: {path: \"missing\"|\"outside\"}}",
-        "{diagnostics: [{level, code, id?, path?, message, fix?}], summary}",
+        "{doc, style?, strict?: bool, reference_files?: {path: \"missing\"|\"outside\"}}",
+        "{diagnostics: [{level, code, id?, path?, message, fix?}], acknowledged: [{code, id, reason, path?, message, fix?}], summary}: strict keeps acknowledged warnings as warnings",
     ],
     [
         "apply",
         "{doc, ops: [op...], style?, actor?: \"llm\"|\"designer\"}",
-        "{ok, doc, diagnostics, summary, changed}: ok=false leaves doc unchanged (see diagnostics); `kerf schema ops` for op shapes",
+        "{ok, doc, diagnostics, acknowledged, summary, changed}: ok=false leaves doc unchanged (see diagnostics); `kerf schema ops` for op shapes",
     ],
     [
         "inspect",
         "{doc, style?, query: {q: \"summary\"|\"component\"|\"anchors\"|\"at\"|\"catalog\"|\"doc\", id?, view?, point?: [x,y], type?}}",
         "query-specific JSON (anchors with coordinates, parts, what is visible at a point)",
     ],
-    ["drawing", "{doc, view, style?}", "Drawing IR JSON (SPEC 10) of one view"],
+    [
+        "drawing",
+        "{doc, view, style?}",
+        "Drawing IR JSON (SPEC 10) of one view; `acknowledged` lists the suppressed warnings of its components when the doc has `acknowledge`",
+    ],
     ["mesh", "{doc, style?, include_fills?: bool}", "mesh JSON for 3D viewers"],
     [
         "export",
-        "{doc, view, format: \"svg\"|\"png\"|\"pdf\"|\"dxf\", sheet?: bool, px?: number, style?}",
-        "the file bytes (svg/dxf text, png/pdf binary)",
+        "{doc, view, format: \"svg\"|\"png\"|\"pdf\"|\"dxf\", sheet?: bool, review?: bool, px?: number, style?}",
+        "the file bytes (svg/dxf text, png/pdf binary); review marks acknowledged components and stamps N ACKNOWLEDGED WARNINGS",
     ],
 ];
 
@@ -257,10 +262,15 @@ fn build_view<'s>(inp: &Value, d: &Value, st: &'s Style) -> Result<drawing::Draw
     };
     let diags = Diags::new();
     let vdoc = lint::with_dim_dirs_from_doc(d, st);
-    drawview::build(&vdoc, st, view_id, &diags).ok_or_else(|| {
+    let mut dr = drawview::build(&vdoc, st, view_id, &diags).ok_or_else(|| {
         let msg = diags.list().first().map_or_else(|| "view could not be built".to_string(), |x| x.message.clone());
         fail("E_VIEW", &msg)
-    })
+    })?;
+    let review = matches!(inp.get("review"), Some(Value::Bool(true)));
+    if review || lint::has_acknowledge(d) {
+        dr.acknowledged = Some(load::view_acked(d, st, view_id, &dr.diagnostics));
+    }
+    Ok(dr)
 }
 
 fn drawing_fn(inp: &Value) -> Output {
@@ -280,13 +290,17 @@ fn export_fn(inp: &Value) -> Output {
     let format = inp.get("format").and_then(Value::str).unwrap_or("svg");
     let font = font::embedded();
     let want_sheet = matches!(inp.get("sheet"), Some(Value::Bool(true)));
-    fn maybe_sheet<'s>(dr: drawing::Drawing<'s>, font: &Font, want: bool) -> drawing::Drawing<'s> {
-        if want { sheet::with_sheet(dr, font) } else { dr }
-    }
+    let review = matches!(inp.get("review"), Some(Value::Bool(true)));
+    let maybe_sheet = |dr, want: bool| match (want, review) {
+        (true, true) => review::overlay_sheet(sheet::with_sheet(dr, font), font),
+        (true, false) => sheet::with_sheet(dr, font),
+        (false, true) => review::overlay(dr, font),
+        (false, false) => dr,
+    };
     match format {
-        "svg" => done(svg::render(&maybe_sheet(dr, font, want_sheet), font, &svg::Options::default())),
-        "pdf" => done(pdf::render(&sheet::with_sheet(dr, font), font)),
-        "dxf" => done(dxf::render(&maybe_sheet(dr, font, want_sheet))),
+        "svg" => done(svg::render(&maybe_sheet(dr, want_sheet), font, &svg::Options::default())),
+        "pdf" => done(pdf::render(&maybe_sheet(dr, true), font)),
+        "dxf" => done(dxf::render(&maybe_sheet(dr, want_sheet))),
         "png" => {
             let mut opt = raster::Options::default();
             if let Some(pv) = inp.get("px") {
@@ -304,7 +318,7 @@ fn export_fn(inp: &Value) -> Output {
                 let n = if n.is_nan() { 1600.0 } else { n };
                 opt.px = crate::math::round(n).clamp(f64::from(raster::MIN_PX), f64::from(raster::MAX_PX)) as u32;
             }
-            match raster::render(&maybe_sheet(dr, font, want_sheet), font, &opt) {
+            match raster::render(&maybe_sheet(dr, want_sheet), font, &opt) {
                 Ok(b) => done(b),
                 Err(e) => fail("E_INTERNAL", &format!("png encoding failed ({e:?})")),
             }
@@ -316,7 +330,8 @@ fn export_fn(inp: &Value) -> Output {
 fn check_fn(inp: &Value) -> Output {
     let (d, st) = doc_and_style!(inp);
     let diags = Diags::new();
-    let l = load::load(d, &st, &diags, true);
+    let strict = matches!(inp.get("strict"), Some(Value::Bool(true)));
+    let l = load::load_after_edit(d, &st, &diags, true, None, strict);
     if let Some(files) = inp.get("reference_files")
         && let Err(msg) = references::host_report(d, files, &diags)
     {
@@ -324,6 +339,8 @@ fn check_fn(inp: &Value) -> Output {
     }
     let mut out = Vec::from(&b"{\"diagnostics\":"[..]);
     json::write_compact(&mut out, &load::diags_json(&diags.list()));
+    out.extend_from_slice(b",\"acknowledged\":");
+    json::write_compact(&mut out, &lint::acked_json(&l.acked));
     out.extend_from_slice(b",\"summary\":");
     json::write_string(&mut out, &load::summary(&l));
     out.extend_from_slice(b"}\n");
@@ -369,17 +386,19 @@ fn apply_fn(inp: &Value) -> Output {
     let mut ok = false;
     let mut final_doc = d;
     let mut changed: &[String] = &[];
+    let mut acked = Vec::new();
     let summary_text;
     let after_diags = Diags::new();
     if let Some(ap) = &applied {
         let prior = load::load(d, &st, &prior_diags, false);
-        let l = load::load_after_edit(&ap.doc, &st, &after_diags, true, Some(&prior));
+        let l = load::load_after_edit(&ap.doc, &st, &after_diags, true, Some(&prior), false);
         all.extend(after_diags.to_vec());
         if all.iter().all(|x| x.level != Level::Error) {
             ok = true;
             final_doc = &ap.doc;
             changed = &ap.changed;
             summary_text = load::summary_with(&l, &all);
+            acked = l.acked;
         } else {
             summary_text = load::summary(&prior);
         }
@@ -392,6 +411,8 @@ fn apply_fn(inp: &Value) -> Output {
     out.extend_from_slice(trim_newlines(&text));
     out.extend_from_slice(b",\"diagnostics\":");
     json::write_compact(&mut out, &load::diags_json(&all));
+    out.extend_from_slice(b",\"acknowledged\":");
+    json::write_compact(&mut out, &lint::acked_json(&acked));
     out.extend_from_slice(b",\"summary\":");
     json::write_string(&mut out, &summary_text);
     out.extend_from_slice(b",\"changed\":[");

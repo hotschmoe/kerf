@@ -11,6 +11,7 @@ use crate::num;
 use crate::scene::{self, Comp, Scene, State};
 use crate::style::Style;
 use crate::units;
+use crate::view::Members;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -771,21 +772,12 @@ fn place_component(scene: &mut Scene, idx: usize) {
     comp.state = State::Ok;
 }
 
-/// All visible world prisms in document order.
-pub fn all_prisms(scene: &Scene) -> Vec<Prism> {
-    scene.comps.iter().filter(|c| c.state == State::Ok && c.visible).flat_map(|c| c.world.iter().cloned()).collect()
-}
-
-/// Visible world prisms minus the components a view omits.
-pub fn view_prisms<S: AsRef<str>>(scene: &Scene, omit: &[S]) -> Vec<Prism> {
+/// Visible world prisms of the components a view draws (SPEC 25.4: `views`, `only`, `omit`).
+pub fn view_prisms(scene: &Scene, members: &Members) -> Vec<Prism> {
     scene
         .comps
         .iter()
-        .filter(|c| c.state == State::Ok && c.visible && !is_omitted(omit, &c.id))
+        .filter(|c| c.state == State::Ok && c.visible && members.draws(c))
         .flat_map(|c| c.world.iter().cloned())
         .collect()
-}
-
-pub fn is_omitted<S: AsRef<str>>(omit: &[S], id: &str) -> bool {
-    omit.iter().any(|o| o.as_ref() == id)
 }

@@ -1,4 +1,4 @@
-DOC palmer-sd1-like  18 components  5 views  0 errors  0 warnings
+DOC palmer-sd1-like  18 components  5 views  0 errors  0 warnings  0 acknowledged
  ftg           concrete footing 2'-0" x 1'-0"              x 0"..2'-0"       y 0"..1'-0"
  stem          concrete rect 8" x 2'-6"                    x 8"..1'-4"       y 1'-0"..3'-6"
  ftg_bars      rebar (2) #4 along z @ bottom face          x 3"..1'-9"       y 3"..3 1/2"

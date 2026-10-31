@@ -1,5 +1,5 @@
 // Application model: the one KerfDoc + style + engine, op log, selection, view state, caches.
-import type { ApplyResult, Actor, Diagnostic, Drawing, KerfDoc, Mesh, Op, StrokeFont, View } from './types';
+import type { Acknowledged, ApplyResult, Actor, Diagnostic, Drawing, KerfDoc, Mesh, Op, StrokeFont, View } from './types';
 import type { Engine, InspectQuery } from './engine';
 import { EngineCallError } from './engine';
 import { DrawingModel } from './draw2d';
@@ -47,6 +47,8 @@ export class App {
   doc: KerfDoc | null = null;
   summary = '';
   diagnostics: Diagnostic[] = [];
+  /** Warnings suppressed by `acknowledge` (SPEC 25.4), shown apart from the diagnostics. */
+  acknowledged: Acknowledged[] = [];
   opLog: LogEntry[] = [];
   rev = 0;
   activeView = '';
@@ -172,6 +174,7 @@ export class App {
     this.doc = res.doc!;
     this.summary = res.summary ?? '';
     this.diagnostics = res.diagnostics ?? [];
+    this.acknowledged = res.acknowledged ?? [];
     this.rev++;
     this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
     this.opLog.push({ n: this.opLog.length + 1, who, kind, why, ops, ts: hhmm(), before, changed: res.changed ?? [], file: this.remote?.file });
@@ -212,17 +215,17 @@ export class App {
         if (r.conflict) { await this.reloadFromRemote('document changed on disk while you were editing'); this.flash('DOCUMENT CHANGED ON DISK — RELOADED', 'warn'); return false; }
         if (!r.ok || !r.doc) { this.flash('UNDO FAILED: ' + (r.error ?? 'server rejected the snapshot'), 'err'); return false; }
         this.remote.noteKnown(r.doc);
-        this.doc = r.doc; this.summary = r.summary; this.diagnostics = r.diagnostics ?? [];
+        this.doc = r.doc; this.summary = r.summary; this.diagnostics = r.diagnostics ?? []; this.acknowledged = r.acknowledged ?? [];
         this.rev++;
         this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
       } else if (last.before === null) {
-        this.doc = null; this.summary = ''; this.diagnostics = []; this.rev++;
+        this.doc = null; this.summary = ''; this.diagnostics = []; this.acknowledged = []; this.rev++;
         this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
         this.activeView = ''; this.selection = null;
       } else {
         const r = await this.engine.apply(this.emptyDoc(), this.style, [{ op: 'set', path: 'doc', value: last.before }], 'designer');
         if (!r.ok || !r.doc) { this.flash('UNDO FAILED: ' + (r.error ?? 'engine rejected the snapshot'), 'err'); return false; }
-        this.doc = r.doc; this.summary = r.summary; this.diagnostics = r.diagnostics ?? [];
+        this.doc = r.doc; this.summary = r.summary; this.diagnostics = r.diagnostics ?? []; this.acknowledged = r.acknowledged ?? [];
         this.rev++;
         this.drawingCache.clear(); this.modelCache.clear(); this.meshCache.clear(); this.sheetCache.clear();
       }
@@ -305,6 +308,7 @@ export class App {
       err: d.filter((x) => x.level === 'error').length,
       warn: d.filter((x) => x.level === 'warning').length,
       info: d.filter((x) => x.level === 'info').length,
+      ack: this.acknowledged.length,
     };
   }
 

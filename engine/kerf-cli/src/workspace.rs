@@ -183,13 +183,19 @@ pub fn build_entry(meta: &LogMeta, ops_text: &str, changed: &[String], summary: 
     let head = summary.split('\n').next().unwrap_or("");
     json::write_string(&mut out, head.trim_end_matches('\r'));
     let mut ack_n = 0;
+    let mut in_block = false;
     for ln in summary.split('\n') {
         let l = ln.trim_end_matches('\r');
-        if !l.starts_with("INFO I_ACK") {
+        if l.starts_with("ACKNOWLEDGED ") {
+            in_block = true;
+            continue;
+        }
+        if !in_block || !l.starts_with(' ') {
+            in_block = false;
             continue;
         }
         out.extend_from_slice(if ack_n == 0 { b",\"ack\":[" } else { b"," });
-        json::write_string(&mut out, l);
+        json::write_string(&mut out, l.trim_start_matches(' '));
         ack_n += 1;
     }
     if ack_n > 0 {
