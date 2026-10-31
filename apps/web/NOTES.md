@@ -136,7 +136,9 @@ hatch lines, fills, stroke-font text; pan/zoom/fit; hover/select by `src`; drag 
 flat shading with the style colors, feature edges 1.25 px, orbit/pan/zoom, FRONT/ISO/TOP/RIGHT, manila CUT caps); SHEET (engine SVG);
 component scalar fields (size, embed, diameter, ...) editable in the inspector (one `update components/<id>` designer op each);
 inspector PARTS (auto-compact), NOTES editor with citations, VERIFIED stamps (designer actor), DIFF with undo, DIAG;
-export DXF/PDF/SVG, save/open `.kerf.json`; samples menu.
+export DXF/PDF/SVG, save/open `.kerf.json`; samples menu. Sheet layouts (engine #7, SPEC 26.2): one `[LAYOUT <id>]` tab per doc `layouts`
+entry renders the layout sheet (engine `export` with `layout`, cached per rev like SHEET; `?layout=S1` URL parameter); EXPORT on that tab exports the
+layout (`<docid>-<layout>.<ext>`; workspace mode: `GET /api/docs/:file/export?layout=`). No layout editor: layouts are edited with ops.
 
 ## REQUESTS
 - engine (kerf serve): after a UI-started agent run the `log` SSE lines arrive up to ~1 s after the agent's `exit` event (poll interval). The UI hides cards for 2 s after a

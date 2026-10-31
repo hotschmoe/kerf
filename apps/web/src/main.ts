@@ -112,6 +112,7 @@ async function boot() {
   }
   const view = params.get('view'); if (view) app.setActiveView(view);
   const mode = params.get('mode'); if (mode === '3d' || mode === 'sheet' || mode === 'view') app.setMode(mode);
+  const layout = params.get('layout'); if (layout) app.setActiveLayout(layout);
   const sel = params.get('select'); if (sel) app.setSelection(sel);
   if (params.get('cut') === '1') { const t = setInterval(() => { const v3 = vp.view3; if (v3 && v3.ok && v3.cut === null && (window as unknown as { __rendered3d?: boolean }).__rendered3d) { v3.setCut(app.view?.cut_z ?? 0); clearInterval(t); (window as unknown as { __cut?: boolean }).__cut = true; } }, 100); }
   const tab = params.get('tab'); if (tab) (document.querySelector(`.itabs .tab:nth-child(${['parts', 'notes', 'diff', 'diag'].indexOf(tab) + 1})`) as HTMLElement | null)?.click();

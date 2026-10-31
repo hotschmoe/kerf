@@ -30,6 +30,7 @@ export interface Engine {
   drawing(doc: KerfDoc, style: unknown, view: string): Promise<Drawing>;
   mesh(doc: KerfDoc, style: unknown): Promise<Mesh>;
   exportBytes(doc: KerfDoc, style: unknown, view: string, format: 'svg' | 'dxf' | 'pdf', sheet?: boolean): Promise<Uint8Array>;
+  exportLayout(doc: KerfDoc, style: unknown, layout: string, format: 'svg' | 'dxf' | 'pdf', sheet?: boolean): Promise<Uint8Array>;
 }
 
 type Caller = {
@@ -117,6 +118,7 @@ function wrap(c: Caller, stats: CallStat[], meta: { loadMs: number; wasmBytes: n
     drawing: (doc, style, view) => c.json('drawing', { doc, style, view }),
     mesh: (doc, style) => c.json('mesh', { doc, style }),
     exportBytes: (doc, style, view, format, sheet = false) => c.bytes('export', { doc, style, view, format, sheet }),
+    exportLayout: (doc, style, layout, format, sheet = true) => c.bytes('export', { doc, style, layout, format, sheet }),
   };
   return e;
 }

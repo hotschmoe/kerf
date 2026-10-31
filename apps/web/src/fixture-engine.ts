@@ -49,6 +49,7 @@ export async function createFixtureEngine(base = './fixtures/'): Promise<Engine>
       return d;
     },
     async mesh(): Promise<Mesh> { return j('mesh.json'); },
+    async exportLayout(d, s, _l, format) { return eng.exportBytes(d, s, 'A', format); },
     async exportBytes(_d, _s, _v, format) {
       if (format === 'svg') return new TextEncoder().encode(await (await fetch(base + 'sheet-A.svg')).text());
       return new TextEncoder().encode('fixture ' + format);

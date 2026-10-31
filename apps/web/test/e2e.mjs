@@ -225,6 +225,29 @@ if (!fixture) {
   }
 }
 
+// ---------------------------------------------------------------- issue #7: sheet layouts
+await t('layouts: a [LAYOUT S1] tab renders the sheet of several views; PDF export from it is the layout', async () => {
+  const page = await open('sample=truss-bearing-cmu');
+  await page.waitForFunction('window.__rendered===true');
+  await ev(page, `window.__kerf.app.applyOps([{ op: 'add', path: 'layouts', value: { id: 'S1', views: ['A', 'B'], sheet: '17x11' } }], 'designer', 'add a layout')`);
+  await page.waitForFunction(`[...document.querySelectorAll('button.tab')].some(b => b.textContent === '[LAYOUT S1]')`);
+  await ev(page, `[...document.querySelectorAll('button.tab')].find(b => b.textContent === '[LAYOUT S1]').click()`);
+  await page.waitForFunction(`window.__renderedSheet === true && window.__kerf.app.activeLayout === 'S1'`);
+  const svg = await ev(page, `window.__kerf.app.getLayoutSvg('S1')`);
+  assert.match(svg, /<svg/);
+  assert.match(svg, /viewBox="0 0 1632 1056"/, '17x11 sheet');
+  await page.screenshot({ path: path.join(outDir, 'layout-S1.png') });
+  const before = new Set(fs.readdirSync(outDir));
+  await ev(page, `[...document.querySelectorAll('.iexport .btn')].find(b => b.textContent === 'PDF').click()`);
+  const name = 'truss-bearing-cmu-S1.pdf';
+  for (let i = 0; i < 100 && !fs.existsSync(path.join(outDir, name)); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(fs.existsSync(path.join(outDir, name)), 'download ' + name + ' missing; have ' + fs.readdirSync(outDir).filter((f) => !before.has(f)));
+  await ev(page, `[...document.querySelectorAll('button.tab')].find(b => b.textContent === '[SHEET]').click()`);
+  await page.waitForFunction(`window.__kerf.app.activeLayout === ''`);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 await browser.close();
 server.kill();
 console.log(`\n${pass} passed, ${fail} failed, ${skipped} skipped (engine function missing). artifacts: ${outDir}`);
