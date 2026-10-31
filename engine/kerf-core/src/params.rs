@@ -136,6 +136,13 @@ pub fn read_raw(p: &mut Params<'_>, key: &str, default: Option<Value>) -> Value 
     Value::Null
 }
 
+pub fn read_opt_bool(p: &mut Params<'_>, key: &str) -> Option<bool> {
+    if !p.has(key) {
+        return None;
+    }
+    Some(p.boolean(key, false))
+}
+
 pub fn read_opt_str(p: &mut Params<'_>, key: &str) -> Option<String> {
     if !p.has(key) {
         return None;
@@ -187,6 +194,7 @@ macro_rules! param_enum {
 
 macro_rules! field_ty {
     (Bool) => { bool };
+    (OptBool) => { Option<bool> };
     (Str) => { alloc::string::String };
     (OptStr) => { Option<alloc::string::String> };
     (Num) => { f64 };
@@ -205,6 +213,7 @@ macro_rules! field_ty {
 
 macro_rules! field_read {
     ($p:ident, $k:ident, $s:ident, Bool, [$($d:expr)?]) => { $crate::params::read_bool($p, $k, true $(&& $d)?) };
+    ($p:ident, $k:ident, $s:ident, OptBool, []) => { $crate::params::read_opt_bool($p, $k) };
     ($p:ident, $k:ident, $s:ident, Str, [$($d:expr)?]) => { $crate::params::read_str($p, $k, None $(.or(Some($d)))?) };
     ($p:ident, $k:ident, $s:ident, OptStr, []) => { $crate::params::read_opt_str($p, $k) };
     ($p:ident, $k:ident, $s:ident, Num, [$($d:expr)?]) => { $crate::params::read_num($p, $k, $crate::params::Num::Plain, None $(.or(Some($d)))?, $s.hint) };
@@ -226,6 +235,9 @@ macro_rules! field_read {
 }
 
 macro_rules! field_def {
+    (OptBool, []) => {
+        "null".to_string()
+    };
     (OptStr, []) => {
         "null".to_string()
     };
@@ -279,7 +291,7 @@ macro_rules! field_def {
 ///     }
 /// }
 /// ```
-/// Kinds: `Bool Str Num Len LenPos Int(ty,min,max) Raw Enum(E)` (required unless `= default`) and `OptStr OptNum OptLen OptLenPos
+/// Kinds: `Bool Str Num Len LenPos Int(ty,min,max) Raw Enum(E)` (required unless `= default`) and `OptBool OptStr OptNum OptLen OptLenPos
 /// OptInt(..) OptRaw OptEnum(E)` (`Option`, never required). `Len*` parse lengths ("1 1/2", 0.5); `Num` is a plain number.
 macro_rules! params {
     (

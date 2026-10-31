@@ -35,7 +35,10 @@ impl Section<'_> {
         }
         let mat = self.style.material(&p.material);
         let elevation = self.spec.kind == ViewKind::Elevation;
-        let pen = if mat.is_some_and(|m| m.fill) {
+        let front = self.front[i];
+        let pen = if front {
+            self.pen_for(Pen::Steel)
+        } else if mat.is_some_and(|m| m.fill) {
             self.pen_for_role(p.role)
         } else if elevation {
             self.pen_for(Pen::Profile)
@@ -59,7 +62,7 @@ impl Section<'_> {
         let mut face = Vec::new();
         let nails: Vec<V2>;
         {
-            let occ: Vec<&Occ> = if p.embedded {
+            let occ: Vec<&Occ> = if p.embedded || front {
                 Vec::new()
             } else {
                 self.occs.iter().filter(|o| o.prism != i && (o.cut || o.z1 > p.z1 + 1e-9)).collect()
@@ -92,7 +95,7 @@ impl Section<'_> {
             pieces = super::joins::off_edges(pieces, &e.clone());
         }
         for pc in pieces {
-            self.add_clipped(Target::Strokes, &pc.pts, pc.closed, pen, &src, p.embedded);
+            self.add_clipped(Target::Strokes, &pc.pts, pc.closed, pen, &src, p.embedded || front);
         }
         let hidden_pen = self.pen_for(Pen::Hidden);
         for pc in hidden {
@@ -216,7 +219,7 @@ impl Section<'_> {
         }
         let f = self.flat_of(i);
         let mut region = clip::boolean(&f, core::slice::from_ref(&self.crop_loop), Op::Intersect);
-        if cls == Class::Beyond && !embedded && !dashed {
+        if cls == Class::Beyond && !embedded && !dashed && !self.front[i] {
             for o in &self.occs {
                 if o.prism == i || !(o.cut || o.z1 > z1 + 1e-9) {
                     continue;

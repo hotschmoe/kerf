@@ -401,6 +401,10 @@ pub struct HwInfo {
     pub rod: Option<String>,
     /// A hanger: the carried and the carrying members; the gap between them is the hanger's (no W_NEAR_MISS).
     pub joins: [Vec<String>; 2],
+    /// The members it is placed from, as (component index, instance): a section that cuts one draws it in front.
+    pub members: Vec<(u32, u32)>,
+    /// `front` (SPEC 28.4): Some(true) always in front in sections and elevations, Some(false) never, None when cut.
+    pub front: Option<bool>,
 }
 
 pub const BOX_ANCHOR_NAMES: [&str; 9] = [

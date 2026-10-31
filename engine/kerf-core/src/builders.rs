@@ -35,6 +35,7 @@ pub mod sleeve;
 pub mod solid;
 pub mod steel;
 pub mod steel_shapes;
+pub mod tie;
 pub mod truss;
 
 pub use common::{Ctx, mirror_about_center, world_box};

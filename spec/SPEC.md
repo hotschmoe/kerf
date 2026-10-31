@@ -299,7 +299,7 @@ anchors and `projection: 0`: §27.2.
 Drawn as a thickened polyline (pen `steel`, filled solid when cut). Schematic only — the note
 carries the model; geometry shows location and path. If `model` is in the hardware table
 (engine embeds a small table: model → width, gauge, length, kind) unspecified params fill in.
-Hangers, post caps, post bases, holdowns (`kind`), straps flush on a member face (`on`) and model families: §27.2.
+Hangers, post caps, post bases, holdowns (`kind`), straps flush on a member face (`on`) and model families: §27.2. Ties and angles from two `members`, hardware drawn in front in sections: §28.4.
 
 ### 5.8 `truss` — prefab wood truss heel (side view)
 Profiles (scissor, mono, parallel chord), bearings (top chord, face) and end-on trusses: §27.1.
@@ -1934,7 +1934,7 @@ gauge thick (`gauge`, default from the model, else 18; caps, bases and holdowns 
   the post when the standoff exceeds two plate thicknesses, side plates from the base up the post (`face` left/right: the
   x faces, default; front/back: the z faces). Anchor `base_bottom`.
 - **holdown** (`post`, `rod`, `face`, `height` 10, `width` 2 1/2, `seat` 3/8, `seat_height` 0): on the post face toward
-  the rod (`face` overrides; a rod inside the post outline is E_PARAM): back plate on the face, seat `seat` thick from the
+  the rod (`face` overrides; a rod inside the post outline: §28.4): back plate on the face, seat `seat` thick from the
   face past the rod (rod radius + 3/8", at least 1/2"), two side plates tapering from the seat to the top of the back
   plate (a polygon when the face is x-normal, four slabs when it is z-normal: 2.5D), centered on the rod along the face,
   and screw ticks every 1 1/2" into the post (embedded). `rod` names an `anchor_bolt` or `bolt`. Anchor `seat_top` (the rod
@@ -1947,7 +1947,7 @@ line (x for left/right, y for top/bottom; kept for front/back); without them the
 member (top/bottom of a member running along z: the strap runs along z). A numeric `z` moves the strap's center. `side`
 and the keys of other kinds are E_PARAM; a `lay` that contradicts the face is E_PARAM.
 
-**Dashed when hidden.** Plates of these kinds and `on` straps are framing hardware. In a section, plan or elevation, the parts
+**Dashed when hidden.** Plates of these kinds and `on` straps are framing hardware. Unless they draw in front (§28.4), in a section, plan or elevation, the parts
 of their outline a nearer (or cut) member hides draw in the `hidden` pen, without `hidden_lines`; in iso, the parts of
 their edges other components hide (their own faces excepted) draw dashed. A note whose hardware target is hidden
 everywhere lands on the hidden outline (no `W_NOTE_TARGET`). Plates seen face-on carry nail dots, drawn where the plate
@@ -1990,7 +1990,7 @@ component).
   back face says so; the fix is `{"op":"update","path":"components/<id>","value":{"on":"<member>.face_front","z":null}}`.
 - `W_NEAR_MISS` is not reported between a hanger's carried and carrying members (the gap is the hanger's).
 
-Limits (2.5D): hangers follow members that run along x or z; skewed (plan-angle) hangers are not modelled, and a
+Limits (2.5D): hangers follow members that run along x or z (sloped ones: §28.4); skewed (plan-angle) hangers are not modelled, and a
 z-normal holdown's tapered sides are slabs. A post cap under a beam that ends on the post draws as a full cap.
 
 ### 27.3 beta.1: lumber cuts and two-point members
@@ -2275,6 +2275,70 @@ line: for a positive offset the largest of (higher point + offset) over its memb
 dimension line, which is extended under it (to the text's end plus the text gap), on the same side and at the same gap as
 text that fits (above an `h` line, left of a `v` line read from the right), never centred on the line's axis. The raised
 places (a text row out at either end, on a short leader) are unchanged.
+
+### 28.4 beta.2: hardware visibility, ties, sloped hangers
+
+From round 2 of the MASS dogfood (issue #24): hanger and post-cap plates sit at the member faces, so a section through
+the member drew them dashed (behind it) or not at all (in front of the cut), while every reference set draws them solid
+over the member; H2.5A, H3, A34, A35, LTP4 and RSP4 had no connector kind and were hand-placed polylines, invisible in
+iso and unreadable at section scale; a sloped joist could not take a hanger; a holdown whose rod is drawn under the post
+(a section across the wall, rod centered on the stud pack) was rejected.
+
+**Hardware in front.** A framing hardware component (§27.2 kinds, `on` straps, the ties below) draws *in front* in a
+section view that cuts one of the members it is placed from (a member body whose z range spans `cut_z`): every plate is
+drawn whole, in the steel pen, over everything else (no dashes, nothing hides it), and the strokes and hatch lines of
+other components inside its outline are cut away (as face-on ties, §5.7), so a hanger reads as its profile next to the
+beam and a holdown as its body on the post. Its nail dots all show. `"front": true` draws it so in every section and
+elevation view; `"front": false` keeps §27.2 (true place, dashed where hidden); plan and iso views always draw it at
+its true place (iso: dashed where hidden). In section, plan and elevation views every hardware plate seen edge-on is at
+least 0.022" thick on paper (the minimum metal thickness, §5.7): its long edge away from the member it lies on moves out
+(both edges half way when it touches a member on both sides or on neither).
+
+**Ties and angles from two members.** `connector` `kind` `tie` or `angle` with `"members": [a, b]` (each an id, `id#k`
+or a list drawn as one; placement dependencies) is shaped from the two members instead of `points`. Without `kind`,
+`members` makes it a tie, or an angle when the model's description says angle (A34, A35). The joint is found on paper:
+one member on the other (bottom within 1/2" of the other's top over a common x stretch, sampled along the profiles, so a
+truss or a birdmouthed rafter on a plate works) or side by side (the same along y); the members must overlap or touch
+along z. Else E_PARAM with both extents and the fix. `legs: [on a, on b]` (default: tie half the table length each, at
+least 1 1/2, else 2 3/4; angle 1 7/16), `width` (default the table/family width, else tie 1 3/8, angle 2 1/2), `gauge`.
+- `face` `front` | `back` (default when one member is narrow in z, e.g. a rafter on a plate): on the z face of the member
+  whose face is nearer the inside (the rafter's), seen face-on in a section, with nail dots. When the other member passes
+  that face (the plate runs along z) the tie bends onto that member's side: the face-on leg on the narrow member hugs the
+  other's left or right face (`side`; default the face the narrow member passes over), the second leg lies on that face
+  (edge-on in the section), `width` along z away from the narrow member. Otherwise one flat plate spans the joint (RSP4
+  on a stud and plate of equal width). An angle needs the bend case: its upright leg is face-on on the narrow member, its
+  other leg lies on the wide member's surface at the joint, `legs[k]` along z (else E_PARAM: use a tie or a side face).
+- `face` `left` | `right` (one member on the other) or `top` | `bottom` (side by side): on that side of the joint, seen
+  edge-on in a section, extruded `width` along z centered on the members' z overlap (`z` moves it along them; `z` is
+  E_PARAM on the z faces). Default when both members run along z (rim on plate) or sit side by side (ledger on a stud):
+  for a tie the side where their faces are flush, for an angle the side with an inside corner (top first for side by
+  side, left first otherwise). A tie with flush faces is a flat plate across the joint; with offset faces a Z down the
+  first face, across the step and down the second. An angle sits in the inside corner (one leg up the face of the member
+  that stops short, one along the other's surface); flush faces are E_PARAM (no inside corner; use the other side, a z
+  face, or a tie).
+- `side` on a left/right/top/bottom tie, `points`, `on`, `lay`, `at`, `rotate`, `slope`, `mirror` and the keys of other
+  kinds are E_PARAM; `legs` on any other connector is E_PARAM. Anchor `joint` (middle of the joint line). Part = the
+  kind. The summary reads `connector <model> <desc> <gauge> ga, tie|angle <a> to <b> on the <face> face of <member>` or
+  `... on the <side> side of the joint`.
+
+**Sloped hangers.** A carried member that runs into the carrying member's box (a sloped joist rotated about its end, an
+overlong one) is E_PARAM whose fix is the update op `"cuts":[{"type":"trim","end":"end"|"start","to":"<carrying>"}]`
+(the end nearer the carrying member; add it to any cuts the member already has). With the plumb end the
+hanger sides and seat follow the joist's bottom edge (§27.2) and the height is 0.85 x its vertical depth at the face.
+`ijoist` (run x) now takes `cuts` with the end cuts of §27.3 (square, plumb, level, bevel, trim; notches `by` are lumber
+and steel only). Family `LSSU` (sloped/skewed face-mount hanger, 18 ga) joins the hanger families. Skewed (plan-angle)
+members remain out of scope (kerf members run along x, y or z).
+
+**Holdown with the rod under the post.** When the holdown's rod axis lies inside the post's plan outline (the 2D section
+convention: the rod drawn centered under the stud pack) and `face` is not given (or is front/back), the holdown goes on
+the post's front (or back) face with its seat reaching max(1 3/8", rod radius + gauge + 1/2") out from the face,
+centered on the rod's x; the summary adds `(rod under the post: seat <d> out from the face)`. A section through the post
+then draws it face-on in front (above), like the reference details. With `face` left or right and the rod inside the
+post the E_PARAM fix is the `face: "front"` op.
+
+| code | level | rule |
+|---|---|---|
+| `E_PARAM` | error | tie/angle: members not exactly two, not touching on paper or along z, a face that is not a side of the joint, an angle with no inside corner, `z` on a z face, `side` on a side face; hanger: a carried member that runs into the carrying one (fix: the trim cut op) |
 
 ### 28.7 beta.2: masonry elevation and plan footprints
 From round 2 of the MASS dogfood (issue #27): CMU fence and retaining elevations were faked with concrete rectangles and

@@ -293,7 +293,7 @@ const fn ser(
     Series { prefix, kind, mount, gauge, width, desc }
 }
 
-pub const SERIES: [Series; 67] = [
+pub const SERIES: [Series; 68] = [
     ser("LUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
     ser("MUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
     ser("HUS", "hanger", "face", 16, 0.0, "heavy face-mount hanger"),
@@ -306,6 +306,7 @@ pub const SERIES: [Series; 67] = [
     ser("U", "hanger", "face", 16, 0.0, "face-mount joist hanger"),
     ser("SUR", "hanger", "face", 16, 0.0, "skewed face-mount hanger"),
     ser("SUL", "hanger", "face", 16, 0.0, "skewed face-mount hanger"),
+    ser("LSSU", "hanger", "face", 18, 0.0, "sloped/skewed face-mount hanger"),
     ser("ITS", "hanger", "top_flange", 18, 0.0, "top-flange I-joist hanger"),
     ser("MIT", "hanger", "top_flange", 16, 0.0, "top-flange I-joist hanger"),
     ser("HIT", "hanger", "top_flange", 14, 0.0, "top-flange I-joist hanger"),
@@ -531,10 +532,10 @@ pub static ENTRIES: [Entry; 19] = [
     },
     Entry {
         ty: Type::Connector,
-        summary: "Steel hardware: straps (points or `on` a face), hangers, post caps/bases, holdowns.",
-        parts: "strap: none; hanger: seat, side, flange (face mount) or back, top_flange; post_cap: seat, beam_side, post_side; post_base: base, seat, side; holdown: back, seat, side, screw",
-        anchors: "9 box anchors of the resolved profile + (strap) vertex_1..vertex_n at the points (in `points` order), edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge); hanger and post_cap `seat`, post_base `base_bottom`, holdown `seat_top` (the rod axis at the top of the seat, where the nut bears)",
-        draws: "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets. Hangers, caps, bases, holdowns and `on` straps are plates at their true place in 3D (no at, z or points): section, plan, elevation, iso and the mesh agree; where a nearer member hides them they draw dashed and a note still lands on them; plates seen face-on show nail dots. Checks: W_UNKNOWN_MODEL, W_HANGER_SIZE, W_HOLDOWN_ROD, W_POST_BASE.",
+        summary: "Steel hardware: straps (points or `on` a face), ties and angles from two `members`, hangers, post caps/bases, holdowns.",
+        parts: "strap: none; tie, angle (from members): tie or angle; hanger: seat, side, flange (face mount) or back, top_flange; post_cap: seat, beam_side, post_side; post_base: base, seat, side; holdown: back, seat, side, screw",
+        anchors: "9 box anchors of the resolved profile + (strap) vertex_1..vertex_n at the points (in `points` order), edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge); hanger and post_cap `seat`, member tie/angle `joint` (middle of the joint line), post_base `base_bottom`, holdown `seat_top` (the rod axis at the top of the seat, where the nut bears)",
+        draws: "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets. Hangers, caps, bases, holdowns, member ties and `on` straps are plates at their true place in 3D (no at, z or points): section, plan, elevation, iso and the mesh agree; in a section that cuts one of their members they draw solid in front of what they overlap (`front`), elsewhere a nearer member hides them dashed and a note still lands on them; plates thinner than 0.022\" on paper are drawn that thick; plates seen face-on show nail dots. A sloped carried member needs its end cut at the face (`cuts` trim). Checks: W_UNKNOWN_MODEL, W_HANGER_SIZE, W_HOLDOWN_ROD, W_POST_BASE.",
         example: "{\"id\":\"hanger\",\"type\":\"connector\",\"model\":\"LUS210\",\"carried\":\"joist\",\"carrying\":\"header\"}",
         traits: Traits { hardware: true, line_like: true, ..Traits::NONE },
     },

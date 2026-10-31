@@ -1,0 +1,35 @@
+{
+  "kerf": "0.1",
+  "id": "hardware-ties",
+  "title": "HARDWARE TIES",
+  "run": [-24, 24],
+  "components": [
+    {"id": "plate", "type": "lumber", "size": "2x6", "orient": "flat", "at": {"anchor": "bottom_left", "to": [0, 0]}, "views": ["A", "I"]},
+    {"id": "wall", "type": "lumber", "size": "2x6", "run": "y", "face": "wide", "length": 18, "at": {"anchor": "top_left", "to": [0, 0]}, "views": ["A", "I"]},
+    {"id": "rafter", "type": "lumber", "size": "2x6", "run": "x", "length": 30, "at": {"anchor": "bottom_left", "to": [-8, 1.5]}, "views": ["A", "I"]},
+    {"id": "h25", "type": "connector", "model": "H2.5A", "members": ["rafter", "plate"], "views": ["A", "I"]},
+    {"id": "rsp", "type": "connector", "model": "RSP4", "members": ["plate", "wall"], "face": "back", "views": ["A", "I"]},
+    {"id": "stud", "type": "lumber", "size": "2x6", "run": "y", "face": "wide", "length": 30, "at": {"anchor": "bottom_left", "to": [60, -15]}, "views": ["B"]},
+    {"id": "ledger", "type": "lumber", "size": "2x10", "run": "z", "at": {"anchor": "bottom_right", "to": [60, -5]}, "views": ["B"]},
+    {"id": "a35", "type": "connector", "model": "A35", "members": ["stud", "ledger"], "views": ["B"]},
+    {"id": "sj", "type": "lumber", "size": "2x8", "run": "x", "length": 24, "slope": "-3:12", "cuts": [{"type": "trim", "end": "end", "to": "ledger"}], "at": {"anchor": "bottom_right", "to": {"ref": "ledger@bottom_left", "offset": [0, 1]}}, "views": ["B"]},
+    {"id": "lssu", "type": "connector", "model": "LSSU28", "carried": "sj", "carrying": "ledger", "views": ["B"]},
+    {"id": "stem", "type": "concrete", "shape": "rect", "width": 8, "height": 14, "at": {"anchor": "top_left", "to": [96, 0]}, "views": ["C"]},
+    {"id": "sill", "type": "lumber", "size": "2x6", "orient": "flat", "treated": true, "at": {"anchor": "bottom_center", "to": [100, 0]}, "views": ["C"]},
+    {"id": "post", "type": "lumber", "size": "2x6", "run": "y", "face": "wide", "length": 24, "at": {"anchor": "bottom_center", "to": "sill@top_center"}, "views": ["C"]},
+    {"id": "rod", "type": "anchor_bolt", "diameter": 0.625, "embed": 10, "projection": 4.5, "hook": "headed", "at": {"to": [100, 0]}, "views": ["C"]},
+    {"id": "hd", "type": "connector", "model": "HDU5", "post": "post", "rod": "rod", "views": ["C"]}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "title": "H2.5A AND RSP4 FROM THEIR MEMBERS", "cut_z": 0, "annotations": [
+      {"id": "n1", "type": "note", "text": "SIMPSON H2.5A @ EA. RAFTER", "target": "h25"},
+      {"id": "n2", "type": "note", "text": "SIMPSON RSP4 @ EA. STUD", "target": "rsp"}]},
+    {"id": "B", "kind": "section", "title": "SLOPED HANGER AND A35 AT LEDGER", "cut_z": 0, "annotations": [
+      {"id": "n1", "type": "note", "text": "SIMPSON LSSU28 SLOPED HANGER", "target": "lssu"},
+      {"id": "n2", "type": "note", "text": "SIMPSON A35 @ EA. STUD", "target": "a35"}]},
+    {"id": "C", "kind": "section", "title": "HOLDOWN AT STEM", "cut_z": 0, "annotations": [
+      {"id": "n1", "type": "note", "text": "HDU5 HOLDOWN", "target": "hd"}]},
+    {"id": "I", "kind": "iso", "title": "TIES", "from": "front_left", "annotations": [
+      {"id": "n1", "type": "note", "text": "H2.5A", "target": "h25"}]}
+  ]
+}

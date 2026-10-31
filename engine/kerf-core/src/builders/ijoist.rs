@@ -26,6 +26,7 @@ params! {
         web: OptLenPos => { def: "table", desc: "web thickness: 3/8 (7/16 for 3-1/2 flanges and depths over 16)" },
         stiffeners: Enum(Ends) = Ends::None => { desc: "none | left | right | both: web stiffener pair (part `stiffener`, one each side of the web, 3-1/2 along the joist, tight to the bottom flange, 1/8 gap under the top flange) at that end of a run x joist; run z: any value draws the pair at the section (the joist's z centre, or the cut when it spans the run)" },
         squash_blocks: Enum(Ends) = Ends::None => { desc: "none | left | right | both: 2x4 squash block pair (part `squash_block`, 1-1/2 each side of the joist, full depth, 3-1/2 along it) at that end of a run x joist (point loads through the floor); run z: any value draws the pair at the section" },
+        cuts: OptRaw => { desc: "run x: end cuts as lumber (`kerf schema cuts`: square, plumb, level, bevel, trim to a member's face); a sloped joist with a plumb or trim end bears in a hanger" },
         blocking: Bool = false => { desc: "run z: a blocking panel or rim cut end-on: the flanges get one diagonal instead of the X" },
     }
 }

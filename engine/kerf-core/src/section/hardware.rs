@@ -4,20 +4,128 @@ use super::occlusion::{Occ, visible_open};
 use super::{Section, Target};
 use crate::clip;
 use crate::drawing::FillItem;
-use crate::geom::{self, FLAT_TOL, V2};
+use crate::geom::{self, FLAT_TOL, Pt, V2};
 use crate::model::{self, Kind, Prism};
 use crate::num;
 use crate::pathgeom;
 use crate::pen::Pen;
+use crate::scene::Scene;
 use crate::style::Role;
+use crate::view::{Kind as ViewKind, ViewSpec};
 use alloc::vec::Vec;
 
 pub const MIN_METAL_PAPER_IN: f64 = 0.022;
 
-/// Metal sections thinner than the minimum paper thickness get a ribbon of that thickness around their centerline.
+/// Which prisms draw in front (SPEC 28.4): every body of a hardware component whose `front` is true, or (unset) in a
+/// section view that cuts one of the members it is placed from.
+pub fn front_hardware(scene: &Scene, spec: &ViewSpec, prisms: &[Prism]) -> Vec<bool> {
+    let cut = spec.cut_z;
+    let eps = 1e-9;
+    let mut by_comp: Vec<(u32, bool)> = Vec::new();
+    let mut out = Vec::with_capacity(prisms.len());
+    for p in prisms {
+        if p.kind != Kind::Body {
+            out.push(false);
+            continue;
+        }
+        if let Some(&(_, f)) = by_comp.iter().find(|(c, _)| *c == p.comp) {
+            out.push(f);
+            continue;
+        }
+        let f = scene.comps.get(p.comp as usize).is_some_and(|c| {
+            let hw = &c.built.hw;
+            match hw.front {
+                Some(b) => b && c.ty.traits.hardware && matches!(spec.kind, ViewKind::Section | ViewKind::Elevation),
+                None => {
+                    spec.kind == ViewKind::Section
+                        && hw.members.iter().any(|&(mc, mi)| {
+                            prisms.iter().any(|q| {
+                                q.comp == mc
+                                    && q.instance == mi
+                                    && q.kind == Kind::Body
+                                    && q.z0 < cut - eps
+                                    && q.z1 > cut + eps
+                            })
+                        })
+                }
+            }
+        });
+        by_comp.push((p.comp, f));
+        out.push(f);
+    }
+    out
+}
+
+/// A hardware plate (a four-sided loop, no centerline) thinner on paper than the minimum: its long edge away from the
+/// member it lies on moves out to the minimum thickness (both edges half way when neither or both touch a member).
+fn thicken_plate(p: &Prism, others: &[(Vec<Vec<V2>>, geom::Box)], min_t: f64) -> Option<Vec<geom::Pt>> {
+    let lp = p.loops.first()?;
+    if p.loops.len() != 1 || lp.len() != 4 || lp.iter().any(|q| q.b != 0.0) {
+        return None;
+    }
+    let v: Vec<V2> = lp.iter().map(|q| q.v()).collect();
+    let len = |a: usize| v[a].dist(v[(a + 1) % 4]);
+    let k = if len(0) + len(2) >= len(1) + len(3) { 0 } else { 1 };
+    let (a0, a1, b0, b1) = (v[k], v[k + 1], v[k + 2], v[(k + 3) % 4]);
+    let d = a1.sub(a0);
+    if d.len() < 1e-9 {
+        return None;
+    }
+    let n = d.perp().norm();
+    let t = b0.sub(a0).dot(n).abs();
+    if t >= min_t - 1e-9 || t < 1e-9 {
+        return None;
+    }
+    let mid_a = a0.add(a1).scale(0.5);
+    let mid_b = b0.add(b1).scale(0.5);
+    let toward_b = if mid_b.sub(mid_a).dot(n) >= 0.0 { n } else { n.scale(-1.0) };
+    let probe = 0.01_f64.min(t);
+    let touches = |m: V2| others.iter().any(|(f, bx)| bx.contains(m) && geom::locate(m, f, 1e-9) == geom::Loc::Inside);
+    let a_on = touches(mid_a.sub(toward_b.scale(probe)));
+    let b_on = touches(mid_b.add(toward_b.scale(probe)));
+    let side = b1.sub(a0);
+    let along = if side.dot(toward_b).abs() > 1e-12 { side.scale(1.0 / side.dot(toward_b)) } else { toward_b };
+    let grow = min_t - t;
+    let (ga, gb) = match (a_on, b_on) {
+        (true, false) => (0.0, grow),
+        (false, true) => (grow, 0.0),
+        _ => (grow / 2.0, grow / 2.0),
+    };
+    let mut q = v.clone();
+    q[k] = a0.sub(along.scale(ga));
+    q[k + 1] = a1.sub(along.scale(ga));
+    q[k + 2] = b0.add(along.scale(gb));
+    q[(k + 3) % 4] = b1.add(along.scale(gb));
+    Some(q.iter().map(|&w| geom::Pt::at(w, 0.0)).collect())
+}
+
+/// Metal sections thinner than the minimum paper thickness get a ribbon of that thickness around their centerline; framing
+/// hardware plates without one grow away from the member they lie on.
 pub fn thicken_thin_hardware(prisms: &[Prism], scale: f64) -> Vec<Prism> {
     let mut out = prisms.to_vec();
     let min_t = MIN_METAL_PAPER_IN * scale;
+    let plates: Vec<usize> = (0..prisms.len())
+        .filter(|&i| {
+            let p = &prisms[i];
+            p.hw_dash && p.kind == Kind::Body && p.centerline.is_empty() && !p.face_tie
+        })
+        .collect();
+    if !plates.is_empty() {
+        let others: Vec<(Vec<Vec<V2>>, geom::Box)> = prisms
+            .iter()
+            .filter(|q| q.kind == Kind::Body && !q.hw_dash && !q.embedded)
+            .map(|q| {
+                let f = clip::from_region(&q.loops, FLAT_TOL);
+                let b = clip::loops_box(&f);
+                (f, b)
+            })
+            .collect();
+        for &i in &plates {
+            if let Some(l) = thicken_plate(&prisms[i], &others, min_t) {
+                out[i].loops = model::one_loop(l);
+            }
+        }
+    }
     for (i, p) in prisms.iter().enumerate() {
         if p.kind != Kind::Body || p.face_tie || p.sweep_r > 0.0 || p.centerline.len() < 2 || p.loops.len() != 1 {
             continue;
@@ -97,7 +205,8 @@ impl Section<'_> {
     pub fn knock_out_face_ties(&mut self) {
         let mut occs: Vec<Occ> = Vec::new();
         for i in 0..self.prisms.len() {
-            if self.cls[i] == super::Class::Drop || !self.prisms[i].face_tie {
+            let p = &self.prisms[i];
+            if self.cls[i] == super::Class::Drop || !(p.face_tie || (self.front[i] && p.kind == Kind::Body)) {
                 continue;
             }
             let f = self.flat_of(i);
@@ -122,6 +231,26 @@ impl Section<'_> {
             }
         }
         self.strokes = out;
+        let front: Vec<&Occ> = occs.iter().filter(|o| self.front[o.prism]).collect();
+        if front.is_empty() {
+            return;
+        }
+        for h in &mut self.hatches {
+            let hb = geom::loop_box(h.loops.first().map_or(&[][..], |l| l.as_slice()));
+            if !front.iter().any(|o| o.bx.overlaps(hb, 1e-9)) {
+                continue;
+            }
+            let mut kept = Vec::with_capacity(h.lines.len());
+            for l in &h.lines {
+                let seg = [Pt::new(l[0], l[1]), Pt::new(l[2], l[3])];
+                for pc in visible_open(&seg, false, &front) {
+                    for w in pc.pts.windows(2) {
+                        kept.push([w[0].x, w[0].y, w[1].x, w[1].y]);
+                    }
+                }
+            }
+            h.lines = kept;
+        }
     }
 
     /// A strap seen face-on: outline in the steel pen, nail dots along its centerline.
