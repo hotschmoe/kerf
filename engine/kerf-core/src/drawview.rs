@@ -16,7 +16,7 @@ use crate::scene::{self, Scene};
 use crate::section::Section;
 use crate::style::{Role, Style};
 use crate::units;
-use crate::view::{self, Kind, NotesSide, ViewSpec};
+use crate::view::{self, Kind, NotesSide, NotesStyle, ViewSpec};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -116,8 +116,12 @@ fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
             continue;
         }
         if e > best.ext + 1e-9 {
-            let what = if b.kind == AnnKind::Dim { "dimension" } else { "label" };
-            best = Culprit { name: format!("{what} '{}'", b.id), ext: e, kind: Some(b.kind), id: b.id.clone() };
+            let name = match b.kind {
+                AnnKind::Dim => format!("dimension '{}'", b.id),
+                AnnKind::List => "the DETAIL NOTES list".to_string(),
+                _ => format!("label '{}'", b.id),
+            };
+            best = Culprit { name, ext: e, kind: Some(b.kind), id: b.id.clone() };
         }
     }
     if notes_ext > best.ext + 1e-9 {
@@ -186,6 +190,7 @@ struct Frame<'a> {
 fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &Diags) {
     let Frame { scale_text, scale, crop, bounds, aw, ah } = *frame;
     let view_id = spec.id;
+    let leader = spec.notes_style.unwrap_or(st.notes_mode) == NotesStyle::Leader;
     let pw = (bounds.x1 - bounds.x0) / scale;
     let ph = (bounds.y1 - bounds.y0) / scale;
     let ow = (pw - aw).max(0.0);
@@ -233,7 +238,7 @@ fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &D
         }
         match big.kind {
             Some(AnnKind::Dim) => dim_offset_fix(fit, big, need, &mut nfix, &mut fixes),
-            Some(AnnKind::Note) if spec.notes_side == NotesSide::Both => {
+            Some(AnnKind::Note) if leader && spec.notes_side == NotesSide::Both => {
                 nfix += 1;
                 let (keep, drop) = if lc.ext >= rc.ext { ("right", "left") } else { ("left", "right") };
                 fixes.push_str(&format!(
@@ -242,9 +247,16 @@ fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &D
                     fixed(lc.ext.min(rc.ext) / scale, 2)
                 ));
             }
+            Some(AnnKind::List) if matches!(spec.notes_side, NotesSide::Left | NotesSide::Right) => {
+                nfix += 1;
+                fixes.push_str(&format!(
+                    "{}{nfix}) set notes_side to \"above\" to put the DETAIL NOTES list above the drawing",
+                    sep(nfix)
+                ));
+            }
             _ => {}
         }
-        if big.kind == Some(AnnKind::Note) {
+        if matches!(big.kind, Some(AnnKind::Note | AnnKind::List)) {
             nfix += 1;
             fixes.push_str(&format!(
                 "{}{nfix}) shorten the longest notes (they wrap at {} characters)",
@@ -276,7 +288,14 @@ fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, diags: &D
         let big = if tc.ext >= bc.ext { &tc } else { &bc };
         match big.kind {
             Some(AnnKind::Dim) => dim_offset_fix(fit, big, need, &mut nfix, &mut fixes),
-            Some(AnnKind::Note) if spec.notes_side != NotesSide::Both => {
+            Some(AnnKind::List) if !matches!(spec.notes_side, NotesSide::Left | NotesSide::Right) => {
+                nfix += 1;
+                fixes.push_str(&format!(
+                    "{}{nfix}) set notes_side to \"right\" or \"left\" to put the DETAIL NOTES list beside the drawing",
+                    sep(nfix)
+                ));
+            }
+            Some(AnnKind::Note) if leader && spec.notes_side != NotesSide::Both => {
                 nfix += 1;
                 fixes.push_str(&format!(
                     "{}{nfix}) set notes_side to \"both\" to split the notes over two columns (adds about {}\" of width)",

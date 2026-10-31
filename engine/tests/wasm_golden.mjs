@@ -15,7 +15,7 @@ function call(fn, input) {
   ex.kerf_free(fp, f.length); ex.kerf_free(ip, i.length); return out;
 }
 let bad = 0, n = 0;
-for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-strap']) {
+for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-strap', 'stud-wall-stem-footing']) {
   const doc = JSON.parse(fs.readFileSync(path.join(here, `../../spec/details/${d}.kerf.json`), 'utf8'));
   for (const v of ['A', 'B']) {
     for (const [fmt, file] of [['svg', `${v}.svg`], ['dxf', `${v}.dxf`], ['pdf', `${v}.pdf`]]) {

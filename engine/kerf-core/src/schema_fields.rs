@@ -148,9 +148,16 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "notes_side",
-            ty: "right|left|both",
+            ty: "right|left|both|above",
             def: "both",
-            desc: "which side the note column goes; both = each note goes to the side nearer its landing point",
+            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point. keyed/list: where the DETAIL NOTES list goes (both = above)",
+            ..Field::NONE
+        },
+        Field {
+            name: "notes_style",
+            ty: "leader|keyed|list",
+            def: "leader",
+            desc: "leader = text at the leader end; keyed = a number tag at the leader end and the texts in a numbered DETAIL NOTES list (notes sharing a `key` share one entry); list = the DETAIL NOTES list only, no tags or leaders (typical notes; `target` not needed)",
             ..Field::NONE
         },
         Field {
@@ -174,7 +181,7 @@ pub static VIEW: Object = Object {
 
 pub static NOTE: Object = Object {
     name: "note",
-    brief: "leader note with optional citations",
+    brief: "leader or keyed note with optional citations",
     summary: "Leader note (annotation of type note): UPPERCASE text, an arrow landing inside the target, optional code citations.",
     fields: &[
         Field {
@@ -189,7 +196,7 @@ pub static NOTE: Object = Object {
             name: "text",
             ty: "string",
             required: true,
-            desc: "house format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOTT. CONC. GYP. BD. REINF. PT (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
+            desc: "keyed views: optional on a note whose `key` another note already has. House format: UPPERCASE, no trailing period, fractions `1 1/2\"`, ` X ` between sizes, abbreviations W/ O.C. EA. CONT. TYP. MIN. DIA. BOTT. CONC. GYP. BD. REINF. PT (W_NOTE_STYLE lints this, and also commentary such as `?`, `NOTE:`, `WE`, `SHOULD BE`, a text that ends on `W/` or `AND`, over 130 characters, a repeat of another note)",
             ..Field::NONE
         },
         Field {
@@ -214,6 +221,12 @@ pub static NOTE: Object = Object {
             name: "column",
             ty: "left|right",
             desc: "which notes column this note's text goes in (per-note version of the view's `notes_side`; the layout never moves it to the other column). A note with `place` right-aligns its text when it sits left of its arrow",
+            ..Field::NONE
+        },
+        Field {
+            name: "key",
+            ty: "integer",
+            desc: "keyed views: the note's number in the DETAIL NOTES list (1-999; keeps numbers stable across edits). Notes with the same key share one entry and each draws its tag. Unkeyed notes take the lowest free numbers in note order",
             ..Field::NONE
         },
         Field {

@@ -38,6 +38,17 @@ pub enum NotesSide {
     Right,
     Left,
     Both,
+    /// Keyed notes only: the DETAIL NOTES list goes above the drawing.
+    Above,
+}
+
+/// How a view's notes are drawn (SPEC 24): text at the leader end, a numbered tag at the leader end with the text in a
+/// DETAIL NOTES list, or the list alone (no tags, no leaders).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NotesStyle {
+    Leader,
+    Keyed,
+    List,
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +68,8 @@ pub struct ViewSpec<'a> {
     pub from: From,
     pub cutaway: bool,
     pub notes_side: NotesSide,
+    /// `notes_style` of the view; None = the style's `notes.mode`.
+    pub notes_style: Option<NotesStyle>,
     pub annotations: &'a [Value],
     pub omit: Vec<&'a str>,
 }
@@ -178,13 +191,32 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
             "right" => notes_side = NotesSide::Right,
             "left" => notes_side = NotesSide::Left,
             "both" => {}
+            "above" => notes_side = NotesSide::Above,
             _ => {
                 diags.add(
                     Level::Error,
                     "E_PARAM",
                     Some(id),
                     Some(&format!("{base}/notes_side")),
-                    format!("notes_side must be right, left or both (got \"{s}\")"),
+                    format!("notes_side must be right, left, both or above (got \"{s}\")"),
+                );
+                ok = false;
+            }
+        }
+    }
+    let mut notes_style = None;
+    if let Some(s) = node.get("notes_style").and_then(Value::str) {
+        match s {
+            "leader" => notes_style = Some(NotesStyle::Leader),
+            "keyed" => notes_style = Some(NotesStyle::Keyed),
+            "list" => notes_style = Some(NotesStyle::List),
+            _ => {
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/notes_style")),
+                    format!("notes_style must be leader, keyed or list (got \"{s}\")"),
                 );
                 ok = false;
             }
@@ -224,6 +256,7 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         from,
         cutaway,
         notes_side,
+        notes_style,
         annotations: anns,
         omit,
     })

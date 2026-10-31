@@ -337,7 +337,8 @@ Use only when no typed component fits; the summary flags it so a reviewer can se
   "crop": { "x": [-30, 40], "y": [-12, 48] },  // model-space window; break lines where cut solids are clipped
   "from": "front_right",                    // iso only: front_right | front_left | back_right | back_left
   "cutaway": true,                          // iso only: clip solids to z ≤ cut_z, hatch the cut face
-  "notes_side": "right",                    // right | left | both
+  "notes_side": "right",                    // right | left | both | above (keyed: where the list goes, §24)
+  "notes_style": "leader",                  // leader | keyed | list (§24); default: style notes.mode
   "annotations": [ … ]
 }
 ```
@@ -349,13 +350,14 @@ Accepted: `3"=1'-0"` (factor 4), `1-1/2"=1'-0"` (8), `1"=1'-0"` (12), `3/4"=1'-0
 
 ### 6.2 Annotation types
 
-**note** — leader note (or keynote, per style):
+**note** — leader note (or keyed note, §24):
 ```jsonc
 { "id": "n1", "type": "note",
   "text": "2X8 PT SILL PLATE W/ 5/8\" DIA. ANCHOR BOLTS @ 48\" O.C.",
   "target": "sill_plate",                // component id (or "comp.part"); arrow lands inside its visible region
   "at": null,                            // optional Ref: exact arrow landing point
   "place": null,                         // optional [x, y] model-space position of text (designer override)
+  "key": null,                           // keyed views: number in the DETAIL NOTES list (§24)
   "cite": [ { "code": "IRC", "edition": 2021, "section": "R403.1.6", "title": "Foundation anchorage",
               "status": "suggested" } ]   // suggested | verified
 }
@@ -388,9 +390,8 @@ sets `verified`. Export renders citations per style `citations` (default: append
    If the column overflows the crop bottom, shift the whole column up (then down if it overflows the top).
 5. Leader: from the text's vertical middle on the near side (with a horizontal shoulder of
    `shoulder` paper inches) straight to the landing point; arrowhead per style.
-6. Keynote mode (style `notes.mode = "keynote"`): same placement, but the column shows
-   `<n>` in a circle/hex tag next to the leader and the full texts go to a legend block; numbers
-   are assigned in note order.
+6. Keyed mode (view `notes_style: "keyed"`, or style `notes.mode`): same placement, but the column
+   shows the note's number as a tag and the full texts go to a DETAIL NOTES list (§24).
 
 ### 6.4 Dimensions (deterministic)
 Extension lines from the two points (gap `ext_gap`, overshoot `ext_over`), dimension line at
@@ -419,7 +420,8 @@ full default):
                                  "layer": "S-DETL-CONC" } },
   "patterns": { "<NAME>": [ [angle, x0, y0, dx, dy, dash1, dash2, …], … ] },   // AutoCAD .pat semantics, paper inches
   "text":  { "font": "kerf-simplex", "height_in": 0.09375, "title_height_in": 0.15625, "case": "upper", "line_spacing": 1.6 },
-  "notes": { "mode": "leader", "wrap_chars": 28, "gutter_in": 0.375, "shoulder_in": 0.125, "note_gap_in": 0.0625, "arrow": "closed_filled", "arrow_len_in": 0.09375 },
+  "notes": { "mode": "leader", "wrap_chars": 28, "gutter_in": 0.375, "shoulder_in": 0.125, "note_gap_in": 0.0625, "arrow": "closed_filled", "arrow_len_in": 0.09375,
+             "key_tag": "plain", "list_title": "DETAIL NOTES" },   // mode leader | keyed | list; key_tag plain | circle | hex
   "dims":  { "terminator": "tick", "tick_len_in": 0.0625, "ext_gap_in": 0.0625, "ext_over_in": 0.0625, "text_gap_in": 0.0469, "precision": 16 },
   "citations": { "format": " ({code} {section})", "unverified": "flag", "flag": "*",
                  "footnote": "* CODE REFERENCE NOT VERIFIED BY DESIGNER" },
@@ -990,3 +992,24 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
   directory). `apply` and the `kerf serve` library counts do not look files up (an added reference is checked by the next
   `kerf check`; the web UI shows a missing image in its reference panel).
 - `kerf serve` serves a listed file with `GET /api/docs/:file/reference?path=<path>` (spec/SERVE.md).
+## 24. Keyed notes (v0.2)
+- **View option** `notes_style`: `leader` (text at the leader end), `keyed` (a number tag at the leader end, the texts in a
+  DETAIL NOTES list) or `list` (the list only: no tags, no leaders, `target` not needed; typical-notes blocks). Without it the
+  style's `notes.mode` decides (`keynote` is accepted as an old name of `keyed`). Leader is the default; keyed output never
+  changes leader output.
+- **Numbering** (deterministic): a note's integer `key` (1-999) is its number. The other notes take the lowest unused numbers
+  in note order. Notes with the same `key` share one list entry (the first one's text; a later note may omit `text`, and a
+  different text warns `W_PARAM`) and each draws its own tag. A bad `key` warns `W_PARAM` and is ignored.
+- **Tags** route exactly like leader text (§6.3, §16, §18, §20: columns outside the crop, de-crossing, repair), with the tag as
+  the text block: the number's width x one text height (`key_tag: "plain"`), or a circle / flat-top hexagon sized by the widest
+  number (`circle`, `hex`; the leader starts on the outline). Tags go to the side nearer their landing (a note's `column` still
+  forces a side).
+- **List**: heading `notes.list_title` (default `DETAIL NOTES`) over a rule, then `<n>.` and the text wrapped at
+  1.25 x `wrap_chars` with a hanging indent, in number order, line pitch as notes, layer notes, text src = the entry's first
+  note (heading and rule src `notes_list`). Placement by `notes_side`: `above` (and `both`) = left-aligned with the drawing
+  extents (crop, tags, dimensions, labels), its bottom one `gutter_in` above them; `left` / `right` = top-aligned with them, one
+  `gutter_in` beside them. It splits into two columns (split where the taller column is shortest, ties: the longer first
+  column, every column under its own rule) when it has more than 8 lines and, beside the drawing, is also taller than it.
+- `notes_side: "above"` on a leader view warns `W_PARAM` and lays out as `both`. `W_NOTE_STYLE` lints keyed and list note text
+  as it does leader text; repeated text under one key is not a repeat, and a repeat in a keyed view suggests sharing the key.
+  `W_VIEW_FIT` names the list as a culprit and suggests moving it (`above` <-> `left`/`right`).

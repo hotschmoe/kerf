@@ -89,7 +89,8 @@ the designer verifies. Never present a design as engineered: capacities, spacing
 ## Views and annotations
 `crop` and `scale` are optional on a section view (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
 set them only to frame deliberately (`W_VIEW_FIT` then checks). Notes split to both sides and the layout resolves leader
-collisions itself; add `column` to a note only to force a side. Dim `dir` defaults to the dominant axis. Dim `offset` sign: h > 0
+collisions itself; add `column` to a note only to force a side. Keyed notes (when asked): view `"notes_style":"keyed"` puts a
+number at each leader and the texts in a DETAIL NOTES list (`notes_side` above|left|right); same `key` = one entry, two tags. Dim `dir` defaults to the dominant axis. Dim `offset` sign: h > 0
 puts the line above the higher point, < 0 below the lower; v > 0 right of the rightmost, < 0 left of the leftmost.
 Beam in a wall (flush beam, header): draw the elevation along the wall unless asked for the end-on section; say which you drew.
 Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
