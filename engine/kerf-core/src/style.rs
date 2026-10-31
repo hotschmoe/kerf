@@ -237,6 +237,8 @@ pub struct Style {
     pub title_height_in: f64,
     pub label_height_in: f64,
     pub text_case_upper: bool,
+    /// `text.keep_case`: tokens printed as written under the upper-case transform, on top of the house list (SPEC 25.3).
+    pub keep_case: Vec<String>,
     pub line_spacing: f64,
     pub dxf_style: String,
     pub dxf_font: String,
@@ -254,6 +256,8 @@ pub struct Style {
     pub key_tag: KeyTag,
     /// Heading of the keyed notes list.
     pub list_title: String,
+    /// `notes.abbreviations`: house abbreviations the style adds (abbreviation, the words it stands for), SPEC 25.3.
+    pub abbreviations: Vec<(String, Vec<String>)>,
 
     pub dim_terminator: String,
     pub tick_len_in: f64,
@@ -295,6 +299,7 @@ impl Default for Style {
             title_height_in: 0.15625,
             label_height_in: 0.078125,
             text_case_upper: true,
+            keep_case: Vec::new(),
             line_spacing: 1.6,
             dxf_style: "KERF".to_string(),
             dxf_font: "romans.shx".to_string(),
@@ -308,6 +313,7 @@ impl Default for Style {
             arrow_width_in: 0.03125,
             key_tag: KeyTag::Plain,
             list_title: "DETAIL NOTES".to_string(),
+            abbreviations: Vec::new(),
             dim_terminator: "tick".to_string(),
             tick_len_in: 0.0625,
             ext_gap_in: 0.0625,
@@ -587,6 +593,10 @@ fn validate(root: &Value) -> Option<String> {
     if let Some(sec) = c.section(root, "notes") {
         c.one_of("notes.mode", sec.get("mode"), &["leader", "keyed", "list", "keynote"], "leader");
         c.one_of("notes.key_tag", sec.get("key_tag"), &["plain", "circle", "hex"], "plain");
+        validate_abbreviations(&mut c, sec.get("abbreviations"));
+    }
+    if let Some(sec) = c.section(root, "text") {
+        validate_keep_case(&mut c, sec.get("keep_case"));
     }
     validate_pens(&mut c, root);
     validate_materials(&mut c, root);
@@ -622,6 +632,52 @@ fn validate(root: &Value) -> Option<String> {
         c.msg.push_str(&format!("; and {} more", c.count - 12));
     }
     Some(c.msg)
+}
+
+const MAX_HOUSE_ENTRIES: usize = 500;
+const MAX_HOUSE_CHARS: usize = 60;
+
+fn house_text_ok(s: &str) -> bool {
+    !s.trim().is_empty() && s.chars().count() <= MAX_HOUSE_CHARS
+}
+
+fn validate_keep_case(c: &mut Check, v: Option<&Value>) {
+    let Some(v) = v.filter(|v| !v.is_null()) else { return };
+    let ok = v.arr().is_some_and(|a| {
+        a.len() <= MAX_HOUSE_ENTRIES && a.iter().all(|x| x.str().is_some_and(|s| house_text_ok(s) && !s.contains(' ')))
+    });
+    if !ok {
+        c.bad(format!(
+            "style key 'text.keep_case' must be an array of up to {MAX_HOUSE_ENTRIES} single tokens (1-{MAX_HOUSE_CHARS} characters, no spaces) printed as written, e.g. [\"kN\", \"mm\"] (got {})",
+            Check::got_text(v)
+        ));
+    }
+}
+
+fn validate_abbreviations(c: &mut Check, v: Option<&Value>) {
+    let Some(v) = v.filter(|v| !v.is_null()) else { return };
+    let ok = match v {
+        Value::Object(m) => {
+            m.len() <= MAX_HOUSE_ENTRIES
+                && m.iter().all(|e| {
+                    house_text_ok(&e.key)
+                        && match &e.value {
+                            Value::String(w) => house_text_ok(w),
+                            Value::Array(ws) => {
+                                !ws.is_empty() && ws.len() <= 8 && ws.iter().all(|w| w.str().is_some_and(house_text_ok))
+                            }
+                            _ => false,
+                        }
+                })
+        }
+        _ => false,
+    };
+    if !ok {
+        c.bad(format!(
+            "style key 'notes.abbreviations' must be an object of up to {MAX_HOUSE_ENTRIES} abbreviations, each mapped to the word(s) it stands for (a string or an array of up to 8 strings, 1-{MAX_HOUSE_CHARS} characters), e.g. {{\"BRG.\": \"BEARING\", \"ARCH.\": [\"ARCHITECT\", \"ARCHITECTURAL\"]}} (got {})",
+            Check::got_text(v)
+        ));
+    }
 }
 
 fn validate_pens(c: &mut Check, root: &Value) {
@@ -850,6 +906,14 @@ pub fn from_value(root: &Value) -> Result<Style, StyleError> {
         s.label_height_in = num_or(t.get("label_height_in"), s.label_height_in);
         s.text_case_upper = t.get("case").and_then(Value::str).unwrap_or("upper") != "as_is";
         s.line_spacing = num_or(t.get("line_spacing"), s.line_spacing);
+        s.keep_case = t
+            .get("keep_case")
+            .and_then(Value::arr)
+            .unwrap_or(&[])
+            .iter()
+            .filter_map(Value::str)
+            .map(String::from)
+            .collect();
         s.dxf_style = str_or(t.get("dxf_style"), &s.dxf_style);
         s.dxf_font = str_or(t.get("dxf_font"), &s.dxf_font);
     }
@@ -872,6 +936,18 @@ pub fn from_value(root: &Value) -> Result<Style, StyleError> {
             _ => KeyTag::Plain,
         };
         s.list_title = str_or(t.get("list_title"), &s.list_title);
+        if let Some(Value::Object(ab)) = t.get("abbreviations") {
+            for m in ab {
+                let words: Vec<String> = match &m.value {
+                    Value::String(w) => alloc::vec![w.clone()],
+                    Value::Array(ws) => ws.iter().filter_map(Value::str).map(String::from).collect(),
+                    _ => Vec::new(),
+                };
+                if !words.is_empty() {
+                    s.abbreviations.push((m.key.clone(), words));
+                }
+            }
+        }
     }
     if let Some(t) = root.get("dims") {
         s.dim_terminator = str_or(t.get("terminator"), &s.dim_terminator);

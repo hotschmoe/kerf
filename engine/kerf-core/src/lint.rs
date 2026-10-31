@@ -5,6 +5,7 @@
 use crate::compile;
 use crate::coverage;
 use crate::geom::V2;
+use crate::house;
 use crate::json::{Member, Value};
 use crate::model::{self, Diag, Diags, Level};
 use crate::references;
@@ -17,15 +18,15 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-pub fn run(scene: &Scene, doc: &Value, diags: &Diags) {
+pub fn run(scene: &Scene, doc: &Value, cov: &[coverage::Item], diags: &Diags) {
     if !matches!(doc, Value::Object(_)) {
         return;
     }
     unknown_keys(doc, diags);
-    note_style(doc, diags);
+    note_style(doc, scene.style, diags);
     dim_zero(scene, doc, diags);
     ack_shape(doc, diags);
-    requested_missing(doc, diags);
+    requested_missing(doc, cov, diags);
     references::lint(doc, diags);
 }
 
@@ -236,13 +237,6 @@ static SPELLED_OUT: [Abbr; 10] = [
     Abbr { word: "DIAMETER", abbr: "DIA." },
 ];
 
-/// Abbreviations that legitimately end a note with a period (no trailing-period warning).
-const PERIOD_ABBRS: [&str; 40] = [
-    "MIN", "MAX", "EA", "CONT", "TYP", "DIA", "GA", "SIM", "BOTT", "CONC", "EMBED", "MFR", "FTG", "GRD", "HDR", "DBL",
-    "STL", "GALV", "VERT", "HORIZ", "GYP", "BD", "REINF", "SHTG", "CLR", "PLY", "NO", "STD", "SQ", "EQ", "NOM",
-    "APPROX", "REQD", "SPEC", "DWG", "DWGS", "EXIST", "THK", "ALT", "UNO",
-];
-
 fn is_word_char(c: u8) -> bool {
     c.is_ascii_alphabetic()
 }
@@ -271,6 +265,8 @@ pub struct NoteStyle {
     pub fixed: String,
     /// Some problem needs a rewrite (commentary, a dangling end, length): `fixed` does not cure it.
     pub rewrite: bool,
+    /// `fixed` keeps every model number of the text (upper-cased): a fix that would change one is not offered.
+    pub fix_safe: bool,
 }
 
 /// Longest note, in characters: one idea per note. SPEC 21 says 120; the reference flush-beam strap note is 121 characters and
@@ -280,6 +276,25 @@ const MAX_NOTE_LEN: usize = 130;
 /// Words that make a note read as a person talking (matched as whole words, case-insensitive).
 const CHATTER_WORDS: [&str; 2] = ["WE", "PLEASE"];
 const CHATTER_PHRASES: [&str; 2] = ["SHOULD BE", "NOTE:"];
+
+/// Words before a Roman numeral `I` (`TYPE I CEMENT`, `CLASS I`): not first person.
+const NUMERAL_BEFORE: [&str; 14] = [
+    "TYPE", "CLASS", "GRADE", "CATEGORY", "CAT.", "ZONE", "GROUP", "PHASE", "LEVEL", "TIER", "STAGE", "OPTION", "CASE",
+    "PART",
+];
+
+/// The word that ends just before `at` (upper case, trailing spaces skipped).
+fn word_before(text: &[u8], at: usize) -> String {
+    let mut e = at;
+    while e > 0 && text[e - 1] == b' ' {
+        e -= 1;
+    }
+    let mut s = e;
+    while s > 0 && !matches!(text[s - 1], b' ' | b'(' | b',') {
+        s -= 1;
+    }
+    String::from_utf8_lossy(&text[s..e]).to_ascii_uppercase()
+}
 
 /// A note must not end on one of these: the thing it connects to is missing.
 const CONNECTOR_WORDS: [&str; 10] = ["W/", "AND", "OR", "TO", "@", "&", "PER", "WITH", "FOR", "OF"];
@@ -301,7 +316,8 @@ fn commentary(text: &[u8]) -> &'static str {
     }
     let mut from = 0;
     while let Some(at) = find_word(text, "I", from) {
-        if matches!(text.get(at + 1), Some(b' ' | b'\'')) {
+        let numeral = NUMERAL_BEFORE.contains(&word_before(text, at).as_str());
+        if !numeral && matches!(text.get(at + 1), Some(b' ' | b'\'')) {
             return "I";
         }
         from = at + 1;
@@ -358,24 +374,6 @@ fn normalized_text(text: &str) -> String {
     out
 }
 
-fn has_dash_fraction(text: &[u8]) -> bool {
-    let mut i = 0;
-    while i + 3 < text.len() {
-        if text[i].is_ascii_digit() && text[i + 1] == b'-' {
-            let mut j = i + 2;
-            let s = j;
-            while j < text.len() && text[j].is_ascii_digit() {
-                j += 1;
-            }
-            if j > s && j < text.len() && text[j] == b'/' {
-                return true;
-            }
-        }
-        i += 1;
-    }
-    false
-}
-
 fn add_issue(list: &mut String, what: &str) {
     if !list.is_empty() {
         list.push_str("; ");
@@ -383,17 +381,62 @@ fn add_issue(list: &mut String, what: &str) {
     list.push_str(what);
 }
 
-/// Check one note text against the house style (SPEC 19). Pure.
-pub fn check_note_text(text: &str) -> NoteStyle {
+/// Tokens a mechanical fix must leave alone apart from upper-casing: catalog and model numbers (`HU212-2`, `H2.5A`, `A35`),
+/// i.e. runs of letters, digits, `-`, `/` and inner `.` that hold both a letter and a digit.
+fn model_tokens(text: &[u8]) -> Vec<&[u8]> {
+    let mut out = Vec::new();
+    for raw in text.split(|c| matches!(c, b' ' | b'\t' | b'\r' | b'\n' | b'(' | b')' | b',' | b';' | b':')) {
+        let t = trim_end(raw, b".");
+        let has_letter = t.iter().any(u8::is_ascii_alphabetic);
+        let has_digit = t.iter().any(u8::is_ascii_digit);
+        if has_letter && has_digit && t.iter().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'/' | b'.')) {
+            out.push(t);
+        }
+    }
+    out
+}
+
+/// Replace `word` by `abbr` everywhere (whole words), without doubling a period that follows (`EACH.` -> `EA.`).
+fn abbreviate(work: Vec<u8>, word: &str, abbr: &str) -> Vec<u8> {
+    let mut work = work;
+    let mut from = 0;
+    let mut guard = 0;
+    while let Some(at) = find_word(&work, word, from) {
+        if guard > 50 {
+            break;
+        }
+        guard += 1;
+        let mut end = at + word.len();
+        if abbr.ends_with('.') && work.get(end) == Some(&b'.') {
+            end += 1;
+        }
+        let mut next = Vec::with_capacity(work.len());
+        next.extend_from_slice(&work[..at]);
+        next.extend_from_slice(abbr.as_bytes());
+        next.extend_from_slice(&work[end..]);
+        from = at + abbr.len();
+        work = next;
+    }
+    work
+}
+
+/// Check one note text against the house style (SPEC 19, 25.3). Pure. Penny sizes (`16d`), ACI symbols (`db`, `ld`,
+/// `f'c`) and the style's `text.keep_case` tokens keep their case; a period after a house abbreviation is not a trailing
+/// period; a model number with a dash (`HU212-2/HUC212-2`) is not a dashed fraction.
+pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
     let tb = text.as_bytes();
     let mut issues = String::new();
-    if tb.iter().any(u8::is_ascii_lowercase) {
-        add_issue(&mut issues, "lowercase letters (notes are UPPERCASE)");
+    let lower = house::has_folding_lowercase(tb, st);
+    if lower {
+        add_issue(
+            &mut issues,
+            "lowercase letters (notes are UPPERCASE; penny sizes like 16d and ACI symbols like db, ld, f'c may stay as written)",
+        );
     }
     if tb.windows(3).any(|w| w == b" x ") {
         add_issue(&mut issues, "\" x \" as a size separator (use \" X \")");
     }
-    if has_dash_fraction(tb) {
+    if house::has_dash_fraction(tb) {
         add_issue(&mut issues, "dashed fraction like 1-1/2\" (house style is 1 1/2\")");
     }
     for sp in &SPELLED_OUT {
@@ -406,19 +449,19 @@ pub fn check_note_text(text: &str) -> NoteStyle {
     if trimmed.len() > 1 && trimmed[trimmed.len() - 1] == b'.' {
         let tok = last_token(trimmed);
         let base = trim_end(tok, b".");
-        let mut ok = base.contains(&b'.');
-        if !ok {
-            ok = PERIOD_ABBRS.iter().any(|ab| ab.as_bytes().eq_ignore_ascii_case(base));
-        }
-        if !ok && base.last().is_some_and(|&c| !c.is_ascii_alphabetic()) {
-            ok = true;
-        }
-        if !ok {
-            trailing = true;
-        }
+        let ok = base.contains(&b'.')
+            || house::is_period_abbr(base, st)
+            || base.last().is_some_and(|&c| !c.is_ascii_alphabetic());
+        trailing = !ok;
     }
     if trailing {
-        add_issue(&mut issues, "trailing period (notes are not sentences)");
+        let word = String::from_utf8_lossy(trim_end(last_token(trimmed), b"."));
+        add_issue(
+            &mut issues,
+            &format!(
+                "trailing period (notes are not sentences; if \"{word}.\" is an abbreviation, add it to the style's notes.abbreviations)"
+            ),
+        );
     }
     let mut rewrite = false;
     if tb.len() > MAX_NOTE_LEN {
@@ -445,36 +488,19 @@ pub fn check_note_text(text: &str) -> NoteStyle {
         );
     }
     if issues.is_empty() {
-        return NoteStyle { issues, fixed: text.to_string(), rewrite: false };
+        return NoteStyle { issues, fixed: text.to_string(), rewrite: false, fix_safe: true };
     }
 
     let mut work: Vec<u8> = tb.to_vec();
     for sp in &SPELLED_OUT {
-        let mut guard = 0;
-        while let Some(at) = find_word(&work, sp.word, 0) {
-            if guard > 50 {
-                break;
-            }
-            guard += 1;
-            let mut next = Vec::with_capacity(work.len());
-            next.extend_from_slice(&work[..at]);
-            next.extend_from_slice(sp.abbr.as_bytes());
-            next.extend_from_slice(&work[at + sp.word.len()..]);
-            work = next;
-        }
+        work = abbreviate(work, sp.word, sp.abbr);
     }
-    let up = work.to_ascii_uppercase();
+    let up = house::upper_bytes(&work, st);
     let mut out: Vec<u8> = Vec::with_capacity(up.len());
     for k in 0..up.len() {
-        if up[k] == b'-' && k > 0 && k + 1 < up.len() && up[k - 1].is_ascii_digit() && up[k + 1].is_ascii_digit() {
-            let mut j = k + 1;
-            while j < up.len() && up[j].is_ascii_digit() {
-                j += 1;
-            }
-            if j < up.len() && up[j] == b'/' {
-                out.push(b' ');
-                continue;
-            }
+        if house::dash_fraction_at(&up, k) {
+            out.push(b' ');
+            continue;
         }
         out.push(up[k]);
     }
@@ -482,10 +508,15 @@ pub fn check_note_text(text: &str) -> NoteStyle {
     if trailing && res.last() == Some(&b'.') {
         res = &res[..res.len() - 1];
     }
-    NoteStyle { issues, fixed: String::from_utf8_lossy(res).into_owned(), rewrite }
+    let fixed = String::from_utf8_lossy(res).into_owned();
+    let fix_safe = model_tokens(tb).iter().all(|m| {
+        let want = house::upper_bytes(m, st);
+        fixed.as_bytes().windows(want.len()).any(|w| w == want.as_slice())
+    });
+    NoteStyle { issues, fixed, rewrite, fix_safe }
 }
 
-fn note_style(doc: &Value, diags: &Diags) {
+fn note_style(doc: &Value, st: &Style, diags: &Diags) {
     for v in arr_of(doc, "views").unwrap_or(&[]) {
         let vid = str_of(v, "id");
         let keyed = matches!(v.get("notes_style").and_then(Value::str), Some("keyed" | "list"));
@@ -497,24 +528,26 @@ fn note_style(doc: &Value, diags: &Diags) {
             let Some(text) = an.get("text").and_then(Value::str) else { continue };
             let aid = str_of(an, "id");
             let path = format!("views/{vid}/annotations/{aid}/text");
-            let st = check_note_text(text);
-            if !st.issues.is_empty() {
-                let fix = if st.rewrite && st.fixed == text {
+            let ns = check_note_text(text, st);
+            if !ns.issues.is_empty() {
+                let fix = if !ns.fix_safe {
+                    "edit the text by hand to fix the problems listed (no automatic fix: it would change a model number in the text)".to_string()
+                } else if ns.rewrite && ns.fixed == text {
                     "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary (split a long note in two)".to_string()
-                } else if st.rewrite {
+                } else if ns.rewrite {
                     format!(
                         "rewrite it as <SIZE/QTY> <MATERIAL> <ITEM> <W/ ATTACHMENT> <@ SPACING>, one idea, no commentary; the mechanical part is \"{}\"",
-                        st.fixed
+                        ns.fixed
                     )
                 } else {
-                    format!("set text to \"{}\"", st.fixed)
+                    format!("set text to \"{}\"", ns.fixed)
                 };
                 diags.add_fix(
                     Level::Warning,
                     "W_NOTE_STYLE",
                     Some(aid),
                     Some(&path),
-                    format!("note '{aid}' in view {vid} breaks the house note style: {}. Text: \"{text}\"", st.issues),
+                    format!("note '{aid}' in view {vid} breaks the house note style: {}. Text: \"{text}\"", ns.issues),
                     fix,
                 );
             }
@@ -553,8 +586,16 @@ fn note_style(doc: &Value, diags: &Diags) {
 
 // ---- meta.requested -------------------------------------------------------------------------------------
 
+/// `s` cut to at most `n` characters, with `...` when cut.
+fn clip_text(s: &str, n: usize) -> String {
+    match s.char_indices().nth(n) {
+        Some((i, _)) => format!("{}...", &s[..i]),
+        None => String::from(s),
+    }
+}
+
 /// `meta.requested` must be an array of non-empty strings; every item that matches nothing in the document warns.
-fn requested_missing(doc: &Value, diags: &Diags) {
+fn requested_missing(doc: &Value, cov: &[coverage::Item], diags: &Diags) {
     let Some(meta) = doc.get("meta") else { return };
     let Some(rv) = meta.get("requested") else { return };
     let shape_fix = "e.g. \"meta\": {\"requested\": [\"cmu wall\", \"bond beam\", \"H2.5A ties\"]} (the designer's asks, one short phrase each)";
@@ -589,17 +630,34 @@ fn requested_missing(doc: &Value, diags: &Diags) {
     if bad {
         return;
     }
-    for (i, item) in coverage::compute(doc).iter().enumerate() {
+    for (i, item) in cov.iter().enumerate() {
         if !item.found.is_empty() {
             continue;
         }
+        let closest = match &item.closest {
+            Some(c) => format!(
+                "; closest: {} \"{}\" ({} of {} words; lacks {})",
+                c.source,
+                clip_text(&c.text, 80),
+                c.have,
+                c.total,
+                model::join_quoted(&c.missing.iter().map(String::as_str).collect::<Vec<_>>())
+            ),
+            None => String::from("; no candidate shares any of its words"),
+        };
         diags.add_fix(
             Level::Warning,
             "W_REQUESTED_MISSING",
             None,
             Some(&format!("meta/requested/{i}")),
-            format!("requested element \"{}\" (meta.requested) matches no component id, type, label, model or note text", item.text),
-            format!("build it (name the component after it, or add a note whose text says \"{}\"), or remove it from meta.requested if the designer dropped it", item.text),
+            format!(
+                "requested element \"{}\" (meta.requested) matches no component (id, type, label, model, size) or annotation (note, label, dim text, weld, view title){closest}",
+                item.text
+            ),
+            format!(
+                "build it (name the component after it, or add a note whose text says \"{}\"; house abbreviations such as EA. = EACH match either way), or remove it from meta.requested if the designer dropped it",
+                item.text
+            ),
         );
     }
 }
@@ -607,7 +665,7 @@ fn requested_missing(doc: &Value, diags: &Diags) {
 // ---- dim directions -------------------------------------------------------------------------------------
 
 /// Resolve a dim endpoint without reporting reference errors (the view build reports those).
-fn quiet_point(scene: &Scene, v: &Value) -> Option<V2> {
+pub fn quiet_point(scene: &Scene, v: &Value) -> Option<V2> {
     let before = scene.diags.len();
     let p = scene.point(v, "", "");
     let mut list = scene.diags.take();
@@ -621,7 +679,7 @@ pub fn dominant_dir(from: V2, to: V2) -> &'static str {
     if (to.x - from.x).abs() >= (to.y - from.y).abs() { "h" } else { "v" }
 }
 
-fn dim_measure(from: V2, to: V2, dir: &str) -> f64 {
+pub fn dim_measure(from: V2, to: V2, dir: &str) -> f64 {
     match dir {
         "v" => (to.y - from.y).abs(),
         "aligned" => from.dist(to),

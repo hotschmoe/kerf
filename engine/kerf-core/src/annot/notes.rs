@@ -711,8 +711,28 @@ pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
     out
 }
 
+/// A citation `section` under the case transform: words with a digit (`1926.755(a)(1)`, `R602.3(5)`) print as written,
+/// since paragraph letters are significant; plain words (`Table`) take the transform.
+fn section_text(env: &Env, section: &str) -> String {
+    let mut out = String::with_capacity(section.len());
+    for (i, w) in section.split(' ').enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        if w.bytes().any(|c| c.is_ascii_digit()) {
+            out.push_str(w);
+        } else {
+            out.push_str(&upper_if(env, w));
+        }
+    }
+    out
+}
+
+/// The printed note: the text under the case transform, then each citation per `citations.format`. A citation's
+/// `section` keeps the case of its numbered parts (`section_text`) and `edition` prints as written; its code and the
+/// format's literal text take the case transform.
 pub fn note_text(env: &mut Env, text: &str, cites: &[Value]) -> String {
-    let mut s = String::from(text);
+    let mut s = upper_if(env, text).into_owned();
     for c in cites {
         let code = c.get("code").map_or("", |x| x.str().unwrap_or(""));
         let section_s = c.get("section").map_or("", |x| x.str().unwrap_or(""));
@@ -722,16 +742,16 @@ pub fn note_text(env: &mut Env, text: &str, cites: &[Value]) -> String {
         let mut rest = fmt;
         while !rest.is_empty() {
             if let Some(r) = rest.strip_prefix("{code}") {
-                s.push_str(code);
+                s.push_str(&upper_if(env, code));
                 rest = r;
             } else if let Some(r) = rest.strip_prefix("{section}") {
-                s.push_str(section_s);
+                s.push_str(&section_text(env, section_s));
                 rest = r;
             } else if let Some(r) = rest.strip_prefix("{edition}") {
                 s.push_str(&ed);
                 rest = r;
             } else if let Some(ch) = rest.chars().next() {
-                s.push(ch);
+                s.push_str(&upper_if(env, &rest[..ch.len_utf8()]));
                 rest = &rest[ch.len_utf8()..];
             }
         }
@@ -740,5 +760,5 @@ pub fn note_text(env: &mut Env, text: &str, cites: &[Value]) -> String {
             env.unverified = true;
         }
     }
-    upper_if(env, &s).into_owned()
+    s
 }

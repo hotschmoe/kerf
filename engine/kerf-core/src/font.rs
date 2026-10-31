@@ -147,8 +147,3 @@ fn decode(b: &[u8]) -> Option<u32> {
 pub fn utf8_iter(s: &[u8]) -> Utf8Iter<'_> {
     Utf8Iter { s, i: 0 }
 }
-
-/// ASCII upper-casing (non-ASCII bytes are untouched).
-pub fn upper_ascii(s: &[u8]) -> Vec<u8> {
-    s.to_ascii_uppercase()
-}
