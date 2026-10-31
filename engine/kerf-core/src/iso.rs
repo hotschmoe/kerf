@@ -138,8 +138,9 @@ impl Default for Iso {
 }
 
 impl Iso {
-    /// Label point of the visible faces of `comp` (None: nothing of it is visible).
-    pub fn landing(&self, comp: &Comp, inst: Option<u32>, part: Option<&str>) -> Option<V2> {
+    /// Landing candidates on the visible faces of `comp` (None: nothing of it is visible): the label point first, then
+    /// other well-inside points the note layout may move the arrow to when its leader hits something (as in a section).
+    pub fn landing(&self, comp: &Comp, inst: Option<u32>, part: Option<&str>, crop: Box, h: f64) -> Option<Vec<V2>> {
         let mut shapes: Vec<Shape> = Vec::new();
         for v in &self.vis {
             if v.comp != comp.index {
@@ -153,7 +154,8 @@ impl Iso {
             }
             shapes.extend(v.shapes.iter().map(OwnedShape::as_shape));
         }
-        shape::label_point(&shapes)
+        let p = shape::label_point(&shapes)?;
+        Some(shape::candidates_for(&shapes, crop, p, h))
     }
 
     /// Non-drawn picking regions: the visible face chosen per prism (cut cap first).

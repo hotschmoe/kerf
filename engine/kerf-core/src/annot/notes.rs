@@ -97,10 +97,7 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
                 shapes_src.extend(reg);
             }
         }
-        Landing::Iso(iso) => {
-            let p = iso.landing(comp, inst, part)?;
-            return Some(alloc::vec![p]);
-        }
+        Landing::Iso(iso) => return iso.landing(comp, inst, part, env.crop, h),
     }
     let shapes = shape::shapes_of(&shapes_src);
     let lp = shape::banded_label_point(&shapes, env.crop, h)?;
@@ -170,6 +167,8 @@ pub struct LabelSpec<'a> {
     /// Drawing-space position (author offset applied); None when an iso label does not project.
     pub base: Option<V2>,
     pub off: V2,
+    /// `pin`: never moved by the layout repair (overlaps then warn W_LABEL_OVERLAP).
+    pub pin: bool,
 }
 
 fn num2(x: f64) -> String {

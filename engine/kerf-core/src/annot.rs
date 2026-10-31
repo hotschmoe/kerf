@@ -340,6 +340,29 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     None
 }
 
+/// `pin` on a dimension or label: true keeps it exactly where the author put it; anything but a boolean warns.
+fn read_pin(env: &Env, an: &Value, id: &str, apath: &str) -> bool {
+    match non_null(an, "pin") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => {
+            env.diags.add_fix(
+                Level::Warning,
+                "W_PARAM",
+                Some(id),
+                Some(&format!("{apath}/pin")),
+                format!(
+                    "'{id}' in view {}: \"pin\" must be true or false (got {}); ignored",
+                    env.spec.id,
+                    model::kind_or_text(v)
+                ),
+                "use \"pin\": true to keep it exactly where you put it, or remove it".to_string(),
+            );
+            false
+        }
+    }
+}
+
 fn read_dim<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: &str) -> Option<DimSpec<'a>> {
     let (Some(fv), Some(tv)) = (an.get("from"), an.get("to")) else {
         env.diags.add(
@@ -371,7 +394,8 @@ fn read_dim<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: 
     };
     let off =
         model::length_or_diag(env.diags, Some(id), &format!("{apath}/offset"), an.get("offset"), "dim offset", 0.0)?;
-    Some(DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text") })
+    let pin = read_pin(env, an, id, apath);
+    Some(DimSpec { k, id, from, to, dir, off0: off, text: str_member(an, "text"), pin })
 }
 
 /// A label and its offset from the `at` point.
@@ -406,7 +430,8 @@ fn read_label<'a>(
         p = p.add(off);
     }
     let base = Some(at_drawn(env, atv, "", p));
-    Some((LabelSpec { k, id, text, base, off }, off))
+    let pin = read_pin(env, an, id, apath);
+    Some((LabelSpec { k, id, text, base, off, pin }, off))
 }
 
 /// Reads every annotation of the view; the invalid ones are diagnosed and skipped.
@@ -531,6 +556,8 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
 
     let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
     let Some(fin) = best else { return Vec::new() };
+    repair::report_moves(env, routed, &dl, &fin);
+    repair::report_overlaps(env, &dl, &fin.rd);
     let rd = fin.rd;
     notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep.g);
     notes::check_landings(env, routed, &fin.r, &base_segs);

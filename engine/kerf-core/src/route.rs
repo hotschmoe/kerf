@@ -849,6 +849,58 @@ fn decross(c: &mut Ctx) {
     }
 }
 
+/// Pairs of notes in the same column (neither placed) whose leaders cross.
+fn column_crossings(c: &Ctx) -> Vec<(usize, usize)> {
+    let n = c.notes.len();
+    let mut out = Vec::new();
+    for i in 0..n {
+        for j in i + 1..n {
+            if c.fixed(i) || c.fixed(j) || c.left[i] != c.left[j] {
+                continue;
+            }
+            if poly_poly_dist(&c.leaders[i], &c.leaders[j]) <= 1e-9 {
+                out.push((i, j));
+            }
+        }
+    }
+    out
+}
+
+/// SPEC 25.2: leaders of one column that still cross after the adjacent swaps (a tall column pushes its notes far from
+/// their landings, so non-neighbours cross) trade places when that lowers the number of crossing pairs; bounded, and
+/// the keys are renumbered by rank afterwards like `decross`.
+fn untangle(c: &mut Ctx) {
+    let n = c.notes.len();
+    let mut cur = column_crossings(c);
+    for _ in 0..n * 2 + 4 {
+        if cur.is_empty() {
+            break;
+        }
+        let mut improved = false;
+        for &(i, j) in &cur.clone() {
+            c.key.swap(i, j);
+            c.layout();
+            let next = column_crossings(c);
+            if next.len() < cur.len() {
+                cur = next;
+                improved = true;
+                break;
+            }
+            c.key.swap(i, j);
+            c.layout();
+        }
+        if !improved {
+            break;
+        }
+    }
+    for col_left in [false, true] {
+        let ord = c.sort_order(col_left);
+        for (k, &i) in ord.iter().enumerate() {
+            c.key[i] = k as f64;
+        }
+    }
+}
+
 // ---- entry point -------------------------------------------------------------------------------------
 
 pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> Layout {
@@ -890,6 +942,7 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
     }
     c.layout();
     decross(&mut c);
+    untangle(&mut c);
     if c.eval().hits > 0 {
         let mut best = c.snapshot();
         c.budget = if p.light { 20 } else { 60 };

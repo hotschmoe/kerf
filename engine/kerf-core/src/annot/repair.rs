@@ -3,11 +3,17 @@
 use super::dims::{DimSpec, base_hits, label_items, polys_overlap, stack_dims};
 use super::notes::{self, LabelSpec, Meta, MetaKind, NotePrep, Obstacle, clear_of_leaders, dirs8};
 use super::text::text_poly;
-use super::{Env, NoteIn, items_box};
+use super::{Env, Landing, NoteIn, items_box};
 use crate::drawing::Item;
 use crate::geom::{Box, V2};
+use crate::json;
+use crate::math;
+use crate::model::Level;
 use crate::pen::Pen;
 use crate::route;
+use crate::units;
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 /// One rendering of the dimensions and labels (stacked, with the repair pushes applied) plus what the router needs.
@@ -18,6 +24,8 @@ pub struct Render<'a> {
     pub knock: Vec<[V2; 4]>,
     pub ext: Box,
     pub meta: Vec<Meta<'a>>,
+    /// Per dimension: what it collides with at its authored offset (the stacking moved it out).
+    pub dim_blockers: Vec<Vec<String>>,
 }
 
 pub struct DimLab<'d, 'a> {
@@ -32,13 +40,14 @@ pub fn render_dim_labels<'a>(
     per_in: &[Vec<Item>],
     meta_in: &[Meta<'a>],
     dpush: &[f64],
+    dslide: &[f64],
     lpush: &[V2],
 ) -> Render<'a> {
     let mut per: Vec<Vec<Item>> = per_in.to_vec();
     let mut meta: Vec<Meta<'a>> = meta_in.to_vec();
     let mut eff = alloc::vec![0.0; dl.dspecs.len()];
     let mut ditems: Vec<Vec<Item>> = (0..dl.dspecs.len()).map(|_| Vec::new()).collect();
-    let mut label_polys: Vec<[V2; 4]> = Vec::new();
+    let mut label_polys: Vec<(&str, [V2; 4])> = Vec::new();
     for (i, l) in dl.lspecs.iter().enumerate() {
         let mut its = Vec::new();
         let push = lpush.get(i).copied().unwrap_or_default();
@@ -47,7 +56,7 @@ pub fn render_dim_labels<'a>(
         }
         for it in &its {
             if let Item::Text(t) = it {
-                label_polys.push(text_poly(env.font, t, 0.02 * env.s));
+                label_polys.push((l.id, text_poly(env.font, t, 0.02 * env.s)));
             }
         }
         if let Some(slot) = per.get_mut(l.k) {
@@ -58,7 +67,8 @@ pub fn render_dim_labels<'a>(
             m.off2 = l.off.y + push.y;
         }
     }
-    stack_dims(env, dl.dspecs, dpush, dl.base_segs, &label_polys, &mut ditems, &mut eff);
+    let mut dim_blockers: Vec<Vec<String>> = (0..dl.dspecs.len()).map(|_| Vec::new()).collect();
+    stack_dims(env, dl.dspecs, dpush, dslide, dl.base_segs, &label_polys, &mut ditems, &mut eff, &mut dim_blockers);
     for (i, d) in dl.dspecs.iter().enumerate() {
         if let Some(slot) = per.get_mut(d.k) {
             *slot = core::mem::take(&mut ditems[i]);
@@ -95,46 +105,108 @@ pub fn render_dim_labels<'a>(
             }
         }
     }
-    Render { per, obstacles, soft, knock, ext, meta }
+    Render { per, obstacles, soft, knock, ext, meta, dim_blockers }
 }
 
-/// Push a dimension out by whole dimension spacings (0.25 paper inch) until its text clears every leader.
-pub fn repair_dim(env: &Env, o: &Obstacle, leaders: &[[V2; 3]], h: f64, dpush: &mut [f64], dspecs: &[DimSpec]) -> bool {
+/// Where a moved dimension text or label may go: at least a text height `h` from every leader, and off every note
+/// text block (or key tag).
+pub struct Clearance<'l> {
+    pub leaders: &'l [[V2; 3]],
+    pub notes: Vec<[V2; 4]>,
+    pub h: f64,
+}
+
+impl Clearance<'_> {
+    fn new<'l>(r: &'l route::Layout, prep: &NotePrep) -> Clearance<'l> {
+        let notes =
+            r.x.iter()
+                .zip(&r.top)
+                .zip(&prep.sizes)
+                .map(|((&x, &top), &(w, hgt))| {
+                    [V2::init(x, top - hgt), V2::init(x + w, top - hgt), V2::init(x + w, top), V2::init(x, top)]
+                })
+                .collect();
+        Clearance { leaders: &r.leaders, notes, h: prep.g.h }
+    }
+
+    fn ok(&self, poly: &[V2; 4], shift: V2) -> bool {
+        if !clear_of_leaders(self.leaders, poly, shift, self.h) {
+            return false;
+        }
+        let q = poly.map(|p| p.add(shift));
+        !self.notes.iter().any(|b| polys_overlap(&q, b))
+    }
+}
+
+/// Clear a dimension's text off the note leaders that hit it. First the text slides along the dimension line (in
+/// half text heights, staying between the extension lines), so the line stays where the author put it; when no slide
+/// clears it, the dimension is pushed out by whole dimension spacings (0.25 paper inch). A pinned dimension stays.
+pub fn repair_dim(
+    env: &Env,
+    o: &Obstacle,
+    cl: &Clearance,
+    dpush: &mut [f64],
+    dslide: &mut [f64],
+    dspecs: &[DimSpec],
+) -> bool {
+    let h = cl.h;
     let step = 0.25 * env.s;
     let cap = 8.0 * step;
-    let (Some(cur), Some(spec)) = (dpush.get_mut(o.owner), dspecs.get(o.owner)) else { return false };
+    let (Some(cur), Some(slide), Some(spec)) = (dpush.get_mut(o.owner), dslide.get_mut(o.owner), dspecs.get(o.owner))
+    else {
+        return false;
+    };
+    if spec.pin {
+        return false;
+    }
+    if *slide == 0.0 {
+        let u = spec.along();
+        let (lo, hi) = o.poly.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+            let t = p.dot(u);
+            (lo.min(t), hi.max(t))
+        });
+        let room = 0.5 * (spec.span() - (hi - lo)) - env.style.tick_len_in * env.s;
+        let mut k = 1.0;
+        while k * 0.5 * h <= room {
+            for sg in [1.0, -1.0] {
+                let d = sg * k * 0.5 * h;
+                if cl.ok(&o.poly, u.scale(d)) {
+                    *slide = d;
+                    return true;
+                }
+            }
+            k += 1.0;
+        }
+    }
     if *cur + step > cap + 1e-9 {
         return false;
     }
     let sgn = spec.sgn();
-    let mut chosen = 1.0;
     let mut k = 1.0;
-    while k <= 6.0 {
-        if *cur + k * step > cap + 1e-9 {
-            break;
-        }
-        if clear_of_leaders(leaders, &o.poly, o.axis.scale(sgn * k * step), h) {
-            chosen = k;
-            break;
+    while *cur + k * step <= cap + 1e-9 {
+        if cl.ok(&o.poly, o.axis.scale(sgn * k * step)) {
+            *cur += k * step;
+            return true;
         }
         k += 1.0;
     }
-    *cur += chosen * step;
-    true
+    false
 }
+
+/// Labels move at most this many text heights from where the author put them (SPEC 25.2).
+const LABEL_MOVE_CAP: f64 = 6.0;
 
 /// Move a label (smallest move first, up/down before sideways) to where no leader comes within a text height
 /// and it overprints no other label or dimension text; prefers a spot that does not sit on drawn outlines.
-pub fn repair_label(
-    o: &Obstacle,
-    obsts: &[Obstacle],
-    leaders: &[[V2; 3]],
-    h: f64,
-    lpush: &mut [V2],
-    base_segs: &[[V2; 2]],
-) -> bool {
+/// A pinned label never moves.
+pub fn repair_label(o: &Obstacle, obsts: &[Obstacle], cl: &Clearance, lpush: &mut [V2], dl: &DimLab) -> bool {
+    let h = cl.h;
     let dirs = dirs8();
-    let cap = 12.0 * h;
+    let cap = LABEL_MOVE_CAP * h;
+    if dl.lspecs.get(o.owner).is_none_or(|l| l.pin) {
+        return false;
+    }
+    let base_segs = dl.base_segs;
     let Some(cur) = lpush.get_mut(o.owner) else { return false };
     for relax in 0..2 {
         let mut k = 1.0f64;
@@ -145,7 +217,7 @@ pub fn repair_label(
                 if (cur.x + dn.x).abs() > cap || (cur.y + dn.y).abs() > cap {
                     continue;
                 }
-                if !clear_of_leaders(leaders, &o.poly, dn, h) {
+                if !cl.ok(&o.poly, dn) {
                     continue;
                 }
                 let q = o.poly.map(|p| p.add(dn));
@@ -170,6 +242,12 @@ pub fn repair_label(
 pub struct Best<'a> {
     pub r: route::Layout,
     pub rd: Render<'a>,
+    /// The repair pushes of this pass (dimension: outward distance; label: shift) and, per pushed item, the note whose
+    /// leader it was moved away from.
+    pub dpush: Vec<f64>,
+    pub lpush: Vec<V2>,
+    pub dnote: Vec<Option<usize>>,
+    pub lnote: Vec<Option<usize>>,
 }
 
 /// Routes the notes, then repairs what hits dimension text or labels: pushes those dimensions out and moves those
@@ -187,12 +265,15 @@ pub fn solve<'a>(
     meta: &[Meta<'a>],
 ) -> Option<Best<'a>> {
     let mut dpush = alloc::vec![0.0f64; dl.dspecs.len()];
+    let mut dslide = alloc::vec![0.0f64; dl.dspecs.len()];
     let mut lpush = alloc::vec![V2::init(0.0, 0.0); dl.lspecs.len()];
+    let mut dnote: Vec<Option<usize>> = alloc::vec![None; dl.dspecs.len()];
+    let mut lnote: Vec<Option<usize>> = alloc::vec![None; dl.lspecs.len()];
     // route, then repair what hits dimension text or labels (bounded, deterministic)
     let mut best: Option<Best<'a>> = None;
     let mut stale = 0usize;
     for pass in 0..MAX_REPAIR_PASSES {
-        let rd = render_dim_labels(env, dl, per, meta, &dpush, &lpush);
+        let rd = render_dim_labels(env, dl, per, meta, &dpush, &dslide, &lpush);
         let r = notes::route_notes(env, prep, notes, rd.ext, &rd.obstacles, &rd.soft, pass > 0);
         let better = best.as_ref().is_none_or(|b| r.hits.len() < b.r.hits.len());
         if better {
@@ -203,9 +284,11 @@ pub fn solve<'a>(
         // stop when clean, or when two passes in a row did not get better
         let stop = r.hits.is_empty() || stale >= 2;
         let mut changed = false;
+        let snap = better.then(|| (dpush.clone(), lpush.clone(), dnote.clone(), lnote.clone()));
         if !stop {
             let mut touched_d = alloc::vec![false; dl.dspecs.len()];
             let mut touched_l = alloc::vec![false; dl.lspecs.len()];
+            let cl = Clearance::new(&r, prep);
             for ht in &r.hits {
                 if ht.kind != route::HitKind::Dim && ht.kind != route::HitKind::Label {
                     continue;
@@ -217,8 +300,11 @@ pub fn solve<'a>(
                         continue;
                     }
                     *t = true;
-                    if repair_dim(env, o, &r.leaders, prep.g.h, &mut dpush, dl.dspecs) {
+                    if repair_dim(env, o, &cl, &mut dpush, &mut dslide, dl.dspecs) {
                         changed = true;
+                        if let Some(dn) = dnote.get_mut(o.owner) {
+                            dn.get_or_insert(ht.note);
+                        }
                     }
                 } else {
                     let Some(t) = touched_l.get_mut(o.owner) else { continue };
@@ -226,18 +312,198 @@ pub fn solve<'a>(
                         continue;
                     }
                     *t = true;
-                    if repair_label(o, &rd.obstacles, &r.leaders, prep.g.h, &mut lpush, dl.base_segs) {
+                    if repair_label(o, &rd.obstacles, &cl, &mut lpush, dl) {
                         changed = true;
+                        if let Some(ln) = lnote.get_mut(o.owner) {
+                            ln.get_or_insert(ht.note);
+                        }
                     }
                 }
             }
         }
-        if better {
-            best = Some(Best { r, rd });
+        if let Some((dpush, lpush, dnote, lnote)) = snap {
+            best = Some(Best { r, rd, dpush, lpush, dnote, lnote });
         }
         if stop || !changed {
             break;
         }
     }
     best
+}
+
+/// Moves below this many paper inches are not reported (SPEC 25.2).
+const MOVE_REPORT_IN: f64 = 0.125;
+
+fn num2(x: f64) -> String {
+    json::number_string(math::round(x * 100.0) / 100.0)
+}
+
+fn paper(x: f64, s: f64) -> String {
+    json::number_string(math::round(x / s * 100.0) / 100.0)
+}
+
+fn and_list(items: &[String]) -> String {
+    match items {
+        [] => "other annotations".to_string(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// I_ANNOT_MOVED (SPEC 25.2): every dimension the stacking or the repair drew more than 1/8" (paper) away from its
+/// authored offset, and every label the repair moved that far, with what it was moved away from and how to keep it.
+pub fn report_moves(env: &Env, notes: &[NoteIn], dl: &DimLab, best: &Best) {
+    let vid = env.spec.id;
+    let s = env.s;
+    let tol = MOVE_REPORT_IN * s + 1e-9;
+    for (i, d) in dl.dspecs.iter().enumerate() {
+        let Some(eff) = best.rd.meta.get(d.k).map(|m| m.off) else { continue };
+        let moved = (eff - d.off0).abs();
+        if moved <= tol {
+            continue;
+        }
+        let mut why = best.rd.dim_blockers.get(i).cloned().unwrap_or_default();
+        if best.dpush.get(i).is_some_and(|&p| p > 0.0)
+            && let Some(n) = best.dnote.get(i).copied().flatten().and_then(|n| notes.get(n))
+        {
+            why.push(format!("the leader of note '{}'", n.id));
+        }
+        env.diags.add_fix(
+            Level::Info,
+            "I_ANNOT_MOVED",
+            Some(d.id),
+            Some(&format!("views/{vid}/annotations/{}/offset", d.id)),
+            format!(
+                "view {vid}: dimension '{}' is drawn at offset {} instead of its offset {}: moved {} ({}\" paper) outward to clear {}",
+                d.id,
+                num2(eff),
+                num2(d.off0),
+                units::fmt_ft_in(moved),
+                paper(moved, s),
+                and_list(&why)
+            ),
+            format!(
+                "keep it there: set \"offset\": {}; or keep {} by moving what it collides with, or set \"pin\": true (drawn exactly at {}, overlaps then warn W_LABEL_OVERLAP)",
+                num2(eff),
+                num2(d.off0),
+                num2(d.off0)
+            ),
+        );
+    }
+    let iso = matches!(env.landing, Landing::Iso(_));
+    for (i, l) in dl.lspecs.iter().enumerate() {
+        let Some(push) = best.lpush.get(i).copied() else { continue };
+        if push.len() <= tol {
+            continue;
+        }
+        let note = best.lnote.get(i).copied().flatten().and_then(|n| notes.get(n));
+        let why = note.map_or_else(|| "note leaders".to_string(), |n| format!("the leader of note '{}'", n.id));
+        let keep = if iso {
+            String::new()
+        } else {
+            format!(
+                "keep it there: set \"offset\": [{}, {}] (now [{}, {}]); ",
+                num2(l.off.x + push.x),
+                num2(l.off.y + push.y),
+                num2(l.off.x),
+                num2(l.off.y)
+            )
+        };
+        let mover = note.map_or_else(|| "the note".to_string(), |n| format!("note '{}'", n.id));
+        env.diags.add_fix(
+            Level::Info,
+            "I_ANNOT_MOVED",
+            Some(l.id),
+            Some(&format!("views/{vid}/annotations/{}", l.id)),
+            format!(
+                "view {vid}: label '{}' ('{}') is drawn {} ({}\" paper) from where its at and offset put it, to clear {why}",
+                l.id,
+                l.text,
+                units::fmt_ft_in(push.len()),
+                paper(push.len(), s)
+            ),
+            format!(
+                "{keep}or keep it where you put it: move {mover} (\"place\" or \"at\") or set \"pin\": true on the label (a leader through it then warns W_LEADER_HIT)"
+            ),
+        );
+    }
+}
+
+/// W_LABEL_OVERLAP (SPEC 25.2): a label whose text overprints another label or a dimension's text, and a pinned
+/// dimension whose text overprints another dimension's text. Proposes a label offset that clears it.
+pub fn report_overlaps(env: &Env, dl: &DimLab, rd: &Render) {
+    let vid = env.spec.id;
+    let h = env.style.label_height_in * env.s;
+    let iso = matches!(env.landing, Landing::Iso(_));
+    let obs = &rd.obstacles;
+    let pinned_dim = |o: &Obstacle| o.kind == route::ObstKind::Dim && dl.dspecs.get(o.owner).is_some_and(|d| d.pin);
+    let mut reported = 0usize;
+    for (i, a) in obs.iter().enumerate() {
+        for b in &obs[i + 1..] {
+            let a_label = a.kind == route::ObstKind::Label;
+            let b_label = b.kind == route::ObstKind::Label;
+            if !(a_label || b_label || pinned_dim(a) || pinned_dim(b)) || a.id == b.id {
+                continue;
+            }
+            if !polys_overlap(&a.poly, &b.poly) {
+                continue;
+            }
+            reported += 1;
+            if reported > 8 {
+                continue;
+            }
+            let (mv, other) = if b_label && !a_label { (b, a) } else { (a, b) };
+            let name = |o: &Obstacle| {
+                if o.kind == route::ObstKind::Label {
+                    format!("label '{}' ('{}')", o.id, o.text)
+                } else {
+                    format!("the text '{}' of dimension '{}'", o.text, o.id)
+                }
+            };
+            let mut fix = String::new();
+            if mv.kind == route::ObstKind::Label && !iso {
+                'search: for k in 1..=24u32 {
+                    let delta = math::ceil(f64::from(k) * 0.5 * h * 4.0) / 4.0;
+                    for dv in dirs8() {
+                        let dn = dv.norm().scale(delta);
+                        let q = mv.poly.map(|p| p.add(dn));
+                        if obs.iter().all(|o| o.id == mv.id || !polys_overlap(&q, &o.poly)) {
+                            fix = format!(
+                                "set label '{}' \"offset\": [{}, {}] (now [{}, {}])",
+                                mv.id,
+                                num2(mv.off + dn.x),
+                                num2(mv.off2 + dn.y),
+                                num2(mv.off),
+                                num2(mv.off2)
+                            );
+                            break 'search;
+                        }
+                    }
+                }
+            }
+            if fix.is_empty() {
+                fix = format!(
+                    "move one of them: a label with its \"offset\", a dimension with its \"offset\" (or drop \"pin\" on '{}')",
+                    mv.id
+                );
+            }
+            env.diags.add_fix(
+                Level::Warning,
+                "W_LABEL_OVERLAP",
+                Some(mv.id.as_str()),
+                Some(&format!("views/{vid}/annotations/{}", mv.id)),
+                format!("view {vid}: {} overprints {}", name(mv), name(other)),
+                fix,
+            );
+        }
+    }
+    if reported > 8 {
+        env.diags.add(
+            Level::Warning,
+            "W_LABEL_OVERLAP",
+            None,
+            Some(&format!("views/{vid}")),
+            format!("view {vid}: {} more overprinting labels not listed; fix the ones above first", reported - 8),
+        );
+    }
 }
