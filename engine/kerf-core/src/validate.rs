@@ -342,11 +342,21 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
         if !touches {
             let (msg, fix) = match face_host(s, c, &mine) {
                 Some((host, face, gap)) => (
-                    format!("component '{}' touches nothing: it floats {} off the {face} of '{host}' (hardware placed with a hand-set `z`)", c.id, fmt_ft_in(gap)),
-                    format!("mount it on that face: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"on\":\"{host}.{face}\",\"z\":null}}}}", c.id),
+                    format!(
+                        "component '{}' touches nothing: it floats {} off the {face} of '{host}' (hardware placed with a hand-set `z`)",
+                        c.id,
+                        fmt_ft_in(gap)
+                    ),
+                    format!(
+                        "mount it on that face: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"on\":\"{host}.{face}\",\"z\":null}}}}",
+                        c.id
+                    ),
                 ),
                 None => (
-                    format!("component '{}' touches nothing (gap > 1/32\" to every other component, in plan and in z); it may be mis-placed", c.id),
+                    format!(
+                        "component '{}' touches nothing (gap > 1/32\" to every other component, in plan and in z); it may be mis-placed",
+                        c.id
+                    ),
                     "check its `at` anchor/offset, or `z` range if it should bear on another member".to_string(),
                 ),
             };
@@ -363,11 +373,21 @@ fn face_host<'a>(s: &Drawn<'_, 'a>, c: &Comp<'a>, mine: &[&&Pf<'_>]) -> Option<(
     }
     let mut best: Option<(f64, String, &'static str)> = None;
     for p in mine {
-        for q in s.items.iter().filter(|q| q.comp.index != c.index && !q.comp.ty.traits.hardware && q.prism.role != Role::Soil) {
-            if !p.box_.overlaps(q.box_, 0.0) || clip::total_area(&clip::boolean(&p.flat, &q.flat, Op::Intersect)) <= 0.01 {
+        for q in s
+            .items
+            .iter()
+            .filter(|q| q.comp.index != c.index && !q.comp.ty.traits.hardware && q.prism.role != Role::Soil)
+        {
+            if !p.box_.overlaps(q.box_, 0.0)
+                || clip::total_area(&clip::boolean(&p.flat, &q.flat, Op::Intersect)) <= 0.01
+            {
                 continue;
             }
-            let (gap, face) = if p.prism.z0 >= q.prism.z1 { (p.prism.z0 - q.prism.z1, "face_front") } else { (q.prism.z0 - p.prism.z1, "face_back") };
+            let (gap, face) = if p.prism.z0 >= q.prism.z1 {
+                (p.prism.z0 - q.prism.z1, "face_front")
+            } else {
+                (q.prism.z0 - p.prism.z1, "face_back")
+            };
             if gap > 0.0 && gap < 1.0 && best.as_ref().is_none_or(|b| gap < b.0) {
                 best = Some((gap, q.comp.id.clone(), face));
             }
@@ -944,7 +964,8 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
     let hung = |a: &str, b: &str| {
         s.comps.iter().any(|h| {
             let [j0, j1] = &h.built.hw.joins;
-            (j0.iter().any(|x| x == a) && j1.iter().any(|x| x == b)) || (j0.iter().any(|x| x == b) && j1.iter().any(|x| x == a))
+            (j0.iter().any(|x| x == a) && j1.iter().any(|x| x == b))
+                || (j0.iter().any(|x| x == b) && j1.iter().any(|x| x == a))
         })
     };
     for (i, &ca) in boxes.iter().enumerate() {

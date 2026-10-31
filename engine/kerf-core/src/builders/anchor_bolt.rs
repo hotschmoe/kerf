@@ -52,7 +52,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         None => None,
     };
     if ap.leveling_nut && plate_ys.is_none() {
-        ctx.p.fail("leveling_nut", "leveling_nut needs \"plate\": the base plate the rod passes through (the nut goes under it)".to_string());
+        ctx.p.fail(
+            "leveling_nut",
+            "leveling_nut needs \"plate\": the base plate the rod passes through (the nut goes under it)".to_string(),
+        );
         return None;
     }
     let proj = match (ap.projection, plate_ys) {
@@ -171,7 +174,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         let mat = super::common::material_or(ctx, "grout", "concrete");
         prisms.insert(
             0,
-            Prism { material: mat.to_string(), ..steel("adhesive", model::one_loop(model::rect_loop(-hr, -embed, hr, 0.0)), hr) },
+            Prism {
+                material: mat.to_string(),
+                ..steel("adhesive", model::one_loop(model::rect_loop(-hr, -embed, hr, 0.0)), hr)
+            },
         );
     }
     let bx = box_of_prisms(&prisms);

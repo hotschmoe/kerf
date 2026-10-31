@@ -146,7 +146,9 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
 }
 
 fn build_strap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<Built> {
-    for key in ["mount", "carried", "carrying", "post", "beam", "rod", "face", "height", "seat", "standoff", "seat_height"] {
+    for key in
+        ["mount", "carried", "carrying", "post", "beam", "rod", "face", "height", "seat", "standoff", "seat_height"]
+    {
         if ctx.p.has(key) {
             ctx.p.fail(key, format!("'{key}' belongs to kind hanger, post_cap, post_base or holdown; this connector is kind {}: set \"kind\" or remove '{key}'", kind.tag()));
         }

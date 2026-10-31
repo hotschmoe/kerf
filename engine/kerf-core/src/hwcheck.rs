@@ -37,13 +37,20 @@ fn bearing(scene: &Scene<'_>, c: &Comp<'_>, b: &Bears, diags: &Diags) {
     let tol = 1.0 / 32.0;
     let (x, z) = ([b.plan[0], b.plan[1]], [b.plan[2], b.plan[3]]);
     let mut below: Option<(f64, &str)> = None;
-    for o in scene.comps.iter().filter(|o| o.state == State::Ok && o.index != c.index && !b.post.contains(&o.id) && !o.ty.traits.hardware) {
+    for o in scene
+        .comps
+        .iter()
+        .filter(|o| o.state == State::Ok && o.index != c.index && !b.post.contains(&o.id) && !o.ty.traits.hardware)
+    {
         for p in o.world.iter().filter(|p| p.kind == Kind::Body && p.role != Role::Soil && !p.embedded) {
             let Some(pb) = plan_overlap(p, x, z) else { continue };
             if (pb.y1 - b.y).abs() <= tol {
                 return;
             }
-            if pb.y1 < b.y + tol + b.standoff.max(0.0) + 0.5 && pb.y1 > b.y - 12.0 && below.is_none_or(|bb| pb.y1 > bb.0) {
+            if pb.y1 < b.y + tol + b.standoff.max(0.0) + 0.5
+                && pb.y1 > b.y - 12.0
+                && below.is_none_or(|bb| pb.y1 > bb.0)
+            {
                 below = Some((pb.y1, o.id.as_str()));
             }
         }
@@ -60,7 +67,11 @@ fn bearing(scene: &Scene<'_>, c: &Comp<'_>, b: &Bears, diags: &Diags) {
                     fmt_ft_in(top + b.standoff)
                 )
             } else {
-                format!("'{}' runs into '{host}': move it up so its bottom is at y {}", b.post.join("+"), fmt_ft_in(top + b.standoff))
+                format!(
+                    "'{}' runs into '{host}': move it up so its bottom is at y {}",
+                    b.post.join("+"),
+                    fmt_ft_in(top + b.standoff)
+                )
             };
             (
                 format!(
@@ -96,15 +107,16 @@ fn rod_anchor(scene: &Scene<'_>, c: &Comp<'_>, rod: &str, diags: &Diags) {
     }
     let tip = V2::init((bx.x0 + bx.x1) / 2.0, bx.y0 + 0.25);
     let zc = (z0 + z1) / 2.0;
-    let anchored = scene.comps.iter().filter(|o| o.state == State::Ok && o.index != r.index && !o.ty.traits.hardware).any(|o| {
-        o.world.iter().any(|p| {
-            p.kind == Kind::Body
-                && (p.role.is_masonry() || p.role == Role::Steel)
-                && zc >= p.z0
-                && zc <= p.z1
-                && geom::locate(tip, &clip::from_region(&p.loops, FLAT_TOL), 1e-6) != geom::Loc::Outside
-        })
-    });
+    let anchored =
+        scene.comps.iter().filter(|o| o.state == State::Ok && o.index != r.index && !o.ty.traits.hardware).any(|o| {
+            o.world.iter().any(|p| {
+                p.kind == Kind::Body
+                    && (p.role.is_masonry() || p.role == Role::Steel)
+                    && zc >= p.z0
+                    && zc <= p.z1
+                    && geom::locate(tip, &clip::from_region(&p.loops, FLAT_TOL), 1e-6) != geom::Loc::Outside
+            })
+        });
     if anchored {
         return;
     }

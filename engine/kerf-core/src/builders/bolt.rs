@@ -201,7 +201,10 @@ fn stud(bp: &Params) -> Built {
             prisms.push(Prism {
                 zhalf: f / 2.0,
                 zoff: zo,
-                ..steel("nut", model::one_loop(model::rect_loop(o.x - f / 2.0, grip + wt, o.x + f / 2.0, grip + wt + d)))
+                ..steel(
+                    "nut",
+                    model::one_loop(model::rect_loop(o.x - f / 2.0, grip + wt, o.x + f / 2.0, grip + wt + d)),
+                )
             });
         } else {
             let (hd, ht) = (1.6 * d, 0.5 * d);

@@ -3,14 +3,16 @@
 //! then made local to the placement point), so section, plan, elevation, iso and the mesh agree; plates that nearer
 //! members hide draw dashed (`hw_dash`).
 
-use super::common::{Ctx, drop_duplicate_points, oriented_ccw, parse_point_list, sawn_depth, sawn_thickness, vertex_anchors};
+use super::common::{
+    Ctx, drop_duplicate_points, oriented_ccw, parse_point_list, sawn_depth, sawn_thickness, vertex_anchors,
+};
 use super::connector::{Face, Kind, ModelInfo, Mount, Params, strap_info, thickness};
 use crate::clip;
-use crate::json::Value;
-use crate::params::ParamEnum;
 use crate::geom::{self, Box, FLAT_TOL, Pt, V2};
+use crate::json::Value;
 use crate::math;
 use crate::model::{self, Built, Diag, Level, NamedAnchor, Prism};
+use crate::params::ParamEnum;
 use crate::pathclip;
 use crate::pathgeom;
 use crate::scene::{Scene, State};
@@ -41,13 +43,15 @@ impl Member {
 /// The member a host key names (`id` or `id#k`), or None (reported).
 pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
     let (id, inst) = match name.split_once('#') {
-        Some((a, b)) => match b.parse::<usize>() {
-            Ok(k) => (a, k),
-            Err(_) => {
-                ctx.p.fail(key, format!("'{key}': \"{name}\" is not a member name; use \"<id>\" or \"<id>#<k>\" for array instance k"));
-                return None;
+        Some((a, b)) => {
+            match b.parse::<usize>() {
+                Ok(k) => (a, k),
+                Err(_) => {
+                    ctx.p.fail(key, format!("'{key}': \"{name}\" is not a member name; use \"<id>\" or \"<id>#<k>\" for array instance k"));
+                    return None;
+                }
             }
-        },
+        }
         None => (name, 0),
     };
     let scene: &Scene = ctx.scene;
@@ -150,7 +154,8 @@ impl Kit {
             return;
         }
         let ys: Vec<f64> = uy.iter().map(|p| p.1).collect();
-        let (y0, y1) = (ys.iter().copied().fold(f64::INFINITY, f64::min), ys.iter().copied().fold(f64::NEG_INFINITY, f64::max));
+        let (y0, y1) =
+            (ys.iter().copied().fold(f64::INFINITY, f64::min), ys.iter().copied().fold(f64::NEG_INFINITY, f64::max));
         let flat: Vec<V2> = uy.iter().map(|&(u, y)| V2::init(u, y)).collect();
         let n = 4;
         for k in 0..n {
@@ -171,7 +176,11 @@ impl Kit {
             .map(|mut p| {
                 p.zoff = (p.z0 + p.z1) / 2.0 - zc;
                 p.zhalf = (p.z1 - p.z0) / 2.0;
-                p.loops = p.loops.iter().map(|l| l.iter().map(|q| Pt { x: q.x - origin.x, y: q.y - origin.y, b: q.b }).collect()).collect();
+                p.loops = p
+                    .loops
+                    .iter()
+                    .map(|l| l.iter().map(|q| Pt { x: q.x - origin.x, y: q.y - origin.y, b: q.b }).collect())
+                    .collect();
                 p.nails = p.nails.iter().map(|n| n.sub(origin)).collect();
                 p
             })
@@ -228,9 +237,12 @@ fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint: &str) -> 
     };
     let names: Vec<&str> = match v {
         Value::String(s) => vec![s.as_str()],
-        Value::Array(a) if !a.is_empty() && a.iter().all(|e| e.str().is_some()) => a.iter().filter_map(Value::str).collect(),
+        Value::Array(a) if !a.is_empty() && a.iter().all(|e| e.str().is_some()) => {
+            a.iter().filter_map(Value::str).collect()
+        }
         _ => {
-            ctx.p.fail(key, format!("'{key}' must be a component id or a list of ids (got {})", model::kind_or_text(v)));
+            ctx.p
+                .fail(key, format!("'{key}' must be a component id or a list of ids (got {})", model::kind_or_text(v)));
             return None;
         }
     };
@@ -262,7 +274,20 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<B
         Kind::PostBase => &["post", "standoff", "height", "face"],
         _ => &["post", "rod", "face", "height", "seat", "seat_height", "width"],
     };
-    for key in ["mount", "carried", "carrying", "post", "beam", "rod", "face", "height", "seat", "standoff", "seat_height", "width"] {
+    for key in [
+        "mount",
+        "carried",
+        "carrying",
+        "post",
+        "beam",
+        "rod",
+        "face",
+        "height",
+        "seat",
+        "standoff",
+        "seat_height",
+        "width",
+    ] {
         if ctx.p.has(key) && !only.contains(&key) {
             ctx.p.fail(key, format!("'{key}' is not used by kind {}; it takes {}", kind.tag(), only.join(", ")));
         }
@@ -320,9 +345,11 @@ fn model_size(name: &str, prefix: &str) -> Option<(f64, f64)> {
     let rest = up.strip_prefix(prefix)?;
     let rest = rest.trim_end_matches("TF").trim_end_matches('-');
     if let Some((w, d)) = rest.split_once('/') {
-        let w: f64 = w.parse().ok()?;
-        let d: f64 = d.split(|c: char| !(c.is_ascii_digit() || c == '.')).next()?.parse().ok()?;
-        return Some((w, d));
+        let num = |t: &str| -> Option<f64> {
+            let t = t.split(|c: char| !(c.is_ascii_digit() || c == '.')).next()?;
+            t.parse::<f64>().ok().filter(|v| *v > 0.0 && *v < 100.0)
+        };
+        return Some((num(w)?, num(d)?));
     }
     let (body, plies) = match rest.split_once('-') {
         Some((b, n)) => (b, n.parse::<u32>().ok()?),
@@ -357,10 +384,11 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
         cands.push((c.z0 - b.z1, false, b.z1, 1.0));
         cands.push((b.z0 - c.z1, false, b.z0, -1.0));
     }
-    let pick = cands.iter().filter(|k| k.0 >= -0.25 && k.0 <= 0.5).fold(None::<(f64, bool, f64, f64)>, |best, k| match best {
-        Some(bb) if bb.0.abs() <= k.0.abs() => Some(bb),
-        _ => Some(*k),
-    });
+    let pick =
+        cands.iter().filter(|k| k.0 >= -0.25 && k.0 <= 0.5).fold(None::<(f64, bool, f64, f64)>, |best, k| match best {
+            Some(bb) if bb.0.abs() <= k.0.abs() => Some(bb),
+            _ => Some(*k),
+        });
     let Some((gap, along_x, f, s)) = pick else {
         ctx.p.fail(
             "carried",
@@ -440,19 +468,61 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
         warns.push(warn(ctx, "W_HANGER_SIZE", "height", format!("hanger '{id}' is {} tall for '{}', which is {} deep: under 60% of the depth, so it does not brace the member", fmt_ft_in(h), c.id, fmt_ft_in(depth)), format!("use a deeper hanger: {}", update_op(&id, "height", &num_json(r16_up(0.6 * depth).max(r16(0.85 * depth)))))));
     }
     if h > depth + 1e-6 {
-        warns.push(warn(ctx, "W_HANGER_SIZE", "height", format!("hanger '{id}' is {} tall but '{}' is only {} deep", fmt_ft_in(h), c.id, fmt_ft_in(depth)), update_op(&id, "height", &num_json(r16(0.85 * depth)))));
+        warns.push(warn(
+            ctx,
+            "W_HANGER_SIZE",
+            "height",
+            format!("hanger '{id}' is {} tall but '{}' is only {} deep", fmt_ft_in(h), c.id, fmt_ft_in(depth)),
+            update_op(&id, "height", &num_json(r16(0.85 * depth))),
+        ));
     }
     if (w - wc).abs() > 0.125 {
-        warns.push(warn(ctx, "W_HANGER_SIZE", "width", format!("hanger '{id}' seat is {} wide but '{}' is {} wide", fmt_ft_in(w), c.id, fmt_ft_in(wc)), format!("remove \"width\" (the seat then fits '{}') or pick the hanger for that width", c.id)));
+        warns.push(warn(
+            ctx,
+            "W_HANGER_SIZE",
+            "width",
+            format!("hanger '{id}' seat is {} wide but '{}' is {} wide", fmt_ft_in(w), c.id, fmt_ft_in(wc)),
+            format!("remove \"width\" (the seat then fits '{}') or pick the hanger for that width", c.id),
+        ));
     }
     if let Some(sr) = mi.series
         && let Some((mw, md)) = model_size(&mi.name, sr.prefix)
     {
         if depth > md + 0.5 || depth < md - 1.0 {
-            warns.push(warn(ctx, "W_HANGER_SIZE", "model", format!("hanger '{id}': model {} is made for a member {} deep; '{}' is {} deep{}", mi.name, fmt_ft_in(md), c.id, fmt_ft_in(depth), if depth > md { " (hanger too small)" } else { "" }), format!("pick the {} model sized for {} x {}", sr.prefix, fmt_ft_in(wc), fmt_ft_in(depth))));
+            warns.push(warn(
+                ctx,
+                "W_HANGER_SIZE",
+                "model",
+                format!(
+                    "hanger '{id}': model {} is made for a member {} deep; '{}' is {} deep{}",
+                    mi.name,
+                    fmt_ft_in(md),
+                    c.id,
+                    fmt_ft_in(depth),
+                    if depth > md { " (hanger too small)" } else { "" }
+                ),
+                format!("pick the {} model sized for {} x {}", sr.prefix, fmt_ft_in(wc), fmt_ft_in(depth)),
+            ));
         }
         if (mw - wc).abs() > 0.25 {
-            warns.push(warn(ctx, "W_HANGER_SIZE", "model", format!("hanger '{id}': model {} is made for a member {} wide; '{}' is {} wide", mi.name, fmt_ft_in(mw), c.id, fmt_ft_in(wc)), format!("pick the {} model for a {} wide member (a -2 or -3 suffix for plies)", sr.prefix, fmt_ft_in(wc))));
+            warns.push(warn(
+                ctx,
+                "W_HANGER_SIZE",
+                "model",
+                format!(
+                    "hanger '{id}': model {} is made for a member {} wide; '{}' is {} wide",
+                    mi.name,
+                    fmt_ft_in(mw),
+                    c.id,
+                    fmt_ft_in(wc)
+                ),
+                format!(
+                    "pick the {} model for a {} wide member{}",
+                    sr.prefix,
+                    fmt_ft_in(wc),
+                    if mi.name.contains('/') { "" } else { " (a -2 or -3 suffix for plies)" }
+                ),
+            ));
         }
     }
     let seat_pt = if along_x { V2::init(f + s * ulen / 2.0, yb(ulen / 2.0)) } else { V2::init(cv, ybot_f) };
@@ -517,9 +587,20 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
         kit.rect("post_side", [px0 - t, px0], [top - hd, top - t], [pz0, pz1], Vec::new());
         kit.rect("post_side", [px1, px1 + t], [top - hd, top - t], [pz0, pz1], Vec::new());
     }
-    let info = format!("connector {}post cap {gauge_i} ga, {} up the beam, {} on {}", model_text(mi), fmt_ft_in(hu), b.id, p.id);
+    let info = format!(
+        "connector {}post cap {gauge_i} ga, {} up the beam, {} on {}",
+        model_text(mi),
+        fmt_ft_in(hu),
+        b.id,
+        p.id
+    );
     let origin = ctx.origin;
-    Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: V2::init((px0 + px1) / 2.0, top) }], info, model::HwInfo::default()))
+    Some(kit.finish(
+        origin,
+        vec![NamedAnchor { name: "seat".into(), p: V2::init((px0 + px1) / 2.0, top) }],
+        info,
+        model::HwInfo::default(),
+    ))
 }
 
 fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
@@ -539,7 +620,8 @@ fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -
         kit.rect("seat", [px0, px1], [py0 - t, py0], [pz0, pz1], Vec::new());
     }
     let x_faces = !matches!(cp.face, Some(Face::Front | Face::Back));
-    let nails = |x0: f64, x1: f64| vec![V2::init((x0 + x1) / 2.0, py0 + h * 0.4), V2::init((x0 + x1) / 2.0, py0 + h * 0.75)];
+    let nails =
+        |x0: f64, x1: f64| vec![V2::init((x0 + x1) / 2.0, py0 + h * 0.4), V2::init((x0 + x1) / 2.0, py0 + h * 0.75)];
     if x_faces {
         kit.rect("side", [px0 - t, px0], [yb, py0 + h], [pz0, pz1], Vec::new());
         kit.rect("side", [px1, px1 + t], [yb, py0 + h], [pz0, pz1], Vec::new());
@@ -547,11 +629,23 @@ fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -
         kit.rect("side", [px0, px1], [yb, py0 + h], [pz1, pz1 + t], nails(px0, px1));
         kit.rect("side", [px0, px1], [yb, py0 + h], [pz0 - t, pz0], nails(px0, px1));
     }
-    let info = format!("connector {}post base {gauge_i} ga, standoff {}, under {}", model_text(mi), fmt_ft_in(so), p.id);
-    let bears = model::Bears { y: yb, plan: [px0 - t, px1 + t, pz0 - t, pz1 + t], post: p.id.split('+').map(String::from).collect(), post_y0: py0, standoff: so };
+    let info =
+        format!("connector {}post base {gauge_i} ga, standoff {}, under {}", model_text(mi), fmt_ft_in(so), p.id);
+    let bears = model::Bears {
+        y: yb,
+        plan: [px0 - t, px1 + t, pz0 - t, pz1 + t],
+        post: p.id.split('+').map(String::from).collect(),
+        post_y0: py0,
+        standoff: so,
+    };
     let hw = model::HwInfo { bears: Some(bears), ..Default::default() };
     let origin = ctx.origin;
-    Some(kit.finish(origin, vec![NamedAnchor { name: "base_bottom".into(), p: V2::init((px0 + px1) / 2.0, yb) }], info, hw))
+    Some(kit.finish(
+        origin,
+        vec![NamedAnchor { name: "base_bottom".into(), p: V2::init((px0 + px1) / 2.0, yb) }],
+        info,
+        hw,
+    ))
 }
 
 fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
@@ -629,7 +723,7 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
     kit.frame_poly("side", &fr, &side, [v[0], v[0] + t]);
     kit.frame_poly("side", &fr, &side, [v[1] - t, v[1]]);
     let mut yk = ys + 1.5;
-    while yk < ys + h - 0.5 {
+    while yk < (ys + h - 0.5).min(ys + 60.0) {
         let n0 = kit.prisms.len();
         kit.frame_box("screw", &fr, [-1.75, 0.0], [yk - 0.0625, yk + 0.0625], [vc - 0.0625, vc + 0.0625], &[]);
         for q in &mut kit.prisms[n0..] {
@@ -656,9 +750,16 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
                 let fix = match Scene::anchor_point(c, m.inst, None, "top_of_concrete") {
                     Some(toc) if c.ty.name() == "anchor_bolt" => {
                         let proj = seat_top - toc.y + 0.125 + 1.125 * dia;
-                        format!("make the rod reach through the seat: {}", update_op(&m.id, "projection", &num_json(r16_up(proj))))
+                        format!(
+                            "make the rod reach through the seat: {}",
+                            update_op(&m.id, "projection", &num_json(r16_up(proj)))
+                        )
                     }
-                    _ => format!("lengthen '{}' so it ends at least {} above the seat", m.id, fmt_ft_in(need_top - seat_top)),
+                    _ => format!(
+                        "lengthen '{}' so it ends at least {} above the seat",
+                        m.id,
+                        fmt_ft_in(need_top - seat_top)
+                    ),
                 };
                 warns.push(warn(ctx, "W_HOLDOWN_ROD", "rod", format!("holdown '{id}': rod '{}' ends at y {}, below the seat top (y {}) plus washer and nut; its nut cannot bear on the seat", m.id, fmt_ft_in(top), fmt_ft_in(seat_top)), fix));
             }
@@ -701,20 +802,54 @@ fn nearest_rod(scene: &Scene, post: Box, zc: f64) -> Option<String> {
 const FACES: [&str; 6] = ["face_left", "face_right", "face_top", "face_bottom", "face_front", "face_back"];
 
 /// A strap flush on a member face (`on`).
-pub fn build_on(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, on: &str, gauge_i: u32, t: f64, width: f64) -> Option<Built> {
+pub fn build_on(
+    ctx: &mut Ctx,
+    cp: &Params,
+    mi: &ModelInfo,
+    on: &str,
+    gauge_i: u32,
+    t: f64,
+    width: f64,
+) -> Option<Built> {
     let Some((mname, face)) = on.rsplit_once('.').filter(|(_, f)| FACES.contains(f)) else {
-        ctx.p.fail("on", format!("'on' must be \"<member>.<face>\" with face one of {} (got \"{on}\")", FACES.join(", ")));
+        ctx.p.fail(
+            "on",
+            format!("'on' must be \"<member>.<face>\" with face one of {} (got \"{on}\")", FACES.join(", ")),
+        );
         return None;
     };
-    for key in ["side", "mount", "carried", "carrying", "post", "beam", "rod", "face", "height", "seat", "standoff", "seat_height"] {
+    for key in [
+        "side",
+        "mount",
+        "carried",
+        "carrying",
+        "post",
+        "beam",
+        "rod",
+        "face",
+        "height",
+        "seat",
+        "standoff",
+        "seat_height",
+    ] {
         if ctx.p.has(key) {
-            ctx.p.fail(key, format!("'{key}' is not used with 'on': the face sets the strap's side and z; remove '{key}'"));
+            ctx.p.fail(
+                key,
+                format!("'{key}' is not used with 'on': the face sets the strap's side and z; remove '{key}'"),
+            );
         }
     }
     let m = member(ctx, "on", mname)?;
     let z_face = matches!(face, "face_front" | "face_back");
     if ctx.p.has("lay") && (cp.lay == super::connector::Lay::Face) != z_face {
-        ctx.p.fail("lay", format!("on {face}: the strap is seen {} there, so lay is {}; remove 'lay'", if z_face { "face-on" } else { "edge-on" }, if z_face { "face" } else { "edge" }));
+        ctx.p.fail(
+            "lay",
+            format!(
+                "on {face}: the strap is seen {} there, so lay is {}; remove 'lay'",
+                if z_face { "face-on" } else { "edge-on" },
+                if z_face { "face" } else { "edge" }
+            ),
+        );
     }
     if !ctx.p.ok {
         return None;
@@ -752,7 +887,11 @@ pub fn build_on(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, on: &str, gauge_i: u
                 nat_z = m.z1 - m.z0;
             } else {
                 let raw = pts.unwrap_or_else(|| {
-                    if vertical { vec![Pt::new(fc, bx.y0), Pt::new(fc, bx.y1)] } else { vec![Pt::new(bx.x0, fc), Pt::new(bx.x1, fc)] }
+                    if vertical {
+                        vec![Pt::new(fc, bx.y0), Pt::new(fc, bx.y1)]
+                    } else {
+                        vec![Pt::new(bx.x0, fc), Pt::new(bx.x1, fc)]
+                    }
                 });
                 centerline = drop_duplicate_points(
                     &raw.iter().map(|q| if vertical { Pt::new(fc, q.y) } else { Pt::new(q.x, fc) }).collect::<Vec<_>>(),
@@ -763,13 +902,21 @@ pub fn build_on(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, on: &str, gauge_i: u
                 }
                 let d = centerline[1].v().sub(centerline[0].v());
                 let left = V2::init(-d.y, d.x);
-                rib = if left.dot(out) > 0.0 { pathgeom::ribbon(&centerline, t, 0.0) } else { pathgeom::ribbon(&centerline, 0.0, t) };
+                rib = if left.dot(out) > 0.0 {
+                    pathgeom::ribbon(&centerline, t, 0.0)
+                } else {
+                    pathgeom::ribbon(&centerline, 0.0, t)
+                };
             }
         }
         _ => {
             lay = "face";
             let raw = pts.unwrap_or_else(|| {
-                if bx.height() >= bx.width() { vec![Pt::new(xc, bx.y0), Pt::new(xc, bx.y1)] } else { vec![Pt::new(bx.x0, yc), Pt::new(bx.x1, yc)] }
+                if bx.height() >= bx.width() {
+                    vec![Pt::new(xc, bx.y0), Pt::new(xc, bx.y1)]
+                } else {
+                    vec![Pt::new(bx.x0, yc), Pt::new(bx.x1, yc)]
+                }
             });
             centerline = drop_duplicate_points(&raw);
             if centerline.len() < 2 {
@@ -782,7 +929,8 @@ pub fn build_on(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, on: &str, gauge_i: u
             face_tie = face == "face_front";
         }
     }
-    let local = |l: &[Pt]| -> Vec<Pt> { l.iter().map(|q| Pt { x: q.x - origin.x, y: q.y - origin.y, b: q.b }).collect() };
+    let local =
+        |l: &[Pt]| -> Vec<Pt> { l.iter().map(|q| Pt { x: q.x - origin.x, y: q.y - origin.y, b: q.b }).collect() };
     let rib = local(&rib);
     centerline = local(&centerline);
     let anchors = vertex_anchors(&centerline, false);

@@ -272,7 +272,14 @@ pub struct Series {
     pub desc: &'static str,
 }
 
-const fn ser(prefix: &'static str, kind: &'static str, mount: &'static str, gauge: u32, width: f64, desc: &'static str) -> Series {
+const fn ser(
+    prefix: &'static str,
+    kind: &'static str,
+    mount: &'static str,
+    gauge: u32,
+    width: f64,
+    desc: &'static str,
+) -> Series {
     Series { prefix, kind, mount, gauge, width, desc }
 }
 

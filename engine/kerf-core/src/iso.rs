@@ -1049,7 +1049,8 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
             }
         }
         if shapes.is_empty() && ip.hw_dash {
-            shapes.extend(faces.first().map(|&fi| OwnedShape { outer: iso.faces[fi].outer.clone(), holes: Vec::new() }));
+            shapes
+                .extend(faces.first().map(|&fi| OwnedShape { outer: iso.faces[fi].outer.clone(), holes: Vec::new() }));
         }
         vis_out.push(Vis {
             comp: ip.comp,
