@@ -211,7 +211,7 @@ export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpd
       appendLog(b.file, { who: 'designer', tool: 'kerf-serve', why: 'create', ops: [], changed: [], summary_head: `DOC ${id} 0 components 0 views 0 errors 0 warnings` });
       return json(res, 201, info(b.file));
     }
-    let mm = /^\/api\/docs\/([^/]+)(?:\/(apply|log|export))?$/.exec(pn);
+    let mm = /^\/api\/docs\/([^/]+)(?:\/(apply|log|export|reference))?$/.exec(pn);
     if (mm) {
       const f = decodeURIComponent(mm[1]), sub = mm[2];
       if (!fileOk(f) || !fs.existsSync(p(f))) return err(res, 404, 'not_found', `no such document: ${f}`);
@@ -232,6 +232,18 @@ export async function startMock({ dir = seedDir(fs.mkdtempSync(path.join(os.tmpd
         const since = Number(u.searchParams.get('since') ?? 0);
         const lines = fs.existsSync(logPath(f)) ? fs.readFileSync(logPath(f), 'utf8').split('\n').filter(Boolean) : [];
         return json(res, 200, { entries: lines.slice(since).map((l) => JSON.parse(l)), next: lines.length });
+      }
+      if (m === 'GET' && sub === 'reference') { // SERVE.md: only files listed in meta.references, relative, inside the folder
+        const rel = u.searchParams.get('path') ?? '';
+        const ext = /\.([A-Za-z0-9]+)$/.exec(rel)?.[1]?.toLowerCase();
+        const type = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', pdf: 'application/pdf' }[ext];
+        if (!rel || /^[\\/]|[:\\]|(^|\/)\.\.(\/|$)/.test(rel)) return err(res, 400, 'E_PATH', `path "${rel}" is not relative to the document's folder`);
+        if (!type) return err(res, 400, 'E_TYPE', `path "${rel}" is not a file type the reference panel shows`);
+        if (!(readDoc(f).meta?.references ?? []).some((r) => r?.path === rel)) return err(res, 404, 'E_NOT_FOUND', `"${rel}" is not in the meta.references of ${f}`);
+        const full = path.join(dir, rel);
+        if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return err(res, 404, 'E_NOT_FOUND', `${rel} does not exist in the served folder`);
+        res.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', etag: etagOf(fs.statSync(full)), 'content-disposition': `inline; filename="${path.basename(rel)}"` });
+        res.end(fs.readFileSync(full)); return;
       }
       if (m === 'GET' && sub === 'export') {
         const view = u.searchParams.get('view') ?? readDoc(f).views?.[0]?.id, format = u.searchParams.get('format') ?? 'svg', sheet = u.searchParams.get('sheet') === '1';

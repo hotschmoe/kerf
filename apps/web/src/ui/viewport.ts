@@ -1,60 +1,10 @@
-// Center column: view tabs [SECTION A] [ISO B] [3D] [SHEET], tool buttons, and the three viewers.
+// Center column: view tabs [SECTION A] [ISO B] [3D] [SHEET], tool buttons, the three viewers and the REFERENCE panel.
 import type { App } from '../app';
 import { Viewport2D } from '../view2d';
 import type { View3D, Preset } from '../view3d';
 import { h, clear } from './dom';
-
-class SheetViewer {
-  private page = h('div.page');
-  private img = h('img', { alt: 'sheet', draggable: false });
-  private k = 1; private tx = 0; private ty = 0;
-  private drag: { x: number; y: number; tx: number; ty: number } | null = null;
-  private url = '';
-  private iw = 1056; private ih = 816;
-  constructor(private host: HTMLElement) {
-    this.page.append(this.img);
-    host.append(this.page);
-    host.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const r = host.getBoundingClientRect();
-      this.zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-(e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY) * 0.0016));
-    }, { passive: false });
-    host.addEventListener('pointerdown', (e) => { host.setPointerCapture(e.pointerId); this.drag = { x: e.clientX, y: e.clientY, tx: this.tx, ty: this.ty }; host.classList.add('drag'); });
-    host.addEventListener('pointermove', (e) => { if (!this.drag) return; this.tx = this.drag.tx + e.clientX - this.drag.x; this.ty = this.drag.ty + e.clientY - this.drag.y; this.apply(); });
-    host.addEventListener('pointerup', () => { this.drag = null; host.classList.remove('drag'); });
-    host.addEventListener('dblclick', () => this.fit());
-    new ResizeObserver(() => { if (host.clientWidth && this.url && !this.userMoved) this.fit(); }).observe(host);
-  }
-  private userMoved = false;
-  async setSvg(svg: string) {
-    if (this.url) URL.revokeObjectURL(this.url);
-    this.url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-    this.img.src = this.url;
-    await this.img.decode().catch(() => undefined);
-    this.iw = this.img.naturalWidth || 1056; this.ih = this.img.naturalHeight || 816;
-    // present at the sheet's natural pixel size; zoom is applied on the wrapper
-    this.img.style.width = this.iw + 'px'; this.img.style.height = this.ih + 'px';
-    this.userMoved = false;
-    this.fit();
-  }
-  clear() { if (this.url) URL.revokeObjectURL(this.url); this.url = ''; this.img.removeAttribute('src'); }
-  fit() {
-    const w = this.host.clientWidth, h = this.host.clientHeight;
-    if (!w || !h) return;
-    this.k = Math.min((w - 48) / this.iw, (h - 48) / this.ih);
-    this.tx = (w - this.iw * this.k) / 2; this.ty = (h - this.ih * this.k) / 2;
-    this.apply();
-  }
-  zoomBy(f: number) { this.zoomAt(this.host.clientWidth / 2, this.host.clientHeight / 2, f); }
-  private zoomAt(sx: number, sy: number, f: number) {
-    const nk = Math.max(0.05, Math.min(this.k * f, 20));
-    const r = nk / this.k;
-    this.tx = sx - (sx - this.tx) * r; this.ty = sy - (sy - this.ty) * r; this.k = nk;
-    this.userMoved = true;
-    this.apply();
-  }
-  private apply() { this.page.style.transform = `translate(${this.tx}px, ${this.ty}px) scale(${this.k})`; }
-}
+import { ImageViewer } from './panzoom';
+import { mountReferences } from './references';
 
 export function mountViewport(app: App, el: HTMLElement) {
   const tabs = h('div.tabs');
@@ -65,7 +15,8 @@ export function mountViewport(app: App, el: HTMLElement) {
   const hostSheet = h('div.vhost.hide#sheetHost');
   const msg = h('div.vmsg');
   body.append(host2d, host3d, hostSheet, msg);
-  el.append(h('div.vt', tabs, tools), body);
+  const refs = mountReferences(app, () => renderTabs());
+  el.append(h('div.vt', tabs, tools), h('div.vsplit', body, refs.el));
 
   const vp2 = new Viewport2D(host2d, {
     onHover: (id) => { app.setHover(id); view3?.setHover(id); },
@@ -80,7 +31,7 @@ export function mountViewport(app: App, el: HTMLElement) {
       });
     },
   });
-  const sheet = new SheetViewer(hostSheet);
+  const sheet = new ImageViewer(hostSheet);
   let view3: View3D | null = null;
   let loading3 = false;
 
@@ -155,6 +106,7 @@ export function mountViewport(app: App, el: HTMLElement) {
     }
     tabs.append(tabBtn('[3D]', app.mode === '3d', () => { app.setMode('3d'); }));
     tabs.append(tabBtn('[SHEET]', app.mode === 'sheet', () => { app.setMode('sheet'); }));
+    if (refs.count) tools.append(tabBtn(`[REF ${refs.count}]`, refs.open, () => refs.toggle(), 'sm ref'));
     if (app.mode === '3d') {
       for (const [p, l] of [['front', 'FRONT'], ['iso', 'ISO'], ['top', 'TOP'], ['right', 'RIGHT']] as [Preset, string][]) {
         tools.append(tabBtn(`[${l}]`, false, () => view3?.preset(p), 'sm'));
@@ -171,5 +123,5 @@ export function mountViewport(app: App, el: HTMLElement) {
   app.on('selection', () => { vp2.setSelection(app.selection?.id ?? null); view3?.setSelection(app.selection?.id ?? null); });
   app.on('hover', () => { vp2.setHover(app.hover); view3?.setHover(app.hover); });
   void refresh();
-  return { vp2, sheet, get view3() { return view3; }, refresh, showMsg };
+  return { vp2, sheet, refs, get view3() { return view3; }, refresh, showMsg };
 }

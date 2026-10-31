@@ -120,6 +120,12 @@ export class WorkspaceClient {
     return { blob: await r.blob(), name: m ? decodeURIComponent(m[1]) : `${file.replace(/\.kerf\.json$/, '')}-${q.view}.${q.format}` };
   }
 
+  async reference(file: string, path: string): Promise<{ blob: Blob; etag: string | null }> {
+    const r = await this.request('GET', `/docs/${encodeURIComponent(file)}/reference?${new URLSearchParams({ path })}`);
+    if (!r.ok) return this.fail(r);
+    return { blob: await r.blob(), etag: r.headers.get('etag') };
+  }
+
   async agentRun(agent: string, message: string, sessionId?: string, file?: string | null): Promise<string> {
     const r = await this.request('POST', '/agent/run', { agent, message, ...(sessionId ? { session_id: sessionId } : {}), ...(file ? { file } : {}) });
     if (!r.ok) return this.fail(r);

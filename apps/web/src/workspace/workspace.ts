@@ -65,6 +65,11 @@ export class Workspace implements Remote {
     return { name: r.name, bytes: new Uint8Array(await r.blob.arrayBuffer()) };
   }
 
+  async fetchReference(path: string) {
+    if (!this.file) throw new Error('no document is open');
+    return this.client.reference(this.file, path);
+  }
+
   async apply(ops: Op[], actor: Actor, why: string): Promise<ApplyResult & { conflict?: boolean }> {
     const fail = (error: string): ApplyResult => ({ ok: false, diagnostics: [], summary: '', error });
     if (!this.file) {

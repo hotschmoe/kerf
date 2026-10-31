@@ -295,6 +295,65 @@ await t('export buttons use /api/docs/:file/export in workspace mode (svg, pdf)'
   await page.close();
 });
 
+await t('reference panel: meta.references images beside the drawing (token), captions, zoom, missing file, toggle, stacked when narrow', async (track) => {
+  const dir = seedDir(fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-refs-')));
+  fs.mkdirSync(path.join(dir, 'refs'));
+  const golden = path.join(repo, 'engine/tests/golden/truss-bearing-cmu');
+  fs.copyFileSync(path.join(golden, 'A-pdf.png'), path.join(dir, 'refs', '0123_truss_bearing.png'));
+  fs.copyFileSync(path.join(golden, 'A.svg'), path.join(dir, 'refs', '0123_truss_bearing.svg'));
+  fs.copyFileSync(path.join(golden, 'A.pdf'), path.join(dir, 'refs', '0123_s501.pdf'));
+  const doc = JSON.parse(fs.readFileSync(path.join(dir, TRUSS), 'utf8'));
+  doc.meta = { ...doc.meta, references: [
+    { path: 'refs/0123_truss_bearing.png', caption: 'TRUSS BEARING AT CMU, SET 0123 S-501' },
+    { path: 'refs/0123_truss_bearing.svg', caption: 'SAME DETAIL, VECTOR' },
+    { path: 'refs/0123_s501.pdf', caption: 'SHEET S-501' },
+    { path: 'refs/gone.png' },
+  ] };
+  fs.writeFileSync(path.join(dir, TRUSS), JSON.stringify(doc, null, 2));
+  const m = await track({ dir, token: 'r3fs' });
+  const page = await open(m, `fast=1&doc=${TRUSS}&view=A`, { token: 'r3fs' });
+  await waitFor(page, 'window.__rendered===true');
+  await waitFor(page, `document.querySelectorAll('.refcard[data-state=ok]').length === 2 && document.querySelector('.refcard[data-state=error]')`);
+  const cards = await page.$$eval('.refcard', (cs) => cs.map((c) => ({ path: c.dataset.path, state: c.dataset.state, text: c.textContent, w: c.querySelector('img')?.naturalWidth ?? 0 })));
+  assert.deepEqual(cards.map((c) => c.path), ['refs/0123_truss_bearing.png', 'refs/0123_truss_bearing.svg', 'refs/0123_s501.pdf', 'refs/gone.png']);
+  assert.ok(cards[0].w > 500 && cards[1].w > 0, JSON.stringify(cards));
+  assert.match(cards[0].text, /TRUSS BEARING AT CMU, SET 0123 S-501/);
+  assert.match(cards[2].text, /OPEN PDF/);
+  assert.match(cards[3].text, /refs\/gone\.png does not exist in the served folder/);
+  assert.equal(await ev(page, `document.querySelector('.refpdf a').href.startsWith('blob:')`), true);
+  // side by side: the panel is right of the drawing, same top
+  const box = await ev(page, `(() => { const b = document.querySelector('#viewport .vbody').getBoundingClientRect(), r = document.querySelector('.vref').getBoundingClientRect(); return { bR: b.right, bT: b.top, rL: r.left, rT: r.top, rW: r.width }; })()`);
+  assert.ok(Math.abs(box.rL - box.bR) < 2 && Math.abs(box.rT - box.bT) < 2 && box.rW > 200, JSON.stringify(box));
+  assert.equal(await ev(page, `[...document.querySelectorAll('.vtools .tab')].find(b => /REF/.test(b.textContent))?.textContent`), '[REF 4]');
+  await shot(page, '14-reference-panel');
+  // click to zoom: overlay with the image, arrow keys step through the images, Escape closes
+  await page.click('.refcard[data-path="refs/0123_truss_bearing.png"] .refimg');
+  await waitFor(page, `document.querySelector('.refzoom img')?.naturalWidth > 500`);
+  assert.match(await ev(page, `document.querySelector('.refzoom .mh').textContent`), /1\/2\s+TRUSS BEARING AT CMU/);
+  await shot(page, '15-reference-zoom');
+  await page.keyboard.press('ArrowRight');
+  await waitFor(page, `/2\\/2\\s+SAME DETAIL, VECTOR/.test(document.querySelector('.refzoom .mh').textContent)`);
+  await page.keyboard.press('Escape');
+  await waitFor(page, `!document.querySelector('.refzoom') && !document.querySelector('.scrim')`);
+  // the toggle hides the panel (remembered) and brings it back
+  const toggle = `[...document.querySelectorAll('.vtools .tab')].find(b => /REF/.test(b.textContent)).click()`;
+  await ev(page, toggle);
+  await waitFor(page, `document.querySelector('.vref').classList.contains('hide') && localStorage.getItem('kerf.refPanel') === '0'`);
+  await ev(page, toggle);
+  await waitFor(page, `!document.querySelector('.vref').classList.contains('hide') && document.querySelectorAll('.refcard[data-state=ok]').length === 2`);
+  // narrow: the panel stacks under the drawing
+  await page.setViewport({ width: 420, height: 860 });
+  await waitFor(page, `(() => { const b = document.querySelector('#viewport .vbody').getBoundingClientRect(), r = document.querySelector('.vref').getBoundingClientRect(); return r.top >= b.bottom - 2 && Math.abs(r.left - b.left) < 2; })()`);
+  await shot(page, '16-reference-narrow');
+  // a document without references has no panel and no toggle
+  await page.setViewport({ width: 1440, height: 900 });
+  await page.click(`.librow[data-file="${FLUSH}"]`).catch(async () => { await ev(page, `document.querySelector('#mtabs .tab[data-p=console]').click()`); await page.click(`.librow[data-file="${FLUSH}"]`); });
+  await waitFor(page, `window.__kerf.app.doc.id === 'flush-beam-strap'`);
+  assert.equal(await ev(page, `document.querySelector('.vref').classList.contains('hide') && ![...document.querySelectorAll('.vtools .tab')].some(b => /REF/.test(b.textContent))`), true);
+  noErrors(page, /ResizeObserver|404 \(Not Found\)/);
+  await page.close();
+});
+
 await t('connection loss shows WORKSPACE OFFLINE in the status line', async (track) => {
   const m = await track();
   const page = await open(m, 'fast=1');

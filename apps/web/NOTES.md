@@ -42,7 +42,7 @@ exist for tests.
 | `chat/agent.ts` | `AgentRunner`: POST /api/agent/run, SSE `agent` events (Claude Code / Grok Build / Codex shapes) -> console events |
 | `workspace/client.ts` | `kerf serve` HTTP + SSE client, token handling (`?token=` -> sessionStorage -> Bearer) |
 | `workspace/workspace.ts` | `Workspace` (implements `App.remote`): library list, open file, ETag, event handling, own-write echo detection |
-| `ui/` | header, console, library, viewport (tabs + sheet viewer), inspector, status line, popups |
+| `ui/` | header, console, library, viewport (tabs + sheet viewer), references (REFERENCE panel), panzoom (the pan/zoom image viewer of the sheet and the reference zoom), inspector, status line, popups |
 | `fixture-engine.ts` | dev-only engine double |
 
 ## Workspace mode (served by `kerf serve`)
@@ -61,6 +61,13 @@ exist for tests.
   N OPS, changed ids, summary head, collapsible ops JSON). Cards are suppressed while a run started from this UI is active and for 2 s after it
   (the server polls every 500 ms, so its log lines trail the exit event). Status line: `LOCAL AGENT · LAST EDIT 12S AGO` (ticks each second), `WORKSPACE OFFLINE`.
 - **Export** buttons call `GET /api/docs/:file/export` (DXF/PDF/SVG + a PNG button); PNG exists only in workspace mode (the wasm has no png).
+- **Reference panel** (`meta.references`, SPEC 23): when the open document lists reference images, the view tool row gets `[REF n]` and a REFERENCE
+  panel opens beside the drawing (44% of the center column; under it, images in a horizontal row, when the column is under 680 px: a container query).
+  Each file is fetched with `GET /api/docs/:file/reference?path=` (Bearer token) into a blob URL, kept per file + path and reused while the ETag is
+  unchanged; captions under the images; a click opens a pan/zoom overlay (wheel, drag, double-click fit, arrow keys between images, Escape). A PDF gets
+  an `OPEN PDF` link (blob URL, new tab); a missing file shows the server's message. Open/closed is `localStorage kerf.refPanel`. Static mode lists the
+  captions and says the files need `kerf serve`. Only design tokens are used, except the white mat behind the images (like the sheet page); the app
+  has no dark theme yet.
 - **Static features kept**: OPEN/SAVE/OPEN SAMPLE behave as before; in workspace mode they become IMPORT/SAVE (download a copy)/ADD SAMPLE.
 
 ## Chat (local agents only)
@@ -75,8 +82,8 @@ next message; NEW clears them. Agents take text only (no image attach). Static m
 ## Tests
 - `test/unit.mjs` (10): units, stroke font, raw ABI loader, agent store, agent event parsing for 3 CLIs (fixtures recorded from the real CLIs).
 - `test/e2e.mjs` (8): static mode (chat-off note), notes/undo/drag, save/open, worker loader (fixture only), exports + dxf/pdf checks.
-- `test/e2e-serve.mjs` (13 vs mock, 9 vs real): detection, live library, external edit reload (view/zoom/selection preserved) + LOCAL AGENT card, designer edits (`if_match`,
-  log, no echo reload), 409, NEW/ADD SAMPLE, export, token, offline, scripted agent run/resume/STOP, `/api/llm` is 404 and `/api/info` has no `proxy`, agent picker.
+- `test/e2e-serve.mjs` (14 vs mock, 10 vs real): detection, live library, external edit reload (view/zoom/selection preserved) + LOCAL AGENT card, designer edits (`if_match`,
+  log, no echo reload), 409, NEW/ADD SAMPLE, export, reference panel (token, captions, zoom, PDF, missing file, toggle, narrow stacking), token, offline, scripted agent run/resume/STOP, `/api/llm` is 404 and `/api/info` has no `proxy`, agent picker.
   `test/mock-serve.mjs` implements SERVE.md with the real engine wasm; the REAL server passes everything runnable (the rest is mock-only: it needs mock hooks). Screenshots: `KERF_SHOTS=dir`.
 
 ## Decisions

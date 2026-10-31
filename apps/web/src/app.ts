@@ -33,6 +33,8 @@ export interface Remote {
   /** remember a document state we know is on disk (own writes) so the echo `doc_changed` is not treated as external */
   /** export through the server (workspace mode): the file on disk is what is exported */
   exportFile(view: string, format: string, sheet: boolean): Promise<{ name: string; bytes: Uint8Array } | null>;
+  /** a file listed in the open document's `meta.references`, read from the served folder */
+  fetchReference(path: string): Promise<{ blob: Blob; etag: string | null }>;
   noteKnown(doc: KerfDoc): void;
   isKnown(doc: KerfDoc): boolean;
 }

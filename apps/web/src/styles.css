@@ -116,10 +116,49 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #host3d { background: var(--paper); }
 #host3d .vp-canvas { cursor: grab; }
 #host3d .vp-canvas:active { cursor: grabbing; }
-#sheetHost { background: var(--paper-2); cursor: grab; touch-action: none; }
-#sheetHost.drag { cursor: grabbing; }
-#sheetHost .page { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
-#sheetHost img { display: block; user-select: none; -webkit-user-drag: none; }
+.pzhost { background: var(--paper-2); cursor: grab; touch-action: none; overflow: hidden; }
+.pzhost.drag { cursor: grabbing; }
+.pzhost .page { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.pzhost img { display: block; user-select: none; -webkit-user-drag: none; }
+/* REFERENCE panel (meta.references): beside the drawing when the column is wide, under it when narrow */
+#viewport { container-type: inline-size; }
+.vsplit { flex: 1; min-height: 0; display: flex; }
+.vsplit > .vbody { flex: 1; min-width: 0; }
+.vref { flex: 0 0 44%; min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--ink); background: var(--paper); }
+.vref.hide { display: none; }
+.vref .ph { padding: 0 8px 0 12px; }
+.vref .ph .x { min-width: 22px; }
+.reflist { flex: 1; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+.refcard { margin: 0; flex: none; display: flex; flex-direction: column; min-height: 0; }
+.refimg { display: flex; align-items: center; justify-content: center; min-height: 120px; background: #fff; border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); padding: 6px; }
+.refimg.zoom { cursor: zoom-in; }
+.refimg.zoom:hover, .refimg.zoom:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.refimg img { display: block; max-width: 100%; max-height: 62vh; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+.refstate { color: var(--ink-2); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; padding: 12px; overflow-wrap: anywhere; }
+.refstate.err { color: var(--red); font-weight: 500; }
+.refpdf { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; color: var(--ink); background: var(--paper); border: 1px dashed var(--ink-2); }
+.refpdf b { font-size: 18px; letter-spacing: 0.2em; }
+.refpdf a.btn { text-decoration: none; display: inline-block; color: var(--ink); }
+.refpdf a.btn:hover { color: var(--paper); }
+.refcard figcaption { margin-top: 6px; font-size: 12px; display: flex; flex-direction: column; gap: 1px; }
+.refcard figcaption b { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; overflow-wrap: anywhere; }
+.refcard figcaption .sub { margin: 0; overflow-wrap: anywhere; }
+@container (max-width: 680px) {
+  .vsplit { flex-direction: column; }
+  .vref { flex: 0 0 46%; border-left: 0; border-top: 1px solid var(--ink); }
+  .reflist { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
+  .refcard { flex: 0 0 min(100%, 420px); }
+  .refimg { flex: 1; }
+  .refimg img { max-height: 100%; }
+}
+.scrim.dim { background: rgba(26, 26, 26, 0.45); }
+.float.refzoom { inset: 24px; display: flex; flex-direction: column; }
+.refzoom .mh { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; }
+.refzoom .mh > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.refzoom .mh .r { display: flex; gap: 4px; flex: none; }
+.refzoom .zb { position: relative; flex: 1; min-height: 0; }
+@media (max-width: 899px) { .float.refzoom { inset: 8px; } }
+
 .vmsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px; color: var(--ink-2); letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; pointer-events: none; }
 .vmsg.err { color: var(--red); }
 .vmsg > div { background: var(--vellum); border: 1px solid var(--ink-2); padding: 14px 20px; max-width: 460px; }
