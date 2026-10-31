@@ -166,6 +166,7 @@ literal point is a DXF-style **bulge** for the segment to the next point (arc; b
   "z": null, "array": null,
   "embedded": false,           // drawn over cut solids (rebar, anchor bolts, embedded straps)
   "visible": true,
+  "views": null,               // ["A","C"]: drawn and checked only in these views (default: every view; §25.4)
   // …type-specific params
 }
 ```
@@ -382,9 +383,14 @@ Natural z thickness: d (side), grip (end).
   "cutaway": true,                          // iso only: clip solids to z ≤ cut_z, hatch the cut face
   "notes_side": "right",                    // right | left | both | above (keyed: where the list goes, §24)
   "notes_style": "leader",                  // leader | keyed | list (§24); default: style notes.mode
+  "omit": ["roofing", "b_*"],               // components not drawn in this view: ids or `*` globs (§25.4)
+  "only": ["shared_*", "a_*"],              // optional: the view draws only matching components (§25.4)
   "annotations": [ … ]
 }
 ```
+A view draws a component when the component's `views` (if set) lists the view, the view's `only` (if set) matches its
+id, and no `omit` entry matches it (§25.4). Everything a view does (section and iso drawing, beyond outlines, auto crop,
+note landings, `inspect at`, the geometry checks of §9, `W_CROP_STALE`) uses that set.
 
 ### 6.1 Scales
 Accepted: `3"=1'-0"` (factor 4), `1-1/2"=1'-0"` (8), `1"=1'-0"` (12), `3/4"=1'-0"` (16),
@@ -585,13 +591,16 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `W_BOLT_SPACING` | warning | bolt spacing < 2 2/3 d (AISC 360 J3.3) |
 | `W_WELD_SIZE` | warning | a fillet weld symbol with `members` is larger than the thinner part allows (t, or t − 1/16 when t ≥ 1/4; AISC 360 J2.2b) or smaller than Table J2.4 (1/8, 3/16, 1/4, 5/16 by thinner part ≤ 1/4, 1/2, 3/4, over). Thickness of a W or channel is its thinner element, of an HSS or pipe the design wall |
 | `I_SOLID_USED` | info | `solid` escape hatch used |
+| `W_REF_UNKNOWN` | warning | a view `omit` / `only` entry (id or `*` glob) that matches no component; it has no effect (§25.4) |
+| `W_ACK_UNUSED` | warning | `acknowledge` entries of a component that suppressed nothing in any view (stale, repeated, or an `I_*` code); one per component, the fix is the `update` op that removes them. Only when every view was built and the document has no errors (§25.4) |
+| `I_ACK` | info | a warning suppressed by `acknowledge` (code, component, reason, the original message); `diagnostics` only, the summary groups them (§25.4) |
 
 **Per-view geometry checks.** `W_OVERLAP`, `W_FLOATING`, `W_UNTREATED_CONTACT`, `W_COVER`, `W_NEAR_MISS` and
-`W_SHORT_SLOPE` run over the components each view draws: compiled, `visible`, and not in that view's `omit` (iso views
-included, with their own `omit`). Views that draw the same components are checked once. A finding is reported once; when
+`W_SHORT_SLOPE` run over the components each view draws: compiled, `visible`, and members of that view (component
+`views`, view `only` and `omit`, §25.4; iso views included, with their own membership). Views that draw the same components are checked once. A finding is reported once; when
 it occurs in some views but not all, its message ends with ` (in view B)` / ` (in views A, C)`. A finding in every view,
 and every finding of a document without views (all components checked together, `visible` or not), carries no view
-list. So a multi-scenario detail (one view per scenario, the other scenarios' members omitted) gets no warnings between
+list. So a multi-scenario detail (one view per scenario, the other scenarios' members excluded) gets no warnings between
 members that are never drawn together, and needs no `acknowledge` for them. `W_SHORT_SLOPE` keeps using the first
 section view's explicit crop for every view.
 
@@ -615,7 +624,8 @@ Output of a view; input of every exporter and of every UI's 2D renderer. Model-s
     { "t": "text",  "layer": "S-ANNO-NOTE", "pen": "anno", "src": "n1", "s": "2X8 PT SILL…",
       "x": 0, "y": 0, "h": 0.75, "rot": 0, "align": "left", "valign": "baseline" }
   ],
-  "diagnostics": [ … ]
+  "diagnostics": [ … ],
+  "acknowledged": [ { "code", "id", "reason", "path"?, "message", "fix"? }, … ]   // only when the doc has `acknowledge` (§25.4)
 }
 ```
 - Bulge semantics as DXF LWPOLYLINE (bulge on vertex i applies to segment i→i+1).
@@ -663,16 +673,16 @@ All inputs/outputs are UTF-8 JSON unless noted.
 | `version` | `{}` | `{ "engine": "kerf", "version": "0.1.0", "spec": "0.1" }` |
 | `catalog` | `{ "format": "json"|"markdown" }` | catalog |
 | `fmt` | `{ doc }` | `{ doc }` canonicalized |
-| `check` | `{ doc, style, reference_files? }` | `{ diagnostics, summary }` (`reference_files`: §23) |
-| `apply` | `{ doc, style, ops, actor?: "llm"|"designer" }` | `{ ok, doc, diagnostics, summary, changed }` — atomic: on any error `ok:false`, doc unchanged |
+| `check` | `{ doc, style, strict?: bool, reference_files? }` | `{ diagnostics, acknowledged, summary }` (`reference_files`: §23; `strict`, `acknowledged`: §25.4) |
+| `apply` | `{ doc, style, ops, actor?: "llm"|"designer" }` | `{ ok, doc, diagnostics, acknowledged, summary, changed }` — atomic: on any error `ok:false`, doc unchanged |
 | `inspect` | `{ doc, style, query }` | see §14 |
 | `drawing` | `{ doc, style, view }` | Drawing IR |
 | `mesh` | `{ doc, style }` | Mesh |
-| `export` | `{ doc, style, view, format: "svg"|"dxf"|"pdf", sheet?: bool }` | **raw bytes** |
+| `export` | `{ doc, style, view, format: "svg"|"dxf"|"pdf", sheet?: bool, review?: bool }` | **raw bytes** (`review`: §25.4) |
 
 `summary` is the compact text the LLM reads after every change, e.g.:
 ```
-DOC truss-bearing-cmu  14 components  2 views  0 errors 1 warning
+DOC truss-bearing-cmu  14 components  2 views  0 errors  1 warning  0 acknowledged
  cmu          cmu_wall 8" x 6 courses (1 bond beam)   x 0..7 5/8"     y -4'-0"..0"
  sill_plate   lumber 2x8 PT flat run z                 x 0..7 1/4"     y 0..1 1/2"
  …
@@ -700,10 +710,10 @@ copies `[kerf_out_ptr, +kerf_out_len)` before the next call. The module imports 
 kerf version
 kerf catalog [--markdown]
 kerf fmt <doc> [-w]
-kerf check <doc> [--style S]
+kerf check <doc> [--style S] [--strict]
 kerf apply <doc> <ops.json> [--style S] [-o out.kerf.json]
 kerf drawing <doc> --view A [--style S] [-o out.json]
-kerf export <doc> --view A --format svg|dxf|pdf [--style S] [--sheet] -o <file>
+kerf export <doc> --view A --format svg|dxf|pdf [--style S] [--sheet] [--review] -o <file>
 kerf mesh <doc> [-o mesh.json]
 kerf call <fn> < input.json         # raw API access, used by conformance tests
 ```
@@ -795,9 +805,10 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **`drawing` / `export` `view` argument:** the view id string (`"A"`). `export` takes an
   optional `sheet: true` (PDF always produces a sheet).
 - **`catalog` markdown:** returned as raw UTF-8 text (not JSON-encoded) from the CLI and wasm.
-- **View `omit`:** `"omit": ["roofing", "roof_sheathing"]`, a list of component ids excluded
+- **View `omit`:** `"omit": ["roofing", "roof_sheathing"]`, a list of component ids (or `*` globs, §25.4) excluded
   from that view only (all instances). Typical use: peel back sheathing or finishes in an iso so the
-  framing reads. Unknown ids ⇒ `E_REF_UNKNOWN`. Annotations targeting an omitted component ⇒ `W_NOTE_TARGET`.
+  framing reads. An entry that matches no component ⇒ `W_REF_UNKNOWN` (was `E_REF_UNKNOWN` before v0.2.0-alpha.5).
+  Annotations targeting an omitted component ⇒ `W_NOTE_TARGET`.
   The geometry checks run per view over what the view draws (§9), so `omit` is also how one document holds
   alternative scenarios.
 - **Fills in iso:** `fill` components (earth, gravel, sand, compacted_fill) never render as 3D
@@ -929,7 +940,7 @@ whose metrics are close; minor differences in CAD are acceptable.
 - `dim.dir` defaults to the dominant axis between `from` and `to` (|dx| ≥ |dy| ⇒ `h`, else `v`).
   `W_DIM_ZERO` fires when a dim measures under 1/16".
 - `acknowledge: [{ "code": "W_UNTREATED_CONTACT", "reason": "truss seat moisture barrier by mfr." }]`
-  on any component suppresses that warning for it. The reason prints in the summary as an `I_ACK` line, and
+  on any component suppresses that warning for it. The summary counts it and lists it with the reason (§25.4), and
   `kerf apply` logs it. `lumber.barrier: "sill_seal" | "membrane"` draws a 1/8" sill-sealer strip under
   the member and also clears `W_UNTREATED_CONTACT`.
 - `W_NOTE_STYLE` (lint): note text containing lowercase letters (before the case transform), a
@@ -987,7 +998,8 @@ whose metrics are close; minor differences in CAD are acceptable.
 - `W_SHORT_SLOPE`: a sloped panel or membrane resting on a sloped member (same slope within 0.5°, touching)
   whose upper end stops more than 1/2" short of the member's end, or of the crop boundary if that is nearer,
   warns with the fix `"until": "<member>@top_chord_end"` (or the right anchor).
-- `acknowledge` accepts `I_*` codes as a no-op instead of erroring.
+- `acknowledge` accepts `I_*` codes as a no-op instead of erroring (since §25.4 such an entry is `W_ACK_UNUSED`: it
+  suppresses nothing).
 
 **Agent docs**
 - `kerf guide` is at most ~12 KB: workflow, one-command-per-line recipes (write the ops file with your
@@ -1081,3 +1093,70 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
 - `notes_side: "above"` on a leader view warns `W_PARAM` and lays out as `both`. `W_NOTE_STYLE` lints keyed and list note text
   as it does leader text; repeated text under one key is not a repeat, and a repeat in a keyed view suggests sharing the key.
   `W_VIEW_FIT` names the list as a culprit and suggests moving it (`above` <-> `left`/`right`).
+
+## 25. v0.2.0-alpha.5 correctness
+
+### 25.4 alpha.5: scenario membership and acknowledgements
+From the MASS dogfood run (47 details, issue #8): every agent kept alternative scenarios in one document by listing the
+other scenarios' ids in each view's `omit` and offsetting each scenario in model space; blanket acknowledgements made
+before the per-view checks (§9) then hid real findings, and a clean check could mean "everything acknowledged".
+
+**Membership.** Which components a view draws is decided by three optional lists:
+- component `views: ["A", "C"]`: the component belongs to these views only (default: every view). Each id must name a
+  view (`E_REF_UNKNOWN`, with the view list); `[]` or a non-string entry is `E_PARAM` (use `visible: false` to hide a
+  component everywhere).
+- view `only: ["shared_*", "a_*"]`: the view draws only components matching an entry. `[]` is `E_PARAM`.
+- view `omit: ["b_*", "roofing"]`: components matching an entry are not drawn (as before, now with globs).
+
+Entries of `only` and `omit` are component ids or globs where `*` matches any run of characters (also none); nothing
+else is special. A view draws a component iff its `views` allows the view AND (`only` is absent OR an `only` entry
+matches) AND no `omit` entry matches. An `only` / `omit` entry that matches no component id is `W_REF_UNKNOWN` (a
+warning, so an omit can name a component a later op or a later `apply` adds); a non-array or a non-string entry is
+`E_PARAM`. The check runs at document level, not per view build. Ops are validated at the end of the batch (§14), so the
+order of ops inside one batch never mattered; what failed before was an `omit` naming a component added by a later
+`apply`.
+
+Excluded components are absent from the view: not drawn (no cut, no beyond outline, no hidden line), not in the auto crop,
+not a note landing (a note targeting one is `W_NOTE_TARGET` "not drawn in this view (its "views" or the view's "omit" /
+"only" exclude it)"), not reported by `inspect at`, not in that view's geometry checks (§9) and not a `W_CROP_STALE`
+candidate for that view. So scenarios share one origin: anchors between shared and scenario members keep their meaning,
+and a scenario in another z band no longer draws as beyond outlines in the other views. Recommended form (guide): shared
+members get no `views`; each scenario's members get `views: ["B"]`; no `omit` lists, no model-space offsets. The 3D mesh
+(§11) still contains every visible component.
+
+**Acknowledged warnings stay visible.**
+- Summary (§13): the DOC line always ends with the acknowledged count: `DOC x  12 components  3 views  0 errors
+  1 warning  23 acknowledged`. The per-warning `I_ACK` lines are replaced by one block after the diagnostics,
+  grouped by code and reason, sorted by code:
+  ```
+  ACKNOWLEDGED  23 warnings suppressed by `acknowledge` (kerf check --strict prints each in full)
+   W_OVERLAP           x11  a_slab, a_beam, b_slab, +3 more: "scenario alternates"
+  ```
+  (component list: the first six, then `+N more`). The `I_ACK` diagnostics stay in `diagnostics`. The op log's `ack`
+  array holds the block's lines.
+- `check` and `apply` outputs carry `acknowledged`: one object per suppressed warning `{code, id, reason, path?, message,
+  fix?}` (`id` = the acknowledging component; `message` / `fix` = the warning as it would have printed).
+- `check` input `strict: true` (CLI `kerf check --strict`): acknowledged warnings are kept as warnings, their message
+  ending ` [acknowledged on '<id>': <reason>]`; when any warning was acknowledged the DOC line adds ` (--strict: listed as
+  warnings)` after the count; the ACKNOWLEDGED block is not printed. The CLI exits 1 when any error or warning remains (without `--strict`, on errors
+  only). `--strict` is only accepted by `check`, `--review` only by `export` (usage error, exit 2).
+- `W_ACK_UNUSED` (warning, never suppressible): after suppression, every `acknowledge` entry that matched no warning
+  in any view. An entry counts as used when its component is one the warning names (its `id`, or quoted in a
+  `W_OVERLAP` / `W_NEAR_MISS` / `W_UNTREATED_CONTACT` message) and its code matches; every component the warning names
+  that acknowledges it is marked used, the first in document order gets the `I_ACK`. Within one component a second entry
+  with the same code is "repeats an earlier entry"; an `I_*` code is "info, never suppressed". One diagnostic per
+  component, path `components/<id>/acknowledge`, listing `CODE (#index)` per stale entry; the fix is the exact op
+  `{"op":"update","path":"components/<id>","value":{"acknowledge":<the remaining entries or null>}}`. Emitted only when the
+  diagnostics are complete: every view was built (`check`, `apply`) and the document has no errors.
+- Drawing IR (§10): `acknowledged` lists the suppressed warnings whose component the view draws (document-level checks
+  plus that view's own diagnostics); the key is present only when the document has `acknowledge` entries.
+- `export` input `review: true` (CLI `kerf export ... --review`): a review overlay on the notes layer. Each acknowledged
+  component the view draws gets a dashed (`hidden` pen) box 0.08 paper inch outside its drawn extent and an `ACK n` tag
+  on the box's top edge (tags never overprint each other: a colliding tag moves right); a stamp `N ACKNOWLEDGED
+  WARNING(S)` (title pen, 1.6 text heights; N counts warnings) heads a legend of one line per tag, `ACK n  <ID>: <CODE>
+  X<count> <REASON>; ...` (upper case, at most 110 characters, at most 10 lines, the last then reading `+K MORE
+  COMPONENTS: ...`). Without a sheet the stamp and legend sit 0.25 paper inch above everything and the bounds grow; on a
+  sheet they go to the first free spot of the frame, scanning from the top left in 0.1 paper inch steps and keeping
+  0.15 paper inch from every drawn item, at text height 1, 0.8 or 0.65 x the style's, dropping legend lines from the end
+  until it fits (last resort: the frame's top left). The default export is unchanged; `review` with no acknowledged
+  warning stamps `0 ACKNOWLEDGED WARNINGS`.

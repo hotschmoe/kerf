@@ -254,10 +254,7 @@ fn members(doc: &Value, diags: &Diags) {
                     "E_REF_UNKNOWN",
                     Some(cid),
                     Some(&path),
-                    format!(
-                        "'{cid}' lists view '{v}' in \"views\", but there is no view '{v}'.{} Views: {view_list}",
-                        did_you_mean(v, &vids)
-                    ),
+                    format!("'{cid}' lists view '{v}' in \"views\", but there is no view '{v}'. Views: {view_list}"),
                     format!(
                         "list existing view ids only, or add view '{v}' (op add, path \"views\") in the same batch"
                     ),

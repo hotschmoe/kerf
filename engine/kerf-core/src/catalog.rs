@@ -296,7 +296,7 @@ const COMMON: [(&[&str], &str, &str); 14] = [
     (
         &["acknowledge"],
         "null",
-        "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; the reason prints as an I_ACK line in the summary and is logged. Errors cannot be acknowledged; I_* codes are accepted and ignored (`kerf schema acknowledge`)",
+        "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; it is counted on the summary's DOC line and listed with the reason in its ACKNOWLEDGED block (`kerf check --strict` shows it as a warning), and logged. Errors cannot be acknowledged; an entry that suppresses nothing is W_ACK_UNUSED (`kerf schema acknowledge`)",
     ),
 ];
 

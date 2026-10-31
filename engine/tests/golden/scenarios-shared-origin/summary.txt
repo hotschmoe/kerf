@@ -1,10 +1,9 @@
-DOC scenarios-shared-origin  6 components  3 views  0 errors  1 warning  1 acknowledged
+DOC scenarios-shared-origin  6 components  3 views  0 errors  0 warnings  1 acknowledged
  shared_ftg    concrete footing 1'-4" x 10"                x 0"..1'-4"       y 0"..10"
  shared_stem   concrete rect 8" x 2'-0"                    x 4"..1'-0"       y 10"..2'-10"
  a_sill        lumber 2x8 PT flat run z "2X8 PT SILL"      x 4"..11 1/4"     y 2'-10"..2'-11 1/2"
  a_stud        lumber 2x6 y wide run y L=8"                x 4 7/8"..10 3/8" y 2'-11 1/2"..3'-7 1/2"
  b_sill        lumber 2x6 flat run z "2X6 SILL"            x 5"..10 1/2"     y 2'-10"..2'-11 1/2"
  b_stud        lumber 2x6 y wide run y L=8"                x 5"..10 1/2"     y 2'-11 1/2"..3'-7 1/2"
-WARN W_ACK_UNUSED b_sill: 1 of the 2 acknowledge entries of 'b_sill' suppresses nothing (no W_OVERLAP (#1) names 'b_sill' in any view); a stale acknowledgement would hide the next real finding Fix: remove it: {"op":"update","path":"components/b_sill","value":{"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"borate-treated sill on sill sealer per owner spec"}]}}
 ACKNOWLEDGED  1 warning suppressed by `acknowledge` (kerf check --strict prints each in full)
  W_UNTREATED_CONTACT x1   b_sill: "borate-treated sill on sill sealer per owner spec"

@@ -209,7 +209,7 @@ section('4. acknowledge (I_ACK, logged) and lumber.barrier');
   const ack = [{ op: 'update', path: 'components/sill', value: { acknowledge: [{ code: 'W_UNTREATED_CONTACT', reason: 'truss seat moisture barrier by mfr.' }] } }];
   write('ack.json', ack);
   r = kerf(['apply', 'b.kerf.json', 'ack.json', '-w', '--why', 'ack the sill']);
-  check('acknowledged: warning gone, I_ACK line with the reason', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /^INFO I_ACK sill: W_UNTREATED_CONTACT on 'sill' acknowledged: truss seat moisture barrier by mfr\./m.test(r.out), r.out);
+  check('acknowledged: warning gone, counted on the DOC line, listed by code with component and reason', r.code === 0 && /0 errors  0 warnings  1 acknowledged$/m.test(r.out) && /^ACKNOWLEDGED  1 warning suppressed/m.test(r.out) && /^ W_UNTREATED_CONTACT +x1 +sill: "truss seat moisture barrier by mfr\."$/m.test(r.out), r.out);
   const log = fs.readFileSync(path.join(tmp, 'b.kerf.json.log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   check('apply -w logs the acknowledgement (reason) and the ops read from a file', log[0].ack && /moisture barrier by mfr/.test(log[0].ack[0]) && log[0].ops.length === 1 && log[0].ops[0].path === 'components/sill', log[0]);
   r = kerf(['apply', 'b.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/sill', value: { acknowledge: [{ code: 'E_PARAM', reason: 'x' }, { code: 'W_OVERLAP' }] } }])]);
@@ -313,7 +313,8 @@ section('6b. geometry checks per view: omit-based scenarios, findings named with
   const ack = { ...scn, components: scn.components.map((c) => (c.id === 'b_blk' ? { ...c, acknowledge: [{ code: 'W_OVERLAP', reason: 'blocking notched around the beam' }] } : c)) };
   write('scn-ack.kerf.json', ack);
   r = kerf(['check', 'scn-ack.kerf.json']);
-  check('acknowledging the per-view overlap: I_ACK keeps the view list', /0 errors  4 warnings/.test(r.out) && /^INFO I_ACK b_blk: W_OVERLAP on 'b_blk' acknowledged: blocking notched around the beam \(was: .*\(in view B\)\)/m.test(r.out), r.out);
+  const ackJson = JSON.parse(kerf(['call', 'check'], { input: JSON.stringify({ doc: ack }) }).out);
+  check('acknowledging the per-view overlap: the I_ACK diagnostic and the acknowledged entry keep the view list', /0 errors  4 warnings  1 acknowledged/.test(r.out) && ackJson.diagnostics.some((d) => d.code === 'I_ACK' && /^W_OVERLAP on 'b_blk' acknowledged: blocking notched around the beam \(was: .*\(in view B\)\)/.test(d.message)) && /\(in view B\)$/.test(ackJson.acknowledged[0].message), r.out);
   const { views, ...noViews } = scn;
   write('scn-noviews.kerf.json', noViews);
   r = kerf(['check', 'scn-noviews.kerf.json']);
@@ -644,6 +645,105 @@ section('14. steel shapes, bolts and weld symbols: table errors, W_BOLT_EDGE, W_
   write('stl.kerf.json', steelDoc([], [{ id: 'w2', type: 'weld', at: 'col@bottom_right' }]));
   r = kerf(['check', 'stl.kerf.json']);
   check('fillet weld without size: E_PARAM with a fix', /ERROR E_PARAM w2: weld 'w2': a fillet weld needs "size".*Fix: e\.g\. "size": "3\/16"/.test(r.out), r.out);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Issue #8: scenario membership (component views, view only, globs in omit/only, W_REF_UNKNOWN) and acknowledged
+// warnings that stay visible (summary count + block, --strict, W_ACK_UNUSED, IR list, export --review).
+section('15. issue #8: scenarios at one origin (views, only, omit globs) and visible acknowledgements');
+{
+  const zb = (extra = {}) => ({
+    kerf: '0.1', id: 'zb', title: 'Z BANDS', run: [-24, 112],
+    components: [
+      { id: 'a_slab', type: 'lumber', size: '2x8', run: 'z', z: [-24, 24], at: { anchor: 'bottom_left', to: [0, 0] }, views: ['A'], ...extra.a },
+      { id: 'b_slab', type: 'lumber', size: '4x4', run: 'z', z: [88, 112], at: { anchor: 'bottom_left', to: [0, 0] }, views: ['B', 'C'] },
+      { id: 'post', type: 'lumber', size: '2x4', run: 'z', at: { anchor: 'bottom_right', to: [0, 0] } },
+    ],
+    views: [
+      { id: 'A', kind: 'section', cut_z: 0, annotations: [{ id: 'n1', type: 'note', text: '4X4', target: 'b_slab' }] },
+      { id: 'B', kind: 'section', cut_z: 100, annotations: [] },
+      { id: 'C', kind: 'section', cut_z: 100, only: ['b_*', 'post'], annotations: [] },
+      ...(extra.views ?? []),
+    ],
+  });
+  write('zb.kerf.json', zb());
+  const srcs = (v) => {
+    const d = JSON.parse(kerf(['drawing', 'zb.kerf.json', '--view', v]).out);
+    return new Set(d.items.filter((i) => i.t === 'path').map((i) => i.src));
+  };
+  const sb = srcs('B');
+  check('views: a shared-origin alternate in another z band draws no beyond outline in view B', !sb.has('a_slab') && sb.has('b_slab') && sb.has('post'), [...sb]);
+  const sa = srcs('A');
+  check('views: view A draws a_slab and the shared post, not b_slab', sa.has('a_slab') && sa.has('post') && !sa.has('b_slab'), [...sa]);
+  const sc = srcs('C');
+  check('only with a glob: view C draws b_slab and post only', sc.has('b_slab') && sc.has('post') && !sc.has('a_slab'), [...sc]);
+  let r = kerf(['check', 'zb.kerf.json']);
+  check('a note on a member the view excludes: W_NOTE_TARGET names the exclusion and the fix', /^WARN W_NOTE_TARGET n1: note 'n1' in view A: target 'b_slab' is not drawn in this view \(its "views" or the view's "omit" \/ "only" exclude 'b_slab'\)\..* Fix: move the note to a view that draws 'b_slab'/m.test(r.out), r.out);
+  write('zb2.kerf.json', zb({ a: { views: ['A', 'D'] } }));
+  r = kerf(['check', 'zb2.kerf.json']);
+  check('views naming an unknown view: E_REF_UNKNOWN with the view list', r.code === 1 && /^ERROR E_REF_UNKNOWN a_slab: 'a_slab' lists view 'D' in "views", but there is no view 'D'\. Views: A, B, C/m.test(r.out), r.out);
+  write('zb3.kerf.json', zb({ a: { views: [] } }));
+  r = kerf(['check', 'zb3.kerf.json']);
+  check('views: [] is E_PARAM (use visible:false to hide everywhere)', r.code === 1 && /^ERROR E_PARAM a_slab: 'views' of 'a_slab' must be a non-empty array of view ids.*visible": false/m.test(r.out), r.out);
+
+  const base = zb();
+  base.views[1].omit = ['c_*'];
+  write('ord.kerf.json', base);
+  r = kerf(['check', 'ord.kerf.json']);
+  check('an omit glob that matches nothing warns W_REF_UNKNOWN (not an error)', r.code === 0 && /^WARN W_REF_UNKNOWN B: view B omits 'c_\*', a pattern that matches no component id, so it has no effect Fix: /m.test(r.out), r.out);
+  const ops = [
+    { op: 'update', path: 'views/A', value: { omit: ['c_*', 'c_extra'] } },
+    { op: 'add', path: 'components', value: { id: 'c_extra', type: 'lumber', size: '2x4', run: 'z', at: { anchor: 'bottom_left', to: [0, 0] }, views: ['B'] } },
+  ];
+  write('ord-ops.json', ops);
+  r = kerf(['apply', 'ord.kerf.json', 'ord-ops.json', '-w', '--why', 'scenario c']);
+  check('omit naming an id the same batch adds later: applies, and the glob now matches', r.code === 0 && !/W_REF_UNKNOWN A/.test(r.out) && /wrote ord\.kerf\.json/.test(r.out), r.out + r.err);
+  write('ord-ops2.json', [{ op: 'update', path: 'views/B', value: { omit: ['nope'] } }]);
+  r = kerf(['apply', 'ord.kerf.json', 'ord-ops2.json']);
+  check('an unknown literal id in omit: W_REF_UNKNOWN with a suggestion, the apply still succeeds', r.code === 0 && /^WARN W_REF_UNKNOWN B: view B omits 'nope', which is not a component id \(yet\)/m.test(r.out), r.out + r.err);
+
+  const ack = {
+    kerf: '0.1', id: 'ack', title: 'ACK',
+    components: [
+      { id: 'cmu', type: 'cmu_wall', width: 8, courses: 3, bond_beam_courses: 1, at: { to: [0, 0] } },
+      { id: 'sill', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'cmu@top_left', offset: [1, 0] },
+        acknowledge: [{ code: 'W_UNTREATED_CONTACT', reason: 'sill sealer by others' }, { code: 'W_OVERLAP', reason: 'scenario alternates' }, { code: 'W_UNTREATED_CONTACT', reason: 'again' }] },
+      { id: 'blk', type: 'lumber', size: '2x4', run: 'x', length: 4, at: { anchor: 'bottom_left', to: 'sill@top_left' }, acknowledge: [{ code: 'I_SOLID_USED', reason: 'n/a' }] },
+    ],
+    views: [{ id: 'A', scale: '3"=1\'-0"', crop: { x: [-6, 16], y: [10, 30] }, cut_z: 0, annotations: [] }],
+  };
+  write('ack.kerf.json', ack);
+  r = kerf(['check', 'ack.kerf.json']);
+  check('summary DOC line counts acknowledged warnings next to errors and warnings', r.code === 0 && /^DOC ack  3 components  1 view  0 errors  2 warnings  1 acknowledged$/m.test(r.out), r.out.split('\n')[0]);
+  check('default output lists acknowledged warnings by code with component and reason', /^ACKNOWLEDGED  1 warning suppressed by `acknowledge`/m.test(r.out) && /^ W_UNTREATED_CONTACT +x1 +sill: "sill sealer by others"$/m.test(r.out) && !/^INFO I_ACK/m.test(r.out), r.out);
+  check('W_ACK_UNUSED: one line per component, says why each entry is stale, fix is the exact update op', /^WARN W_ACK_UNUSED sill: 2 of the 3 acknowledge entries of 'sill' suppress nothing \(no W_OVERLAP \(#1\) names 'sill' in any view; W_UNTREATED_CONTACT \(#2\) repeats an earlier entry\).* Fix: remove them: \{"op":"update","path":"components\/sill","value":\{"acknowledge":\[\{"code":"W_UNTREATED_CONTACT","reason":"sill sealer by others"\}\]\}\}$/m.test(r.out), r.out);
+  check('W_ACK_UNUSED: an acknowledged I_* code suppresses nothing; acknowledge: null removes the only entry', /^WARN W_ACK_UNUSED blk: 1 of the 1 acknowledge entry of 'blk' suppresses nothing \(I_SOLID_USED \(#0\) is info, never suppressed\).*"value":\{"acknowledge":null\}\}$/m.test(r.out), r.out);
+  const fixOp = /Fix: remove them: (\{.*\})$/m.exec(r.out);
+  write('fix.json', fixOp ? [JSON.parse(fixOp[1])] : []);
+  r = kerf(['apply', 'ack.kerf.json', 'fix.json', '-w', '--why', 'drop stale acks']);
+  check('applying the W_ACK_UNUSED fix removes the stale entries and keeps the acknowledgement', r.code === 0 && !/W_ACK_UNUSED sill/.test(r.out) && /1 acknowledged$/m.test(r.out), r.out + r.err);
+  const logs = fs.readFileSync(path.join(tmp, 'ack.kerf.json.log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  check('the op log keeps the acknowledged list (code, component, reason)', logs.at(-1).ack && /W_UNTREATED_CONTACT +x1 +sill: "sill sealer by others"/.test(logs.at(-1).ack[0]), logs.at(-1));
+  r = kerf(['check', 'ack.kerf.json', '--strict']);
+  check('--strict: the acknowledged warning is a warning again (with who and why), exit 1', r.code === 1 && /^DOC ack .* 0 errors  2 warnings  1 acknowledged \(--strict: listed as warnings\)$/m.test(r.out) && /^WARN W_UNTREATED_CONTACT sill: .*\[acknowledged on 'sill': sill sealer by others\]/m.test(r.out) && !/^ACKNOWLEDGED/m.test(r.out), r.out);
+  r = kerf(['check', 'zb.kerf.json', '--strict']);
+  check('--strict exits 1 on a plain warning too', r.code === 1, r.out.split('\n')[0]);
+  r = kerf(['export', 'ack.kerf.json', '--view', 'A', '--strict', '--format', 'svg', '-o', 'x.svg']);
+  check('--strict outside check is a usage error', r.code === 2 && /--strict only applies to `kerf check`/.test(r.err), r.err);
+  const cj = JSON.parse(kerf(['call', 'check'], { input: JSON.stringify({ doc: readJson('ack.kerf.json') }) }).out);
+  check('check JSON: acknowledged list with code, id, reason and the original message', cj.acknowledged.length === 1 && cj.acknowledged[0].code === 'W_UNTREATED_CONTACT' && cj.acknowledged[0].id === 'sill' && cj.acknowledged[0].reason === 'sill sealer by others' && /untreated wood 'sill'/.test(cj.acknowledged[0].message), cj.acknowledged);
+  const ir = JSON.parse(kerf(['drawing', 'ack.kerf.json', '--view', 'A']).out);
+  check('drawing IR carries the acknowledged list of its view', Array.isArray(ir.acknowledged) && ir.acknowledged.length === 1 && ir.acknowledged[0].id === 'sill', ir.acknowledged);
+  check('drawing IR of a document without acknowledge has no acknowledged key', !('acknowledged' in JSON.parse(kerf(['drawing', 'zb.kerf.json', '--view', 'A']).out)));
+  r = kerf(['export', 'ack.kerf.json', '--view', 'A', '--format', 'dxf', '--sheet', '-o', 'plain.dxf']);
+  const plain = fs.readFileSync(path.join(tmp, 'plain.dxf'), 'utf8');
+  r = kerf(['export', 'ack.kerf.json', '--view', 'A', '--format', 'dxf', '--sheet', '--review', '-o', 'review.dxf']);
+  const rev = fs.readFileSync(path.join(tmp, 'review.dxf'), 'utf8');
+  check('export --review stamps the sheet, tags the component and lists the reason; the default sheet has none of it', r.code === 0 && /\n1 ACKNOWLEDGED WARNING\r?\n/.test(rev) && /\nACK 1\r?\n/.test(rev) && /\nACK 1  SILL: W_UNTREATED_CONTACT X1 SILL SEALER BY OTHERS\r?\n/.test(rev) && !/ACKNOWLEDGED|ACK 1/.test(plain), r.err);
+  r = kerf(['export', 'ack.kerf.json', '--view', 'A', '--format', 'png', '--review', '-o', 'review.png']);
+  check('export --review works for png without a sheet', r.code === 0 && fs.statSync(path.join(tmp, 'review.png')).size > 1000, r.err);
+  r = kerf(['check', 'ack.kerf.json', '--review']);
+  check('--review outside export is a usage error', r.code === 2 && /--review only applies to `kerf export`/.test(r.err), r.err);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
