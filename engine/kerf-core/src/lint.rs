@@ -207,10 +207,27 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
                 "dim" => &schema::DIM,
                 "label" => &schema::LABEL,
                 "weld" => &schema::WELD,
+                "table" => &schema::TABLE,
                 _ => &schema::NOTE,
             };
             let apath = format!("{vbase}/annotations/{aid}");
             lint_object(diags, an, o, &apath, Some(aid));
+            if str_of(an, "type") == "table" {
+                for (k, c) in arr_of(an, "columns").unwrap_or(&[]).iter().enumerate() {
+                    if matches!(c, Value::Object(_)) {
+                        lint_object(diags, c, &schema::TABLE_COLUMN, &format!("{apath}/columns/{k}"), Some(aid));
+                    }
+                }
+                for key in ["header", "rows"] {
+                    for (r, row) in arr_of(an, key).unwrap_or(&[]).iter().enumerate() {
+                        for (c, cell) in row.arr().unwrap_or(&[]).iter().enumerate() {
+                            if matches!(cell, Value::Object(_)) {
+                                lint_object(diags, cell, &schema::TABLE_CELL, &format!("{apath}/{key}/{r}/{c}"), Some(aid));
+                            }
+                        }
+                    }
+                }
+            }
             for (i, ci) in arr_of(an, "cite").unwrap_or(&[]).iter().enumerate() {
                 lint_object(diags, ci, &schema::CITE, &format!("{apath}/cite/{i}"), Some(aid));
             }
@@ -624,12 +641,40 @@ pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
     NoteStyle { issues, fixed, rewrite, fix_safe }
 }
 
+/// `W_NOTE_STYLE` on every text of a table (title, headers, units, cells, notes); cells repeat by nature, so no repeat check.
+fn table_style(an: &Value, vid: &str, st: &Style, diags: &Diags) {
+    let aid = str_of(an, "id");
+    for (sub, text) in crate::annot::table::texts(an).into_iter().filter(|(p, _)| !p.ends_with("/unit")) {
+        let ns = check_note_text(text, st);
+        if ns.issues.is_empty() {
+            continue;
+        }
+        let fix = if !ns.fix_safe || ns.rewrite || ns.fixed == text {
+            "edit the text by hand to fix the problems listed".to_string()
+        } else {
+            format!("set {sub} to \"{}\"", ns.fixed)
+        };
+        diags.add_fix(
+            Level::Warning,
+            "W_NOTE_STYLE",
+            Some(aid),
+            Some(&format!("views/{vid}/annotations/{aid}/{sub}")),
+            format!("table '{aid}' in view {vid}: {sub} breaks the house note style: {}. Text: \"{text}\"", ns.issues),
+            fix,
+        );
+    }
+}
+
 fn note_style(doc: &Value, st: &Style, diags: &Diags) {
     for v in arr_of(doc, "views").unwrap_or(&[]) {
         let vid = str_of(v, "id");
         let keyed = matches!(v.get("notes_style").and_then(Value::str), Some("keyed" | "list"));
         let mut seen: Vec<(String, &str, Option<f64>)> = Vec::new();
         for an in arr_of(v, "annotations").unwrap_or(&[]) {
+            if str_of(an, "type") == "table" {
+                table_style(an, vid, st, diags);
+                continue;
+            }
             if str_of(an, "type") != "note" {
                 continue;
             }
@@ -759,7 +804,7 @@ fn requested_missing(doc: &Value, cov: &[coverage::Item], diags: &Diags) {
             None,
             Some(&format!("meta/requested/{i}")),
             format!(
-                "requested element \"{}\" (meta.requested) matches no component (id, type, label, model, size) or annotation (note, label, dim text, weld, view title){closest}",
+                "requested element \"{}\" (meta.requested) matches no component (id, type, label, model, size) or annotation (note, label, dim text, weld, table, view title){closest}",
                 item.text
             ),
             format!(

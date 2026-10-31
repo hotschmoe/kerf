@@ -372,6 +372,51 @@ fn view_fit(
     diags.add_fix(Level::Warning, "W_VIEW_FIT", Some(view_id), Some(&format!("views/{view_id}")), msg, fixes);
 }
 
+/// W_VIEW_FIT for a schedule view (SPEC 26.1): its tables and notes are paper sized, so the fixes are about them.
+fn schedule_fit(spec: &ViewSpec, need: (f64, f64), area: (f64, f64), fit: &FitInfo, diags: &Diags) {
+    let view_id = spec.id;
+    let ((pw, ph), (aw, ah)) = (need, area);
+    let mut parts: Vec<String> = Vec::new();
+    for b in &fit.ann {
+        let what = match b.kind {
+            AnnKind::Table => format!("table '{}'", b.id),
+            AnnKind::List => format!("the {} list", spec.notes_title.unwrap_or("DETAIL NOTES")),
+            AnnKind::Label => format!("label '{}'", b.id),
+            _ => continue,
+        };
+        parts.push(format!("{what} {} x {}", fixed(b.bbox.width(), 2), fixed(b.bbox.height(), 2)));
+    }
+    let mut fixes: Vec<String> = Vec::new();
+    if pw > aw + 1e-6 {
+        fixes.push("narrow the widest table (smaller columns[k].width, or remove widths so long text wraps)".to_string());
+        if matches!(spec.notes_side, NotesSide::Left | NotesSide::Right) {
+            fixes.push("set notes_side to \"above\" to put the notes list above the tables".to_string());
+        }
+    }
+    if ph > ah + 1e-6 {
+        fixes.push("split the tallest table: move some of its rows to a second table in another schedule view".to_string());
+        if !matches!(spec.notes_side, NotesSide::Left | NotesSide::Right) {
+            fixes.push("set notes_side to \"right\" to put the notes list beside the tables".to_string());
+        }
+    }
+    let fixes: Vec<String> = fixes.iter().enumerate().map(|(k, f)| format!("{}) {f}", k + 1)).collect();
+    diags.add_fix(
+        Level::Warning,
+        "W_VIEW_FIT",
+        Some(view_id),
+        Some(&format!("views/{view_id}")),
+        format!(
+            "schedule view {view_id} with its title needs {} x {} paper inches but the sheet area is {} x {} (inside the frame, above the title block, 1/8\" clear of both). Content (paper inches): {}.",
+            fixed(pw, 2),
+            fixed(ph, 2),
+            fixed(aw, 2),
+            fixed(ah, 2),
+            parts.join("; ")
+        ),
+        fixes.join("; "),
+    );
+}
+
 /// One complete section pass at a fixed (resolved) crop and scale: geometry, annotations, title.
 struct SecPass {
     items: Vec<Item>,
@@ -465,6 +510,39 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     }
     let mut bounds = annot::items_box(font, &all);
     bounds.add_box(spec.crop);
+    SecPass { items: all, bounds, detail, fit, unverified }
+}
+
+/// A schedule view (SPEC 26.1): tables, the notes list and labels laid out in paper inches (scale factor 1) from the
+/// origin, the title under them. There is no geometry; the content box stands in for the crop.
+fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
+    let SectionInputs { st, scene, font, doc, diags, work, .. } = inp;
+    let mut sec = Section::new(scene, spec, &[]);
+    let origin = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
+    let mut env = Env::new(st, font, scene, spec, 1.0, origin, diags, Landing::Section(&mut sec));
+    env.work = Some(work);
+    let mut all = annot::annotate(&mut env, &mut []);
+    let unverified = env.unverified;
+    let mut detail = annot::items_box(font, &all);
+    if detail.is_empty() {
+        detail = origin;
+    }
+    let scale_text = units::scale_label(0.0);
+    let info = SheetInfo {
+        number: &spec.number,
+        title: spec.title,
+        scale_text: &scale_text,
+        sheet: meta_string(doc, "sheet"),
+        unverified,
+    };
+    let title_from = all.len();
+    annot::title_items(&mut env, &info, detail, &mut all);
+    let fit = FitInfo { ann: env.ann_boxes.clone(), title: annot::items_box(font, &all[title_from..]) };
+    if env.unknown_glyph {
+        diags.add(Level::Info, "I_GLYPH", Some(spec.id), None, GLYPH_INFO.to_string());
+    }
+    let mut bounds = annot::items_box(font, &all);
+    bounds.add_box(detail);
     SecPass { items: all, bounds, detail, fit, unverified }
 }
 
@@ -737,7 +815,17 @@ pub fn build_from_scene<'a>(
     let detail: Box;
     let fit: FitInfo;
     let scale_text: String;
-    if spec.kind == Kind::Section {
+    if spec.kind == Kind::Schedule {
+        let pass = schedule_pass(SectionInputs { st, scene, prisms: &prisms, font, doc, diags, work: &work }, spec);
+        scale = 1.0;
+        scale_text = units::scale_label(0.0);
+        crop_out = pass.detail;
+        unverified = pass.unverified;
+        items = pass.items;
+        bounds = pass.bounds;
+        detail = pass.detail;
+        fit = pass.fit;
+    } else if spec.kind == Kind::Section {
         let rs = resolve_section(SectionInputs { st, scene, prisms: &prisms, font, doc, diags, work: &work }, spec);
         scale = rs.scale;
         crop_out = rs.crop;
@@ -831,8 +919,12 @@ pub fn build_from_scene<'a>(
             } else {
                 None
             };
-            let frame = Frame { scale_text: &scale_text, scale, crop: crop_out, bounds, aw, ah };
-            view_fit(st, spec, &frame, &fit, culprits, diags);
+            if spec.kind == Kind::Schedule {
+                schedule_fit(spec, (pw, ph), (aw, ah), &fit, diags);
+            } else {
+                let frame = Frame { scale_text: &scale_text, scale, crop: crop_out, bounds, aw, ah };
+                view_fit(st, spec, &frame, &fit, culprits, diags);
+            }
         }
     }
     let layers = collect_layers(&items, st);

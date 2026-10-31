@@ -8,6 +8,7 @@ use crate::house;
 use crate::math;
 use crate::pen::{LayerKey, Pen};
 use alloc::borrow::Cow;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -215,6 +216,36 @@ pub fn wrap(text: &str, chars_in: usize) -> Vec<String> {
     }
     if lines.is_empty() {
         lines.push(String::new());
+    }
+    lines
+}
+
+/// Greedy word wrap at a paper width: the lines of each paragraph of `text` (split at `\n`) no wider than `max_w` at
+/// text height `h`. The pieces of one value stay together when they fit (`wrap_words`); a word wider than `max_w` is
+/// never split and takes a line of its own (the caller reports the overflow).
+pub fn wrap_width(font: &Font, text: &str, h: f64, max_w: f64) -> Vec<String> {
+    let width = |s: &str| font.width(ascii_fold(s), h);
+    let mut lines: Vec<String> = Vec::new();
+    for para in text.split('\n') {
+        let mut cur = String::new();
+        let tokens = wrap_words(para);
+        let words = tokens.iter().flat_map(|t| {
+            let parts: Vec<&str> = if width(t) > max_w { t.split(' ').collect() } else { alloc::vec![t.as_str()] };
+            parts
+        });
+        for w in words {
+            if cur.is_empty() {
+                cur.push_str(w);
+                continue;
+            }
+            let joined = format!("{cur} {w}");
+            if width(&joined) <= max_w + 1e-9 {
+                cur = joined;
+            } else {
+                lines.push(core::mem::replace(&mut cur, String::from(w)));
+            }
+        }
+        lines.push(cur);
     }
     lines
 }

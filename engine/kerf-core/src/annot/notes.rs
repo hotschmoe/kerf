@@ -694,7 +694,7 @@ pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
     let indent = widest + font.width("  ", h);
     let wrapped: Vec<Vec<String>> = entries.iter().map(|e| wrap(e.text, wrap_n)).collect();
     let text_w = wrapped.iter().flatten().map(|l| font.width(ascii_fold(l), h)).fold(0.0, f64::max);
-    let title = upper_if(env, &st.list_title).into_owned();
+    let title = upper_if(env, env.spec.notes_title.unwrap_or(&st.list_title)).into_owned();
     let col_w = (indent + text_w).max(font.width(ascii_fold(&title), h));
     let total: usize = wrapped.iter().map(Vec::len).sum();
     let side = env.spec.notes_side;

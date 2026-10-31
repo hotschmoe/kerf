@@ -15,6 +15,8 @@ use alloc::vec::Vec;
 pub enum Kind {
     Section,
     Iso,
+    /// Tables and notes only (SPEC 26.1): no components, no crop, no model scale; laid out in paper inches.
+    Schedule,
 }
 
 impl Kind {
@@ -22,6 +24,7 @@ impl Kind {
         match self {
             Kind::Section => "section",
             Kind::Iso => "iso",
+            Kind::Schedule => "schedule",
         }
     }
 }
@@ -71,6 +74,8 @@ pub struct ViewSpec<'a> {
     pub notes_side: NotesSide,
     /// `notes_style` of the view; None = the style's `notes.mode`.
     pub notes_style: Option<NotesStyle>,
+    /// `notes_title`: the heading of the DETAIL NOTES list (None = the style's `notes.list_title`).
+    pub notes_title: Option<&'a str>,
     pub annotations: &'a [Value],
     pub members: Members<'a>,
 }
@@ -82,6 +87,8 @@ pub struct Members<'a> {
     pub view: &'a str,
     pub omit: Vec<&'a str>,
     pub only: Option<Vec<&'a str>>,
+    /// A schedule view draws no components.
+    pub none: bool,
 }
 
 impl<'a> Members<'a> {
@@ -91,11 +98,15 @@ impl<'a> Members<'a> {
             view: node.get("id").and_then(Value::str).unwrap_or(""),
             omit: pats("omit").unwrap_or_default(),
             only: pats("only"),
+            none: node.get("kind").and_then(Value::str).is_some_and(is_schedule_kind),
         }
     }
 
     /// The component with this id and document node is drawn (and checked) in the view.
     pub fn includes(&self, id: &str, node: &Value) -> bool {
+        if self.none {
+            return false;
+        }
         if let Some(vs) = node.get("views").and_then(Value::arr)
             && !vs.iter().any(|v| v.str() == Some(self.view))
         {
@@ -112,6 +123,11 @@ impl<'a> Members<'a> {
     pub fn draws(&self, c: &Comp<'_>) -> bool {
         self.includes(&c.id, c.node)
     }
+}
+
+/// `kind` of a tables-and-notes view: "schedule", or its alias "sheet".
+pub fn is_schedule_kind(kind: &str) -> bool {
+    matches!(kind, "schedule" | "sheet")
 }
 
 pub fn is_glob(pat: &str) -> bool {
@@ -157,6 +173,24 @@ fn parse_range(v: Option<&Value>) -> Option<[f64; 2]> {
 
 const DEFAULT_SECTION_SCALE: &str = "1\"=1'-0\"";
 
+/// Keys of a schedule view that describe model geometry: ignored, each with a `W_PARAM` naming it.
+fn schedule_only_keys(node: &Value, id: &str, base: &str, diags: &Diags) {
+    for key in ["scale", "crop", "cut_z", "from", "cutaway", "omit", "only"] {
+        let Some(v) = node.get(key).filter(|v| !v.is_null()) else { continue };
+        if key == "scale" && v.str().is_some_and(|t| units::parse_scale(t).is_some_and(|s| s.factor == 0.0)) {
+            continue;
+        }
+        diags.add_fix(
+            Level::Warning,
+            "W_PARAM",
+            Some(id),
+            Some(&format!("{base}/{key}")),
+            format!("view {id} is a schedule view (tables and notes in paper inches, no components): \"{key}\" has no meaning there and is ignored; the caption prints SCALE: NTS"),
+            format!("remove \"{key}\" from view {id} (\"scale\": \"NTS\" is accepted), or make it a \"section\" view to draw components"),
+        );
+    }
+}
+
 pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpec<'a>> {
     let Some(id) = node.get("id").and_then(Value::str) else {
         diags.add(
@@ -175,26 +209,32 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     match kind_s {
         "section" => {}
         "iso" => kind = Kind::Iso,
+        k if is_schedule_kind(k) => kind = Kind::Schedule,
         _ => {
             diags.add(
                 Level::Error,
                 "E_PARAM",
                 Some(id),
                 Some(&format!("{base}/kind")),
-                format!("view kind must be \"section\" or \"iso\" (got \"{kind_s}\")"),
+                format!("view kind must be \"section\", \"iso\" or \"schedule\" (tables and notes only) (got \"{kind_s}\")"),
             );
             ok = false;
         }
     }
-    let has_scale = node.get("scale").is_some_and(|v| !v.is_null());
-    let scale_text =
-        node.get("scale").and_then(Value::str).unwrap_or(if kind == Kind::Iso { "NTS" } else { DEFAULT_SECTION_SCALE });
+    let mut has_scale = node.get("scale").is_some_and(|v| !v.is_null());
+    let mut scale_text =
+        node.get("scale").and_then(Value::str).unwrap_or(if kind == Kind::Section { DEFAULT_SECTION_SCALE } else { "NTS" });
     let mut scale = 12.0;
     let spath = format!("{base}/scale");
-    if let Some(s) = units::parse_scale(scale_text) {
+    if kind == Kind::Schedule {
+        schedule_only_keys(node, id, &base, diags);
+        has_scale = false;
+        scale_text = "NTS";
+        scale = 0.0;
+    } else if let Some(s) = units::parse_scale(scale_text) {
         scale = s.factor;
         if kind == Kind::Section && s.factor == 0.0 {
-            diags.add(Level::Error, "E_PARAM", Some(id), Some(&spath), "section views need a numeric scale such as \"1-1/2\\\"=1'-0\\\"\", \"1\\\"=1'-0\\\"\", \"3/4\\\"=1'-0\\\"\" or \"1:20\" (NTS is for iso views)".to_string());
+            diags.add(Level::Error, "E_PARAM", Some(id), Some(&spath), "section views need a numeric scale such as \"1-1/2\\\"=1'-0\\\"\", \"1\\\"=1'-0\\\"\", \"3/4\\\"=1'-0\\\"\" or \"1:20\" (NTS is for iso views; a view of tables and notes only is \"kind\": \"schedule\", which needs no scale)".to_string());
             ok = false;
         }
     } else if let Some(s) = units::parse_scale_any(scale_text) {
@@ -206,7 +246,7 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
     }
     let mut crop = Box::default();
     let mut has_crop = false;
-    if let Some(cv) = node.get("crop").filter(|v| !v.is_null()) {
+    if let Some(cv) = node.get("crop").filter(|v| !v.is_null() && kind != Kind::Schedule) {
         match (parse_range(cv.get("x")), parse_range(cv.get("y"))) {
             (Some([x0, x1]), Some([y0, y1])) if x0 < x1 && y0 < y1 => {
                 crop = Box { x0, y0, x1, y1 };
@@ -289,6 +329,23 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
             }
         }
     }
+    let mut notes_title = None;
+    if let Some(tv) = node.get("notes_title").filter(|v| !v.is_null()) {
+        match tv.str().map(str::trim) {
+            Some(t) if !t.is_empty() && t.chars().count() <= 60 => notes_title = Some(t),
+            _ => {
+                diags.add_fix(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/notes_title")),
+                    format!("view {id}: \"notes_title\" must be a string of 1 to 60 characters (got {})", model::kind_or_text(tv)),
+                    "use e.g. \"notes_title\": \"HEADER SCHEDULE NOTES\", or remove it for DETAIL NOTES".to_string(),
+                );
+                ok = false;
+            }
+        }
+    }
     let cutaway = matches!(node.get("cutaway"), Some(Value::Bool(true)));
     if !ok {
         return None;
@@ -322,6 +379,7 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         cutaway,
         notes_side,
         notes_style,
+        notes_title,
         annotations: anns,
         members: Members::of(node),
     })

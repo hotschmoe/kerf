@@ -1,0 +1,120 @@
+{
+  "kerf": "0.1",
+  "id": "schedule-tables",
+  "title": "ANCHOR AND HEADER SCHEDULES",
+  "meta": {
+    "jurisdiction": { "code": "ACI 318", "edition": 2019 },
+    "requested": ["f'c = 3,000 psi", "HDU8 holdown", "header schedule", "#5 bar lap 36", "anchor bolt embedment"]
+  },
+  "components": [
+    {
+      "id": "footing",
+      "type": "concrete",
+      "shape": "rect",
+      "width": 16,
+      "height": 12,
+      "at": { "anchor": "bottom_left", "to": [0, 0] }
+    },
+    {
+      "id": "stem",
+      "type": "concrete",
+      "shape": "rect",
+      "width": 8,
+      "height": 18,
+      "at": { "anchor": "bottom_left", "to": { "ref": "footing@top_left", "offset": [4, 0] } }
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "schedule",
+      "number": "1",
+      "title": "LAP AND HOLDOWN SCHEDULES",
+      "notes_title": "SCHEDULE NOTES",
+      "annotations": [
+        { "id": "n_basis", "type": "note", "text": "LAP LENGTHS PER ACI 318-19 FOR GRADE 60 UNCOATED BARS" },
+        { "id": "n_top", "type": "note", "text": "TOP BARS: HORIZ. BARS W/ MORE THAN 12\" OF CONC. CAST BELOW" },
+        { "id": "n_lw", "type": "note", "text": "LIGHTWEIGHT CONC.: MULTIPLY BY 1.33" },
+        {
+          "id": "t_lap",
+          "type": "table",
+          "title": "CLASS B TENSION LAP SPLICE (IN.)",
+          "columns": [{ "width": 0.6 }, {}, {}, {}, {}],
+          "header": [
+            [{ "text": "BAR\nSIZE", "rowspan": 2 }, { "text": "f'c = 3,000 PSI", "colspan": 2 }, { "text": "f'c = 4,000 PSI", "colspan": 2 }],
+            ["OTHER", "TOP", "OTHER", "TOP"]
+          ],
+          "rows": [
+            ["#3", 24, 28, 24, 25],
+            ["#4", 29, 38, 25, 33],
+            ["#5", 36, 47, 31, 41],
+            ["#6", { "text": "SEE NOTE 2", "colspan": 2 }, 37, 49]
+          ],
+          "notes": ["VERT. BARS: USE OTHER VALUES", "SPLICE #6 AND LARGER PER EOR", "* VALUES IN INCHES"]
+        },
+        {
+          "id": "t_hd",
+          "type": "table",
+          "rules": "header",
+          "columns": [
+            { "header": "HOLDOWN", "align": "left" },
+            { "header": "ANCHOR BOLT" },
+            { "header": "EMBED.", "unit": "IN." },
+            { "header": "POST", "width": 0.9, "align": "right" }
+          ],
+          "rows": [
+            [{ "text": "HDU2", "rowspan": 2 }, "SB 5/8X24", 18, "DBL. 2X"],
+            ["SSTB16", "12 5/8", "DBL. 2X"],
+            ["HDU8", "SB 7/8X24 OR 7/8\" DIA. THREADED ROD W/ PLATE WASHER", 18, "4X6"],
+            ["HDU14", "SB1X30", 24, "6X6"]
+          ]
+        },
+        {
+          "id": "t_outer",
+          "type": "table",
+          "rules": "outer",
+          "at": [5.25, 0],
+          "columns": ["ROD", "HOLE"],
+          "rows": [["5/8\"", "11/16\""], ["3/4\"", "13/16\""]]
+        },
+        {
+          "id": "t_none",
+          "type": "table",
+          "rules": "none",
+          "at": [5.25, -1.25],
+          "columns": [{ "align": "left" }, { "align": "right" }],
+          "rows": [["MIN. EDGE", "1 3/4\""], ["MIN. END", "7\""]]
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "number": "2",
+      "title": "STEM WALL W/ HEADER SCHEDULE",
+      "scale": "1\"=1'-0\"",
+      "notes_style": "keyed",
+      "notes_side": "right",
+      "notes_title": "HEADER SCHEDULE NOTES",
+      "annotations": [
+        { "id": "n_stem", "type": "note", "text": "8\" CONC. STEM WALL", "target": "stem" },
+        { "id": "n_ftg", "type": "note", "text": "16\" X 12\" CONC. FTG.", "target": "footing" },
+        { "id": "n_gen", "type": "note", "text": "HEADERS PER SCHEDULE U.N.O." },
+        {
+          "id": "t_hdr",
+          "type": "table",
+          "title": "HEADER SCHEDULE",
+          "columns": [
+            { "header": "OPENING WIDTH", "align": "left" },
+            { "header": "HEADER" },
+            { "header": "JACK STUDS" }
+          ],
+          "rows": [
+            ["0'-0\" TO 4'-0\"", "(2) 2X6", 1],
+            ["4'-1\" TO 6'-0\"", "(2) 2X8", 2],
+            ["6'-1\" TO 8'-0\"", "(2) 2X12", 2]
+          ]
+        }
+      ]
+    }
+  ]
+}
