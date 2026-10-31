@@ -22,7 +22,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: v
         run: |
           ver=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' engine/Cargo.toml)
@@ -43,16 +43,16 @@ jobs:
       run:
         working-directory: engine
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/toolchain
         with:
           cache: 'false'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: pip install --quiet $PY_PKGS
@@ -83,7 +83,7 @@ jobs:
           npm run typecheck
           npm run test:unit
           KERF_WASM=../../engine/dist/kerf.wasm npm run build:serve
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ui
           path: apps/web/dist-serve
@@ -107,12 +107,12 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/toolchain
         with:
           targets: ${{ matrix.target }}
           cache: 'false'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: ui
           path: apps/web/dist-serve
@@ -128,10 +128,10 @@ jobs:
           if [ -f "$bin.exe" ]; then bin="$bin.exe"; fi
           cp "$bin" "../release/${{ matrix.asset }}"
           ls -l ../release
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: pip install --quiet $PY_PKGS
@@ -149,7 +149,7 @@ jobs:
           case "$out" in *'"version":"${{ needs.version.outputs.version }}"'*) ;; *) echo "::error::version mismatch"; exit 1 ;; esac
           KERF="$kerf" node tests/check_golden.mjs
           node tests/serve_smoke.mjs "$kerf"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.asset }}
           path: release/${{ matrix.asset }}
@@ -159,7 +159,7 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: kerf-*
           path: release
@@ -170,7 +170,7 @@ jobs:
           sha256sum kerf-* > SHA256SUMS
           ls -l
           cat SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-assets
           path: release/*
