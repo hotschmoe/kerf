@@ -35,10 +35,8 @@ kerf apply truss-cmu.kerf.json ops.json -w --why "Add HETA20 anchors at 16 in o.
 kerf apply truss-cmu.kerf.json ops.json --dry-run
 kerf check truss-cmu.kerf.json
 kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
-kerf export truss-cmu.kerf.json --view A --format dxf -o truss-cmu-A.dxf
-kerf new x.kerf.json --template section
+kerf export truss-cmu.kerf.json --layout S1 --format png -o truss-cmu.png
 kerf schema note dim cite
-kerf schema lumber
 kerf guide --full
 ```
 - Always pass `--why "..."` with `-w`/`new`: one line for the designer, logged to `<file>.log.jsonl`.
@@ -48,7 +46,7 @@ kerf guide --full
 - Fix warnings; acknowledge one only if it is right for this detail, on the component, with a reason:
   `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]`. The summary counts and lists them (`kerf check --strict`
   prints each). Wood on CMU wants `"barrier":"sill_seal"`. No fake geometry.
-- Scenarios: one view each, all at one origin; scenario members get `"views":["B"]`, shared members none.
+- Scenarios: one view each, one origin; scenario members get `"views":["B"]`, shared none; one sheet: `kerf schema layout`.
 - Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one: `citations` -> `cite`, `side` -> `notes_side`, `point` -> `at`,
   `kind` -> `type`, `pos` -> `place`). `kerf schema <topic>` before guessing a field name.
 
@@ -115,6 +113,15 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   `*` globs; one that matches nothing warns `W_REF_UNKNOWN`, so ops can arrive in any order). Excluded members are not
   drawn (not even as beyond outlines) and skip that view's checks, so never acknowledge cross-scenario overlaps; a
   finding seen in only some views ends with `(in views A, C)`.
+- One sheet for the scenarios (`kerf schema layout`): `"layouts":[{"id":"S1","views":["A","B","C","D"],"arrange":"grid",
+  "columns":2,"sheet":"17x11"}]`, then `kerf export x.kerf.json --layout S1 --format png --sheet -o x-S1.png`. Each view
+  keeps its bubble, title and scale; the keyed notes of all views share one DETAIL NOTES list numbered 1..N without gaps
+  (same `key` = one entry across views; an unkeyed note with the same text joins it). Views without their own `scale`
+  get the largest standard scale at which the whole sheet fits; a view's own `scale` wins, so a plan inset at 1/2"
+  stands beside a 1" section: `"views":["A",["P1","P2"]]` stacks P1 over P2 beside A. Doc-level `"scale"` sets one
+  scale for every view. Point at another detail with a `ref` annotation (`{"type":"ref","detail":"3","sheet":"S-50.01",
+  "at":"beam@top_right","text":"SIM."}`); a view holding only a ref is a "see other detail" scenario. `W_VIEW_FIT` on
+  `layouts/S1` lists every view's size and the fix that fits (larger `sheet`, other `arrange`, list `notes_side`).
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
   (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens and a plural
   s, and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the

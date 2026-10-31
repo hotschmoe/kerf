@@ -1086,5 +1086,69 @@ section('19. #19 papercuts: check false positives, diagnostics that name their k
   check('kerf version stamps the build (git describe)', r.code === 0 && /^\{"engine":"kerf","version":"[^"]+","spec":"[^"]+","build":"[^"]+"\}$/m.test(r.out), r.out);
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #7: sheet layouts (several views on one sheet, shared DETAIL NOTES, common scale, insets, ref bubbles)
+section('7. #7 sheet layouts: --layout export, shared keyed notes, common scale, W_VIEW_FIT, ref bubbles, doc scale');
+{
+  const src = path.join(DOCS, 'layout-sheet.kerf.json');
+  fs.copyFileSync(src, path.join(tmp, 'ls.kerf.json'));
+  let r = kerf(['schema', 'layout', 'ref']);
+  check('schema layout ref: both documented', r.code === 0 && /^layout: /m.test(r.out) && /^- arrange: row\|column\|grid/m.test(r.out) && /^- notes: shared\|per_view/m.test(r.out) && /^ref: /m.test(r.out) && /^- detail: string, required/m.test(r.out), r.out.slice(0, 300));
+  for (const fmt of ['png', 'pdf', 'svg', 'dxf']) {
+    r = kerf(['export', 'ls.kerf.json', '--layout', 'S1', '--format', fmt, '--sheet', '-o', `ls-S1.${fmt}`]);
+    const ok = r.code === 0 && fs.existsSync(path.join(tmp, `ls-S1.${fmt}`)) && fs.statSync(path.join(tmp, `ls-S1.${fmt}`)).size > 1000;
+    check(`export --layout S1 --format ${fmt}`, ok, r);
+  }
+  check('layout PDF is one 17x11 page', /\/MediaBox \[0 0 1224 792\]/.test(fs.readFileSync(path.join(tmp, 'ls-S1.pdf'), 'latin1')));
+  r = kerf(['drawing', 'ls.kerf.json', '--layout', 'S1']);
+  const dr = JSON.parse(r.out);
+  const texts = dr.items.filter((i) => i.t === 'text' && i.layer === 'S-ANNO-NOTE').map((i) => i.s);
+  check('drawing --layout: kind layout, one cell per view with its own scale', dr.kind === 'layout' && dr.cells.map((c) => c.view).join() === 'A,B,P,D' && dr.cells.find((c) => c.view === 'P').scale === 24 && dr.cells.find((c) => c.view === 'A').scale === 12, dr.cells);
+  check('one shared DETAIL NOTES list numbered 1..6 without gaps (key 7 prints as 6)', texts.filter((s) => s === 'DETAIL NOTES').length === 1 && ['1.', '2.', '3.', '4.', '5.', '6.'].every((n) => texts.includes(n)) && !texts.includes('7.'), texts);
+  check('an unkeyed note with the same text in two views is one entry', texts.filter((s) => s === 'CONC. FTG. PER PLAN').length === 1, texts);
+  check('ref bubbles: detail over sheet, text beside', ['P', 'S-10.01', 'PLAN', '3', 'S-50.01', 'SEE PARTITION DETAIL'].every((s) => dr.items.some((i) => i.t === 'text' && i.s === s)));
+  r = kerf(['check', 'ls.kerf.json']);
+  check('check builds the layouts: I_KEY_RENUMBERED names the moved key', r.code === 0 && /^INFO I_KEY_RENUMBERED S1: layout S1 numbers its shared DETAIL NOTES 1\.\.6 without gaps: key 7 prints as 6/m.test(r.out), r.out);
+  r = kerf(['export', 'ls.kerf.json', '--view', 'A', '--format', 'svg', '-o', 'a.svg']);
+  const one = fs.readFileSync(path.join(tmp, 'a.svg'), 'utf8');
+  check('single-view export still draws its own list', r.code === 0 && /DETAIL NOTES|data-src="notes_list"/.test(one), r);
+  r = kerf(['export', 'ls.kerf.json', '--view', 'A', '--layout', 'S1', '--format', 'png', '-o', 'x.png']);
+  check('--view with --layout is a usage error', r.code === 2 && /not both/.test(r.err), r);
+  r = kerf(['check', 'ls.kerf.json', '--layout', 'S1']);
+  check('--layout on check is a usage error', r.code === 2 && /--layout only applies/.test(r.err), r);
+  r = kerf(['export', 'ls.kerf.json', '--layout', 'S9', '--format', 'png', '-o', 'x.png']);
+  check('unknown layout lists the layouts', r.code === 1 && /no layout with id 'S9'\. Layouts: S1, S2/.test(r.err + r.out), r);
+  r = kerf(['export', 'ls.kerf.json', '--layout', 'S1', '--format', 'svg', '--sheet', '--review', '-o', 'x.svg']);
+  check('--review with --layout is refused with the reason', r.code === 1 && /review/.test(r.err + r.out), r);
+
+  const ops = (name, o) => write(name, o);
+  ops('l1.json', [{ op: 'update', path: 'layouts/S1', value: { views: ['A', 'Q'] } }]);
+  r = kerf(['apply', 'ls.kerf.json', 'l1.json']);
+  check('a layout naming an unknown view: E_REF_UNKNOWN with the view list', r.code === 1 && /^ERROR E_REF_UNKNOWN layouts\/S1\/views: layout S1 names view 'Q', which is not in views\[\]/m.test(r.err), r.err);
+  ops('l2.json', [{ op: 'update', path: 'layouts/S1', value: { arrange: 'diagonal', gap: 9 } }, { op: 'set', path: 'scale', value: 'big' }]);
+  r = kerf(['apply', 'ls.kerf.json', 'l2.json']);
+  check('bad arrange, gap and doc scale: E_PARAM each', r.code === 1 && /layouts\/S1\/arrange/.test(r.err) && /layouts\/S1\/gap/.test(r.err) && /^ERROR E_PARAM scale: document "scale"/m.test(r.err), r.err);
+  ops('l3.json', [{ op: 'add', path: 'layouts', value: { id: 'S3', views: ['A'], colums: 2 } }, { op: 'remove', path: 'layouts/S2' }, { op: 'remove', path: 'scale' }]);
+  r = kerf(['apply', 'ls.kerf.json', 'l3.json', '-w', '--why', 'layout ops']);
+  const after = readJson('ls.kerf.json');
+  check('layout ops: add, remove; remove the doc scale; W_UNKNOWN_KEY on a misspelled layout key', r.code === 0 && after.layouts.map((l) => l.id).join() === 'S1,S3' && after.scale === undefined && /^WARN W_UNKNOWN_KEY S3: unknown key "colums" in layouts\/S3 \(layout\)/m.test(r.out), r.out + r.err);
+
+  const doc = JSON.parse(fs.readFileSync(path.join(DOCS, 'layout-corner-reinf.kerf.json'), 'utf8'));
+  delete doc.layouts[0].sheet;
+  write('cr.kerf.json', doc);
+  r = kerf(['check', 'cr.kerf.json']);
+  check('W_VIEW_FIT on a layout: sizes per view, the list, and a larger sheet as the fix', /^WARN W_VIEW_FIT S1: layout S1 \(grid, 2 columns\) needs [\d.]+ x [\d.]+ paper inches but the sheet area is 10 x 6.75 .*Views \(paper inches with their notes and title\): A .*The shared DETAIL NOTES list \(right\).*Fix: 1\) use a larger sheet: \{"op":"update","path":"layouts\/S1","value":\{"sheet":"17x11"\}\}/m.test(r.out), r.out);
+
+  const rdoc = { kerf: '0.1', id: 'rf', title: 'RF', components: [{ id: 'b', type: 'lumber', size: '2x6', at: { to: [0, 0] } }], views: [{ id: 'A', kind: 'section', annotations: [{ id: 'r1', type: 'ref', sheet: 'S-1' }, { id: 'r2', type: 'ref', detail: '3' }] }] };
+  write('rf.kerf.json', rdoc);
+  r = kerf(['check', 'rf.kerf.json']);
+  check('ref without detail / without place or at: E_PARAM with an example', r.code === 1 && /^ERROR E_PARAM r1: ref 'r1' in view A needs "detail"/m.test(r.out) && /^ERROR E_PARAM r2: ref 'r2' in view A needs "place" \(the bubble centre, \[x, y\]\) or "at"/m.test(r.out), r.out);
+  rdoc.scale = '3/4"=1\'-0"';
+  rdoc.views[0].annotations = [{ id: 'r1', type: 'ref', detail: '3', sheet: 'S-50.01', at: 'b@top_right', text: 'SIM.' }];
+  write('rf.kerf.json', rdoc);
+  r = kerf(['drawing', 'rf.kerf.json', '--view', 'A']);
+  check('doc-level scale applies to a view without its own', r.code === 0 && JSON.parse(r.out).scale === 16, r.out.slice(0, 200));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
