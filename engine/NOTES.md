@@ -302,6 +302,31 @@ geometrically (tolerance 1e-3).
   (iso dots like refs 1087/0019) and a new elevation D "SHEAR PANEL LAYOUT AND NAILING" (with hidden_lines) like the
   0019 panel layout; both keep their `--strict` warning counts (10: acknowledged scenario-B/C overlaps and stale
   acknowledgements; 8: stale acknowledgements). No new warning on either.
+- Hardware visibility, member ties, sloped hangers (issue #24, SPEC 28.4). `HwInfo` gains `members` ((component index,
+  instance) of every member a hardware piece is placed from) and `front` (the `front` param). `section/hardware.rs`
+  `front_hardware` marks a component's bodies front in a section that cuts one of those members (a member body whose z
+  range spans `cut_z`; `front: true` also in elevations, never in plan or iso); `Section::new` classes them Beyond, they
+  are left out of `occs`, `draw_beyond` draws them unoccluded in the steel pen with embedded rank (so the knock-out keeps
+  them), and `knock_out_face_ties` now also cuts strokes and hatch lines (grain) inside front hardware. The same file's
+  `thicken_plate` gives every four-sided hardware plate without a centerline at least 0.022" on paper, growing away from
+  the member it touches (probing 0.01" out of each long edge into non-hardware bodies). Member ties are
+  `builders/tie.rs`: the joint is sampled on the flattened profiles (32 stations across the common x or y stretch, bottom
+  of one within 1/2" of the top of the other) so trusses and birdmouthed rafters work; the geometry is built in a joint
+  frame (l along the joint line, n across it) and mapped to world, so one code path serves on-top and side-by-side
+  joints. Edge-on tie/angle polylines carry their centerline, so the existing centerline thickening applies to them.
+  Sloped hangers: the hanger already followed a sloped bottom edge; the gap was the carried member's box crossing the
+  carrying face, now an E_PARAM whose fix is the trim cut, and `ijoist` run x accepts `cuts` (`cuts::lengthwise` maps it
+  to a lengthwise strip; `cuts::apply` stretches and clips every prism, flanges, web and stiffeners alike). Holdown: a
+  rod inside the post's plan outline puts the holdown on the z face with the seat 1 3/8" out (`along_face`). 47 MASS
+  details: `kerf check --strict` 0 errors / 14 warnings before and after; 30 views of 13 details draw differently (all
+  hardware: hangers, caps, holdowns now solid in front). Proofs on copies (`kerf apply` of the natural build): S-60.03 A/B
+  (IUS/THA hangers solid like refs 0029/1311, joist lines knocked out), S-60.06 B/D (I-joists `slope: "-3:12"` + `cuts`
+  trim to the beam: both sloped hangers build; the views also needed `from: front_left` to face the hanger), S-70.01 A-D
+  (HUS26 solid like ref 1302; A35 = `members: [stud, ledger]` on top of the ledger), S-40.03 A/B/D/E (H2.5A, H3 =
+  `members: [truss|rafter, plate]`, face-on on the truss with the leg down the plate face like ref 0121; A34 =
+  `members: [block, plate]` in the inside corner), S-10.09 D (HDU5 `post: d_post, rod: d_rod` with the rod under the
+  post: face-on on the post like ref 1105), S-60.01 A (H2.5A from the I-joist, LTP4 `kind: angle, face: right, z: 12` in
+  the joist bay drawn in front). All 0 errors; S-60.01 gains one W_LEADER_HIT (two notes now land near each other).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -386,6 +411,10 @@ unavailable, tree kill by job object, `.gitattributes` forcing LF (CRLF in embed
 over-long command lines. CI runs the Windows gates against the shipped build on real Windows runners.
 
 ## Known gaps
+- Hardware (#24): skewed (plan-angle) hangers and members are not modelled; front hardware cuts away the lines and hatch
+  lines behind it in SVG/PNG/PDF, but a DXF HATCH entity under it is still whole (CAD regenerates the pattern from its
+  boundary); a member tie's leg lengths are not checked against the members (a leg longer than the member runs past it);
+  notes on members behind front hardware may land under it (front hardware is not an occluder for landing).
 - `solid` / `polygon` profiles with holes are not supported (profiles are single loops); holes come from `voids` and
   sleeves (SPEC 26.4).
 - Subtracted solids (#14): the mesh does not clip fills (`mesh` with `include_fills` still shows earth through a footing; only
@@ -664,6 +693,19 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
 - #11: hardware hidden by nearer members draws dashed in section, plan and elevation without `hidden_lines` (SPEC 26.3
   makes hidden lines opt-in per view); the issue asks for it for hardware, so `hw_dash` prisms always get their hidden
   outline. Existing `connector` polylines (no `kind`, no `on`) are unchanged, so the goldens are byte-identical.
+- #24 asked for an option per connector (or style) to draw hardware in front. Chosen: `front` per connector with a
+  default that does it where it matters (a section cutting one of its members), because every reference set draws
+  hardware that way and the dogfood agents never wanted the dashed form there; `front: false` restores it. No style key
+  (one more knob agents would have to discover). This changes the framing-hardware goldens on purpose.
+- #24 "tie/clip kind placed from two members (`members: [rafter, plate]`, which faces)": `kind` stays `tie` | `angle`
+  (both existed for polylines); `members` switches them to member placement, `face` (already a connector key) says which
+  faces, `legs` the leg lengths. A tie on a narrow member over a member running along z bends onto that member's side
+  face (H2.5A, H3 wrap the plate) rather than lying inside it; RSP4/LTP4 on flush faces are one flat plate. Skewed (plan
+  angle) members are still not modelled (no member has a plan angle); LSSU joined the hanger families so the sloped
+  model names resolve.
+- #24 holdown "rod inside the post": accepted only as the 2D convention it is (rod drawn under the post in a section
+  across the wall): the holdown goes on the front/back face with a standard 1 3/8" seat reach; the 3D rod stays where
+  the document puts it (inside the post), which no check reports since anchor bolts are embedded.
 
 ## REQUESTS
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,

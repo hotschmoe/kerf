@@ -213,9 +213,14 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   sides on its faces, flanges on the header face; `"mount":"top_flange"` or a TF/ITS/THA model hooks over the top;
   `carried` may list an I-joist's flange and web ids), `{"kind":"post_cap","post":"post","beam":"beam"}`,
   `{"kind":"post_base","post":"post","standoff":1}`, `{"model":"HDU5","post":"post","rod":"anchor_bolt_id"}` (holdown
-  on the face toward its rod). No `at`, `z` or `points`: they follow the members in every view, iso and 3D. A strap on a
-  member face: `"on":"post.face_left"` (face_right/top/bottom/front/back) with `points` along it; no `z`, no `side`.
-  Hardware a nearer member hides draws dashed and keeps its note. Unknown `model`: `W_UNKNOWN_MODEL` unless you give
+  on the face toward its rod; a rod drawn under the post, inside its outline, puts it on the front face). No `at`, `z`
+  or `points`: they follow the members in every view, iso and 3D. Ties and angles too: `{"model":"H2.5A","members":
+  ["rafter","plate"]}` (H3, RSP4, LTP4, A34, A35: the tie wraps the joint, the angle sits in its inside corner; `face`
+  front/back on the z faces, left/right or top/bottom on that side of the joint; `legs`; `z` only on a side). A strap on
+  a member face: `"on":"post.face_left"` (face_right/top/bottom/front/back) with `points` along it; no `z`, no `side`.
+  In a section that cuts one of its members, hardware draws solid in front, as engineers draw it (`"front": false`
+  keeps it at its true place, dashed where hidden; `true` also in elevations). A sloped joist into a hanger needs its end
+  cut at the face: `"cuts":[{"type":"trim","end":"end","to":"header"}]`. Unknown `model`: `W_UNKNOWN_MODEL` unless you give
   `gauge` (and `width`). Base plate rods: `anchor_bolt` `"plate":"base_plate","leveling_nut":true` (projection fits
   itself), `"plate_washer":"3x3x1/4"`, `"hook":"adhesive"`; weld studs: `bolt` `"kind":"weld_stud"` placed at the steel
   face (grip up through the nailer), `"kind":"headed_stud"` for shear studs.
