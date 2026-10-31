@@ -1,0 +1,365 @@
+{
+  "kerf": "0.1",
+  "id": "stud-wall-stem-footing",
+  "title": "EXT. WOOD STUD WALL FOOTING",
+  "meta": {
+    "author": "kerf reference",
+    "discipline": "structural",
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "tags": [
+      "footing",
+      "stem wall",
+      "stud wall",
+      "keyed notes"
+    ]
+  },
+  "components": [
+    {
+      "id": "ftg",
+      "type": "concrete",
+      "shape": "footing",
+      "width": 16,
+      "height": 10
+    },
+    {
+      "id": "stem",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "ftg@top_left",
+        "offset": [4, 0]
+      },
+      "shape": "rect",
+      "cover": {
+        "bottom": 3,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "width": 8,
+      "height": 24
+    },
+    {
+      "id": "slab",
+      "type": "concrete",
+      "at": {
+        "anchor": "top_left",
+        "to": "stem@top_right",
+        "offset": [0.5, 0]
+      },
+      "shape": "rect",
+      "cover": {
+        "bottom": 0.75,
+        "sides": 3,
+        "top": 1.5
+      },
+      "width": 30,
+      "height": 4
+    },
+    {
+      "id": "exp_joint",
+      "type": "joint",
+      "at": {
+        "anchor": "top_left",
+        "to": "stem@top_right"
+      },
+      "kind": "expansion",
+      "width": 0.5,
+      "depth": 4
+    },
+    {
+      "id": "base",
+      "type": "fill",
+      "material": "gravel",
+      "points": [
+        [12, 26],
+        [44, 26],
+        [44, 30],
+        [12, 30]
+      ],
+      "outline": "none"
+    },
+    {
+      "id": "soil",
+      "type": "fill",
+      "material": "earth",
+      "points": [
+        [-10, 26],
+        [4, 26],
+        [4, 10],
+        [0, 10],
+        [0, -4],
+        [-10, -4]
+      ]
+    },
+    {
+      "id": "ftg_bars",
+      "type": "rebar",
+      "size": "#4",
+      "place": {
+        "in": "ftg",
+        "face": "bottom",
+        "cover": 3,
+        "count": 2,
+        "side_cover": 3
+      }
+    },
+    {
+      "id": "stem_bars",
+      "type": "rebar",
+      "size": "#4",
+      "place": {
+        "in": "stem",
+        "face": "top",
+        "cover": 3,
+        "count": 2,
+        "side_cover": 1.5
+      }
+    },
+    {
+      "id": "dowel",
+      "type": "rebar",
+      "at": {
+        "to": "ftg@bottom_left"
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [8, 28],
+        [8, 3.5],
+        [14, 3.5]
+      ]
+    },
+    {
+      "id": "sill",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "stem@top_left"
+      },
+      "size": "2x6",
+      "orient": "flat",
+      "treated": true
+    },
+    {
+      "id": "stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "sill@top_center"
+      },
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 6
+    },
+    {
+      "id": "sheathing",
+      "type": "panel",
+      "material": "plywood",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "sill@bottom_left"
+      },
+      "thickness": 0.5,
+      "length": 7.5,
+      "run": "y"
+    },
+    {
+      "id": "anchor",
+      "type": "anchor_bolt",
+      "at": {
+        "anchor": "top_of_concrete",
+        "to": "stem@top_center",
+        "offset": [-1, 0]
+      },
+      "diameter": 0.5,
+      "embed": 10,
+      "projection": 2.5,
+      "hook": "L"
+    },
+    {
+      "id": "screed",
+      "type": "flashing",
+      "at": {
+        "anchor": "corner",
+        "to": "stem@top_left",
+        "offset": [-0.5, 0]
+      },
+      "profile": "weep_screed",
+      "leg": 0.875
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "111",
+      "title": "EXT. WOOD STUD WALL FOOTING",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [-10, 40],
+        "y": [-1, 40]
+      },
+      "notes_side": "above",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_sheath",
+          "type": "note",
+          "text": "PLYWOOD WALL SHEATHING PER THE G.S.N. & SHEAR WALL PLAN",
+          "target": "sheathing"
+        },
+        {
+          "id": "n_stud",
+          "type": "note",
+          "text": "2X6 WOOD STUDS PER PLAN @ 16\" O.C. MAX.",
+          "target": "stud"
+        },
+        {
+          "id": "n_slab",
+          "type": "note",
+          "text": "CONC. SLAB",
+          "target": "slab"
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "CONC. FOOTING",
+          "target": "ftg"
+        },
+        {
+          "id": "n_ftg_bars",
+          "type": "note",
+          "key": 5,
+          "text": "(2) #4 CONT. U.N.O.",
+          "target": "ftg_bars",
+          "column": "right"
+        },
+        {
+          "id": "n_stem",
+          "type": "note",
+          "text": "CONC. STEM WALL",
+          "target": "stem"
+        },
+        {
+          "id": "n_dowel",
+          "type": "note",
+          "text": "#4 DOWELS @ 48\" O.C., ALTERNATE BENDS",
+          "target": "dowel"
+        },
+        {
+          "id": "n_stem_bars",
+          "type": "note",
+          "key": 5,
+          "target": "stem_bars"
+        },
+        {
+          "id": "n_grade",
+          "type": "note",
+          "text": "FINISHED GRADE",
+          "target": "soil"
+        },
+        {
+          "id": "n_base",
+          "type": "note",
+          "text": "4\" GRAVEL BASE",
+          "target": "base"
+        },
+        {
+          "id": "n_joint",
+          "type": "note",
+          "text": "EXPANSION JOINT MATERIAL PER ARCH'L",
+          "target": "exp_joint"
+        },
+        {
+          "id": "n_screed",
+          "type": "note",
+          "text": "'J' WEEP SCREED PER ARCH'L",
+          "target": "screed"
+        },
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "2X6 PT SILL PLATE W/ 1/2\" DIA. X 10\" ANCHOR BOLTS @ 48\" O.C. U.N.O., 12\" MAX. FROM PLATE ENDS",
+          "target": "sill"
+        },
+        {
+          "id": "d_ftg",
+          "type": "dim",
+          "from": "ftg@bottom_left",
+          "to": "ftg@bottom_right",
+          "dir": "h",
+          "offset": -4
+        },
+        {
+          "id": "d_depth",
+          "type": "dim",
+          "from": "ftg@bottom_left",
+          "to": "soil@top_left",
+          "dir": "v",
+          "offset": -4
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "number": "112",
+      "title": "SILL ANCHORAGE",
+      "scale": "3\"=1'-0\"",
+      "cut_z": 0,
+      "crop": {
+        "x": [-2, 18],
+        "y": [20, 40]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_sill",
+          "type": "note",
+          "key": 1,
+          "text": "2X6 PT SILL PLATE",
+          "target": "sill"
+        },
+        {
+          "id": "n_anchor",
+          "type": "note",
+          "key": 2,
+          "text": "1/2\" DIA. X 10\" ANCHOR BOLT @ 48\" O.C.",
+          "target": "anchor"
+        },
+        {
+          "id": "n_screed",
+          "type": "note",
+          "key": 3,
+          "text": "'J' WEEP SCREED PER ARCH'L",
+          "target": "screed"
+        },
+        {
+          "id": "n_sheath",
+          "type": "note",
+          "key": 4,
+          "text": "1/2\" PLYWOOD SHEATHING",
+          "target": "sheathing"
+        },
+        {
+          "id": "n_stem",
+          "type": "note",
+          "text": "CONC. STEM WALL",
+          "target": "stem"
+        },
+        {
+          "id": "n_joint",
+          "type": "note",
+          "text": "1/2\" EXPANSION JOINT",
+          "target": "exp_joint"
+        }
+      ]
+    }
+  ]
+}

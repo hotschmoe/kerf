@@ -178,7 +178,7 @@ section('3. W_UNKNOWN_KEY, dim dir default + W_DIM_ZERO, W_NOTE_STYLE');
   check('kind -> type', /unknown key "kind".*Did you mean "type"/.test(r.out));
   check('pos -> place', /unknown key "pos".*Did you mean "place"/.test(r.out));
   check('view side -> notes_side', /unknown key "side" in views\/A \(view\).*Did you mean "notes_side"/.test(r.out));
-  check('no suggestion lists the valid keys', /unknown key "bogus".*Valid keys: id, type, text, target, at, place, (column, )?cite/.test(r.out));
+  check('no suggestion lists the valid keys', /unknown key "bogus".*Valid keys: id, type, text, target, at, place, (column, )?(key, )?cite/.test(r.out));
   check('unknown keys are preserved in the file', (() => { const d = readJson('k.kerf.json'); const n = d.views[0].annotations.find((a) => a.id === 'n3'); return n.citations && n.side && n.point && n.bogus === 1 && d.views[0].side === 'left'; })());
   check('W_DIM_ZERO for a dim measuring 0"', /WARN W_DIM_ZERO d_zero:.*measures 0"/.test(r.out) && !/W_DIM_ZERO d_v/.test(r.out), r.out);
   check('W_NOTE_STYLE for GYPSUM BOARD', /W_NOTE_STYLE n3:.*GYP\. BD\./.test(r.out), r.out);
@@ -404,6 +404,94 @@ section('11. writers: parallel apply -w loses no edit, --if-match, atomic fmt -w
   check('--view with quotes is an unknown view, not JSON injection', r.code === 1 && /unknown view|not found|no view/i.test(r.err + r.out) && !/E_STYLE/.test(r.err + r.out), r);
   r = kerf(['export', 'par.kerf.json', '--view', 'A', '--format', 'svg', '--px', '1600,"x":1', '-o', 'x.svg']);
   check('--px must be a number', r.code === 2 && /--px must be a number/.test(r.err), r);
+}
+
+// ---------------------------------------------------------------------------------------------------
+section('12. keyed notes (SPEC 23): tags, DETAIL NOTES list, shared keys, list mode');
+{
+  const base = JSON.parse(fs.readFileSync(path.join(DETAILS, 'stud-wall-stem-footing.kerf.json'), 'utf8'));
+  const texts = (d) => d.items.filter((it) => it.t === 'text');
+  const drawing = (name, doc, view) => {
+    write(name, doc);
+    const r = kerf(['drawing', name, '--view', view]);
+    return { r, d: r.code === 0 ? JSON.parse(r.out) : null };
+  };
+  let o = kerf(['check', path.join(DETAILS, 'stud-wall-stem-footing.kerf.json')]);
+  check('reference stud-wall-stem-footing has 0 warnings', /0 errors  0 warnings/.test(o.out), o.out.split('\n')[0]);
+
+  let { d } = drawing('k1.kerf.json', base, 'A');
+  const tagOf = (id) => texts(d).filter((t) => t.src === id && t.valign === 'middle').map((t) => t.s);
+  check('unkeyed notes number in note order around the explicit key 5', tagOf('n_sheath')[0] === '1' && tagOf('n_stem')[0] === '6' && tagOf('n_sill')[0] === '12', [tagOf('n_sheath'), tagOf('n_stem'), tagOf('n_sill')]);
+  check('two notes with key 5 draw two "5" tags', tagOf('n_ftg_bars')[0] === '5' && tagOf('n_stem_bars')[0] === '5');
+  const nums = texts(d).filter((t) => /^\d+\.$/.test(t.s)).map((t) => t.s);
+  check('the list has one entry per key (12 entries, 5. once)', nums.length === 12 && nums.filter((s) => s === '5.').length === 1, nums);
+  const crop = d.crop ?? null;
+  const head = texts(d).find((t) => t.s === 'DETAIL NOTES');
+  const cropTop = Math.max(...d.items.filter((it) => it.t === 'region').flatMap((it) => it.loops.flat().map((p) => p[1])));
+  check('notes_side above: the DETAIL NOTES list sits above the drawing', head && head.y > cropTop && texts(d).filter((t) => /^\d+\.$/.test(t.s)).every((t) => t.y > cropTop), [head, cropTop, crop]);
+  check('the leader text is not at the leader ends', !texts(d).some((t) => t.src === 'n_slab' && t.s === 'CONC. SLAB' && t.valign === 'middle'));
+  const xs = new Set(texts(d).filter((t) => /^\d+\.$/.test(t.s)).map((t) => t.x.toFixed(3)));
+  check('a 15-line list above wraps into two columns', xs.size === 2, [...xs]);
+
+  // beside: notes_side left with a short crop wraps into two columns left of everything
+  const left = structuredClone(base);
+  Object.assign(left.views[0], { notes_side: 'left', crop: { x: [-4, 30], y: [20, 40] } });
+  left.views[0].annotations = left.views[0].annotations.filter((a) => a.type === 'note');
+  ({ d } = drawing('k2.kerf.json', left, 'A'));
+  const lnums = texts(d).filter((t) => /^\d+\.$/.test(t.s));
+  const tagXs = texts(d).filter((t) => t.valign === 'middle').map((t) => t.x);
+  check('notes_side left: list left of the tags, two columns', lnums.length > 0 && Math.max(...lnums.map((t) => t.x)) < Math.min(...tagXs) && new Set(lnums.map((t) => t.x.toFixed(3))).size === 2, lnums.map((t) => [t.s, t.x]));
+
+  // shared key without text, conflicting text, bad key, leader + above
+  const edge = structuredClone(base);
+  const ann = edge.views[1].annotations;
+  ann.push({ id: 'n_sill2', type: 'note', key: 1, target: 'stud' });
+  ann.push({ id: 'n_conf', type: 'note', key: 2, text: 'ANOTHER BOLT', target: 'stem' });
+  ann.push({ id: 'n_badkey', type: 'note', key: 'A', text: 'CONC. SLAB', target: 'slab' });
+  ann.push({ id: 'n_notext', type: 'note', key: 9, target: 'slab' });
+  edge.views[0].notes_style = 'leader';
+  o = kerf(['check', write('k3.kerf.json', edge)]);
+  check('a note with a shared key may omit its text', !/n_sill2/.test(o.out), o.out);
+  check('W_PARAM: a shared key with a different text names the note whose text the list shows', /WARN W_PARAM n_conf: .*shares key 2 with note 'n_anchor'/.test(o.out), o.out);
+  check('W_PARAM: key must be a whole number 1-999 (ignored)', /WARN W_PARAM n_badkey: .*"key" must be a whole number from 1 to 999 \(got "A"\)/.test(o.out), o.out);
+  check('E_PARAM: no text and no note with that key', /ERROR E_PARAM n_notext: note 'n_notext' needs a string "text" \(or a "key" shared/.test(o.out), o.out);
+  check('W_PARAM: notes_side above on a leader view says what it is for', /WARN W_PARAM A: view A: notes_side "above" places the DETAIL NOTES list of keyed notes/.test(o.out), o.out);
+  ({ d } = drawing('k3.kerf.json', edge, 'B'));
+  const sill = texts(d).filter((t) => (t.src === 'n_sill' || t.src === 'n_sill2') && t.valign === 'middle').map((t) => t.s);
+  check('the shared key draws a tag at each note', sill.length === 2 && sill.every((s) => s === '1'), sill);
+
+  // lint: repeats with the same key are intended; without one a keyed view suggests the key
+  const lint = structuredClone(base);
+  lint.views[0].annotations.push({ id: 'n_rep', type: 'note', key: 5, text: '(2) #4 CONT. U.N.O.', target: 'dowel' });
+  lint.views[0].annotations.push({ id: 'n_rep2', type: 'note', text: 'CONC. SLAB', target: 'slab' });
+  lint.views[0].annotations.push({ id: 'n_lower', type: 'note', text: 'gravel', target: 'base' });
+  o = kerf(['check', write('k4.kerf.json', lint)]);
+  check('W_NOTE_STYLE: same text under the same key is not a repeat', !/W_NOTE_STYLE n_rep:/.test(o.out), o.out);
+  check('W_NOTE_STYLE: a repeat in a keyed view suggests sharing the key', /WARN W_NOTE_STYLE n_rep2: .*repeats note 'n_slab'.*Fix: give 'n_rep2' the "key" of 'n_slab'/.test(o.out), o.out);
+  check('W_NOTE_STYLE lints keyed (list) text like leader text', /WARN W_NOTE_STYLE n_lower: .*lowercase/.test(o.out), o.out);
+
+  // list mode: no tags, no leaders, no target needed
+  const list = structuredClone(base);
+  list.views[1].notes_style = 'list';
+  list.views[1].annotations = [
+    { id: 't1', type: 'note', text: 'ALL DIMENSIONS ARE TO FACE OF STUD WALL' },
+    { id: 't2', type: 'note', text: 'SEE ARCH. DRAWINGS FOR FINISHES' },
+  ];
+  o = kerf(['check', write('k5.kerf.json', list)]);
+  check('list mode: notes need no target', /0 errors/.test(o.out), o.out);
+  ({ d } = drawing('k5.kerf.json', list, 'B'));
+  const typical = (it) => it.src === 't1' || it.src === 't2';
+  check('list mode: two entries, no tags, no leaders', texts(d).filter((t) => /^\d+\.$/.test(t.s)).length === 2 && !texts(d).some((t) => typical(t) && t.valign === 'middle') && !d.items.some((it) => typical(it) && it.t !== 'text'));
+
+  // iso keyed
+  const iso = structuredClone(base);
+  iso.views.push({ id: 'C', kind: 'iso', number: '113', title: 'ISO', from: 'front_right', cutaway: true, cut_z: 0, notes_style: 'keyed',
+    annotations: [{ id: 'i1', type: 'note', text: 'CONC. STEM WALL', target: 'stem' }, { id: 'i2', type: 'note', text: 'CONC. FOOTING', target: 'ftg' }] });
+  ({ d } = drawing('k6.kerf.json', iso, 'C'));
+  check('iso views draw keyed tags and the list', d && texts(d).some((t) => t.s === 'DETAIL NOTES') && texts(d).filter((t) => /^\d+\.$/.test(t.s)).length === 2);
+
+  const sv = kerf(['schema', 'view', 'note']);
+  check('kerf schema view/note document notes_style and key', /notes_style/.test(sv.out) && /leader\|keyed\|list/.test(sv.out) && /\bkey\b.*integer/.test(sv.out) && /right\|left\|both\|above/.test(sv.out), sv.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
