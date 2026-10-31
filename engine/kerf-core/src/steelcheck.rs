@@ -73,7 +73,9 @@ struct Shaft<'a> {
 
 fn shafts<'a>(scene: &'a Scene<'a>) -> Vec<Shaft<'a>> {
     let mut out = Vec::new();
-    for c in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::AnchorBolt && c.visible && !c.dashed) {
+    for c in
+        scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::AnchorBolt && c.visible && !c.dashed)
+    {
         let d = len_of(c.node, "diameter", 0.5);
         let post = matches!(c.node.get("hook").and_then(Value::str), Some("wedge" | "screw"));
         for p in c.world.iter().filter(|p| p.part == "shank" && p.centerline.len() >= 2) {

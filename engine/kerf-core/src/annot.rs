@@ -199,9 +199,10 @@ fn read_key(env: &Env, an: &Value, id: &str, apath: &str) -> Option<u32> {
 /// The first note in the view with key `key` that has a text (keyed views: a note with a shared key may omit its text,
 /// and then takes that note's text and, unless it has its own, its `cite`).
 fn shared_key_note<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a Value> {
-    env.spec.annotations.iter().find(|an| {
-        non_null(an, "key").and_then(Value::num) == Some(f64::from(key)) && str_member(an, "text").is_some()
-    })
+    env.spec
+        .annotations
+        .iter()
+        .find(|an| non_null(an, "key").and_then(Value::num) == Some(f64::from(key)) && str_member(an, "text").is_some())
 }
 
 /// A note, or `None` (with a diagnostic) when it cannot be drawn.
@@ -231,7 +232,16 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     let full = notes::note_text(env, &text, cites);
     let body = text::upper_if(env, &text).into_owned();
     if style == NotesStyle::List {
-        return Some(NoteIn { id, text: full, body, cands: Vec::new(), movable: false, place: None, column: None, key });
+        return Some(NoteIn {
+            id,
+            text: full,
+            body,
+            cands: Vec::new(),
+            movable: false,
+            place: None,
+            column: None,
+            key,
+        });
     }
     let target = str_member(an, "target").unwrap_or("");
     let mut landing: Option<Vec<V2>> = None;

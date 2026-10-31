@@ -241,10 +241,34 @@ pub fn items(env: &mut Env, w: &WeldSpec) -> Vec<Item> {
         }
         let ty = if sg < 0.0 { y - 0.03 * s - h } else { y + 0.03 * s };
         if let Some(t) = &size {
-            out.push(text_item(env, LayerKey::Notes, Pen::Anno, w.id, t, sx - gap, ty, h, 0.0, Align::Right, VAlign::Baseline));
+            out.push(text_item(
+                env,
+                LayerKey::Notes,
+                Pen::Anno,
+                w.id,
+                t,
+                sx - gap,
+                ty,
+                h,
+                0.0,
+                Align::Right,
+                VAlign::Baseline,
+            ));
         }
         if let Some(t) = &lp {
-            out.push(text_item(env, LayerKey::Notes, Pen::Anno, w.id, t, sx + a + gap, ty, h, 0.0, Align::Left, VAlign::Baseline));
+            out.push(text_item(
+                env,
+                LayerKey::Notes,
+                Pen::Anno,
+                w.id,
+                t,
+                sx + a + gap,
+                ty,
+                h,
+                0.0,
+                Align::Left,
+                VAlign::Baseline,
+            ));
         }
     }
     if w.all_around {

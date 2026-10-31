@@ -187,7 +187,14 @@ struct Frame<'a> {
 }
 
 /// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
-fn view_fit(st: &Style, spec: &ViewSpec, frame: &Frame, fit: &FitInfo, culprits: Option<(String, String)>, diags: &Diags) {
+fn view_fit(
+    st: &Style,
+    spec: &ViewSpec,
+    frame: &Frame,
+    fit: &FitInfo,
+    culprits: Option<(String, String)>,
+    diags: &Diags,
+) {
     let Frame { scale_text, scale, crop, bounds, aw, ah } = *frame;
     let view_id = spec.id;
     let leader = spec.notes_style.unwrap_or(st.notes_mode) == NotesStyle::Leader;
