@@ -308,7 +308,7 @@ section('6b. geometry checks per view: omit-based scenarios, findings named with
   check('a finding in every view reads as before (no view list)', warns.some((l) => /^WARN W_OVERLAP beam: 'beam' and 'cap' overlap by 0\.63 sq in .* within z -3\/4"\.\.3\/4" Fix:/.test(l)), warns);
   check('the iso view uses its own omit: the overlap with b_blk is reported once, in view B only', warns.filter((l) => /'b_blk' overlap/.test(l)).length === 1 && warns.some((l) => /^WARN W_OVERLAP beam: 'beam' and 'b_blk' overlap by 1\.25 sq in .* \(in view B\) Fix:/.test(l)), warns);
   check('a member resting on another scenario\'s member floats where that member is omitted: W_FLOATING once, views B and C listed', warns.filter((l) => /W_FLOATING/.test(l)).length === 1 && warns.some((l) => /^WARN W_FLOATING b_nailer: component 'b_nailer' touches nothing .* \(in views B, C\) Fix:/.test(l)), warns);
-  check('a gap another scenario\'s member hid is a W_NEAR_MISS in the views that show it', warns.some((l) => /^WARN W_NEAR_MISS b_blk: 'b_blk' and 'b_joist' leave a 3\/4" gap .* \(in view B\) Fix:/.test(l)), warns);
+  check('a gap another scenario\'s member hid is a W_NEAR_MISS in the views that show it', warns.some((l) => /^WARN W_NEAR_MISS b_blk: 'b_blk' and 'b_joist' run parallel with a 3\/4" gap along y .* \(in view B\) Fix: move 'b_blk' 3\/4" down/.test(l)), warns);
   check('5 warnings in all, output stable across runs', warns.length === 5 && /0 errors  5 warnings/.test(r.out) && kerf(['check', 'scn.kerf.json']).out === r.out, r.out);
   const ack = { ...scn, components: scn.components.map((c) => (c.id === 'b_blk' ? { ...c, acknowledge: [{ code: 'W_OVERLAP', reason: 'blocking notched around the beam' }] } : c)) };
   write('scn-ack.kerf.json', ack);
@@ -644,6 +644,126 @@ section('14. steel shapes, bolts and weld symbols: table errors, W_BOLT_EDGE, W_
   write('stl.kerf.json', steelDoc([], [{ id: 'w2', type: 'weld', at: 'col@bottom_right' }]));
   r = kerf(['check', 'stl.kerf.json']);
   check('fillet weld without size: E_PARAM with a fix', /ERROR E_PARAM w2: weld 'w2': a fillet weld needs "size".*Fix: e\.g\. "size": "3\/16"/.test(r.out), r.out);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// #19: papercuts from the MASS details dogfood run (checks, drawing, docs and CLI)
+section('15. #19 papercuts: check false positives, diagnostics that name their knob, drawing and docs');
+{
+  const doc = (components, annotations = [], view = {}) => ({ kerf: '0.1', id: 'pc', title: 'PC', run: [-24, 24], components, views: [{ id: 'A', kind: 'section', annotations, ...view }] });
+  const warnLines = (out) => out.split('\n').filter((l) => l.startsWith('WARN '));
+  const rim = { id: 'rim', type: 'lumber', size: '2x10', at: { to: [0, 0] } };
+  const sole = { id: 'sole', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: { ref: 'rim@top_left', offset: [0, 0.75] } } };
+  const ply = { id: 'subfloor', type: 'panel', material: 'plywood', thickness: 0.75, run: 'x', length: 24, at: { anchor: 'bottom_left', to: 'rim@top_left' } };
+  write('pc1.kerf.json', doc([rim, sole]));
+  let r = kerf(['check', 'pc1.kerf.json']);
+  check('W_NEAR_MISS: rim and sole with an empty 3/4" gap warn', /^WARN W_NEAR_MISS rim: 'rim' and 'sole' leave a 3\/4" gap/m.test(r.out), r.out);
+  write('pc1.kerf.json', doc([rim, ply, sole]));
+  r = kerf(['check', 'pc1.kerf.json']);
+  check('W_NEAR_MISS: a 3/4" subfloor filling the gap counts as contact', !/W_NEAR_MISS/.test(r.out), r.out);
+
+  const plate = { id: 'plate', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 48, at: { to: [0, 0] } };
+  const studs = { id: 'studs', type: 'lumber', size: '2x4', run: 'y', face: 'narrow', length: 30, array: { axis: 'x', count: 2, spacing: 16 }, at: { anchor: 'bottom_left', to: [0, 1.5] } };
+  const jack = { id: 'jack', type: 'lumber', size: '2x4', run: 'y', face: 'narrow', length: 30, at: { anchor: 'bottom_left', to: [20.5, 1.5] } };
+  write('pc2.kerf.json', doc([plate, studs, jack]));
+  r = kerf(['check', 'pc2.kerf.json']);
+  check('W_NEAR_MISS: studs @ 16" o.c. 3" from a jack stud are framing, not a near miss', !/W_NEAR_MISS/.test(r.out), r.out);
+  write('pc2.kerf.json', doc([plate, studs, { ...jack, at: { anchor: 'bottom_left', to: [18, 1.5] } }]));
+  r = kerf(['check', 'pc2.kerf.json']);
+  check('W_NEAR_MISS: a 1/2" gap between parallel studs still warns, with a move fix', /^WARN W_NEAR_MISS .*run parallel with a 1\/2" gap along x .*Fix: move '/m.test(r.out), r.out);
+
+  const slab = (id, x) => ({ id, type: 'concrete', shape: 'rect', width: 30, height: 6, at: { to: [x, 0] }, cover: { bottom: 1.5, top: 1.5, sides: 1.5 } });
+  write('pc3.kerf.json', doc([slab('slab_l', 0), slab('slab_r', 30.5)]));
+  r = kerf(['check', 'pc3.kerf.json']);
+  check('W_FLOATING: two slab halves across a 1/2" joint touch', !/W_FLOATING/.test(r.out), r.out);
+  write('pc3.kerf.json', doc([slab('slab_l', 0), slab('slab_r', 32)]));
+  r = kerf(['check', 'pc3.kerf.json']);
+  check('W_FLOATING: a 2" gap between slabs still floats', /^WARN W_FLOATING slab_l/m.test(r.out), r.out);
+
+  write('pc4.kerf.json', doc([{ id: 'stud', type: 'lumber', size: '2x4', run: 'y', length: 30 }], [], { crop: { x: [-10, 40], y: [-12, 40] } }));
+  r = kerf(['apply', 'pc4.kerf.json', '--ops', JSON.stringify({ op: 'add', path: 'components', value: { id: 'wall', type: 'lumber', size: '2x4', run: 'x', length: 100, at: { to: [-6, 32] } } }), '-w', '--why', 'wall cut by the crop']);
+  check('W_CROP_STALE: a new member the crop cuts on purpose (more than 10% inside) is quiet', r.code === 0 && !/W_CROP_STALE/.test(r.out), r.out);
+
+  const keyed = doc([plate], [
+    { id: 'n1', type: 'note', key: 1, text: 'PLATE', target: 'plate', cite: [{ code: 'IRC', edition: 2021, section: 'R602.3' }] },
+    { id: 'n2', type: 'note', key: 1, target: 'plate' },
+    { id: 'n3', type: 'note', key: 1, text: 'PLATE', target: 'plate' },
+  ], { notes_style: 'keyed' });
+  write('pc5.kerf.json', keyed);
+  r = kerf(['check', 'pc5.kerf.json']);
+  check('shared key without text takes the cite too: no W_PARAM for n2', !/W_PARAM n2/.test(r.out), r.out);
+  check('shared key with the same text but no cite: W_PARAM names "cite"', /^WARN W_PARAM n3: .*shares key 1 and its text with note 'n1' but its "cite" differs/m.test(r.out), r.out);
+
+  write('pc6.kerf.json', doc([{ id: 'slab', type: 'concrete', shape: 'polygon', points: [[0, 0], [48, 0], [48, 4], [0, 4]], at: { to: [0, 0] } }, { id: 'bar', type: 'rebar', size: '#3', at: { anchor: 'center', to: [24, 2] } }]));
+  r = kerf(['check', 'pc6.kerf.json']);
+  check('W_COVER names its knob and that the default cannot fit a 4" slab', /^WARN W_COVER bar: .*< required 3" \(cover\.bottom, default\).*Fix: .*set cover\.bottom of 'slab' to 1\.8125: \{"op": "update", "path": "components\/slab", "value": \{"cover": \{"bottom": 1\.8125, "top": 1\.5, "sides": 3\}\}\}; 'slab' uses the default cover .* 4" depth/m.test(r.out), r.out);
+
+  const ftg = { id: 'stem', type: 'concrete', shape: 'rect', width: 8, height: 24, at: { to: [0, -24] }, cover: { bottom: 3, top: 1.5, sides: 1.5 } };
+  const ab = (id, x, z) => ({ id, type: 'anchor_bolt', diameter: 0.75, hook: 'headed', z, at: { to: [x, 0] } });
+  write('pc7.kerf.json', doc([ftg, ab('rod', 1.5, 0), ab('ab', 4, 1)]));
+  r = kerf(['check', 'pc7.kerf.json']);
+  check('anchor_bolt W_BOLT_EDGE: 1 1/8" clear of the concrete edge (ACI 318-19 17.9.2)', /^WARN W_BOLT_EDGE rod: anchor bolt 'rod': the shaft is 1 1\/8" clear of the edge of 'stem'/m.test(r.out), r.out);
+  check('anchor_bolt W_BOLT_SPACING: 2.7" apart < 4d = 3"', /^WARN W_BOLT_SPACING rod: anchor bolts 'rod' and 'ab' are .* below the ACI 318-19 17\.9\.2 minimum of 4d = 3"/m.test(r.out), r.out);
+  write('pc7.kerf.json', doc([ftg, ab('ab', 4, 0)]));
+  r = kerf(['check', 'pc7.kerf.json']);
+  check('an anchor centered in an 8" stem: no bolt warning', !/W_BOLT/.test(r.out), r.out);
+
+  const far = { id: 'far', type: 'lumber', size: '2x4', run: 'y', length: 30, at: { to: [300, 0] } };
+  write('pc8.kerf.json', doc([plate, studs, far], [], { scale: '1"=1\'-0"' }));
+  r = kerf(['check', 'pc8.kerf.json']);
+  check('W_VIEW_FIT names the component that stretches the auto crop and gives the omit op', /^WARN W_VIEW_FIT A: .*because 'far' lie apart from the main group.*Fix: 1\) if view A should not draw them .*"omit":\["far"\]/m.test(r.out), r.out);
+
+  const stl = { kerf: '0.1', id: 'pcw', title: 'W', components: [
+    { id: 'plate', type: 'steel', shape: 'PL3/4x10', length: 10, at: { to: [0, 0] } },
+    { id: 'col', type: 'steel', shape: 'HSS4x4x1/4', orient: 'elevation', run: 'y', length: 24, at: { anchor: 'bottom_center', to: 'plate@face_top' } },
+    { id: 'nailer', type: 'lumber', size: '3x8', orient: 'flat', at: { anchor: 'bottom_left', to: 'col@top_left' } }],
+    views: [{ id: 'A', kind: 'section', cut_z: 0, annotations: [
+      { id: 'w1', type: 'weld', at: 'col@bottom_right', offset: [6, 6], size: '3/16', length: 2, pitch: 12, tail: 'EA. END', members: ['col', 'plate'] },
+      { id: 'w2', type: 'weld', at: 'col@bottom_left', offset: [-6, 6], size: '3/16', members: ['col', 'nailer'] }] }] };
+  write('pc9.kerf.json', stl);
+  r = kerf(['check', 'pc9.kerf.json']);
+  check('weld members: a lumber member is W_PARAM (not steel)', /^WARN W_PARAM w2: weld 'w2' in view A: member 'nailer' is lumber, not steel/m.test(r.out), r.out);
+  check('3x8 is a sawn size (2 1/2" thick)', /nailer +lumber 3x8 flat run z +x -?[0-9 /"']+\.\.[0-9 /"'-]+ +y 2'-0 3\/4"\.\.2'-3 1\/4"/m.test(r.out), r.out);
+  r = kerf(['drawing', 'pc9.kerf.json', '--view', 'A']);
+  let items = r.code === 0 ? JSON.parse(r.out).items : [];
+  check('weld length and pitch print as 2-12 right of the symbol', items.some((i) => i.src === 'w1' && i.t === 'text' && i.s === '2-12' && i.align === 'left'), r.err);
+  stl.views[0].annotations = [{ id: 'w3', type: 'weld', at: 'col@bottom_right', size: '3/16', pitch: 12 }];
+  write('pc9.kerf.json', stl);
+  r = kerf(['check', 'pc9.kerf.json']);
+  check('weld pitch without length: E_PARAM with the fix', /^ERROR E_PARAM w3: weld 'w3': "pitch" needs "length".*Fix: add "length"/m.test(r.out), r.out);
+
+  write('pc10.kerf.json', doc([plate], [
+    { id: 'l1', type: 'label', text: 'EXTERIOR\nFACE', at: [0, 12], align: 'left' },
+    { id: 'd1', type: 'dim', from: 'plate@top_left', to: { ref: 'plate@top_left', offset: [0.5, 0] }, dir: 'h', offset: 3 },
+    { id: 'n1', type: 'note', text: 'SILL PLATE ANCHORED TO THE FOOTING, LAP SPLICE 24" MIN.', target: 'plate' }], { scale: '1"=1\'-0"' }));
+  r = kerf(['drawing', 'pc10.kerf.json', '--view', 'A']);
+  items = r.code === 0 ? JSON.parse(r.out).items : [];
+  const lab = items.filter((i) => i.src === 'l1' && i.t === 'text');
+  check('label: a newline breaks the line, align left puts each line start on `at`', lab.length === 2 && lab[0].s === 'EXTERIOR' && lab[1].s === 'FACE' && lab.every((t) => t.align === 'left' && t.x === 0) && lab[0].y > lab[1].y, lab);
+  check('a dimension too short for its ticks draws dot terminators', items.filter((i) => i.src === 'd1' && i.t === 'fill').length === 2 && !items.some((i) => i.src === 'd1' && i.pen === 'profile'), items.filter((i) => i.src === 'd1'));
+  check('note wrap keeps 24" MIN. on one line', items.some((i) => i.src === 'n1' && i.t === 'text' && /24" MIN\.$/.test(i.s)) && !items.some((i) => i.src === 'n1' && i.t === 'text' && /^MIN\./.test(i.s)), items.filter((i) => i.src === 'n1' && i.t === 'text').map((i) => i.s));
+  write('pc10.kerf.json', doc([plate], [{ id: 'l2', type: 'label', text: 'X', at: [0, 0], align: 'middle' }]));
+  r = kerf(['check', 'pc10.kerf.json']);
+  check('label align must be left|center|right', /^ERROR E_PARAM l2: label 'l2': "align" must be "left", "center" or "right" \(got "middle"\)/m.test(r.out), r.out);
+
+  write('pc11.kerf.json', doc([plate, { id: 'post', type: 'lumber', size: '8x8', length: 24, at: { anchor: 'bottom_left', to: 'plate@top_left' } }]));
+  r = kerf(['check', 'pc11.kerf.json']);
+  check('run z lumber takes length (summary L=) and 8x8 is 7 1/2" square', /^ post +lumber 8x8 upright run z L=2'-0" +x 0"\.\.7 1\/2" +y 1 1\/2"\.\.9"/m.test(r.out), r.out);
+  r = kerf(['mesh', 'pc11.kerf.json']);
+  const mz = r.code === 0 ? JSON.parse(r.out) : null;
+  const pz = mz ? mz.parts.filter((p) => p.src === 'post').flatMap((p) => p.positions.filter((_, k) => k % 3 === 2)) : [];
+  check('run z length: the mesh is 24" long along z, centered on z 0 (not the doc run)', pz.length > 0 && Math.min(...pz) === -12 && Math.max(...pz) === 12, [Math.min(...pz), Math.max(...pz)]);
+
+  const arr = doc([{ id: 'pl', type: 'lumber', size: '2x6', orient: 'flat', z: [-8, 24], at: { to: [0, 0] } },
+    { id: 'st', type: 'lumber', size: '2x6', run: 'y', length: 24, z: 0, array: { axis: 'z', count: 4, spacing: 16 }, at: { anchor: 'bottom_left', to: 'pl@top_left' } }], [], { cut_z: 0 });
+  write('pc12.kerf.json', arr);
+  r = kerf(['check', 'pc12.kerf.json']);
+  check('W_FLOATING names array instances past the member they sit on', /^WARN W_FLOATING st: array instance\(s\) st#2, st#3 of 'st' touch nothing.*Fix: an array starts at instance 0/m.test(r.out), r.out);
+
+  r = kerf(['schema', 'lumber', 'view', 'label', 'weld']);
+  check('schema: 3x and 8x sizes, 3/16" scale, cut_z in front of members, label align, weld length/pitch', /"3x8"/.test(r.out) && /3\/16\\?"=1'-0\\?"/.test(r.out) && /wholly in front of it \(z0 >= cut_z\) are not drawn/.test(r.out) && /^- align: left\|center\|right, default center/m.test(r.out) && /^- pitch: /m.test(r.out), r.out.slice(0, 300));
+  r = kerf(['version']);
+  check('kerf version stamps the build (git describe)', r.code === 0 && /^\{"engine":"kerf","version":"[^"]+","spec":"[^"]+","build":"[^"]+"\}$/m.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

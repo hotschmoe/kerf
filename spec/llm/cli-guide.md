@@ -8,7 +8,7 @@ with typed components (lumber, cmu_wall, concrete, rebar, truss, ...); the engin
 ## Shell rules (the sandbox rejects compound commands)
 - ONE kerf command per call. Do NOT chain with `&&`, `;` or `|`, do NOT use heredocs (`<<EOF`) or `echo '...' | kerf`.
 - Create JSON files with your file-writing tool (Write), then point kerf at the file. Never hand-edit a `.kerf.json`.
-- Works the same on Windows PowerShell, where inline JSON quoting breaks.
+- Same on Windows PowerShell, where inline JSON quoting breaks.
 
 ## Workflow
 1. Ambiguity: ask ONE short question only if the answer changes the structural system or the load path (CMU vs
@@ -55,9 +55,8 @@ kerf guide --full
 W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER (rebar cover),
 W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
 W_NOTE_STYLE (house style: no sentences, `?`, `NOTE:`, trailing `W/` or `AND`), W_UNKNOWN_KEY (misspelled field),
-W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit left a member outside an explicit
-`crop`: remove `crop` and `scale` to re-fit; typical after a pitch change), W_REFERENCE_FILE (bad or missing
-`meta.references` image), I_* (info only).
+W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit moved a member out of an
+explicit `crop`: remove `crop` and `scale` to re-fit), W_REFERENCE_FILE (bad or missing `meta.references` image), I_* (info only).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.

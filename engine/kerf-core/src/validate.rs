@@ -721,8 +721,8 @@ struct CompBox<'a> {
     z1: f64,
 }
 
-/// Side-by-side members (both see the gap with a long face, e.g. studs at 16" o.c. next to a jack stud, stacked
-/// plates) leave framing spaces at this gap and more; only a smaller gap is a near miss for them.
+/// Members side by side across x (both see the gap with a long face: studs at 16" o.c. next to a jack stud, a post
+/// beside a stud) leave framing spaces at this gap and more. Stacked members (a gap along y) bear on each other.
 const SIDE_BY_SIDE_GAP: f64 = 1.0;
 
 fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
@@ -798,7 +798,7 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                 let a_across = o1 - o0;
                 let b_across = q1 - q0;
                 let side_by_side = a_len < a_across && b_len < b_across;
-                if side_by_side && gap >= SIDE_BY_SIDE_GAP - 1e-9 {
+                if side_by_side && on_x && gap >= SIDE_BY_SIDE_GAP - 1e-9 {
                     continue;
                 }
                 let key = [ca.c.index.min(cb.c.index), ca.c.index.max(cb.c.index), u32::from(on_x)];
@@ -839,7 +839,7 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                         Some(&grow.c.id),
                         None,
                         format!(
-                            "'{}' and '{}' sit side by side with a {} gap along {} ({}..{}); they probably should bear on each other",
+                            "'{}' and '{}' run parallel with a {} gap along {} ({}..{}) between their long faces; they probably should bear on each other",
                             grow.c.id,
                             other.c.id,
                             fmt_ft_in(gap),
