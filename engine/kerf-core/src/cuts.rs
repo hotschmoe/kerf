@@ -1234,7 +1234,7 @@ fn corner_anchors(plan: &Plan, built: &mut Built, lines: [Line; 2]) {
 }
 
 /// The pieces of segment a-b inside `region` (even-odd over its loops).
-fn clip_segment(a: V2, b: V2, region: &[Vec<V2>]) -> Vec<[V2; 2]> {
+pub fn clip_segment(a: V2, b: V2, region: &[Vec<V2>]) -> Vec<[V2; 2]> {
     let mut ts = vec![0.0, 1.0];
     for l in region {
         for (j, &p) in l.iter().enumerate() {

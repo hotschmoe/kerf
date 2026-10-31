@@ -209,6 +209,9 @@ pub struct Prism {
     pub hw_dash: bool,
     /// Nail or screw dots on a plate seen face-on (SPEC 27.2), drawn where the plate is visible.
     pub nails: Vec<V2>,
+    /// Lines on the face toward the viewer (the joints of a masonry wall seen face-on, SPEC 28.7): drawn thin where the
+    /// prism is seen beyond the cut and not hidden.
+    pub face_lines: Vec<[V2; 2]>,
 }
 
 impl Default for Prism {
@@ -246,6 +249,7 @@ impl Default for Prism {
             path3: Vec::new(),
             hw_dash: false,
             nails: Vec::new(),
+            face_lines: Vec::new(),
         }
     }
 }
@@ -256,6 +260,7 @@ impl Prism {
         q.loops = self.loops.iter().map(|l| xf.apply_loop(l)).collect();
         q.quads = self.quads.iter().map(|quad| quad.map(|c| xf.apply(c))).collect();
         q.ply_lines = self.ply_lines.iter().map(|s| [xf.apply(s[0]), xf.apply(s[1])]).collect();
+        q.face_lines = self.face_lines.iter().map(|s| [xf.apply(s[0]), xf.apply(s[1])]).collect();
         if !self.line_pts.is_empty() {
             q.line_pts = xf.apply_loop(&self.line_pts);
         }

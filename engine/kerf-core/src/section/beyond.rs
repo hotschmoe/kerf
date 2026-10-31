@@ -56,6 +56,7 @@ impl Section<'_> {
         };
         let mut pieces = Vec::new();
         let mut hidden = Vec::new();
+        let mut face = Vec::new();
         let nails: Vec<V2>;
         {
             let occ: Vec<&Occ> = if p.embedded {
@@ -74,8 +75,16 @@ impl Section<'_> {
                 }
             }
             nails = p.nails.iter().copied().filter(|&c| !occ.iter().any(|o| o.covers(c))).collect();
+            for s in &p.face_lines {
+                for [a, b] in crate::cuts::clip_segment(s[0], s[1], &f) {
+                    face.extend(visible_open(&[Pt::at(a, 0.0), Pt::at(b, 0.0)], false, &occ));
+                }
+            }
         }
         self.nail_dots(&nails, &src);
+        for pc in face {
+            self.add_clipped(Target::Strokes, &pc.pts, false, Pen::Beyond, &src, false);
+        }
         if p.lengthwise && !elevation {
             pieces = self.off_nearer_slabs(i, p, pieces);
         }
