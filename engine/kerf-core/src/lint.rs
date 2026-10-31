@@ -7,6 +7,7 @@ use crate::coverage;
 use crate::geom::V2;
 use crate::json::{Member, Value};
 use crate::model::{self, Diag, Diags, Level};
+use crate::references;
 use crate::scene::Scene;
 use crate::schema_fields::{self as schema, Object};
 use crate::style::Style;
@@ -25,6 +26,7 @@ pub fn run(scene: &Scene, doc: &Value, diags: &Diags) {
     dim_zero(scene, doc, diags);
     ack_shape(doc, diags);
     requested_missing(doc, diags);
+    references::lint(doc, diags);
 }
 
 // ---- unknown keys ---------------------------------------------------------------------------------------

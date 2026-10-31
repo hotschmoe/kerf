@@ -33,6 +33,7 @@ mod pdf;
 mod pen;
 mod png;
 mod raster;
+pub mod references;
 mod route;
 mod scene;
 pub mod schema;

@@ -817,7 +817,17 @@ fn cmd_doc(actor: &str, cmd: &str, o: &Opts) -> Res<u8> {
         Ok(l) => l,
         Err(code) => return Ok(code),
     };
-    let input = build_input(&read_file(doc_path)?, o.style.as_deref(), &call.extra)?;
+    let doc = read_file(doc_path)?;
+    if cmd == "check"
+        && let Ok(parsed) = json::parse(trim_ws(&doc))
+    {
+        let folder = match std::path::Path::new(doc_path).parent() {
+            Some(p) if !p.as_os_str().is_empty() => p,
+            _ => std::path::Path::new("."),
+        };
+        call.extra = workspace::reference_files_member(&parsed, folder);
+    }
+    let input = build_input(&doc, o.style.as_deref(), &call.extra)?;
     let r = api::call(cmd.as_bytes(), &input);
     if !r.ok {
         print_api_error(&r.bytes);

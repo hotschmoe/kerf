@@ -6,8 +6,19 @@ use crate::schema_fields::{self as schema, Object};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-const META_KEYS: [&str; 9] =
-    ["author", "discipline", "classification", "jurisdiction", "requested", "tags", "forked_from", "sheet", "date"];
+const META_KEYS: [&str; 10] = [
+    "author",
+    "discipline",
+    "classification",
+    "jurisdiction",
+    "requested",
+    "references",
+    "tags",
+    "forked_from",
+    "sheet",
+    "date",
+];
+const REFERENCE_KEYS: [&str; 2] = ["path", "caption"];
 const CLASS_KEYS: [&str; 2] = ["uniformat", "masterformat"];
 const JURIS_KEYS: [&str; 2] = ["code", "edition"];
 const COMMON_KEYS: [&str; 14] = [
@@ -69,6 +80,9 @@ pub fn order(ctx: &KeyCtx) -> Vec<String> {
         if last == "jurisdiction" {
             return strs(&JURIS_KEYS);
         }
+    }
+    if p.len() == 3 && p[0] == "meta" && p[1] == "references" && last == "[]" {
+        return strs(&REFERENCE_KEYS);
     }
     if p.len() == 2 && p[0] == "components" && last == "[]" {
         return component_keys(ctx);

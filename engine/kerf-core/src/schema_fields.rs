@@ -43,7 +43,7 @@ pub static DOC: Object = Object {
         Field {
             name: "meta",
             ty: "object",
-            desc: "free-form, known keys: requested[] (the designer's asks; see below), author, discipline, classification {uniformat, masterformat[]}, jurisdiction {code, edition} (default citation basis, e.g. {\"code\":\"IRC\",\"edition\":2021}), tags[], sheet, date, forked_from",
+            desc: "free-form, known keys: requested[] (the designer's asks; see below), references[] (the reference images the detail is redrawn from; see below), author, discipline, classification {uniformat, masterformat[]}, jurisdiction {code, edition} (default citation basis, e.g. {\"code\":\"IRC\",\"edition\":2021}), tags[], sheet, date, forked_from",
             ..Field::NONE
         },
         Field {
@@ -72,7 +72,10 @@ pub static DOC: Object = Object {
         "First build: one op {\"op\":\"set\",\"path\":\"doc\",\"value\":<whole document>}. Then small add/update/remove ops (`kerf schema ops`).\n",
         "meta.requested: [\"cmu wall\", \"bond beam\", \"H2.5A ties\"]: the designer's asks, one short phrase each, written on the first build. `kerf check` and `kerf apply` print a COVERAGE block ",
         "(`ok <component ids>` or `MISSING` per item) and W_REQUESTED_MISSING for each missing item. An item is covered when all its words (case-insensitive, plural s ignored) appear in one component's ",
-        "id/type/label/model/size or in one note/label text, so name components and write notes with the designer's words. Finish only at full coverage; remove an item only if the designer dropped it."
+        "id/type/label/model/size or in one note/label text, so name components and write notes with the designer's words. Finish only at full coverage; remove an item only if the designer dropped it.\n",
+        "meta.references: [{\"path\": \"refs/0123_exterior_wall_at_stem.png\", \"caption\": \"EXTERIOR WALL AT STEM\"}]: the 1-3 snips of real drawings the detail is redrawn from, shown next to the drawing in `kerf serve`. ",
+        "path* is relative to the document's folder (forward slashes, no `..`, no absolute paths or URLs) and names a png, jpg, jpeg, webp, gif, svg or pdf; caption is optional text. ",
+        "`kerf check` warns W_REFERENCE_FILE when a path is not usable or the file does not exist."
     ),
     ..Object::NONE
 };

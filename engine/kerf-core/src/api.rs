@@ -15,6 +15,7 @@ use crate::model::{self, Diag, Diags, Level};
 use crate::ops::{self, Actor};
 use crate::pdf;
 use crate::raster;
+use crate::references;
 use crate::schema;
 use crate::schema_fields;
 use crate::sheet;
@@ -63,7 +64,11 @@ const HELP_ROWS: [[&str; 3]; 11] = [
         "{topic, text}: field reference text; no topic lists the topics",
     ],
     ["fmt", "{doc}", "{doc, text}: canonical key order and indentation"],
-    ["check", "{doc, style?}", "{diagnostics: [{level, code, id?, path?, message, fix?}], summary}"],
+    [
+        "check",
+        "{doc, style?, reference_files?: {path: \"missing\"|\"outside\"}}",
+        "{diagnostics: [{level, code, id?, path?, message, fix?}], summary}",
+    ],
     [
         "apply",
         "{doc, ops: [op...], style?, actor?: \"llm\"|\"designer\"}",
@@ -312,6 +317,11 @@ fn check_fn(inp: &Value) -> Output {
     let (d, st) = doc_and_style!(inp);
     let diags = Diags::new();
     let l = load::load(d, &st, &diags, true);
+    if let Some(files) = inp.get("reference_files")
+        && let Err(msg) = references::host_report(d, files, &diags)
+    {
+        return fail("E_INPUT", msg);
+    }
     let mut out = Vec::from(&b"{\"diagnostics\":"[..]);
     json::write_compact(&mut out, &load::diags_json(&diags.list()));
     out.extend_from_slice(b",\"summary\":");

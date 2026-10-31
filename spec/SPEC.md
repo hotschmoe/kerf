@@ -83,6 +83,9 @@ Top level (canonical key order is the order listed):
     "discipline": "structural",
     "classification": { "uniformat": "B1020", "masterformat": ["04 22 00", "06 17 53"] },
     "jurisdiction": { "code": "IRC", "edition": 2021 },   // default citation basis
+    "references": [                      // reference images the detail is redrawn from (§23)
+      { "path": "refs/0123_truss_bearing.png", "caption": "TRUSS BEARING, SET 0123 S-501" }
+    ],
     "tags": ["cmu", "truss", "uplift"],
     "forked_from": null                  // id@version when forked (future library)
   },
@@ -592,7 +595,7 @@ All inputs/outputs are UTF-8 JSON unless noted.
 | `version` | `{}` | `{ "engine": "kerf", "version": "0.1.0", "spec": "0.1" }` |
 | `catalog` | `{ "format": "json"|"markdown" }` | catalog |
 | `fmt` | `{ doc }` | `{ doc }` canonicalized |
-| `check` | `{ doc, style }` | `{ diagnostics, summary }` |
+| `check` | `{ doc, style, reference_files? }` | `{ diagnostics, summary }` (`reference_files`: §23) |
 | `apply` | `{ doc, style, ops, actor?: "llm"|"designer" }` | `{ ok, doc, diagnostics, summary, changed }` — atomic: on any error `ok:false`, doc unchanged |
 | `inspect` | `{ doc, style, query }` | see §14 |
 | `drawing` | `{ doc, style, view }` | Drawing IR |
@@ -959,3 +962,31 @@ covers fills in iso, wood cut marks and grain, untreated-contact checks, thin-me
 Without `role`, it's derived from the name (the old predicates). `wood_treated` deliberately has no
 `wood` role, so treated members don't raise `W_UNTREATED_CONTACT`. A material's `"pen"` must name an
 engine pen (`cut profile beyond hidden hatch rebar steel membrane vapor anno dim break title frame`).
+
+## 23. Reference images (`meta.references`)
+A detail is usually redrawn from one to three snips of real drawing sets. They live in the workspace folder next to
+the document and are listed in `meta.references` so `kerf serve` can show them beside the drawing:
+
+```jsonc
+"meta": {
+  "references": [
+    { "path": "refs/0123_exterior_wall_at_stem.png", "caption": "EXTERIOR WALL AT STEM, SET 0123 S-301" },
+    { "path": "refs/0123_stem_plan.pdf" }
+  ]
+}
+```
+- `path` (required): the file, relative to the folder that holds the `.kerf.json`, with forward slashes. It must not be
+  absolute, carry a drive letter or a URL scheme (`:`), contain a `..` segment or backslashes, and must end in `.png`,
+  `.jpg`, `.jpeg`, `.webp`, `.gif`, `.svg` or `.pdf` (case-insensitive). `caption` (optional): a string. Canonical key
+  order: `path`, `caption`; `references` sits after `requested` in `meta`.
+- Shape errors are `E_PARAM` (not an array, an entry that is not an object, a missing or empty `path`, a non-string
+  `caption`); other keys in an entry warn `W_UNKNOWN_KEY`.
+- `W_REFERENCE_FILE` (warning, path `meta/references/<i>/path`, with a `fix`) when the path text breaks a rule above.
+  `check`, `apply` and the wasm report these.
+- The engine cannot see files. The host looks up every rule-abiding path and passes the ones it could not resolve as
+  `check`'s `reference_files: { "<path as written>": "missing" | "outside" }` (any other value is `E_INPUT`); each listed
+  path warns `W_REFERENCE_FILE`: `missing` = no regular file there, `outside` = it resolves outside the document's folder
+  through a symbolic link. `kerf check <doc>` fills it, resolving against the document's folder (not the working
+  directory). `apply` and the `kerf serve` library counts do not look files up (an added reference is checked by the next
+  `kerf check`; the web UI shows a missing image in its reference panel).
+- `kerf serve` serves a listed file with `GET /api/docs/:file/reference?path=<path>` (spec/SERVE.md).

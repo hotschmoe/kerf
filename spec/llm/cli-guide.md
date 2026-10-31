@@ -56,7 +56,8 @@ W_NEAR_MISS (a member stops short of its neighbour: use `until`), W_FLOATING / W
 W_UNTREATED_CONTACT (wood on masonry: `treated` or `barrier`), W_SHORT_SLOPE (see below), W_LEADER_HIT / W_VIEW_FIT (layout),
 W_NOTE_STYLE (house style and commentary: no sentences, `?`, `NOTE:`, `W/` or `AND` at the end), W_UNKNOWN_KEY (misspelled field),
 W_REQUESTED_MISSING (a `meta.requested` item has no component or note), W_CROP_STALE (an edit left a member outside an explicit
-`crop`: remove `crop` and `scale` to re-fit; typical after a pitch change), I_* (info only).
+`crop`: remove `crop` and `scale` to re-fit; typical after a pitch change), W_REFERENCE_FILE (a `meta.references` image path is
+not relative, leaves the folder, or the file is missing), I_* (info only).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.

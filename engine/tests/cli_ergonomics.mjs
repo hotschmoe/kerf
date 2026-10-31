@@ -406,5 +406,60 @@ section('11. writers: parallel apply -w loses no edit, --if-match, atomic fmt -w
   check('--px must be a number', r.code === 2 && /--px must be a number/.test(r.err), r);
 }
 
+// ---------------------------------------------------------------------------------------------------
+section('12. meta.references: reference images next to the document (W_REFERENCE_FILE)');
+{
+  let r = kerf(['schema', 'doc']);
+  check('schema doc documents meta.references and W_REFERENCE_FILE', /references\[\]/.test(r.out) && /meta\.references: \[\{"path": "refs\//.test(r.out) && /W_REFERENCE_FILE/.test(r.out), r.out.slice(0, 300));
+  r = kerf(['guide']);
+  check('guide lists W_REFERENCE_FILE and stays within 12 KB', /W_REFERENCE_FILE/.test(r.out) && Buffer.byteLength(r.out) <= 12288, Buffer.byteLength(r.out));
+  const lib = path.join(tmp, 'lib');
+  fs.mkdirSync(path.join(lib, 'refs'), { recursive: true });
+  fs.writeFileSync(path.join(lib, 'refs', 'stem.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
+  fs.writeFileSync(path.join(tmp, 'outside.png'), 'x');
+  kerf(['new', 'lib/r.kerf.json', '--template', 'section']);
+  const refs = [
+    { caption: 'EXTERIOR WALL AT STEM', path: 'refs/stem.png' },
+    { path: 'refs/missing.png' },
+    { path: '../outside.png' },
+    { path: '/etc/passwd.png' },
+    { path: 'refs\\stem.png' },
+    { path: 'refs/notes.txt' },
+  ];
+  r = kerf(['apply', 'lib/r.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'meta', value: { references: refs } }]), '-w', '--why', 'add references']);
+  check('apply writes meta.references (path problems are warnings, not errors)', r.code === 0 && /^wrote lib\/r\.kerf\.json$/m.test(r.out), r);
+  const text = fs.readFileSync(path.join(lib, 'r.kerf.json'), 'utf8');
+  check('canonical order inside a reference: path, then caption', text.indexOf('"path": "refs/stem.png"') < text.indexOf('"caption": "EXTERIOR WALL AT STEM"') && text.indexOf('"path": "refs/stem.png"') > 0, text.slice(text.indexOf('"references"'), text.indexOf('"references"') + 160));
+  check('apply already reports the path text problems', /^WARN W_REFERENCE_FILE: meta\.references\[2\]\.path "\.\.\/outside\.png" climbs out of the document's folder/m.test(r.out) && !/refs\/missing\.png/.test(r.out), r.out);
+  r = kerf(['check', 'lib/r.kerf.json']);
+  check('check from another folder: exit 0 (warnings only)', r.code === 0 && /0 errors  5 warnings/.test(r.out), r.out.split('\n')[0]);
+  check('check: a missing file is W_REFERENCE_FILE with a Fix, looked up relative to the document (not the cwd)', /^WARN W_REFERENCE_FILE: meta\.references\[1\]\.path "refs\/missing\.png" does not exist relative to the document's folder \(or is not a file\) Fix: copy the snip to refs\/missing\.png/m.test(r.out) && !/references\[0\]/.test(r.out), r.out);
+  check('check: ".." escapes the folder', /^WARN W_REFERENCE_FILE: meta\.references\[2\]\.path .* Fix: copy the image into the workspace folder and write its path relative to the document, e\.g\. "refs\/outside\.png"$/m.test(r.out), r.out);
+  check('check: an absolute path is refused', /^WARN W_REFERENCE_FILE: meta\.references\[3\]\.path "\/etc\/passwd\.png" is not relative to the document's folder/m.test(r.out), r.out);
+  check('check: backslashes get the forward-slash spelling as the fix', /^WARN W_REFERENCE_FILE: meta\.references\[4\]\.path "refs\\stem\.png" uses backslashes Fix: write it with forward slashes: "refs\/stem\.png"$/m.test(r.out), r.out);
+  check('check: a file type the panel cannot show', /^WARN W_REFERENCE_FILE: meta\.references\[5\]\.path "refs\/notes\.txt" is not a file type the reference panel shows/m.test(r.out), r.out);
+  const inside = spawnSync(KERF, ['check', 'r.kerf.json'], { cwd: lib, encoding: 'utf8' });
+  check('check from the document folder reports the same', inside.stdout === r.out, inside.stdout);
+  fs.copyFileSync(path.join(lib, 'refs', 'stem.png'), path.join(lib, 'refs', 'missing.png'));
+  r = kerf(['check', 'lib/r.kerf.json']);
+  check('once the file is there the missing warning is gone', r.code === 0 && /0 errors  4 warnings/.test(r.out) && !/refs\/missing\.png/.test(r.out), r.out);
+  if (process.platform !== 'win32') {
+    fs.rmSync(path.join(lib, 'refs', 'missing.png'));
+    fs.symlinkSync(path.join(tmp, 'outside.png'), path.join(lib, 'refs', 'missing.png'));
+    r = kerf(['check', 'lib/r.kerf.json']);
+    check('a symlink that leaves the folder is W_REFERENCE_FILE (outside)', /^WARN W_REFERENCE_FILE: meta\.references\[1\]\.path "refs\/missing\.png" resolves outside the document's folder through a symbolic link Fix: copy the image into the folder/m.test(r.out), r.out);
+  }
+  r = kerf(['apply', 'lib/r.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'meta', value: { references: 'refs/stem.png' } }), '--dry-run']);
+  check('meta.references as a string is an E_PARAM with an example', r.code === 1 && /^ERROR E_PARAM meta\/references: .*array of \{path, caption\} objects.*Fix: e\.g\./m.test(r.err), r.err);
+  r = kerf(['apply', 'lib/r.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'meta', value: { references: [{ caption: 'NO PATH' }, { path: 'refs/stem.png', caption: 7, page: 2 }] } }), '--dry-run']);
+  check('entry without a path / non-string caption are E_PARAM', r.code === 1 && /^ERROR E_PARAM meta\/references\/0\/path: .*needs "path"/m.test(r.err) && /^ERROR E_PARAM meta\/references\/1\/caption: /m.test(r.err), r.err);
+  r = kerf(['apply', 'lib/r.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'meta', value: { references: [{ path: 'refs/stem.png', page: 2 }] } }), '--dry-run']);
+  check('an unknown key in a reference warns W_UNKNOWN_KEY with the valid keys', r.code === 0 && /^WARN W_UNKNOWN_KEY: unknown key "page" in meta\/references\/0 \(reference\): .*Valid keys: path, caption/m.test(r.out), r.out);
+  r = kerf(['call', 'check'], { input: JSON.stringify({ doc: JSON.parse(text), reference_files: { 'refs/stem.png': 'gone' } }) });
+  check('call check: reference_files values other than missing/outside are E_INPUT', r.code === 1 && /"code":"E_INPUT"/.test(r.out) && /reference_files/.test(r.out), r.out);
+  r = kerf(['call', 'check'], { input: JSON.stringify({ doc: JSON.parse(text), reference_files: { 'refs/stem.png': 'missing' } }) });
+  check('call check: the host reports a missing file through reference_files', r.code === 0 && /meta\.references\[0\]\.path \\"refs\/stem\.png\\" does not exist/.test(r.out), r.out.slice(0, 200));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -6,7 +6,7 @@
 use kerf_core::json::{self, Value};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -236,6 +236,63 @@ pub fn check_summary(doc_text: &[u8]) -> String {
     }
     let Ok(v) = json::parse(&r.bytes) else { return String::new() };
     v.get("summary").and_then(Value::str).unwrap_or("").to_string()
+}
+
+/// Why a `meta.references` path does not name a file the server may read (the `reference_files` status names).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RefMiss {
+    Missing,
+    Outside,
+}
+
+impl RefMiss {
+    pub fn name(self) -> &'static str {
+        match self {
+            RefMiss::Missing => "missing",
+            RefMiss::Outside => "outside",
+        }
+    }
+}
+
+/// The regular file a reference path names inside `root` (a canonical directory). Symbolic links are followed, but
+/// the resolved file must still lie inside `root`. `rel` must already be free of `references::path_problem`s.
+pub fn resolve_reference(root: &Path, rel: &str) -> Result<PathBuf, RefMiss> {
+    let canon = fs::canonicalize(root.join(rel)).map_err(|_| RefMiss::Missing)?;
+    if !canon.starts_with(root) {
+        return Err(RefMiss::Outside);
+    }
+    if !fs::metadata(&canon).is_ok_and(|m| m.is_file()) {
+        return Err(RefMiss::Missing);
+    }
+    Ok(canon)
+}
+
+/// The `"reference_files":{...}` member of a `check` input: every looked-up reference path of `doc` that does not
+/// resolve inside `folder`. Empty when the document has no reference to look up.
+pub fn reference_files_member(doc: &Value, folder: &Path) -> String {
+    let lookups = kerf_core::references::lookups(doc);
+    if lookups.is_empty() {
+        return String::new();
+    }
+    let root = fs::canonicalize(folder);
+    let mut out = b"\"reference_files\":{".to_vec();
+    let mut first = true;
+    for p in lookups {
+        let miss = match &root {
+            Ok(r) => resolve_reference(r, p).err(),
+            Err(_) => Some(RefMiss::Missing),
+        };
+        let Some(miss) = miss else { continue };
+        if !first {
+            out.push(b',');
+        }
+        first = false;
+        json::write_string(&mut out, p);
+        out.push(b':');
+        json::write_string(&mut out, miss.name());
+    }
+    out.push(b'}');
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 pub fn trim_ws(b: &[u8]) -> &[u8] {
