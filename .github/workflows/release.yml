@@ -146,7 +146,9 @@ jobs:
           case "${{ matrix.asset }}" in *.exe) kerf="$kerf.exe" ;; esac
           cp "../release/${{ matrix.asset }}" "$kerf"
           chmod +x "$kerf"
-          "$kerf" version | tee /dev/stderr | grep -q '"version":"${{ needs.version.outputs.version }}"'
+          out=$("$kerf" version)
+          echo "$out"
+          case "$out" in *'"version":"${{ needs.version.outputs.version }}"'*) ;; *) echo "::error::version mismatch"; exit 1 ;; esac
           KERF="$kerf" node tests/check_golden.mjs
           node tests/serve_smoke.mjs "$kerf"
       - uses: actions/upload-artifact@v4
