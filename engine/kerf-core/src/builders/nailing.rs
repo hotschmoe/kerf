@@ -22,7 +22,7 @@ param_enum! { pub enum Axis { X = "x", Y = "y", Z = "z" } }
 
 params! {
     pub struct Params {
-        members: OptRaw => { def: "required", desc: "component ids the fasteners join, in driving order: the first is the member the heads are on (face, toenail: the piece nailed; edge, field: the sheathing panel), the rest are what the points go into (`id#k` for one array instance; every instance of an array otherwise). Placement comes from these members: `at`, `z`, `array`, `rotate` are not accepted" },
+        members: OptRaw => { def: "required", desc: "component ids the fasteners join, in driving order: the first is the member the heads are on (face, toenail: the piece nailed; edge, field: the sheathing panel; several panels side by side: list them all first, e.g. [\"sh1\", \"sh2\", \"sh3\", \"joists\", \"rim\"]), the rest are what the points go into (`id#k` for one array instance; every instance of an array otherwise, so an arrayed panel is nailed sheet by sheet). Placement comes from these members: `at`, `z`, `array`, `rotate` are not accepted" },
         pattern: Enum(Pattern) = Pattern::Face => { desc: "face: nails square to the joint face, through the first member into the next (plate splices, sill and plate nailing, built-up plies); toenail: angled from a side face of the first member into the second (blocking, studs, rafters to plates); edge: rows at `edge_distance` along the panel edges, kept where framing lies behind; field: rows along the intermediate framing behind the panel" },
         size: Str => { desc: "nail: penny size \"16d\" (common; \"16d box\", \"16d sinker\"), or shank x length \"0.131x3\"; screw: \"SDS25300\", \"#10x3\", \"1/4x3 1/2\" with fastener screw. Drawn length and diameter come from it" },
         fastener: Enum(Fastener) = Fastener::Nail => { desc: "nail | screw (SDS and #N sizes are screws)" },
@@ -37,6 +37,7 @@ params! {
         edge_distance: OptLenPos => { def: "edge, field 3/8; face 10D (10 x shank dia.)", desc: "distance from the panel edge (edge, field) or from the ends of the joint (face) to the first nail" },
         angle: Num = 30.0 => { desc: "toenail: degrees between the nail and the member (30 typical, started 1/3 of the nail length from the end)" },
         through: Bool = false => { desc: "the points may come out of the far face (plate splice face nails, clinched nails): no W_NAIL_LENGTH for that" },
+        blocked: Bool = true => { desc: "edge: false for an unblocked diaphragm or wall: edge nails go only where framing lies behind the edge, and edges without framing are not W_NAIL_EDGE" },
         text: Str = "" => { def: "generated", desc: "note text form override; the default is generated from the params (\"(8) 16d NAILS STAGGERED\", \"8d @ 6\\\" O.C. EDGE NAILING\") and a note targeting this component without `text` uses it" },
     }
 }
@@ -436,6 +437,8 @@ struct Job<'a> {
     scene: &'a scene::Scene<'a>,
     /// Member components in document order; each entry is every instance (or the one named with `#k`).
     groups: Vec<Vec<Member>>,
+    /// Edge and field: how many leading groups are the sheets the heads are on (the rest are the framing).
+    sheets: usize,
     /// The range entries as written (points resolved to world XY; numbers are z).
     range_pts: Option<[RangeEnd; 2]>,
 }
@@ -565,6 +568,7 @@ impl Job<'_> {
             screw: self.size.screw,
             row: if pitch > 0.0 { dir_world(a, row) } else { [0.0; 3] },
             pitch,
+            on: a.comp,
         }
     }
 
@@ -1118,11 +1122,12 @@ fn shorter_toenail(
 /// A framing member behind a panel and the low / high corners of its box clipped to the panel (`box_in`).
 type Backing = (Member, [f64; 3], [f64; 3]);
 
-/// Framing behind a panel: the instances of members[1..] touching its thin axis, all on one side (the side of the first).
+/// Framing behind a panel: the instances of the members after the sheets touching its thin axis, all on one side (the
+/// side of the first).
 fn framing(job: &Job, a: &Member, k: usize) -> (f64, Vec<Backing>) {
     let mut side = 0.0;
     let mut out = Vec::new();
-    for g in job.groups.iter().skip(1) {
+    for g in job.groups.iter().skip(job.sheets) {
         for m in g {
             let (lo, hi) = box_in(a, m);
             let s = if (a.lo[k] - hi[k]).abs() <= TOL {
@@ -1158,13 +1163,34 @@ fn panel_axis(a: &Member) -> usize {
     k
 }
 
+/// Edge and field: the leading `panel` members are the sheets side by side (at least the first; at least one member is
+/// left for the framing). A panel that lies against the thin face of an earlier sheet is backing, not another sheet.
+fn sheet_count(groups: &[Vec<Member>], panels: &[bool]) -> usize {
+    let mut n = 1;
+    while n + 1 < groups.len() && panels[n] {
+        let stacked = groups[..n].iter().flatten().any(|a| {
+            let k = panel_axis(a);
+            groups[n].iter().any(|m| {
+                let (lo, hi) = box_in(a, m);
+                let touches = (a.lo[k] - hi[k]).abs() <= TOL || (a.hi[k] - lo[k]).abs() <= TOL;
+                touches && (0..3).filter(|&o| o != k).all(|o| a.hi[o].min(hi[o]) - a.lo[o].max(lo[o]) > TOL)
+            })
+        });
+        if stacked {
+            break;
+        }
+        n += 1;
+    }
+    n
+}
+
 fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
     let cp = job.cp;
     let e = cp.edge_distance.unwrap_or(0.375);
     let s = cp.spacing.unwrap_or(if field { 12.0 } else { 6.0 });
     job.check_edge(out, e, "panel");
     job.check_spacing(out, s, true);
-    for a in &job.groups[0] {
+    for a in job.groups[..job.sheets].iter().flatten() {
         let k = panel_axis(a);
         let (side, frames) = framing(job, a, k);
         if frames.is_empty() {
@@ -1174,7 +1200,7 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                 format!("list the studs, plates and blocking behind '{an}' after it in members")
             } else {
                 let mut m = job.members_json();
-                m.truncate(1);
+                m.truncate(job.sheets);
                 m.extend(near.iter().cloned());
                 format!(
                     "members touching '{an}': {}. E.g. {}",
@@ -1236,6 +1262,7 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                         h[p] = x;
                         match backed(h) {
                             Some(fr) => emit(out, h, p, step, fr),
+                            None if !cp.blocked => {}
                             None => {
                                 gap_pts.push(h);
                                 match gaps.last_mut() {
@@ -1282,8 +1309,9 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                             .map(|n| n.to_string())
                             .collect();
                         fix.push_str(&format!(
-                            "; or leave that edge unnailed: {}",
-                            op_update(job.id, "edges", &quoted_list(&others))
+                            "; or leave that edge unnailed: {}; or, for an unblocked diaphragm or wall (nails only where framing crosses the edge): {}",
+                            op_update(job.id, "edges", &quoted_list(&others)),
+                            op_update(job.id, "blocked", "false")
                         ));
                         out.warn(
                             "W_NAIL_EDGE",
@@ -1427,6 +1455,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let scene = ctx.scene;
     let mut groups: Vec<Vec<Member>> = Vec::new();
+    let mut panels: Vec<bool> = Vec::new();
     let mut stack: Vec<u32> = Vec::new();
     for (i, v) in ids.iter().enumerate() {
         let s = v.str().unwrap_or("");
@@ -1466,6 +1495,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             return None;
         }
         groups.push(members_of(c, inst));
+        panels.push(c.ty.ty == crate::catalog::Type::Panel);
         if !stack.contains(&c.index) {
             stack.push(c.index);
         }
@@ -1487,7 +1517,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail("angle", format!("angle must be between 5 and 85 degrees (got {})", fmt_num(cp.angle)));
         return None;
     }
-    let job = Job { id: ctx.p.id, size: &size, cp: &cp, through: cp.through, scene, groups, range_pts };
+    let sheets = if matches!(cp.pattern, Pattern::Edge | Pattern::Field) { sheet_count(&groups, &panels) } else { 1 };
+    let job = Job { id: ctx.p.id, size: &size, cp: &cp, through: cp.through, scene, groups, sheets, range_pts };
     let mut out = Out { nails: Vec::new(), warns: Vec::new() };
     match cp.pattern {
         Pattern::Face => face_pattern(&job, &mut out),

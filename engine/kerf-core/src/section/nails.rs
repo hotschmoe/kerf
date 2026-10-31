@@ -59,6 +59,9 @@ impl Section<'_> {
             let mut in_crop = 0usize;
             let mut drawn = 0usize;
             for n in &c.built.nails {
+                if !scene.nail_on_shown(n, &self.spec.members) {
+                    continue;
+                }
                 let (h, hw) = self.nail_view(n.head);
                 let (t, tw) = self.nail_view(n.tip);
                 let (wmin, wmax) = (hw.min(tw), hw.max(tw));

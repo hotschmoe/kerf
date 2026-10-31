@@ -173,17 +173,15 @@ impl<'a> Scene<'a> {
         self.comps.iter().map(|c| c.id.as_str()).collect()
     }
 
-    /// A `nailing` component's fasteners show in a view that draws it and the member its heads are on (SPEC 27.4).
+    /// A `nailing` component's fasteners show in a view that draws it (SPEC 27.4); each one where the view also draws the
+    /// member its head is on (`nail_on_shown`).
     pub fn nails_shown(&self, c: &Comp<'_>, members: &crate::view::Members) -> bool {
-        c.state == State::Ok
-            && c.visible
-            && !c.built.nails.is_empty()
-            && members.draws(c)
-            && c.built
-                .nail_stack
-                .first()
-                .and_then(|&i| self.comps.get(i as usize))
-                .is_some_and(|h| h.visible && members.draws(h))
+        c.state == State::Ok && c.visible && !c.built.nails.is_empty() && members.draws(c)
+    }
+
+    /// The view draws the member a fastener's head is on (SPEC 27.4, 28.6).
+    pub fn nail_on_shown(&self, n: &crate::model::Nail, members: &crate::view::Members) -> bool {
+        self.comps.get(n.on as usize).is_some_and(|h| h.visible && members.draws(h))
     }
 
     pub fn part_box(c: &Comp<'_>, part: &str) -> Option<geom::Box> {

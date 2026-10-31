@@ -353,6 +353,8 @@ pub struct Nail {
     /// sees end-on as cut within half a spacing of the plane.
     pub row: [f64; 3],
     pub pitch: f64,
+    /// The component the head is on: the nail shows only in views that draw it.
+    pub on: u32,
 }
 
 /// A post base's bearing: plate bottom `y`, plan extent x0..x1 × z0..z1, the post and its standoff.

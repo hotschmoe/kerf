@@ -1098,6 +1098,9 @@ fn nail_dots(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, s: f6
             continue;
         }
         for n in &c.built.nails {
+            if !scene.nail_on_shown(n, &spec.members) {
+                continue;
+            }
             if spec.has_crop && !spec.crop.contains(V2::init(n.head[0], n.head[1])) {
                 continue;
             }
