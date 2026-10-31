@@ -1895,6 +1895,19 @@ section('#28. round-2 papercuts');
   check('CALC. is an approved abbreviation: PER CALC. is not a trailing period', !/W_NOTE_STYLE t1: .*PER CALC/.test(r.out) && !/W_ABBREV t1: .*"CALC/.test(r.out), r.out);
   check('W_ABBREV reads table cells: one warning per spelling, listing the cells', (r.out.match(/^WARN W_ABBREV t1:/gm) || []).length === 1 && /^WARN W_ABBREV t1: table 't1' in view A \(views\/A\/annotations\/t1\/columns\/2\/header\) \(also in 9 more cells: rows\/0\/2, rows\/1\/2, .*\): "BOTT\." breaks rule variants .*Fix: set columns\/2\/header to "BOT\. PL", and replace "BOTT\." by "BOT\." the same way in the other 9 cells\./m.test(r.out), r.out);
   check('W_NOTE_STYLE on a repeated table cell: one warning for the text, listing every cell', (r.out.match(/^WARN W_NOTE_STYLE t1:/gm) || []).length === 1 && /^WARN W_NOTE_STYLE t1: table 't1' in view A: rows\/0\/3 \(the same text in 8 more cells: rows\/1\/3, .*rows\/8\/3\) breaks the house note style: lowercase letters.* Fix: set rows\/0\/3 and the 8 other cells with this text to "PER SPAN"$/m.test(r.out), r.out);
+
+  const cmu = { id: 'cmu', type: 'cmu_wall', at: { anchor: 'bottom_left', to: [0, 0] }, width: 8, courses: 3, grout: 'solid' };
+  const ptPlate = { id: 'plate', type: 'lumber', at: { anchor: 'bottom_center', to: 'cmu@top_center' }, size: '2.5x5.5', orient: 'flat', treated: true };
+  const rafter = (heel) => ({ id: 'rafter', type: 'lumber', slope: '6:12', size: '2x10', run: 'x', length: 72, cuts: [{ type: 'birdmouth', on: 'plate', heel, tail: 14 }, { type: 'plumb', end: 'start' }] });
+  write('u28.kerf.json', { kerf: '0.1', id: 'u28', title: 'U', components: [cmu, ptPlate, rafter(1.9375)], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'u28.kerf.json']);
+  check('a birdmouth rafter whose underside passes 0.028" from the CMU corner: no W_UNTREATED_CONTACT (no contact length)', !/W_UNTREATED_CONTACT/.test(r.out) && /0 errors/.test(r.out), r.out);
+  write('u28.kerf.json', { kerf: '0.1', id: 'u28', title: 'U', components: [cmu, ptPlate, rafter(2.25)], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'u28.kerf.json']);
+  check('a deeper heel that cuts into the CMU corner still warns', /^WARN W_UNTREATED_CONTACT rafter: untreated wood 'rafter' touches cmu 'cmu'/m.test(r.out), r.out);
+  write('u28.kerf.json', { kerf: '0.1', id: 'u28', title: 'U', components: [cmu, { ...ptPlate, treated: false }, rafter(1.9375)], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'u28.kerf.json']);
+  check('an untreated plate bearing on the CMU still warns', /^WARN W_UNTREATED_CONTACT plate: untreated wood 'plate' touches cmu 'cmu'/m.test(r.out) && !/W_UNTREATED_CONTACT rafter/.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

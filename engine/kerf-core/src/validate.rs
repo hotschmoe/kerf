@@ -86,6 +86,40 @@ fn region_dist(a: &[Vec<V2>], b: &[Vec<V2>], limit: f64) -> f64 {
     best
 }
 
+/// How long the boundaries of `a` and `b` run side by side within `gap` of each other: the summed overlap of every pair of
+/// parallel edges (within 1 degree) that lie within `gap`. A corner near a face (a sloped rafter passing a wall corner)
+/// adds nothing.
+fn contact_len(a: &[Vec<V2>], b: &[Vec<V2>], gap: f64) -> f64 {
+    let sin_tol = 0.0175;
+    let mut total = 0.0;
+    for la in a {
+        for (i, &p) in la.iter().enumerate() {
+            let q = la[(i + 1) % la.len()];
+            let d = q.sub(p);
+            let len = d.len();
+            if len <= 1e-9 {
+                continue;
+            }
+            for lb in b {
+                for (k, &r) in lb.iter().enumerate() {
+                    let s = lb[(k + 1) % lb.len()];
+                    let e = s.sub(r);
+                    let elen = e.len();
+                    if elen <= 1e-9 || (d.cross(e) / (len * elen)).abs() > sin_tol {
+                        continue;
+                    }
+                    if (d.cross(r.sub(p)) / len).abs() > gap || (d.cross(s.sub(p)) / len).abs() > gap {
+                        continue;
+                    }
+                    let (t0, t1) = (d.dot(r.sub(p)) / len, d.dot(s.sub(p)) / len);
+                    total += (t0.max(t1).min(len) - t0.min(t1).max(0.0)).max(0.0);
+                }
+            }
+        }
+    }
+    total
+}
+
 fn z_gap(a: &Prism, b: &Prism) -> f64 {
     (a.z0.max(b.z0) - a.z1.min(b.z1)).max(0.0)
 }
@@ -401,6 +435,12 @@ fn face_host<'a>(s: &Drawn<'_, 'a>, c: &Comp<'a>, mine: &[&&Pf<'_>]) -> Option<(
     best.map(|(g, id, f)| (id, f, g))
 }
 
+/// Wood and masonry that do not touch exactly count as in contact (W_UNTREATED_CONTACT) only where their outlines run
+/// side by side, within 1/32", for at least this long.
+const UNTREATED_MIN_CONTACT: f64 = 0.125;
+
+/// W_UNTREATED_CONTACT: untreated wood that touches concrete or masonry, on the drawn (cut) outlines: outlines that touch
+/// or overlap, or that run side by side within 1/32" for 1/8" or more.
 fn untreated(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut reported: Vec<[u32; 2]> = Vec::new();
     let gap = 1.0 / 32.0;
@@ -412,7 +452,11 @@ fn untreated(s: &Drawn<'_, '_>, diags: &Diags) {
             if !q.prism.role.is_masonry() || z_gap(p.prism, q.prism) > gap {
                 continue;
             }
-            if !p.box_.expand(gap).overlaps(q.box_, 0.0) || region_dist(&p.flat, &q.flat, gap) > gap {
+            if !p.box_.expand(gap).overlaps(q.box_, 0.0) {
+                continue;
+            }
+            let dist = region_dist(&p.flat, &q.flat, gap);
+            if dist > gap || (dist > 1e-6 && contact_len(&p.flat, &q.flat, gap) < UNTREATED_MIN_CONTACT) {
                 continue;
             }
             let key = [p.comp.index, q.comp.index];
