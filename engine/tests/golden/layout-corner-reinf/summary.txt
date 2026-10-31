@@ -1,0 +1,37 @@
+DOC layout-corner-reinf  23 components  4 views  0 errors  0 warnings  0 acknowledged
+ a_wall        concrete polygon                            x 0"..5'-0"       y -1'-0"..4'-0"
+ a_horiz_x     rebar #4 path L=4'-10"                      x 2"..5'-0"       y 3'-8 3/8"..3'-8 7/8"
+ a_horiz_y     rebar #4 path L=4'-10"                      x 3 1/8"..3 5/8"  y -1'-0"..3'-10"
+ a_corner_bar  rebar #4 path L=4'-6 13/16"                 x 4 3/8"..2'-8"   y 1'-4"..3'-7 5/8"
+ a_vert        rebar #4 along z                            x 2 1/8"..2 5/8"  y 3'-9 3/8"..3'-9 7/8"
+ b_wall        concrete polygon "T-intersection wall"      x 12'-4"..21'-0"  y -1'-0"..4'-0"
+ b_horiz_thru  rebar #4 path L=8'-8"                       x 12'-4"..21'-0"  y 3'-8 15/16"..3'-9 7/16"
+ b_horiz_stem  rebar #4 path L=4'-0"                       x 16'-7 3/4"..16'-8 1/4" y -1'-0"..3'-0"
+ b_corner_bar_l rebar #4 path L=4'-6 11/16"                 x 14'-4"..16'-7 3/8" y 1'-4"..3'-7 7/8"
+ b_corner_bar_r rebar #4 path L=4'-6 11/16"                 x 16'-8 5/8"..19'-0" y 1'-4"..3'-7 7/8"
+ c_wall        concrete polygon                            x 33'-4"..38'-8"  y -1'-0"..4'-0"
+ c_outside_x   rebar #4 path L=5'-1 3/4"                   x 33'-6 1/4"..38'-8" y 3'-9 1/2"..3'-10"
+ c_outside_y   rebar #4 path L=4'-9 3/4"                   x 33'-6"..33'-6 1/2" y -1'-0"..3'-9 3/4"
+ c_corner_bar  rebar #4 path L=5'-5 1/2"                   x 33'-7"..36'-4"  y 1'-0"..3'-9"
+ c_inside_x    rebar #4 path L=5'-7 3/8"                   x 33'-8 3/8"..38'-8" y 2'-6 1/4"..3'-2 1/2"
+ c_inside_y    rebar #4 path L=5'-3 3/8"                   x 34'-1 1/2"..34'-9 3/4" y -1'-0"..3'-7 5/8"
+ d_footing     concrete polygon                            x 50'-0"..56'-4"  y -1'-4"..5'-0"
+ d_stem        concrete polygon                            x 50'-6"..56'-4"  y -1'-4"..4'-6"
+ d_outer_x     rebar #4 path L=6'-0 3/4"                   x 50'-3 1/4"..56'-4" y 4'-8 1/2"..4'-9"
+ d_outer_y     rebar #4 path L=6'-0 3/4"                   x 50'-3"..50'-3 1/2" y -1'-4"..4'-8 3/4"
+ d_corner_bar  rebar #4 path L=6'-7 1/2"                   x 50'-4"..53'-8"  y 1'-4"..4'-8"
+ d_inner_x     rebar #4 path L=6'-6 3/8"                   x 50'-5 3/8"..56'-4" y 2'-11 1/4"..3'-7 1/2"
+ d_inner_y     rebar #4 path L=6'-6 3/8"                   x 51'-4 1/2"..52'-0 3/4" y -1'-4"..4'-6 5/8"
+COVERAGE  11/11 requested elements covered
+ ok       corner bars               a_corner_bar, b_corner_bar_l, b_corner_bar_r, c_corner_bar, d_corner_bar, note n_corner, +4 more
+ ok       T-intersection            b_wall, view B
+ ok       class B tension lap       note n_lap
+ ok       hook inside face bars at outside face note n_hook
+ ok       bars ea. face             view C, note n_each
+ ok       corner bars at top and bott. bars view D, note n_top
+ ok       stem wall                 note n_wall, note n_stem
+ ok       footing                   d_footing, note n_wall, view D, note n_stem, note n_ftg
+ ok       horiz. reinf.             note n_corner, note n_horiz
+ ok       vert. reinf. at corner    a_vert
+ ok       alternate corner bar bend note n_alt
+INFO I_ANNOT_MOVED d_lap_y: view A: dimension 'd_lap_y' is drawn at offset -26 instead of its offset -10: moved 1'-4" (1" paper) outward to clear the leader of note 'n_corner' Fix: keep it there: set "offset": -26; or keep -10 by moving what it collides with, or set "pin": true (drawn exactly at -10, overlaps then warn W_LABEL_OVERLAP)

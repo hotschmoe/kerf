@@ -41,5 +41,18 @@ for doc in ../spec/details/*.kerf.json tests/docs/*.kerf.json; do
       $T/pdf_check.py "$d/$v.pdf" --png "$d/$v-pdf.png" --dpi 110 >/dev/null
     fi
   done
+  layouts=$(python3 -c 'import json,sys;print(" ".join(l["id"] for l in json.load(open(sys.argv[1])).get("layouts",[])))' "$doc")
+  for l in $layouts; do
+    $K drawing "$doc" --layout "$l" -o "$d/drawing-layout-$l.json"
+    $K export "$doc" --layout "$l" --format svg --sheet -o "$d/layout-$l-sheet.svg"
+    $K export "$doc" --layout "$l" --format dxf -o "$d/layout-$l.dxf"
+    $K export "$doc" --layout "$l" --format pdf -o "$d/layout-$l.pdf"
+    $K export "$doc" --layout "$l" --format png --sheet -o "$d/layout-$l-sheet.raster.png"
+    if [ $PNG = 1 ]; then
+      $T/svg2png.sh "$d/layout-$l-sheet.svg" "$d/layout-$l.png" 1400
+      $T/dxf_check.py "$d/layout-$l.dxf" --png "$d/layout-$l-dxf.png" --png-size 1400 >/dev/null
+      $T/pdf_check.py "$d/layout-$l.pdf" --png "$d/layout-$l-pdf.png" --dpi 110 >/dev/null
+    fi
+  done
   $K mesh "$doc" -o "$d/mesh.json"
 done

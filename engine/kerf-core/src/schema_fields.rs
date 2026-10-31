@@ -601,6 +601,13 @@ pub static LAYOUT: Object = Object {
             ..Field::NONE
         },
         Field { name: "gap", ty: "number", def: "0.5", desc: "paper inches between views (0-4)", ..Field::NONE },
+        Field {
+            name: "sheet",
+            ty: "\"WxH\"",
+            def: "the style's sheet",
+            desc: "paper size in inches, e.g. \"17x11\" (ANSI B) or \"36x24\": four scenarios with a list rarely fit a letter sheet at a useful scale",
+            ..Field::NONE
+        },
         Field { name: "title", ty: "string", def: "doc title", desc: "title block DETAIL text", ..Field::NONE },
         Field { name: "number", ty: "string", def: "\"\"", desc: "title block DETAIL NO", ..Field::NONE },
     ],

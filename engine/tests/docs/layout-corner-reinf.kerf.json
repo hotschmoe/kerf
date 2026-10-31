@@ -1,0 +1,818 @@
+{
+  "kerf": "0.1",
+  "id": "layout-corner-reinf",
+  "title": "CORNER AND INTERSECTION REINFORCING IN FOOTINGS, STEM WALLS AND CONCRETE WALLS",
+  "meta": {
+    "author": "kerf test (MASS s-00-01, issue #7)",
+    "discipline": "structural",
+    "jurisdiction": {
+      "code": "IRC",
+      "edition": 2021
+    },
+    "requested": [
+      "corner bars",
+      "T-intersection",
+      "class B tension lap",
+      "hook inside face bars at outside face",
+      "bars ea. face",
+      "corner bars at top and bott. bars",
+      "stem wall",
+      "footing",
+      "horiz. reinf.",
+      "vert. reinf. at corner",
+      "alternate corner bar bend"
+    ],
+    "tags": [
+      "00-01",
+      "corner bars",
+      "intersection",
+      "lap splice",
+      "plan",
+      "rebar"
+    ]
+  },
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "a_wall",
+      "type": "concrete",
+      "at": {
+        "to": [0, 0]
+      },
+      "shape": "polygon",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "points": [
+        [0, -12],
+        [8, -12],
+        [8, 40],
+        [60, 40],
+        [60, 48],
+        [0, 48]
+      ]
+    },
+    {
+      "id": "a_horiz_x",
+      "type": "rebar",
+      "at": {
+        "to": [0, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [60, 44.6],
+        [2, 44.6]
+      ]
+    },
+    {
+      "id": "a_horiz_y",
+      "type": "rebar",
+      "at": {
+        "to": [0, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [3.4, -12],
+        [3.4, 46]
+      ]
+    },
+    {
+      "id": "a_corner_bar",
+      "type": "rebar",
+      "at": {
+        "to": [0, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [4.6, 16],
+        [4.6, 43.4],
+        [32, 43.4]
+      ]
+    },
+    {
+      "id": "a_vert",
+      "type": "rebar",
+      "at": {
+        "anchor": "center",
+        "to": [2.4, 45.6]
+      },
+      "size": "#4"
+    },
+    {
+      "id": "b_wall",
+      "type": "concrete",
+      "label": "T-intersection wall",
+      "at": {
+        "to": [200, 0]
+      },
+      "shape": "polygon",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "points": [
+        [-4, -12],
+        [4, -12],
+        [4, 40],
+        [52, 40],
+        [52, 48],
+        [-52, 48],
+        [-52, 40],
+        [-4, 40]
+      ]
+    },
+    {
+      "id": "b_horiz_thru",
+      "type": "rebar",
+      "at": {
+        "to": [200, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [-52, 45.2],
+        [52, 45.2]
+      ]
+    },
+    {
+      "id": "b_horiz_stem",
+      "type": "rebar",
+      "at": {
+        "to": [200, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [0, -12],
+        [0, 36]
+      ]
+    },
+    {
+      "id": "b_corner_bar_l",
+      "type": "rebar",
+      "at": {
+        "to": [200, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [-28, 43.6],
+        [-0.9, 43.6],
+        [-0.9, 16]
+      ]
+    },
+    {
+      "id": "b_corner_bar_r",
+      "type": "rebar",
+      "at": {
+        "to": [200, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [28, 43.6],
+        [0.9, 43.6],
+        [0.9, 16]
+      ]
+    },
+    {
+      "id": "c_wall",
+      "type": "concrete",
+      "at": {
+        "to": [400, 0]
+      },
+      "shape": "polygon",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "points": [
+        [0, -12],
+        [12, -12],
+        [12, 36],
+        [64, 36],
+        [64, 48],
+        [0, 48]
+      ]
+    },
+    {
+      "id": "c_outside_x",
+      "type": "rebar",
+      "at": {
+        "to": [400, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [64, 45.75],
+        [2.25, 45.75]
+      ]
+    },
+    {
+      "id": "c_outside_y",
+      "type": "rebar",
+      "at": {
+        "to": [400, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [2.25, -12],
+        [2.25, 45.75]
+      ]
+    },
+    {
+      "id": "c_corner_bar",
+      "type": "rebar",
+      "at": {
+        "to": [400, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [3.25, 12],
+        [3.25, 44.75],
+        [36, 44.75]
+      ]
+    },
+    {
+      "id": "c_inside_x",
+      "type": "rebar",
+      "at": {
+        "to": [400, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [64, 38.25],
+        [4.65, 38.25],
+        [4.65, 30.25]
+      ]
+    },
+    {
+      "id": "c_inside_y",
+      "type": "rebar",
+      "at": {
+        "to": [400, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [9.75, -12],
+        [9.75, 43.35],
+        [17.75, 43.35]
+      ]
+    },
+    {
+      "id": "d_footing",
+      "type": "concrete",
+      "at": {
+        "to": [600, 0]
+      },
+      "shape": "polygon",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "points": [
+        [0, -16],
+        [20, -16],
+        [20, 40],
+        [76, 40],
+        [76, 60],
+        [0, 60]
+      ]
+    },
+    {
+      "id": "d_stem",
+      "type": "concrete",
+      "at": {
+        "to": [600, 0]
+      },
+      "shown": "dashed",
+      "shape": "polygon",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "points": [
+        [6, -16],
+        [14, -16],
+        [14, 46],
+        [76, 46],
+        [76, 54],
+        [6, 54]
+      ]
+    },
+    {
+      "id": "d_outer_x",
+      "type": "rebar",
+      "at": {
+        "to": [600, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [76, 56.75],
+        [3.25, 56.75]
+      ]
+    },
+    {
+      "id": "d_outer_y",
+      "type": "rebar",
+      "at": {
+        "to": [600, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [3.25, -16],
+        [3.25, 56.75]
+      ]
+    },
+    {
+      "id": "d_corner_bar",
+      "type": "rebar",
+      "at": {
+        "to": [600, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [4.25, 16],
+        [4.25, 55.75],
+        [44, 55.75]
+      ]
+    },
+    {
+      "id": "d_inner_x",
+      "type": "rebar",
+      "at": {
+        "to": [600, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [76, 43.25],
+        [5.65, 43.25],
+        [5.65, 35.25]
+      ]
+    },
+    {
+      "id": "d_inner_y",
+      "type": "rebar",
+      "at": {
+        "to": [600, 0]
+      },
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        [16.75, -16],
+        [16.75, 54.35],
+        [24.75, 54.35]
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "A",
+      "title": "SINGLE MAT CORNER",
+      "crop": {
+        "x": [-14, 52],
+        "y": [-6, 58]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "omit": [
+        "b_wall",
+        "b_horiz_thru",
+        "b_horiz_stem",
+        "b_corner_bar_l",
+        "b_corner_bar_r",
+        "c_wall",
+        "c_outside_x",
+        "c_outside_y",
+        "c_corner_bar",
+        "c_inside_x",
+        "c_inside_y",
+        "d_footing",
+        "d_stem",
+        "d_outer_x",
+        "d_outer_y",
+        "d_corner_bar",
+        "d_inner_x",
+        "d_inner_y"
+      ],
+      "annotations": [
+        {
+          "id": "n_corner",
+          "type": "note",
+          "text": "CORNER BARS TO MATCH SIZE AND SPACING OF HORIZ. REINF.",
+          "at": [4.6, 28],
+          "key": 1
+        },
+        {
+          "id": "n_lap",
+          "type": "note",
+          "text": "LAP PER LAP SPLICE SCHEDULE S-00.02, CLASS B TENSION LAP, 24\" MIN.",
+          "at": [26, 44],
+          "column": "right",
+          "key": 2
+        },
+        {
+          "id": "n_wall",
+          "type": "note",
+          "text": "CONC. STEM WALL, WALL OR FTG. PER PLAN",
+          "at": [46, 41.5],
+          "key": 3
+        },
+        {
+          "id": "n_horiz",
+          "type": "note",
+          "text": "CONT. HORIZ. REINF. PER SCHEDULE",
+          "at": [40, 44.6],
+          "key": 4
+        },
+        {
+          "id": "n_horiz2",
+          "type": "note",
+          "at": [3.4, 4],
+          "key": 4
+        },
+        {
+          "id": "n_vert",
+          "type": "note",
+          "text": "WALL VERT. REINF. AT CORNER, SIZE TO MATCH WALL VERT.",
+          "target": "a_vert",
+          "key": 5
+        },
+        {
+          "id": "d_lap_x",
+          "type": "dim",
+          "from": [8, 40],
+          "to": [32, 43.4],
+          "dir": "h",
+          "offset": 9,
+          "text": "24\" MIN. LAP"
+        },
+        {
+          "id": "d_lap_y",
+          "type": "dim",
+          "from": [8, 40],
+          "to": [4.6, 16],
+          "dir": "v",
+          "offset": -10,
+          "text": "24\" MIN. LAP"
+        },
+        {
+          "id": "l_out",
+          "type": "label",
+          "text": "OUTSIDE FACE",
+          "at": [0, 48],
+          "offset": [0, 3]
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "number": "B",
+      "title": "SINGLE MAT T-INTERSECTION",
+      "crop": {
+        "x": [156, 244],
+        "y": [-6, 58]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "omit": [
+        "a_wall",
+        "a_horiz_x",
+        "a_horiz_y",
+        "a_corner_bar",
+        "a_vert",
+        "c_wall",
+        "c_outside_x",
+        "c_outside_y",
+        "c_corner_bar",
+        "c_inside_x",
+        "c_inside_y",
+        "d_footing",
+        "d_stem",
+        "d_outer_x",
+        "d_outer_y",
+        "d_corner_bar",
+        "d_inner_x",
+        "d_inner_y"
+      ],
+      "annotations": [
+        {
+          "id": "n_corner",
+          "type": "note",
+          "text": "CORNER BARS TO MATCH SIZE AND SPACING OF HORIZ. REINF.",
+          "at": [200.9, 26],
+          "key": 1
+        },
+        {
+          "id": "n_corner_l",
+          "type": "note",
+          "at": [199.1, 22],
+          "column": "right",
+          "key": 1
+        },
+        {
+          "id": "n_lap",
+          "type": "note",
+          "text": "LAP PER LAP SPLICE SCHEDULE S-00.02, CLASS B TENSION LAP, 24\" MIN.",
+          "at": [220, 44.4],
+          "key": 2
+        },
+        {
+          "id": "n_wall",
+          "type": "note",
+          "text": "CONC. STEM WALL, WALL OR FTG. PER PLAN",
+          "at": [236, 41.4],
+          "key": 3
+        },
+        {
+          "id": "n_horiz",
+          "type": "note",
+          "text": "CONT. HORIZ. REINF. PER SCHEDULE",
+          "at": [166, 45.2],
+          "key": 4
+        },
+        {
+          "id": "n_horiz2",
+          "type": "note",
+          "at": [200, 4],
+          "key": 4
+        },
+        {
+          "id": "n_alt",
+          "type": "note",
+          "text": "ALTERNATE CORNER BAR BEND DIRECTION AT EA. LAYER",
+          "at": [199.1, 38],
+          "key": 6
+        },
+        {
+          "id": "d_lap_x",
+          "type": "dim",
+          "from": [204, 40],
+          "to": [228, 43.6],
+          "dir": "h",
+          "offset": 9,
+          "text": "24\" MIN. LAP"
+        },
+        {
+          "id": "d_lap_y",
+          "type": "dim",
+          "from": [196, 40],
+          "to": [199.1, 16],
+          "dir": "v",
+          "offset": -10,
+          "text": "24\" MIN. LAP"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "kind": "section",
+      "number": "C",
+      "title": "DOUBLE MAT CORNER (BARS EA. FACE)",
+      "crop": {
+        "x": [386, 456],
+        "y": [-6, 58]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "omit": [
+        "a_wall",
+        "a_horiz_x",
+        "a_horiz_y",
+        "a_corner_bar",
+        "a_vert",
+        "b_wall",
+        "b_horiz_thru",
+        "b_horiz_stem",
+        "b_corner_bar_l",
+        "b_corner_bar_r",
+        "d_footing",
+        "d_stem",
+        "d_outer_x",
+        "d_outer_y",
+        "d_corner_bar",
+        "d_inner_x",
+        "d_inner_y"
+      ],
+      "annotations": [
+        {
+          "id": "n_corner",
+          "type": "note",
+          "text": "CORNER BARS TO MATCH SIZE AND SPACING OF HORIZ. REINF.",
+          "at": [403.25, 22],
+          "key": 1
+        },
+        {
+          "id": "n_lap",
+          "type": "note",
+          "text": "LAP PER LAP SPLICE SCHEDULE S-00.02, CLASS B TENSION LAP, 24\" MIN.",
+          "at": [430, 45.25],
+          "key": 2
+        },
+        {
+          "id": "n_wall",
+          "type": "note",
+          "text": "CONC. STEM WALL, WALL OR FTG. PER PLAN",
+          "at": [450, 42],
+          "key": 3
+        },
+        {
+          "id": "n_hook",
+          "type": "note",
+          "text": "HOOK INSIDE FACE BARS AT OUTSIDE FACE W/ STD. 90 DEG. HOOK",
+          "at": [404.65, 32],
+          "key": 7
+        },
+        {
+          "id": "n_hook2",
+          "type": "note",
+          "at": [415, 43.35],
+          "key": 7
+        },
+        {
+          "id": "n_each",
+          "type": "note",
+          "text": "BARS EA. FACE WHERE DOUBLE MAT OCCURS",
+          "at": [444, 45.75],
+          "key": 8
+        },
+        {
+          "id": "n_each2",
+          "type": "note",
+          "at": [444, 38.25],
+          "key": 8
+        },
+        {
+          "id": "d_lap_x",
+          "type": "dim",
+          "from": [412, 36],
+          "to": [436, 44.75],
+          "dir": "h",
+          "offset": 9,
+          "text": "24\" MIN. LAP"
+        },
+        {
+          "id": "d_lap_y",
+          "type": "dim",
+          "from": [412, 36],
+          "to": [403.25, 12],
+          "dir": "v",
+          "offset": -10,
+          "text": "24\" MIN. LAP"
+        },
+        {
+          "id": "l_out",
+          "type": "label",
+          "text": "OUTSIDE FACE",
+          "at": [400, 48],
+          "offset": [0, 3]
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "kind": "section",
+      "number": "D",
+      "title": "FOOTING CORNER (TOP AND BOTT. BARS)",
+      "crop": {
+        "x": [586, 666],
+        "y": [-10, 70]
+      },
+      "notes_side": "right",
+      "notes_style": "keyed",
+      "omit": [
+        "a_wall",
+        "a_horiz_x",
+        "a_horiz_y",
+        "a_corner_bar",
+        "a_vert",
+        "b_wall",
+        "b_horiz_thru",
+        "b_horiz_stem",
+        "b_corner_bar_l",
+        "b_corner_bar_r",
+        "c_wall",
+        "c_outside_x",
+        "c_outside_y",
+        "c_corner_bar",
+        "c_inside_x",
+        "c_inside_y"
+      ],
+      "annotations": [
+        {
+          "id": "n_corner",
+          "type": "note",
+          "text": "CORNER BARS TO MATCH SIZE AND SPACING OF HORIZ. REINF.",
+          "at": [604.25, 24],
+          "key": 1
+        },
+        {
+          "id": "n_lap",
+          "type": "note",
+          "text": "LAP PER LAP SPLICE SCHEDULE S-00.02, CLASS B TENSION LAP, 24\" MIN.",
+          "at": [638, 56.25],
+          "key": 2
+        },
+        {
+          "id": "n_stem",
+          "type": "note",
+          "text": "CONC. STEM WALL, WALL OR FTG. PER PLAN",
+          "at": [652, 46],
+          "key": 3
+        },
+        {
+          "id": "n_horiz",
+          "type": "note",
+          "text": "CONT. HORIZ. REINF. PER SCHEDULE",
+          "at": [658, 56.75],
+          "key": 4
+        },
+        {
+          "id": "n_horiz2",
+          "type": "note",
+          "at": [603.25, -4],
+          "key": 4
+        },
+        {
+          "id": "n_hook",
+          "type": "note",
+          "text": "HOOK INSIDE FACE BARS AT OUTSIDE FACE W/ STD. 90 DEG. HOOK",
+          "at": [605.65, 38],
+          "key": 7
+        },
+        {
+          "id": "n_hook2",
+          "type": "note",
+          "at": [622.5, 54.35],
+          "key": 7
+        },
+        {
+          "id": "n_top",
+          "type": "note",
+          "text": "CORNER BARS AT TOP AND BOTT. BARS WHERE TOP BARS OCCUR",
+          "at": [628, 55.75],
+          "key": 9
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "CONT. FTG. PER PLAN",
+          "at": [662, 42],
+          "key": 10
+        },
+        {
+          "id": "d_lap_x",
+          "type": "dim",
+          "from": [620, 40],
+          "to": [644, 55.75],
+          "dir": "h",
+          "offset": 8,
+          "text": "24\" MIN. LAP"
+        },
+        {
+          "id": "d_lap_y",
+          "type": "dim",
+          "from": [620, 40],
+          "to": [604.25, 16],
+          "dir": "v",
+          "offset": -10,
+          "text": "24\" MIN. LAP"
+        }
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "id": "S1",
+      "views": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "arrange": "grid",
+      "columns": 2,
+      "sheet": "17x11"
+    }
+  ]
+}
