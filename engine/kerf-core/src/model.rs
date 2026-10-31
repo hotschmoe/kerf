@@ -204,6 +204,11 @@ pub struct Prism {
     pub xz_bar: bool,
     /// The first leg of an XZ bar carries its whole centreline in world [x, y, z] (bends flattened).
     pub path3: Vec<[f64; 3]>,
+    /// Framing hardware mounted on a member (SPEC 27.2): where nearer members hide it, its outline draws dashed (section,
+    /// elevation, iso) and a note still lands on it.
+    pub hw_dash: bool,
+    /// Nail or screw dots on a plate seen face-on (SPEC 27.2), drawn where the plate is visible.
+    pub nails: Vec<V2>,
 }
 
 impl Default for Prism {
@@ -239,6 +244,8 @@ impl Default for Prism {
             bond_z0: None,
             xz_bar: false,
             path3: Vec::new(),
+            hw_dash: false,
+            nails: Vec::new(),
         }
     }
 }
@@ -254,6 +261,9 @@ impl Prism {
         }
         if !self.centerline.is_empty() {
             q.centerline = xf.apply_loop(&self.centerline);
+        }
+        for n in &mut q.nails {
+            *n = xf.apply(*n);
         }
         for c in &mut q.path3 {
             let w = xf.apply(V2::init(c[0], c[1]));
@@ -320,6 +330,31 @@ pub struct Built {
     pub plan_z: Vec<NamedAnchor>,
     /// The prisms' `zoff` are absolute z (bars in the XZ plane): without an explicit `z` the component is centred on z = 0.
     pub abs_z: bool,
+    /// Without an explicit `z` the component is centred here (hardware placed on its host members, SPEC 27.2).
+    pub nat_zc: Option<f64>,
+    /// What the hardware checks need after every component is placed (SPEC 27.2).
+    pub hw: HwInfo,
+}
+
+/// A post base's bearing: plate bottom `y`, plan extent x0..x1 × z0..z1, the post and its standoff.
+#[derive(Clone, Debug)]
+pub struct Bears {
+    pub y: f64,
+    pub plan: [f64; 4],
+    pub post: String,
+    pub post_y0: f64,
+    pub standoff: f64,
+}
+
+/// Hardware findings (SPEC 27.2) the builder makes and `hwcheck` reports once the scene is complete.
+#[derive(Clone, Debug, Default)]
+pub struct HwInfo {
+    /// Findings the builder could make on its own (unknown model, hanger size, holdown rod).
+    pub warns: Vec<Diag>,
+    /// A post base: its plate must bear on a member.
+    pub bears: Option<Bears>,
+    /// A holdown: its rod, whose lower end must be anchored in concrete, masonry or steel.
+    pub rod: Option<String>,
 }
 
 pub const BOX_ANCHOR_NAMES: [&str; 9] = [

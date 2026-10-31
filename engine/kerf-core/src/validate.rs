@@ -112,6 +112,7 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     let crop = explicit_crop(doc);
     each_set(&sets, &ids, diags, |s, d| short_slope(s, crop, d));
     crate::steelcheck::run(scene, doc, diags);
+    crate::hwcheck::run(scene, diags);
     for c in &scene.comps {
         if c.state == State::Ok && c.ty.traits.escape_hatch {
             let mat = c.world.first().map_or("?", |p| p.material.as_str());

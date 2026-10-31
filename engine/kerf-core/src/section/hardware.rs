@@ -4,7 +4,7 @@ use super::occlusion::{Occ, visible_open};
 use super::{Section, Target};
 use crate::clip;
 use crate::drawing::FillItem;
-use crate::geom::{self, FLAT_TOL};
+use crate::geom::{self, FLAT_TOL, V2};
 use crate::model::{self, Kind, Prism};
 use crate::num;
 use crate::pathgeom;
@@ -76,6 +76,23 @@ pub fn is_path_bar(p: &Prism) -> bool {
 }
 
 impl Section<'_> {
+    /// Nail or screw dots of a hardware plate seen face-on, where no nearer body hides them.
+    pub fn nail_dots(&mut self, nails: &[V2], src: &str) {
+        let crop = self.spec.crop;
+        let r = (0.012 * self.spec.scale).max(0.04);
+        let pen = self.pen_for(Pen::Steel);
+        for &c in nails {
+            if c.x - r < crop.x0 || c.x + r > crop.x1 || c.y - r < crop.y0 || c.y + r > crop.y1 {
+                continue;
+            }
+            self.fills.push(FillItem {
+                layer: self.layer_for(pen),
+                src: src.into(),
+                loops: model::one_loop(model::circle_loop(c.x, c.y, r)),
+            });
+        }
+    }
+
     /// Face-on ties sit in front of everything: strokes behind them are cut away.
     pub fn knock_out_face_ties(&mut self) {
         let mut occs: Vec<Occ> = Vec::new();

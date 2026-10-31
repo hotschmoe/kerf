@@ -56,6 +56,7 @@ impl Section<'_> {
         };
         let mut pieces = Vec::new();
         let mut hidden = Vec::new();
+        let nails: Vec<V2>;
         {
             let occ: Vec<&Occ> = if p.embedded {
                 Vec::new()
@@ -68,11 +69,13 @@ impl Section<'_> {
                 } else {
                     pieces.extend(visible_open(pts, false, &occ));
                 }
-                if self.spec.hidden_lines && !occ.is_empty() {
+                if (self.spec.hidden_lines || p.hw_dash) && !occ.is_empty() {
                     hidden.extend(hidden_pieces(pts, *closed, &occ));
                 }
             }
+            nails = p.nails.iter().copied().filter(|&c| !occ.iter().any(|o| o.covers(c))).collect();
         }
+        self.nail_dots(&nails, &src);
         if p.lengthwise && !elevation {
             pieces = self.off_nearer_slabs(i, p, pieces);
         }

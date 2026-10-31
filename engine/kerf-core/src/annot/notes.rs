@@ -88,9 +88,10 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
                 }
                 shapes_src.extend(sec.visible_region(i));
             }
-            if shapes_src.is_empty() && spec.hidden_lines {
+            if shapes_src.is_empty() {
                 for (i, p) in prisms.iter().enumerate() {
-                    if p.comp != comp.index
+                    if !(spec.hidden_lines || p.hw_dash)
+                        || p.comp != comp.index
                         || inst.is_some_and(|k| p.instance != k)
                         || part.is_some_and(|pn| p.part != pn)
                         || sec.cls[i] == Class::Drop

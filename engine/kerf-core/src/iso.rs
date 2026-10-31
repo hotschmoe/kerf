@@ -75,6 +75,8 @@ struct IsoPrism {
     /// Per cap (z0, z1): the outline of the touching slab of the same member where a void split it (SPEC 26.4); the
     /// cap's edges along it are not drawn.
     seam: [Vec<[V2; 2]>; 2],
+    /// Framing hardware (SPEC 27.2): what other members hide of it draws dashed, and a note still lands on it.
+    hw_dash: bool,
 }
 
 /// A visible face: outer loop and holes in paper-projected model units.
@@ -347,6 +349,46 @@ impl Iso {
     }
 }
 
+impl Iso {
+    /// Visible parameter intervals of the screen segment a->b against the faces `among` only (less `skip`).
+    fn visible_among(&self, a: V2, b: V2, da: f64, db: f64, among: &[usize], skip: &[usize]) -> Vec<[f64; 2]> {
+        let mut bb = Box::default();
+        bb.add_point(a.x, a.y);
+        bb.add_point(b.x, b.y);
+        let bb = bb.expand(1e-9);
+        let keep: Vec<u32> = among
+            .iter()
+            .filter(|&&fi| !skip.contains(&fi) && self.faces[fi].front && self.faces[fi].bbox.overlaps(bb, 0.0))
+            .map(|&fi| fi as u32)
+            .collect();
+        let mut ts = vec![0.0, 1.0];
+        for &fi in &keep {
+            let f = &self.faces[fi as usize];
+            add_contour_cuts(&mut ts, a, b, &f.outer);
+            for h in &f.holes {
+                add_contour_cuts(&mut ts, a, b, h);
+            }
+        }
+        sort::stable(&mut ts, |x, y| x < y);
+        let mut out: Vec<[f64; 2]> = Vec::new();
+        for w in ts.windows(2) {
+            let (t0, t1) = (w[0], w[1]);
+            if t1 - t0 < 1e-9 {
+                continue;
+            }
+            let tm = (t0 + t1) * 0.5;
+            if self.occluded_at(V2::lerp(a, b, tm), da + (db - da) * tm, skip, &keep) {
+                continue;
+            }
+            match out.last_mut() {
+                Some(last) if (last[1] - t0).abs() < 1e-9 => last[1] = t1,
+                _ => out.push([t0, t1]),
+            }
+        }
+        out
+    }
+}
+
 fn face_contains(f: &Face, m: V2) -> bool {
     f.bbox.contains(m) && geom::point_in_loop_eo(m, &f.outer) && !f.holes.iter().any(|h| geom::point_in_loop_eo(m, h))
 }
@@ -496,6 +538,7 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
                         is_fill: fill_mat,
                         outline: p.outline,
                         seam: seam.clone(),
+                        hw_dash: p.hw_dash,
                     });
                 }
             }
@@ -693,6 +736,64 @@ fn visible_pieces(iso: &Iso, keep: &[bool]) -> Vec<Piece> {
     pieces
 }
 
+/// The parts of framing hardware edges (SPEC 27.2) that other components hide (the hardware's own faces do not count),
+/// per edge, projected: they draw dashed.
+fn hidden_hardware(iso: &Iso, keep: &[bool], pieces: &[Piece]) -> Vec<(usize, Vec<[V2; 2]>)> {
+    let (sx, sz) = (iso.sx, iso.sz);
+    let mut out = Vec::new();
+    let mut own: Vec<usize> = Vec::new();
+    let mut own_comp = u32::MAX;
+    for (ei, e) in iso.edges.iter().enumerate() {
+        let ip = &iso.prisms[e.prism];
+        if !keep[ei] || !ip.hw_dash || (!iso.faces[e.f1].front && !iso.faces[e.f2].front) {
+            continue;
+        }
+        if own_comp != ip.comp {
+            own_comp = ip.comp;
+            own = (0..iso.faces.len()).filter(|&fi| iso.prisms[iso.faces[fi].prism].comp == ip.comp).collect();
+        }
+        let pa = proj(sx, sz, e.a);
+        let pb = proj(sx, sz, e.b);
+        if pa.dist(pb) < 1e-9 {
+            continue;
+        }
+        let (da, db) = (depth_of(sx, sz, e.a), depth_of(sx, sz, e.b));
+        let unhidden = iso.visible_among(pa, pb, da, db, &own, &[e.f1, e.f2]);
+        let shown: Vec<[f64; 2]> = match pieces.iter().find(|pc| pc.edge == ei) {
+            Some(pc) => pc
+                .segs
+                .iter()
+                .map(|sg| {
+                    let l = pa.dist(pb);
+                    [pa.dist(sg[0]) / l, pa.dist(sg[1]) / l]
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        let mut segs = Vec::new();
+        for iv in unhidden {
+            let mut cur = iv[0];
+            for sh in &shown {
+                let (s0, s1) = (sh[0].min(sh[1]), sh[0].max(sh[1]));
+                if s1 <= cur || s0 >= iv[1] {
+                    continue;
+                }
+                if s0 > cur + 1e-6 {
+                    segs.push([V2::lerp(pa, pb, cur), V2::lerp(pa, pb, s0)]);
+                }
+                cur = cur.max(s1);
+            }
+            if iv[1] > cur + 1e-6 {
+                segs.push([V2::lerp(pa, pb, cur), V2::lerp(pa, pb, iv[1])]);
+            }
+        }
+        if !segs.is_empty() {
+            out.push((ei, segs));
+        }
+    }
+    out
+}
+
 pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale_override: f64) -> Result {
     let q = quadrant(spec.from);
     iso.sx = q[0];
@@ -742,6 +843,7 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
 
     let keep = unique_edges(iso, style);
     let pieces = visible_pieces(iso, &keep);
+    let hidden_hw = hidden_hardware(iso, &keep, &pieces);
 
     let mut items: Vec<Item> = Vec::new();
     // hatch on cutaway caps (front-facing only)
@@ -850,6 +952,20 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
         flush(&mut cur, cur_src, &mut items);
     }
 
+    let hidden_layer = style.layer_for_pen(Pen::Hidden);
+    for (ei, segs) in hidden_hw {
+        let src = iso.prisms[iso.edges[ei].prism].src.as_str();
+        for sg in segs {
+            items.push(Item::Path(PathItem {
+                layer: hidden_layer.into(),
+                pen: Pen::Hidden,
+                src: src.into(),
+                closed: false,
+                pts: vec![Pt::at(sg[0], 0.0), Pt::at(sg[1], 0.0)],
+            }));
+        }
+    }
+
     // visible shapes per prism for note landing points
     let mut cand: Vec<u32> = Vec::new();
     let mut vis_out: Vec<Vis> = Vec::new();
@@ -931,6 +1047,9 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
                     break;
                 }
             }
+        }
+        if shapes.is_empty() && ip.hw_dash {
+            shapes.extend(faces.first().map(|&fi| OwnedShape { outer: iso.faces[fi].outer.clone(), holes: Vec::new() }));
         }
         vis_out.push(Vis {
             comp: ip.comp,
