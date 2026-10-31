@@ -280,7 +280,12 @@ impl Default for AbbrevStyle {
     fn default() -> AbbrevStyle {
         AbbrevStyle {
             builtin: true,
-            rules: AbbrevRules { period_on_shortened: true, dotted_initials: true, bare_acronyms: true, variants: true },
+            rules: AbbrevRules {
+                period_on_shortened: true,
+                dotted_initials: true,
+                bare_acronyms: true,
+                variants: true,
+            },
             approved: Vec::new(),
             variants: Vec::new(),
             remove: Vec::new(),
@@ -809,7 +814,8 @@ fn validate_abbreviations(c: &mut Check, v: Option<&Value>) {
     }
     for key in ["remove", "always"] {
         let Some(x) = v.get(key).filter(|x| !x.is_null()) else { continue };
-        let ok = x.arr().is_some_and(|a| a.len() <= MAX_HOUSE_ENTRIES && a.iter().all(|s| s.str().is_some_and(token_ok)));
+        let ok =
+            x.arr().is_some_and(|a| a.len() <= MAX_HOUSE_ENTRIES && a.iter().all(|s| s.str().is_some_and(token_ok)));
         if !ok {
             c.bad(format!(
                 "style key 'notes.abbreviations.{key}' must be an array of up to {MAX_HOUSE_ENTRIES} abbreviations as written, e.g. [\"O.C.\", \"MIN.\"] (got {})",
@@ -949,7 +955,8 @@ fn strings_of(v: Option<&Value>) -> Vec<String> {
 }
 
 fn abbrev_from(ab: &Value) -> AbbrevStyle {
-    let mut a = AbbrevStyle { builtin: ab.get("extends").and_then(Value::str) != Some("none"), ..AbbrevStyle::default() };
+    let mut a =
+        AbbrevStyle { builtin: ab.get("extends").and_then(Value::str) != Some("none"), ..AbbrevStyle::default() };
     if let Some(Value::Object(rs)) = ab.get("rules") {
         for m in rs {
             if let Value::Bool(on) = m.value {

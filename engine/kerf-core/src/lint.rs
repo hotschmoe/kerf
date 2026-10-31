@@ -1054,7 +1054,9 @@ impl AckOwner {
                 let base = format!("views/{v}");
                 id_ok(v)
                     && (path == base
-                        || path.strip_prefix(base.as_str()).is_some_and(|r| r.starts_with('/') && !is_annotation_path(path)))
+                        || path
+                            .strip_prefix(base.as_str())
+                            .is_some_and(|r| r.starts_with('/') && !is_annotation_path(path)))
             }
         }
     }

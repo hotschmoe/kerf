@@ -97,19 +97,19 @@
         {
           "id": "n_plate",
           "type": "note",
-          "text": "(2) 16d NAILS TO BOTT. PLATE @ 16\" OC UNO",
+          "text": "(2) 16d NAILS TO BOTTOM PLATE @ 16\" O.C. U.N.O.",
           "target": "stud"
         },
         {
           "id": "n_model",
           "type": "note",
-          "text": "SIMPSON HU212-2 HANGER TYP",
+          "text": "SIMPSON HU212-2 HANGER TYP.",
           "at": "stud@top_right"
         },
         {
           "id": "l_exist",
           "type": "label",
-          "text": "EXIST'G",
+          "text": "EXIST.",
           "at": "sill@bottom_left",
           "offset": [-6, -4]
         }

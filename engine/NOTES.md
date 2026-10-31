@@ -40,9 +40,9 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 | gate | what it proves |
 |---|---|
 | `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
-| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 8 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
-| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (40 files); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 318 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
+| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view of the 14 documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
+| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (46 files); the module has 0 imports and exactly the six ABI exports |
+| `tests/cli_ergonomics.mjs` | 345 invocations of the CLI (stdout, stderr, exit code, files): what an agent sees |
 | `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
 | `tests/serve_smoke.mjs` | 224 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
 | `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
@@ -198,6 +198,21 @@ geometrically (tolerance 1e-3).
   W_LABEL_OVERLAP 0 -> 9 (s-30-01 S: 27 table labels overprint), I_ANNOT_MOVED 0 -> 50 (10 labels, 40 dimensions;
   s-10-01/02/03, where every note has a hand-set `place`, account for 38). With every `place` removed (s-00-03, s-10-01/02/03): W_LEADER_HIT
   1 -> 1, s-10-01 A has none.
+- House abbreviations (SPEC 25.6): `house::Table` is the style's list (built-in `ABBREVIATIONS` 140 + `VARIANTS` 17,
+  less `remove`, plus `approved` / legacy keys, plus `variants`), built per lint run, coverage build and note check
+  (about 160 borrowed entries, no hashing). W_ABBREV lives in `lint::abbrev_forms`; `house::abbrev_hits` is the token
+  scan, `house::apply_hits` the fix text. Every W_ABBREV of one text carries the same op (all flagged tokens of that
+  field fixed), so an agent that applies several of them in one batch cannot undo one with another. Annotations
+  and views `acknowledge` through `lint::AckOwner` (path-prefix match; components keep the id / quoted-id match and no
+  longer match warnings on an annotation path). The CLI resolves `kerf.kerfstyle.json` per document
+  (`workspace::find_style`, canonical ancestors); `kerf serve` reads it per request from its `--dir`, so edits apply
+  without a restart (cached doc-list counts refresh when the document changes).
+- MASS 47-detail regression (copies, `kerf check --strict`, no refs/): W_ABBREV 190 in 32 details (167 notes, 21 labels,
+  2 titles): variants 99 (BOTT. 87, ADDL. 7, BLK'G 5), dotted_initials 68 (PT 47, EN 7, FN 7, EOR 5, CJ 2),
+  period_on_shortened 19 (MAX 13, DWGS 5, BLKG 1), bare_acronyms 4 (PL. 3, GLB. 1); every other code unchanged
+  (W_ACK_UNUSED 515, W_OVERLAP 208, W_REFERENCE_FILE 134, ...; W_NOTE_STYLE 0 before and after). The MASS company style
+  (defaults, `always: []`) gives the same 190; the example company style (`always` O.C. MIN. MAX. DIA.) 192.
+  20 flagged tokens checked by hand: no false positive; borderline: `(MAX)` as Simpson's max-nailing legend.
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -298,10 +313,13 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   `zone: "<part>"` on hand-drawn polygons (use `in: "comp.part"` on builders with parts, or anchors + Ref offsets).
   `bend_k` / `seg_k_mid` count the corner points as given; a collinear interior point still counts as a bend (its
   `bend_k` is the point itself).
-- Annotation layout (issue #17): annotations cannot `acknowledge` (W_LEADER_HIT on an intentional crowd stays);
-  keyed tags still go to columns (no "near the landing, outside solids" placement); a dimension the leader repair
+- Annotation layout (issue #17): keyed tags still go to columns (no "near the landing, outside solids" placement); a dimension the leader repair
   pushes can still move up to 2" (paper), now reported as I_ANNOT_MOVED; W_LABEL_OVERLAP does not look at weld
   symbols; the minimum gap between leader note blocks is the style `note_gap_in`, unchanged.
+- W_ABBREV (SPEC 25.6) does not read the document `title` (title block; nothing there can `acknowledge`), component
+  `label`s, citation text or the keyed-notes list title. A token split by a space (`O. C.`, `GYP BD` as one unit) is
+  read word by word. `kerf serve` caches the per-document warning counts of its list by document mtime, so a style edit
+  shows there on the next change of each document (check/apply/export use it at once).
 - The Zig test suite's unit tests (hostile-input table, OOM sweep, layout and view tests) were not ported: tests here are
   end to end (goldens, `cli_ergonomics`, fuzz, `serve_smoke`), by decision.
 
@@ -375,4 +393,31 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   `N acknowledged`, so every golden summary.txt changed by that suffix.
 - The drawing IR's `acknowledged` is per view: acknowledged warnings whose acknowledging component that view draws.
   It is omitted (not `[]`) for documents without `acknowledge`, so no existing drawing golden changed.
+- House abbreviations (SPEC 25.6), choices the engineer may want to revisit (each is one table edit or a company-style
+  key): where two spellings were in use and the policy names none, the table keeps the one the 32 sets use most:
+  `EL.` over `ELEV.` (2 : 1), `GR.` over `GRD.` (1 : 0), `STRUCT.` over `STRUC.` (8 : 1); plural forms
+  (`DWGS.`/`DWG.`, `SPECS.`/`SPEC.`) and different words (`D.F.`/`DF-L`, `BLK.`/`BLKG.`) both stay approved.
+  The bare letters of `T.O.`, `I.D.`, `S.A.D.`, `T.O.W.`, `T.O.M.`, `EMBED.`, `EXIST.`, `SECT.` and the variant
+  `PLY.` are ordinary words (TO, ID, SAD, TOW, TOM, EMBED, EXIST, SECT, 2-PLY), so they join SIM/COL/FIN as never
+  flagged (coverage then reads bare `id`, `tow` as words). `EQ` (dim text) and `GA` are flagged like any shortened
+  word.
+- `PT` -> `P.T.` is listed as a variant (with the post-tensioned note in its message), but its letters are those of
+  `P.T.`, so it breaks `dotted_initials` like `UNO`, `NTS`, `EOR` (switching that rule off allows PT); the rule a
+  spelling breaks follows from its letters, not from the list it is in.
+- "A fix that rewrites only that token": every W_ABBREV of one text carries the same op, which replaces every flagged
+  token of that field by its approved form and nothing else. One op per token would let a batch of fixes undo each other
+  (each op sets the whole text).
+- W_NOTE_STYLE no longer abbreviates in its own fix (alpha.5 turned ON CENTER into O.C. there); `always` in
+  kerf-standard is empty, so no word is forced unless a company lists it.
+- Workspace style discovery walks every ancestor up to the filesystem root (no repository or home boundary), like
+  .editorconfig; `check`/`apply` print the `STYLE` line only when a file applies, so outputs without one are unchanged.
+- A view's `acknowledge` matches only warnings whose id is the view's or absent (W_CUT_FILL sits at `views/A` but names
+  its host component, so a view cannot hide it); a component's no longer matches a warning on an annotation path (an
+  annotation id equal to a component id). `acknowledged` entries gain `view` and `on` only for annotation and view
+  owners, so component entries (and their goldens) are unchanged.
 
+## REQUESTS
+- apps/web: the inspector lists `acknowledged` by component id; annotation and view entries now carry `view` and `on`
+  (owner path) and should be shown on the note/view. `apps/web/test/fixtures/make-fixtures.mjs` still writes
+  `2X8 PT SILL PLATE` (W_ABBREV now asks for `P.T.`); the browser engine takes the served `style.json`, which
+  `kerf serve` now merges with the folder's `kerf.kerfstyle.json` (the header's STYLE shows its `id`).

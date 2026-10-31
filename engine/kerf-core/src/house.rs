@@ -491,7 +491,14 @@ impl<'s> Table<'s> {
         for (a, ws) in &cfg.approved {
             let dot = entries.iter().any(|e| e.dot && e.abbr.eq_ignore_ascii_case(a));
             entries.retain(|e| !e.abbr.eq_ignore_ascii_case(a));
-            entries.push(Entry { abbr: a, words: ws.iter().map(String::as_str).collect(), dot, to: "", why: "", refs: 0 });
+            entries.push(Entry {
+                abbr: a,
+                words: ws.iter().map(String::as_str).collect(),
+                dot,
+                to: "",
+                why: "",
+                refs: 0,
+            });
         }
         for (f, t) in &cfg.variants {
             entries.retain(|e| !e.abbr.eq_ignore_ascii_case(f));
@@ -501,7 +508,8 @@ impl<'s> Table<'s> {
             if entries[i].to.is_empty() {
                 continue;
             }
-            if let Some(j) = entries.iter().position(|e| e.to.is_empty() && e.abbr.eq_ignore_ascii_case(entries[i].to)) {
+            if let Some(j) = entries.iter().position(|e| e.to.is_empty() && e.abbr.eq_ignore_ascii_case(entries[i].to))
+            {
                 entries[i].words = entries[j].words.clone();
                 entries[i].to = entries[j].abbr;
             }
@@ -537,10 +545,13 @@ impl<'s> Table<'s> {
         out
     }
 
-    /// `base` (a note's last word without its period) is an abbreviation of the table, `NO` or `NOS`.
+    /// `base` (a note's last word without its period) is an abbreviation of the table, also one written in the wrong form
+    /// (`OC.`: W_ABBREV reports that), `NO` or `NOS`; the bare letters of an ordinary-word entry (`TO.`) are not.
     pub fn is_period_abbr(&self, base: &[u8]) -> bool {
         let same = |a: &str| a.trim_end_matches('.').as_bytes().eq_ignore_ascii_case(base);
-        self.entries.iter().any(|e| same(e.abbr)) || PERIOD_ONLY.iter().any(|a| same(a))
+        let letters = String::from_utf8_lossy(base);
+        self.entries.iter().any(|e| same(e.abbr) || (!e.dot && same_key(e.abbr, &letters)))
+            || PERIOD_ONLY.iter().any(|a| same(a))
     }
 
     fn known(&self, tok: &str) -> bool {
@@ -781,7 +792,9 @@ pub fn abbreviations_markdown(st: &Style) -> String {
         }
         if e.dot {
             flagged.push(format!("`{bare}` is an ordinary word: never flagged"));
-        } else if !generic.is_empty() && !t.entries.iter().any(|v| !v.to.is_empty() && v.to == e.abbr && same_key(v.abbr, &bare)) {
+        } else if !generic.is_empty()
+            && !t.entries.iter().any(|v| !v.to.is_empty() && v.to == e.abbr && same_key(v.abbr, &bare))
+        {
             flagged.push(generic);
         }
         out.push_str(&format!(
