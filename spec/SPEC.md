@@ -295,7 +295,8 @@ carries the model; geometry shows location and path. If `model` is in the hardwa
 Hangers, post caps, post bases, holdowns (`kind`), straps flush on a member face (`on`) and model families: §27.2.
 
 ### 5.8 `truss` — prefab wood truss heel (side view)
-Profiles (scissor, mono, parallel chord), bearings (top chord, face) and end-on trusses: §27.1.
+Profiles (scissor, mono, parallel chord), bearings (top chord, face) and end-on trusses: §27.1. Webs, `span`, raised
+heels and integral parapets: §28.5 (which also moves the standard heel described here).
 | param | default | notes |
 |---|---|---|
 | `exterior` | `"left"` | side of the heel/overhang |
@@ -303,7 +304,7 @@ Profiles (scissor, mono, parallel chord), bearings (top chord, face) and end-on 
 | `top_chord` | `"2x4"` | |
 | `bottom_chord` | `"2x4"` | |
 | `heel` | `"standard"` | `standard` or `raised` |
-| `heel_height` | null | raised heel: vertical height of the heel at the bearing outer edge (top of bottom chord to top of top chord) |
+| `heel_height` | null | raised heel: vertical height of the heel at the bearing outer edge (top of bottom chord to top of top chord); defaults §28.5 |
 | `bearing_width` | 3.5 | width of support under the heel |
 | `overhang` | 12 | horizontal distance from outer face of bearing to tail end |
 | `tail` | `"plumb"` | `plumb` or `square` cut |
@@ -314,10 +315,10 @@ Local origin: outer edge of bearing at bottom of bottom chord. Members are in-pl
 only), `plate`, `tail`. Named anchors: `bearing_outer`, `bearing_inner`, `tail_bottom`,
 `tail_top`, `top_chord_at_bearing` (top of top chord directly above `bearing_outer`),
 `top_chord_end` (top of top chord at `span_shown`), `bottom_chord_top_inner`.
-Geometry: standard heel — top chord lower edge passes through the point (bearing_outer.x,
-bottom_chord top) and extends to the tail; bottom chord ends at the bearing outer edge (or at the
-tail if `overhang` uses a cantilevered bottom chord — not MVP). Tail: top chord extends to
-x = −overhang; plumb cut is vertical.
+Geometry: standard heel — top chord lower edge passes through `bearing_outer` (the bearing's outer
+top corner, §28.5) and extends to the tail; the bottom chord ends at the bearing outer edge, cut
+along the top chord (or at the tail if `overhang` uses a cantilevered bottom chord — not MVP).
+Tail: top chord extends to x = −overhang; plumb cut is vertical.
 
 ### 5.9 `membrane` — thin layers (underlayment, vapor retarder, WRB, roofing)
 `material`: `underlayment` `vapor_retarder` `wrb` `shingles` `flashing_membrane`;
@@ -1856,11 +1857,11 @@ or add squash blocks. A support under both ends at once (a joist shorter than it
 **`truss` additions** (§5.8 stays the default: `profile: "pitched"`, `orient: "side"`, `bearing: "bottom_chord"`).
 - `profile: "scissor"`: the bottom chord is flat over `bearing_width`, then rises at `bottom_pitch` (default half the
   pitch; one at or above `pitch`, or `bottom_pitch` on another profile, is `E_PARAM`); its vertical thickness is depth / cos(bottom pitch); the
-  top chord's lower edge passes through the bottom chord's top at the bearing (raised: `heel_height` above it).
-- `profile: "mono"`: the high end of a mono truss. `heel_height` (required) is the end height above the bottom chord at
+  top chord's lower edge passes through `bearing_outer` (§28.5; raised: `heel_height` above the bottom chord's top).
+- `profile: "mono"`: the high end of a mono truss. `heel_height` is the end height above the bottom chord at
   the bearing; an end vertical (part `end_vertical`, 3 1/2 wide) stands at the bearing and the top chord falls inward at
-  `pitch`. `overhang` defaults to 0 (a tail continues the top chord up and out). If the top chord meets the bottom chord
-  before `span_shown`, `E_PARAM` gives the largest `span_shown`.
+  `pitch`. `overhang` defaults to 0 (a tail continues the top chord up and out). The far (low) end and the defaults of
+  `heel_height` and `span`: §28.5 (the beta.1 `E_PARAM` capping `span_shown` is gone).
 - `profile: "parallel_chord"` (floor or flat truss): `depth` (required) from the bottom of the bottom chord to the top of
   the top chord; chords default to `"4x2"` (a 2x4 laid flat: 1 1/2 in-plane, 3 1/2 thick; any `"AxB"` whose swap is a
   sawn size reads flat); webs as wide in-plane as the flat chord (3 1/2 for upright chords). An end vertical at the bearing,
@@ -1872,7 +1873,7 @@ or add squash blocks. A support under both ends at once (a joist shorter than it
   `bearing_inner` are at its underside, `bearing_width` apart); the end vertical and the bottom chord start at
   `bearing_inner`.
 - `bearing: "face"`: hung at a beam or ledger face: no overhang (a nonzero `overhang` is `E_PARAM`); pitched, scissor and
-  mono need `heel_height` (the end height) and draw an `end_vertical` instead of the heel web.
+  mono take `heel_height` (the end height; default §28.5) and draw an `end_vertical` instead of the heel web.
 - Anchors added: `heel_block_top` (top of the top chord above the bearing's outer edge: `until` target for full-height
   eave blocking between trusses, the standard heel included), `end_vertical`, `end_top`, `end_bottom` (end vertical's
   outer face middle, top, bottom: mono, face, parallel_chord), `bottom_chord_end` (parallel_chord).
@@ -2152,3 +2153,71 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   outside 5..85, more than 5000 fasteners (`E_LIMIT`). `E_REF_UNKNOWN`: a member that is not a component (nearest id).
 - A nailing has no solid: it takes no part in `W_OVERLAP`, `W_FLOATING` or any other geometry check, and the mesh has
   no nails (2.5D viewers show none).
+
+## 28. v0.2.0-beta.2 round-2 fixes
+
+### 28.5 beta.2: truss webs and heels
+From round 2 of the MASS dogfood (issue #25): pitched, mono and scissor trusses drew only their chords, so roof details
+read as bare wedges and agents fell back to `parallel_chord` trusses on pitched roofs; a raised heel over a wall drew
+badly; hung and mono trusses needed `heel_height`, `pitch` and `span_shown` tuned by trial; an iso of a side-view truss
+drew long chord sticks (agents built a second, smaller model for it); there was no integral truss parapet.
+
+**Standard heel.** The top chord's lower edge passes through `bearing_outer`, the outer top corner of the bearing (the
+heel point of a standard truss, as every reference heel detail draws it), not through the top of the bottom chord. The
+bottom chord's end is cut along the top chord's underside from `bearing_outer` to the heel joint (anchor `heel_joint`,
+where that underside meets the bottom chord's top); the heel's outer face is the top chord's vertical thickness tall
+(3.69" at 4:12 with a 2x4), so eave blocking under it is a 2x4 or `until: "truss@heel_block_top"`. The heel plate
+(dashed) covers the joint: x 1/4..(`heel_joint`.x clamped to 4..8), y 1/4..(the lesser of the bottom chord depth and the
+top chord's vertical depth, − 1/4; a plate under 1/4" either way is not drawn). `heel_outer` is the middle of the outer
+face. Raised, face-hung, mono and parapet ends keep the beta.1 rule (`heel_height` above the bottom chord's top).
+
+**Span and panel points.** New `span` (pitched, scissor, mono): bearing outer edge to the far bearing's outer edge. The
+outline is the whole truss: ridge at `span`/2 (pitched, scissor: mirror image beyond), far heel of the same kind as the
+drawn one. Drawn: from the tail to `span_shown`; `span_shown` >= `span` draws the whole truss (both heels, both tails,
+both plates; anchors `peak`, `bearing_far`; `top_chord_end` is then the far tail top). `peak` is also given whenever the
+drawn part reaches the ridge. Without `span` the span is *schematic*: `max(ceil(2 1/4 x span_shown), the span that
+leaves 8" clear between the chords at the first top-chord panel point)` for pitched and scissor (raised and hung ends:
+the first term only), so the first webs fall inside the drawn part; the summary says `span 9'-0" schematic`. Mono:
+`heel_height` and `span` follow each other through a standard (closed) low heel: given `heel_height`, span = where the
+top chord's underside reaches the bottom of the bottom chord; given `span` (or the schematic one), `heel_height` =
+`span` x pitch + top chord vertical depth − bottom chord depth. Both given and the top chord would pass below the bottom
+chord before the far end: `E_PARAM` with the largest span and the smallest heel_height. A mono drawn past its span stops
+at the low heel (the beta.1 `span_shown` cap is gone). Peak clear height under 3" (pitched, scissor): `E_PARAM` naming
+the clear height and the shortest span that gives 3" at this pitch and heel (or a steeper pitch, a raised heel, a
+flatter `bottom_pitch`).
+
+**Webs** (`webs`, part `web`, 3 1/2 wide, wood): panel points on the chord centrelines (as truss layouts put them, so
+the webs' overlaps at a joint stay inside the chords), each web a strip along the line between two panel points,
+united with the others and cut to the clear space between the chords (and between the end verticals). Webs whose ends
+have under 2" between the chords are dropped. Patterns, with L = `span`:
+- `fink` (W): top chord at L/4 and L/2 (the ridge), bottom chord at L/3; webs L/4–L/3 and L/3–L/2, mirrored.
+- `howe`: n = 4 panels up to 28', 6 up to 40', else 8; verticals at every panel point (the centre one is the king
+  post) and diagonals from the top chord at k·L/n down to the bottom chord at (k+1)·L/n toward the centre, mirrored.
+- `king_post`: one vertical at L/2.
+- mono `warren` (default) and `howe`: panel points from the high end's inner face toward the low end, each panel as
+  long as the clear height at its start (diagonals near 45°), until the chords are under 6" apart; warren zigzags
+  top–bottom–top, howe adds a vertical at each point with diagonals from the top chord down toward the low end.
+- `auto` (default): mono `warren`; pitched and scissor with an explicit `span`: `king_post` up to 16', `fink` up to 32',
+  `howe` beyond; with the schematic span `fink`. `none`: chords only.
+- A raised or hung pitched/scissor end adds the heel diagonal: from the top of the heel vertical (end vertical) down to
+  the first bottom-chord panel point (fink L/3, howe L/n).
+`fink`/`king_post` on a mono or `warren` on a pitched/scissor truss is `E_PARAM` naming the patterns that fit. The
+summary line names the pattern and, when no web reaches into `span_shown`, where the first one is
+(`fink webs from x=34 (past span_shown)`).
+
+**Raised heel and hung ends.** `heel: "raised"` defaults `heel_height` to 12 (energy heel); its heel vertical (part
+`heel_web`) is now 3 1/2 wide. `bearing: "face"` defaults `heel_height` to the top chord's vertical depth plus the
+bottom chord depth. So a truss at a wall needs only `pitch`, its bearing and `span_shown`.
+
+**Integral parapet.** `parapet: <height>` (pitched, scissor, mono, parallel_chord with bottom chord bearing): the end
+vertical (part `end_vertical`, 3 1/2 wide or the top chord depth) runs from the bottom chord's top to `height` above the
+top of the top chord at the bearing; the top chord butts into its inner face (no tail, no tail anchors). Overhang must
+be 0 (a nonzero `overhang` is `E_PARAM`); pitched and scissor ends default to a stub heel (`heel_height` = the top
+chord's vertical depth). Anchors `parapet_top` (outer face) and `parapet_top_inner`; `end_top` is the parapet top. Under
+2" or with `bearing: "top_chord"`: `E_PARAM`. `span`, `webs` on parallel_chord and `span`, `webs`, `parapet` on an
+end-on truss are `E_PARAM` (they only apply to side-view heel profiles).
+
+**Iso crop along z.** An iso view's `crop` takes an optional `"z": [z0, z1]` (z0 < z1): every member's extrusion is
+cut to that range (plates and other run-z members stop there; members wholly outside it vanish), after `cutaway`. With
+x/y it gives a small iso of one truss and its bearing from the section's own model, no second model needed. A bad
+range is `E_PARAM` (the crop message names the iso z form).

@@ -256,9 +256,9 @@ section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_*
   const ref = JSON.parse(fs.readFileSync(path.join(DETAILS, 'truss-bearing-cmu.kerf.json'), 'utf8'));
   let r = kerf(['check', path.join(DETAILS, 'truss-bearing-cmu.kerf.json')]);
   check('negative: the reference truss detail has 0 warnings', /0 errors  0 warnings/.test(r.out), r.out.split('\n')[0]);
-  // e07 repro: pitch changed to 6:12, sheathing follows with slope "@truss" but keeps a literal length that stops short
+  // e07 repro: pitch changed (8:12: steep enough that the longer roof leaves the crop), sheathing follows with slope "@truss" but keeps a literal length that stops short
   const e07 = JSON.parse(JSON.stringify(ref));
-  e07.components.find((c) => c.id === 'truss').pitch = '6:12';
+  e07.components.find((c) => c.id === 'truss').pitch = '8:12';
   Object.assign(e07.components.find((c) => c.id === 'roof_sheathing'), { slope: '@truss', length: 40 });
   write('e07.kerf.json', e07);
   r = kerf(['check', 'e07.kerf.json']);
@@ -1598,7 +1598,7 @@ section('#10. ijoist component, truss profiles, end-on trusses, W_BEARING');
   const blk = { id: 'blk', type: 'lumber', size: '2x6', run: 'y', face: 'narrow', z: -12, until: 't@heel_block_top', at: { anchor: 'bottom_left', to: 'plate@top_left' } };
   write('tr8.kerf.json', { ...readJson('tr8.kerf.json'), components: [...readJson('tr8.kerf.json').components, blk] });
   r = kerf(['check', 'tr8.kerf.json']);
-  check('standard heel: until heel_block_top gives full-height eave blocking (to the top of the top chord)', /blk .* L=7 3\/16" \(until t@heel_block_top\)/.test(r.out), r.out);
+  check('standard heel: until heel_block_top gives full-height eave blocking (to the top of the top chord)', /blk .* L=3 11\/16" \(until t@heel_block_top\)/.test(r.out), r.out);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -1866,6 +1866,74 @@ section('#11. framing hardware');
   check('a stud seen end-on: E_PARAM (studs are side only, rotate them)', /^ERROR E_PARAM hs: a headed_stud is welded to a face and drawn side-on/m.test(r.out), r.out);
   r = kerf(['schema', 'connector']);
   check('schema connector: kind, on, carried/carrying, post, rod and the hardware families', /^- kind: /m.test(r.out) && /^- on: /m.test(r.out) && /^- carried: /m.test(r.out) && /^- rod: /m.test(r.out) && /Hardware families .*HDU holdown 10/.test(r.out), r.out.slice(0, 400));
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Issue #25: truss webs and heels (SPEC 28.5): web patterns, span, standard and raised heels, hung ends, mono low end,
+// integral parapet, iso crop along z
+section('#25. truss webs, heels, span, parapet, iso crop z');
+{
+  const roof = (truss, extra = [], views) => ({ kerf: '0.1', id: 'tw', title: 'TRUSS', run: [-24, 24], components: [
+    { id: 'plate', type: 'lumber', size: '2x4', orient: 'flat', plies: 2, at: { anchor: 'bottom_left', to: [0, 0] } },
+    { id: 't', type: 'truss', at: { anchor: 'bearing_outer', to: 'plate@top_left' }, ...truss }, ...extra],
+    views: views ?? [{ id: 'A', kind: 'section', cut_z: 0 }] });
+  const sum = (truss, extra, views) => { write('tw.kerf.json', roof(truss, extra, views)); return kerf(['check', 'tw.kerf.json']); };
+  const anchors = (truss) => {
+    const r = kerf(['call', 'inspect'], { input: JSON.stringify({ doc: roof(truss), query: { q: 'anchors', id: 't' } }) });
+    return Object.fromEntries((JSON.parse(r.out).anchors ?? []).map((a) => [a.name, [a.x, a.y]]));
+  };
+  const regions = (truss) => { write('tw.kerf.json', roof(truss)); const r = kerf(['drawing', 'tw.kerf.json', '--view', 'A']); return r.code === 0 ? JSON.parse(r.out).items.filter((i) => i.t === 'region' && i.src === 't').length : -1; };
+
+  let r = kerf(['schema', 'truss']);
+  check('schema truss: span, webs, parapet and the new anchors', /^- span: /m.test(r.out) && /^- webs: default auto/m.test(r.out) && /^- parapet: /m.test(r.out) && /heel_joint/.test(r.out) && /parapet_top/.test(r.out) && /bearing_far/.test(r.out), r.out.slice(0, 300));
+
+  r = sum({ pitch: '6:12', span_shown: 48 });
+  check('a truss needing only pitch and span_shown: 0 warnings, a schematic span and fink webs named', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /truss 6:12 standard heel, 2x4\+2x4 chords, ovh 1'-0", span 9'-0" schematic, fink webs/.test(r.out), r.out);
+  check('the webs are drawn (more regions than with webs "none")', regions({ pitch: '6:12', span_shown: 48 }) > regions({ pitch: '6:12', span_shown: 48, webs: 'none' }));
+  let a = anchors({ pitch: '4:12', span_shown: 36 });
+  check('standard heel: the top chord underside at bearing_outer, heel_block_top one chord deep, heel_joint where it meets the bottom chord', Math.abs(a.top_chord_bottom_at_bearing[1] - 3) < 1e-6 && Math.abs(a.heel_block_top[1] - (3 + 3.5 / Math.cos(Math.atan(4 / 12)))) < 1e-3 && Math.abs(a.heel_joint[0] - 10.5) < 1e-3, a);
+  r = sum({ pitch: '4:12', span_shown: 24 });
+  check('no web inside span_shown: the summary says where the first one is', /fink webs from x=\d+ \(past span_shown\)/.test(r.out), r.out);
+
+  r = sum({ pitch: '5:12', span: 288, span_shown: 288 });
+  a = anchors({ pitch: '5:12', span: 288, span_shown: 288 });
+  check('span_shown >= span: the whole truss, peak and far bearing anchors', /span 24'-0", fink webs/.test(r.out) && Math.abs(a.peak[0] - 144) < 1e-6 && Math.abs(a.bearing_far[0] - 288) < 1e-6 && Math.abs(a.top_chord_end[0] - 300) < 1e-6, a);
+  check('auto webs by span: king post to 16\', howe past 32\'', /king_post webs/.test(sum({ span: 168, span_shown: 168 }).out) && /howe webs/.test(sum({ span: 432, span_shown: 432 }).out));
+  r = sum({ pitch: '4:12', heel: 'raised', span_shown: 60 });
+  check('raised heel without heel_height: 12" energy heel', /0 errors/.test(r.out) && /truss 4:12 raised heel 1'-0"/.test(r.out), r.out);
+  r = sum({ pitch: '4:12', bearing: 'face', span_shown: 24, at: { anchor: 'end_bottom', to: 'plate@top_right' } });
+  check('hung at a face without heel_height: builds (no E_PARAM)', /0 errors/.test(r.out) && /hung at face/.test(r.out), r.out);
+
+  r = sum({ profile: 'mono', pitch: '2:12', heel_height: 9.25, span_shown: 60 });
+  check('mono drawn past its closed low end: no E_PARAM cap, span from heel_height', /0 errors/.test(r.out) && /mono high end 9 1\/4", .* span 4'-7/.test(r.out), r.out);
+  r = sum({ profile: 'mono', pitch: '4:12', heel_height: 12, span: 120 });
+  check('mono span longer than its heel allows: E_PARAM with the largest span and the smallest heel_height', /^ERROR E_PARAM t: the mono top chord falls below the bottom chord .*set span to at most \d+, or heel_height to at least [\d.]+/m.test(r.out), r.out);
+
+  check('a span too short for the pitch: E_PARAM with the clear height and the shortest span', /^ERROR E_PARAM t: span 5'-0" leaves 0" between the chords at the peak \(3" minimum\); give a steeper pitch, a raised heel or a longer span \(span at least 156 at this pitch and heel\)/m.test(sum({ pitch: '1:12', span: 60 }).out));
+  check('webs "warren" on a pitched truss: E_PARAM naming the pitched patterns', /^ERROR E_PARAM t: webs "warren" is the mono pattern; .*"fink", "howe", "king_post" or "none"/m.test(sum({ webs: 'warren' }).out));
+  check('webs "fink" on a mono: E_PARAM naming the mono patterns', /^ERROR E_PARAM t: webs "fink" is a pitched-truss pattern; a mono truss takes "warren"/m.test(sum({ profile: 'mono', webs: 'fink' }).out));
+  check('span on a parallel_chord truss: E_PARAM', /^ERROR E_PARAM t: 'span' only applies to profiles pitched, scissor and mono/m.test(sum({ profile: 'parallel_chord', depth: 18, span: 200 }).out));
+  check('parapet on an end-on truss: E_PARAM', /^ERROR E_PARAM t: 'parapet' only applies to a side-view truss/m.test(sum({ orient: 'end_on', depth: 14, parapet: 24 }).out));
+  check('parapet with an overhang: E_PARAM says to remove it', /^ERROR E_PARAM t: a truss with an integral parapet has no overhang .*remove 'overhang'/m.test(sum({ parapet: 24, overhang: 12 }).out));
+
+  r = sum({ pitch: '0.25:12', parapet: 30, span_shown: 48 }, [{ id: 'psh', type: 'panel', material: 'plywood', thickness: 0.5, length: 30, run: 'y', at: { anchor: 'top_right', to: 't@parapet_top' } }]);
+  a = anchors({ pitch: '0.25:12', parapet: 30, span_shown: 48 });
+  check('integral parapet: end vertical 30" above the top chord, parapet_top anchor, no tail', /0 errors  0 warnings/.test(r.out) && /integral parapet 2'-6"/.test(r.out) && a.parapet_top !== undefined && a.tail_top === undefined && Math.abs(a.parapet_top[1] - a.heel_block_top[1] - 30) < 1e-6, r.out);
+  r = sum({ profile: 'parallel_chord', depth: 24, parapet: 30, span_shown: 48 });
+  check('parallel_chord truss with an integral parapet', /0 errors/.test(r.out) && /parallel chord 2'-0" deep/.test(r.out), r.out);
+
+  const isoDoc = (crop) => roof({ pitch: '6:12', span_shown: 48, z: 0 }, [], [{ id: 'A', kind: 'section', cut_z: 0 }, { id: 'I', kind: 'iso', ...(crop ? { crop } : {}) }]);
+  const isoWidth = (crop) => {
+    write('twi.kerf.json', isoDoc(crop));
+    const d = JSON.parse(kerf(['drawing', 'twi.kerf.json', '--view', 'I']).out);
+    const xs = d.items.filter((i) => i.t === 'path' && i.src === 'plate').flatMap((i) => i.pts.map((p) => p[0]));
+    return xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+  };
+  const full = isoWidth(null), cut = isoWidth({ x: [-12, 24], y: [-6, 24], z: [-6, 6] });
+  check('iso crop z: the run-z plate is cut to the z range (a smaller iso of the same model)', cut > 0 && cut < full * 0.7, { full, cut });
+  write('twi.kerf.json', isoDoc({ x: [-12, 24], y: [-6, 24], z: [6, -6] }));
+  r = kerf(['check', 'twi.kerf.json']);
+  check('iso crop z with z0 >= z1: E_PARAM names the iso z form', /^ERROR E_PARAM I: crop must be .*an iso view may add "z": \[z0, z1\]/m.test(r.out), r.out);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
