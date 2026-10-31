@@ -331,6 +331,18 @@ pub static WELD: Object = Object {
             ..Field::NONE
         },
         Field {
+            name: "length",
+            ty: "length",
+            desc: "weld length, printed right of the symbol (AWS A2.4), e.g. 2 for \"3/16 x 2\\\" EA. END\" (the EA. END goes in `tail`). Omitted: continuous",
+            ..Field::NONE
+        },
+        Field {
+            name: "pitch",
+            ty: "length",
+            desc: "intermittent weld: center-to-center spacing of the segments, printed as length-pitch (e.g. length 2, pitch 12 prints 2-12); needs `length`",
+            ..Field::NONE
+        },
+        Field {
             name: "sides",
             ty: "arrow|other|both",
             def: "arrow",
@@ -354,7 +366,7 @@ pub static WELD: Object = Object {
         Field {
             name: "members",
             ty: "[id, id]",
-            desc: "the two steel components joined; W_WELD_SIZE then checks a fillet against the thinner part (AISC 360 J2.2b: at most t, or t - 1/16 when t >= 1/4; at least Table J2.4)",
+            desc: "the two steel components joined; W_WELD_SIZE then checks a fillet against the thinner part (AISC 360 J2.2b: at most t, or t - 1/16 when t >= 1/4; at least Table J2.4). An entry that is not a steel component warns (W_PARAM)",
             ..Field::NONE
         },
     ],

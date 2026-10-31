@@ -1,6 +1,7 @@
 //! Weld symbols (AWS A2.4 basics): an arrow to the joint, a horizontal reference line, the weld symbol below the line for
 //! the arrow side and above it for the other side (fillet triangle with its vertical leg on the left; bevel groove for CJP and
-//! PJP), the size left of the symbol, an all-around circle and a field-weld flag at the elbow, and a tail with its text.
+//! PJP), the size left of the symbol, the length and pitch (`L-P`) right of it, an all-around circle and a field-weld flag at
+//! the elbow, and a tail with its text.
 //! Placement is explicit (`at` + `offset`): the symbol is not moved by the note layout. Section views only.
 
 use super::text::{path_item, text_item, upper_if};
@@ -8,11 +9,12 @@ use super::{Env, non_null, str_member};
 use crate::drawing::{Align, FillItem, Item, VAlign};
 use crate::geom::{Pt, V2};
 use crate::json::Value;
+use crate::math;
 use crate::model::{self, Level};
 use crate::pen::{LayerKey, Pen};
 use crate::units;
 use alloc::format;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 pub const KINDS: [&str; 3] = ["fillet", "cjp", "pjp"];
@@ -24,6 +26,8 @@ pub struct WeldSpec<'a> {
     pub elbow: V2,
     pub kind: &'static str,
     pub size: Option<f64>,
+    pub length: Option<f64>,
+    pub pitch: Option<f64>,
     pub sides: &'static str,
     pub all_around: bool,
     pub field: bool,
@@ -64,6 +68,26 @@ fn flag(env: &Env, an: &Value, id: &str, apath: &str, key: &str) -> Option<bool>
     }
 }
 
+fn opt_len(env: &Env, an: &Value, id: &str, apath: &str, key: &str, example: &str) -> Result<Option<f64>, ()> {
+    let Some(v) = non_null(an, key) else { return Ok(None) };
+    match units::parse_length(v).filter(|x| *x > 0.0) {
+        Some(x) => Ok(Some(x)),
+        None => {
+            env.diags.add(
+                Level::Error,
+                "E_PARAM",
+                Some(id),
+                Some(&format!("{apath}/{key}")),
+                format!(
+                    "weld '{id}': {key} must be a positive length such as {example} (got {})",
+                    model::kind_or_text(v)
+                ),
+            );
+            Err(())
+        }
+    }
+}
+
 pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) -> Option<WeldSpec<'a>> {
     let Some(atv) = non_null(an, "at") else {
         env.diags.add_fix(
@@ -83,25 +107,36 @@ pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) 
     };
     let kind = choice(env, an, id, apath, "weld", &KINDS)?;
     let sides = choice(env, an, id, apath, "sides", &SIDES)?;
-    let size = match non_null(an, "size") {
-        None => None,
-        Some(v) => match units::parse_length(v).filter(|x| *x > 0.0) {
-            Some(x) => Some(x),
-            None => {
-                env.diags.add(
-                    Level::Error,
-                    "E_PARAM",
-                    Some(id),
-                    Some(&format!("{apath}/size")),
-                    format!(
-                        "weld '{id}': size must be a positive length such as \"3/16\" (got {})",
-                        model::kind_or_text(v)
-                    ),
-                );
-                return None;
-            }
-        },
-    };
+    let size = opt_len(env, an, id, apath, "size", "\"3/16\"").ok()?;
+    let length = opt_len(env, an, id, apath, "length", "2 (inches)").ok()?;
+    let pitch = opt_len(env, an, id, apath, "pitch", "12 (inches)").ok()?;
+    if let (Some(l), Some(p)) = (length, pitch)
+        && p < l - 1e-9
+    {
+        env.diags.add(
+            Level::Error,
+            "E_PARAM",
+            Some(id),
+            Some(&format!("{apath}/pitch")),
+            format!(
+                "weld '{id}': pitch {} is shorter than the length {} (pitch is the center-to-center spacing of the intermittent segments)",
+                units::fmt_ft_in(p),
+                units::fmt_ft_in(l)
+            ),
+        );
+        return None;
+    }
+    if pitch.is_some() && length.is_none() {
+        env.diags.add_fix(
+            Level::Error,
+            "E_PARAM",
+            Some(id),
+            Some(&format!("{apath}/pitch")),
+            format!("weld '{id}': \"pitch\" needs \"length\" (an intermittent weld is length-pitch, e.g. 2-12)"),
+            "add \"length\", e.g. \"length\": 2, \"pitch\": 12".into(),
+        );
+        return None;
+    }
     if kind == "fillet" && size.is_none() {
         env.diags.add_fix(
             Level::Error,
@@ -115,13 +150,36 @@ pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) 
     }
     let all_around = flag(env, an, id, apath, "all_around")?;
     let field = flag(env, an, id, apath, "field")?;
-    Some(WeldSpec { id, at, elbow: at.add(off), kind, size, sides, all_around, field, tail: str_member(an, "tail") })
+    Some(WeldSpec {
+        id,
+        at,
+        elbow: at.add(off),
+        kind,
+        size,
+        length,
+        pitch,
+        sides,
+        all_around,
+        field,
+        tail: str_member(an, "tail"),
+    })
 }
 
 /// Size text: sixteenths as a fraction (`3/16`, `5/16`, `1/2`), else the decimal.
 pub fn size_text(x: f64) -> String {
     let t = units::fmt_ft_in(x);
     String::from(t.trim_end_matches('"'))
+}
+
+/// Length or pitch text in whole inches and sixteenths, never feet (`2`, `1 1/2`, `12`, `24`).
+fn inch_text(x: f64) -> String {
+    let whole = math::floor(x + 1.0 / 32.0);
+    let rest = x - whole;
+    let n = crate::num::to_int_clamped::<u64>(whole, 0, u64::MAX);
+    if rest.abs() < 1.0 / 32.0 {
+        return n.to_string();
+    }
+    if n == 0 { size_text(rest) } else { format!("{n} {}", size_text(rest)) }
 }
 
 fn fill(env: &Env, id: &str, pts: &[V2]) -> Item {
@@ -141,12 +199,17 @@ pub fn items(env: &mut Env, w: &WeldSpec) -> Vec<Item> {
     let dir = if w.elbow.x >= w.at.x { 1.0 } else { -1.0 };
     let size = w.size.map(size_text);
     let size_w = size.as_deref().map_or(0.0, |t| env.font.width(t, h));
+    let lp = w.length.map(|l| match w.pitch {
+        Some(p) => format!("{}-{}", inch_text(l), inch_text(p)),
+        None => inch_text(l),
+    });
+    let lp_w = lp.as_deref().map_or(0.0, |t| gap + env.font.width(t, h));
     let tail = w.tail.map(|t| upper_if(env, t).into_owned()).or(match w.kind {
         "cjp" => Some(String::from("CJP")),
         "pjp" => Some(String::from("PJP")),
         _ => None,
     });
-    let reach = size_w + gap + a + 0.25 * s;
+    let reach = size_w + gap + a + lp_w + 0.25 * s;
     let len = (0.55 * s).max(reach + 0.15 * s);
     let e = w.elbow;
     let end = V2::init(e.x + dir * len, e.y);
@@ -176,10 +239,12 @@ pub fn items(env: &mut Env, w: &WeldSpec) -> Vec<Item> {
             out.push(path_item(env, Pen::Anno, w.id, &[V2::init(sx, y), tip], false));
             out.push(path_item(env, Pen::Anno, w.id, &[V2::init(sx, y), V2::init(sx + a, y + sg * a)], false));
         }
+        let ty = if sg < 0.0 { y - 0.03 * s - h } else { y + 0.03 * s };
         if let Some(t) = &size {
-            let (ty, va) =
-                if sg < 0.0 { (y - 0.03 * s - h, VAlign::Baseline) } else { (y + 0.03 * s, VAlign::Baseline) };
-            out.push(text_item(env, LayerKey::Notes, Pen::Anno, w.id, t, sx - gap, ty, h, 0.0, Align::Right, va));
+            out.push(text_item(env, LayerKey::Notes, Pen::Anno, w.id, t, sx - gap, ty, h, 0.0, Align::Right, VAlign::Baseline));
+        }
+        if let Some(t) = &lp {
+            out.push(text_item(env, LayerKey::Notes, Pen::Anno, w.id, t, sx + a + gap, ty, h, 0.0, Align::Left, VAlign::Baseline));
         }
     }
     if w.all_around {

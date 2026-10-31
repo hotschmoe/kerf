@@ -11,6 +11,7 @@ use crate::model::{Diags, Kind, Level, Prism};
 use crate::scene::{Comp, Scene, State};
 use crate::units::{self, fmt_ft_in};
 use alloc::format;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 /// AISC 360-16 Table J3.4: minimum edge distance from the center of a standard hole, by bolt diameter.
@@ -233,13 +234,59 @@ fn fillet_max(t: f64) -> f64 {
     if t < 0.25 { t } else { t - 0.0625 }
 }
 
+/// `members` of a weld must name two steel components: anything else is silently left out of W_WELD_SIZE otherwise.
+fn weld_members(scene: &Scene<'_>, vid: &str, id: &str, an: &Value, diags: &Diags) {
+    let Some(mv) = an.get("members").filter(|m| !m.is_null()) else { return };
+    let path = format!("views/{vid}/annotations/{id}/members");
+    let entries = mv.arr().unwrap_or(&[]);
+    if mv.arr().is_none() || entries.len() != 2 || entries.iter().any(|e| e.str().is_none()) {
+        diags.add_fix(
+            Level::Warning,
+            "W_PARAM",
+            Some(id),
+            Some(&path),
+            format!("weld '{id}' in view {vid}: \"members\" must be two component ids (got {})", crate::model::kind_or_text(mv)),
+            "e.g. \"members\": [\"col\", \"base_plate\"], or remove it".to_string(),
+        );
+        return;
+    }
+    for m in entries.iter().filter_map(Value::str) {
+        match scene.find(m) {
+            None => diags.add_fix(
+                Level::Warning,
+                "W_PARAM",
+                Some(id),
+                Some(&path),
+                format!("weld '{id}' in view {vid}: member '{m}' is not a component, so W_WELD_SIZE cannot check it"),
+                format!("use a component id (components: {})", crate::scene::join_ids(&scene.comp_ids())),
+            ),
+            Some(c) if c.ty.ty != Type::Steel => diags.add_fix(
+                Level::Warning,
+                "W_PARAM",
+                Some(id),
+                Some(&path),
+                format!(
+                    "weld '{id}' in view {vid}: member '{m}' is {}, not steel; a weld joins steel parts and W_WELD_SIZE checks only steel members",
+                    c.ty.name()
+                ),
+                format!("list the two steel parts the weld joins, or remove '{m}' from \"members\""),
+            ),
+            Some(_) => {}
+        }
+    }
+}
+
 fn weld_sizes(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     for v in doc.get("views").and_then(Value::arr).unwrap_or(&[]) {
         let vid = v.get("id").and_then(Value::str).unwrap_or("");
         for an in v.get("annotations").and_then(Value::arr).unwrap_or(&[]) {
-            if an.get("type").and_then(Value::str) != Some("weld")
-                || an.get("weld").and_then(Value::str).is_some_and(|k| k != "fillet")
-            {
+            if an.get("type").and_then(Value::str) != Some("weld") {
+                continue;
+            }
+            if let Some(id) = an.get("id").and_then(Value::str) {
+                weld_members(scene, vid, id, an, diags);
+            }
+            if an.get("weld").and_then(Value::str).is_some_and(|k| k != "fillet") {
                 continue;
             }
             let (Some(id), Some(size)) =
