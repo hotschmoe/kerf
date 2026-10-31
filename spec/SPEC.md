@@ -217,8 +217,10 @@ Profile: run x ⇒ (length × thickness); run y ⇒ (thickness × length). Use `
 | `top_joint` | false | include a mortar joint above the top course |
 Profile box: width_actual × (courses·8 − 0.375 [+0.375 if top_joint]). Bottom of the lowest
 course sits at the box bottom (a bed joint is assumed below, not drawn).
-Parts: `course_1`…`course_n` (1 = bottom), `bond_beam` (union of bond-beam courses), `grout`.
-Named anchors: `bond_beam_center` (center of bond-beam zone), `top_center`, `cell_center_top`.
+Parts: `course_1`…`course_n` (1 = bottom), `bond_beam` (union of bond-beam courses), `grout`, `cell` (between the face
+shells, full height; §25.1).
+Named anchors: `bond_beam_center` (center of bond-beam zone), `top_center`, `cell_center_top`, `cell_left`, `cell_center`,
+`cell_right` (inside faces of the face shells and the cell middle, at the wall bottom), `cell_left_top`, `cell_right_top`.
 Section draws per course: two face shells (cut, `cmu` hatch), the cell (grouted ⇒ `grout` hatch;
 ungrouted ⇒ empty with the cross web shown as a beyond line), mortar joints as cut lines.
 3D/iso: units 15.625 long with 0.375 head joints along Z, running bond (alternate courses offset 8").
@@ -255,11 +257,12 @@ Named anchors: `top_exterior` (the datum point (0,0): top-of-slab plane at the e
 |---|---|---|
 | `size` | `"#4"` | `#3` .375, `#4` .5, `#5` .625, `#6` .75, `#7` .875, `#8` 1.0 |
 | `mode` | `"along_z"` | `along_z` (continuous bar seen as a dot in section) or `path` (bar in XY plane) |
-| `place` | null | cover-based placement (preferred): `{ "in": "<comp>[.<part>]", "face": "bottom"|"top"|"left"|"right", "cover": 3, "count": 2, "side_cover": 3 }` — bars at clear `cover` from `face`, spread evenly between the host zone's two adjacent faces at `side_cover` (count 1 ⇒ centered) |
+| `place` | null | cover-based placement (preferred): `{ "in": "<comp>[.<part>]", "face": "bottom"|"top"|"left"|"right", "cover": 3, "count": 2, "side_cover": 3 }` — bars at clear `cover` from the zone's `face` (the host outline, cut to the part's box; in a polygon the outermost edge run facing that way, §25.1), spread evenly along that run at `side_cover` from its ends (count 1 ⇒ centered). A centre outside the zone is `E_PLACE_OUTSIDE` |
 | `points` | — | for `mode:"path"`: polyline (§3.3); bends get radius `bend_radius` (default 3·d_b inside radius for #3–#8, drawn as fillets) |
 | `spacing_note` | null | e.g. `"#4 @ 16\" O.C."` used in summaries/notes |
 Default `embedded: true`. Cut dots draw solid-filled. Path bars draw as two parallel lines (bar
 outline) with pen `rebar`. 3D: swept circle (12 segments).
+Path bars add the anchors `start`, `end`, `bend_k` and `seg_k_mid`, all on the bar centreline (§25.1).
 
 ### 5.6 `anchor_bolt`
 `diameter` 0.5 | 0.625, `embed` (below placement point), `projection` (above), `hook`
@@ -365,7 +368,8 @@ up at the placement point, grip downward) | `end` (axis along z, head toward the
 `line` `x` | `z` (side) or `x` | `y` (end): the row direction from bolt 1, `washer` true. Heavy hex head and nut 1.5d + 1/8
 across flats, head 0.625d, nut d, F436 washer 2d × 5/32 under the nut, stick-out 0.5d. Embedded steel. Placement anchor
 defaults to `head_bearing` (local origin, bolt 1's axis at the underside of the head); also `nut_bearing`, `bolt_1`..`bolt_n`.
-Natural z thickness: d (side), grip (end).
+Natural z thickness: d (side), grip (end). Any `rotate` (180 draws the head below a flange, the grip up) keeps the cut fill of
+the plies the bolt passes through (§25.1).
 
 ## 6. Views and annotations
 
@@ -576,6 +580,9 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `E_CYCLE` | error | placement cycle |
 | `W_OVERLAP` | warning | two cut regions overlap by > 0.01 in² (report overlap bbox in ft-in). Exempt: `embedded` items, membranes, connectors, and fills vs membranes |
 | `W_FLOATING` | warning | a component touches nothing (gap > 1/32" to every other) |
+| `E_PLACE_OUTSIDE` | error | a `rebar.place` bar centre falls outside its zone (cover deeper than the host, or a `station` past the face); the bar is not drawn (§25.1) |
+| `W_BAR_OUTSIDE` | warning | an along-z bar centred in no concrete/masonry host drawn with it, or a path bar with a bend outside every host or no point in one; names the nearest host (§25.1) |
+| `W_CUT_FILL` | warning | an embedded part emptied a cut member's fill, or a boolean fault was caught and the fill kept (§25.1) |
 | `W_COVER` | warning | rebar clear cover < required. Host = the concrete/cmu prism containing the bar center. Each host boundary edge is classified by its outward normal: n.y < −0.5 ⇒ `bottom`, n.y > 0.5 ⇒ `top`, else `sides`. Required cover comes from the host's `cover`, with `cover.parts.<part>` overriding for bars inside that part zone. cmu_wall default cover `{ "sides": 1.5, "top": 1.5, "bottom": 0.5 }` |
 | `W_UNTREATED_CONTACT` | warning | wood (`treated:false`) touching concrete/grout/cmu (IRC R317.1) |
 | `W_NOTE_TARGET` | warning | note target not visible in its view |
@@ -1081,3 +1088,41 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
 - `notes_side: "above"` on a leader view warns `W_PARAM` and lays out as `both`. `W_NOTE_STYLE` lints keyed and list note text
   as it does leader text; repeated text under one key is not a repeat, and a repeat in a keyed view suggests sharing the key.
   `W_VIEW_FIT` names the list as a culprit and suggests moving it (`above` <-> `left`/`right`).
+
+## 25. v0.2.0-alpha.5 correctness
+
+### 25.1 alpha.5: cut fill and rebar placement
+- **Polygon booleans with coincident edges** (§8.1). Edges of the two operands that run together within `SNAP` (1e-7 in),
+  including edges off by rounding noise (a part rotated 90/180/270 degrees has coordinates like 5e-17 for 0), are split at
+  each other's endpoints and classified as shared boundary; they no longer cross each other at a stray point. A proper
+  crossing found by the exact predicates still splits both edges at one shared point.
+- **Cut fill guard.** The cut fill of a non-embedded part is its region minus every embedded cut part. Each subtraction must
+  remove no more area than the embedded part has (and never add area); otherwise that subtraction is skipped, the part keeps
+  its fill, and `W_CUT_FILL` (warning, id = the part, path `views/<view>`) names the part and the embedded part, once per
+  pair and view. An embedded part that covers a part's whole cut also warns `W_CUT_FILL` (the part draws no fill). A filled
+  material never loses its fill silently.
+- **`rebar.place` follows the host outline** (§5.5). The zone is the host's outline (concrete, cmu) in world coordinates,
+  intersected with the part's box for `in: "comp.part"` (a host without an outline: its box). For face `bottom`/`top`/
+  `left`/`right` the face is a run of consecutive collinear zone edges whose outward normal is within 60 degrees of the face
+  direction, chosen furthest along that direction (ties: the longer run, then the first); e.g. `bottom` of an L slab with a
+  thickened edge is the footing's bottom. Bars sit at `cover + d/2` inside that run, from `side_cover + d/2` past its start
+  to the same before its end (count 1: the run's middle), ordered left to right (bottom/top) or bottom to top (left/right).
+  A rectangle gives exactly the earlier box placement. `station` measures from the zone box's left (bottom) side as before;
+  the bar sits `cover + d/2` (perpendicular) inside the outermost face edge crossing that station. `center` keeps the box
+  rule. Every bar centre must be inside the zone, else `E_PLACE_OUTSIDE` (error, path `components/<id>/place`) with the
+  position, the zone box and the fix; the bar is not drawn.
+- **`W_BAR_OUTSIDE`** (warning, id = the bar). Checked with `W_COVER`, per view set (§9). An along-z bar whose centre is in
+  no concrete/masonry host (XY, z ranges overlapping) warns; for a placed or arrayed bar one warning gives the count and the
+  first centre. A path bar warns when a bend's middle is in no host, or when no point of it is in a host; a straight leg
+  may leave the concrete (a dowel, a bar welded to steel). The message names the nearest host and its distance; the fix
+  suggests `place` or acknowledging a bar that really stands outside the concrete. Silent when the view set draws no host.
+- **Anchors on paths and polygons** (§3.1). Path rebar: `start`, `end` (centreline ends), `bend_k` (k = 1.. for interior
+  point k+1: the point of the bar nearest that corner, the middle of the fillet) and `seg_k_mid` (middle of the straight part
+  of leg k, from point k to k+1). Point lists of `concrete` polygon, `solid` `profile.points`, `fill`, `insulation` with
+  `points`, `membrane` and `connector`: `vertex_k` (point k, 1-based, in the order given, repeated points dropped) and
+  `edge_k_mid` (middle of the edge from point k to the next; the arc's middle for a bulge; closed shapes include the edge back
+  to point 1). Leaders and dims aimed at these land on the bar or outline instead of a box anchor in empty space. A path
+  point may be a Ref to another bar's anchor, e.g. a dowel lapping a wall bar: `{"ref": "wall_bar@start", "offset": [2, 24]}`.
+- **CMU cells.** `cmu_wall` adds the part `cell` (between the face shells, full height) for `place` and the anchors
+  `cell_left`, `cell_center`, `cell_right`, `cell_left_top`, `cell_right_top` (§5.3), so vertical path bars in a cell follow
+  the wall width: `{"ref": "wall@cell_left", "offset": [1.5, -12]}`.
