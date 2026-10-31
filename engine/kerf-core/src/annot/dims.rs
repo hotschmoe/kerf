@@ -154,14 +154,29 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide:
     let fits = tw + 2.0 * tgap <= lb.sub(la).len() - tick;
     sh.fits = fits;
     sh.line = [la, lb];
-    out.push(path_item(env, Pen::Dim, d.id, &[la, lb], false));
-    sh.add(la, lb);
-    let tdir = u.add(nrm).norm();
-    for p in [la, lb] {
-        let t0 = p.sub(tdir.scale(tick * 0.5));
-        let t1 = p.add(tdir.scale(tick * 0.5));
-        out.push(path_item(env, Pen::Profile, d.id, &[t0, t1], false));
-        sh.add(t0, t1);
+    let tight = lb.sub(la).len() < 2.0 * tick;
+    if tight {
+        let (a0, b0) = (la.sub(u.scale(2.0 * tick)), lb.add(u.scale(2.0 * tick)));
+        out.push(path_item(env, Pen::Dim, d.id, &[a0, b0], false));
+        sh.add(a0, b0);
+        let r = (0.02 * sc).min(lb.sub(la).len() * 0.3).max(0.005 * sc);
+        for p in [la, lb] {
+            out.push(Item::Fill(crate::drawing::FillItem {
+                layer: alloc::string::String::from(env.style.layer_name(LayerKey::Dims)),
+                src: alloc::string::String::from(d.id),
+                loops: alloc::vec![crate::model::circle_loop(p.x, p.y, r)],
+            }));
+        }
+    } else {
+        out.push(path_item(env, Pen::Dim, d.id, &[la, lb], false));
+        sh.add(la, lb);
+        let tdir = u.add(nrm).norm();
+        for p in [la, lb] {
+            let t0 = p.sub(tdir.scale(tick * 0.5));
+            let t1 = p.add(tdir.scale(tick * 0.5));
+            out.push(path_item(env, Pen::Profile, d.id, &[t0, t1], false));
+            sh.add(t0, t1);
+        }
     }
     let mut ang = math::atan2(u.y, u.x) * DEG_PER_RAD;
     if ang > 90.0 + 1e-9 || ang <= -90.0 + 1e-9 {
@@ -198,10 +213,18 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide:
     sh
 }
 
-pub fn label_items(env: &mut Env, id: &str, text: &str, at: V2, out: &mut Vec<Item>) {
+/// A label: one text item per line (a newline in `text` breaks it), the block centered vertically on `at` and each line
+/// aligned on it.
+pub fn label_items(env: &mut Env, id: &str, text: &str, at: V2, align: Align, out: &mut Vec<Item>) {
     let t = upper_if(env, text).into_owned();
     let h = env.style.label_height_in * env.s;
-    out.push(text_item(env, LayerKey::Notes, Pen::Anno, id, &t, at.x, at.y, h, 0.0, Align::Center, VAlign::Middle));
+    let pitch = h * env.style.line_spacing;
+    let lines: Vec<&str> = t.split('\n').map(|l| l.trim_end_matches('\r')).collect();
+    let top = at.y + pitch * (lines.len() - 1) as f64 / 2.0;
+    for (i, line) in lines.iter().enumerate() {
+        let y = top - pitch * i as f64;
+        out.push(text_item(env, LayerKey::Notes, Pen::Anno, id, line, at.x, y, h, 0.0, align, VAlign::Middle));
+    }
 }
 
 pub fn poly_hits_seg(poly: &[V2; 4], a: V2, b: V2) -> bool {

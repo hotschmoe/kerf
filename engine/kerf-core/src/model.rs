@@ -282,6 +282,8 @@ pub struct HostInfo {
     pub outline: Vec<Pt>,
     pub cover: Cover,
     pub part_cover: Vec<PartCover>,
+    /// The document sets `cover` (false: the builder default applies).
+    pub cover_set: bool,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -88,7 +88,7 @@ pub fn sawn_thickness(nt: u32) -> Option<f64> {
         3 => Some(2.5),
         4 => Some(3.5),
         6 => Some(5.5),
-        8 => Some(7.25),
+        8 => Some(7.5),
         _ => None,
     }
 }
@@ -345,6 +345,7 @@ pub fn length_or_until(ctx: &mut Ctx, run: &str, hint: &str, note: &mut String) 
 pub struct ParsedCover {
     pub cover: model::Cover,
     pub parts: Vec<PartCover>,
+    pub set: bool,
 }
 
 fn read_cover_fields(p: &mut Params, key: &str, obj: &Value, base: model::Cover) -> Option<model::Cover> {
@@ -357,7 +358,7 @@ fn read_cover_fields(p: &mut Params, key: &str, obj: &Value, base: model::Cover)
 
 /// None: a parameter error (already reported).
 pub fn parse_cover(ctx: &mut Ctx, key: &str, base: model::Cover) -> Option<ParsedCover> {
-    let Some(v) = ctx.p.raw(key) else { return Some(ParsedCover { cover: base, parts: Vec::new() }) };
+    let Some(v) = ctx.p.raw(key) else { return Some(ParsedCover { cover: base, parts: Vec::new(), set: false }) };
     if !matches!(v, Value::Object(_)) {
         ctx.p.fail(key, format!("param '{key}' must be an object like {{\"bottom\": 3, \"sides\": 3, \"top\": 1.5}}"));
         return None;
@@ -382,7 +383,7 @@ pub fn parse_cover(ctx: &mut Ctx, key: &str, base: model::Cover) -> Option<Parse
             parts.push(PartCover { part: m.key.clone(), cover: pc });
         }
     }
-    Some(ParsedCover { cover: c, parts })
+    Some(ParsedCover { cover: c, parts, set: true })
 }
 
 pub fn mirror_built(b: &Built, xf: &geom::Xf, keep_box: bool) -> Built {

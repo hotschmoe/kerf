@@ -112,6 +112,8 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
 pub struct NoteIn<'a> {
     pub id: &'a str,
     pub text: String,
+    /// The text without its citations (keyed lists compare it to say which field of a shared-key note differs).
+    pub body: String,
     pub cands: Vec<V2>,
     /// False when the note has an explicit `at` (never nudged).
     pub movable: bool,
@@ -163,6 +165,8 @@ pub struct LabelSpec<'a> {
     pub k: usize,
     pub id: &'a str,
     pub text: &'a str,
+    /// Which end (or the middle) of each line sits on `at`.
+    pub align: crate::drawing::Align,
     /// Drawing-space position (author offset applied); None when an iso label does not project.
     pub base: Option<V2>,
     pub off: V2,
@@ -608,6 +612,7 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
 pub struct ListEntry<'a> {
     pub num: u32,
     pub text: &'a str,
+    pub body: &'a str,
     pub first: &'a str,
 }
 
@@ -635,22 +640,36 @@ pub fn list_entries<'a>(env: &Env, notes: &'a [NoteIn], numbers: &[u32]) -> Vec<
     let mut out: Vec<ListEntry<'a>> = Vec::new();
     for (n, &num) in notes.iter().zip(numbers) {
         match out.iter().find(|e| e.num == num) {
+            Some(e) if e.text != n.text && e.body == n.body => env.diags.add_fix(
+                crate::model::Level::Warning,
+                "W_PARAM",
+                Some(n.id),
+                Some(&format!("views/{vid}/annotations/{}/cite", n.id)),
+                format!(
+                    "note '{}' in view {vid} shares key {num} and its text with note '{}' but its \"cite\" differs (it reads \"{}\", '{}' reads \"{}\"); the DETAIL NOTES list shows the entry of '{}'",
+                    n.id, e.first, n.text, e.first, e.text, e.first
+                ),
+                format!(
+                    "remove \"text\" and \"cite\" from '{}' (a note with a shared key and no text takes the key's text and cite), copy the \"cite\" of '{}', or give it its own \"key\"",
+                    n.id, e.first
+                ),
+            ),
             Some(e) if e.text != n.text => env.diags.add_fix(
                 crate::model::Level::Warning,
                 "W_PARAM",
                 Some(n.id),
                 Some(&format!("views/{vid}/annotations/{}/text", n.id)),
                 format!(
-                    "note '{}' in view {vid} shares key {num} with note '{}' but its text differs; the DETAIL NOTES list shows the text of '{}'",
-                    n.id, e.first, e.first
+                    "note '{}' in view {vid} shares key {num} with note '{}' but its \"text\" differs (\"{}\" vs \"{}\"); the DETAIL NOTES list shows the text of '{}'",
+                    n.id, e.first, n.body, e.body, e.first
                 ),
                 format!(
-                    "remove \"text\" from '{}' (a note with a shared key takes the key's text), or give it its own \"key\"",
+                    "remove \"text\" from '{}' (a note with a shared key and no text takes the key's text and cite), or give it its own \"key\"",
                     n.id
                 ),
             ),
             Some(_) => {}
-            None => out.push(ListEntry { num, text: &n.text, first: n.id }),
+            None => out.push(ListEntry { num, text: &n.text, body: &n.body, first: n.id }),
         }
     }
     sort::stable(&mut out, |a, b| a.num < b.num);

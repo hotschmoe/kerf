@@ -20,7 +20,7 @@ params! {
     pub struct Params {
         shape: Enum(Shape) => { desc: "rect | footing | polygon | slab_edge" },
         material: Str = "concrete" => { desc: "any style material" },
-        cover: OptRaw => { def: "{bottom:3, sides:3, top:1.5}", desc: "REQUIRED clear cover for bars in this host (W_COVER); cover.parts.<part> overrides per part zone, e.g. {\"parts\":{\"slab\":{\"bottom\":0.75}}}" },
+        cover: OptRaw => { def: "{bottom:3, sides:3, top:1.5}", desc: "REQUIRED clear cover for bars in this host (W_COVER); cover.parts.<part> overrides per part zone, e.g. {\"parts\":{\"slab\":{\"bottom\":0.75}}}. The default suits footings and walls cast against earth (every shape, polygons included); give a slab its own, e.g. a 4\" slab on grade with a mid-depth bar: {\"bottom\":1.5,\"top\":1.5}" },
         width: OptLenPos => { hint: "rect/footing need width and height", also: &["height"], def: "rect/footing: required", desc: "box size" },
         height: OptLenPos => { hint: "rect/footing need width and height", row: false, desc: "box size" },
         points: OptRaw => { def: "polygon: required", desc: "polyline [x,y(,bulge)] relative to the placement point, or absolute Refs" },
@@ -77,7 +77,7 @@ fn rect_or_footing(ctx: &mut Ctx, cp: &Params, sh: Shape, material: &str, cov: P
         prisms: one_prism(prism),
         zones,
         box_: geom::Box { x0: 0.0, y0: 0.0, x1: w, y1: h },
-        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
+        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set }),
         info: format!("concrete {} {} x {}", sh.tag(), fmt_ft_in(w), fmt_ft_in(h)),
         ..Built::default()
     })
@@ -106,7 +106,7 @@ fn polygon(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Opti
         anchors,
         box_,
         points_mode: true,
-        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
+        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set }),
         info: "concrete polygon".into(),
         ..Built::default()
     })
@@ -306,7 +306,7 @@ fn slab_edge(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Op
         anchors,
         zones: zones_out,
         box_: geom::loop_box(&lp),
-        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts }),
+        host: Some(HostInfo { outline: lp, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set }),
         info: format!(
             "concrete slab_edge {} slab, ftg {} x {}{recess_text}{base_text}",
             fmt_ft_in(st),

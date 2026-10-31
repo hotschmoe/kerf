@@ -430,7 +430,12 @@ fn print_api_error(bytes: &[u8]) {
 
 fn cmd_version() -> Res<u8> {
     let r = api::call(b"version", b"{}");
-    write_out(None, &r.bytes)?;
+    let text = String::from_utf8_lossy(&r.bytes);
+    let body = text.trim_end().strip_suffix('}').unwrap_or(text.trim_end());
+    let mut out = format!("{body},\"build\":").into_bytes();
+    json::write_string(&mut out, env!("KERF_BUILD"));
+    out.extend_from_slice(b"}\n");
+    write_out(None, &out)?;
     Ok(0)
 }
 

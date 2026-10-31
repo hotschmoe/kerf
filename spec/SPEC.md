@@ -180,12 +180,12 @@ the engine draws. The engine MUST also emit this catalog as JSON and markdown (`
 ### 5.1 `lumber` — sawn or engineered wood member
 | param | default | notes |
 |---|---|---|
-| `size` | — | sawn nominal `"2x4"…"2x12"`, `"4x4"…"4x12"`, `"6x6"…"6x12"`; or actual `"1.75x11.875"` when `product`≠`sawn` |
+| `size` | — | sawn nominal `"TxD"`: T 1, 2, 3, 4 with D 3…14 (`"2x10"`, `"3x8"`), T 6, 8 with D 6…12; or actual `"1.75x11.875"` when `product`≠`sawn` |
 | `product` | `"sawn"` | `sawn` `lvl` `psl` `lsl` `glulam` |
 | `run` | `"z"` | axis the member's length runs along: `z` (seen in cross-section), `x`, `y` |
 | `orient` | `"upright"` | for `run:"z"`: `upright` (depth vertical) or `flat` (depth horizontal) |
 | `face` | `"wide"` | for `run:"x"/"y"`: which face the viewer (looking −Z) sees: `wide` (depth in-plane) or `narrow` (thickness in-plane) |
-| `length` | — | required for `run:"x"/"y"` |
+| `length` | — | required for `run:"x"/"y"`; optional for `run:"z"`: the member is that long along z, centered on a numeric `z`, else on the first section view's `cut_z` (default: spans the doc `run`) (§25.5) |
 | `plies` | 1 | built-up members; plies stack along X for run z, along Z otherwise; draws ply lines |
 | `treated` | false | preservative-treated (affects label, validation `W_UNTREATED_CONTACT`) |
 | `blocking` | false | section mark becomes single diagonal instead of X (discontinuous member) |
@@ -193,8 +193,8 @@ the engine draws. The engine MUST also emit this catalog as JSON and markdown (`
 
 Material: `wood`; `treated:true` ⇒ `wood_treated`; `product`≠`sawn` ⇒ `wood_engineered`.
 
-Sawn actual sizes: 2x → 1.5 thick; 4x → 3.5; 6x → 5.5. Depths: x4 3.5, x6 5.5, x8 7.25,
-x10 9.25, x12 11.25 (6x: 6x6 5.5, 6x8 7.5, 6x10 9.5, 6x12 11.5). For `orient: upright`,
+Sawn actual sizes: 1x → 0.75 thick; 2x → 1.5; 3x → 2.5; 4x → 3.5; 6x → 5.5; 8x → 7.5. Depths: x3 2.5, x4 3.5, x6 5.5,
+x8 7.25, x10 9.25, x12 11.25, x14 13.25 (6x and 8x: x6 5.5, x8 7.5, x10 9.5, x12 11.5). For `orient: upright`,
 profile = (thickness × depth); `flat` = (depth × thickness).
 Draws: cut ⇒ outline + "wood X" mark (diagonals corner-to-corner per ply) per style; beyond ⇒ outline.
 
@@ -592,20 +592,21 @@ Messages are written FOR AN LLM: what is wrong, measured numbers, and the concre
 | `E_ANCHOR_UNKNOWN` | error | unknown anchor; list the component's anchors |
 | `E_CYCLE` | error | placement cycle |
 | `W_OVERLAP` | warning | two cut regions overlap by > 0.01 in² (report overlap bbox in ft-in). Exempt: `embedded` items, membranes, connectors, and fills vs membranes |
-| `W_FLOATING` | warning | a component touches nothing (gap > 1/32" to every other) |
+| `W_FLOATING` | warning | a component touches nothing (gap > 1/32" to every other; concrete/masonry pieces facing across a joint < 1" touch), or some instances of an `array` touch nothing while others do (§25.5) |
 | `E_PLACE_OUTSIDE` | error | a `rebar.place` bar centre falls outside its zone (cover deeper than the host, or a `station` past the face); the bar is not drawn (§25.1) |
 | `W_BAR_OUTSIDE` | warning | an along-z bar centred in no concrete/masonry host drawn with it, or a path bar with a bend outside every host or no point in one; names the nearest host (§25.1) |
 | `W_CUT_FILL` | warning | an embedded part emptied a cut member's fill, or a boolean fault was caught and the fill kept (§25.1) |
-| `W_COVER` | warning | rebar clear cover < required. Host = the concrete/cmu prism containing the bar center. Each host boundary edge is classified by its outward normal: n.y < −0.5 ⇒ `bottom`, n.y > 0.5 ⇒ `top`, else `sides`. Required cover comes from the host's `cover`, with `cover.parts.<part>` overriding for bars inside that part zone. cmu_wall default cover `{ "sides": 1.5, "top": 1.5, "bottom": 0.5 }` |
+| `W_COVER` | warning | rebar clear cover < required. Host = the concrete/cmu prism containing the bar center. Each host boundary edge is classified by its outward normal: n.y < −0.5 ⇒ `bottom`, n.y > 0.5 ⇒ `top`, else `sides`. Required cover comes from the host's `cover`, with `cover.parts.<part>` overriding for bars inside that part zone. cmu_wall default cover `{ "sides": 1.5, "top": 1.5, "bottom": 0.5 }`. The message names the knob (`cover.<face>`, `cover.parts.<part>.<face>`, `, default` when unset) and the fix carries the exact `update` op (§25.5) |
 | `W_UNTREATED_CONTACT` | warning | wood (`treated:false`) touching concrete/grout/cmu (IRC R317.1) |
 | `W_NOTE_TARGET` | warning | note target not visible in its view |
-| `W_VIEW_FIT` | warning | view + notes + title (bubble included) exceed the sheet frame, less 1/8" clearance, at the chosen scale |
+| `W_VIEW_FIT` | warning | view + notes + title (bubble included) exceed the sheet frame, less 1/8" clearance, at the chosen scale; with an auto crop it names the components that stretch it (§25.5) |
 | `W_NOTE_LANDING` | warning | a note's explicit `at` puts the arrow on empty paper: outside the crop (section), off every visible face and line (iso) |
 | `W_LABEL_OVERLAP` | warning | a label overprints a label or dimension text, a note's text overprints either, or a pinned dimension overprints another |
 | `I_ANNOT_MOVED` | info | the layout drew a dimension more than 1/8" (paper) from its `offset`, or moved a label that far (printed by `kerf check`) |
 | `I_UNVERIFIED_CITE` | info | citations awaiting designer verification (count) |
 | `W_BOLT_EDGE` | warning | a bolt's edge distance to a `steel` ply it passes through (in the drawing plane, or along z to the ply's z extent) is below AISC 360-16 Table J3.4 (1/2" 3/4, 5/8" 7/8, 3/4" 1, 7/8" 1 1/8, 1" 1 1/4, 1 1/8" 1 1/2, 1 1/4" 1 5/8, larger 1.25d); one warning per bolt group and ply, the worst bolt |
-| `W_BOLT_SPACING` | warning | bolt spacing < 2 2/3 d (AISC 360 J3.3) |
+| `W_BOLT_SPACING` | warning | bolt spacing < 2 2/3 d (AISC 360 J3.3); two anchor bolts closer than 4d (cast-in) or 6d (wedge/screw) center to center, in plane and z (ACI 318-19 17.9.2) |
+| `W_BOLT_EDGE` (anchor bolt) | warning | an `anchor_bolt` shaft (its deeper 60% inside concrete/masonry) < 1 1/2" clear of the host edge (ACI 318-19 17.9.2, cover per 20.5.1.3) |
 | `W_WELD_SIZE` | warning | a fillet weld symbol with `members` is larger than the thinner part allows (t, or t − 1/16 when t ≥ 1/4; AISC 360 J2.2b) or smaller than Table J2.4 (1/8, 3/16, 1/4, 5/16 by thinner part ≤ 1/4, 1/2, 3/4, over). Thickness of a W or channel is its thinner element, of an HSS or pipe the design wall |
 | `I_SOLID_USED` | info | `solid` escape hatch used |
 | `W_REF_UNKNOWN` | warning | a view `omit` / `only` entry (id or `*` glob) that matches no component; it has no effect (§25.4) |
@@ -778,8 +779,9 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Dimension offset:** `dir:"h"` ⇒ dimension line at y = max(from.y, to.y) + offset when
   offset > 0, min(from.y, to.y) + offset when offset < 0. `dir:"v"` ⇒ same with x. `aligned` ⇒
   offset perpendicular to from→to (positive = left of the direction).
-- **Label:** `{ "type": "label", "text", "at": Ref|[x,y], "offset": [dx, dy] }`: text centered on
-  the point, label text height (`text.label_height_in`), no leader.
+- **Label:** `{ "type": "label", "text", "at": Ref|[x,y], "offset": [dx, dy], "align" }`: the text block centered
+  vertically on the point, each line's start (`align: "left"`), middle (`"center"`, default) or end (`"right"`) on it; a
+  newline in `text` starts a new line (pitch `line_spacing`); label text height (`text.label_height_in`), no leader.
 - **Fill outline `top`:** stroke only polygon edges whose outward normal has n.y > 0.01.
 - **Membrane / connector thickness side:** for a polyline direction (dx, dy), "left" is the
   normal (−dy, dx).
@@ -851,7 +853,7 @@ whose metrics are close; minor differences in CAD are acceptable.
   one axis but leave a gap of 1/32"–3" between facing edges on the other axis (e.g. a stud ending
   3" below the plate it obviously meant to reach). Message names both ids, the gap in ft-in, and
   the fix (`set length to …` or `use "until": "<other>@<anchor>"`). Skip pairs that are already
-  separated by a third component in the gap.
+  separated by a third component in the gap: any drawn component (panels, hardware and other instances included, §25.5).
 - **Catalog lists hardware models:** the `connector` entry lists every model in the engine's
   hardware table with kind, width, gauge, and length (one line each), so the LLM knows which
   models auto-fill.
@@ -1049,8 +1051,9 @@ whose metrics are close; minor differences in CAD are acceptable.
 - **Re-fit after edits:** when a view has an explicit `crop` and an edit leaves a non-fill component
   with more than 25% of its extent outside the crop (and the component was mostly inside before, or was
   just added), warn `W_CROP_STALE` naming the component and the crop that would contain it, and suggest
-  removing `crop` to auto-fit. In `kerf check` (no edit history), it fires only when no view shows the
-  component at all, since many details crop members on purpose with break lines.
+  removing `crop` to auto-fit. An existing member warns only when the edit moved or resized it; a crop
+  that cuts a member on purpose stays quiet while at least 10% of the member is inside some view (§25.5). In
+  `kerf check` (no edit history), it fires only when less than 10% of the component is inside every view's crop.
 - **Thin-layer landing:** when a note targets a thin component (membrane, panel < 1/2", connector,
   path rebar), the landing point lies on that component's own geometry, never inside a neighbor. If the
   label point would fall inside another component's region, slide along the thin component to the nearest
@@ -1319,3 +1322,60 @@ members get no `views`; each scenario's members get `views: ["B"]`; no `omit` li
   0.15 paper inch from every drawn item, at text height 1, 0.8 or 0.65 x the style's, dropping legend lines from the end
   until it fits (last resort: the frame's top left). The default export is unchanged; `review` with no acknowledged
   warning stamps `0 ACKNOWLEDGED WARNINGS`.
+
+### 25.5 alpha.5: check and CLI papercuts (#19, from the MASS details dogfood run)
+**Checks.**
+- `W_NEAR_MISS` compares array instances one by one (instances of one component never pair) and treats a gap as closed
+  when any other drawn prism (a subfloor panel, a hanger seat, another instance) overlaps the gap rectangle in plan and z.
+  Members side by side across x whose long faces see the gap (both narrower along x than across: studs @ 16" o.c. next
+  to a jack stud) leave framing spaces, so a gap of 1" or more between them is not a near miss; a smaller one warns
+  "`a` and `b` run parallel with a <gap> gap along x ... between their long faces" with a move fix. Stacked members (a gap
+  along y) bear on each other and warn at any gap of 1/32"–3" with the move fix (a length change would not close it).
+- `W_FLOATING`: concrete and masonry pieces (role masonry or grout) facing each other across less than 1" (a construction,
+  control or keyed joint) touch. A component with `array` whose instances partly touch nothing names those instances
+  (`id#k`, with their z range) and the fix (an array starts at instance 0; for n instances centered on c, z = c − (n−1)·spacing/2).
+- `W_CROP_STALE` (§21): an apply warns for an existing member only when it moved or resized the member out of a crop it
+  sat in; a member the crop cuts on purpose (break lines) stays quiet while ≥ 10% of it is inside a view. New members and
+  `kerf check` warn when < 10% is inside every view's crop.
+- Keyed notes (§24): a note with a shared key and no `text` takes the key note's text **and**, unless it has its own,
+  its `cite`. A conflict names the differing field: `... shares key k and its text with note 'n1' but its "cite" differs (it
+  reads "...", 'n1' reads "...")` (path `.../cite`), or `... but its "text" differs ("A" vs "B")` (path `.../text`).
+- `W_COVER` ends with `(cover.<face>)`, `(cover.<face>, default)` or `(cover.parts.<part>.<face>)`. Its fix gives the
+  measured clear cover (down to 1/16") and the full `update` op that sets that face on the override that applies (the part
+  zone holding the bar, else the host), keeping every other value. A host using the default cover whose depth cannot hold
+  bottom + top + a bar says so and suggests its own cover (slab on grade with mid-depth bars: `{"bottom":1.5,"top":1.5}`).
+  The default stays `{bottom:3, sides:3, top:1.5}` for every concrete shape; the catalog says to give slabs their own.
+- `anchor_bolt`: `W_BOLT_EDGE` when the straight shaft, over the deeper 60% of its length inside concrete/masonry (so a
+  grout bed or topping at the top does not count), is less than 1 1/2" clear of the host edge, measured perpendicular to
+  the shaft in the drawing plane (ACI 318-19 17.9.2, cover per 20.5.1.3); one warning per component, at the worst point.
+  `W_BOLT_SPACING` when two anchor shafts (other components or instances) are closer than 4d center to center (6d when
+  either is `wedge` or `screw`), combining the in-plane distance between shafts and the z distance; one warning per pair.
+  Both acknowledge like other warnings (a product ESR may allow less).
+- `W_VIEW_FIT` on a section view with an auto crop adds what sets the crop: when the components split into groups along x
+  or y (over 2'-0" of empty space), the ones outside the main group (the group the view's annotations name most, then the
+  largest) with the first fix `{"op":"update","path":"views/<id>","value":{"omit":[<current omit>, <them>]}}`; else the
+  components at each crop edge.
+- `weld` takes `length` and `pitch` (positive lengths; `pitch` needs `length` and ≥ it, else `E_PARAM`), printed right of
+  the symbol as `L` or `L-P` in inches (AWS A2.4). `members` that is not two component ids, names an unknown id, or names
+  a non-steel component warns `W_PARAM` (path `.../members`).
+
+**Drawing and sheet.**
+- Title block values: one line at 1/8", shrunk to the cell width; when that would go below 3/4 of the height, two lines
+  split at the space that balances them (each at most (title block height − 0.22 − 0.8·label height)/2.5 high) if larger.
+  Never wider than the cell.
+- Note and list wrapping keeps one value together: a whole number and its fraction (`1 1/2"`), `@` and the spacing after
+  it, and a dimension (a word with a digit ending in `"` or `'`) and its qualifier (`MIN. MAX. O.C. TYP. CLR. EA. EMBED.
+  LAP`, case-insensitive); a joined piece longer than a line breaks at its spaces.
+- Labels: `align` and newlines (§16).
+- A dimension whose line is shorter than 2 tick lengths (paper) draws dot terminators (radius 0.02" paper, at most 0.3 x
+  the line) on a dimension line run 2 tick lengths past both extension lines, instead of overlapping ticks.
+- Text over hatch: hatch lines are already knocked out under note, dimension and label text (§18); no separate mask.
+
+**Docs and CLI.**
+- Lumber sizes: §5.1 (3x and 8x listed; 8x is 7 1/2" thick). `run:"z"` lumber takes `length` (§5.1, like steel section).
+- `kerf schema view` lists `3/16"=1'-0"` and `1/8"=1'-0"` (any `<paper>"=1'-0"` parses); auto scale picks from 3"…1/4".
+- `cut_z`: members wholly in front of it (z0 ≥ cut_z) are not drawn, behind it are beyond outlines; a section used as an
+  elevation needs `cut_z` in front of every member it shows.
+- `array`: a numeric `z` places instance 0; it does not center the group.
+- `kerf version` adds `"build"`: `git describe --tags --always --dirty` of the source tree at build time (`KERF_BUILD`
+  overrides; `unknown` outside a checkout). The core API `version` is unchanged (exports never carry it).

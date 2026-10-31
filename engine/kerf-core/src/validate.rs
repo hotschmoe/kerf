@@ -8,7 +8,7 @@ use crate::geom::{self, Loc, Pt, V2, Xf};
 use crate::json::Value;
 use crate::limits;
 use crate::math;
-use crate::model::{Cover, Diag, Diags, HostInfo, Kind, Level, Prism};
+use crate::model::{self, Cover, Diag, Diags, HostInfo, Kind, Level, Prism};
 use crate::scene::{Comp, Scene, State, join_ids};
 use crate::style::Role;
 use crate::units::{self, fmt_ft_in};
@@ -243,6 +243,10 @@ fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
     }
 }
 
+/// Concrete and masonry pieces facing each other across less than this (a construction, control or keyed joint) are
+/// not floating.
+const JOINT_GAP: f64 = 1.0;
+
 fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
     let gap = 1.0 / 32.0;
     let n_comps = s.comps.iter().filter(|c| !c.dashed).count();
@@ -253,14 +257,51 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
         if c.dashed {
             continue;
         }
-        let touches = s.items.iter().filter(|p| p.comp.index == c.index).any(|p| {
+        let touching_in = |p: &&&Pf<'_>, any_instance: bool| {
             s.items.iter().any(|q| {
-                q.comp.index != c.index
+                let reach = if p.prism.role.is_masonry() && q.prism.role.is_masonry() { JOINT_GAP - 1e-9 } else { gap };
+                let other = q.comp.index != c.index || (any_instance && q.prism.instance != p.prism.instance);
+                other
                     && z_gap(p.prism, q.prism) <= gap
-                    && p.box_.expand(gap).overlaps(q.box_, 0.0)
-                    && region_dist(&p.flat, &q.flat, gap) <= gap
+                    && p.box_.expand(reach).overlaps(q.box_, 0.0)
+                    && region_dist(&p.flat, &q.flat, reach) <= reach
             })
-        });
+        };
+        let touching = |p: &&&Pf<'_>| touching_in(p, false);
+        let mine: Vec<&&Pf<'_>> = s.items.iter().filter(|p| p.comp.index == c.index).collect();
+        let touches = mine.iter().any(touching);
+        if touches && c.arr_count > 1 {
+            let mut loose: Vec<u32> = Vec::new();
+            for p in &mine {
+                if !loose.contains(&p.prism.instance)
+                    && !mine.iter().filter(|q| q.prism.instance == p.prism.instance).any(|q| touching_in(q, true))
+                {
+                    loose.push(p.prism.instance);
+                }
+            }
+            if !loose.is_empty() {
+                loose.sort_unstable();
+                let ids: Vec<String> = loose.iter().map(|k| format!("{}#{k}", c.id)).collect();
+                let zs: Vec<String> = loose
+                    .iter()
+                    .filter_map(|k| mine.iter().find(|p| p.prism.instance == *k))
+                    .map(|p| format!("{}..{}", fmt_ft_in(p.prism.z0), fmt_ft_in(p.prism.z1)))
+                    .collect();
+                diags.add_fix(
+                    Level::Warning,
+                    "W_FLOATING",
+                    Some(&c.id),
+                    None,
+                    format!(
+                        "array instance(s) {} of '{}' touch nothing (z {}) while instance 0 or others do; the array runs past the members it should sit on",
+                        join_ids(&ids),
+                        c.id,
+                        zs.join(", ")
+                    ),
+                    "an array starts at instance 0 (where `at` and `z` put it) and steps by spacing: lower array.count, or for n instances centered on z = c set \"z\" to c - (n-1)*spacing/2".to_string(),
+                );
+            }
+        }
         if !touches {
             diags.add_fix(
                 Level::Warning,
@@ -345,13 +386,47 @@ fn host_edges(outline: &[Pt], xf: &Xf) -> Vec<Edge> {
     out
 }
 
-fn cover_for(h: &HostInfo, zones_world: &[ZoneBox<'_>], c: V2) -> Cover {
+/// The cover required at `c` and the part zone it comes from: the first part override whose zone holds `c`, else the
+/// host's cover with the first zone that holds `c` (the part a `cover.parts.<part>` override would apply to).
+fn cover_for<'z>(h: &HostInfo, zones_world: &[ZoneBox<'z>], c: V2) -> (Cover, Option<&'z str>) {
     for pc in &h.part_cover {
-        if zones_world.iter().any(|z| z.name == pc.part && z.box_.contains(c)) {
-            return pc.cover;
+        if let Some(z) = zones_world.iter().find(|z| z.name == pc.part && z.box_.contains(c)) {
+            return (pc.cover, Some(z.name));
         }
     }
-    h.cover
+    (h.cover, zones_world.iter().find(|z| z.box_.contains(c)).map(|z| z.name))
+}
+
+fn cover_json(c: Cover, face: Option<usize>, value: f64) -> String {
+    let mut v = [c.bottom, c.top, c.sides];
+    if let Some(k) = face {
+        v[k] = value;
+    }
+    format!(
+        "\"bottom\": {}, \"top\": {}, \"sides\": {}",
+        model::num_text(v[0]),
+        model::num_text(v[1]),
+        model::num_text(v[2])
+    )
+}
+
+/// The op that lowers one face (0 bottom, 1 top, 2 sides) of a host's required cover to `value` and keeps the rest:
+/// on `part`'s override when the bar sits in a part zone, else on the host's own cover.
+fn cover_op(host_id: &str, h: &HostInfo, part: Option<&str>, face: usize, value: f64) -> String {
+    let base = cover_json(h.cover, if part.is_none() { Some(face) } else { None }, value);
+    let mut parts: Vec<String> = h
+        .part_cover
+        .iter()
+        .map(|pc| {
+            let f = if part == Some(pc.part.as_str()) { Some(face) } else { None };
+            format!("\"{}\": {{{}}}", pc.part, cover_json(pc.cover, f, value))
+        })
+        .collect();
+    if let Some(p) = part.filter(|p| !h.part_cover.iter().any(|pc| pc.part == *p)) {
+        parts.push(format!("\"{p}\": {{{}}}", cover_json(h.cover, Some(face), value)));
+    }
+    let parts = if parts.is_empty() { String::new() } else { format!(", \"parts\": {{{}}}", parts.join(", ")) };
+    format!("{{\"op\": \"update\", \"path\": \"components/{host_id}\", \"value\": {{\"cover\": {{{base}{parts}}}}}}}")
 }
 
 struct Piece {
@@ -496,7 +571,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     let edges = host_edges(&host.outline, xf);
                     let zw: Vec<ZoneBox<'_>> =
                         h.built.zones.iter().map(|z| ZoneBox { name: &z.name, box_: world_box(xf, z.box_) }).collect();
-                    let req = cover_for(host, &zw, centre);
+                    let (req, part) = cover_for(host, &zw, centre);
                     let mut min_clear = [f64::INFINITY; 3];
                     let mut min_piece = [0usize; 3];
                     for e in &edges {
@@ -535,12 +610,38 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     }
                     let reqs = [req.bottom, req.top, req.sides];
                     let names = ["bottom", "top", "sides"];
+                    let depth = geom::loop_box(&host.outline).height();
                     for k in 0..3 {
                         if min_clear[k] < reqs[k] - 1e-3 {
-                            let fix = "move the bar inward (increase place.cover / side_cover or the offset) or lower the host's cover requirement".to_string();
+                            let actual = (math::floor(min_clear[k].max(0.0) * 16.0 + 1e-6) / 16.0).max(0.0);
+                            let knob = match part {
+                                Some(p) => format!("cover.parts.{p}.{}", names[k]),
+                                None => format!("cover.{}", names[k]),
+                            };
+                            let mut fix = format!(
+                                "move the bar inward (increase place.cover / side_cover or the offset), or if {} is the intended cover set {knob} of '{}' to {}: {}",
+                                fmt_ft_in(actual),
+                                h.id,
+                                model::num_text(actual),
+                                cover_op(&h.id, host, part, k, actual)
+                            );
+                            if !host.cover_set && req.bottom + req.top + 2.0 * r > depth + 1e-6 {
+                                fix.push_str(&format!(
+                                    "; '{}' uses the default cover (bottom {}, top {}, sides {}), which no bar fits in its {} depth: give it its own \"cover\" (slab on grade with mid-depth bars, e.g. {{\"bottom\": 1.5, \"top\": 1.5}})",
+                                    h.id,
+                                    fmt_ft_in(req.bottom),
+                                    fmt_ft_in(req.top),
+                                    fmt_ft_in(req.sides),
+                                    fmt_ft_in(depth)
+                                ));
+                            }
+                            let src = match part.filter(|p| host.part_cover.iter().any(|pc| pc.part == *p)) {
+                                Some(p) => format!("cover.parts.{p}.{}", names[k]),
+                                None => format!("cover.{}{}", names[k], if host.cover_set { "" } else { ", default" }),
+                            };
                             let message = if !pieces.is_empty() {
                                 format!(
-                                    "clear cover from {}, {}, to the {} of '{}' is {} < required {}",
+                                    "clear cover from {}, {}, to the {} of '{}' is {} < required {} ({src})",
                                     bar.built.info,
                                     piece_text(&pieces, min_piece[k]),
                                     names[k],
@@ -550,7 +651,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                                 )
                             } else {
                                 format!(
-                                    "clear cover from {} bar to the {} of '{}' is {} < required {}; bar center at x {}, y {}",
+                                    "clear cover from {} bar to the {} of '{}' is {} < required {} ({src}); bar center at x {}, y {}",
                                     bar.built.info,
                                     names[k],
                                     h.id,
@@ -686,13 +787,19 @@ fn unverified_count(doc: &Value, diags: &Diags) {
     }
 }
 
+/// One instance of a component (an `array` copy is its own box: o.c. framing is spaced, not short).
 #[derive(Clone, Copy)]
 struct CompBox<'a> {
     c: &'a Comp<'a>,
+    instance: u32,
     box_: geom::Box,
     z0: f64,
     z1: f64,
 }
+
+/// Members side by side across x (both see the gap with a long face: studs at 16" o.c. next to a jack stud, a post
+/// beside a stud) leave framing spaces at this gap and more. Stacked members (a gap along y) bear on each other.
+const SIDE_BY_SIDE_GAP: f64 = 1.0;
 
 fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut boxes: Vec<CompBox<'_>> = Vec::new();
@@ -700,29 +807,39 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
         if !c.ty.traits.near_miss || !axis_aligned(c) {
             continue;
         }
-        let mut b = geom::Box::default();
-        let mut z0 = f64::INFINITY;
-        let mut z1 = f64::NEG_INFINITY;
+        let first = boxes.len();
         for p in &c.world {
             if p.kind == Kind::Ghost {
                 continue;
             }
+            let mut b = geom::Box::default();
             for l in &p.loops {
                 b.add_box(geom::loop_box(l));
             }
-            z0 = z0.min(p.z0);
-            z1 = z1.max(p.z1);
+            if b.is_empty() {
+                continue;
+            }
+            match boxes[first..].iter_mut().find(|cb| cb.instance == p.instance) {
+                Some(cb) => {
+                    cb.box_.add_box(b);
+                    cb.z0 = cb.z0.min(p.z0);
+                    cb.z1 = cb.z1.max(p.z1);
+                }
+                None => boxes.push(CompBox { c, instance: p.instance, box_: b, z0: p.z0, z1: p.z1 }),
+            }
         }
-        if b.is_empty() {
-            continue;
-        }
-        boxes.push(CompBox { c, box_: b, z0, z1 });
     }
+    let mut reported: Vec<[u32; 3]> = Vec::new();
     let min_gap = 1.0 / 32.0;
     let max_gap = 3.0;
     for (i, &ca) in boxes.iter().enumerate() {
         for &cb in &boxes[i + 1..] {
-            if ca.z1.min(cb.z1) - ca.z0.max(cb.z0) <= 1e-6 {
+            if ca.c.index == cb.c.index {
+                continue;
+            }
+            let zlo = ca.z0.max(cb.z0);
+            let zhi = ca.z1.min(cb.z1);
+            if zhi - zlo <= 1e-6 {
                 continue;
             }
             for on_x in [false, true] {
@@ -738,11 +855,15 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                 let g1 = a0.max(b0);
                 let lo = o0.max(q0);
                 let hi = o1.min(q1);
-                let blocked = boxes.iter().any(|cc| {
-                    if cc.c.index == ca.c.index || cc.c.index == cb.c.index {
+                let blocked = s.items.iter().any(|it| {
+                    let own = |b: &CompBox<'_>| it.comp.index == b.c.index && it.prism.instance == b.instance;
+                    if own(&ca) || own(&cb) || it.comp.dashed {
                         return false;
                     }
-                    let [c0, c1, d0, d1] = sel(cc.box_);
+                    if it.prism.z1.min(zhi) - it.prism.z0.max(zlo) <= 1e-6 {
+                        return false;
+                    }
+                    let [c0, c1, d0, d1] = sel(it.box_);
                     c1.min(g1) - c0.max(g0) > 1e-6 && d1.min(hi) - d0.max(lo) > 1e-6
                 });
                 if blocked {
@@ -752,9 +873,18 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                 let b_len = b1 - b0;
                 let a_across = o1 - o0;
                 let b_across = q1 - q0;
+                let side_by_side = a_len < a_across && b_len < b_across;
+                if side_by_side && on_x && gap >= SIDE_BY_SIDE_GAP - 1e-9 {
+                    continue;
+                }
+                let key = [ca.c.index.min(cb.c.index), ca.c.index.max(cb.c.index), u32::from(on_x)];
+                if reported.contains(&key) {
+                    continue;
+                }
+                reported.push(key);
                 let (grow, other) =
                     if b_len / b_across.max(1e-9) > a_len / a_across.max(1e-9) { (cb, ca) } else { (ca, cb) };
-                let grow_is_a = grow.c.index == ca.c.index;
+                let grow_is_a = grow.c.index == ca.c.index && grow.instance == ca.instance;
                 let grow_len = if grow_is_a { a_len } else { b_len };
                 let grow_below_other = if grow_is_a { a1 <= b0 } else { b1 <= a0 };
                 let edge_name = if on_x {
@@ -771,6 +901,38 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
                 } else {
                     "top_left"
                 };
+                if side_by_side {
+                    let toward = if on_x {
+                        if grow_below_other { "right" } else { "left" }
+                    } else if grow_below_other {
+                        "up"
+                    } else {
+                        "down"
+                    };
+                    diags.add_fix(
+                        Level::Warning,
+                        "W_NEAR_MISS",
+                        Some(&grow.c.id),
+                        None,
+                        format!(
+                            "'{}' and '{}' run parallel with a {} gap along {} ({}..{}) between their long faces; they probably should bear on each other",
+                            grow.c.id,
+                            other.c.id,
+                            fmt_ft_in(gap),
+                            if on_x { "x" } else { "y" },
+                            fmt_ft_in(g0),
+                            fmt_ft_in(g1),
+                        ),
+                        format!(
+                            "move '{}' {} {} (its `at` offset) or place it against '{}' with an anchor Ref; ignore this warning if the gap is intended",
+                            grow.c.id,
+                            fmt_ft_in(gap),
+                            toward,
+                            other.c.id
+                        ),
+                    );
+                    continue;
+                }
                 diags.add_fix(
                     Level::Warning,
                     "W_NEAR_MISS",

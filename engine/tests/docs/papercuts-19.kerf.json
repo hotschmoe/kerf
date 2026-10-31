@@ -1,0 +1,165 @@
+{
+  "kerf": "0.1",
+  "id": "papercuts-19",
+  "title": "SLAB JOINT, 3X SILL AND STEEL POST WELDED TO EMBED PLATE",
+  "meta": {
+    "jurisdiction": {
+      "code": "IBC",
+      "edition": 2021
+    }
+  },
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "slab_l",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, 0]
+      },
+      "shape": "rect",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "width": 30,
+      "height": 6
+    },
+    {
+      "id": "slab_r",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "slab_l@bottom_right",
+          "offset": [0.5, 0]
+        }
+      },
+      "shape": "rect",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "width": 30,
+      "height": 6
+    },
+    {
+      "id": "sill",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "slab_r@top_right"
+      },
+      "size": "3x8",
+      "orient": "flat",
+      "treated": true
+    },
+    {
+      "id": "blocking",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "sill@top_right"
+      },
+      "size": "2x6",
+      "length": 14.5
+    },
+    {
+      "id": "plate",
+      "type": "steel",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "slab_l@top_left",
+          "offset": [10, 0]
+        }
+      },
+      "shape": "PL1/2x8",
+      "length": 8
+    },
+    {
+      "id": "post",
+      "type": "steel",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "plate@face_top"
+      },
+      "shape": "HSS4x4x1/4",
+      "orient": "elevation",
+      "run": "y",
+      "length": 18
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "number": "1",
+      "title": "SLAB JOINT, 3X SILL AND STEEL POST WELDED TO EMBED PLATE",
+      "scale": "1\"=1'-0\"",
+      "cut_z": 0,
+      "notes_side": "right",
+      "annotations": [
+        {
+          "id": "n_sill",
+          "type": "note",
+          "text": "3X8 PT SILL",
+          "target": "sill"
+        },
+        {
+          "id": "n_blk",
+          "type": "note",
+          "text": "2X6 BLOCKING, 14 1/2\" LONG",
+          "target": "blocking"
+        },
+        {
+          "id": "d_joint",
+          "type": "dim",
+          "from": "slab_l@top_right",
+          "to": "slab_r@top_left",
+          "dir": "h",
+          "offset": 3
+        },
+        {
+          "id": "l_joint",
+          "type": "label",
+          "text": "1/2\" JOINT\nFULL DEPTH",
+          "at": "slab_l@bottom_right",
+          "offset": [-2, -4],
+          "align": "right"
+        },
+        {
+          "id": "l_slab",
+          "type": "label",
+          "text": "SLAB",
+          "at": "slab_r@bottom_left",
+          "offset": [2, 3],
+          "align": "left"
+        },
+        {
+          "id": "w_post",
+          "type": "weld",
+          "at": "post@bottom_left",
+          "offset": [-6, 10],
+          "size": "3/16",
+          "length": 2,
+          "pitch": 6,
+          "tail": "EA. SIDE",
+          "members": [
+            "post",
+            "plate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "iso",
+      "number": "2",
+      "title": "SILL AND BLOCKING",
+      "annotations": []
+    }
+  ]
+}

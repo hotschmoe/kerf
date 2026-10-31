@@ -71,9 +71,32 @@ impl Ctx<'_> {
     }
 }
 
-fn fit_h(font: &Font, s: &str, h: f64, maxw: f64) -> f64 {
+/// A title block value in its cell: one line at `h`, shrunk to the cell width; when that would go below 3/4 of `h`, two
+/// lines split at the space that balances them (at most `two_h` high each) if they come out larger. Never wider than
+/// `maxw`.
+fn fit_cell(font: &Font, s: &str, h: f64, maxw: f64, two_h: f64) -> (Vec<String>, f64) {
     let w = font.width(s, h);
-    if w <= maxw { h } else { (h * maxw / w).max(h * 0.6) }
+    if w <= maxw {
+        return (alloc::vec![String::from(s)], h);
+    }
+    let one = h * maxw / w;
+    if one >= 0.75 * h {
+        return (alloc::vec![String::from(s)], one);
+    }
+    let mut best: Option<(usize, f64)> = None;
+    for (k, _) in s.match_indices(' ') {
+        let wide = font.width(&s[..k], h).max(font.width(&s[k + 1..], h));
+        if best.is_none_or(|(_, bw)| wide < bw) {
+            best = Some((k, wide));
+        }
+    }
+    if let Some((k, wide)) = best {
+        let two = (h * maxw / wide).min(h).min(two_h);
+        if two > one {
+            return (alloc::vec![String::from(&s[..k]), String::from(&s[k + 1..])], two);
+        }
+    }
+    (alloc::vec![String::from(s)], one)
 }
 
 fn upper(s: &str, st: &Style) -> String {
@@ -131,8 +154,14 @@ pub fn with_sheet<'a>(d: Drawing<'a>, font: &Font) -> Drawing<'a> {
             c.path(Pen::Title, &[[x, m], [x, m + tbh]], false);
         }
         c.text(Pen::Anno, labels[i], x + 0.06, m + tbh - 0.06 - lh * 0.8, lh * 0.8);
-        let vh = fit_h(font, &values[i], 0.125, cw - 0.14);
-        c.text(Pen::Title, &values[i], x + 0.07, m + 0.2, vh);
+        let two_h = (tbh - 0.22 - lh * 0.8) / 2.5;
+        let (lines, vh) = fit_cell(font, &values[i], 0.125, cw - 0.14, two_h);
+        if let [a, b] = lines.as_slice() {
+            c.text(Pen::Title, a, x + 0.07, m + 0.1 + 1.5 * vh, vh);
+            c.text(Pen::Title, b, x + 0.07, m + 0.1, vh);
+        } else {
+            c.text(Pen::Title, &values[i], x + 0.07, m + 0.2, vh);
+        }
         x += cw;
     }
     let fy = m * 0.42;

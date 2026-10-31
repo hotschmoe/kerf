@@ -118,14 +118,14 @@ pub static VIEW: Object = Object {
         Field {
             name: "scale",
             ty: "string",
-            desc: "section: 3\"=1'-0\" | 1-1/2\"=1'-0\" | 1\"=1'-0\" | 3/4\"=1'-0\" | 1/2\"=1'-0\" | 3/8\"=1'-0\" | 1/4\"=1'-0\" | \"1:N\"; iso: \"NTS\". When omitted the engine picks the largest standard scale at which the view + notes + title fit the frame",
+            desc: "section: 3\"=1'-0\" | 1-1/2\"=1'-0\" | 1\"=1'-0\" | 3/4\"=1'-0\" | 1/2\"=1'-0\" | 3/8\"=1'-0\" | 1/4\"=1'-0\" | 3/16\"=1'-0\" | 1/8\"=1'-0\" (any <paper>\"=1'-0\") | \"1:N\"; iso: \"NTS\". When omitted the engine picks the largest of 3\"..1/4\"=1'-0\" at which the view + notes + title fit the frame",
             ..Field::NONE
         },
         Field {
             name: "cut_z",
             ty: "length",
             def: "0",
-            desc: "section: z of the cut plane; members whose z range contains it are cut (hatched/marked), others are beyond or hidden. Also the default z of in-plane members and anchor bolts",
+            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn. A section used as an elevation therefore needs cut_z in front of (greater than) every member to show. Also the default z of in-plane members and anchor bolts",
             ..Field::NONE
         },
         Field {
@@ -235,7 +235,7 @@ pub static NOTE: Object = Object {
         Field {
             name: "key",
             ty: "integer",
-            desc: "keyed views: the note's number in the DETAIL NOTES list (1-999; keeps numbers stable across edits). Notes with the same key share one entry and each draws its tag. Unkeyed notes take the lowest free numbers in note order",
+            desc: "keyed views: the note's number in the DETAIL NOTES list (1-999; keeps numbers stable across edits). Notes with the same key share one entry and each draws its tag; a repeat may omit `text` (it then also takes the first one's `cite`). Unkeyed notes take the lowest free numbers in note order",
             ..Field::NONE
         },
         Field {
@@ -298,12 +298,18 @@ pub static LABEL: Object = Object {
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"label\"", required: true, desc: "annotation type", ..Field::NONE },
-        Field { name: "text", ty: "string", required: true, desc: "UPPERCASE text", ..Field::NONE },
+        Field {
+            name: "text",
+            ty: "string",
+            required: true,
+            desc: "UPPERCASE text; a newline (\"\\n\" in JSON) starts a new line",
+            ..Field::NONE
+        },
         Field {
             name: "at",
             ty: "point",
             required: true,
-            desc: "\"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y]",
+            desc: "\"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y]. The text block is centered vertically on it",
             ..Field::NONE
         },
         Field { name: "offset", ty: "[dx, dy]", def: "[0, 0]", desc: "model inches added to `at`", ..Field::NONE },
@@ -312,6 +318,13 @@ pub static LABEL: Object = Object {
             ty: "bool",
             def: "false",
             desc: "true: never moved off a note leader (a leader through it then warns W_LEADER_HIT). Without it a label on a leader moves up to 6 text heights and I_ANNOT_MOVED says where",
+            ..Field::NONE
+        },
+        Field {
+            name: "align",
+            ty: "left|center|right",
+            def: "center",
+            desc: "which part of each line sits on `at`: its start (left), middle or end (right)",
             ..Field::NONE
         },
     ],
@@ -354,6 +367,18 @@ pub static WELD: Object = Object {
             ..Field::NONE
         },
         Field {
+            name: "length",
+            ty: "length",
+            desc: "weld length, printed right of the symbol (AWS A2.4), e.g. 2 for \"3/16 x 2\\\" EA. END\" (the EA. END goes in `tail`). Omitted: continuous",
+            ..Field::NONE
+        },
+        Field {
+            name: "pitch",
+            ty: "length",
+            desc: "intermittent weld: center-to-center spacing of the segments, printed as length-pitch (e.g. length 2, pitch 12 prints 2-12); needs `length`",
+            ..Field::NONE
+        },
+        Field {
             name: "sides",
             ty: "arrow|other|both",
             def: "arrow",
@@ -377,7 +402,7 @@ pub static WELD: Object = Object {
         Field {
             name: "members",
             ty: "[id, id]",
-            desc: "the two steel components joined; W_WELD_SIZE then checks a fillet against the thinner part (AISC 360 J2.2b: at most t, or t - 1/16 when t >= 1/4; at least Table J2.4)",
+            desc: "the two steel components joined; W_WELD_SIZE then checks a fillet against the thinner part (AISC 360 J2.2b: at most t, or t - 1/16 when t >= 1/4; at least Table J2.4). An entry that is not a steel component warns (W_PARAM)",
             ..Field::NONE
         },
     ],
@@ -464,7 +489,7 @@ pub static AT: Object = Object {
 pub static ARRAY: Object = Object {
     name: "array",
     brief: "repeat a component",
-    summary: "Repeat a component (`array`): instance k is translated by k*spacing. Instances are id#0..id#n-1; a ref to `id` means instance 0, `id#k@anchor` addresses instance k.",
+    summary: "Repeat a component (`array`): instance k is translated by k*spacing from instance 0, which sits where `at` and `z` put it (a numeric `z` places instance 0, it does not center the group). Instances are id#0..id#n-1; a ref to `id` means instance 0, `id#k@anchor` addresses instance k.",
     fields: &[
         Field {
             name: "axis",

@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"truss-bearing-cmu","view":"B","kind":"iso","scale":12.5,"bounds":[-38.1592,-40.8125,60.858,40.0018],
+{"kerf_drawing":"0.1","doc":"truss-bearing-cmu","view":"B","kind":"iso","scale":12.5,"bounds":[-38.1592,-40.8125,60.7464,40.0018],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-PATT","lineweight_mm":0.09},{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -177,8 +177,8 @@
 {"t":"region","src":"fascia","part":null,"instance":0,"cut":true,"loops":[[[-17.3746,-12.8419],[-16.7251,-12.4669],[-16.7251,-6.9669],[-17.3746,-7.3419]]]},
 {"t":"region","src":"soffit","part":null,"instance":0,"cut":true,"loops":[[[-16.7251,-12.8419],[0,-3.1857],[0,-2.8107],[-16.7251,-12.4669]]]},
 {"t":"region","src":"ceiling","part":null,"instance":0,"cut":true,"loops":[[[6.6034,4.8125],[25.9808,16],[25.9808,16.5],[6.6034,5.3125]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_truss","s":"PRE-ENGINEERED WOOD TRUSS @","x":30.6683,"y":17.8368,"h":1.1719,"rot":0,"align":"left","valign":"baseline"},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_truss","s":"24\" O.C.","x":30.6683,"y":15.9618,"h":1.1719,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_truss","s":"PRE-ENGINEERED WOOD TRUSS","x":30.6683,"y":17.8368,"h":1.1719,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_truss","s":"@ 24\" O.C.","x":30.6683,"y":15.9618,"h":1.1719,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_truss","closed":false,"pts":[[30.1683,17.4853],[28.6058,17.4853],[-3.2936,17.4853]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_truss","loops":[[[-4.4654,17.4853],[-3.2936,17.0947],[-3.2936,17.8759]]]},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_block","s":"2X6 BIRD BLOCKING","x":30.6683,"y":4.1328,"h":1.1719,"rot":0,"align":"left","valign":"baseline"},
