@@ -64,7 +64,9 @@ fn auto_place(env: &mut Env, at: V2, rad: f64) -> V2 {
             }
             !r.iter().any(|l| {
                 crate::geom::point_in_loop_eo(c, l)
-                    || l.iter().enumerate().any(|(k, &a)| crate::geom::dist_point_seg(c, a, l[(k + 1) % l.len()]) < reach)
+                    || l.iter()
+                        .enumerate()
+                        .any(|(k, &a)| crate::geom::dist_point_seg(c, a, l[(k + 1) % l.len()]) < reach)
             })
         })
     };

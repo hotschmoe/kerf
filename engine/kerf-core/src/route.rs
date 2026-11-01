@@ -1031,7 +1031,7 @@ fn route_with(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]], memb
         other_fix_at: None,
         other_fix_place: None,
     };
-    for i in 0..n {
+    for (i, nt) in notes.iter().enumerate() {
         for j in i + 1..n {
             let d = poly_poly_dist(&c.leaders[i], &c.leaders[j]);
             if c.near(d).is_some() {
@@ -1051,7 +1051,7 @@ fn route_with(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]], memb
             let d = poly_box_dist(&c.leaders[i], &o.poly);
             match o.kind {
                 ObstKind::Member => {
-                    if o.group != notes[i].group && d <= 1e-9 {
+                    if o.group != nt.group && d <= 1e-9 {
                         hits.push(mk(i, HitKind::Member, j, d));
                     }
                 }
