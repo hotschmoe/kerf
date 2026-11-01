@@ -5,10 +5,10 @@
 //! finds the joint face between the boxes, lays the nails out on it and stores them in world coordinates (`Built.nails`).
 
 use super::common::{Ctx, fmt_ft_in, fmt_num, parse_actual};
-use crate::geom::{Box, V2, Xf};
+use crate::geom::{self, Box, V2, Xf};
 use crate::json::Value;
 use crate::math;
-use crate::model::{self, Built, Level, Nail};
+use crate::model::{self, Built, Kind, Level, Nail};
 use crate::params::{ParamEnum, param_enum, params};
 use crate::scene::{self, Comp, State};
 use alloc::format;
@@ -229,6 +229,8 @@ struct Member {
     inv: Xf,
     lo: [f64; 3],
     hi: [f64; 3],
+    /// A member named `id.part`: the index of that part's body in the component's prisms.
+    part: Option<usize>,
 }
 
 fn inverse(x: &Xf) -> Xf {
@@ -237,28 +239,58 @@ fn inverse(x: &Xf) -> Xf {
     Xf { a, b, c, d, tx: -(a * x.tx + c * x.ty), ty: -(b * x.tx + d * x.ty) }
 }
 
-fn members_of(c: &Comp, only: Option<usize>) -> Vec<Member> {
-    let b = c.built.box_;
-    (0..c.xfs.len())
-        .filter(|k| only.is_none_or(|o| o == *k))
-        .filter_map(|k| {
-            let xf = c.xfs[k];
-            let z = *c.zs.get(k)?;
-            (xf.det().abs() > 1e-12).then(|| Member {
+/// The member boxes of a component: one per instance (`only`: that one). With `part`, one per body of that part (a
+/// truss's vertical web or bottom chord), each the box of its local outline and its own z range.
+fn members_of(c: &Comp, only: Option<usize>, part: Option<&str>) -> Vec<Member> {
+    let mut boxes: Vec<(Box, f64, f64, Option<usize>)> = Vec::new();
+    match part {
+        None => boxes.push((c.built.box_, 0.0, 0.0, None)),
+        Some(pn) => {
+            for (i, p) in c.built.prisms.iter().enumerate() {
+                if p.part != pn || p.kind != Kind::Body || p.loops.is_empty() {
+                    continue;
+                }
+                let mut b = Box::default();
+                for l in &p.loops {
+                    b.add_box(geom::loop_box(l));
+                }
+                boxes.push((b, p.zoff, p.zhalf, Some(i)));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for k in (0..c.xfs.len()).filter(|k| only.is_none_or(|o| o == *k)) {
+        let xf = c.xfs[k];
+        let Some(z) = c.zs.get(k).copied() else { continue };
+        if xf.det().abs() <= 1e-12 {
+            continue;
+        }
+        for &(b, zoff, zhalf, part) in &boxes {
+            let (z0, z1) = if zhalf > 0.0 || zoff != 0.0 {
+                let zc = (z[0] + z[1]) / 2.0 + zoff;
+                let half = if zhalf > 0.0 { zhalf } else { (z[1] - z[0]) / 2.0 };
+                (zc - half, zc + half)
+            } else {
+                (z[0], z[1])
+            };
+            out.push(Member {
                 comp: c.index,
                 inst: k,
                 xf,
                 inv: inverse(&xf),
-                lo: [b.x0, b.y0, z[0]],
-                hi: [b.x1, b.y1, z[1]],
-            })
-        })
-        .collect()
+                lo: [b.x0, b.y0, z0],
+                hi: [b.x1, b.y1, z1],
+                part,
+            });
+        }
+    }
+    out
 }
 
 fn member_name(scene: &scene::Scene, m: &Member) -> String {
     let Some(c) = scene.comps.get(m.comp as usize) else { return String::new() };
-    if c.xfs.len() > 1 { format!("{}#{}", c.id, m.inst) } else { c.id.clone() }
+    let part = m.part.and_then(|i| c.built.prisms.get(i)).map_or(String::new(), |p| format!(".{}", p.part));
+    if c.xfs.len() > 1 { format!("{}#{}{part}", c.id, m.inst) } else { format!("{}{part}", c.id) }
 }
 
 /// `b`'s box in `a`'s frame (the bounding box of its corners).
@@ -503,7 +535,7 @@ impl Job<'_> {
             if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
                 continue;
             }
-            let backs = members_of(c, None).iter().any(|b| {
+            let backs = members_of(c, None, None).iter().any(|b| {
                 let (lo, hi) = box_in(a, b);
                 let touches = (a.lo[k] - hi[k]).abs() <= TOL || (a.hi[k] - lo[k]).abs() <= TOL;
                 touches
@@ -529,7 +561,7 @@ impl Job<'_> {
             if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
                 return false;
             }
-            members_of(c, None).iter().any(|m| {
+            members_of(c, None, None).iter().any(|m| {
                 let (lo, hi) = box_in(a, m);
                 let near = if side > 0.0 { lo[k] } else { hi[k] };
                 (near - far).abs() <= TOL
@@ -556,7 +588,7 @@ impl Job<'_> {
             if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
                 continue;
             }
-            if members_of(c, None).iter().any(|b| {
+            if members_of(c, None, None).iter().any(|b| {
                 let (lo, hi) = box_in(a, b);
                 contact(a.lo, a.hi, lo, hi).is_some()
             }) && !out.contains(&c.id)
@@ -1303,7 +1335,7 @@ fn solid_at(job: &Job, a: &Member, p: [f64; 3]) -> Option<(String, [f64; 3], [f6
         if c.ty.ty == crate::catalog::Type::Nailing || c.embedded || c.ty.traits.hardware {
             continue;
         }
-        for m in members_of(c, None) {
+        for m in members_of(c, None, None) {
             let (lo, hi) = box_in(a, &m);
             if (0..3).all(|o| p[o] >= lo[o] - TOL && p[o] <= hi[o] + TOL) {
                 return Some((member_name(job.scene, &m), lo, hi));
@@ -1683,9 +1715,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let mut stack: Vec<u32> = Vec::new();
     for (i, v) in ids.iter().enumerate() {
         let s = v.str().unwrap_or("");
-        let (cid, inst) = match s.split_once('#') {
-            Some((c, k)) => (c, k.parse::<usize>().ok()),
+        let (head, part) = match s.split_once('.') {
+            Some((h, p)) => (h, Some(p)),
             None => (s, None),
+        };
+        let (cid, inst) = match head.split_once('#') {
+            Some((c, k)) => (c, k.parse::<usize>().ok()),
+            None => (head, None),
         };
         let path = format!("members/{i}");
         let Some(c) = scene.find(cid) else {
@@ -1718,8 +1754,27 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ctx.p.fail(&path, format!("member '{s}': write an instance as id#k with k a number, e.g. \"{cid}#0\""));
             return None;
         }
-        groups.push(members_of(c, inst));
-        panels.push(c.ty.ty == crate::catalog::Type::Panel);
+        if let Some(pn) = part
+            && !c.built.prisms.iter().any(|p| p.part == pn && p.kind == Kind::Body && !p.loops.is_empty())
+        {
+            let mut parts: Vec<&str> = Vec::new();
+            for p in c.built.prisms.iter().filter(|p| p.kind == Kind::Body && !p.part.is_empty()) {
+                if !parts.contains(&p.part.as_str()) {
+                    parts.push(&p.part);
+                }
+            }
+            let fix = parts.first().map_or(format!("name the whole member: \"{head}\""), |p| format!("e.g. \"{head}.{p}\""));
+            ctx.p.fail(
+                &path,
+                format!(
+                    "member '{s}': '{cid}' has no part '{pn}' (its parts: {}); {fix}",
+                    if parts.is_empty() { "none".to_string() } else { parts.join(", ") }
+                ),
+            );
+            return None;
+        }
+        groups.push(members_of(c, inst, part));
+        panels.push(c.ty.ty == crate::catalog::Type::Panel && part.is_none());
         if !stack.contains(&c.index) {
             stack.push(c.index);
         }
