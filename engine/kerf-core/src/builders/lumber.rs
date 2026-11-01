@@ -1,7 +1,7 @@
 //! lumber (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
 
 use super::common::{
-    Ctx, fmt_ft_in, length_or_until, material_ok, material_or, one_prism, parse_actual, parse_sawn, quad_of,
+    Ctx, fmt_ft_in, length_or_until, material_ok, material_or, one_prism, parse_actual, parse_sawn, quad_of, until_length,
 };
 use crate::geom::{Box, V2, Xf};
 use crate::model::{self, Built, Prism};
@@ -25,7 +25,7 @@ params! {
         orient: Enum(Orient) = Orient::Upright => { desc: "run z only: upright (depth vertical) or flat (depth horizontal)" },
         face: Enum(Face) = Face::Wide => { desc: "run x/y only: face seen by the viewer: wide (depth in-plane) or narrow (thickness in-plane)" },
         length: OptRaw => { def: "required for run x/y", desc: "member length (inches or ft-in string); alternative: `until`. Run z: optional, the member is then that long along z, centered on `z` when it is a number, else on the first section view's cut_z (default: spans the doc run; `\"z\": [z0, z1]` sets both ends)" },
-        until: OptRaw => { desc: "run x/y alternative to length: a Ref (or {ref, offset}); the member grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate on that axis (anchor *_left grows right, *_right left, top_* down, bottom_* up; center anchors are an error; length and until together are E_PARAM). Example jack stud: \"at\": {\"anchor\": \"top_left\", \"to\": \"beam@bottom_left\"}, \"until\": \"bottom_plate@top_left\"" },
+        until: OptRaw => { desc: "run x/y alternative to length: a Ref (or {ref, offset}); the member grows from its placement anchor along its run axis until its far end reaches the Ref's coordinate on that axis (anchor *_left grows right, *_right left, top_* down, bottom_* up; center anchors are an error; length and until together are E_PARAM). Example jack stud: \"at\": {\"anchor\": \"top_left\", \"to\": \"beam@bottom_left\"}, \"until\": \"bottom_plate@top_left\". Run z: rips the in-plane depth (bottom_* grows up, top_* down) to the Ref's y, at most the nominal depth: eave blocking \"until\": \"truss@heel_block_top\"" },
         plies: Int(u8, 1, 8) = 1 => { desc: "built-up members; plies stack along X for run z, along Z otherwise; draws ply lines" },
         treated: Bool = false => { desc: "preservative treated (material wood_treated; W_UNTREATED_CONTACT checks)" },
         blocking: Bool = false => { desc: "discontinuous member: section mark is one diagonal instead of an X" },
@@ -52,12 +52,23 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let n_plies = f64::from(lp.plies);
     let mut length = 0.0;
     let mut until_note = String::new();
+    let mut ripped = None;
     if run == Run::Z && ctx.p.has("until") {
-        ctx.p.fail(
-            "until",
-            "'until' only applies to lumber with run x or y (run z spans the document run; set 'z' instead)".into(),
-        );
-        return None;
+        let rip = until_length(ctx, "y", &mut until_note)?;
+        let full = if lp.orient == Orient::Flat { sz.t * n_plies } else { sz.d };
+        if rip > full + 1e-6 {
+            ctx.p.fail(
+                "until",
+                format!(
+                    "'until' on run z lumber rips its depth to reach the Ref: it needs {} but a {size} {} is {} deep; use a deeper size (or an anchor nearer the Ref)",
+                    fmt_ft_in(rip),
+                    lp.orient.tag(),
+                    fmt_ft_in(full)
+                ),
+            );
+            return None;
+        }
+        ripped = Some(rip);
     }
     let mut z_length = None;
     if run == Run::Z && ctx.p.has("length") {
@@ -86,7 +97,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     if run == Run::Z {
         if lp.orient != Orient::Flat {
             w = t * n_plies;
-            h = d;
+            h = ripped.unwrap_or(d);
             for k in 0..plies {
                 let x0 = k as f64 * t;
                 quads.push(quad_of(x0, 0.0, x0 + t, h));
@@ -96,10 +107,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             }
         } else {
             w = d;
-            h = t * n_plies;
+            h = ripped.unwrap_or(t * n_plies);
             for k in 0..plies {
                 let y0 = k as f64 * t;
-                quads.push(quad_of(0.0, y0, w, y0 + t));
+                if y0 >= h - 1e-9 {
+                    break;
+                }
+                quads.push(quad_of(0.0, y0, w, (y0 + t).min(h)));
                 if k > 0 {
                     ply_lines.push([V2::init(0.0, y0), V2::init(w, y0)]);
                 }
@@ -153,6 +167,9 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let pt = if treated { " PT" } else { "" };
     if run == Run::Z {
         info.push_str(&format!("{size}{pt} {} run z", lp.orient.tag()));
+        if let Some(r) = ripped {
+            info.push_str(&format!(" ripped to {}{until_note}", fmt_ft_in(r)));
+        }
         if let Some(l) = z_length {
             info.push_str(&format!(" L={}", fmt_ft_in(l)));
         }

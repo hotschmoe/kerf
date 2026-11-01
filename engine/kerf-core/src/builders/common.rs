@@ -287,15 +287,23 @@ pub fn length_or_until(ctx: &mut Ctx, run: &str, hint: &str, note: &mut String) 
     if let Some(l) = ctx.span {
         return Some(l);
     }
-    let has_len = ctx.p.has("length");
-    let Some(uv) = ctx.p.raw("until") else { return ctx.p.len_pos("length", None, hint) };
-    if has_len {
+    if ctx.p.raw("until").is_none() {
+        return ctx.p.len_pos("length", None, hint);
+    }
+    if ctx.p.has("length") {
         ctx.p.fail(
             "until",
             "give either 'length' or 'until', not both (the engine computes length from 'until')".into(),
         );
         return None;
     }
+    until_length(ctx, run, note)
+}
+
+/// The extent `until` gives along `run` ("x" or "y", turned by the placement angle): from the placement anchor to the
+/// Ref's coordinate on that axis. The caller has checked that `until` is present.
+pub fn until_length(ctx: &mut Ctx, run: &str, note: &mut String) -> Option<f64> {
+    let uv = ctx.p.raw("until")?;
     let anchor = ctx.p.raw("at").and_then(|at| at.get("anchor")).and_then(Value::str).unwrap_or("bottom_left");
     let along_x = run == "x";
     let mut dir = 0.0;
