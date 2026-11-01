@@ -954,11 +954,9 @@ fn face_pattern(job: &Job, out: &mut Out) {
             let head = (a.hi[k] - a.lo[k]).abs();
             let bn = member_name(job.scene, b);
             let (held, last, before) = match extra {
-                Some(name) => (
-                    format!("the stack '{bn}'..'{name}'"),
-                    name,
-                    last_before(job, a, k, ct.side, head_k, far, probe),
-                ),
+                Some(name) => {
+                    (format!("the stack '{bn}'..'{name}'"), name, last_before(job, a, k, ct.side, head_k, far, probe))
+                }
                 None => (format!("'{bn}'"), bn, head),
             };
             job.check_length(out, &held, &last, head, before, total);

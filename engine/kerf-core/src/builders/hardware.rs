@@ -678,7 +678,13 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
                 .iter()
                 .enumerate()
                 .filter(|(k, o)| {
-                    let near = if mz { if out < 0.0 { o.bx.x1 } else { o.bx.x0 } } else if out < 0.0 { o.z1 } else { o.z0 };
+                    let near = if mz {
+                        if out < 0.0 { o.bx.x1 } else { o.bx.x0 }
+                    } else if out < 0.0 {
+                        o.z1
+                    } else {
+                        o.z0
+                    };
                     *k != i && (near - face).abs() <= 0.0625
                 })
                 .map(|(_, o)| if mz { [o.z0, o.z1] } else { [o.bx.x0, o.bx.x1] })

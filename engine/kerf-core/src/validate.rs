@@ -555,11 +555,8 @@ fn panel_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, dia
         if t <= 1e-6 || len < 4.0 * t {
             continue;
         }
-        let faces: Vec<Vec<V2>> = edges
-            .iter()
-            .filter(|(e0, e1)| e1.sub(*e0).len() > 2.0 * t)
-            .map(|(e0, e1)| alloc::vec![*e0, *e1])
-            .collect();
+        let faces: Vec<Vec<V2>> =
+            edges.iter().filter(|(e0, e1)| e1.sub(*e0).len() > 2.0 * t).map(|(e0, e1)| alloc::vec![*e0, *e1]).collect();
         let near = |q: &&&Pf<'_>| q.comp.index != c.index && z_gap(p.prism, q.prism) <= gap;
         let others: Vec<&&Pf<'_>> = s.items.iter().chain(&s.hidden).filter(near).collect();
         if others.iter().any(|q| contact_len(&faces, &q.flat, gap) > 1e-3) {

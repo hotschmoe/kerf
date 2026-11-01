@@ -117,8 +117,17 @@ struct Leg {
 /// framing a leg can be nailed to.
 fn solid_at(ctx: &Ctx, pt: V2, z: f64, skip: &[(u32, u32)]) -> Option<(String, bool)> {
     use crate::catalog::Type;
+    let views = |v: Option<&Value>| -> Option<Vec<String>> {
+        v.and_then(Value::arr).map(|a| a.iter().filter_map(Value::str).map(String::from).collect())
+    };
+    let mine = views(ctx.p.raw("views"));
     for c in &ctx.scene.comps {
         if c.state != crate::scene::State::Ok || c.id == ctx.p.id || c.ty.traits.hardware {
+            continue;
+        }
+        if let (Some(a), Some(b)) = (&mine, views(c.node.get("views")))
+            && !a.iter().any(|v| b.contains(v))
+        {
             continue;
         }
         for pr in c.world.iter().filter(|pr| pr.kind == model::Kind::Body && !pr.embedded) {
@@ -138,7 +147,15 @@ fn solid_at(ctx: &Ctx, pt: V2, z: f64, skip: &[(u32, u32)]) -> Option<(String, b
 /// W_TIE_LEG: a leg longer than its member is deep along the leg runs past the member's far face onto something that is
 /// not framing (concrete, masonry, nothing). The fix shortens it to the member and gives the rest to the other leg when
 /// that member has room.
-fn long_legs(ctx: &Ctx, j: &Joint, p: &Member, q: &Member, legs: &[Leg], order: [usize; 2], len: [f64; 2]) -> Vec<model::Diag> {
+fn long_legs(
+    ctx: &Ctx,
+    j: &Joint,
+    p: &Member,
+    q: &Member,
+    legs: &[Leg],
+    order: [usize; 2],
+    len: [f64; 2],
+) -> Vec<model::Diag> {
     let mut out = Vec::new();
     let skip: Vec<(u32, u32)> = p.parts.iter().chain(&q.parts).copied().collect();
     let depth = |leg: &Leg| -> Option<f64> {
@@ -146,7 +163,9 @@ fn long_legs(ctx: &Ctx, j: &Joint, p: &Member, q: &Member, legs: &[Leg], order: 
         let (lo, hi) = extent_at(m, j.horiz, leg.l)?;
         Some(if leg.low { j.c - lo } else { hi - j.c })
     };
-    let room = |low: bool| legs.iter().filter(|g| g.low == low).filter_map(|g| depth(g).map(|d| d - g.len)).fold(f64::INFINITY, f64::min);
+    let room = |low: bool| {
+        legs.iter().filter(|g| g.low == low).filter_map(|g| depth(g).map(|d| d - g.len)).fold(f64::INFINITY, f64::min)
+    };
     for leg in legs {
         let Some(d) = depth(leg) else { continue };
         let over = leg.len - d;

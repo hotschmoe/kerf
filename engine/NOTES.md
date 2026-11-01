@@ -412,6 +412,22 @@ geometrically (tolerance 1e-3).
   face; 0 warnings), S-70.04 (blocking end-nailed through the truss: the 16d dots draw inside the cut blocking; was
   W_NAIL_HIDDEN), S-50.05 (built-up post plies nailed from each side: W_NAIL_HIDDEN says the king studs lie against
   both faces, so the nailing is omitted from the iso and stays in the note). All six: 0 strict warnings.
+- beta.3 touch-up fixes (issue #29, SPEC 29.1): face-nail `W_NAIL_LENGTH` measures 6D past the first member into the
+  whole stack (`check_length` takes `head` = first member thickness and `before` = thickness ahead of the last listed
+  member, so "never reaches" still fires); hanger `Member` carries the truss `bottom_chord` profile and W_HANGER_SIZE's
+  60% and model checks use its depth at the face; `validate::Drawn.hidden` holds the bodies of dashed members, used only
+  as contact partners by `floating`; `panel_faces` (edge-on sheets touching only at ends/edges, unless held at both ends)
+  and `strap_faces` (`on` straps on front/back faces vs crossed framing, skipping members with something between) add
+  W_FLOATING variants; `ops::stale_offset` warns W_STALE_OFFSET at apply time; `tie::long_legs` (W_TIE_LEG) probes the
+  built scene one tie-thickness past the member's far face (components compiled later are unknown: such a leg warns
+  "into the open"); post caps on a beam list place side plates per beam (`cap_span`, `cut_out`); `front_hardware`
+  accepts a seam on the cut plane within one member group (`hw.joins`); `Comp.anchor_shift` records how far a box/named
+  `at.anchor` moved a point-list shape and `each_set` appends the hint to placement warnings naming it.
+  47 MASS details (`--strict`, copies): 10 acknowledged -> 8 W_ACK_UNUSED (S-50.05 x4, S-70.05, S-70.07 x2, S-30.02),
+  2 acknowledgements still used (S-70.08 W_OVERLAP vertical web, S-80.01 W_COVER welded lap bar). New: 11 W_FLOATING
+  (S-50.05 CS straps 1/8" off the beam x2, S-50.08 ST6224 1" off the 3x header x5, S-70.02 ceiling 1 1/2" below the
+  trusses x2 views, S-70.03 roof sheathing 13/16" and 1/2" above the top chord) and 11 W_TIE_LEG (S-10.01 H2.5A on the
+  sill into the stem/slab x5, S-40.03 x4 onto CMU / ICF, S-70.03 x2 into the open); all checked on the drawings, all true.
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -898,6 +914,21 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
     later); the 8 x 3 spots are fixed, so the result is deterministic.
   - Not done: non-rectangular plates (claude7 F5). A plate seen in plan is a slab along z; an L footprint needs plan
     shapes that are not extrusions along z (issue #27 item 3), else two plates draw the seam the agent complained of.
+- Issue #29 (SPEC 29.1) choices:
+  - S-60.03 A "hangers dashed until front: true": not reproducible. The beta.2 release binary (and ~/.local/bin/kerf)
+    draws hl/hr, d_hl and e_hl solid in front with `front` removed, in single views, `--sheet` and the layout; the
+    carrying beam itself is cut there. The one miss found in the default is a cut plane on a seam between the members a
+    key lists (two plies `["j1","j2"]` meeting at cut_z): now counted as cut. `front: true` in S-60.03 is redundant.
+  - #21 signal: a hint appended to W_OVERLAP / W_FLOATING / W_COVER / W_BAR_OUTSIDE / W_NEAR_MISS naming an anchored
+    point-list shape, not an I_ line: an info line on every check would repeat forever for documents that use the anchor
+    on purpose (the doc has no engine version to say "first check after upgrade").
+  - Stale offset: a warning at apply time instead of changing `update` to replace `at` wholesale (that would break
+    updates that change only `at.offset`, and change merge-patch semantics for one key).
+  - Tie legs: warn, do not clamp; a clamped default would silently draw a shorter tie than the catalog part. Framing
+    beyond the member (lumber, I-joist, truss, steel, panel) counts as nailable; angles are not checked.
+  - Strap check: front/back `on` straps only; in-plane (left/right/top/bottom) straps already show a visible gap. The
+    2" bound and the "nothing between" test keep sheathing behind the host and blocking behind a rim out of it.
+  - Truss hanger: the 60% rule uses the bottom chord's depth (not skipped), so an absurdly short hanger still warns.
 
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the

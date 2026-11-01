@@ -37,10 +37,11 @@ pub fn front_hardware(scene: &Scene, spec: &ViewSpec, prisms: &[Prism]) -> Vec<b
             match hw.front {
                 Some(b) => b && c.ty.traits.hardware && matches!(spec.kind, ViewKind::Section | ViewKind::Elevation),
                 None => {
-                    let body = || {
-                        prisms.iter().filter(|q| q.kind == Kind::Body && hw.members.contains(&(q.comp, q.instance)))
+                    let body =
+                        || prisms.iter().filter(|q| q.kind == Kind::Body && hw.members.contains(&(q.comp, q.instance)));
+                    let in_group = |q: &Prism, g: &[alloc::string::String]| {
+                        scene.comps.get(q.comp as usize).is_some_and(|m| g.contains(&m.id))
                     };
-                    let in_group = |q: &Prism, g: &[alloc::string::String]| scene.comps.get(q.comp as usize).is_some_and(|m| g.contains(&m.id));
                     let seam = 1e-6;
                     spec.kind == ViewKind::Section
                         && (body().any(|q| q.z0 < cut - eps && q.z1 > cut + eps)
