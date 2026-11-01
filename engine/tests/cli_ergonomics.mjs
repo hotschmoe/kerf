@@ -1995,6 +1995,25 @@ section('#28. round-2 papercuts');
   write('cb28.kerf.json', { kerf: '0.1', id: 'cb28', title: 'CB', components: [wb, nl, stud({ kind: 'bolt', counterbore: true })], views: [{ id: 'A', kind: 'section' }] });
   r = kerf(['check', 'cb28.kerf.json']);
   check('counterbore on a plain bolt: E_PARAM naming weld_stud', /^ERROR E_PARAM ws: counterbore is for a weld_stud/m.test(r.out + r.err), r.out + r.err);
+
+  const rfDoc = (at) => ({ kerf: '0.1', id: 'rf28', title: 'RF', components: [
+    { id: 'ftg', type: 'concrete', shape: 'rect', width: 24, height: 12, at: { anchor: 'top_center', to: [0, -12] } },
+    { id: 'earth', type: 'fill', material: 'earth', points: [[-40, -40], [40, -40], [40, 0], [-40, 0]] },
+  ], views: [{ id: 'A', kind: 'section', scale: '1"=1\'-0"', annotations: [{ id: 'r1', type: 'ref', detail: 'H', sheet: 'S-10.01', at }] }] });
+  let rfRegions = [];
+  const bubble = (name) => {
+    const d = kerf(['drawing', name, '--view', 'A']);
+    const its = d.code === 0 ? JSON.parse(d.out).items : [];
+    rfRegions = its.filter((it) => it.t === 'region').flatMap((it) => it.loops);
+    const c = its.find((it) => it.src === 'r1' && it.t === 'path' && it.closed);
+    return c ? [(c.pts[0][0] + c.pts[1][0]) / 2, (c.pts[0][1] + c.pts[1][1]) / 2] : null;
+  };
+  write('rf28.kerf.json', rfDoc('ftg@bottom_right'));
+  let bc = bubble('rf28.kerf.json');
+  check('a ref bubble whose default spot (3/4" up-right) is on the earth hatch moves to clear paper (its centre in no drawn region)', bc !== null && !(Math.abs(bc[0] - 21) < 1e-6 && Math.abs(bc[1] + 15) < 1e-6) && rfRegions.length > 0 && !rfRegions.some((l) => inside(bc, l)), bc);
+  write('rf28.kerf.json', rfDoc([0, 10]));
+  bc = bubble('rf28.kerf.json');
+  check('on clear paper the bubble keeps the default 3/4" paper up and right of at', bc !== null && Math.abs(bc[0] - 9) < 1e-6 && Math.abs(bc[1] - 19) < 1e-6, bc);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
