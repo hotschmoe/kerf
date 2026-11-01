@@ -718,12 +718,14 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: V2::init((px0 + px1) / 2.0, top) }], info, hw))
 }
 
-/// The stretch of a beam a post cap's side plates cover, along the beam: the post's width where the beam crosses the
-/// post, else that width measured from where the beam meets the post (a corner or T beam that starts on it).
+/// The stretch of a beam a post cap's side plates cover, along the beam: the part over the post where the beam bears on
+/// at least half the post (crossing it, or spliced over it), else the post's width measured from where the beam meets
+/// the post (a T or corner beam that butts the other beam at the post's edge).
 fn cap_span(post: [f64; 2], beam: [f64; 2]) -> [f64; 2] {
     let w = post[1] - post[0];
-    if beam[0] <= post[0] + 1e-6 && beam[1] >= post[1] - 1e-6 {
-        post
+    let over = [post[0].max(beam[0]), post[1].min(beam[1])];
+    if over[1] - over[0] >= 0.5 * w - 1e-6 {
+        over
     } else if beam[0] > post[0] + 1e-6 {
         [beam[0], beam[1].min(beam[0] + w)]
     } else {

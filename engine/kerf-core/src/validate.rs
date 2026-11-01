@@ -565,6 +565,16 @@ fn panel_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, dia
         if others.iter().any(|q| contact_len(&faces, &q.flat, gap) > 1e-3) {
             continue;
         }
+        let ends: Vec<Vec<V2>> = edges
+            .iter()
+            .filter(|(e0, e1)| e1.sub(*e0).len() <= 2.0 * t)
+            .map(|(e0, e1)| alloc::vec![*e0, *e1])
+            .collect();
+        if ends.len() == 2
+            && ends.iter().all(|e| others.iter().any(|q| contact_len(core::slice::from_ref(e), &q.flat, gap) > 1e-3))
+        {
+            continue;
+        }
         let u = b.sub(a).norm();
         let n = V2::init(-u.y, u.x);
         let mid = V2::init(l.iter().map(|v| v.x).sum::<f64>() / 4.0, l.iter().map(|v| v.y).sum::<f64>() / 4.0);
