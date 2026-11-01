@@ -1184,7 +1184,8 @@ the document and are listed in `meta.references` so `kerf serve` can show them b
   direction, chosen furthest along that direction (ties: the longer run, then the first); e.g. `bottom` of an L slab with a
   thickened edge is the footing's bottom. Bars sit at `cover + d/2` inside that run, from `side_cover + d/2` past its start
   to the same before its end (count 1: the run's middle), ordered left to right (bottom/top) or bottom to top (left/right).
-  A rectangle gives exactly the earlier box placement. `station` measures from the zone box's left (bottom) side as before;
+  A rectangle gives exactly the earlier box placement. `station` measures from the zone box's left (bottom) side as before
+  (or is a Ref, §28.8);
   the bar sits `cover + d/2` (perpendicular) inside the outermost face edge crossing that station. `center` keeps the box
   rule. Every bar centre must be inside the zone, else `E_PLACE_OUTSIDE` (error, path `components/<id>/place`) with the
   position, the zone box and the fix; the bar is not drawn.
@@ -1269,7 +1270,7 @@ transform and coverage.
   nails`) are still flagged.
 - **Citations.** The note text and the citation code take the case transform; the words of `section` that hold a digit
   print as written (`OSHA 1926.755(a)(1)`, not `1926.755(A)(1)`); plain words of `section` (`Table`) take the transform.
-- **House abbreviations.** The built-in list `us-structural` (engine `house::ABBREVIATIONS`, 140 approved forms, and
+- **House abbreviations.** The built-in list `us-structural` (engine `house::ABBREVIATIONS`, 141 approved forms, and
   `house::VARIANTS`, 17 other spellings in use with the approved form each maps to) maps each abbreviation to its words
   (the first is canonical). It is US structural practice as written in the MASS reference set (32 US Southwest drawing
   sets), with the forms the MASS principal engineer chose (§25.6): periods on shortened words (`TYP.`, `CONT.`,
@@ -1291,8 +1292,8 @@ transform and coverage.
   hand. `TYPE I`, `CLASS I` (and after GRADE, CATEGORY, ZONE, GROUP, PHASE, LEVEL, TIER, STAGE, OPTION, CASE, PART) is a
   numeral, not first-person commentary.
 - **Coverage normalization.** Item and candidate texts become word lists: lower case, `’`/`”` folded; letters joined
-  across `.` (`o.c.`), `&` (`t&b`) and `'` (`req'd`, `f'c`); a plural `s` dropped (not after `s`); stop words `w with and
-  at of the a an to for in on per` dropped. Lengths become one word: `15'-0"`, `4'`, `2'-2`, `6'-0in`, `1 1/2"`, `5/8"`, `48in`,
+  across `.` (`o.c.`), `&` (`t&b`) and `'` (`req'd`, `f'c`); a plural `s` dropped (not after `s`); `-ing` / `-ed` endings
+  read as their base word (§28.8); stop words `w with and at of the a an to for in on per` dropped. Lengths become one word: `15'-0"`, `4'`, `2'-2`, `6'-0in`, `1 1/2"`, `5/8"`, `48in`,
   `15 ft`, `2.5 in.` (to the nearest 1/16"). On the item side a length with units counts only as the length (`15 ft` =
   `15'-0"` = `180"`); a bare proper fraction (`3/16`) counts as its digits, and a candidate offers both. Then every
   abbreviation and every spelling of its words is rewritten to the canonical words, longest match first, on both sides
@@ -1441,7 +1442,7 @@ but an abbreviation is written one way; the rules and lists belong to the compan
 visibly.
 
 **W_ABBREV** (warning, lint, one per offending token). It reads the text of every note, label, dim (`text`), weld (`tail`)
-and view `title`. A token is a run of letters, digits, `.`, `'` (`’`), `&` and `-`, with leading `. ' - &` and trailing
+and view `title`, and the texts of every table (one warning per spelling for the whole table, §28.8). A token is a run of letters, digits, `.`, `'` (`’`), `&` and `-`, with leading `. ' - &` and trailing
 `' - &` stripped. Never read: a token with a digit (`HU212-2`, `16d`, `2X6`, `H2.5A`, `#4`), a case-significant token
 (§25.3: `f'c`, `db`, `psi`), text inside double quotes (`"..."`, `“...”`; a `"` or `”` right after a digit is an inch
 mark). A token with a `-` that is not itself a listed spelling (`DF-L`) is read part by part (`PT-DF`). Tokens compare
@@ -1568,7 +1569,8 @@ DETAIL NOTES.
   then goes under them.
 - **Text rules.** Title, headers, cells and notes take the style case transform (§25.3: `f'c`, `db`, `16d` keep their case)
   and `W_NOTE_STYLE` (path `.../title`, `.../columns/<k>`, `.../header/<r>/<c>`, `.../rows/<r>/<c>`, `.../notes/<k>`; no
-  repeat check, units are not linted; after 8 lines per table one more lists the other paths). Coverage (§25.3) gets three kinds of candidate per table, all reporting
+  repeat check, units are not linted; one warning per distinct text, listing the other cells that hold it (§28.8); after
+  8 lines per table one more lists the other paths). Coverage (§25.3) gets three kinds of candidate per table, all reporting
   `table <id>`: the title with every column header, unit and header cell; each body row (its cells, numbers included) with
   that heading; each note.
 - **`W_TABLE_CELL`** (warning, id = the table, path = the cell): a cell's text (a word wider than its fixed-width columns)
@@ -1667,7 +1669,8 @@ last, shrink the largest view's crop or split the layout.
 number) in the top half at text height, `sheet` (optional) in the bottom half at 0.9 label height (no sheet: a plain
 bubble); radius max(1/4", half the wider text + 0.06") paper. `at` (Ref, `{ref, offset}` or [x, y]; projected in an iso
 like a note `at`) draws a leader from the bubble edge with the style arrowhead; `place` ([x, y]) is the bubble centre,
-default `at` + 3/4" paper up and right; neither is `E_PARAM`. `text` (case transform) sits beside the bubble, on the side
+default `at` + 3/4" paper up and right, or the first clear spot when that lands on the drawing (§28.8); neither is
+`E_PARAM`. `text` (case transform) sits beside the bubble, on the side
 away from the leader. Notes layer, anno pen, src = the ref id; placed exactly (not moved by the note layout); its extent
 counts for the view fit. A view whose only annotation is a ref (and that draws nothing) is a "see other detail" scenario.
 
@@ -1759,7 +1762,8 @@ cuts in that view: per component instance whose bodies (not `embedded`, not `sho
 across `cut_z`, the union of their outer outlines (holes filled, so a tube or a W seen lengthwise clips as its whole
 silhouette). The fill keeps the rest, split into one region per piece; its hatch, picking region and `top` / `full`
 outline follow the clipped region, so the grade line stops at a stem. Fills are not clipped by fills (gravel over
-earth still meets edge to edge). `fill.except: [ids]` names solids that do not clip it. Cutaway iso views clip the fill's
+earth still meets edge to edge). `fill.except: [ids]` names solids that do not clip it. The soil parts of a solid component (a `slab_edge` `base`) clip
+fills like its solids do and are exempt from `W_OVERLAP` against them (§28.8). Cutaway iso views clip the fill's
 cap the same way. A fill overlapping a non-fill solid is exempt from `W_OVERLAP` (§9); fill against fill is still checked.
 So earth around a footing and stem is one rectangle.
 
@@ -2154,3 +2158,67 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   outside 5..85, more than 5000 fasteners (`E_LIMIT`). `E_REF_UNKNOWN`: a member that is not a component (nearest id).
 - A nailing has no solid: it takes no part in `W_OVERLAP`, `W_FLOATING` or any other geometry check, and the mesh has
   no nails (2.5D viewers show none).
+
+## 28. v0.2.0-beta.2 round-2 fixes
+
+### 28.8 beta.2: round-2 papercuts
+From round 2 of the MASS dogfood (47 details redrawn with beta.1, issue #28).
+
+- **Coverage word forms** (§25.3). After the abbreviation rewrite every word also reads as its base form when it ends in
+  `-ing` or `-ed`: the ending is dropped when at least 4 letters with a vowel remain; a doubled final consonant other than
+  l, s, z is undoubled (`lapped`, `stepping` -> `lap`, `step`); otherwise the stem is offered both bare and with an `e`
+  (`bracing` -> `brac`, `brace`; `nailed` -> `nail`, `naile`); `-ied` reads as `-y` (`specified` -> `specify`); `-eed`
+  words keep their form. A requested word is found when a candidate offers any of its forms, so `END NAILED` = `END NAIL`,
+  `BRACING` = `BRACE`, `STEPPED SLAB` = `SLAB STEP`. Words whose base names something else on a structural drawing keep
+  only their own form: `bedding blocking building casing ceiling coping covering during engineered fitting footing
+  headed lagging landing netting opening planed setting siding spacing spring topping` (`BLOCKING` is not `BLOCK`,
+  `TOPPING` is not `TOP`). Nothing else is stemmed (`NAILER` is not `NAIL`). On the 47 round-2 details the new matches
+  are all of one word family (`RETAINED`/`retaining`, `SLAB STEP`/`stepped slab`, `BLOCK-OUT`/`blocked out`, `LAPPED`/
+  `lap`, `SHEATHED`/`sheathing`, `NAILS`/`nailing`, `NAILING`/`nailed`, `OVERSIZED`/`oversize`, `WELD`/`welded`).
+- **Tables and abbreviations.** `CALC.` (CALCULATION, CALCULATIONS) is an approved form, so `PER CALC.` ends a note or a
+  cell. `W_ABBREV` reads table texts (title, headers, cells, notes; not units) and warns once per spelling (as written,
+  with its rule) for the whole table: path the first cell holding it, the message `table '<id>' in view <v> (<path>)
+  (also in <n> more cells: <paths>): ...`, the fix the first cell's text with every flagged token replaced and "replace
+  `X` by `Y` the same way in the other n cells", then the acknowledge (on the table) and style overrides. `W_NOTE_STYLE`
+  on a table warns once per distinct text, listing the other cells with that text (`(the same text in n more cells:
+  ...)`), and its fix sets all of them.
+- **`W_UNTREATED_CONTACT` contact** (§9). Wood and masonry are in contact when their drawn (cut) outlines touch or overlap,
+  or run side by side within 1/32" (parallel edges within 1 degree) for 1/8" or more. A corner that only comes near a
+  face (a birdmouth rafter whose underside passes 0.028" from the wall corner below the plate) is not contact. The check
+  always used the cut outline, not the bounding box; the false positive was this near-corner case.
+- **Fills under a `slab_edge` base** (§26.4). The soil parts of a component that also has solid parts (the `base` of a
+  `slab_edge`) clip cut fills like its solids, and a fill overlapping them is not `W_OVERLAP`; fill against a separate
+  fill component is still checked. An earth rectangle under a slab edge with a gravel base is one rectangle.
+- **Leader landings off embedded members.** When a note's default landing (the label point of its target, §6.3) lies
+  on, or within half a text height of, a member drawn inside the target that is embedded (a bar, an anchor rod, a bolt
+  or stud) and belongs to another component, it moves to the nearest grid point of the target's region less those
+  members that is at least half a text height and half the region's greatest depth from every edge, and the other
+  landing candidates come from that region (the first one on the far side of the old point comes second). A note on the
+  footing no longer ends on the dowel through it. Notes on the members themselves are unchanged.
+- **Leaders crossing another note's member.** In a section, plan or elevation view, the drawn pieces of anchor rods,
+  bolts and studs, and bars seen end-on (dots), that a note points at (its `target`, else the component of its `at`) are
+  route obstacles for the other notes' leaders (a 4-point piece as itself, other pieces as their box when they fill at
+  least half of it; bent bars and long members are not obstacles). The router first lays the notes out exactly as
+  before; when a leader crosses such a member, it routes again counting the crossings as hits and keeps that layout when
+  it has fewer crossings and no more other hits. A crossing left is `W_LEADER_HIT`: `view <v>: the leader (or
+  arrowhead) of note '<n>' crosses <type> '<id>' (the target of note '<m>'); a leader that crosses another note's member
+  reads as pointing at it`, with the usual `at` / `place` fix.
+- **`rebar.place.station` as a Ref.** `station` may be a Ref (`"ftg@vertex_7"`, `{"ref": ..., "offset": [dx, dy]}`): the
+  bar takes its x (its y for faces left/right and for `center` with `axis: "y"`), so trimming the far end of a polygon
+  no longer moves the bars. A length still measures from the zone box's left (bottom) side. A `station` Ref is a
+  placement dependency; a bad Ref is `E_ANCHOR_UNKNOWN` / `E_REF_UNKNOWN`.
+- **Ref bubble default position** (§26.2). Without `place`, the bubble goes 3/4" paper up and right of `at` when its disc
+  (plus 1/16") clears every drawn member, hatch and fill of the view; else at the first clear spot of up-right, up-left,
+  down-right, down-left (3/4" each way), right, left, up, down (1.06") at 3/4", then 1 1/4", then 2" paper; up and right
+  when none is clear. Iso views keep up and right.
+- **Steel.** W sections have the anchors `web_left_top` / `web_right_top` (underside of the top flange, `k - tf` out from
+  the web face, past the root fillet) and `web_left_bottom` / `web_right_bottom` (the same on the bottom flange): a
+  nailer placed by its `top_right` at `beam@web_left_top` sits tight in the flange pocket without `W_OVERLAP` on the
+  fillet. `bolt` `kind: weld_stud` takes `counterbore: true`: washer, nut and d/2 of stud sit in a bored pocket at the top
+  of the grip, the stud end flush with it (nothing projects above the plies); part `counterbore` (material `void`,
+  washer OD + 1/8", drawn as an outline in section, not in iso); the summary adds `nut in counterbore`; `nut_bearing` is
+  the pocket floor. `E_PARAM` for a grip shallower than washer + nut + d/2, or on another kind.
+- **Material `stone`** (masonry role, hatch `ANSI33`: continuous 45 degree lines 1/4" apart with dashed lines between):
+  stone veneer and cut stone. It takes part in `W_UNTREATED_CONTACT` like concrete and CMU.
+- Not done here: non-rectangular (L) plates in plan need plan footprints that are not extrusions along z (§26.3, the
+  same machinery as L/T footings, issue #27); the PNG pixel size per sheet is issue #22.

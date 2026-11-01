@@ -665,6 +665,32 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   makes hidden lines opt-in per view); the issue asks for it for hardware, so `hw_dash` prisms always get their hidden
   outline. Existing `connector` polylines (no `kind`, no `on`) are unchanged, so the goldens are byte-identical.
 
+- #28 round-2 papercuts (SPEC 28.8), interpretations:
+  - Coverage stemming is one-directional per word (a word offers its `-ing`/`-ed` base forms; a requested word matches any
+    of its forms), not a canonical stem, so `plane` never meets `plan` and `bare` never meets `bar`. The exception list
+    (`blocking`, `footing`, `topping`, `opening`, `spacing`, `headed`, `engineered`, ...) is hand-picked from the drafting
+    meanings; the 47-detail vocabulary was checked pair by pair (SPEC 28.8 lists the matches that changed).
+  - The issue's "W_ABBREV repeated per table cell" was W_NOTE_STYLE on master (W_ABBREV did not read tables at all).
+    Both now group: W_NOTE_STYLE once per distinct table text, W_ABBREV (new on tables) once per spelling per table.
+    s-60-06 gains two real W_ABBREV (`(MAX)` in schedule cells, one of them covering 8 cells).
+  - W_UNTREATED_CONTACT already used the cut outline, not the bounding box: the S-40.03 D rafter really came within
+    0.028" of the CMU corner (inside the 1/32" tolerance). Contact now needs touching outlines or 1/8" of parallel
+    edges within 1/32"; a corner near a face does not count.
+  - Member obstacles for leaders are limited to anchor rods, bolts/studs and bars seen end-on: the first version also
+    counted vertical wall bars, path bars and connectors and added 36 W_LEADER_HIT on the 47 details (leaders crossing a
+    wall's centre bar to reach the wall are normal). The router routes as before first and only re-routes with the
+    members counted when a leader crosses one, keeping that layout only with fewer crossings and no more other hits: a
+    single member-aware search traded one crossing for two leader near-hits in S-80.01 C.
+  - The landing move off embedded members triggers within half a text height of the member; one text height also moved
+    landings in a 1.4" gap between two bars, but pushed the reference detail stud-wall-stem-footing 0.02" over its sheet
+    (W_VIEW_FIT), so half a text height it is.
+  - `place.station` keeps measuring from the zone box's left side; a Ref is the way to survive edits (claude1's ask).
+    "Measured from the far end" in the issue is this: the box left side is the far end of a slab + footing polygon.
+  - Ref bubbles look for clear paper against the drawn regions only (not notes or dimensions, which are laid out
+    later); the 8 x 3 spots are fixed, so the result is deterministic.
+  - Not done: non-rectangular plates (claude7 F5). A plate seen in plan is a slab along z; an L footprint needs plan
+    shapes that are not extrusions along z (issue #27 item 3), else two plates draw the seam the agent complained of.
+
 ## REQUESTS
 - Hangers (#11): `ijoist` exposes `top_flange_end`, `bottom_flange_end`, `bearing_left/right` (run x) and `top_flange`,
   `web_left/right` (run z); `truss` parallel_chord exposes `end_top`, `end_bottom`, `end_vertical` and
@@ -707,3 +733,7 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   (owner path) and should be shown on the note/view. `apps/web/test/fixtures/make-fixtures.mjs` still writes
   `2X8 PT SILL PLATE` (W_ABBREV now asks for `P.T.`); the browser engine takes the served `style.json`, which
   `kerf serve` now merges with the folder's `kerf.kerfstyle.json` (the header's STYLE shows its `id`).
+- #28 -> #27 (plan footprints): non-rectangular steel plates (an L corner base plate, claude7 F5) want the same plan
+  footprint machinery as L/T footings; once concrete takes a plan outline, `steel` `PL` could take one too.
+- #28 -> #20 (pair checks per view set): `W_UNTREATED_CONTACT` is one of the all-pairs checks; its contact rule changed
+  here (SPEC 28.8), its view membership is #20's.
