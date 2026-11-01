@@ -881,13 +881,34 @@ pub static REF: Object = Object {
     ..Object::NONE
 };
 
+pub static LINE: Object = Object {
+    name: "line",
+    brief: "dashed boundary line: no-load zone, limit",
+    summary: "A line through model points (annotation of type line), dashed by default: the boundary of a no-load zone, a 1:1 influence line, a limit or property line, anything drawn that is not a component. Placed exactly (not moved by the note layout); a note or label names it.",
+    fields: &[
+        Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
+        Field { name: "type", ty: "\"line\"", required: true, desc: "annotation type", ..Field::NONE },
+        Field {
+            name: "points",
+            ty: "[point, ...]",
+            required: true,
+            desc: "two or more: \"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y] (a 2:1 line from the heel: {\"ref\":\"ftg@top_right\",\"offset\":[48,24]})",
+            ..Field::NONE
+        },
+        Field { name: "line", ty: "dashed|solid", def: "dashed", desc: "dashed: the hidden pen; solid: the beyond pen", ..Field::NONE },
+        Field { name: "closed", ty: "bool", def: "false", desc: "true joins the last point to the first (a zone outline)", ..Field::NONE },
+    ],
+    example: "{\"id\":\"l_zone\",\"type\":\"line\",\"points\":[\"ftg@top_right\",{\"ref\":\"ftg@top_right\",\"offset\":[48,24]}]}",
+    ..Object::NONE
+};
+
 impl Object {
     const NONE: Object = Object { name: "", brief: "", summary: "", fields: &[], notes: "", example: "" };
 }
 
 /// Every non-component topic, in listing order.
-pub static OBJECTS: [&Object; 15] =
-    [&DOC, &VIEW, &LAYOUT, &NOTE, &DIM, &LABEL, &WELD, &TABLE, &REF, &CITE, &OPS, &AT, &ARRAY, &CUTS, &ACK];
+pub static OBJECTS: [&Object; 16] =
+    [&DOC, &VIEW, &LAYOUT, &NOTE, &DIM, &LABEL, &WELD, &TABLE, &REF, &LINE, &CITE, &OPS, &AT, &ARRAY, &CUTS, &ACK];
 
 pub fn find_object(name: &str) -> Option<&'static Object> {
     if let Some(o) = OBJECTS.iter().find(|o| o.name == name) {

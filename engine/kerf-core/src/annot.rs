@@ -9,6 +9,7 @@
 pub mod callout;
 pub mod dims;
 pub mod knockout;
+pub mod line;
 pub mod notes;
 pub mod repair;
 pub mod table;
@@ -568,7 +569,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
         listed: Vec::new(),
     };
     let mut seen: Vec<&'a str> = Vec::new();
-    let types = ["note", "dim", "label", "weld", "table", "ref"];
+    let types = ["note", "dim", "label", "weld", "table", "ref", "line"];
     for (k, an) in spec.annotations.iter().enumerate() {
         let mut slot: Option<usize> = None;
         let mut cur_meta = Meta::default();
@@ -621,6 +622,13 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
                     }
                 }
                 "weld" => {}
+                "line" => {
+                    if let Some(ls) = line::read(env, an, id, &apath) {
+                        let its = line::items(env, &ls);
+                        env.labels_box.add_box(items_box(env.font, &its));
+                        g.welds.push((k, its));
+                    }
+                }
                 "ref" => {
                     if let Some(rs) = callout::read(env, an, id, &apath) {
                         let its = callout::items(env, &rs);

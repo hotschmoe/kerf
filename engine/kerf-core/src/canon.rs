@@ -131,6 +131,7 @@ pub fn order(ctx: &KeyCtx) -> Vec<String> {
                 "weld" => keys_of(&schema::WELD),
                 "table" => keys_of(&schema::TABLE),
                 "ref" => keys_of(&schema::REF),
+                "line" => keys_of(&schema::LINE),
                 _ => keys_of(&schema::NOTE),
             };
         }
