@@ -129,15 +129,23 @@ fn let_in(scene: &Scene, m: &mut Member, other: &Member) -> bool {
 
 /// A solid other than the two members at `p` (paper) and depth `z`: a member lying against the face a face-on tie
 /// would be nailed to (eave blocking against a truss at the heel). The first one in document order.
-fn against_face<'s>(scene: &'s Scene, a: &Member, b: &Member, p: V2, z: f64) -> Option<&'s str> {
+fn against_face<'s>(scene: &'s Scene, views: Option<&Value>, a: &Member, b: &Member, p: V2, z: f64) -> Option<&'s str> {
+    let names = |v: &Value| -> Vec<String> {
+        v.arr().map_or(Vec::new(), |l| l.iter().filter_map(Value::str).map(String::from).collect())
+    };
+    let mine = views.filter(|v| !v.is_null()).map(names);
+    let shares = |c: &crate::scene::Comp| match (&mine, c.node.get("views").filter(|v| !v.is_null()).map(names)) {
+        (Some(m), Some(t)) => m.iter().any(|v| t.contains(v)),
+        _ => true,
+    };
     let own = |ci: u32, inst: u32| a.parts.contains(&(ci, inst)) || b.parts.contains(&(ci, inst));
     scene
         .comps
         .iter()
-        .filter(|c| c.state == crate::scene::State::Ok && c.visible && !c.dashed)
+        .filter(|c| c.state == crate::scene::State::Ok && c.visible && shares(c))
         .find(|c| {
             c.world.iter().any(|q| {
-                q.kind == model::Kind::Body
+                (q.kind == model::Kind::Body || q.dashed)
                     && !q.embedded
                     && !own(c.index, q.instance)
                     && z > q.z0
@@ -411,15 +419,17 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
                 let fw = if dir < 0.0 { sw.0 } else { sw.1 };
                 (fw, if dir < 0.0 { fw.max(sn.0) } else { fw.min(sn.1) })
             };
+            let views = ctx.p.raw("views");
             let blocked = |dir: f64| {
                 let (_, start) = start_of(dir);
-                against_face(scene, &a, &b, j.world(start - dir * w / 2.0, (n0 + n1) / 2.0), zf + s * 0.25)
+                against_face(scene, views, &a, &b, j.world(start - dir * w / 2.0, (n0 + n1) / 2.0), zf + s * 0.25)
             };
             let dir = if ctx.p.has("side") {
                 if cp.side == Side::Left { -1.0 } else { 1.0 }
             } else {
                 let first = if covers(sw.0) || !covers(sw.1) { -1.0 } else { 1.0 };
-                if blocked(first).is_some() && blocked(-first).is_none() { -first } else { first }
+                let (b1, b2) = (blocked(first), blocked(-first));
+                if b1.is_some() && b2.is_none() { -first } else { first }
             };
             let (fw, start) = start_of(dir);
             let lc = start - dir * w / 2.0;
