@@ -296,21 +296,23 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<B
         Kind::PostCap => &["post", "beam", "height"],
         Kind::PostBase => &["post", "standoff", "height", "face"],
         Kind::Holdown => &["post", "rod", "face", "height", "seat", "seat_height", "width"],
-        _ => &["members", "legs", "face", "width"],
+        _ => &["members", "legs", "along", "face", "width"],
     };
     if !tie && ctx.p.has("members") {
         ctx.p
             .fail("members", format!("'members' places a tie or angle; kind {} takes {}", kind.tag(), only.join(", ")));
     }
-    if !tie && ctx.p.has("legs") {
-        ctx.p.fail(
-            "legs",
-            format!(
-                "'legs' belongs to a tie or angle placed from \"members\"; kind {} takes {}",
-                kind.tag(),
-                only.join(", ")
-            ),
-        );
+    for key in ["legs", "along"] {
+        if !tie && ctx.p.has(key) {
+            ctx.p.fail(
+                key,
+                format!(
+                    "'{key}' belongs to a tie or angle placed from \"members\"; kind {} takes {}",
+                    kind.tag(),
+                    only.join(", ")
+                ),
+            );
+        }
     }
     if matches!(kind, Kind::Holdown | Kind::PostBase) && matches!(cp.face, Some(Face::Top | Face::Bottom)) {
         ctx.p

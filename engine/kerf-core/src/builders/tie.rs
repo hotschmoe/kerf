@@ -127,6 +127,29 @@ fn let_in(scene: &Scene, m: &mut Member, other: &Member) -> bool {
     true
 }
 
+/// A solid other than the two members at `p` (paper) and depth `z`: a member lying against the face a face-on tie
+/// would be nailed to (eave blocking against a truss at the heel). The first one in document order.
+fn against_face<'s>(scene: &'s Scene, a: &Member, b: &Member, p: V2, z: f64) -> Option<&'s str> {
+    let own = |ci: u32, inst: u32| a.parts.contains(&(ci, inst)) || b.parts.contains(&(ci, inst));
+    scene
+        .comps
+        .iter()
+        .filter(|c| c.state == crate::scene::State::Ok && c.visible && !c.dashed)
+        .find(|c| {
+            c.world.iter().any(|q| {
+                q.kind == model::Kind::Body
+                    && !q.embedded
+                    && !own(c.index, q.instance)
+                    && z > q.z0
+                    && z < q.z1
+                    && clip::from_region(&q.loops, crate::geom::FLAT_TOL)
+                        .iter()
+                        .any(|l| crate::geom::point_in_loop_eo(p, l))
+            })
+        })
+        .map(|c| c.id.as_str())
+}
+
 fn extents(m: &Member) -> String {
     format!(
         "'{}' spans x {}..{}, y {}..{}, z {}..{}",
@@ -271,6 +294,16 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
             ),
         );
     }
+    if edge && ctx.p.has("along") {
+        ctx.p.fail(
+            "along",
+            format!(
+                "on face {} the {} sits on that side of the joint, so it has no place along it; remove 'along' ('z' moves it along the members)",
+                face.tag(),
+                kind.tag()
+            ),
+        );
+    }
     if !edge && ctx.p.has("z") {
         ctx.p.fail(
             "z",
@@ -284,6 +317,7 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
     if !ctx.p.ok {
         return None;
     }
+    let along = cp.along.unwrap_or(0.0);
     let mut kit = Kit::new();
     let part = kind.tag();
     let nails_on = |l: f64, n0: f64, n1: f64| -> Vec<V2> {
@@ -352,29 +386,48 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
                 );
                 return None;
             }
+            let lm = lm + along;
             let (l0, l1) = (lm - w / 2.0, lm + w / 2.0);
             let (n0, n1) = into_n(ln);
             kit.poly(part, rect(l0, l1, n0, n1), zp, nails_on(lm, n0, n1));
             let (m0, m1) = if n_low { (j.c - t, j.c) } else { (j.c, j.c + t) };
             kit.poly(part, rect(l0, l1, m0, m1), [zf, zf + s * lw], Vec::new());
         } else if bend {
+            if ctx.p.has("along") {
+                ctx.p.fail(
+                    "along",
+                    format!(
+                        "the {} bends onto a side face of '{}', so its place along the joint is that face; remove 'along' and choose the face with 'side' (left or right)",
+                        kind.tag(),
+                        w_m.id
+                    ),
+                );
+                return None;
+            }
             let (sw, sn) = if n_low { (sq, sp) } else { (sp, sq) };
             let covers = |f: f64| f >= sn.0 - 0.25 && f <= sn.1 + 0.25;
+            let (n0, n1) = into_n(ln);
+            let start_of = |dir: f64| {
+                let fw = if dir < 0.0 { sw.0 } else { sw.1 };
+                (fw, if dir < 0.0 { fw.max(sn.0) } else { fw.min(sn.1) })
+            };
+            let blocked = |dir: f64| {
+                let (_, start) = start_of(dir);
+                against_face(scene, &a, &b, j.world(start - dir * w / 2.0, (n0 + n1) / 2.0), zf + s * 0.25)
+            };
             let dir = if ctx.p.has("side") {
                 if cp.side == Side::Left { -1.0 } else { 1.0 }
-            } else if covers(sw.0) || !covers(sw.1) {
-                -1.0
             } else {
-                1.0
+                let first = if covers(sw.0) || !covers(sw.1) { -1.0 } else { 1.0 };
+                if blocked(first).is_some() && blocked(-first).is_none() { -first } else { first }
             };
-            let fw = if dir < 0.0 { sw.0 } else { sw.1 };
-            let start = if dir < 0.0 { fw.max(sn.0) } else { fw.min(sn.1) };
-            let (n0, n1) = into_n(ln);
+            let (fw, start) = start_of(dir);
             let lc = start - dir * w / 2.0;
             kit.poly(part, rect(start, start - dir * w, n0, n1), zp, nails_on(lc, n0, n1));
             let (m0, m1) = into_w(lw);
             kit.poly(part, rect(fw, fw + dir * t, m0, m1), [zf, zf + s * w], Vec::new());
         } else {
+            let lm = lm + along;
             let (l0, l1) = (lm - w / 2.0, lm + w / 2.0);
             let mut nails = nails_on(lm, j.c - lp, j.c);
             nails.extend(nails_on(lm, j.c, j.c + lq));
