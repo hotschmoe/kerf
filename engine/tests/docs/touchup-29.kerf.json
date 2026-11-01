@@ -1,0 +1,23 @@
+{
+  "kerf": "0.1",
+  "id": "touchup-29",
+  "title": "T CAP, TRUSS HANGER",
+  "components": [
+    {"id": "post", "type": "lumber", "size": "6x6", "run": "y", "length": 30, "at": {"anchor": "top_center", "to": [0, 0]}, "views": ["A", "I"]},
+    {"id": "dx", "type": "lumber", "size": "5.25x11.875", "product": "lvl", "run": "x", "face": "wide", "length": 48, "at": {"anchor": "bottom_center", "to": "post@top_center"}, "views": ["A", "I"]},
+    {"id": "dz", "type": "lumber", "size": "5.25x11.875", "product": "lvl", "run": "z", "orient": "upright", "z": [2.625, 34], "at": {"anchor": "bottom_center", "to": "post@top_center"}, "views": ["A", "I"]},
+    {"id": "cap", "type": "connector", "model": "CCTQ", "kind": "post_cap", "gauge": 10, "post": "post", "beam": ["dx", "dz"], "views": ["A", "I"]},
+    {"id": "girder", "type": "truss", "profile": "parallel_chord", "orient": "end_on", "top_chord": "2x4", "bottom_chord": "2x8", "depth": 24, "plies": 3, "at": {"anchor": "bottom_left", "to": [60, 0]}, "views": ["B"]},
+    {"id": "tr", "type": "truss", "profile": "pitched", "exterior": "left", "pitch": "4:12", "top_chord": "2x4", "bottom_chord": "2x4", "bearing": "face", "span_shown": 30, "z": -12, "at": {"anchor": "end_bottom", "to": "girder@bottom_right"}, "views": ["B"]},
+    {"id": "hg", "type": "connector", "model": "HUS26", "carried": "tr", "carrying": "girder", "height": 5.4375, "views": ["B"]},
+    {"id": "blk", "type": "lumber", "size": "2x10", "run": "z", "blocking": true, "z": [-11.25, 11.25], "at": {"anchor": "top_left", "to": "tr@end_top"}, "views": ["B"]}
+  ],
+  "views": [
+    {"id": "A", "kind": "section", "title": "T BEAMS ON POST", "cut_z": 0,
+     "annotations": [{"id": "n1", "type": "note", "text": "SIMPSON CCTQ POST CAP", "target": "cap"}]},
+    {"id": "I", "kind": "iso", "title": "T BEAMS ON POST", "from": "front_right",
+     "annotations": [{"id": "n2", "type": "note", "text": "CCTQ", "target": "cap"}]},
+    {"id": "B", "kind": "section", "title": "TRUSS HUNG FROM GIRDER", "cut_z": 0,
+     "annotations": [{"id": "n3", "type": "note", "text": "SIMPSON HUS26 TRUSS HANGER", "target": "hg"}]}
+  ]
+}

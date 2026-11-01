@@ -1989,7 +1989,7 @@ component).
 
 **Checks.**
 - `W_UNKNOWN_MODEL` (path `components/<id>/model`): above.
-- `W_HANGER_SIZE`: a hanger under 60% of the carried depth (fix: the `height` update op), taller than the member, a seat
+- `W_HANGER_SIZE`: a hanger under 60% of the carried depth (a truss: its bottom chord, §29.1; fix: the `height` update op), taller than the member, a seat
   width more than 1/8" off the member's, or a model whose size reads off its name (`LUS210` = 2x10, `HU212-2` = two
   2x12, `ITS2.06/11.88`) and is for a member more than 1/2" shallower, 1" deeper or 1/4" narrower or wider.
 - `W_HOLDOWN_ROD`: no `rod` (fix: the update op naming the nearest anchor bolt or bolt within 8"); a rod that ends below
@@ -2160,7 +2160,7 @@ instance (other members' boxes are the bounding boxes of their corners in that f
   coordinates; fix: components not in `members` that lie behind the gap, blocking, or the `edges` update leaving it out).
 - `W_NAIL_SPACING`: nails of one row closer than 10D (panels: max(2", 10D)); `count` at `spacing` longer than the joint
   (fix: the count that fits).
-- `W_NAIL_LENGTH`: the nail stops before the last member; penetrates it less than 6D (fix: the shortest size of the same
+- `W_NAIL_LENGTH`: the nail stops before the last member; penetrates the stack past the first member less than 6D (§29.1; fix: the shortest size of the same
   kind that reaches 6D); points come out of the far face of the stack without `through` (fix: the longest size that stays
   inside and reaches 6D, or `through: true`); a toenail whose point ends outside the second member (fix: a shorter size,
   or `angle: 45`).
@@ -2604,3 +2604,78 @@ From round 2 of the MASS dogfood (47 details redrawn with beta.1, issue #28).
   stone veneer and cut stone. It takes part in `W_UNTREATED_CONTACT` like concrete and CMU.
 - Not done here: non-rectangular (L) plates in plan need plan footprints that are not extrusions along z (§26.3, the
   same machinery as L/T footings, issue #27); the PNG pixel size per sheet is issue #22.
+
+## 29. v0.2.0-beta.3
+
+### 29.1 beta.3: touch-up fixes
+From the beta.2 touch-up of the 47 MASS details (issue #29): most of the acknowledgements left in the set were false
+positives, a few wrong drawings had no diagnostic, a T post cap drew stray plates, and the #21 change moved anchored
+polygons with only a misleading `W_OVERLAP` to show for it.
+
+**False positives.**
+- **Face-nail penetration into the stack** (`W_NAIL_LENGTH`, §27.4). Face nailing measures penetration from the far face
+  of the first member (the one holding the heads) into the whole stack behind it: the second member plus the later
+  members that continue it face to face along the drive axis. 16d through a 1 1/2" king into a built-up post
+  (`[king, post3, post2]`) or into a double top plate is 2" (12D): no warning. The message names the stack (`penetrates
+  the stack 'post3'..'post2' only ...`). A listed member the nail never reaches still warns (`stops ... and never reaches
+  it`), and points past the far face of the stack still warn (`through` or a shorter size), as before. Edge and field
+  nailing already measured the framing stack (§28.6).
+- **Truss hangers** (`W_HANGER_SIZE`, §27.2). For a carried `truss` the hanger braces its bottom chord: the 60% rule and
+  the model-size check use the bottom chord's vertical depth at the face (`hanger 'h' is 1 1/2" tall for the bottom chord
+  of 'tr', which is 3 1/2" deep`), not the end height. The default height (0.85 x the end height) and the "taller than
+  the member" check are unchanged.
+- **Contact with hidden members** (`W_FLOATING`). Members drawn `shown: "hidden"` or `"where_occurs"` stay exempt from
+  their own checks, but a member that lies against one touches it: dowels across a footing joint inside two hidden footing
+  pieces are not floating.
+
+**Silent problems, now warnings.**
+- **Sheets touching only at their edges** (`W_FLOATING`). An edge-on `panel` (a thin four-sided strip in the drawing
+  plane, at least 4 times as long as thick) that touches other components only at its ends or edges (no component, hidden
+  ones included, runs along either long face within 1/32") and is not held at both ends floats: `panel 'sh' touches other
+  components only at its ends or edges: nothing lies against either face; it floats 1 1/2" above 'joist'`, fix `move it
+  1 1/2" down onto 'joist' ...`. The gap and direction name the nearest framing member (not hardware, not soil) facing
+  either long face within 6" that overlaps the sheet along its length by more than its thickness; without one the
+  message says nothing holds it. A sheet held at both ends (a web between flanges) is not flagged.
+- **Straps off a crossed member** (`W_FLOATING`). A connector `on` a member's front or back face whose plate crosses
+  (over 1/4 sq in on paper) another framing member (`lumber`, `ijoist`, `truss`, `steel`; not embedded) with nothing
+  between them, and stands off that member's face by more than 1/32" and at most 2" (or runs into it, when its face
+  stands proud of the host): `strap 'st' lies on the back face of 'post' (`on`), but where it crosses 'hdr' it stands 1"
+  off the back face of 'hdr': a strap must lie on both members it joins`. The fix is the update op that makes it a member
+  tie (`{"kind":"tie","members":[host, other],"face":"back","points":null,"on":null,"lay":null}`, §28.4), or a filler.
+  Hardware cast into concrete (a strap-tie holdown) is not checked against the concrete.
+- **Stale offset on update** (`W_STALE_OFFSET`, warning, apply time only). An `update` op is a merge patch, so an update
+  that changes `at.to` (or the `ref` of an `at.to` Ref object) without writing `offset` keeps the old offset, measured
+  from the old target. `kerf apply` warns (path `components/<id>/at/offset`): `op 0: the update moves at.to of 'blk' from
+  "j@top_left" to "j@top_right" but keeps its at.offset [0,1.5] ... (edit-time notice: kerf check does not repeat it)`,
+  fix `{"op":"update","path":"components/<id>","value":{"at":{"offset":null}}}`. Writing the offset (or `null`) in the
+  same update silences it; the merge semantics are unchanged.
+- **Tie legs past their member** (`W_TIE_LEG`, warning, path `components/<id>/legs`). A member tie's leg (§28.4) longer
+  than its member is deep along the leg, where the plate past the member's far face lies on nothing or on a component
+  that is not framing (concrete, masonry): `tie 'h': its leg on 'sill' runs 2 3/4" from the joint, but 'sill' is only
+  1 1/2" deep there, so 1 1/4" of the plate hangs past its bottom face onto 'stem': no framing there to nail it to`.
+  The fix sets `legs`: the long leg cut to the member (to 1/16"), the rest added to the other leg when its member has
+  room (`[4, 1.5]`). A leg that runs on onto framing (a lower top plate) does not warn. Angles are not checked.
+
+**Drawing bugs.**
+- **Post caps on several beams** (`post_cap` with `beam` a list: corner and T caps, CCTQ). The seat covers the post top
+  and the widths of the beams; each beam gets its own side plates on its two side faces: over the post where the beam
+  bears on at least half the post (crossing it or spliced on it), else the post's width along the beam from where it
+  meets the post (the T or corner beam). A side plate is cut where another listed beam butts that face. No seat strip runs
+  under a beam that leaves the post and no plate sits at a beam's free end. One beam: unchanged.
+- **Hardware in front** (§28.4). A member counts as cut also when the cut plane falls exactly on a seam of the members a
+  key lists (`"carried": ["ply1", "ply2"]` meeting at `cut_z`). S-60.03 A: with beta.2 the IUS hangers there already draw
+  in front without `front: true` (the carrying beam and the I-joists are cut); the seam case was the miss found.
+- **Anchored point lists** (§28.1). A `W_OVERLAP`, `W_FLOATING`, `W_COVER`, `W_BAR_OUTSIDE` or `W_NEAR_MISS` that names a
+  point-list shape placed by a box or named `at.anchor` (not `origin`) that moved its points ends with `('ftg' is a
+  point-list shape placed by at.anchor "bottom_left", which moves its points by [10, -12] from where at.to puts them;
+  kerf before beta.2 ignored that anchor: if the points were written from at.to, remove it: {"op":"update", ... {"at":
+  {"anchor":null}}})`.
+
+**Schema.** A member tie or angle takes `z` on a side face (`left`/`right`/`top`/`bottom`: it slides along the members,
+§28.4) and refuses it on `front`/`back` (E_PARAM); `kerf schema connector` says so (it said no hardware takes `z`).
+
+| code | level | rule |
+|---|---|---|
+| `W_STALE_OFFSET` | warning | apply time: an update moves `at.to` (or `at.to.ref`) and keeps the old `offset` |
+| `W_TIE_LEG` | warning | a member tie leg runs past its member onto nothing or onto a component that is not framing |
+| `W_FLOATING` | warning | also: an edge-on sheet touching only at its ends or edges; an `on` strap off (or into) a crossed member |

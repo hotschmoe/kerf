@@ -918,7 +918,11 @@ fn place_component(scene: &mut Scene, idx: usize) {
     let Some(inst) = instance_transforms(scene, &id, &built, base_xf, angle, zbase, &arr) else { return };
     let world = world_prisms(scene.style, index, &built, &inst, emb_override, dashed);
     let pitch_angle = if ty.traits.has_pitch { built.pitch } else { 0.0 };
+    let shift = base_xf.apply(V2::init(0.0, 0.0)).sub(at.to);
+    let anchor_shift = (built.points_mode && at.explicit && at.anchor != "origin" && shift.len() > 1e-6)
+        .then(|| (at.anchor.to_string(), shift));
     let comp = &mut scene.comps[idx];
+    comp.anchor_shift = anchor_shift;
     comp.angle = angle;
     comp.pitch_angle = pitch_angle;
     comp.embedded = emb_override.unwrap_or_else(|| built.prisms.first().is_some_and(|p| p.embedded));

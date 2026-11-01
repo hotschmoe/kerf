@@ -8,6 +8,7 @@ use super::connector::{Face, Kind, ModelInfo, Params, Side};
 use super::hardware::{Kit, Member, model_text, need};
 use crate::geom::{Pt, V2};
 use crate::json::Value;
+use crate::math;
 use crate::model::{self, Built, NamedAnchor};
 use crate::params::ParamEnum;
 use crate::pathclip;
@@ -101,6 +102,123 @@ fn find_joint(a: &Member, b: &Member) -> Option<Joint> {
         });
     }
     None
+}
+
+/// A leg of a tie along the joint's normal: on the low member (`low`, running away from the joint to lower n) or the
+/// high one, at `l` along the joint, `len` long, in the plane z.
+struct Leg {
+    low: bool,
+    l: f64,
+    len: f64,
+    z: f64,
+}
+
+/// What lies at `pt` in plane z, other than the members of the tie (built components only): its id and whether it is
+/// framing a leg can be nailed to.
+fn solid_at(ctx: &Ctx, pt: V2, z: f64, skip: &[(u32, u32)]) -> Option<(String, bool)> {
+    use crate::catalog::Type;
+    let views = |v: Option<&Value>| -> Option<Vec<String>> {
+        v.and_then(Value::arr).map(|a| a.iter().filter_map(Value::str).map(String::from).collect())
+    };
+    let mine = views(ctx.p.raw("views"));
+    for c in &ctx.scene.comps {
+        if c.state != crate::scene::State::Ok || c.id == ctx.p.id || c.ty.traits.hardware {
+            continue;
+        }
+        if let (Some(a), Some(b)) = (&mine, views(c.node.get("views")))
+            && !a.iter().any(|v| b.contains(v))
+        {
+            continue;
+        }
+        for pr in c.world.iter().filter(|pr| pr.kind == model::Kind::Body && !pr.embedded) {
+            if skip.contains(&(c.index, pr.instance)) || z < pr.z0 - 1e-6 || z > pr.z1 + 1e-6 {
+                continue;
+            }
+            let flat = crate::clip::from_region(&pr.loops, crate::geom::FLAT_TOL);
+            if crate::geom::locate(pt, &flat, 0.0) == crate::geom::Loc::Inside {
+                let framing = matches!(c.ty.ty, Type::Lumber | Type::Ijoist | Type::Truss | Type::Steel | Type::Panel);
+                return Some((c.id.clone(), framing));
+            }
+        }
+    }
+    None
+}
+
+/// W_TIE_LEG: a leg longer than its member is deep along the leg runs past the member's far face onto something that is
+/// not framing (concrete, masonry, nothing). The fix shortens it to the member and gives the rest to the other leg when
+/// that member has room.
+fn long_legs(
+    ctx: &Ctx,
+    j: &Joint,
+    p: &Member,
+    q: &Member,
+    legs: &[Leg],
+    order: [usize; 2],
+    len: [f64; 2],
+) -> Vec<model::Diag> {
+    let mut out = Vec::new();
+    let skip: Vec<(u32, u32)> = p.parts.iter().chain(&q.parts).copied().collect();
+    let depth = |leg: &Leg| -> Option<f64> {
+        let m = if leg.low { p } else { q };
+        let (lo, hi) = extent_at(m, j.horiz, leg.l)?;
+        Some(if leg.low { j.c - lo } else { hi - j.c })
+    };
+    let room = |low: bool| {
+        legs.iter().filter(|g| g.low == low).filter_map(|g| depth(g).map(|d| d - g.len)).fold(f64::INFINITY, f64::min)
+    };
+    for leg in legs {
+        let Some(d) = depth(leg) else { continue };
+        let over = leg.len - d;
+        if over <= 0.0625 {
+            continue;
+        }
+        let n = if leg.low { j.c - d - 0.05 } else { j.c + d + 0.05 };
+        let beyond = solid_at(ctx, j.world(leg.l, n), leg.z, &skip);
+        if beyond.as_ref().is_some_and(|b| b.1) {
+            continue;
+        }
+        let m = if leg.low { p } else { q };
+        let far = match (j.horiz, leg.low) {
+            (true, true) => "bottom",
+            (true, false) => "top",
+            (false, true) => "left",
+            (false, false) => "right",
+        };
+        let into = match &beyond {
+            Some((id, _)) => format!("onto '{id}'"),
+            None => "into the open".to_string(),
+        };
+        let mut fixed = len;
+        let (mine, other) = if leg.low { (0, 1) } else { (1, 0) };
+        let short = math::floor(d * 16.0 + 1e-9) / 16.0;
+        fixed[mine] = short;
+        if room(!leg.low) >= over {
+            fixed[other] += leg.len - short;
+        }
+        let mut ordered = [0.0; 2];
+        ordered[order[0]] = fixed[0];
+        ordered[order[1]] = fixed[1];
+        let id = ctx.p.id;
+        out.push(super::hardware::warn(
+            ctx,
+            "W_TIE_LEG",
+            "legs",
+            format!(
+                "tie '{id}': its leg on '{}' runs {} from the joint, but '{}' is only {} deep there, so {} of the plate hangs past its {far} face {into}: no framing there to nail it to",
+                m.id,
+                fmt_ft_in(leg.len),
+                m.id,
+                fmt_ft_in(d),
+                fmt_ft_in(over)
+            ),
+            format!(
+                "keep the leg on the member: {{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"legs\":[{},{}]}}}} (legs are [on the first member, on the second])",
+                model::fmt_num(ordered[0]),
+                model::fmt_num(ordered[1])
+            ),
+        ));
+    }
+    out
 }
 
 fn extents(m: &Member) -> String {
@@ -259,6 +377,7 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
         return None;
     }
     let mut kit = Kit::new();
+    let mut on_legs: Vec<Leg> = Vec::new();
     let part = kind.tag();
     let nails_on = |l: f64, n0: f64, n1: f64| -> Vec<V2> {
         [1.0 / 3.0, 2.0 / 3.0].iter().map(|k| j.world(l, n0 + (n1 - n0) * k)).collect()
@@ -294,6 +413,10 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
         let center = j.pts(&path);
         let rib = if dir < 0.0 { pathgeom::ribbon(&center, 0.0, t) } else { pathgeom::ribbon(&center, t, 0.0) };
         let zc = (a.z0.max(b.z0) + a.z1.min(b.z1)) / 2.0;
+        if !angle {
+            on_legs.push(Leg { low: true, l: fp - dir * 0.05, len: lp, z: zc });
+            on_legs.push(Leg { low: false, l: fq - dir * 0.05, len: lq, z: zc });
+        }
         kit.poly(part, rib, [zc - w / 2.0, zc + w / 2.0], Vec::new());
         if let Some(last) = kit.prisms.last_mut() {
             last.centerline = center;
@@ -345,6 +468,8 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
             let start = if dir < 0.0 { fw.max(sn.0) } else { fw.min(sn.1) };
             let (n0, n1) = into_n(ln);
             let lc = start - dir * w / 2.0;
+            on_legs.push(Leg { low: n_low, l: lc, len: ln, z: zf - s * 0.01 });
+            on_legs.push(Leg { low: !n_low, l: fw - dir * 0.05, len: lw, z: zf + s * w / 2.0 });
             kit.poly(part, rect(start, start - dir * w, n0, n1), zp, nails_on(lc, n0, n1));
             let (m0, m1) = into_w(lw);
             kit.poly(part, rect(fw, fw + dir * t, m0, m1), [zf, zf + s * w], Vec::new());
@@ -353,9 +478,12 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
             let mut nails = nails_on(lm, j.c - lp, j.c);
             nails.extend(nails_on(lm, j.c, j.c + lq));
             kit.poly(part, rect(l0, l1, j.c - lp, j.c + lq), zp, nails);
+            on_legs.push(Leg { low: true, l: lm, len: lp, z: zf - s * 0.01 });
+            on_legs.push(Leg { low: false, l: lm, len: lq, z: zf - s * 0.01 });
         }
         format!("{} face of {}", face.tag(), n_m.id)
     };
+    let warns = long_legs(ctx, &j, p, q, &on_legs, if j.first_low { [0, 1] } else { [1, 0] }, [lp, lq]);
     let desc = mi.desc();
     let info = format!(
         "connector {}{}{gauge_i} ga, {} {} to {} on the {where_txt}",
@@ -367,7 +495,7 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
     );
     let members = a.parts.iter().chain(&b.parts).copied().collect();
     let joins = [a.id.split('+').map(String::from).collect(), b.id.split('+').map(String::from).collect()];
-    let hw = model::HwInfo { members, joins, ..Default::default() };
+    let hw = model::HwInfo { members, joins, warns, ..Default::default() };
     let origin = ctx.origin;
     Some(kit.finish(origin, vec![NamedAnchor { name: "joint".into(), p: j.world(lm, j.c) }], info, hw))
 }

@@ -52,6 +52,9 @@ pub struct Comp<'a> {
     pub voids: Vec<crate::voids::Cutter>,
     /// Plan views only (SPEC 26.3): per instance, where its Refs resolve in plan coordinates. Empty elsewhere.
     pub plan: Vec<PlanInst>,
+    /// A point-list shape placed by a box or named `at.anchor` (SPEC 28.1): the anchor and how far that moved its
+    /// literal points from where `at.to` alone would put them.
+    pub anchor_shift: Option<(String, V2)>,
 }
 
 impl<'a> Comp<'a> {
@@ -77,6 +80,7 @@ impl<'a> Comp<'a> {
             world: Vec::new(),
             voids: Vec::new(),
             plan: Vec::new(),
+            anchor_shift: None,
         }
     }
 }

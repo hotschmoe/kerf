@@ -114,7 +114,12 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   some views ends with `(in views A, C)`.
 - Point lists (polygon, fill, membrane, solid points, path bar, strap points) place like boxes: without `at.anchor` the
   literal points are measured from `at.to`; with one (`"anchor":"top_left"`, `"vertex_2"`) that point of the shape lands
-  on `at.to`, so points can start anywhere. Points that are Refs are absolute: no anchor then (E_PARAM).
+  on `at.to`, so points can start anywhere. Points that are Refs are absolute: no anchor then (E_PARAM). A placement
+  warning about such a shape says how far its anchor moved the points and gives the op that removes the anchor.
+- `update` merges `at` key by key: moving `at.to` keeps an old `at.offset` (`W_STALE_OFFSET` at apply time; write the
+  offset, or `null`, in the same update). Contact checks: a sheet touching only at its ends or edges and an `on` strap
+  standing off (or running inside) a second member it crosses are `W_FLOATING` (a member tie follows both faces); a tie
+  leg longer than its member is deep is `W_TIE_LEG` (its fix sets `legs`).
 - One sheet for the scenarios (`kerf schema layout`): `"layouts":[{"id":"S1","views":["A","B","C","D"],"arrange":"grid",
   "columns":2,"sheet":"auto"}]`, then `kerf export x.kerf.json --layout S1 --format png --sheet -o x-S1.png` (the PNG
   is 90 px per sheet inch, at least 1600). Each view keeps its bubble, title and scale; the keyed notes of all views

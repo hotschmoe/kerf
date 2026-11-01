@@ -32,6 +32,8 @@ pub struct Member {
     pub z0: f64,
     pub z1: f64,
     pub flat: Vec<Vec<V2>>,
+    /// A truss's bottom chord profile (empty for other members): a truss hanger seats and braces that chord.
+    pub chord: Vec<Vec<V2>>,
     /// Every (component index, instance) the member is made of.
     pub parts: Vec<(u32, u32)>,
 }
@@ -82,9 +84,13 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
     let mut bx = Box::default();
     let (mut z0, mut z1) = (f64::INFINITY, f64::NEG_INFINITY);
     let mut flat = Vec::new();
+    let mut chord = Vec::new();
     for p in c.world.iter().filter(|p| p.instance as usize == inst && p.kind == model::Kind::Body) {
         let f = clip::from_region(&p.loops, FLAT_TOL);
         bx.add_box(clip::loops_box(&f));
+        if c.ty.name() == "truss" && p.part == "bottom_chord" {
+            chord.extend(f.iter().cloned());
+        }
         flat.extend(f);
         z0 = z0.min(p.z0);
         z1 = z1.max(p.z1);
@@ -94,7 +100,7 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
         return None;
     }
     let parts = vec![(c.index, u32::try_from(inst).unwrap_or(0))];
-    Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat, parts })
+    Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat, chord, parts })
 }
 
 /// Plates collected in world coordinates.
@@ -263,6 +269,7 @@ pub(super) fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint
                 u.z0 = u.z0.min(m.z0);
                 u.z1 = u.z1.max(m.z1);
                 u.flat.extend(m.flat);
+                u.chord.extend(m.chord);
                 u.parts.extend(m.parts);
                 u
             }
@@ -524,8 +531,13 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
     }
     let mut warns = Vec::new();
     let id = ctx.p.id.to_string();
-    if h < 0.6 * depth - 1e-6 {
-        warns.push(warn(ctx, "W_HANGER_SIZE", "height", format!("hanger '{id}' is {} tall for '{}', which is {} deep: under 60% of the depth, so it does not brace the member", fmt_ft_in(h), c.id, fmt_ft_in(depth)), format!("use a deeper hanger: {}", update_op(&id, "height", &num_json(r16_up(0.6 * depth).max(r16(0.85 * depth)))))));
+    let chord = if along_x { y_at(&c.chord, end + s * 0.01).map(|(lo, hi)| hi - lo) } else { None };
+    let (brace, braced) = match chord {
+        Some(d) => (d, format!("the bottom chord of '{}'", c.id)),
+        None => (depth, format!("'{}'", c.id)),
+    };
+    if h < 0.6 * brace - 1e-6 {
+        warns.push(warn(ctx, "W_HANGER_SIZE", "height", format!("hanger '{id}' is {} tall for {braced}, which is {} deep: under 60% of the depth, so it does not brace the member", fmt_ft_in(h), fmt_ft_in(brace)), format!("use a deeper hanger: {}", update_op(&id, "height", &num_json(r16_up(0.6 * brace).max(r16(0.85 * brace)))))));
     }
     if h > depth + 1e-6 {
         warns.push(warn(
@@ -548,20 +560,19 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
     if let Some(sr) = mi.series
         && let Some((mw, md)) = model_size(&mi.name, sr.prefix)
     {
-        if depth > md + 0.5 || depth < md - 1.0 {
+        if brace > md + 0.5 || brace < md - 1.0 {
             warns.push(warn(
                 ctx,
                 "W_HANGER_SIZE",
                 "model",
                 format!(
-                    "hanger '{id}': model {} is made for a member {} deep; '{}' is {} deep{}",
+                    "hanger '{id}': model {} is made for a member {} deep; {braced} is {} deep{}",
                     mi.name,
                     fmt_ft_in(md),
-                    c.id,
-                    fmt_ft_in(depth),
-                    if depth > md { " (hanger too small)" } else { "" }
+                    fmt_ft_in(brace),
+                    if brace > md { " (hanger too small)" } else { "" }
                 ),
-                format!("pick the {} model sized for {} x {}", sr.prefix, fmt_ft_in(wc), fmt_ft_in(depth)),
+                format!("pick the {} model sized for {} x {}", sr.prefix, fmt_ft_in(wc), fmt_ft_in(brace)),
             ));
         }
         if (mw - wc).abs() > 0.25 {
@@ -619,15 +630,31 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
         );
         return None;
     }
-    let along_z = b.z1 - b.z0 > b.bx.width();
-    let depth = b.bx.height();
+    let several: Vec<Member> = match cp.beam.as_ref() {
+        Some(Value::Array(a)) if a.len() > 1 => {
+            a.iter().filter_map(Value::str).filter_map(|n| member(ctx, "beam", n)).collect()
+        }
+        _ => Vec::new(),
+    };
+    if !ctx.p.ok {
+        return None;
+    }
+    let beams: &[Member] = if several.is_empty() { core::slice::from_ref(&b) } else { &several };
+    let depth = beams.iter().map(|m| m.bx.height()).fold(0.0, f64::max);
     let hu = cp.height.unwrap_or_else(|| r16((0.5 * depth).min(7.0)));
     let hd = r16(hu.min(0.5 * p.bx.height()));
     let (px0, px1, pz0, pz1) = (p.bx.x0, p.bx.x1, p.z0, p.z1);
     let mut kit = Kit::new();
-    let sx = [px0.min(if along_z { b.bx.x0 } else { px0 }) - t, px1.max(if along_z { b.bx.x1 } else { px1 }) + t];
-    let sz = [pz0.min(if along_z { pz0 } else { b.z0 }) - t, pz1.max(if along_z { pz1 } else { b.z1 }) + t];
-    kit.rect("seat", sx, [top - t, top], sz, Vec::new());
+    let along_z = |m: &Member| m.z1 - m.z0 > m.bx.width();
+    let (mut sx, mut sz) = ([px0, px1], [pz0, pz1]);
+    for m in beams {
+        if along_z(m) {
+            sx = [sx[0].min(m.bx.x0), sx[1].max(m.bx.x1)];
+        } else {
+            sz = [sz[0].min(m.z0), sz[1].max(m.z1)];
+        }
+    }
+    kit.rect("seat", [sx[0] - t, sx[1] + t], [top - t, top], [sz[0] - t, sz[1] + t], Vec::new());
     let grid = |x0: f64, x1: f64, y0: f64, y1: f64| -> Vec<V2> {
         let mut v = Vec::new();
         for fy in [0.33, 0.67] {
@@ -637,14 +664,51 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
         }
         v
     };
-    if along_z {
-        kit.rect("beam_side", [b.bx.x0 - t, b.bx.x0], [top, top + hu], [pz0, pz1], Vec::new());
-        kit.rect("beam_side", [b.bx.x1, b.bx.x1 + t], [top, top + hu], [pz0, pz1], Vec::new());
+    let (mut x_faces, mut z_faces) = (false, false);
+    for (i, m) in beams.iter().enumerate() {
+        let mz = along_z(m);
+        let span = match (several.is_empty(), mz) {
+            (true, true) => [pz0, pz1],
+            (true, false) => [px0, px1],
+            (false, true) => cap_span([pz0, pz1], [m.z0, m.z1]),
+            (false, false) => cap_span([px0, px1], [m.bx.x0, m.bx.x1]),
+        };
+        for (face, out) in [(if mz { m.bx.x0 } else { m.z0 }, -1.0), (if mz { m.bx.x1 } else { m.z1 }, 1.0)] {
+            let butts: Vec<[f64; 2]> = beams
+                .iter()
+                .enumerate()
+                .filter(|(k, o)| {
+                    let near = if mz {
+                        if out < 0.0 { o.bx.x1 } else { o.bx.x0 }
+                    } else if out < 0.0 {
+                        o.z1
+                    } else {
+                        o.z0
+                    };
+                    *k != i && (near - face).abs() <= 0.0625
+                })
+                .map(|(_, o)| if mz { [o.z0, o.z1] } else { [o.bx.x0, o.bx.x1] })
+                .collect();
+            let th = if out < 0.0 { [face - t, face] } else { [face, face + t] };
+            for piece in cut_out(span, &butts).into_iter().filter(|s| s[1] - s[0] >= 0.5) {
+                if mz {
+                    kit.rect("beam_side", th, [top, top + hu], piece, Vec::new());
+                } else {
+                    kit.rect("beam_side", piece, [top, top + hu], th, grid(piece[0], piece[1], top, top + hu));
+                }
+            }
+        }
+        if mz {
+            z_faces = true;
+        } else {
+            x_faces = true;
+        }
+    }
+    if z_faces {
         kit.rect("post_side", [px0, px1], [top - hd, top - t], [pz1, pz1 + t], grid(px0, px1, top - hd, top));
         kit.rect("post_side", [px0, px1], [top - hd, top - t], [pz0 - t, pz0], grid(px0, px1, top - hd, top));
-    } else {
-        kit.rect("beam_side", [px0, px1], [top, top + hu], [b.z1, b.z1 + t], grid(px0, px1, top, top + hu));
-        kit.rect("beam_side", [px0, px1], [top, top + hu], [b.z0 - t, b.z0], grid(px0, px1, top, top + hu));
+    }
+    if x_faces {
         kit.rect("post_side", [px0 - t, px0], [top - hd, top - t], [pz0, pz1], Vec::new());
         kit.rect("post_side", [px1, px1 + t], [top - hd, top - t], [pz0, pz1], Vec::new());
     }
@@ -658,6 +722,39 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
     let origin = ctx.origin;
     let hw = model::HwInfo { members: p.parts.iter().chain(&b.parts).copied().collect(), ..Default::default() };
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: V2::init((px0 + px1) / 2.0, top) }], info, hw))
+}
+
+/// The stretch of a beam a post cap's side plates cover, along the beam: the part over the post where the beam bears on
+/// at least half the post (crossing it, or spliced over it), else the post's width measured from where the beam meets
+/// the post (a T or corner beam that butts the other beam at the post's edge).
+fn cap_span(post: [f64; 2], beam: [f64; 2]) -> [f64; 2] {
+    let w = post[1] - post[0];
+    let over = [post[0].max(beam[0]), post[1].min(beam[1])];
+    if over[1] - over[0] >= 0.5 * w - 1e-6 {
+        over
+    } else if beam[0] > post[0] + 1e-6 {
+        [beam[0], beam[1].min(beam[0] + w)]
+    } else {
+        [beam[0].max(beam[1] - w), beam[1]]
+    }
+}
+
+/// `span` less the stretches `holes` cover (other beams butting the plate's face), in order.
+fn cut_out(span: [f64; 2], holes: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    let mut out = vec![span];
+    for h in holes {
+        out = out
+            .into_iter()
+            .flat_map(|s| {
+                if h[1] <= s[0] || h[0] >= s[1] {
+                    vec![s]
+                } else {
+                    [[s[0], h[0]], [h[1], s[1]]].into_iter().filter(|p| p[1] > p[0]).collect()
+                }
+            })
+            .collect();
+    }
+    out
 }
 
 fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {

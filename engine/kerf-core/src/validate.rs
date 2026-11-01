@@ -126,20 +126,26 @@ fn z_gap(a: &Prism, b: &Prism) -> f64 {
 
 pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     let mut items: Vec<Pf<'_>> = Vec::new();
+    let mut hidden: Vec<Pf<'_>> = Vec::new();
     for c in &scene.comps {
         if c.state != State::Ok {
             continue;
         }
         for p in &c.world {
-            if p.kind == Kind::Ghost {
+            if p.kind == Kind::Ghost && !p.dashed {
                 continue;
             }
             let flat = clip::from_region(&p.loops, FLAT_TOL);
             let box_ = clip::loops_box(&flat);
-            items.push(Pf { prism: p, flat, box_, comp: c });
+            let pf = Pf { prism: p, flat, box_, comp: c };
+            if p.kind == Kind::Ghost {
+                hidden.push(pf);
+            } else {
+                items.push(pf);
+            }
         }
     }
-    let (sets, ids) = drawn_sets(scene, doc, &items);
+    let (sets, ids) = drawn_sets(scene, doc, &items, &hidden);
     each_set(&sets, &ids, diags, overlaps);
     each_set(&sets, &ids, diags, floating);
     each_set(&sets, &ids, diags, untreated);
@@ -172,12 +178,20 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
 struct Drawn<'p, 'a> {
     comps: Vec<&'a Comp<'a>>,
     items: Vec<&'p Pf<'a>>,
+    /// The bodies of `shown: hidden` / `where_occurs` members: drawn dashed and never checked themselves, but what lies
+    /// against them is not floating.
+    hidden: Vec<&'p Pf<'a>>,
     views: Vec<usize>,
 }
 
 /// The distinct component sets of the document's views (views that draw the same components share one) and the
 /// view ids. A document without views (or with more than the view limit) gets one set of every compiled component.
-fn drawn_sets<'p, 'a>(scene: &'a Scene<'a>, doc: &'a Value, items: &'p [Pf<'a>]) -> (Vec<Drawn<'p, 'a>>, Vec<&'a str>) {
+fn drawn_sets<'p, 'a>(
+    scene: &'a Scene<'a>,
+    doc: &'a Value,
+    items: &'p [Pf<'a>],
+    hidden: &'p [Pf<'a>],
+) -> (Vec<Drawn<'p, 'a>>, Vec<&'a str>) {
     let mut groups: Vec<(Vec<bool>, Vec<usize>)> = Vec::new();
     let mut ids: Vec<&str> = Vec::new();
     let va = doc.get("views").and_then(Value::arr).filter(|va| va.len() <= limits::MAX_VIEWS).unwrap_or(&[]);
@@ -206,6 +220,7 @@ fn drawn_sets<'p, 'a>(scene: &'a Scene<'a>, doc: &'a Value, items: &'p [Pf<'a>])
         .map(|(mask, views)| Drawn {
             comps: scene.comps.iter().filter(|c| mask[c.index as usize]).collect(),
             items: items.iter().filter(|p| mask[p.comp.index as usize]).collect(),
+            hidden: hidden.iter().filter(|p| mask[p.comp.index as usize]).collect(),
             views,
         })
         .collect();
@@ -227,12 +242,40 @@ fn each_set<'p, 'a>(sets: &[Drawn<'p, 'a>], ids: &[&str], diags: &Diags, check: 
         }
     }
     for (mut d, mut vs) in found {
+        anchor_hint(sets, &mut d);
         if vs.len() < ids.len() {
             vs.sort_unstable();
             let names: Vec<&str> = vs.iter().map(|&v| ids[v]).collect();
             d.message.push_str(&format!(" (in view{} {})", if names.len() == 1 { "" } else { "s" }, names.join(", ")));
         }
         diags.push(d);
+    }
+}
+
+/// A placement finding about a point-list shape that a box or named `at.anchor` moved (SPEC 28.1: honoured since
+/// beta.2, ignored before) says so: the anchor, the shift and the op that puts the points back where they are written.
+fn anchor_hint(sets: &[Drawn<'_, '_>], d: &mut Diag) {
+    if !matches!(d.code, "W_OVERLAP" | "W_FLOATING" | "W_COVER" | "W_BAR_OUTSIDE" | "W_NEAR_MISS") {
+        return;
+    }
+    let mut named: Vec<&Comp<'_>> = Vec::new();
+    for c in sets.iter().flat_map(|s| s.comps.iter()) {
+        if c.anchor_shift.is_some()
+            && d.message.contains(&format!("'{}'", c.id))
+            && !named.iter().any(|n| n.index == c.index)
+        {
+            named.push(c);
+        }
+    }
+    for c in named {
+        let Some((anchor, v)) = &c.anchor_shift else { continue };
+        d.message.push_str(&format!(
+            " ('{}' is a point-list shape placed by at.anchor \"{anchor}\", which moves its points by [{}, {}] from where at.to puts them; kerf before beta.2 ignored that anchor: if the points were written from at.to, remove it: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"at\":{{\"anchor\":null}}}}}})",
+            c.id,
+            model::fmt_num(math::round(v.x * 10000.0) / 10000.0),
+            model::fmt_num(math::round(v.y * 10000.0) / 10000.0),
+            c.id
+        ));
     }
 }
 
@@ -345,7 +388,7 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
             continue;
         }
         let touching_in = |p: &&&Pf<'_>, any_instance: bool| {
-            s.items.iter().any(|q| {
+            s.items.iter().chain(&s.hidden).any(|q| {
                 let reach = if p.prism.role.is_masonry() && q.prism.role.is_masonry() { JOINT_GAP - 1e-9 } else { gap };
                 let other = q.comp.index != c.index || (any_instance && q.prism.instance != p.prism.instance);
                 other
@@ -411,7 +454,184 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
                 ),
             };
             diags.add_fix(Level::Warning, "W_FLOATING", Some(&c.id), None, msg, fix);
+        } else if c.ty.ty == crate::catalog::Type::Panel {
+            panel_faces(s, c, &mine, gap, diags);
+        } else if c.ty.traits.hardware {
+            strap_faces(s, c, &mine, gap, diags);
         }
+    }
+}
+
+/// A strap `on` the front or back face of one member that also crosses another member whose face is not in that plane:
+/// over the second member it floats off the face (or runs inside the member when that member stands proud).
+fn strap_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, diags: &Diags) {
+    let Some((host, face)) = c.node.get("on").and_then(Value::str).and_then(|o| o.rsplit_once('.')) else { return };
+    if !matches!(face, "face_front" | "face_back") {
+        return;
+    }
+    use crate::catalog::Type;
+    let host_id = host.split('#').next().unwrap_or(host);
+    let framing = |q: &Pf<'_>| {
+        matches!(q.comp.ty.ty, Type::Lumber | Type::Ijoist | Type::Truss | Type::Steel)
+            && q.prism.kind == Kind::Body
+            && !q.prism.embedded
+    };
+    let mut best: Option<(f64, f64, &str)> = None;
+    for p in mine.iter().filter(|p| p.prism.kind == Kind::Body) {
+        for q in s.items.iter() {
+            if q.comp.index == c.index || q.comp.id == host_id || !framing(q) || !p.box_.overlaps(q.box_, 0.0) {
+                continue;
+            }
+            let inter = clip::boolean(&p.flat, &q.flat, Op::Intersect);
+            let area = clip::total_area(&inter);
+            if area <= 0.25 {
+                continue;
+            }
+            let (g0, g1) = if face == "face_back" { (p.prism.z1, q.prism.z0) } else { (q.prism.z1, p.prism.z0) };
+            let between = s.items.iter().any(|r| {
+                r.comp.index != c.index
+                    && r.comp.index != q.comp.index
+                    && r.prism.kind == Kind::Body
+                    && r.prism.z1.min(g1) - r.prism.z0.max(g0) > 1e-6
+                    && clip::total_area(&clip::boolean(&inter, &r.flat, Op::Intersect)) > 0.5 * area
+            });
+            if between {
+                continue;
+            }
+            let off = if face == "face_back" { q.prism.z0 - p.prism.z1 } else { p.prism.z0 - q.prism.z1 };
+            let inside = p.prism.z1.min(q.prism.z1) - p.prism.z0.max(q.prism.z0);
+            let d = if off > gap {
+                off
+            } else if inside > gap && off < -gap {
+                -inside
+            } else {
+                continue;
+            };
+            if d > 2.0 {
+                continue;
+            }
+            if best.is_none_or(|b| area > b.1) {
+                best = Some((d, area, q.comp.id.as_str()));
+            }
+        }
+    }
+    let Some((d, _, other)) = best else { return };
+    let side = if face == "face_back" { "back" } else { "front" };
+    let how = if d > 0.0 {
+        format!("it stands {} off the {side} face of '{other}'", fmt_ft_in(d))
+    } else {
+        format!("it runs {} inside '{other}', whose {side} face stands proud of '{host}'", fmt_ft_in(-d))
+    };
+    diags.add_fix(
+        Level::Warning,
+        "W_FLOATING",
+        Some(&c.id),
+        None,
+        format!(
+            "strap '{}' lies on the {side} face of '{host}' (`on`), but where it crosses '{other}' {how}: a strap must lie on both members it joins",
+            c.id
+        ),
+        format!(
+            "join the two members with a member tie that follows both faces: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"kind\":\"tie\",\"members\":[\"{host}\",\"{other}\"],\"face\":\"{side}\",\"points\":null,\"on\":null,\"lay\":null}}}}; or bring the faces flush (a filler on '{other}', or the members' z)",
+            c.id
+        ),
+    );
+}
+
+/// An edge-on sheet (a thin strip in the drawing plane) that touches other components only at its ends or edges:
+/// nothing lies against either face, so it floats off the framing it should be nailed to (a stale `at` offset).
+fn panel_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, diags: &Diags) {
+    for p in mine.iter().filter(|p| p.prism.kind == Kind::Body && p.prism.instance == 0) {
+        let [l] = p.flat.as_slice() else { continue };
+        if l.len() != 4 {
+            continue;
+        }
+        let edges: Vec<(V2, V2)> = (0..4).map(|i| (l[i], l[(i + 1) % 4])).collect();
+        let Some(&(a, b)) = edges.iter().max_by(|x, y| x.1.sub(x.0).len().total_cmp(&y.1.sub(y.0).len())) else {
+            continue;
+        };
+        let len = b.sub(a).len();
+        let t = clip::total_area(&p.flat) / len.max(1e-9);
+        if t <= 1e-6 || len < 4.0 * t {
+            continue;
+        }
+        let faces: Vec<Vec<V2>> =
+            edges.iter().filter(|(e0, e1)| e1.sub(*e0).len() > 2.0 * t).map(|(e0, e1)| alloc::vec![*e0, *e1]).collect();
+        let near = |q: &&&Pf<'_>| q.comp.index != c.index && z_gap(p.prism, q.prism) <= gap;
+        let others: Vec<&&Pf<'_>> = s.items.iter().chain(&s.hidden).filter(near).collect();
+        if others.iter().any(|q| contact_len(&faces, &q.flat, gap) > 1e-3) {
+            continue;
+        }
+        let ends: Vec<Vec<V2>> = edges
+            .iter()
+            .filter(|(e0, e1)| e1.sub(*e0).len() <= 2.0 * t)
+            .map(|(e0, e1)| alloc::vec![*e0, *e1])
+            .collect();
+        if ends.len() == 2
+            && ends.iter().all(|e| others.iter().any(|q| contact_len(core::slice::from_ref(e), &q.flat, gap) > 1e-3))
+        {
+            continue;
+        }
+        let u = b.sub(a).norm();
+        let n = V2::init(-u.y, u.x);
+        let mid = V2::init(l.iter().map(|v| v.x).sum::<f64>() / 4.0, l.iter().map(|v| v.y).sum::<f64>() / 4.0);
+        let mut best: Option<(f64, f64, &str)> = None;
+        for q in &others {
+            if q.comp.ty.traits.hardware || q.prism.role == Role::Soil {
+                continue;
+            }
+            let (mut u0, mut u1, mut n0, mut n1) = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+            for v in q.flat.iter().flatten() {
+                let d = v.sub(mid);
+                (u0, u1) = (u0.min(d.dot(u)), u1.max(d.dot(u)));
+                (n0, n1) = (n0.min(d.dot(n)), n1.max(d.dot(n)));
+            }
+            if u1.min(len / 2.0) - u0.max(-len / 2.0) <= t {
+                continue;
+            }
+            let (g, side) = if n0 >= t / 2.0 - 1e-6 {
+                (n0 - t / 2.0, 1.0)
+            } else if n1 <= -t / 2.0 + 1e-6 {
+                (-t / 2.0 - n1, -1.0)
+            } else {
+                continue;
+            };
+            if g > gap && g <= 6.0 && best.is_none_or(|bb| g < bb.0) {
+                best = Some((g, side, q.comp.id.as_str()));
+            }
+        }
+        let (msg, fix) = match best {
+            Some((g, side, host)) => {
+                let m = n.scale(side);
+                let (from, to) = if m.y.abs() >= m.x.abs() {
+                    if m.y > 0.0 { ("below", "up") } else { ("above", "down") }
+                } else if m.x > 0.0 {
+                    ("left of", "right")
+                } else {
+                    ("right of", "left")
+                };
+                (
+                    format!(
+                        "panel '{}' touches other components only at its ends or edges: nothing lies against either face; it floats {} {from} '{host}'",
+                        c.id,
+                        fmt_ft_in(g)
+                    ),
+                    format!(
+                        "move it {} {to} onto '{host}' (a sheet lies on the framing face to face): check its `at` anchor and offset (an offset left from an earlier placement?), or `z`",
+                        fmt_ft_in(g)
+                    ),
+                )
+            }
+            None => (
+                format!(
+                    "panel '{}' touches other components only at its ends or edges: nothing lies against either face, so nothing holds it",
+                    c.id
+                ),
+                "put it on the framing face to face: check its `at` anchor and offset, or `z`".to_string(),
+            ),
+        };
+        diags.add_fix(Level::Warning, "W_FLOATING", Some(&c.id), None, msg, fix);
+        return;
     }
 }
 

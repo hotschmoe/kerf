@@ -2288,7 +2288,7 @@ section('#24. hardware visibility, member ties and angles, sloped hangers');
   const tie = (extra = {}) => ({ id: 't', type: 'connector', model: 'H2.5A', members: ['j', 'plate'], ...extra });
   const note = [{ id: 'A', kind: 'section', cut_z: 0, annotations: [{ id: 'n1', type: 'note', text: 'H2.5A', target: 't' }] }, { id: 'I', kind: 'iso' }];
 
-  write('ht1.kerf.json', doc([plate, joist([-0.75, 0.75]), tie()], note));
+  write('ht1.kerf.json', doc([plate, { ...plate, id: 'plate0', at: { anchor: 'top_left', to: [0, 0] } }, joist([-0.75, 0.75]), tie()], note));
   let r = kerf(['check', 'ht1.kerf.json']);
   check('H2.5A from members [joist, plate]: a tie on the joist face wrapping the plate, 0 warnings', /t +connector H2.5A hurricane tie 18 ga, tie j to plate on the front face of j/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
   let d = items('ht1.kerf.json', 'A');
@@ -2572,6 +2572,118 @@ section('#28. round-2 papercuts');
   write('rf28.kerf.json', rfDoc([0, 10]));
   bc = bubble('rf28.kerf.json');
   check('on clear paper the bubble keeps the default 3/4" paper up and right of at', bc !== null && Math.abs(bc[0] - 9) < 1e-6 && Math.abs(bc[1] - 19) < 1e-6, bc);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Issue #29: false positives and silent problems from the beta.2 touch-up (SPEC 29.1): nail penetration into the stack,
+// truss hangers on the bottom chord, contact with hidden members, sheets touching only at their edges, straps off a
+// crossed member, stale at.offset, tie legs past their member, corner/T post caps, anchored point lists, tie z.
+section('#29. beta.3 touch-up fixes');
+{
+  const doc = (components, views) => ({ kerf: '0.1', id: 't29', title: 'T29', run: [-24, 24], components, views: views ?? [{ id: 'A', kind: 'section', cut_z: 0 }] });
+  const warns = (out, code) => out.split('\n').filter((l) => l.startsWith('WARN ' + code + ' '));
+  const ply = (id, x) => ({ id, type: 'lumber', size: '2x4', run: 'y', face: 'narrow', length: 48, at: { anchor: 'bottom_left', to: [x, 0] } });
+  write('n29.kerf.json', doc([ply('king', 0), ply('p3', 1.5), ply('p2', 3), { id: 'nl', type: 'nailing', members: ['king', 'p3', 'p2'], size: '16d', spacing: 6 }]));
+  let r = kerf(['check', 'n29.kerf.json']);
+  check('16d through a 1 1/2" king into a built-up post: 2" into the ply stack, no W_NAIL_LENGTH', r.code === 0 && warns(r.out, 'W_NAIL_LENGTH').length === 0, r.out);
+  write('n29.kerf.json', doc([ply('king', 0), ply('p3', 1.5), ply('p2', 3), { id: 'nl', type: 'nailing', members: ['king', 'p3', 'p2'], size: '6d', spacing: 6 }]));
+  r = kerf(['check', 'n29.kerf.json']);
+  check('a nail too short for the listed stack still warns that it never reaches the last ply', warns(r.out, 'W_NAIL_LENGTH').some((l) => /never reaches it/.test(l)), r.out);
+  write('n29.kerf.json', doc([ply('king', 0), { ...ply('p3', 1.5), size: '1x4' }, { id: 'nl', type: 'nailing', members: ['king', 'p3'], size: '6d', spacing: 6, through: true }]));
+  r = kerf(['check', 'n29.kerf.json']);
+  check('short penetration past the first member names the member it holds in', warns(r.out, 'W_NAIL_LENGTH').some((l) => /penetrates 'p3' only/.test(l)), r.out);
+
+  const girder = { id: 'girder', type: 'truss', at: { anchor: 'bottom_left', to: [0, 0] }, profile: 'parallel_chord', orient: 'end_on', top_chord: '2x4', bottom_chord: '2x8', depth: 24, plies: 3 };
+  const tr = { id: 'tr', type: 'truss', at: { anchor: 'end_bottom', to: 'girder@bottom_right' }, z: -12, profile: 'pitched', exterior: 'left', pitch: '4:12', top_chord: '2x4', bottom_chord: '2x4', bearing: 'face', span_shown: 30 };
+  write('h29.kerf.json', doc([girder, tr, { id: 'hg', type: 'connector', model: 'HUS26', carried: 'tr', carrying: 'girder', height: 5.4375 }]));
+  r = kerf(['check', 'h29.kerf.json']);
+  check('HUS26 on a hung truss: sized against its 2x bottom chord, no W_HANGER_SIZE', r.code === 0 && warns(r.out, 'W_HANGER_SIZE').length === 0, r.out);
+  write('h29.kerf.json', doc([girder, tr, { id: 'hg', type: 'connector', model: 'HUS26', carried: 'tr', carrying: 'girder', height: 1.5 }]));
+  r = kerf(['check', 'h29.kerf.json']);
+  check('a truss hanger shorter than 60% of the bottom chord still warns, naming the chord', warns(r.out, 'W_HANGER_SIZE').some((l) => /for the bottom chord of 'tr', which is 3 1\/2" deep/.test(l)), r.out);
+
+  const ftg = (id, x, w) => ({ id, type: 'concrete', shape: 'rect', width: w, height: 12, shown: 'hidden', z: [-11, 11], at: { anchor: 'top_left', to: [x, 0] } });
+  const wall = { id: 'wall', type: 'concrete', shape: 'rect', width: 60, height: 24, at: { anchor: 'bottom_left', to: [0, 0] } };
+  write('f29.kerf.json', doc([wall, ftg('f1', 0, 30), ftg('f2', 30.5, 29.5), { id: 'dow', type: 'rebar', size: '#3', mode: 'path', points: [[22, -6], [38, -6]] }], [{ id: 'A', kind: 'elevation' }]));
+  r = kerf(['check', 'f29.kerf.json']);
+  check('a dowel inside footing pieces drawn hidden touches them: no W_FLOATING', warns(r.out, 'W_FLOATING').length === 0, r.out);
+
+  const beam = { id: 'beam', type: 'lumber', size: '4x10', run: 'z', at: { anchor: 'bottom_right', to: [0, 0] } };
+  const joist = { id: 'j', type: 'lumber', size: '2x8', run: 'x', face: 'wide', length: 24, at: { anchor: 'bottom_left', to: [0, 0] } };
+  const sheet = (to) => ({ id: 'sh', type: 'panel', material: 'plywood', thickness: 0.5, length: 24, z: [-12, 12], at: { anchor: 'bottom_left', to } });
+  write('s29.kerf.json', doc([beam, joist, sheet({ ref: 'j@top_left', offset: [0, 1.5] })]));
+  r = kerf(['check', 's29.kerf.json']);
+  check('a sheet touching only the beam face at its end floats 1 1/2" above the joist: W_FLOATING with the gap and direction', warns(r.out, 'W_FLOATING').some((l) => /panel 'sh' touches other components only at its ends or edges.*floats 1 1\/2" above 'j'.*Fix: move it 1 1\/2" down onto 'j'/.test(l)), r.out);
+  write('s29.kerf.json', doc([beam, joist, sheet('j@top_left')]));
+  r = kerf(['check', 's29.kerf.json']);
+  check('the sheet on the joist: no W_FLOATING', warns(r.out, 'W_FLOATING').length === 0, r.out);
+  write('s29.kerf.json', doc([joist, { ...joist, id: 'j2', at: { anchor: 'bottom_left', to: 'j@top_left' }, offset: undefined }, { ...joist, id: 'j2', at: { anchor: 'bottom_left', to: { ref: 'j@top_left', offset: [0, 8] } } }, { id: 'web', type: 'panel', material: 'osb', thickness: 0.375, length: 8, run: 'y', z: [-0.5, 0.5], at: { anchor: 'bottom_left', to: 'j@top_center' } }].filter((c, i) => i !== 1)));
+  r = kerf(['check', 's29.kerf.json']);
+  check('a sheet held at both ends (a web between flanges) is not floating', warns(r.out, 'W_FLOATING').length === 0, r.out);
+
+  const post = { id: 'post', type: 'lumber', size: '2x4', run: 'y', face: 'narrow', length: 84, at: { anchor: 'bottom_left', to: [0, 0] } };
+  const hdr = { id: 'hdr', type: 'lumber', size: '3x12', run: 'x', face: 'wide', length: 60, z: [-1.75, 0.75], at: { anchor: 'bottom_left', to: 'post@top_left' } };
+  const strap = { id: 'st', type: 'connector', model: 'ST6224', points: [{ ref: 'post@top_center', offset: [0, -12] }, { ref: 'post@top_center', offset: [0, 8] }], on: 'post.face_front', lay: 'face' };
+  write('st29.kerf.json', doc([post, hdr, strap], [{ id: 'A', kind: 'elevation' }]));
+  r = kerf(['check', 'st29.kerf.json']);
+  const stw = warns(r.out, 'W_FLOATING');
+  check('a strap on the post face crossing a header 1" back: W_FLOATING naming the header and the gap', stw.some((l) => /strap 'st' lies on the front face of 'post' \(`on`\), but where it crosses 'hdr' it stands 1" off the front face of 'hdr'/.test(l)), r.out);
+  const fixOp = (stw[0] ?? '').match(/(\{"op":"update".*?"lay":null\}\})/);
+  check('its fix is a member tie op', fixOp !== null && /"kind":"tie","members":\["post","hdr"\],"face":"front"/.test(fixOp[1]), stw[0]);
+  if (fixOp) {
+    r = kerf(['apply', 'st29.kerf.json', '--ops', fixOp[1]]);
+    check('applying the member tie fix clears it', r.code === 0 && warns(r.out, 'W_FLOATING').length === 0 && /st +connector ST6224 .*tie post to hdr/m.test(r.out), r.out);
+  }
+  write('st29.kerf.json', doc([post, { ...hdr, z: [-1.75, 1.75] }, strap], [{ id: 'A', kind: 'elevation' }]));
+  r = kerf(['check', 'st29.kerf.json']);
+  check('faces flush: no W_FLOATING', warns(r.out, 'W_FLOATING').length === 0, r.out);
+
+  write('o29.kerf.json', doc([joist, { id: 'blk', type: 'lumber', size: '2x4', run: 'z', at: { anchor: 'bottom_left', to: 'j@top_left', offset: [0, 1.5] } }]));
+  r = kerf(['apply', 'o29.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/blk', value: { at: { to: 'j@top_right' } } })]);
+  check('update of at.to that keeps the old at.offset: W_STALE_OFFSET with the op that drops it', /^WARN W_STALE_OFFSET blk: op 0: the update moves at.to of 'blk' from "j@top_left" to "j@top_right" but keeps its at.offset \[0,1.5\].*Fix: .*\{"op":"update","path":"components\/blk","value":\{"at":\{"offset":null\}\}\}/m.test(r.out), r.out);
+  r = kerf(['apply', 'o29.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/blk', value: { at: { to: 'j@top_right', offset: [0, 0] } } })]);
+  check('writing the offset in the same update: no W_STALE_OFFSET', r.code === 0 && !/W_STALE_OFFSET/.test(r.out), r.out);
+  r = kerf(['check', 'o29.kerf.json']);
+  check('kerf check does not repeat it', !/W_STALE_OFFSET/.test(r.out), r.out);
+
+  const stem = { id: 'stem', type: 'concrete', shape: 'rect', width: 6, height: 16, at: { anchor: 'top_left', to: [0, 0] } };
+  const sill = { id: 'sill', type: 'lumber', size: '2x6', orient: 'flat', treated: true, at: { anchor: 'bottom_left', to: [0, 0] } };
+  const stud = { id: 'stud', type: 'lumber', size: '2x6', run: 'y', face: 'wide', length: 30, at: { anchor: 'bottom_left', to: 'sill@top_left' } };
+  write('t29.kerf.json', doc([stem, sill, stud, { id: 'h', type: 'connector', model: 'H2.5A', members: ['stud', 'sill'], face: 'front' }]));
+  r = kerf(['check', 't29.kerf.json']);
+  const tl = warns(r.out, 'W_TIE_LEG');
+  check('H2.5A default legs on a 1 1/2" sill: W_TIE_LEG naming the concrete below and the legs fix', tl.some((l) => /its leg on 'sill' runs 2 3\/4" from the joint, but 'sill' is only 1 1\/2" deep there, so 1 1\/4" of the plate hangs past its bottom face onto 'stem'.*"legs":\[4,1.5\]/.test(l)), r.out);
+  r = kerf(['apply', 't29.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'components/h', value: { legs: [4, 1.5] } })]);
+  check('the legs fix clears it', r.code === 0 && warns(r.out, 'W_TIE_LEG').length === 0, r.out);
+  const top1 = { id: 'tp1', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'stud@top_left' } };
+  const top2 = { id: 'tp2', type: 'lumber', size: '2x6', orient: 'flat', at: { anchor: 'bottom_left', to: 'tp1@top_left' } };
+  const raf = { id: 'raf', type: 'lumber', size: '2x6', run: 'x', length: 30, z: [-0.75, 0.75], at: { anchor: 'bottom_left', to: { ref: 'tp2@top_left', offset: [-6, 0] } } };
+  write('t29.kerf.json', doc([sill, stud, top1, top2, raf, { id: 'h', type: 'connector', model: 'H2.5A', members: ['raf', 'tp2'] }]));
+  r = kerf(['check', 't29.kerf.json']);
+  check('a leg that runs on into the lower top plate (framing) does not warn', warns(r.out, 'W_TIE_LEG').length === 0, r.out);
+
+  const p6 = { id: 'post', type: 'lumber', size: '6x6', run: 'y', length: 30, at: { anchor: 'top_center', to: [0, 0] } };
+  const dx = { id: 'dx', type: 'lumber', size: '5.25x11.875', product: 'lvl', run: 'x', face: 'wide', length: 48, at: { anchor: 'bottom_center', to: 'post@top_center' } };
+  const dz = { id: 'dz', type: 'lumber', size: '5.25x11.875', product: 'lvl', run: 'z', orient: 'upright', z: [2.625, 34], at: { anchor: 'bottom_center', to: 'post@top_center' } };
+  write('c29.kerf.json', doc([p6, dx, dz, { id: 'cap', type: 'connector', model: 'CCTQ', kind: 'post_cap', gauge: 10, post: 'post', beam: ['dx', 'dz'] }], [{ id: 'I', kind: 'iso' }]));
+  r = kerf(['mesh', 'c29.kerf.json']);
+  const capZ = r.code === 0 ? JSON.parse(r.out).parts.filter((p) => p.src === 'cap').flatMap((p) => p.positions.filter((_, i) => i % 3 === 2)) : [];
+  check('T post cap: no seat strip or end plate along the T beam (every cap plate within a post width of the post)', capZ.length > 0 && Math.max(...capZ) <= 2.625 + 5.5 + 0.2 && Math.min(...capZ) >= -2.75 - 0.2, [Math.min(...capZ), Math.max(...capZ)]);
+
+  const poly = (id, pts) => ({ id, type: 'concrete', shape: 'polygon', points: pts, at: { anchor: 'bottom_left', to: [0, 0] } });
+  write('p29.kerf.json', doc([poly('ftg', [[-10, 0], [40, 0], [40, 12], [-10, 12]]), poly('stem', [[-10, 12], [10, 12], [10, 40], [-10, 40]])]));
+  r = kerf(['check', 'p29.kerf.json']);
+  check('an overlap caused by at.anchor on a point list says how far the anchor moved the points and gives the op that removes it', warns(r.out, 'W_OVERLAP').some((l) => /'stem' is a point-list shape placed by at.anchor "bottom_left", which moves its points by \[10, -12\].*"value":\{"at":\{"anchor":null\}\}/.test(l)), r.out);
+
+  r = kerf(['schema', 'connector']);
+  check('schema connector: z moves a member tie on a side face (not "no z")', /z only on a member tie or angle on a side face/.test(r.out) && /`z` then moves it along the members/.test(r.out), r.out.slice(0, 200));
+
+  const hdrz = { id: 'hb', type: 'lumber', size: '4x12', run: 'z', z: [-10, 0], at: { anchor: 'bottom_left', to: [0, 0] } };
+  const dj = (id, z) => ({ id, type: 'lumber', size: '2x10', run: 'x', length: 24, z, at: { anchor: 'bottom_right', to: 'hb@bottom_left' } });
+  write('fr29.kerf.json', doc([hdrz, dj('j1', [-1.5, 0]), dj('j2', [0, 1.5]), { id: 'hh', type: 'connector', model: 'HU210-2', carried: ['j1', 'j2'], carrying: 'hb' }]));
+  r = kerf(['drawing', 'fr29.kerf.json', '--view', 'A']);
+  const fr = r.code === 0 ? JSON.parse(r.out).items.filter((i) => i.t === 'path' && i.src === 'hh') : [];
+  check('a section on the seam of a 2-ply carried member cuts it: its hanger draws in front by default', fr.some((i) => i.pen === 'steel') && !fr.some((i) => i.pen === 'hidden'), r.err || fr.map((i) => i.pen));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
