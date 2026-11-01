@@ -21,6 +21,7 @@ params! {
         run: Enum(Run) = Run::X => { desc: "in-plane direction of length before rotation: x (length x thickness) or y (thickness x length); lay face: length along x (run x) or y (run y), height across it" },
         lay: Enum(Lay) = Lay::Edge => { desc: "edge: seen edge-on in sections (thickness in-plane, spans z); face: the sheet seen face-on in elevations and iso (wall sheathing, shear walls, portal frames): length x height in-plane, thickness along z (a thin strip in plans)" },
         height: OptLenPos => { def: "required for lay face", desc: "lay face: the sheet's extent across `run` (a wall sheet's height, e.g. 96)" },
+        cuts: OptRaw => { desc: "lay edge: end cuts as lumber (`kerf schema cuts`): {type: trim, end: start|end, to: id} cuts the end to the face of `to` (sloped roof sheathing that butts a parapet or a girder face: a plumb end, no overlap), square|plumb|level|bevel; anchors start_top, start_bottom, end_top, end_bottom" },
         on: OptStr => { desc: "lay face: the member whose z face the sheet lies on: \"stud.face_front\" (default face) or \"stud.face_back\"; sets z (instead of `z`)" },
     }
 }

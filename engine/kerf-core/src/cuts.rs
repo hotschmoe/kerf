@@ -233,6 +233,10 @@ pub fn lengthwise(ty: Type, node: &Value, two_point: bool) -> Option<bool> {
             _ => None,
         },
         Type::Ijoist => (run != Some("z")).then_some(false),
+        Type::Panel => match node.get("lay").and_then(Value::str) {
+            Some("face") => None,
+            _ => Some(run == Some("y")),
+        },
         _ => None,
     }
 }
@@ -525,7 +529,7 @@ pub fn prepare(
             id,
             &base,
             format!(
-                "'{id}': cuts apply to a member seen lengthwise (lumber run x or y, steel orient elevation or plan); an end-on member has no ends in the section"
+                "'{id}': cuts apply to a member seen lengthwise (lumber run x or y, steel orient elevation or plan, an edge-on panel); an end-on member or a face-on sheet has no ends in the section"
             ),
             "set \"run\": \"x\" (or \"y\"), or remove cuts",
         );

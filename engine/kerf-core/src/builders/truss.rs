@@ -632,6 +632,7 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         if let Some(yp) = y_par {
             extra.push(anchor("parapet_top", V2::init(0.0, yp)));
             extra.push(anchor("parapet_top_inner", V2::init(ev_w, yp)));
+            extra.push(anchor("parapet_roof_inner", V2::init(ev_w, o.yt(ev_w) + v_thick)));
         }
     }
     if tall_far {
@@ -933,6 +934,7 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     if let Some(h) = tp.parapet {
         anchors.push(anchor("parapet_top", V2::init(x_body, d + h)));
         anchors.push(anchor("parapet_top_inner", V2::init(x_body + w, d + h)));
+        anchors.push(anchor("parapet_roof_inner", V2::init(x_body + w, d)));
     }
     let bearing = match tp.bearing {
         Bearing::BottomChord => "bottom chord bearing",
