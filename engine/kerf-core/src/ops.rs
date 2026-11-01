@@ -83,6 +83,46 @@ fn unknown_id(c: &mut Ctx, kind: &str, id: &str, list: &[Value], path: &str) {
     c.fail("E_REF_UNKNOWN", path, msg);
 }
 
+/// An update that moves a component's `at.to` (or the `ref` of an `at.to` Ref object) but leaves out the `offset` beside
+/// it keeps the old offset (the merge goes key by key), which was measured from the old target: W_STALE_OFFSET, an
+/// edit-time notice with the op that drops it.
+fn stale_offset(c: &Ctx, id: &str, old: &Value, patch: &Value) {
+    let (Some(old_at), Some(new_at)) = (old.get("at"), patch.get("at")) else { return };
+    stale_offset_in(c, id, old_at, new_at, "to", "at");
+    if let (Some(old_to @ Value::Object(_)), Some(new_to @ Value::Object(_))) = (old_at.get("to"), new_at.get("to")) {
+        stale_offset_in(c, id, old_to, new_to, "ref", "at.to");
+    }
+}
+
+fn stale_offset_in(c: &Ctx, id: &str, old: &Value, new: &Value, key: &str, at: &str) {
+    let (Some(old_off), Some(new_target)) = (old.get("offset"), new.get(key)) else { return };
+    if new_target.is_null() || new.get("offset").is_some() || old.get(key) == Some(new_target) {
+        return;
+    }
+    let text = |v: &Value| {
+        let mut b = Vec::new();
+        json::write_compact(&mut b, v);
+        String::from_utf8_lossy(&b).into_owned()
+    };
+    let from = old.get(key).map_or_else(|| "nothing".to_string(), text);
+    let drop = if at == "at" { "{\"at\":{\"offset\":null}}" } else { "{\"at\":{\"to\":{\"offset\":null}}}" };
+    c.diags.add_fix(
+        Level::Warning,
+        "W_STALE_OFFSET",
+        Some(id),
+        Some(&format!("components/{id}/{}/offset", at.replace('.', "/"))),
+        format!(
+            "op {}: the update moves {at}.{key} of '{id}' from {from} to {} but keeps its {at}.offset {} (an update merges `at` key by key), and that offset was measured from the old target (edit-time notice: kerf check does not repeat it)",
+            c.op_index,
+            text(new_target),
+            text(old_off)
+        ),
+        format!(
+            "if the offset belonged to the old placement, drop it: {{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{drop}}}; to keep it, write it in the same update"
+        ),
+    );
+}
+
 fn sanitize_cites(c: &Ctx, ann: &Value, force_reset: bool) -> Value {
     let Some(arr) = ann.get("cite").and_then(Value::arr) else { return ann.clone() };
     let mut out = Vec::with_capacity(arr.len());
@@ -415,6 +455,9 @@ fn apply_components(c: &mut Ctx, op: &Op) {
             Kind::Update | Kind::Set => {
                 if let Some(s) = id_change(value, id) {
                     return c.fail("E_OP", op.path, format!("ids cannot be changed by update (got \"{s}\" for '{id}'); remove and re-add the component, then fix references"));
+                }
+                if op.kind == Kind::Update {
+                    stale_offset(c, id, &list[idx], value);
                 }
                 list[idx] = if op.kind == Kind::Set { value.clone() } else { json::merge_patch(&list[idx], value) };
                 c.set_list("components", list);
