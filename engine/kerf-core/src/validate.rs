@@ -242,12 +242,40 @@ fn each_set<'p, 'a>(sets: &[Drawn<'p, 'a>], ids: &[&str], diags: &Diags, check: 
         }
     }
     for (mut d, mut vs) in found {
+        anchor_hint(sets, &mut d);
         if vs.len() < ids.len() {
             vs.sort_unstable();
             let names: Vec<&str> = vs.iter().map(|&v| ids[v]).collect();
             d.message.push_str(&format!(" (in view{} {})", if names.len() == 1 { "" } else { "s" }, names.join(", ")));
         }
         diags.push(d);
+    }
+}
+
+/// A placement finding about a point-list shape that a box or named `at.anchor` moved (SPEC 28.1: honoured since
+/// beta.2, ignored before) says so: the anchor, the shift and the op that puts the points back where they are written.
+fn anchor_hint(sets: &[Drawn<'_, '_>], d: &mut Diag) {
+    if !matches!(d.code, "W_OVERLAP" | "W_FLOATING" | "W_COVER" | "W_BAR_OUTSIDE" | "W_NEAR_MISS") {
+        return;
+    }
+    let mut named: Vec<&Comp<'_>> = Vec::new();
+    for c in sets.iter().flat_map(|s| s.comps.iter()) {
+        if c.anchor_shift.is_some()
+            && d.message.contains(&format!("'{}'", c.id))
+            && !named.iter().any(|n| n.index == c.index)
+        {
+            named.push(c);
+        }
+    }
+    for c in named {
+        let Some((anchor, v)) = &c.anchor_shift else { continue };
+        d.message.push_str(&format!(
+            " ('{}' is a point-list shape placed by at.anchor \"{anchor}\", which moves its points by [{}, {}] from where at.to puts them; kerf before beta.2 ignored that anchor: if the points were written from at.to, remove it: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"at\":{{\"anchor\":null}}}}}})",
+            c.id,
+            model::fmt_num(math::round(v.x * 10000.0) / 10000.0),
+            model::fmt_num(math::round(v.y * 10000.0) / 10000.0),
+            c.id
+        ));
     }
 }
 

@@ -39,13 +39,12 @@ pub fn front_hardware(scene: &Scene, spec: &ViewSpec, prisms: &[Prism]) -> Vec<b
                 None => {
                     spec.kind == ViewKind::Section
                         && hw.members.iter().any(|&(mc, mi)| {
-                            prisms.iter().any(|q| {
-                                q.comp == mc
-                                    && q.instance == mi
-                                    && q.kind == Kind::Body
-                                    && q.z0 < cut - eps
-                                    && q.z1 > cut + eps
-                            })
+                            let body =
+                                || prisms.iter().filter(|q| q.comp == mc && q.instance == mi && q.kind == Kind::Body);
+                            let seam = 1e-6;
+                            body().any(|q| q.z0 < cut - eps && q.z1 > cut + eps)
+                                || (body().any(|q| q.z0 < cut - eps && (q.z1 - cut).abs() <= seam)
+                                    && body().any(|q| q.z1 > cut + eps && (q.z0 - cut).abs() <= seam))
                         })
                 }
             }
