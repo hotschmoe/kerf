@@ -9,6 +9,7 @@
 pub mod callout;
 pub mod dims;
 pub mod knockout;
+pub mod line;
 pub mod notes;
 pub mod repair;
 pub mod table;
@@ -70,6 +71,8 @@ pub struct Env<'a, 's> {
     pub keyed_out: Vec<KeyedEntry>,
     /// The document's `views`: a keyed note with a `key` and no text takes the text of a note with that key in any view.
     pub doc_views: &'a [Value],
+    /// Check W_LEADER_HIT fixes by laying the view out again (off for a layout's trial builds, which are discarded).
+    pub verify_fixes: bool,
 }
 
 impl<'a, 's> Env<'a, 's> {
@@ -103,6 +106,7 @@ impl<'a, 's> Env<'a, 's> {
             shared_keys: None,
             keyed_out: Vec::new(),
             doc_views: &[],
+            verify_fixes: true,
         }
     }
 
@@ -568,7 +572,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
         listed: Vec::new(),
     };
     let mut seen: Vec<&'a str> = Vec::new();
-    let types = ["note", "dim", "label", "weld", "table", "ref"];
+    let types = ["note", "dim", "label", "weld", "table", "ref", "line"];
     for (k, an) in spec.annotations.iter().enumerate() {
         let mut slot: Option<usize> = None;
         let mut cur_meta = Meta::default();
@@ -621,6 +625,13 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
                     }
                 }
                 "weld" => {}
+                "line" => {
+                    if let Some(ls) = line::read(env, an, id, &apath) {
+                        let its = line::items(env, &ls);
+                        env.labels_box.add_box(items_box(env.font, &its));
+                        g.welds.push((k, its));
+                    }
+                }
                 "ref" => {
                     if let Some(rs) = callout::read(env, an, id, &apath) {
                         let its = callout::items(env, &rs);
@@ -713,7 +724,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     repair::report_moves(env, routed, &dl, &fin);
     repair::report_overlaps(env, routed, &prep, &dl, &fin);
     let rd = fin.rd;
-    notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep);
+    notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep, rd.ext, &rd.soft);
     notes::check_landings(env, routed, &fin.r, &base_segs);
     for (its, m) in rd.per.iter().zip(&rd.meta) {
         let bx = items_box(env.font, its);

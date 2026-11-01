@@ -2686,5 +2686,85 @@ section('#29. beta.3 touch-up fixes');
   check('a section on the seam of a 2-ply carried member cuts it: its hanger draws in front by default', fr.some((i) => i.pen === 'steel') && !fr.some((i) => i.pen === 'hidden'), r.err || fr.map((i) => i.pen));
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Issue #30: drawing gaps from the beta.2 touch-up (SPEC 29.2): parapet roof anchor and panel end cuts, parallel-chord
+// verticals, nailing by part and at an angle, ties between let-in members, tie along/side, run z until, iso of hidden
+// members, line annotation, depressed slab in plan, sheet auto with NTS views, tags_side, checked leader fixes.
+section('#30. beta.3 touch-up drawing gaps');
+{
+  const tg = path.join(DOCS, 'touchup-gaps.kerf.json');
+  let r = kerf(['check', tg]);
+  check('parapet sheathing: until parapet_roof_inner with a trim cut ends at the end vertical (x 3 1/2")', /^ a_roof +panel osb 1\/2" x 2'-9 1\/2" run x \(until a_truss@parapet_roof_inner\) cuts: trim to a_truss start x 3 1\/2"\.\.3'-0"/m.test(r.out), r.out);
+  check('parapet inner sheathing trimmed to the roof sheathing', /^ a_si +panel plywood 1\/2" .*cuts: trim to a_roof start x 3 1\/2"\.\.4"/m.test(r.out), r.out);
+  check('parallel-chord truss with a vertical: summary names it; blocking nailed to member b_truss.vertical', /vertical at 2'-0"/.test(r.out) && /^ b_nails +nailing face 16d NAILS @ 8" O\.C\.: 2 nails .* b_blk -> b_truss\.vertical/m.test(r.out), r.out);
+  check('A35 between a stud and the ledger let into it: on the stud face beside the ledger', /^ c_a35 +connector A35 framing angle, .*angle c_stud to c_ledger on the front face of c_stud x 1 1\/2"\.\.2 15\/16"/m.test(r.out), r.out);
+  check('run z blocking with until: ripped to the truss heel', /^ d_block +lumber 2x6 upright run z ripped to 3 15\/16" \(until d_truss@heel_block_top\)/m.test(r.out), r.out);
+  check('a face-on tie whose default side has the blocking against the truss face goes to the other side', /^ d_tie +connector H2\.5A .* x 4 1\/8"\.\.5 9\/16"/m.test(r.out), r.out);
+  check('the touch-up document checks clean', /0 errors {2}0 warnings/.test(r.out), r.out);
+
+  let dr = kerf(['drawing', tg, '--view', 'D']);
+  check('an iso draws the blocking shown hidden in its section', dr.code === 0 && JSON.parse(dr.out).items.some((it) => it.src === 'd_block'), dr.err);
+  dr = kerf(['drawing', tg, '--view', 'F']);
+  let its = dr.code === 0 ? JSON.parse(dr.out).items : [];
+  check('line annotation: dashed by default (hidden pen) through its Refs', its.some((it) => it.t === 'path' && it.src === 'f_l1' && it.pen === 'hidden' && it.pts[0][0] === 36 && it.pts[1][1] === 12), its.filter((it) => it.src === 'f_l1'));
+  check('line annotation: line solid, closed', its.some((it) => it.t === 'path' && it.src === 'f_l2' && it.pen === 'beyond' && it.closed), its.filter((it) => it.src === 'f_l2'));
+  dr = kerf(['drawing', tg, '--view', 'E']);
+  its = dr.code === 0 ? JSON.parse(dr.out).items : [];
+  const inLoop = (pt, loop) => loop.reduce((c, a, k) => { const b = loop[(k + 1) % loop.length]; return ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < a[0] + (pt[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])) ? !c : c; }, false);
+  check('plan: the depressed area is hatched like the slab (a region of e_slab covers its middle)', its.some((it) => it.t === 'region' && it.src === 'e_slab' && it.loops.some((l) => inLoop([0, 0], l))), dr.err);
+
+  const lay = (sheet) => { write('tg30.kerf.json', { ...JSON.parse(fs.readFileSync(tg, 'utf8')), layouts: [{ id: 'S1', views: ['A', 'D', 'F'], arrange: 'row', sheet, scale: 'common' }] }); const d = kerf(['drawing', 'tg30.kerf.json', '--layout', 'S1']); return d.code === 0 ? JSON.parse(d.out).cells : []; };
+  const auto = lay('auto');
+  const fixed = lay('22x17');
+  check('sheet auto: an NTS view is fitted to the share of the sheet auto picks (same as that sheet given by hand)', auto.length === 3 && JSON.stringify(auto) === JSON.stringify(fixed), { auto, fixed });
+
+  const base = JSON.parse(fs.readFileSync(tg, 'utf8'));
+  const mod = (id, patch) => ({ ...base, layouts: undefined, components: base.components.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+  write('tg30.kerf.json', mod('a_roof', { cuts: [{ type: 'birdmouth', on: 'a_pl2' }] }));
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('a panel takes end cuts only: birdmouth is E_PARAM', /^ERROR E_PARAM a_roof: 'a_roof' cuts\[0\]: a panel takes end cuts only \(square, plumb, level, bevel, trim\), not a birdmouth/m.test(r.out + r.err), r.out + r.err);
+  write('tg30.kerf.json', mod('b_truss', { verticals: [53] }));
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('a vertical past span_shown: E_PARAM with the range of centres', /^ERROR E_PARAM b_truss: verticals\[0\] at 4'-5": a 3 1\/2" wide vertical web does not fit: .*give a centre from 5 1\/4" to 4'-4 1\/4"/m.test(r.out + r.err), r.out + r.err);
+  write('tg30.kerf.json', mod('d_truss', { verticals: [24] }));
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('verticals on a pitched truss: E_PARAM pointing at howe webs', /^ERROR E_PARAM d_truss: 'verticals' only applies to profile "parallel_chord"/m.test(r.out + r.err), r.out + r.err);
+  write('tg30.kerf.json', mod('b_nails', { members: ['b_blk', 'b_truss.post'] }));
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('a nailing member part that does not exist: E_PARAM listing the parts', /^ERROR E_PARAM b_nails: member 'b_truss\.post': 'b_truss' has no part 'post' \(its parts: .*vertical.*\)/m.test(r.out + r.err), r.out + r.err);
+  write('tg30.kerf.json', mod('d_block', { size: '2x4', until: 'd_truss@heel_block_top' }));
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('run z until deeper than the nominal depth: E_PARAM naming both', /^ERROR E_PARAM d_block: 'until' on run z lumber rips its depth to reach the Ref: it needs 3 15\/16" but a 2x4 upright is 3 1\/2" deep/m.test(r.out + r.err), r.out + r.err);
+  write('tg30.kerf.json', mod('c_a35', { face: 'top', along: 2 }));
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('along on an edge face: E_PARAM (z moves it there)', /^ERROR E_PARAM c_a35: on face top the angle sits on that side of the joint/m.test(r.out + r.err), r.out + r.err);
+  write('tg30.kerf.json', mod('c_a35', { along: -1.5 }));
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('along moves a face-on angle along the joint', /^ c_a35 +connector A35 .* x 1 1\/2"\.\.2 15\/16" y -4 3\/8"\.\.1\/8"/m.test(r.out), r.out);
+  write('tg30.kerf.json', { ...mod('x', {}), views: base.views.map((v) => (v.id === 'G' ? { ...v, tags_side: 'up' } : v)) });
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('tags_side must be left, right or both', /^ERROR E_PARAM G: tags_side must be right, left or both \(got "up"\)/m.test(r.out + r.err), r.out + r.err);
+  write('tg30.kerf.json', { ...mod('x', {}), views: base.views.map((v) => (v.id === 'F' ? { ...v, annotations: [{ id: 'l1', type: 'line', points: ['f_ftg@bottom_right'] }] } : v)) });
+  r = kerf(['check', 'tg30.kerf.json']);
+  check('a line needs two or more points', /^ERROR E_PARAM l1: line 'l1' in view F needs "points": two or more points/m.test(r.out + r.err), r.out + r.err);
+
+  write('br30.kerf.json', { kerf: '0.1', id: 'br30', title: 'BR', components: [
+    { id: 'tie', type: 'lumber', size: '2x4', run: 'x', face: 'narrow', length: 48, at: { anchor: 'bottom_left', to: [0, 0] } },
+    { id: 'blk', type: 'lumber', size: '2x4', orient: 'flat', at: { anchor: 'top_center', to: [30, 30] } },
+    { id: 'brace', type: 'lumber', size: '2x4', from: { ref: 'tie@top_left', offset: [6, 0] }, to: 'blk@bottom_center' },
+    { id: 'nl', type: 'nailing', members: ['brace', 'tie'], pattern: 'toenail', count: 2, size: '16d' },
+  ], views: [{ id: 'A', kind: 'section' }] });
+  r = kerf(['check', 'br30.kerf.json']);
+  check('nailing a brace cut onto a member at an angle: W_NAIL_MEMBERS says so and offers the note', /^WARN W_NAIL_MEMBERS nl: 'nl': 'brace' lies at \d+ deg to 'tie' .*Fix: give the schedule in a note on 'brace' \(e\.g\. "\(2\) 16d BRACE TO TIE"\)/m.test(r.out), r.out);
+
+  const block = { id: 'blk', type: 'concrete', shape: 'rect', width: 40, height: 12, at: { anchor: 'top_left', to: [0, 0] } };
+  const rod = (id, x) => ({ id, type: 'anchor_bolt', diameter: 0.75, embed: 8, projection: 3, hook: 'headed', at: { to: [x, 0] } });
+  write('lh30.kerf.json', { kerf: '0.1', id: 'lh30', title: 'LH', components: [block, rod('ab1', 10), rod('ab2', 30)], views: [{ id: 'A', kind: 'section', notes_style: 'keyed', crop: { x: [-2, 44], y: [-6, 2] }, annotations: [
+    { id: 'n1', type: 'note', text: 'ANCHOR 1', target: 'ab1', place: [46, -1] }, { id: 'n2', type: 'note', text: 'ANCHOR 2', target: 'ab2' }] }] });
+  r = kerf(['check', 'lh30.kerf.json']);
+  const m = /^WARN W_LEADER_HIT n1: .*Fix: (.*)$/m.exec(r.out);
+  check('W_LEADER_HIT: the fix offered was checked by laying the whole view out again', m !== null && /\(checked with the whole view laid out again: the view then has no leader hits\)/.test(m[1]), r.out);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

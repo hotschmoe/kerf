@@ -214,6 +214,7 @@ fn unknown_keys(doc: &Value, diags: &Diags) {
                 "weld" => &schema::WELD,
                 "table" => &schema::TABLE,
                 "ref" => &schema::REF,
+                "line" => &schema::LINE,
                 _ => &schema::NOTE,
             };
             let apath = format!("{vbase}/annotations/{aid}");

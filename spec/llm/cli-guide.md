@@ -85,11 +85,11 @@ Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you a
 the designer verifies. Never present a design as engineered: capacities, spacing, nailing are the mfr.'s / EOR's.
 
 ## Views and annotations
-`crop` and `scale` are optional (auto-fit: all non-fill components + 6 in; largest standard scale that fits);
-set them only to frame deliberately (`W_VIEW_FIT` then checks). The layout places notes and clears leader collisions
-(`column` on a note forces a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed notes:
-view `"notes_style":"keyed"` (numbered leaders + DETAIL NOTES list; `notes_side` above|left|right; same `key` = one
-entry). Dim `dir` default: dominant axis; `offset` > 0 is above (h) / right of (v) the points, < 0 below / left.
+`crop`/`scale` are optional (auto-fit: non-fill components + 6 in, largest standard scale that fits); set them only
+to frame on purpose (`W_VIEW_FIT` checks). The layout places notes and clears leader collisions (note `column` forces
+a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed: `"notes_style":"keyed"` (tags +
+DETAIL NOTES list at `notes_side`; tags one side: `tags_side`; same `key` = one entry). Dim `dir` default: dominant
+axis; `offset` > 0 above (h) / right of (v) the points, < 0 below / left.
 Schedules: `table` annotations (`kerf schema table`) in a `"kind":"schedule"` view, not solids/labels.
 Plans/elevations: view `kind` `plan` (cut at `cut_y`; plan [x,y] = model [x,-z]) or `elevation` (no cut), same members in
 their real orientation; never a faked section. Beam in a wall: draw the elevation unless asked otherwise.
@@ -268,5 +268,14 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   `gauge` (and `width`). Base plate rods: `anchor_bolt` `"plate":"base_plate","leveling_nut":true` (projection fits
   itself), `"plate_washer":"3x3x1/4"`, `"hook":"adhesive"`; weld studs: `bolt` `"kind":"weld_stud"` placed at the steel
   face (grip up through the nailer), `"kind":"headed_stud"` for shear studs.
+- Touch-up gaps (SPEC 29.2). Roof sheathing against an integral parapet: `"at":{"anchor":"bottom_right","to":
+  "truss@top_chord_end"},"slope":"@truss","until":"truss@parapet_roof_inner","cuts":[{"type":"trim","end":"start",
+  "to":"truss"}]` (edge-on panels take end cuts like lumber). A parallel-chord truss takes `"verticals":[24]` (web centres
+  from bearing_outer; anchors `vertical_1`, `_top`, `_bottom`); nail to one part with a member `"truss.vertical"` (any
+  `id.part`: an end-on truss's `bottom_chord`). A tie between a stud and the ledger let into it (`cuts` notch `by`)
+  works from the notched profile. `along` slides a face-on tie or angle along the joint; a bent tie avoids the side where
+  another member lies against the face. Eave blocking (lumber run z) takes `"until":"truss@heel_block_top"` (ripped).
+  An iso draws members `shown: "hidden"` (a 2D state) as solids. `{"type":"line","points":[...],"line":"dashed"}` draws a
+  no-load zone, influence or limit line. Keyed views: `"tags_side":"right"` puts every tag on one side.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

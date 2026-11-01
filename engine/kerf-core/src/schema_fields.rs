@@ -195,7 +195,14 @@ pub static VIEW: Object = Object {
             name: "notes_side",
             ty: "right|left|both|above",
             def: "both",
-            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point. keyed/list: where the DETAIL NOTES list goes (both = above)",
+            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point. keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
+            ..Field::NONE
+        },
+        Field {
+            name: "tags_side",
+            ty: "right|left|both",
+            def: "both",
+            desc: "keyed views: which side the number tags go (both = each tag to the side nearer its landing point); a note's `column` still wins",
             ..Field::NONE
         },
         Field {
@@ -649,7 +656,7 @@ pub static ARRAY: Object = Object {
 pub static CUTS: Object = Object {
     name: "cuts",
     brief: "lumber/steel end cuts, birdmouth, notches; from/to members",
-    summary: "`cuts` on lumber (run x/y) and steel (orient elevation/plan): a list of cuts applied to the member's profile, so section, plan, elevation, iso, the mesh and every check see the cut member. The member's frame: u along its length (start = the `at` end or `from`, end = the far end or `to`), v across (bottom face = v 0, top = the depth; for a two-point member top is the face left of from->to). End cuts pass through the end of the member's center line (its aligned line for from/to) and extend or shorten the member to close it.",
+    summary: "`cuts` on lumber (run x/y), steel (orient elevation/plan) and edge-on panels (end cuts only): a list of cuts applied to the member's profile, so section, plan, elevation, iso, the mesh and every check see the cut member. The member's frame: u along its length (start = the `at` end or `from`, end = the far end or `to`), v across (bottom face = v 0, top = the depth; for a two-point member top is the face left of from->to). End cuts pass through the end of the member's center line (its aligned line for from/to) and extend or shorten the member to close it.",
     fields: &[
         Field {
             name: "type",
@@ -881,13 +888,46 @@ pub static REF: Object = Object {
     ..Object::NONE
 };
 
+pub static LINE: Object = Object {
+    name: "line",
+    brief: "dashed boundary line: no-load zone, limit",
+    summary: "A line through model points (annotation of type line), dashed by default: the boundary of a no-load zone, a 1:1 influence line, a limit or property line, anything drawn that is not a component. Placed exactly (not moved by the note layout); a note or label names it.",
+    fields: &[
+        Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
+        Field { name: "type", ty: "\"line\"", required: true, desc: "annotation type", ..Field::NONE },
+        Field {
+            name: "points",
+            ty: "[point, ...]",
+            required: true,
+            desc: "two or more: \"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y] (a 2:1 line from the heel: {\"ref\":\"ftg@top_right\",\"offset\":[48,24]})",
+            ..Field::NONE
+        },
+        Field {
+            name: "line",
+            ty: "dashed|solid",
+            def: "dashed",
+            desc: "dashed: the hidden pen; solid: the beyond pen",
+            ..Field::NONE
+        },
+        Field {
+            name: "closed",
+            ty: "bool",
+            def: "false",
+            desc: "true joins the last point to the first (a zone outline)",
+            ..Field::NONE
+        },
+    ],
+    example: "{\"id\":\"l_zone\",\"type\":\"line\",\"points\":[\"ftg@top_right\",{\"ref\":\"ftg@top_right\",\"offset\":[48,24]}]}",
+    ..Object::NONE
+};
+
 impl Object {
     const NONE: Object = Object { name: "", brief: "", summary: "", fields: &[], notes: "", example: "" };
 }
 
 /// Every non-component topic, in listing order.
-pub static OBJECTS: [&Object; 15] =
-    [&DOC, &VIEW, &LAYOUT, &NOTE, &DIM, &LABEL, &WELD, &TABLE, &REF, &CITE, &OPS, &AT, &ARRAY, &CUTS, &ACK];
+pub static OBJECTS: [&Object; 16] =
+    [&DOC, &VIEW, &LAYOUT, &NOTE, &DIM, &LABEL, &WELD, &TABLE, &REF, &LINE, &CITE, &OPS, &AT, &ARRAY, &CUTS, &ACK];
 
 pub fn find_object(name: &str) -> Option<&'static Object> {
     if let Some(o) = OBJECTS.iter().find(|o| o.name == name) {

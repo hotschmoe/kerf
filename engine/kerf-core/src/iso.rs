@@ -506,7 +506,8 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
             continue;
         }
         for p in &c.world {
-            if p.kind == Kind::Ghost || p.role == Role::Void {
+            let ghost = p.kind == Kind::Ghost && !(p.dashed && !c.where_occurs);
+            if ghost || p.role == Role::Void {
                 continue;
             }
             if p.fp_proxy {
@@ -578,7 +579,7 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
                         z0,
                         z1,
                         cap_cut: cap,
-                        pen: if p.kind == Kind::Ghost { p.pen } else { None },
+                        pen: None,
                         material: mat_name.into(),
                         embedded: p.embedded,
                         is_fill: fill_mat,

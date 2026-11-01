@@ -441,9 +441,18 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
                 }
                 let flat = clip::from_region(&p.loops, FLAT_TOL);
                 let end_grain = p.quads.is_empty() && is_lumber_run_y(scene, p);
-                for s in strips(&flat, cut_y) {
-                    let mut q = rect_prism(p, s.x0, s.x1, p.z0, p.z1, s.lo, s.top);
+                let ss = strips(&flat, cut_y);
+                let bx = clip::loops_box(&flat);
+                let concrete =
+                    scene.comps.get(p.comp as usize).is_some_and(|c| c.ty.ty == crate::catalog::Type::Concrete);
+                let recess_floor = (bx.y0 + bx.y1) / 2.0;
+                let has_cut = ss.iter().any(|s| s.cut);
+                for s in ss {
+                    let recess = concrete && has_cut && !s.cut && s.top > recess_floor;
+                    let top = if recess { s.top.max(cut_y + 1e-6) } else { s.top };
+                    let mut q = rect_prism(p, s.x0, s.x1, p.z0, p.z1, s.lo, top);
                     q.kind = Kind::Body;
+                    q.recess = recess;
                     if s.cut && p.embedded && ((s.x1 - s.x0) - (p.z1 - p.z0)).abs() <= 0.05 * (s.x1 - s.x0) {
                         let c = plan_pt((s.x0 + s.x1) / 2.0, (p.z0 + p.z1) / 2.0);
                         out.push(dot_prism(p, c, (s.x1 - s.x0) / 2.0, cut_y));

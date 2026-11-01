@@ -29,6 +29,7 @@ params! {
         kind: OptEnum(Kind) => { def: "strap with points or on, else the model's family (tie or angle with members)", desc: "strap | tie | angle: the polyline below (`points`, or `on` a member face), or tie | angle placed from two `members`; hanger: carried + carrying; post_cap: post + beam; post_base: post (+ standoff); holdown: post + rod. Hanger, cap, base, holdown and member ties are sized from their members (no points, no at)" },
         members: OptRaw => { def: "null", desc: "tie | angle: the two members it joins, e.g. [\"rafter\", \"plate\"] (id, id#k or a list drawn as one): tie wraps the joint (H2.5A, H3, RSP4, LTP4), angle sits in the inside corner (A34, A35)" },
         legs: OptRaw => { def: "tie: half the model length each (2 3/4); angle 1 7/16", desc: "tie | angle with members: [on the first member, on the second] leg lengths" },
+        along: OptLen => { def: "0", desc: "tie | angle with members on face front/back: moves it this far along the joint from where it lands (+x when one member sits on the other, +y side by side); a tie bent onto the other member's side keeps to that side (choose it with `side`)" },
         front: OptBool => { def: "null: in front where a section cuts one of its members", desc: "true: hardware draws solid over what it overlaps in sections and elevations (as engineers draw it), false: at its true place, dashed where hidden" },
         points: OptRaw => { def: "required for a strap without on", desc: "polyline [x,y] or Refs of the bearing face (lay edge) or centerline (lay face)" },
         on: OptStr => { def: "null", desc: "\"<member>.face_left|face_right|face_top|face_bottom|face_front|face_back\": the strap lies flush on that face in 3D (outside it, gauge thick, no z arithmetic, no `side`): points snap onto the face (default: the whole face along the member), width centered on the member (left/right/top/bottom) or in-plane (front/back)" },
@@ -177,9 +178,10 @@ fn build_strap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option
         "standoff",
         "seat_height",
         "legs",
+        "along",
     ] {
         if ctx.p.has(key) {
-            let owner = if key == "legs" {
+            let owner = if key == "legs" || key == "along" {
                 "a tie or angle placed from \"members\""
             } else {
                 "kind hanger, post_cap, post_base or holdown"

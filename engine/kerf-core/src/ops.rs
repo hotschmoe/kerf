@@ -176,6 +176,7 @@ fn annotation_references(ann: &Value, id: &str) -> bool {
         return true;
     }
     ["at", "from", "to"].iter().any(|k| ann.get(k).is_some_and(|x| references_comp(x, id)))
+        || ann.get("points").and_then(Value::arr).is_some_and(|ps| ps.iter().any(|x| references_comp(x, id)))
 }
 
 fn dependents(c: &Ctx, id: &str) -> Vec<String> {

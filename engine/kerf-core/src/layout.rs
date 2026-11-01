@@ -1009,18 +1009,31 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
         None => drawview::STANDARD_SCALES.to_vec(),
     };
     let reached = |sc: f64| lay.scale.is_some() || !flat_free || sc <= AUTO_TARGET_SCALE + 1e-9;
+    let fitted = |s: &ViewSpec| fixed_scale(s) && s.scale <= 0.0;
+    let share_bound = specs.iter().any(fitted);
     let mut trials: Vec<Trial> = Vec::new();
     let mut picks: Vec<(Layout, usize, bool)> = Vec::new();
     for &sheet in &sheets {
         let l = Layout { sheet, ..lay.clone() };
         let c = Ctx { share: l.share(st), ..c0 };
         let (aw, ah) = l.area(st);
+        let mut fixed_here: Option<Vec<Option<Built>>> = None;
         let mut pick = None;
         for (n, &sc) in candidates.iter().enumerate() {
-            let t = match trials.iter().position(|t| t.sc == sc && (sc > 0.0 || t.share == c.share)) {
+            let t = match trials.iter().position(|t| t.sc == sc && ((sc > 0.0 && !share_bound) || t.share == c.share)) {
                 Some(t) => t,
                 None => {
-                    trials.push(trial(&c, &l, &specs, &fixed, &key_of, sc)?);
+                    if share_bound && c.share != c0.share && fixed_here.is_none() {
+                        let mut f = fixed.clone();
+                        for (k, s) in specs.iter().enumerate() {
+                            if fitted(s) {
+                                f[k] = Some(build_view(&c, s, key_of(k), None)?);
+                            }
+                        }
+                        fixed_here = Some(f);
+                    }
+                    let fx = fixed_here.as_deref().unwrap_or(&fixed);
+                    trials.push(trial(&c, &l, &specs, fx, &key_of, sc)?);
                     trials.len() - 1
                 }
             };

@@ -1,0 +1,534 @@
+{
+  "kerf": "0.1",
+  "id": "touchup-gaps",
+  "title": "BETA.3 TOUCH-UP DRAWING GAPS",
+  "components": [
+    {
+      "id": "a_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, -30]
+      },
+      "views": [
+        "A"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "length": 30
+    },
+    {
+      "id": "a_pl1",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "a_stud@top_left"
+      },
+      "views": [
+        "A"
+      ],
+      "size": "2x6",
+      "orient": "flat"
+    },
+    {
+      "id": "a_pl2",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "a_pl1@top_left"
+      },
+      "views": [
+        "A"
+      ],
+      "size": "2x6",
+      "orient": "flat"
+    },
+    {
+      "id": "a_truss",
+      "type": "truss",
+      "at": {
+        "anchor": "bearing_outer",
+        "to": "a_pl2@top_left"
+      },
+      "views": [
+        "A"
+      ],
+      "pitch": "3:12",
+      "webs": "fink",
+      "parapet": 24,
+      "overhang": 0,
+      "span_shown": 36
+    },
+    {
+      "id": "a_roof",
+      "type": "panel",
+      "material": "osb",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "a_truss@top_chord_end"
+      },
+      "slope": "@a_truss",
+      "views": [
+        "A"
+      ],
+      "thickness": 0.5,
+      "until": "a_truss@parapet_roof_inner",
+      "cuts": [
+        {
+          "end": "start",
+          "to": "a_truss",
+          "type": "trim"
+        }
+      ]
+    },
+    {
+      "id": "a_si",
+      "type": "panel",
+      "material": "plywood",
+      "at": {
+        "anchor": "top_left",
+        "to": "a_truss@parapet_top_inner"
+      },
+      "views": [
+        "A"
+      ],
+      "thickness": 0.5,
+      "until": "a_roof@start_top",
+      "run": "y",
+      "cuts": [
+        {
+          "end": "start",
+          "to": "a_roof",
+          "type": "trim"
+        }
+      ]
+    },
+    {
+      "id": "b_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [-1.75, 0]
+      },
+      "views": [
+        "B"
+      ],
+      "size": "2x4",
+      "run": "y",
+      "length": 12
+    },
+    {
+      "id": "b_plate",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "b_stud@top_center"
+      },
+      "views": [
+        "B"
+      ],
+      "size": "2x4",
+      "orient": "flat"
+    },
+    {
+      "id": "b_truss",
+      "type": "truss",
+      "at": {
+        "anchor": "bearing_outer",
+        "to": {
+          "ref": "b_plate@top_left",
+          "offset": [-22.25, 0]
+        }
+      },
+      "z": -12,
+      "views": [
+        "B"
+      ],
+      "profile": "parallel_chord",
+      "top_chord": "2x4",
+      "bottom_chord": "2x4",
+      "depth": 24,
+      "overhang": 0,
+      "span_shown": 54,
+      "verticals": [24],
+      "web_spacing": 12
+    },
+    {
+      "id": "b_blk",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "b_truss@vertical_1_bottom"
+      },
+      "z": [-11.25, -9.75],
+      "views": [
+        "B"
+      ],
+      "size": "2x4",
+      "run": "y",
+      "until": "b_truss@vertical_1_top",
+      "blocking": true
+    },
+    {
+      "id": "b_nails",
+      "type": "nailing",
+      "views": [
+        "B"
+      ],
+      "members": [
+        "b_blk",
+        "b_truss.vertical"
+      ],
+      "size": "16d",
+      "spacing": 8,
+      "through": true
+    },
+    {
+      "id": "c_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, -30]
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "length": 60,
+      "cuts": [
+        {
+          "by": "c_ledger",
+          "type": "notch"
+        }
+      ]
+    },
+    {
+      "id": "c_ledger",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, -5.25]
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x10"
+    },
+    {
+      "id": "c_a35",
+      "type": "connector",
+      "views": [
+        "C"
+      ],
+      "model": "A35",
+      "members": [
+        "c_stud",
+        "c_ledger"
+      ]
+    },
+    {
+      "id": "d_plate",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, 0]
+      },
+      "z": [-30, 6],
+      "views": [
+        "D",
+        "G"
+      ],
+      "size": "2x6",
+      "orient": "flat"
+    },
+    {
+      "id": "d_truss",
+      "type": "truss",
+      "at": {
+        "anchor": "bearing_outer",
+        "to": "d_plate@top_left"
+      },
+      "z": -24,
+      "array": {
+        "axis": "z",
+        "count": 2,
+        "spacing": 24
+      },
+      "views": [
+        "D",
+        "G"
+      ],
+      "pitch": "6:12",
+      "overhang": 12,
+      "span_shown": 24
+    },
+    {
+      "id": "d_block",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "d_plate@top_left"
+      },
+      "z": [-23.25, -0.75],
+      "views": [
+        "D",
+        "G"
+      ],
+      "shown": "hidden",
+      "size": "2x6",
+      "until": "d_truss@heel_block_top",
+      "blocking": true
+    },
+    {
+      "id": "d_tie",
+      "type": "connector",
+      "views": [
+        "D",
+        "G"
+      ],
+      "model": "H2.5A",
+      "members": [
+        "d_truss#0",
+        "d_plate"
+      ],
+      "face": "front",
+      "legs": [
+        4,
+        1.5
+      ]
+    },
+    {
+      "id": "e_slab",
+      "type": "concrete",
+      "views": [
+        "E"
+      ],
+      "shape": "footprint",
+      "height": 5,
+      "points": [
+        [-48, -36],
+        [48, -36],
+        [48, 36],
+        [-48, 36]
+      ],
+      "top": 0,
+      "voids": [
+        {
+          "rect": [36, 1.5],
+          "at": [-18, 0],
+          "anchor": "top_left",
+          "z": [-12, 12]
+        }
+      ]
+    },
+    {
+      "id": "f_wall",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [8, 0]
+      },
+      "views": [
+        "F"
+      ],
+      "shape": "rect",
+      "width": 8,
+      "height": 48
+    },
+    {
+      "id": "f_ftg",
+      "type": "concrete",
+      "at": {
+        "anchor": "top_left",
+        "to": [0, 0]
+      },
+      "views": [
+        "F"
+      ],
+      "shape": "footing",
+      "width": 36,
+      "height": 12
+    },
+    {
+      "id": "f_soil",
+      "type": "fill",
+      "material": "earth",
+      "views": [
+        "F"
+      ],
+      "points": [
+        [16, 0],
+        [16, 44],
+        [60, 44],
+        [60, 0]
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "title": "PARAPET: SHEATHING CUT TO THE END VERTICAL",
+      "cut_z": 0,
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "a_n1",
+          "type": "note",
+          "text": "ROOF SHEATHING, PLUMB CUT AT PARAPET",
+          "target": "a_roof"
+        },
+        {
+          "id": "a_n2",
+          "type": "note",
+          "text": "1/2\" PLYWD. ON PARAPET, CUT TO ROOF",
+          "target": "a_si"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "title": "VERTICAL WEB AT SHEAR PANEL",
+      "cut_z": 0,
+      "annotations": [
+        {
+          "id": "b_n1",
+          "type": "note",
+          "text": "TRUSS MFR. TO PROVIDE VERTICAL WEB",
+          "target": "b_truss.vertical"
+        },
+        {
+          "id": "b_n2",
+          "type": "note",
+          "target": "b_nails"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "kind": "section",
+      "title": "A35 AT LET-IN LEDGER",
+      "cut_z": 0,
+      "annotations": [
+        {
+          "id": "c_n1",
+          "type": "note",
+          "text": "SIMPSON A35 STUD TO LEDGER",
+          "target": "c_a35"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "kind": "iso",
+      "title": "BLOCKING SHOWN HIDDEN IN SECTION",
+      "scale": "NTS",
+      "crop": {
+        "x": [-14, 20],
+        "y": [-2, 14],
+        "z": [-28, 4]
+      },
+      "annotations": [
+        {
+          "id": "d_n1",
+          "type": "note",
+          "text": "2X6 BLOCKING RIPPED TO TRUSS",
+          "target": "d_block"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "kind": "section",
+      "title": "TIE CLEAR OF THE BLOCKING",
+      "cut_z": -24,
+      "tags_side": "right",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "g_n1",
+          "type": "note",
+          "text": "H2.5A",
+          "target": "d_tie"
+        },
+        {
+          "id": "g_n3",
+          "type": "note",
+          "text": "TRUSS",
+          "target": "d_truss"
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "kind": "plan",
+      "title": "DEPRESSED SLAB",
+      "scale": "1/2\"=1'-0\"",
+      "annotations": [
+        {
+          "id": "e_n1",
+          "type": "note",
+          "text": "1 1/2\" DEPRESSED SLAB",
+          "target": "e_slab",
+          "at": [0, -1]
+        }
+      ]
+    },
+    {
+      "id": "F",
+      "kind": "section",
+      "title": "NO-LOAD ZONE",
+      "scale": "1/2\"=1'-0\"",
+      "cut_z": 0,
+      "annotations": [
+        {
+          "id": "f_l1",
+          "type": "line",
+          "points": [
+            "f_ftg@bottom_right",
+            {
+              "ref": "f_ftg@bottom_right",
+              "offset": [24, 24]
+            }
+          ]
+        },
+        {
+          "id": "f_l2",
+          "type": "line",
+          "points": [
+            [44, 30],
+            [56, 30],
+            [56, 40],
+            [44, 40]
+          ],
+          "line": "solid",
+          "closed": true
+        },
+        {
+          "id": "f_lb",
+          "type": "label",
+          "text": "1:1",
+          "at": {
+            "ref": "f_ftg@bottom_right",
+            "offset": [16, 8]
+          }
+        }
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "id": "S1",
+      "views": [
+        "A",
+        "D",
+        "F"
+      ],
+      "arrange": "row",
+      "scale": "common",
+      "sheet": "auto"
+    }
+  ]
+}

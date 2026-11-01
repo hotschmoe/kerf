@@ -45,6 +45,7 @@ params! {
         overhang: Len = 12.0 => { def: "12 (parallel_chord and mono: 0)", desc: "horizontal distance from outer face of bearing to the tail end" },
         tail: Enum(Tail) = Tail::Plumb => { desc: "plumb | square cut" },
         span_shown: LenPos = 48.0 => { desc: "how far into the building to draw (crop/break at the end)" },
+        verticals: OptRaw => { desc: "parallel_chord side: vertical webs at these panel points, each the distance from bearing_outer to the web's centre (e.g. [24]: the vertical the truss maker adds over a shear panel or a point load); the diagonals restart beside each one. Anchors vertical_1.. (centre), vertical_1_top / _bottom (on the chords); nail to it as member \"truss.vertical\"" },
         web_spacing: OptLenPos => { def: "side: the clear height between chords; end_on: 24", desc: "parallel_chord side: horizontal distance between web panel points (diagonals alternate up and down); end_on: spacing of the webs along z" },
         plies: Int(u8, 1, 4) = 1 => { desc: "end_on: girder plies side by side" },
         length: OptLenPos => { desc: "end_on: length along z, centered on `z` or the first section view's cut_z (default: spans the doc run)" },
@@ -118,15 +119,17 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     }
     let side_only: &[&str] = if tp.orient == Orient::EndOn {
-        &["span", "webs", "parapet"]
+        &["span", "webs", "parapet", "verticals"]
     } else if parallel {
         &["span", "webs"]
     } else {
-        &[]
+        &["verticals"]
     };
     if let Some(key) = side_only.iter().find(|k| ctx.p.has(k)) {
         let what = if tp.orient == Orient::EndOn {
             "a side-view truss (orient \"side\"): an end-on truss is cut across"
+        } else if *key == "verticals" {
+            "profile \"parallel_chord\" (a pitched, scissor or mono truss takes a web pattern: webs \"howe\" has a vertical at every panel point)"
         } else {
             "profiles pitched, scissor and mono (a parallel_chord truss spaces its webs by web_spacing)"
         };
@@ -632,6 +635,7 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         if let Some(yp) = y_par {
             extra.push(anchor("parapet_top", V2::init(0.0, yp)));
             extra.push(anchor("parapet_top_inner", V2::init(ev_w, yp)));
+            extra.push(anchor("parapet_roof_inner", V2::init(ev_w, o.yt(ev_w) + v_thick)));
         }
     }
     if tall_far {
@@ -894,22 +898,26 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         return None;
     }
     let (yb, yt) = (db, d - dt);
-    let mut x = x_body + w;
-    let mut down = true;
+    let verts = parse_verticals(ctx, x_body + w, xe, w)?;
     let mut webs = Box::default();
-    while x + p <= xe - 0.5 {
-        let lp = if down {
-            vec![Pt::new(x + p - 2.0 * hw, yb), Pt::new(x + p, yb), Pt::new(x + 2.0 * hw, yt), Pt::new(x, yt)]
-        } else {
-            vec![Pt::new(x, yb), Pt::new(x + 2.0 * hw, yb), Pt::new(x + p, yt), Pt::new(x + p - 2.0 * hw, yt)]
-        };
+    let mut x0 = x_body + w;
+    let mut vert_anchors: Vec<NamedAnchor> = Vec::new();
+    for (k, &xv) in verts.iter().enumerate() {
+        diagonals(&mut prisms, &mut webs, [x0, xv - w / 2.0], [yb, yt], w, p, false);
+        let lp = model::rect_loop(xv - w / 2.0, yb, xv + w / 2.0, yt);
         webs.add_box(geom::loop_box(&lp));
-        prisms.push(wood("web", lp));
-        x += p;
-        down = !down;
+        prisms.push(wood("vertical", lp));
+        vert_anchors.push(anchor(&format!("vertical_{}", k + 1), V2::init(xv, (yb + yt) / 2.0)));
+        vert_anchors.push(anchor(&format!("vertical_{}_top", k + 1), V2::init(xv, yt)));
+        vert_anchors.push(anchor(&format!("vertical_{}_bottom", k + 1), V2::init(xv, yb)));
+        x0 = xv + w / 2.0;
     }
+    diagonals(&mut prisms, &mut webs, [x0, xe], [yb, yt], w, p, true);
     if !webs.is_empty() {
         zones.push(zone_rect("web", webs.x0, webs.y0, webs.x1, webs.y1));
+    }
+    if let (Some(&a), Some(&b)) = (verts.first(), verts.last()) {
+        zones.push(zone_rect("vertical", a - w / 2.0, yb, b + w / 2.0, yt));
     }
     let y_bear = if tcb { d - dt } else { 0.0 };
     let mut anchors = vec![
@@ -930,9 +938,11 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         anchors.push(anchor("tail_bottom", V2::init(-overhang, d - dt)));
         anchors.push(anchor("tail_top", V2::init(-overhang, d)));
     }
+    anchors.extend(vert_anchors);
     if let Some(h) = tp.parapet {
         anchors.push(anchor("parapet_top", V2::init(x_body, d + h)));
         anchors.push(anchor("parapet_top_inner", V2::init(x_body + w, d + h)));
+        anchors.push(anchor("parapet_roof_inner", V2::init(x_body + w, d)));
     }
     let bearing = match tp.bearing {
         Bearing::BottomChord => "bottom chord bearing",
@@ -946,14 +956,116 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
         zones,
         nat_z: Some(ch.tt.max(ch.tb)),
         info: format!(
-            "truss parallel chord {} deep, {}+{} chords, {bearing}, webs @ {}",
+            "truss parallel chord {} deep, {}+{} chords, {bearing}, webs @ {}{}",
             fmt_ft_in(d),
             ch.top,
             ch.bot,
-            fmt_ft_in(p)
+            fmt_ft_in(p),
+            if verts.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", vertical{} at {}",
+                    if verts.len() == 1 { "" } else { "s" },
+                    verts.iter().map(|&x| fmt_ft_in(x)).collect::<Vec<_>>().join(", ")
+                )
+            }
         ),
         ..Built::default()
     })
+}
+
+/// Alternating diagonal webs of width `w` between the chord faces `y` over `x`, starting down from the top chord at
+/// `x[0]`. `open`: panels of `p` until no full one fits before `x[1]` (the truss runs on past the drawing); closed: the
+/// whole number of panels nearest `p` that fills `x` exactly (between two verticals).
+fn diagonals(prisms: &mut Vec<Prism>, webs: &mut Box, x: [f64; 2], y: [f64; 2], w: f64, p: f64, open: bool) {
+    let (len, h) = (x[1] - x[0], y[1] - y[0]);
+    let fits = |s: f64| s > 2.0 * web_half(w, h, s) + 0.25;
+    let (step, n) = if open {
+        (p, math::floor((len - 0.5) / p).max(0.0))
+    } else {
+        let mut n = math::round(len / p).max(1.0);
+        while n > 1.0 && !fits(len / n) {
+            n -= 1.0;
+        }
+        (len / n, if fits(len / n) { n } else { 0.0 })
+    };
+    let hw = web_half(w, h, step);
+    let mut k = 0.0;
+    while k < n {
+        let x0 = x[0] + k * step;
+        let lp = if k % 2.0 == 0.0 {
+            vec![
+                Pt::new(x0 + step - 2.0 * hw, y[0]),
+                Pt::new(x0 + step, y[0]),
+                Pt::new(x0 + 2.0 * hw, y[1]),
+                Pt::new(x0, y[1]),
+            ]
+        } else {
+            vec![
+                Pt::new(x0, y[0]),
+                Pt::new(x0 + 2.0 * hw, y[0]),
+                Pt::new(x0 + step, y[1]),
+                Pt::new(x0 + step - 2.0 * hw, y[1]),
+            ]
+        };
+        webs.add_box(geom::loop_box(&lp));
+        prisms.push(wood("web", lp));
+        k += 1.0;
+    }
+}
+
+/// `verticals` of a parallel-chord truss: web centres measured from the bearing's outer edge, increasing, each web of
+/// width `w` clear of the end vertical (inner face at `x_min`) and of the others, inside the drawn length `xe`.
+fn parse_verticals(ctx: &mut Ctx, x_min: f64, xe: f64, w: f64) -> Option<Vec<f64>> {
+    let Some(v) = ctx.p.raw("verticals").filter(|v| !v.is_null()) else { return Some(Vec::new()) };
+    let fix = "e.g. \"verticals\": [24] (a vertical web centred 24\" from bearing_outer)";
+    let Some(list) = v.arr() else {
+        ctx.p.fail(
+            "verticals",
+            format!("verticals must be a list of distances from bearing_outer (got {}); {fix}", model::kind_or_text(v)),
+        );
+        return None;
+    };
+    let mut out: Vec<f64> = Vec::new();
+    for (k, e) in list.iter().enumerate() {
+        let Some(x) = units::parse_length(e) else {
+            ctx.p.fail(
+                &format!("verticals/{k}"),
+                format!("verticals[{k}] must be a length (got {}); {fix}", model::kind_or_text(e)),
+            );
+            return None;
+        };
+        let lo = out.last().map_or(x_min, |&q| q + w / 2.0);
+        if x - w / 2.0 < lo - 1e-9 || x + w / 2.0 > xe + 1e-9 {
+            let why = match out.last() {
+                Some(&q) if x - w / 2.0 < lo - 1e-9 => format!(
+                    "it overlaps verticals[{}] at {} (list them in increasing order, at least {} apart)",
+                    k - 1,
+                    fmt_ft_in(q),
+                    fmt_ft_in(w)
+                ),
+                _ => format!(
+                    "the drawn truss runs from the end vertical's inner face at {} to span_shown {}",
+                    fmt_ft_in(x_min),
+                    fmt_ft_in(xe)
+                ),
+            };
+            ctx.p.fail(
+                &format!("verticals/{k}"),
+                format!(
+                    "verticals[{k}] at {}: a {} wide vertical web does not fit: {why}; give a centre from {} to {}",
+                    fmt_ft_in(x),
+                    fmt_ft_in(w),
+                    fmt_ft_in(lo + w / 2.0),
+                    fmt_ft_in(xe - w / 2.0)
+                ),
+            );
+            return None;
+        }
+        out.push(x);
+    }
+    Some(out)
 }
 
 /// A truss cut across (running along z): the plies of both chords cut, and a web strip between them behind the cut

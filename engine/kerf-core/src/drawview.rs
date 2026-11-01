@@ -709,6 +709,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let regions = sec.region_items();
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));
     env.work = Some(work);
+    env.verify_fixes = !in_layout;
     env.shared_keys = keys;
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let ann = annot::annotate(&mut env, &mut base_items);
@@ -754,6 +755,7 @@ fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let origin = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
     let mut env = Env::new(st, font, scene, spec, 1.0, origin, diags, Landing::Section(&mut sec));
     env.work = Some(work);
+    env.verify_fixes = !in_layout;
     env.shared_keys = keys;
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let mut all = annot::annotate(&mut env, &mut []);
@@ -1202,6 +1204,7 @@ pub fn build_with<'a>(
             let regions = iso.region_items();
             let mut env = Env::new(st, font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&iso));
             env.work = Some(&work);
+            env.verify_fixes = !opts.in_layout;
             env.shared_keys = opts.keys;
             env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
             let ann = annot::annotate(&mut env, &mut res.items);
