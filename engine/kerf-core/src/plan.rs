@@ -443,7 +443,8 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
                 let end_grain = p.quads.is_empty() && is_lumber_run_y(scene, p);
                 let ss = strips(&flat, cut_y);
                 let bx = clip::loops_box(&flat);
-                let concrete = scene.comps.get(p.comp as usize).is_some_and(|c| c.ty.ty == crate::catalog::Type::Concrete);
+                let concrete =
+                    scene.comps.get(p.comp as usize).is_some_and(|c| c.ty.ty == crate::catalog::Type::Concrete);
                 let recess_floor = (bx.y0 + bx.y1) / 2.0;
                 let has_cut = ss.iter().any(|s| s.cut);
                 for s in ss {

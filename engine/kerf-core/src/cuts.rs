@@ -675,6 +675,16 @@ fn read_cut(
         );
         return Err(());
     };
+    if matches!(ty, "birdmouth" | "notch") && node.get("type").and_then(Value::str) == Some("panel") {
+        err(
+            scene,
+            id,
+            &format!("{path}/type"),
+            format!("'{id}' cuts[{k}]: a panel takes end cuts only (square, plumb, level, bevel, trim), not a {ty}"),
+            "e.g. {\"type\": \"trim\", \"end\": \"start\", \"to\": \"truss\"} cuts the sheet's end to the face it butts",
+        );
+        return Err(());
+    }
     let keys = allowed(ty);
     if let Some(m) = members.iter().find(|m| !keys.contains(&m.key.as_str())) {
         err(

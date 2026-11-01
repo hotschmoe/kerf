@@ -902,8 +902,20 @@ pub static LINE: Object = Object {
             desc: "two or more: \"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y] (a 2:1 line from the heel: {\"ref\":\"ftg@top_right\",\"offset\":[48,24]})",
             ..Field::NONE
         },
-        Field { name: "line", ty: "dashed|solid", def: "dashed", desc: "dashed: the hidden pen; solid: the beyond pen", ..Field::NONE },
-        Field { name: "closed", ty: "bool", def: "false", desc: "true joins the last point to the first (a zone outline)", ..Field::NONE },
+        Field {
+            name: "line",
+            ty: "dashed|solid",
+            def: "dashed",
+            desc: "dashed: the hidden pen; solid: the beyond pen",
+            ..Field::NONE
+        },
+        Field {
+            name: "closed",
+            ty: "bool",
+            def: "false",
+            desc: "true joins the last point to the first (a zone outline)",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"l_zone\",\"type\":\"line\",\"points\":[\"ftg@top_right\",{\"ref\":\"ftg@top_right\",\"offset\":[48,24]}]}",
     ..Object::NONE

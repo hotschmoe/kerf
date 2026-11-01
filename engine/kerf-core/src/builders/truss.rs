@@ -995,9 +995,19 @@ fn diagonals(prisms: &mut Vec<Prism>, webs: &mut Box, x: [f64; 2], y: [f64; 2], 
     while k < n {
         let x0 = x[0] + k * step;
         let lp = if k % 2.0 == 0.0 {
-            vec![Pt::new(x0 + step - 2.0 * hw, y[0]), Pt::new(x0 + step, y[0]), Pt::new(x0 + 2.0 * hw, y[1]), Pt::new(x0, y[1])]
+            vec![
+                Pt::new(x0 + step - 2.0 * hw, y[0]),
+                Pt::new(x0 + step, y[0]),
+                Pt::new(x0 + 2.0 * hw, y[1]),
+                Pt::new(x0, y[1]),
+            ]
         } else {
-            vec![Pt::new(x0, y[0]), Pt::new(x0 + 2.0 * hw, y[0]), Pt::new(x0 + step, y[1]), Pt::new(x0 + step - 2.0 * hw, y[1])]
+            vec![
+                Pt::new(x0, y[0]),
+                Pt::new(x0 + 2.0 * hw, y[0]),
+                Pt::new(x0 + step, y[1]),
+                Pt::new(x0 + step - 2.0 * hw, y[1]),
+            ]
         };
         webs.add_box(geom::loop_box(&lp));
         prisms.push(wood("web", lp));

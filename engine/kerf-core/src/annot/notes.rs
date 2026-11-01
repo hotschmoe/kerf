@@ -538,7 +538,8 @@ pub fn report_hits(
                     matches!(env.spec.notes_side, NotesSide::Both | NotesSide::Above)
                 };
                 if both && side_fix.is_none() {
-                    let sides = [(ht.note, NoteFix::Side(route::Side::Right)), (ht.note, NoteFix::Side(route::Side::Left))];
+                    let sides =
+                        [(ht.note, NoteFix::Side(route::Side::Right)), (ht.note, NoteFix::Side(route::Side::Left))];
                     side_fix = Some(ver.first(&sides));
                 }
                 fix = Some(side_fix.clone().flatten().unwrap_or_else(|| CASCADE_FIX.to_string()));

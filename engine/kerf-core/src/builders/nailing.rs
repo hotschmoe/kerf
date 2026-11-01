@@ -1783,7 +1783,8 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
                     parts.push(&p.part);
                 }
             }
-            let fix = parts.first().map_or(format!("name the whole member: \"{head}\""), |p| format!("e.g. \"{head}.{p}\""));
+            let fix =
+                parts.first().map_or(format!("name the whole member: \"{head}\""), |p| format!("e.g. \"{head}.{p}\""));
             ctx.p.fail(
                 &path,
                 format!(

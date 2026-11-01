@@ -1020,8 +1020,7 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
         let mut fixed_here: Option<Vec<Option<Built>>> = None;
         let mut pick = None;
         for (n, &sc) in candidates.iter().enumerate() {
-            let t = match trials.iter().position(|t| t.sc == sc && ((sc > 0.0 && !share_bound) || t.share == c.share))
-            {
+            let t = match trials.iter().position(|t| t.sc == sc && ((sc > 0.0 && !share_bound) || t.share == c.share)) {
                 Some(t) => t,
                 None => {
                     if share_bound && c.share != c0.share && fixed_here.is_none() {
