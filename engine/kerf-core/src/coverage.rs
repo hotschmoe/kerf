@@ -1,6 +1,7 @@
-//! Which components and annotations answer each line of `meta.requested` (SPEC 21, 25.3). Words match after the house
-//! normalization (`house::Words`: abbreviations both ways, case, punctuation, plural s, lengths); every candidate is one
-//! component or one annotation, and an item is covered when one candidate offers all of its words.
+//! Which components and annotations answer each line of `meta.requested` (SPEC 21, 25.3, 28.8). Words match after the
+//! house normalization (`house::Words`: abbreviations both ways, case, punctuation, plural s, `-ing` / `-ed` word forms,
+//! lengths); every candidate is one component or one annotation, and an item is covered when one candidate offers all
+//! of its words.
 
 use crate::house::{self, Words};
 use crate::json::Value;
@@ -225,8 +226,8 @@ fn candidates(doc: &Value, scene: Option<&Scene>, w: &Words) -> Vec<Cand> {
     out
 }
 
-fn has(words: &[String], w: &str) -> bool {
-    words.binary_search_by(|x| x.as_str().cmp(w)).is_ok()
+fn has(words: &[String], w: &[String]) -> bool {
+    w.iter().any(|f| words.binary_search_by(|x| x.as_str().cmp(f)).is_ok())
 }
 
 /// One entry per non-empty `meta.requested` string: the components / annotations that cover it, and for an uncovered
@@ -260,7 +261,7 @@ pub fn compute(doc: &Value, st: &Style, scene: Option<&Scene>) -> Vec<Item> {
             Some((n, c)) if found.is_empty() => Some(Closest {
                 source: c.source.clone(),
                 text: c.text.clone(),
-                missing: want.iter().filter(|t| !has(&c.words, t)).map(|t| house::display_word(t)).collect(),
+                missing: want.iter().filter(|t| !has(&c.words, t)).map(|t| house::display_word(&t[0])).collect(),
                 have: n,
                 total: want.len(),
             }),

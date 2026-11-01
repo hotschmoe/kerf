@@ -129,18 +129,19 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   "see other detail" scenario and draws no model. A view a layout names is fit-checked only in the layout: `W_VIEW_FIT`
   on `layouts/S1` lists every view's size and the fix that fits (larger `sheet`, other `arrange`, list `notes_side`).
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
-  (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens and a plural
-  s, and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the
+  (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens, a plural
+  s and `-ing`/`-ed` endings (`END NAILED` = `END NAIL`, `BRACING` = `BRACE`; not `BLOCKING`/`BLOCK`, `TOPPING`/`TOP`,
+  `FOOTING`/`FOOT`, `SPACING`/`SPACE`), and compares lengths (`15 ft` = `15'-0"`, `48in` = `4'-0"`). It counts components, notes, labels, dim text (or the
   measured length), welds (`3/16 fillet weld all around`, `cjp`), tables and view titles. A `MISSING` line names the closest
   candidate and the words it lacks; never stuff a component `label` with words to pass.
 - Note case: penny sizes (`16d`), ACI symbols (`db`, `ld`, `ldh`, `f'c`, `fy`) and units like `psi` print as written, and a
   citation's numbered section (`1926.755(a)(1)`) keeps its case. A note may end on a house abbreviation (`PER ARCH.`).
   A style adds tokens with `text.keep_case` and abbreviations with `notes.abbreviations.approved` (`{"BRG.": "BEARING"}`).
-- Abbreviations (W_ABBREV, one per token): spelling out is always fine; an abbreviation must be the approved form:
+- Abbreviations (W_ABBREV, one per token; in a table one per spelling, listing its cells): spelling out is always fine; an abbreviation must be the approved form:
   `TYP` -> `TYP.`, `OC`/`UNO`/`EOR`/`NTS` -> `O.C.`/`U.N.O.`/`E.O.R.`/`N.T.S.`, `C.M.U.` -> `CMU`, `BOTT.`/`BTM.` -> `BOT.`,
   `PT` -> `P.T.`, `REQD` -> `REQ'D`, `PL.` -> `PL`. Its fix is the update op that rewrites only the flagged tokens of that
   text (model numbers, `16d`, `f'c` and quoted text are never touched). Where a deviation is right (PT = post-tensioned),
-  add `"acknowledge":[{"code":"W_ABBREV","reason":"..."}]` to that note, label, dim, weld or view (title); it is counted
+  add `"acknowledge":[{"code":"W_ABBREV","reason":"..."}]` to that note, label, dim, weld, table or view (title); it is counted
   and listed like a component's. `kerf schema abbreviations` prints the list in force.
 - The company style is `kerf.kerfstyle.json` in the document's folder or above (`--style` overrides; `check`/`apply` print
   a `STYLE` line naming it). Its `notes.abbreviations` can approve, remap or remove entries, switch rules off and list

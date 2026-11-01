@@ -82,6 +82,9 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     if let Some(s) = node.get("place").and_then(|pl| pl.get("in")).and_then(Value::str) {
         out.push(s.split('.').next().unwrap_or(s));
     }
+    if let Some(st) = node.get("place").and_then(|pl| pl.get("station")) {
+        add_ref_dep(st, out);
+    }
     crate::cuts::collect_deps(node, out, add_ref_dep);
     if node.get("type").and_then(Value::str) == Some("connector") {
         for m in node.get("members").and_then(Value::arr).unwrap_or(&[]) {
@@ -357,7 +360,7 @@ fn read_components<'a>(scene: &mut Scene<'a>, items: &'a [Value]) {
     scene.comps = comps;
 }
 
-/// Stage 4: dependencies between components (`at.to`, `until`, `points` refs, `slope: "@id"`, `place.in`) and a topological order
+/// Stage 4: dependencies between components (`at.to`, `until`, `points` refs, `slope: "@id"`, `place.in`, `place.station`) and a topological order
 /// of placement (Kahn, ties by document order). A cycle is reported (E_CYCLE) and its members are marked failed.
 fn placement_order(scene: &mut Scene) -> Vec<usize> {
     let diags = scene.diags;

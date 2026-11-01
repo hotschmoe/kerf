@@ -47,6 +47,7 @@ Refs: how often the 32 reference sets write that spelling (blank: not counted).
 | `BOT.` | 11 | BOTTOM | shortened word | `BOTT.` (variants), `BTM.` (17, variants), `BOT` (period_on_shortened) |
 | `BRG.` | 1 | BEARING | shortened word | `BRG` (period_on_shortened) |
 | `BTWN.` | 2 | BETWEEN | shortened word | `BTWN` (period_on_shortened) |
+| `CALC.` |  | CALCULATION / CALCULATIONS | shortened word | `CALC` (period_on_shortened) |
 | `C.I.P.` | 1 | CAST IN PLACE | dotted initials | `CIP` (dotted_initials) |
 | `C.J.` | 7 | CONTROL JOINT | dotted initials | `CJ` (dotted_initials) |
 | `CLG.` | 29 | CEILING | shortened word | `CLG` (period_on_shortened) |

@@ -866,7 +866,7 @@ pub static REF: Object = Object {
         Field {
             name: "place",
             ty: "[x, y]",
-            def: "at + 3/4\" paper up and right",
+            def: "at + 3/4\" paper up and right, or the nearest clear spot (8 directions, 3/4\" to 2\") when that lands on the drawing",
             desc: "model position of the bubble centre (needed without `at`)",
             ..Field::NONE
         },

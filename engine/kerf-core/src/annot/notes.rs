@@ -3,6 +3,7 @@
 
 use super::text::{ascii_fold, ascii_fold_flag, layer_name, path_item, text_item, upper_if, wrap};
 use super::{Env, Landing};
+use crate::catalog::Type;
 use crate::clip;
 use crate::drawing::{Align, FillItem, Item, PathItem, TextItem, VAlign};
 use crate::font::Font;
@@ -139,14 +140,69 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
         }
         Landing::Iso(iso) => return iso.landing(comp, inst, part, env.crop, h),
     }
-    let shapes = shape::shapes_of(&shapes_src);
-    let lp = shape::banded_label_point(&shapes, env.crop, h)?;
+    let mut lp = shape::banded_label_point(&shape::shapes_of(&shapes_src), env.crop, h)?;
+    let mut moved_from: Option<V2> = None;
+    if let Landing::Section(sec) = &mut env.landing
+        && let Some((q, cleared)) = off_embedded(sec, comp.index, &shapes_src, lp.p, h)
+    {
+        moved_from = Some(lp.p);
+        lp.p = q;
+        shapes_src = cleared;
+    }
     if let Landing::Section(sec) = &mut env.landing
         && let Some(c) = thinland::candidates(sec, comp, inst, part, lp.inset, h, lp.p)
     {
         return Some(c);
     }
-    Some(shape::candidates_for(&shapes, lp.inset, lp.p, h))
+    let mut cands = shape::candidates_for(&shape::shapes_of(&shapes_src), lp.inset, lp.p, h);
+    if let Some(o) = moved_from
+        && let Some(k) = cands.iter().skip(1).position(|c| c.sub(o).dot(lp.p.sub(o)) < 0.0)
+    {
+        let c = cands.remove(k + 1);
+        cands.insert(1, c);
+    }
+    Some(cands)
+}
+
+/// When the label point `p` of a target sits on (or within half a text height of) what another member embedded in it
+/// draws (a bar, an anchor rod, a bolt), the nearest point of the target's region less those members that is well clear
+/// of every edge, so a leader to a footing does not end on a bar (SPEC 28.8), with that cleared region (the other
+/// landing candidates come from it). None when `p` is clear, or when no point of the cleared region is half a text
+/// height from its edges.
+fn off_embedded(
+    sec: &mut crate::section::Section<'_>,
+    comp: u32,
+    region: &[Vec<V2>],
+    p: V2,
+    h: f64,
+) -> Option<(V2, Vec<Vec<V2>>)> {
+    let bx = clip::loops_box(region);
+    let prisms = Rc::clone(&sec.prisms);
+    let mut emb: Vec<Vec<V2>> = Vec::new();
+    for (i, q) in prisms.iter().enumerate() {
+        if q.comp == comp || !q.embedded || q.kind != Kind::Body || sec.cls[i] == Class::Drop {
+            continue;
+        }
+        let r = sec.visible_region(i);
+        if !r.is_empty() && clip::loops_box(&r).overlaps(bx, 1e-9) {
+            emb.extend(r);
+        }
+    }
+    let near = |l: &Vec<V2>| {
+        geom::point_in_loop_eo(p, l)
+            || l.iter().enumerate().any(|(k, &a)| geom::dist_point_seg(p, a, l[(k + 1) % l.len()]) < 0.5 * h)
+    };
+    if !emb.iter().any(near) {
+        return None;
+    }
+    let mut cleared = region.to_vec();
+    for l in &emb {
+        let mut o = l.clone();
+        clip::orient_ccw(&mut o);
+        cleared = clip::boolean(&cleared, &[o], clip::Op::Diff);
+    }
+    let q = shape::clear_point_near(&shape::shapes_of(&cleared), h, p, 0.5 * h)?;
+    Some((q, cleared))
 }
 
 /// Landing candidates on drawn fasteners (SPEC 27.4): the one nearest their middle first, then the others outward.
@@ -178,6 +234,8 @@ pub struct NoteIn<'a> {
     pub column: Option<route::Side>,
     /// Explicit `key` (keyed notes): the note's number in the list.
     pub key: Option<u32>,
+    /// The component the note points at: its `target`, else the component of its `at` Ref (empty for none).
+    pub member: &'a str,
 }
 
 /// A dimension text or label box that leaders must keep away from, with what is needed to propose a fix.
@@ -299,6 +357,7 @@ pub fn obstacle_fix(o: &Obstacle, leaders: &[[V2; 3]], h: f64) -> Option<String>
                 }
             }
         }
+        route::ObstKind::Member => {}
     }
     None
 }
@@ -310,7 +369,8 @@ fn note_fix_text(id: &str, fa: Option<V2>, fp: Option<V2>) -> Option<String> {
     fp.map(|p| format!("set note '{id}' \"place\": {}", fmt_pt(p)))
 }
 
-pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::Layout, g: &route::Geo) {
+pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::Layout, prep: &NotePrep) {
+    let g = &prep.g;
     use crate::model::Level;
     let vid = env.spec.id;
     let maxn = 8usize;
@@ -323,7 +383,16 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
         };
         let what;
         let mut fix: Option<String>;
+        let mut rule = "leaders must stay at least one text height ({h} in paper) clear of other leaders, notes, dimension text and labels";
         match ht.kind {
+            route::HitKind::Member => {
+                let Some(m) = ht.other.checked_sub(obsts.len()).and_then(|k| prep.member_names.get(k)) else {
+                    continue;
+                };
+                what = m.clone();
+                rule = "a leader that crosses another note's member reads as pointing at it";
+                fix = note_fix_text(me.id, ht.fix_at, ht.fix_place);
+            }
             route::HitKind::Leader => {
                 let Some(o) = notes.get(ht.other) else { continue };
                 what = format!("the leader of note '{}'", o.id);
@@ -362,9 +431,9 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
             Some(me.id),
             Some(&format!("views/{vid}/annotations/{}", me.id)),
             format!(
-                "view {vid}: the leader (or arrowhead) of note '{}' {rel} {what}; leaders must stay at least one text height ({} in paper) clear of other leaders, notes, dimension text and labels",
+                "view {vid}: the leader (or arrowhead) of note '{}' {rel} {what}; {}",
                 me.id,
-                fixed(env.style.text_height_in, 3)
+                rule.replace("{h}", &fixed(env.style.text_height_in, 3))
             ),
             fx,
         );
@@ -465,6 +534,13 @@ pub struct NotePrep {
     pub lines_of: Vec<Vec<String>>,
     /// (w, hgt) of each note's text block.
     pub sizes: Vec<(f64, f64)>,
+    /// The drawn members the notes point at (bars, rods, hardware) as `Member` obstacles: another note's leader must
+    /// not cross them (SPEC 28.8). Filled by `member_obstacles`.
+    pub members: Vec<route::Obst>,
+    /// For each member obstacle, how a W_LEADER_HIT names it: `anchor_bolt 'ab_j' (the target of note 'n_j')`.
+    pub member_names: Vec<String>,
+    /// Each note's member group (`route::NoteIn::group`).
+    pub groups: Vec<usize>,
 }
 
 /// `numbers` holds each note's key number in a keyed view and is empty otherwise.
@@ -508,7 +584,81 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
             lines_of.push(lines);
         }
     }
-    NotePrep { g, gutter: st.gutter_in * sc, tag_r, keyed: !numbers.is_empty(), lines_of, sizes }
+    NotePrep {
+        g,
+        gutter: st.gutter_in * sc,
+        tag_r,
+        keyed: !numbers.is_empty(),
+        lines_of,
+        sizes,
+        members: Vec::new(),
+        member_names: Vec::new(),
+        groups: alloc::vec![usize::MAX; notes.len()],
+    }
+}
+
+/// The members the notes of a section-like view point at that a leader must not cross (SPEC 28.8): every drawn piece
+/// of an anchor rod, a bolt or stud, or a bar seen end-on (a dot, not a bar seen lengthwise in a plan), as its own quad
+/// (a rod) or its box (a bar dot, a nut); hooks and other shapes that do not fill their box are left out. Long members
+/// (path bars, walls, hardware) are crossed by leaders as a matter of course and are not obstacles. One group per
+/// distinct member.
+pub fn member_obstacles(env: &mut Env, notes: &[NoteIn], prep: &mut NotePrep) {
+    let scene = env.scene;
+    let Landing::Section(sec) = &mut env.landing else { return };
+    let mut ids: Vec<&str> = Vec::new();
+    for (i, n) in notes.iter().enumerate() {
+        if n.member.is_empty() || n.cands.is_empty() {
+            continue;
+        }
+        let g = match ids.iter().position(|m| *m == n.member) {
+            Some(g) => g,
+            None => {
+                ids.push(n.member);
+                ids.len() - 1
+            }
+        };
+        prep.groups[i] = g;
+    }
+    let prisms = Rc::clone(&sec.prisms);
+    for (g, id) in ids.iter().enumerate() {
+        let Some(c) = scene.find(id) else { continue };
+        let mine: Vec<usize> = prisms
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.comp == c.index && p.kind == Kind::Body)
+            .map(|(k, _)| k)
+            .collect();
+        let compact = match c.ty.ty {
+            Type::AnchorBolt | Type::Bolt => true,
+            Type::Rebar => !c.built.points_mode,
+            _ => false,
+        };
+        if mine.is_empty() || !compact {
+            continue;
+        }
+        let first = notes.iter().position(|n| n.member == *id).map_or("", |k| notes[k].id);
+        for k in mine {
+            for l in sec.visible_region(k) {
+                let a = geom::signed_area_v(&l);
+                if l.len() < 3 || a <= 0.0 {
+                    continue;
+                }
+                let bb = clip::loops_box(core::slice::from_ref(&l));
+                if c.ty.ty == Type::Rebar && bb.width().max(bb.height()) > 2.0 * bb.width().min(bb.height()) {
+                    continue;
+                }
+                let poly = if l.len() == 4 {
+                    [l[0], l[1], l[2], l[3]]
+                } else if a >= 0.5 * bb.width() * bb.height() {
+                    [V2::init(bb.x0, bb.y0), V2::init(bb.x1, bb.y0), V2::init(bb.x1, bb.y1), V2::init(bb.x0, bb.y1)]
+                } else {
+                    continue;
+                };
+                prep.members.push(route::Obst { kind: route::ObstKind::Member, poly, group: g });
+                prep.member_names.push(format!("{} '{}' (the target of note '{first}')", c.ty.name(), c.id));
+            }
+        }
+    }
 }
 
 pub fn route_notes(
@@ -521,17 +671,21 @@ pub fn route_notes(
     light: bool,
 ) -> route::Layout {
     let crop = env.crop;
-    let ro: Vec<route::Obst> = obsts.iter().map(|o| route::Obst { kind: o.kind, poly: o.poly }).collect();
+    let mut ro: Vec<route::Obst> =
+        obsts.iter().map(|o| route::Obst { kind: o.kind, poly: o.poly, group: usize::MAX }).collect();
+    ro.extend(prep.members.iter().copied());
     let rin: Vec<route::NoteIn> = notes
         .iter()
         .zip(&prep.sizes)
-        .map(|(n, &(w, hgt))| route::NoteIn {
+        .zip(&prep.groups)
+        .map(|((n, &(w, hgt)), &group)| route::NoteIn {
             w,
             hgt,
             cands: &n.cands,
             movable: n.movable,
             place: n.place,
             column: n.column,
+            group,
         })
         .collect();
     // key tags go to the side nearer their landing point; notes_side places the list instead

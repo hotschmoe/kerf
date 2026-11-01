@@ -129,6 +129,39 @@ pub struct Banded {
     pub inset: Box,
 }
 
+/// The grid point of `shapes` nearest `near` among those at least `min` and half the largest such distance from every
+/// edge (ties: the deeper one).
+pub fn clear_point_near(shapes: &[Shape], h: f64, near: V2, min: f64) -> Option<V2> {
+    let mut bb = Box::default();
+    for x in shapes {
+        bb.add_box(clip::loops_box(&[x.outer]));
+    }
+    let step = grid_step(&bb, h, 6.0)?;
+    let mut pts: Vec<(V2, f64)> = Vec::new();
+    let mut x = bb.x0 + step * 0.5;
+    while x < bb.x1 {
+        let mut y = bb.y0 + step * 0.5;
+        while y < bb.y1 {
+            let q = V2::init(x, y);
+            if let Some(sh) = shapes.iter().find(|sh| shape_contains(sh, q)) {
+                pts.push((q, shape_depth(sh, q)));
+            }
+            y += step;
+        }
+        x += step;
+    }
+    let maxd = pts.iter().map(|p| p.1).fold(0.0, f64::max);
+    let thr = min.max(0.5 * maxd);
+    let mut best: Option<(V2, f64, f64)> = None;
+    for &(q, d) in pts.iter().filter(|p| p.1 >= thr) {
+        let dn = q.dist(near);
+        if best.is_none_or(|(_, bn, bd)| dn < bn - 1e-9 || (dn < bn + 1e-9 && d > bd)) {
+            best = Some((q, dn, d));
+        }
+    }
+    best.map(|b| b.0)
+}
+
 pub fn banded_label_point(shapes: &[Shape], crop: Box, h: f64) -> Option<Banded> {
     let prim = label_point(shapes)?;
     let band = 2.0 * h;
