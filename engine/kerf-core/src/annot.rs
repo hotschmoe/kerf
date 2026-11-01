@@ -71,6 +71,8 @@ pub struct Env<'a, 's> {
     pub keyed_out: Vec<KeyedEntry>,
     /// The document's `views`: a keyed note with a `key` and no text takes the text of a note with that key in any view.
     pub doc_views: &'a [Value],
+    /// Check W_LEADER_HIT fixes by laying the view out again (off for a layout's trial builds, which are discarded).
+    pub verify_fixes: bool,
 }
 
 impl<'a, 's> Env<'a, 's> {
@@ -104,6 +106,7 @@ impl<'a, 's> Env<'a, 's> {
             shared_keys: None,
             keyed_out: Vec::new(),
             doc_views: &[],
+            verify_fixes: true,
         }
     }
 
@@ -721,7 +724,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     repair::report_moves(env, routed, &dl, &fin);
     repair::report_overlaps(env, routed, &prep, &dl, &fin);
     let rd = fin.rd;
-    notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep);
+    notes::report_hits(env, routed, &rd.obstacles, &fin.r, &prep, rd.ext, &rd.soft);
     notes::check_landings(env, routed, &fin.r, &base_segs);
     for (its, m) in rd.per.iter().zip(&rd.meta) {
         let bx = items_box(env.font, its);

@@ -369,11 +369,121 @@ fn note_fix_text(id: &str, fa: Option<V2>, fp: Option<V2>) -> Option<String> {
     fp.map(|p| format!("set note '{id}' \"place\": {}", fmt_pt(p)))
 }
 
-pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::Layout, prep: &NotePrep) {
+/// One way to move a note: a new landing (`at`), a fixed text position (`place`) or the other notes column.
+#[derive(Clone, Copy)]
+enum NoteFix {
+    At(V2),
+    Place(V2),
+    Column(route::Side),
+    /// Every note without its own `column` to one side (the view's `tags_side`, or `notes_side` for leader notes).
+    Side(route::Side),
+}
+
+/// Checks a proposed note fix the way the author would see it: the whole view laid out again with that one change.
+/// The router moves every other note too, so a fix that clears its own hit can create the next one somewhere else.
+struct Verifier<'v, 'a, 'e> {
+    env: &'v Env<'a, 'e>,
+    prep: &'v NotePrep,
+    notes: &'v [NoteIn<'a>],
+    room: (Box, &'v [Obstacle], &'v [[V2; 2]]),
+    base: usize,
+    work: route::Work,
+    tries: usize,
+}
+
+/// Re-layouts a view may spend on checking its W_LEADER_HIT fixes, and their share of the layout effort limit.
+const VERIFY_TRIES: usize = 12;
+const VERIFY_WORK: u64 = route::DEFAULT_WORK_LIMIT / 4;
+
+impl Verifier<'_, '_, '_> {
+    /// The view's leader hits after the fix, when it lowers them (None: not checked, or no better).
+    fn hits_after(&mut self, i: usize, f: NoteFix) -> Option<usize> {
+        if self.tries == 0 || self.work.spent() {
+            return None;
+        }
+        self.tries -= 1;
+        let mut ns: Vec<NoteIn> = self.notes.to_vec();
+        let n = ns.get_mut(i)?;
+        match f {
+            NoteFix::At(p) => {
+                n.cands = alloc::vec![p];
+                n.movable = false;
+            }
+            NoteFix::Place(p) => n.place = Some(p),
+            NoteFix::Column(s) => n.column = Some(s),
+            NoteFix::Side(s) => {
+                for m in &mut ns {
+                    m.column.get_or_insert(s);
+                }
+            }
+        }
+        let r = route_with(self.env, self.prep, &ns, self.room, false, Some(&self.work));
+        (!r.budget_exhausted && r.hits.len() < self.base).then_some(r.hits.len())
+    }
+
+    /// The first fix of `cands` (note index, fix) that lowers the view's hits, as fix text.
+    fn first(&mut self, cands: &[(usize, NoteFix)]) -> Option<String> {
+        for &(i, f) in cands {
+            let Some(k) = self.hits_after(i, f) else { continue };
+            let id = self.notes.get(i)?.id;
+            let what = match f {
+                NoteFix::At(p) => format!("set note '{id}' \"at\": {} (another point inside its target)", fmt_pt(p)),
+                NoteFix::Place(p) => format!("set note '{id}' \"place\": {}", fmt_pt(p)),
+                NoteFix::Column(s) => {
+                    format!("set note '{id}' \"column\": \"{}\"", if s == route::Side::Left { "left" } else { "right" })
+                }
+                NoteFix::Side(s) => format!(
+                    "set \"{}\": \"{}\" on view {}",
+                    if self.prep.keyed { "tags_side" } else { "notes_side" },
+                    if s == route::Side::Left { "left" } else { "right" },
+                    self.env.spec.id
+                ),
+            };
+            let after = if k == 0 {
+                "the view then has no leader hits".to_string()
+            } else {
+                format!("the view then has {k} leader hit{} instead of {}", if k == 1 { "" } else { "s" }, self.base)
+            };
+            return Some(format!("{what} (checked with the whole view laid out again: {after})"));
+        }
+        None
+    }
+}
+
+/// The fixes worth checking for note `i`: its proposed `at` and `place`, then the other notes column.
+fn note_cands(i: usize, fa: Option<V2>, fp: Option<V2>, r: &route::Layout, out: &mut Vec<(usize, NoteFix)>) {
+    out.extend(fa.map(|p| (i, NoteFix::At(p))));
+    out.extend(fp.map(|p| (i, NoteFix::Place(p))));
+    if let Some(&left) = r.left.get(i) {
+        out.push((i, NoteFix::Column(if left { route::Side::Right } else { route::Side::Left })));
+    }
+}
+
+const CASCADE_FIX: &str = "no single change to one note lowers this view's leader hits (each moves the collision to another pair): put the tags on one side (\"tags_side\" on a keyed view, \"notes_side\" on a leader view), set \"column\" on several crowded notes at once, shorten or merge notes, or split the view";
+
+pub fn report_hits(
+    env: &Env,
+    notes: &[NoteIn],
+    obsts: &[Obstacle],
+    r: &route::Layout,
+    prep: &NotePrep,
+    ext: Box,
+    soft: &[[V2; 2]],
+) {
     let g = &prep.g;
     use crate::model::Level;
     let vid = env.spec.id;
     let maxn = 8usize;
+    let mut ver = Verifier {
+        env,
+        prep,
+        notes,
+        room: (ext, obsts, soft),
+        base: r.hits.len(),
+        work: route::Work::new(VERIFY_WORK),
+        tries: if env.verify_fixes { VERIFY_TRIES } else { 0 },
+    };
+    let mut side_fix: Option<Option<String>> = None;
     for ht in r.hits.iter().take(maxn) {
         let Some(me) = notes.get(ht.note) else { continue };
         let rel = if ht.dist <= 1e-9 {
@@ -382,7 +492,8 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
             format!("comes within {} in (paper) of", fixed(ht.dist / env.s, 2))
         };
         let what;
-        let mut fix: Option<String>;
+        let mut fix: Option<String> = None;
+        let mut cands: Vec<(usize, NoteFix)> = Vec::new();
         let mut rule = "leaders must stay at least one text height ({h} in paper) clear of other leaders, notes, dimension text and labels";
         match ht.kind {
             route::HitKind::Member => {
@@ -391,23 +502,19 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
                 };
                 what = m.clone();
                 rule = "a leader that crosses another note's member reads as pointing at it";
-                fix = note_fix_text(me.id, ht.fix_at, ht.fix_place);
+                note_cands(ht.note, ht.fix_at, ht.fix_place, r, &mut cands);
             }
             route::HitKind::Leader => {
                 let Some(o) = notes.get(ht.other) else { continue };
                 what = format!("the leader of note '{}'", o.id);
-                fix = note_fix_text(o.id, ht.other_fix_at, ht.other_fix_place);
-                if fix.is_none() {
-                    fix = note_fix_text(me.id, ht.fix_at, ht.fix_place);
-                }
+                note_cands(ht.other, ht.other_fix_at, ht.other_fix_place, r, &mut cands);
+                note_cands(ht.note, ht.fix_at, ht.fix_place, r, &mut cands);
             }
             route::HitKind::Note => {
                 let Some(o) = notes.get(ht.other) else { continue };
                 what = format!("the text of note '{}'", o.id);
-                fix = note_fix_text(me.id, ht.fix_at, ht.fix_place);
-                if fix.is_none() {
-                    fix = note_fix_text(o.id, None, None);
-                }
+                note_cands(ht.note, ht.fix_at, ht.fix_place, r, &mut cands);
+                note_cands(ht.other, None, None, r, &mut cands);
             }
             route::HitKind::Dim | route::HitKind::Label => {
                 let Some(o) = obsts.get(ht.other) else { continue };
@@ -418,9 +525,27 @@ pub fn report_hits(env: &Env, notes: &[NoteIn], obsts: &[Obstacle], r: &route::L
                 };
                 fix = obstacle_fix(o, &r.leaders, g.h);
                 if fix.is_none() {
-                    fix = note_fix_text(me.id, ht.fix_at, ht.fix_place);
+                    note_cands(ht.note, ht.fix_at, ht.fix_place, r, &mut cands);
                 }
             }
+        }
+        if fix.is_none() && !cands.is_empty() {
+            fix = ver.first(&cands);
+            if fix.is_none() && ver.tries > 0 && !ver.work.spent() {
+                let both = if prep.keyed {
+                    env.spec.tags_side == NotesSide::Both
+                } else {
+                    matches!(env.spec.notes_side, NotesSide::Both | NotesSide::Above)
+                };
+                if both && side_fix.is_none() {
+                    let sides = [(ht.note, NoteFix::Side(route::Side::Right)), (ht.note, NoteFix::Side(route::Side::Left))];
+                    side_fix = Some(ver.first(&sides));
+                }
+                fix = Some(side_fix.clone().flatten().unwrap_or_else(|| CASCADE_FIX.to_string()));
+            }
+        }
+        if fix.is_none() {
+            fix = note_fix_text(me.id, ht.fix_at, ht.fix_place);
         }
         let fx = fix.unwrap_or_else(|| {
             "move the note with \"place\", give it another \"at\" point, or change notes_side".to_string()
@@ -670,6 +795,17 @@ pub fn route_notes(
     soft: &[[V2; 2]],
     light: bool,
 ) -> route::Layout {
+    route_with(env, prep, notes, (ext, obsts, soft), light, env.work)
+}
+
+fn route_with(
+    env: &Env,
+    prep: &NotePrep,
+    notes: &[NoteIn],
+    (ext, obsts, soft): (Box, &[Obstacle], &[[V2; 2]]),
+    light: bool,
+    work: Option<&route::Work>,
+) -> route::Layout {
     let crop = env.crop;
     let mut ro: Vec<route::Obst> =
         obsts.iter().map(|o| route::Obst { kind: o.kind, poly: o.poly, group: usize::MAX }).collect();
@@ -699,7 +835,7 @@ pub fn route_notes(
     };
     let mut p = route::Params::new(prep.g, crop, crop.x0.min(ext.x0), crop.x1.max(ext.x1), prep.gutter, side);
     p.light = light;
-    p.work = env.work;
+    p.work = work;
     route::route(p, &rin, &ro, soft)
 }
 
