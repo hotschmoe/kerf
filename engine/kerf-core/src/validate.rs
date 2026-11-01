@@ -126,20 +126,26 @@ fn z_gap(a: &Prism, b: &Prism) -> f64 {
 
 pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     let mut items: Vec<Pf<'_>> = Vec::new();
+    let mut hidden: Vec<Pf<'_>> = Vec::new();
     for c in &scene.comps {
         if c.state != State::Ok {
             continue;
         }
         for p in &c.world {
-            if p.kind == Kind::Ghost {
+            if p.kind == Kind::Ghost && !p.dashed {
                 continue;
             }
             let flat = clip::from_region(&p.loops, FLAT_TOL);
             let box_ = clip::loops_box(&flat);
-            items.push(Pf { prism: p, flat, box_, comp: c });
+            let pf = Pf { prism: p, flat, box_, comp: c };
+            if p.kind == Kind::Ghost {
+                hidden.push(pf);
+            } else {
+                items.push(pf);
+            }
         }
     }
-    let (sets, ids) = drawn_sets(scene, doc, &items);
+    let (sets, ids) = drawn_sets(scene, doc, &items, &hidden);
     each_set(&sets, &ids, diags, overlaps);
     each_set(&sets, &ids, diags, floating);
     each_set(&sets, &ids, diags, untreated);
@@ -172,12 +178,20 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
 struct Drawn<'p, 'a> {
     comps: Vec<&'a Comp<'a>>,
     items: Vec<&'p Pf<'a>>,
+    /// The bodies of `shown: hidden` / `where_occurs` members: drawn dashed and never checked themselves, but what lies
+    /// against them is not floating.
+    hidden: Vec<&'p Pf<'a>>,
     views: Vec<usize>,
 }
 
 /// The distinct component sets of the document's views (views that draw the same components share one) and the
 /// view ids. A document without views (or with more than the view limit) gets one set of every compiled component.
-fn drawn_sets<'p, 'a>(scene: &'a Scene<'a>, doc: &'a Value, items: &'p [Pf<'a>]) -> (Vec<Drawn<'p, 'a>>, Vec<&'a str>) {
+fn drawn_sets<'p, 'a>(
+    scene: &'a Scene<'a>,
+    doc: &'a Value,
+    items: &'p [Pf<'a>],
+    hidden: &'p [Pf<'a>],
+) -> (Vec<Drawn<'p, 'a>>, Vec<&'a str>) {
     let mut groups: Vec<(Vec<bool>, Vec<usize>)> = Vec::new();
     let mut ids: Vec<&str> = Vec::new();
     let va = doc.get("views").and_then(Value::arr).filter(|va| va.len() <= limits::MAX_VIEWS).unwrap_or(&[]);
@@ -206,6 +220,7 @@ fn drawn_sets<'p, 'a>(scene: &'a Scene<'a>, doc: &'a Value, items: &'p [Pf<'a>])
         .map(|(mask, views)| Drawn {
             comps: scene.comps.iter().filter(|c| mask[c.index as usize]).collect(),
             items: items.iter().filter(|p| mask[p.comp.index as usize]).collect(),
+            hidden: hidden.iter().filter(|p| mask[p.comp.index as usize]).collect(),
             views,
         })
         .collect();
@@ -345,7 +360,7 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
             continue;
         }
         let touching_in = |p: &&&Pf<'_>, any_instance: bool| {
-            s.items.iter().any(|q| {
+            s.items.iter().chain(&s.hidden).any(|q| {
                 let reach = if p.prism.role.is_masonry() && q.prism.role.is_masonry() { JOINT_GAP - 1e-9 } else { gap };
                 let other = q.comp.index != c.index || (any_instance && q.prism.instance != p.prism.instance);
                 other

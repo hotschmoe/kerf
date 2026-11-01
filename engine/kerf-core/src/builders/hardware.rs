@@ -32,6 +32,8 @@ pub struct Member {
     pub z0: f64,
     pub z1: f64,
     pub flat: Vec<Vec<V2>>,
+    /// A truss's bottom chord profile (empty for other members): a truss hanger seats and braces that chord.
+    pub chord: Vec<Vec<V2>>,
     /// Every (component index, instance) the member is made of.
     pub parts: Vec<(u32, u32)>,
 }
@@ -82,9 +84,13 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
     let mut bx = Box::default();
     let (mut z0, mut z1) = (f64::INFINITY, f64::NEG_INFINITY);
     let mut flat = Vec::new();
+    let mut chord = Vec::new();
     for p in c.world.iter().filter(|p| p.instance as usize == inst && p.kind == model::Kind::Body) {
         let f = clip::from_region(&p.loops, FLAT_TOL);
         bx.add_box(clip::loops_box(&f));
+        if c.ty.name() == "truss" && p.part == "bottom_chord" {
+            chord.extend(f.iter().cloned());
+        }
         flat.extend(f);
         z0 = z0.min(p.z0);
         z1 = z1.max(p.z1);
@@ -94,7 +100,7 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
         return None;
     }
     let parts = vec![(c.index, u32::try_from(inst).unwrap_or(0))];
-    Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat, parts })
+    Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat, chord, parts })
 }
 
 /// Plates collected in world coordinates.
@@ -263,6 +269,7 @@ pub(super) fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint
                 u.z0 = u.z0.min(m.z0);
                 u.z1 = u.z1.max(m.z1);
                 u.flat.extend(m.flat);
+                u.chord.extend(m.chord);
                 u.parts.extend(m.parts);
                 u
             }
@@ -524,8 +531,13 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
     }
     let mut warns = Vec::new();
     let id = ctx.p.id.to_string();
-    if h < 0.6 * depth - 1e-6 {
-        warns.push(warn(ctx, "W_HANGER_SIZE", "height", format!("hanger '{id}' is {} tall for '{}', which is {} deep: under 60% of the depth, so it does not brace the member", fmt_ft_in(h), c.id, fmt_ft_in(depth)), format!("use a deeper hanger: {}", update_op(&id, "height", &num_json(r16_up(0.6 * depth).max(r16(0.85 * depth)))))));
+    let chord = if along_x { y_at(&c.chord, end + s * 0.01).map(|(lo, hi)| hi - lo) } else { None };
+    let (brace, braced) = match chord {
+        Some(d) => (d, format!("the bottom chord of '{}'", c.id)),
+        None => (depth, format!("'{}'", c.id)),
+    };
+    if h < 0.6 * brace - 1e-6 {
+        warns.push(warn(ctx, "W_HANGER_SIZE", "height", format!("hanger '{id}' is {} tall for {braced}, which is {} deep: under 60% of the depth, so it does not brace the member", fmt_ft_in(h), fmt_ft_in(brace)), format!("use a deeper hanger: {}", update_op(&id, "height", &num_json(r16_up(0.6 * brace).max(r16(0.85 * brace)))))));
     }
     if h > depth + 1e-6 {
         warns.push(warn(
@@ -548,20 +560,19 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
     if let Some(sr) = mi.series
         && let Some((mw, md)) = model_size(&mi.name, sr.prefix)
     {
-        if depth > md + 0.5 || depth < md - 1.0 {
+        if brace > md + 0.5 || brace < md - 1.0 {
             warns.push(warn(
                 ctx,
                 "W_HANGER_SIZE",
                 "model",
                 format!(
-                    "hanger '{id}': model {} is made for a member {} deep; '{}' is {} deep{}",
+                    "hanger '{id}': model {} is made for a member {} deep; {braced} is {} deep{}",
                     mi.name,
                     fmt_ft_in(md),
-                    c.id,
-                    fmt_ft_in(depth),
-                    if depth > md { " (hanger too small)" } else { "" }
+                    fmt_ft_in(brace),
+                    if brace > md { " (hanger too small)" } else { "" }
                 ),
-                format!("pick the {} model sized for {} x {}", sr.prefix, fmt_ft_in(wc), fmt_ft_in(depth)),
+                format!("pick the {} model sized for {} x {}", sr.prefix, fmt_ft_in(wc), fmt_ft_in(brace)),
             ));
         }
         if (mw - wc).abs() > 0.25 {

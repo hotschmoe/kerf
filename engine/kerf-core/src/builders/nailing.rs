@@ -626,8 +626,9 @@ impl Job<'_> {
         }
     }
 
-    /// Length check for nails square to a stack: `before` = thickness ahead of the last member, `total` = the stack.
-    fn check_length(&self, out: &mut Out, last: &str, far_name: &str, before: f64, total: f64) {
+    /// Length check for nails square to a stack: `held` names the members the points hold in, `head` = thickness the
+    /// nail passes before them, `before` = thickness ahead of the last member, `total` = the stack.
+    fn check_length(&self, out: &mut Out, held: &str, last: &str, head: f64, before: f64, total: f64) {
         let l = self.size.len;
         let d = self.size.dia;
         let id = self.id;
@@ -647,15 +648,15 @@ impl Job<'_> {
                     None => "use a screw or bolt long enough for the stack".to_string(),
                 },
             );
-        } else if l - before < 6.0 * d - 1e-9 {
-            let fit = longer_size(self.size, before + 6.0 * d);
+        } else if l - head < 6.0 * d - 1e-9 {
+            let fit = longer_size(self.size, head + 6.0 * d);
             out.warn(
                 "W_NAIL_LENGTH",
                 format!(
-                    "'{id}': {} ({}) penetrates '{last}' only {}, under 6 x the {} shank (6D = {})",
+                    "'{id}': {} ({}) penetrates {held} only {}, under 6 x the {} shank (6D = {})",
                     self.size.text,
                     fmt_ft_in(l),
-                    fmt_ft_in(l - before),
+                    fmt_ft_in(l - head),
                     fmt_num(d),
                     fmt_ft_in(6.0 * d)
                 ),
@@ -677,7 +678,7 @@ impl Job<'_> {
             out.warn(
                 "W_NAIL_LENGTH",
                 format!(
-                    "'{id}': {} ({}) is longer than the {} stack it is driven through; the points come out {} past the far face of '{far_name}'",
+                    "'{id}': {} ({}) is longer than the {} stack it is driven through; the points come out {} past the far face of '{last}'",
                     self.size.text,
                     fmt_ft_in(l),
                     fmt_ft_in(total),
@@ -950,11 +951,17 @@ fn face_pattern(job: &Job, out: &mut Out) {
             probe[c_axis] = (c0 + c1) / 2.0;
             let (far, extra) = stack_after(job, a, k, ct.side, b_far, probe);
             let total = (far - head_k).abs();
-            let (last, before) = match extra {
-                Some(name) => (name, last_before(job, a, k, ct.side, head_k, far, probe)),
-                None => (member_name(job.scene, b), (a.hi[k] - a.lo[k]).abs()),
+            let head = (a.hi[k] - a.lo[k]).abs();
+            let bn = member_name(job.scene, b);
+            let (held, last, before) = match extra {
+                Some(name) => (
+                    format!("the stack '{bn}'..'{name}'"),
+                    name,
+                    last_before(job, a, k, ct.side, head_k, far, probe),
+                ),
+                None => (format!("'{bn}'"), bn, head),
             };
-            job.check_length(out, &last, &last, before, total);
+            job.check_length(out, &held, &last, head, before, total);
             out.flip = total - before < job.size.len && !job.covered(a, k, ct.side, far, probe);
             for (x, r) in positions {
                 let mut h = [0.0; 3];
@@ -1450,7 +1457,7 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
                         }
                     }
                 }
-                job.check_length(out, &first, &last, t_panel, (far - head_k).abs());
+                job.check_length(out, &format!("'{first}'"), &last, t_panel, t_panel, (far - head_k).abs());
             }
             out.push(job.nail(a, h, dir, unit(row, 1.0), pitch));
         };
