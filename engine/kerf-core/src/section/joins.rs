@@ -20,7 +20,14 @@ impl Section<'_> {
 
     fn joins_with(&self, i: usize, j: usize) -> bool {
         let (p, q) = (&self.prisms[i], &self.prisms[j]);
-        if self.cls[i] != self.cls[j] || p.material != q.material || q.kind != Kind::Body || q.embedded || q.dashed {
+        if self.cls[i] != self.cls[j]
+            || p.material != q.material
+            || q.kind != Kind::Body
+            || q.embedded
+            || q.dashed
+            || p.recess
+            || q.recess
+        {
             return false;
         }
         if self.cls[i] == Class::Beyond && (p.z1 - q.z1).abs() > 1e-6 {
