@@ -688,12 +688,14 @@ pub fn route_notes(
             group,
         })
         .collect();
-    // key tags go to the side nearer their landing point; notes_side places the list instead
-    let side = match env.spec.notes_side {
-        _ if prep.keyed => route::Side::Both,
-        NotesSide::Left => route::Side::Left,
-        NotesSide::Right => route::Side::Right,
-        NotesSide::Both | NotesSide::Above => route::Side::Both,
+    // key tags go to the side `tags_side` names (default: nearer their landing point); notes_side places the list
+    let side = match (prep.keyed, env.spec.tags_side, env.spec.notes_side) {
+        (true, NotesSide::Left, _) => route::Side::Left,
+        (true, NotesSide::Right, _) => route::Side::Right,
+        (true, _, _) => route::Side::Both,
+        (false, _, NotesSide::Left) => route::Side::Left,
+        (false, _, NotesSide::Right) => route::Side::Right,
+        (false, _, NotesSide::Both | NotesSide::Above) => route::Side::Both,
     };
     let mut p = route::Params::new(prep.g, crop, crop.x0.min(ext.x0), crop.x1.max(ext.x1), prep.gutter, side);
     p.light = light;

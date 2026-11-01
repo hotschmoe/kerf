@@ -195,7 +195,14 @@ pub static VIEW: Object = Object {
             name: "notes_side",
             ty: "right|left|both|above",
             def: "both",
-            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point. keyed/list: where the DETAIL NOTES list goes (both = above)",
+            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point. keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
+            ..Field::NONE
+        },
+        Field {
+            name: "tags_side",
+            ty: "right|left|both",
+            def: "both",
+            desc: "keyed views: which side the number tags go (both = each tag to the side nearer its landing point); a note's `column` still wins",
             ..Field::NONE
         },
         Field {

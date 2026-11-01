@@ -89,6 +89,8 @@ pub struct ViewSpec<'a> {
     pub from: From,
     pub cutaway: bool,
     pub notes_side: NotesSide,
+    /// Keyed views: the side the number tags go (`tags_side`; Both = each nearer its landing).
+    pub tags_side: NotesSide,
     /// `notes_style` of the view; None = the style's `notes.mode`.
     pub notes_style: Option<NotesStyle>,
     /// `notes_title`: the heading of the DETAIL NOTES list (None = the style's `notes.list_title`).
@@ -423,6 +425,24 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
             }
         }
     }
+    let mut tags_side = NotesSide::Both;
+    if let Some(s) = node.get("tags_side").and_then(Value::str) {
+        match s {
+            "right" => tags_side = NotesSide::Right,
+            "left" => tags_side = NotesSide::Left,
+            "both" => {}
+            _ => {
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/tags_side")),
+                    format!("tags_side must be right, left or both (got \"{s}\")"),
+                );
+                ok = false;
+            }
+        }
+    }
     let mut notes_style = None;
     if let Some(s) = node.get("notes_style").and_then(Value::str) {
         match s {
@@ -496,6 +516,7 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         from,
         cutaway,
         notes_side,
+        tags_side,
         notes_style,
         notes_title,
         annotations: anns,
