@@ -604,6 +604,26 @@ impl Job<'_> {
         let an = member_name(self.scene, a);
         let bn = member_name(self.scene, b);
         let how = miss_text(a.lo, a.hi, lo, hi);
+        let d = a.inv.apply_dir(b.xf.apply_dir(V2::init(1.0, 0.0)));
+        let deg = math::atan2(d.y.abs(), d.x.abs()) * 180.0 / core::f64::consts::PI;
+        if (1.0..=89.0).contains(&deg) {
+            out.warn(
+                "W_NAIL_MEMBERS",
+                format!(
+                    "'{}': '{an}' lies at {} deg to '{bn}' (a brace or rafter cut onto its face), and nailing is laid out only between members that meet square, face to face, so no fasteners are drawn between them",
+                    self.id,
+                    fmt_num(math::round(deg))
+                ),
+                format!(
+                    "give the schedule in a note on '{an}' (e.g. \"{} {} TO {}\") and remove the nailing: {{\"op\":\"remove\",\"path\":\"components/{}\"}}; or nail it to a member it meets square (a block cut to the angle)",
+                    self.cp.count.map_or(self.cp.size.clone(), |n| format!("({n}) {}", self.cp.size)),
+                    an.to_ascii_uppercase(),
+                    bn.to_ascii_uppercase(),
+                    self.id
+                ),
+            );
+            return;
+        }
         let near = self.touching(a);
         let fix = if near.is_empty() {
             format!(
