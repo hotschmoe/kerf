@@ -496,6 +496,10 @@ unavailable, tree kill by job object, `.gitattributes` forcing LF (CRLF in embed
 over-long command lines. CI runs the Windows gates against the shipped build on real Windows runners.
 
 ## Known gaps
+- Touch-up gaps (#30): nailing between members at an angle (a brace cut onto a tie) is warned, not drawn; W_LEADER_HIT
+  fixes on dimension and label obstacles (dim `offset`, label move) are not checked by a re-layout (their stacking runs
+  outside the router); a single-note fix that cannot clear a hit says so, but kerf does not compute a multi-note fix;
+  `along` does not apply to a tie bent onto the other member's side (`side` chooses that face).
 - Masonry and footprints (#27): iso views still draw the edges between different components of one `pour` (sections,
   plans and elevations join them); a `cmu_wall run: "x"` shows its joint pattern in elevation and section only (iso and
   3D show plain shells); `reinforced` grout in a run x wall does not model the vertical-bar cells; W_COVER takes a
@@ -898,6 +902,29 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
     later); the 8 x 3 spots are fixed, so the result is deterministic.
   - Not done: non-rectangular plates (claude7 F5). A plate seen in plan is a slab along z; an L footprint needs plan
     shapes that are not extrusions along z (issue #27 item 3), else two plates draw the seam the agent complained of.
+- Touch-up drawing gaps (#30, SPEC 29.2), choices:
+  - Parapet sheathing: an anchor alone (`parapet_roof_inner`) leaves a square-cut sloped sheet poking t·sin(pitch) into
+    the end vertical, so the fix is the anchor plus end cuts on edge-on panels (the §27.3 machinery: `trim` to the
+    truss gives the plumb end). Panels take end cuts only; notch `by` would have been ignored (voids only apply notch
+    `by` to lumber and steel), so birdmouth/notch on a panel is E_PARAM.
+  - `verticals` are distances from `bearing_outer` (numbers, not Refs: the builder works before placement). The
+    vertical is its own part (`vertical`) so nailing and notes can name it; diagonals restart beside each one.
+  - Nailing `id.part` gives one member box per body of the part (local outline box, own z), so an end-on truss's
+    `bottom_chord` and a truss vertical are nailable. A brace cut onto a member at an angle is not laid out (the nailing
+    model is axis-aligned boxes in the first member's frame): W_NAIL_MEMBERS now names the angle and offers the note.
+  - Let-in: the tie subtracts the other member from the notched one's outline only when `cuts` notch `by` names it;
+    other interpenetrating pairs still fail "do not meet on paper". Default face `front` for such a joint (the top/bottom
+    "inside corners" are filled by the notched member).
+  - Tie side: the blocked-face test samples one point (leg centre, 1/4" off the face) against members sharing a view
+    with the connector (`views` lists, as nailing fixes do); hidden members count.
+  - `tags_side` is a new view field rather than a change to `notes_side` for keyed views: `notes_side` keeps placing the
+    list, and existing keyed views with `notes_side: right` keep their tags (no golden or MASS detail moves).
+  - Depressed slab: concrete only, the floor must lie in the upper half of the member's profile and the same slab must
+    be cut elsewhere (a stepped footing with a deep step is unchanged). The recess prism never joins its casting so its
+    edge line stays.
+  - Leader fix checking runs only in single-view builds (`Env.verify_fixes`): checking in every layout trial cost 3x
+    on s-80-01 (0.9 s -> 3.4 s) for diagnostics that are discarded. Up to 12 re-layouts per view within 1/4 of the
+    work limit; a fix that cannot be checked in that budget keeps the old unchecked text.
 
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the

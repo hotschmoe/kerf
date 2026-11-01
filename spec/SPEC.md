@@ -415,6 +415,7 @@ the plies the bolt passes through (§25.1).
   "from": "front_right",                    // iso only: front_right | front_left | back_right | back_left
   "cutaway": true,                          // iso only: clip solids to z ≤ cut_z, hatch the cut face
   "notes_side": "right",                    // right | left | both | above (keyed: where the list goes, §24)
+  "tags_side": "both",                      // keyed: right | left | both, the side of the number tags (§29.2)
   "notes_style": "leader",                  // leader | keyed | list (§24); default: style notes.mode
   "notes_title": "DETAIL NOTES",            // heading of the notes list (§26.1); default: style notes.list_title
   "omit": ["roofing", "b_*"],               // components not drawn in this view: ids or `*` globs (§25.4)
@@ -2408,7 +2409,7 @@ bottom chord depth. So a truss at a wall needs only `pitch`, its bearing and `sp
 vertical (part `end_vertical`, 3 1/2 wide or the top chord depth) runs from the bottom chord's top to `height` above the
 top of the top chord at the bearing; the top chord butts into its inner face (no tail, no tail anchors). Overhang must
 be 0 (a nonzero `overhang` is `E_PARAM`); pitched and scissor ends default to a stub heel (`heel_height` = the top
-chord's vertical depth). Anchors `parapet_top` (outer face) and `parapet_top_inner`; `end_top` is the parapet top. Under
+chord's vertical depth). Anchors `parapet_top` (outer face), `parapet_top_inner` and `parapet_roof_inner` (§29.2); `end_top` is the parapet top. Under
 2" or with `bearing: "top_chord"`: `E_PARAM`. `span`, `webs` on parallel_chord and `span`, `webs`, `parapet` on an
 end-on truss are `E_PARAM` (they only apply to side-view heel profiles).
 
@@ -2604,3 +2605,89 @@ From round 2 of the MASS dogfood (47 details redrawn with beta.1, issue #28).
   stone veneer and cut stone. It takes part in `W_UNTREATED_CONTACT` like concrete and CMU.
 - Not done here: non-rectangular (L) plates in plan need plan footprints that are not extrusions along z (§26.3, the
   same machinery as L/T footings, issue #27); the PNG pixel size per sheet is issue #22.
+
+## 29. v0.2.0-beta.3
+
+### 29.2 beta.3: touch-up drawing gaps
+From the beta.2 touch-up of the 47 MASS details (issue #30): roof sheathing against an integral parapet took a literal
+offset that baked in the pitch, a parallel-chord truss could not show the vertical web the truss maker adds over a shear
+panel, a tie between a stud and the ledger let into it was rejected, a brace or an end-on truss could not be nailed,
+eave blocking could not use `until`, a depressed slab read as an opening in plan, a no-load zone had no line, one
+W_LEADER_HIT fix moved the collision to the next pair, `notes_side` did not move keyed tags, `sheet: "auto"` shrank NTS
+isos to a letter sheet's share, and an iso dropped blocking drawn `hidden` in its section.
+
+**Parapet roof anchor and panel end cuts.** A truss with an integral `parapet` (§28.5) has the anchor
+`parapet_roof_inner`: the top of the top chord at the end vertical's inner face (side-view heel profiles and
+parallel_chord). An edge-on `panel` (`lay` edge, run x or y) takes `cuts` with the end cuts of §27.3 (square, plumb,
+level, bevel, trim), in the panel's frame (u along its run from the box start); birdmouth and notch are `E_PARAM` (a
+panel takes end cuts only). Roof sheathing that butts the parapet: `"at":{"anchor":"bottom_right","to":
+"truss@top_chord_end"}, "slope":"@truss", "until":"truss@parapet_roof_inner", "cuts":[{"type":"trim","end":"start",
+"to":"truss"}]` ends on a plumb line at the end vertical (no overlap, no gap); the parapet's inner sheathing takes
+`"until":"roof@start_top"` with a trim to the roof sheathing.
+
+**Parallel-chord verticals.** `verticals` (parallel_chord, side view): a list of web centres measured from
+`bearing_outer`, each a vertical web (part `vertical`, the web width) between the chords. The diagonals restart beside
+each vertical: between two verticals (or the end vertical) the whole number of panels nearest `web_spacing` that fills
+the gap, past the last one panels of `web_spacing` as before. Anchors `vertical_<k>` (centre), `vertical_<k>_top` and
+`vertical_<k>_bottom` (on the chord faces), zone `vertical`; the summary adds `vertical(s) at <x>`. A centre whose web
+leaves the drawn truss (before the end vertical's inner face, past `span_shown`) or overlaps the previous one is
+`E_PARAM` naming the range of centres. `verticals` on a pitched, scissor or mono truss (use `webs` `howe`) or on an
+end-on truss is `E_PARAM`.
+
+**Nailing by part, and at an angle.** A nailing member may name a part: `id.part` or `id#k.part` (a truss's
+`vertical` or `bottom_chord`, an end-on truss's chords). Each body of that part is a member box. An unknown part is
+`E_PARAM` listing the parts. Two members that meet at an angle that is not a multiple of 90 degrees (a two-point brace
+cut onto a tie) are `W_NAIL_MEMBERS`: `'<a>' lies at <n> deg to '<b>' ..., so no fasteners are drawn between them`; the
+fix is the schedule in a note on the brace and the op that removes the nailing.
+
+**Ties between let-in members.** When one member of a member tie or angle (§28.4) has a `cuts` notch `by` the other,
+the joint is found on its notched profile (notches are subtracted after placement, so the tie used to see two
+overlapping boxes). Without `face` such a joint takes `front` (the stud's z face beside the ledger, as references draw
+the A35 at a let-in ledger).
+
+**Tie position.** `along` (length, default 0) on a tie or angle with `members` on face front/back moves it along the
+joint from where it lands (+x when one member sits on the other, +y side by side). On a left/right/top/bottom face
+(`z` moves it) or on a tie bent onto the other member's side (`side` chooses that face) `along` is `E_PARAM`; on other
+connectors it is `E_PARAM` like `legs`. A bent face-on tie without `side` no longer takes the default side when another
+member drawn in its views lies against the face its leg would cover (eave blocking against a truss at the heel); it
+takes the other side when that one is free.
+
+**`until` on run z lumber.** Lumber with run z takes `until`: its in-plane depth (vertical: upright depth, flat
+thickness) grows from its placement anchor (bottom_* up, top_* down) to the Ref's y, a ripped member. Deeper than the
+nominal depth is `E_PARAM`. Summary: `lumber 2x6 upright run z ripped to 3 15/16" (until truss@heel_block_top)`.
+
+**Iso of hidden members.** An iso draws a member `shown: "hidden"` as a solid (hidden is the state of a 2D view; the iso
+removes hidden lines itself). `where_occurs` members stay out of the iso.
+
+**Line annotation.** Annotation `type: "line"`: `points` (two or more Refs, `{ref, offset}` or [x, y]), `line`
+`dashed` (default, hidden pen) or `solid` (beyond pen), `closed` (default false). Placed exactly, not moved by the
+note layout: the boundary of a no-load zone, a 1:1 influence line, a limit or property line. Fewer than two points or
+another `line` value is `E_PARAM`.
+
+**Depressed slab in plan.** In a plan view, the floor of a recess in a cut concrete member (a part of its plan below
+the cut whose top lies in the member's upper half, where the same slab is cut elsewhere) is drawn cut and hatched like
+the slab, and keeps its edge line (it never joins its own casting, §28.7). A deep step (floor in the lower half) stays a
+surface below the cut.
+
+**Keyed tags side.** View `tags_side` (keyed views): `right` | `left` | `both` (default): `right`/`left` put every tag
+in that column (a note's `column` still wins); `notes_side` places only the DETAIL NOTES list. Another value is `E_PARAM`.
+
+**Checked leader fixes.** A `W_LEADER_HIT` fix that moves a note (`at`, `place`, or `column` to the other side, of the
+note or of the other note) is offered only when the whole view, laid out again with that one change, has fewer leader
+hits; the fix ends `(checked with the whole view laid out again: the view then has N leader hits instead of M)`. When
+no single change lowers them, the view-wide move is tried (every note to one side: `tags_side` / `notes_side`), else
+the fix says that one-note changes move the collision and names the view-wide moves. Checking re-lays the view at most
+12 times within a quarter of the layout effort limit, only for single-view builds (a layout's trial builds keep the
+unchecked text). Dimension and label fixes are not checked.
+
+**`sheet: "auto"` and NTS views.** A layout view with its own `scale` of NTS is fitted to its share of each candidate
+sheet, so the sheet auto picks draws it as that sheet given by hand does (it used to keep the share of the first
+candidate, 11x8.5).
+
+Deferred: nailing between members at an angle (warned, above); a sloped panel's `until` mode that stops at a vertical
+face without a cut (the trim cut does it).
+
+| code | level | rule |
+|---|---|---|
+| `E_PARAM` | error | `verticals` out of the drawn truss, overlapping or on another profile; a panel birdmouth/notch; `along` on an edge face or a bent tie; run z `until` deeper than the member; `tags_side`; a line with under two points |
+| `W_NAIL_MEMBERS` | warning | also: two nailing members at an angle (not drawn) |

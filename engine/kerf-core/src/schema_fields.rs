@@ -656,7 +656,7 @@ pub static ARRAY: Object = Object {
 pub static CUTS: Object = Object {
     name: "cuts",
     brief: "lumber/steel end cuts, birdmouth, notches; from/to members",
-    summary: "`cuts` on lumber (run x/y) and steel (orient elevation/plan): a list of cuts applied to the member's profile, so section, plan, elevation, iso, the mesh and every check see the cut member. The member's frame: u along its length (start = the `at` end or `from`, end = the far end or `to`), v across (bottom face = v 0, top = the depth; for a two-point member top is the face left of from->to). End cuts pass through the end of the member's center line (its aligned line for from/to) and extend or shorten the member to close it.",
+    summary: "`cuts` on lumber (run x/y), steel (orient elevation/plan) and edge-on panels (end cuts only): a list of cuts applied to the member's profile, so section, plan, elevation, iso, the mesh and every check see the cut member. The member's frame: u along its length (start = the `at` end or `from`, end = the far end or `to`), v across (bottom face = v 0, top = the depth; for a two-point member top is the face left of from->to). End cuts pass through the end of the member's center line (its aligned line for from/to) and extend or shorten the member to close it.",
     fields: &[
         Field {
             name: "type",
