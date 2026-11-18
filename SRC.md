@@ -271,3 +271,39 @@ SPEC 26.2 and 28.2 define layouts and fit checks. Layout coordinates are paper i
 ## engine/kerf-core/src/view.rs
 
 SPEC 6, 19, 24, 25.4, 26.1, 26.3, 28.2 and 28.5 define view parsing and selection. A schedule draws tables and notes without model geometry. Plan views look down the y axis and elevations toward negative z; plan defaults its cut to one inch below the highest drawn member. Scale zero means NTS fit. The author-set crop and scale flags distinguish explicit values from automatic fitting. Component selection combines the component's own view list with `only` and `omit` patterns, where `*` matches any run. A reference-only view with no `only` draws no model.
+
+## engine/kerf-core/src/section.rs
+
+SPEC 8.1 defines sections. Stroke lists retain paint order and deduplicate coincident collinear edges. Fastener positions are recorded for note landings; shared edges of monolithic castings are not drawn. A vapor retarder remains at least 0.03 paper inch from the host edge, and lumber lying in the section plane is cut lengthwise.
+
+## engine/kerf-core/src/section/beyond.rs
+
+In elevation, end-on lumber cut marks and loose-fill hatching remain visible only where nearer members do not hide them. Coincident slab edges of one lengthwise member are drawn once in the member's pen.
+
+## engine/kerf-core/src/section/breaks.rs
+
+Break lines apply to cut members and to lengthwise steel running beyond the crop.
+
+## engine/kerf-core/src/section/cut.rs
+
+When subtracting an embedded hole would remove more area than the hole itself, the boolean is treated as failed and the hole is skipped so the part retains its fill. Otherwise an emptied fill means the hole covers the whole cut. Hatch grain follows the longest loop edge.
+
+## engine/kerf-core/src/section/hardware.rs
+
+SPEC 28.4 governs hardware drawn in front: an explicit `front` wins, otherwise a section draws hardware in front when it cuts a placement member. Thin metal is widened to a minimum paper thickness; plates grow away from the touching member, or equally on both sides when neither or both edges touch. Face-on ties occlude strokes behind them.
+
+## engine/kerf-core/src/section/joins.rs
+
+SPEC 28.7 treats concrete slabs split from one member and concrete components sharing a `pour` as one casting. Shared edges are omitted, and joined bodies also occlude as a union so their shared boundary does not expose linework behind them.
+
+## engine/kerf-core/src/section/nails.rs
+
+SPEC 27.4 and 28.6 govern fasteners. A nail draws as a shank and head in plane, or as a dot end-on. Its own members and embedded members do not hide it, including when its host is cut.
+
+## engine/kerf-core/src/section/occlusion.rs
+
+Visible and hidden path portions are split at occluder outlines. Closed-loop pieces on either side of a visible starting point are joined.
+
+## engine/kerf-core/src/section/strokes.rs
+
+Coincident collinear spans keep the heavier pen, except members of one component keep a thin copy. Open strokes chain only when both pen and source match; returning to the start closes a loop.

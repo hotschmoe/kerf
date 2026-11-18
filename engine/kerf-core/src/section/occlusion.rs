@@ -1,5 +1,3 @@
-//! Visibility of linework against the flattened cut / beyond bodies in front of it.
-
 use crate::geom::{self, Box, Pt, V2};
 use crate::sort;
 use alloc::rc::Rc;
@@ -15,7 +13,6 @@ pub struct Occ {
 }
 
 impl Occ {
-    /// Whether the point lies inside this body.
     pub fn covers(&self, c: V2) -> bool {
         self.bx.contains(c) && geom::locate(c, &self.loops, 1e-9) == geom::Loc::Inside
     }
@@ -33,7 +30,6 @@ fn push_unique(ts: &mut Vec<f64>, t: f64) {
     }
 }
 
-/// Visible parts of a closed loop; the first and last piece are joined when the loop start is visible.
 pub fn visible_pieces(lp: &[Pt], occ: &[&Occ]) -> Vec<PieceOut> {
     visible_impl(lp, true, true, occ, true)
 }
@@ -42,12 +38,10 @@ pub fn visible_open(pts: &[Pt], closed: bool, occ: &[&Occ]) -> Vec<PieceOut> {
     visible_impl(pts, closed, false, occ, true)
 }
 
-/// The parts of a path that the occluders hide (the complement of `visible_open`), drawn as hidden lines.
 pub fn hidden_pieces(pts: &[Pt], closed: bool, occ: &[&Occ]) -> Vec<PieceOut> {
     visible_impl(pts, closed, closed, occ, false)
 }
 
-/// Splits a path at the occluder outlines and keeps the visible parts (`keep_visible`) or the hidden ones.
 fn visible_impl(pts: &[Pt], closed: bool, join_wrap: bool, occ: &[&Occ], keep_visible: bool) -> Vec<PieceOut> {
     let mut out: Vec<PieceOut> = Vec::new();
     let n = pts.len();

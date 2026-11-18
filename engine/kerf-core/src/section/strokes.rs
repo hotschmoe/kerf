@@ -1,5 +1,3 @@
-//! Strokes: pen-tagged polylines, coincident-edge deduplication and end-to-end chaining.
-
 use crate::geom::{self, Box, Pt, V2};
 use crate::pen::Pen;
 use crate::style::Style;
@@ -30,7 +28,6 @@ fn seg_box(s: &SegRef) -> Box {
     Box { x0: s.a.x.min(s.b.x), y0: s.a.y.min(s.b.y), x1: s.a.x.max(s.b.x), y1: s.a.y.max(s.b.y) }
 }
 
-/// Overlapping collinear segments: the lighter pen loses the shared span; members of one component keep one thin copy.
 pub fn dedupe(strokes: &[Stroke], style: &Style) -> Vec<Stroke> {
     let mut segs: Vec<SegRef> = Vec::new();
     let mut seg_start: Vec<usize> = Vec::with_capacity(strokes.len() + 1);
@@ -177,7 +174,6 @@ fn subtract_interval(keep: &mut Vec<[f64; 2]>, lo: f64, hi: f64) {
     *keep = out;
 }
 
-/// Joins open strokes of the same pen and source that meet end to end; closes loops that return to their start.
 pub fn chain_strokes(input: Vec<Stroke>) -> Vec<Stroke> {
     let mut list = input;
     let mut changed = true;
@@ -244,7 +240,6 @@ pub fn chain_strokes(input: Vec<Stroke>) -> Vec<Stroke> {
     list
 }
 
-/// The component id of a source name (`"truss#2"` is `"truss"`).
 pub fn base_id(src: &str) -> &str {
     src.split('#').next().unwrap_or(src)
 }

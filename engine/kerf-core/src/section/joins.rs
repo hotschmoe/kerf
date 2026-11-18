@@ -1,7 +1,3 @@
-//! Monolithic concrete (SPEC 28.7): where two bodies of one casting touch, the edge they share is not a joint and is
-//! not drawn. One casting is the slabs of a member a void or a footprint split along z, and the concrete components
-//! that name the same `pour`.
-
 use super::occlusion::{Occ, PieceOut};
 use super::{Class, Section};
 use crate::geom::{self, Pt, V2};
@@ -9,7 +5,6 @@ use crate::model::{Kind, Prism};
 use alloc::vec::Vec;
 
 impl Section<'_> {
-    /// The `pour` group of a prism's component (concrete only).
     fn pour_of(&self, p: &Prism) -> Option<&str> {
         let c = self.scene.comps.get(p.comp as usize)?;
         if c.ty.name() != "concrete" {
@@ -38,7 +33,6 @@ impl Section<'_> {
         same_member || self.pour_of(p).is_some_and(|a| self.pour_of(q) == Some(a))
     }
 
-    /// Per prism, the edges of the bodies it is cast with; empty for most prisms.
     pub(super) fn join_edges(&mut self) -> Vec<Vec<[V2; 2]>> {
         let n = self.prisms.len();
         let mut out: Vec<Vec<[V2; 2]>> = alloc::vec![Vec::new(); n];
@@ -72,8 +66,6 @@ impl Section<'_> {
         out
     }
 
-    /// Bodies cast together also hide together: a line behind exactly where two of them meet is inside their union, not
-    /// on an edge of either, so each joined pair adds its union as one occluder.
     pub(super) fn join_occluders(&mut self) {
         let mut add: Vec<Occ> = Vec::new();
         for o in &self.occs {
@@ -93,7 +85,6 @@ impl Section<'_> {
     }
 }
 
-/// The pieces of `pieces` that do not lie along `edges` (arcs are kept whole).
 pub fn off_edges(pieces: Vec<PieceOut>, edges: &[[V2; 2]]) -> Vec<PieceOut> {
     if edges.is_empty() {
         return pieces;
