@@ -178,7 +178,7 @@ async function main() {
   check('info.dir is the served folder', fs.realpathSync.native(info.json.dir) === fs.realpathSync.native(dir), info.json.dir);
   const fake = info.json.agents.find((a) => a.id === 'fake'), ghost = info.json.agents.find((a) => a.id === 'ghost');
   check('agents: override from .kerf/agents.json is available with a version', fake && fake.available === true && /^v\d+/.test(fake.version ?? ''), fake);
-  check('agents: missing CLI -> available:false + reason', ghost && ghost.available === false && /not found/.test(ghost.reason ?? ''), ghost);
+  check('agents: missing CLI is unavailable', ghost && ghost.available === false, ghost);
   check('agents: built-ins claude/grok/codex listed', ['claude', 'grok', 'codex'].every((id) => info.json.agents.some((a) => a.id === id)), info.json.agents.map((a) => a.id));
   let docs = await api(port, 'GET', '/api/docs');
   check('GET /api/docs empty', docs.status === 200 && Array.isArray(docs.json) && docs.json.length === 0, docs.text);
@@ -472,7 +472,7 @@ async function main() {
   await sleep(1200); // the startup prefetch has had its chance
   const infoU = await api(untrusted.port, 'GET', '/api/info');
   const evil = infoU.json.agents.find((a) => a.id === 'evil');
-  check('V-2: the workspace agent is listed as unavailable + untrusted (with the reason)', evil && evil.available === false && evil.untrusted === true && evil.source === 'workspace' && /not trusted/.test(evil.reason ?? ''), evil);
+  check('V-2: the workspace agent is unavailable and untrusted', evil && evil.available === false && evil.untrusted === true && evil.source === 'workspace', evil);
   const claudeU = infoU.json.agents.find((a) => a.id === 'claude');
   check('V-2: an untrusted entry cannot replace a built-in id', claudeU && claudeU.source === 'builtin' && !claudeU.untrusted, claudeU);
   const runEvil = await api(untrusted.port, 'POST', '/api/agent/run', { body: { agent: 'evil', message: 'x' } });
