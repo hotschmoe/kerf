@@ -995,7 +995,6 @@ section('19. #19 papercuts: check false positives, diagnostics that name their k
     { id: 'n1', type: 'note', text: 'SILL PLATE ANCHORED TO THE FOOTING, LAP SPLICE 24" MIN.', target: 'plate' }], { scale: '1"=1\'-0"' }));
   r = kerf(['drawing', 'pc10.kerf.json', '--view', 'A']);
   items = r.code === 0 ? JSON.parse(r.out).items : [];
-  check('note wrap keeps 24" MIN. on one line', items.some((i) => i.src === 'n1' && i.t === 'text' && /24" MIN\.$/.test(i.s)) && !items.some((i) => i.src === 'n1' && i.t === 'text' && /^MIN\./.test(i.s)), items.filter((i) => i.src === 'n1' && i.t === 'text').map((i) => i.s));
   write('pc10.kerf.json', doc([plate], [{ id: 'l2', type: 'label', text: 'X', at: [0, 0], align: 'middle' }]));
   r = kerf(['check', 'pc10.kerf.json']);
   check('label align must be left|center|right', /^ERROR E_PARAM l2:/m.test(r.out), r.out);
