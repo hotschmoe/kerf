@@ -75,21 +75,21 @@ await t('notes: edit text, add + verify citation (designer), op log, undo', asyn
   // verify the first citation via the stamp
   await page.waitForSelector('.idetail .stamp');
   await page.click('.idetail .stamp');
-  await page.waitForFunction(`window.__kerf.app.opLog.length === 3`);
+  await page.waitForFunction(`window.__kerf.app.view.annotations.find(a => a.id === 'n_truss')?.cite?.[0]?.status === 'verified'`);
   n = await ev(page, `window.__kerf.app.view.annotations.find(a => a.id === 'n_truss')`);
   assert.equal(n.cite[0].status, 'verified');
   await page.waitForFunction(`document.querySelector('.idetail .stamp.ok')`);
   // add a citation
   await page.type('.idetail input[placeholder="R403.1.6"]', 'R802.10.2');
   await ev(page, `[...document.querySelectorAll('.idetail .btn')].find(b => b.textContent === 'ADD').click()`);
-  await page.waitForFunction(`window.__kerf.app.opLog.length === 4`);
+  await page.waitForFunction(`window.__kerf.app.view.annotations.find(a => a.id === 'n_truss')?.cite?.length === 2`);
   n = await ev(page, `window.__kerf.app.view.annotations.find(a => a.id === 'n_truss')`);
   assert.equal(n.cite.length, 2); assert.equal(n.cite[1].status, 'suggested');
   // DIFF tab + undo last
   await ev(page, `document.querySelectorAll('.itabs .tab')[2].click()`);
   await page.waitForSelector('.logrow');
   await ev(page, `[...document.querySelectorAll('.logbar .btn')].find(b => b.textContent === 'UNDO LAST').click()`);
-  await page.waitForFunction(`window.__kerf.app.opLog.length === 5`);
+  await page.waitForFunction(`window.__kerf.app.view.annotations.find(a => a.id === 'n_truss')?.cite?.length === 1`);
   n = await ev(page, `window.__kerf.app.view.annotations.find(a => a.id === 'n_truss')`);
   assert.equal(n.cite.length, 1);
   assert.deepEqual(page.errors, []);
