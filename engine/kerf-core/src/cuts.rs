@@ -1,10 +1,3 @@
-//! Lumber and steel cuts and two-point members (SPEC 27.3). A member seen lengthwise (lumber run x/y, steel in elevation
-//! or plan) is a strip in its frame: u along the length (0 at the start, `length` at the end), v across (0 at the bottom
-//! face, h at the top; v is always to the left of u). Its two end cuts are lines that close the strip; the birdmouth and
-//! rectangular notches are polygons taken out of it. Everything happens in the builder's local coordinates before the
-//! instances are placed, so sections, plans, elevations, iso, the mesh and every check see the cut profile. A notch `by`
-//! another member is a subtraction after placement (`voids`).
-
 use crate::catalog::Type;
 use crate::clip::{self, Op};
 use crate::geom::{self, Box, Pt, V2, Xf};
@@ -20,14 +13,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 const FLAT_TOL: f64 = geom::FLAT_TOL;
-/// How close a seat must sit on its bearing member's top (inches).
 const SEAT_TOL: f64 = 1.0 / 32.0;
 const TYPES: [&str; 7] = ["square", "plumb", "level", "bevel", "trim", "birdmouth", "notch"];
 const CUTS_FIX: &str = "\"cuts\": [{\"type\": \"birdmouth\", \"on\": \"top_plate\", \"tail\": 12}, {\"type\": \"plumb\", \"end\": \"start\"}, {\"type\": \"trim\", \"end\": \"end\", \"to\": \"ridge\"}, {\"type\": \"notch\", \"at\": \"top_right\", \"w\": 3.5, \"d\": 1.5}, {\"type\": \"notch\", \"by\": \"top_plate\"}] (`kerf schema cuts`)";
 const PLACE_KEYS: [&str; 6] = ["at", "length", "until", "rotate", "slope", "mirror"];
 
-/// The frame of a member seen lengthwise in its builder's local coordinates: run x: u = +x, v = +y; run y: u = +y,
-/// v = -x.
 #[derive(Clone, Copy)]
 struct Frame {
     o: V2,
@@ -107,7 +97,6 @@ fn obj1(key: &str, v: Value) -> Value {
     Value::Object(vec![Member { key: key.into(), value: v }])
 }
 
-/// The update op that sets cut `k` of `node`'s `cuts` to `entry` (or drops it when None).
 fn cuts_op(id: &str, node: &Value, k: usize, entry: Option<Value>) -> String {
     let list: Vec<Value> = node
         .get("cuts")
@@ -120,15 +109,10 @@ fn cuts_op(id: &str, node: &Value, k: usize, entry: Option<Value>) -> String {
     op_text(id, obj1("cuts", Value::Array(list)))
 }
 
-/// Round down to 1/16".
 fn sixteenth_floor(x: f64) -> f64 {
     math::floor(x * 16.0 + 1e-9) / 16.0
 }
 
-// ---- dependencies ----------------------------------------------------------------------------------------------
-
-/// The components a member's `from`, `to` and `cuts` (birdmouth `on`, trim `to`, bevel `line`) name: placed first.
-/// A notch `by` is not a dependency (it is subtracted after placement, like `voids`).
 pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>, add_ref: impl Fn(&'a Value, &mut Vec<&'a str>)) {
     for key in ["from", "to"] {
         if let Some(v) = node.get(key) {
@@ -147,7 +131,6 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>, add_ref: impl F
     }
 }
 
-/// The components a member's notches `by` name (refused removal targets, like `voids`).
 pub fn collect_notch_refs<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     for c in node.get("cuts").and_then(Value::arr).unwrap_or(&[]) {
         if let Some(s) = c.get("by").and_then(Value::str) {
@@ -156,7 +139,6 @@ pub fn collect_notch_refs<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     }
 }
 
-/// `(cut index, member id)` of every `{"type": "notch", "by": id}` in a lumber or steel member's `cuts`.
 pub fn notch_bys<'a>(c: &Comp<'a>) -> Vec<(usize, &'a str)> {
     if !matches!(c.ty.ty, Type::Lumber | Type::Steel) {
         return Vec::new();
@@ -168,8 +150,6 @@ pub fn notch_bys<'a>(c: &Comp<'a>) -> Vec<(usize, &'a str)> {
         .filter_map(|(k, e)| e.get("by").and_then(Value::str).map(|s| (k, s)))
         .collect()
 }
-
-// ---- two-point members -----------------------------------------------------------------------------------------
 
 #[derive(Clone)]
 struct Target {
@@ -218,7 +198,6 @@ fn point_text(v: &Value) -> String {
     }
 }
 
-/// Whether the member is seen lengthwise, and then whether its length runs along y. None: cuts do not apply.
 pub fn lengthwise(ty: Type, node: &Value, two_point: bool) -> Option<bool> {
     let run = node.get("run").and_then(Value::str);
     match ty {
@@ -241,8 +220,6 @@ pub fn lengthwise(ty: Type, node: &Value, two_point: bool) -> Option<bool> {
     }
 }
 
-/// `from` / `to` of a lumber or steel member: its start and end points, length and angle. `Some(None)`: not a two-point
-/// member; None: reported, the member cannot be placed.
 pub fn two_point(scene: &Scene, id: &str, ty: Type, node: &Value) -> Option<Option<TwoPoint>> {
     let base = format!("components/{id}");
     let (fv, tv) = (node.get("from").filter(|v| !v.is_null()), node.get("to").filter(|v| !v.is_null()));
@@ -338,8 +315,6 @@ pub fn two_point(scene: &Scene, id: &str, ty: Type, node: &Value) -> Option<Opti
     }))
 }
 
-// ---- cut specs ---------------------------------------------------------------------------------------------------
-
 #[derive(Clone)]
 enum End {
     Square,
@@ -365,7 +340,6 @@ impl End {
 
 struct Notch {
     top: bool,
-    /// Some(true): at the start end, Some(false): at the end end, None: at `x`.
     corner: Option<bool>,
     x: f64,
     w: f64,
@@ -382,7 +356,6 @@ struct Bird {
     hdir: V2,
 }
 
-/// A member's cuts in its frame, ready to apply once its placement is known.
 pub struct Plan {
     frame: Frame,
     vref: f64,
@@ -394,7 +367,6 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// The local point of a two-point member that lands on `from`: the start of its aligned line.
     pub fn start_point(&self) -> V2 {
         self.frame.local(V2::init(0.0, self.vref))
     }
@@ -433,7 +405,6 @@ fn comp_box(c: &Comp, inst: u32, part: Option<&str>) -> Option<Box> {
     (!b.is_empty()).then_some(b)
 }
 
-/// A placed component named by a cut (`on`, `to`): reported when unknown or not built.
 fn named<'s, 'a>(scene: &'s Scene<'a>, id: &str, path: &str, what: &str, name: &str) -> Option<&'s Comp<'a>> {
     let base = name.split(['#', '.']).next().unwrap_or(name);
     let Some(c) = scene.find(base) else {
@@ -483,8 +454,6 @@ fn target_of(name: &str) -> Target {
     Target { comp: comp.to_string(), inst, part }
 }
 
-/// The bearing corner a birdmouth seat lands on when the member has no `at`: the top corner of `on` on the low (outer)
-/// side. None when the member has no birdmouth on another member (or it is not placed: `prepare` reports it).
 pub fn auto_seat(scene: &Scene, node: &Value, angle: f64, run_y: bool) -> Option<V2> {
     let on = node
         .get("cuts")?
@@ -506,9 +475,6 @@ fn seat_corner(angle: f64, frame: &Frame, hdir: V2) -> &'static str {
     if w.x > 0.0 { "top_left" } else { "top_right" }
 }
 
-/// Read and check a member's `cuts` (and the ends a two-point member trims to) in its frame, add the anchors that need
-/// no placement (birdmouth seat corners, cut corners when both ends are known). `Some(None)`: nothing to cut; None:
-/// reported, the member fails.
 pub fn prepare(
     scene: &Scene,
     id: &str,
@@ -1143,8 +1109,6 @@ fn read_notch(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &m
     Ok(())
 }
 
-// ---- applying ----------------------------------------------------------------------------------------------------
-
 #[derive(Clone, Copy)]
 struct Line {
     p: V2,
@@ -1152,14 +1116,11 @@ struct Line {
 }
 
 impl Line {
-    /// u where the line crosses v = `v` (None when it runs along the member).
     fn u_at(&self, v: f64) -> Option<f64> {
         (self.t.y.abs() > 1e-9 * self.t.len()).then(|| self.p.x + (v - self.p.y) * self.t.x / self.t.y)
     }
 }
 
-/// The line of end `i` in frame coordinates; `world` maps world points into the builder's local coordinates (needed
-/// by bevel-to-line and trim; None in the placement-free pass, where they are not resolved).
 fn end_line(plan: &Plan, i: usize, world: Option<(&Scene, &Xf)>, up: V2, xw: V2) -> Option<Line> {
     let u_end = if i == 0 { 0.0 } else { plan.frame.len };
     let p = V2::init(u_end, plan.vref);
@@ -1182,8 +1143,6 @@ fn end_line(plan: &Plan, i: usize, world: Option<(&Scene, &Xf)>, up: V2, xw: V2)
     l.u_at(0.0).and(l.u_at(plan.frame.h)).map(|_| l)
 }
 
-/// The face of `tg` that end `i` of the member meets along its reference line, in frame coordinates. None: the line
-/// misses it.
 fn trim_line(scene: &Scene, plan: &Plan, i: usize, tg: &Target, inv: &Xf) -> Option<Line> {
     let c = scene.find(&tg.comp)?;
     let to = plan.frame.frame_xf();
@@ -1248,7 +1207,6 @@ fn corner_anchors(plan: &Plan, built: &mut Built, lines: [Line; 2]) {
     }
 }
 
-/// The pieces of segment a-b inside `region` (even-odd over its loops).
 pub fn clip_segment(a: V2, b: V2, region: &[Vec<V2>]) -> Vec<[V2; 2]> {
     let mut ts = vec![0.0, 1.0];
     for l in region {
@@ -1276,9 +1234,6 @@ pub fn clip_segment(a: V2, b: V2, region: &[Vec<V2>]) -> Vec<[V2; 2]> {
     out
 }
 
-/// Cut the member: resolve the ends that need its placement (`xf`: local -> world of instance 0), stretch its prisms to
-/// reach both end lines, clip them to the strip between the lines minus the notches, add the cut-corner anchors and
-/// check the birdmouth seat on its bearing member. False: reported, the member fails.
 pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Built, xf: &Xf) -> bool {
     let f = plan.frame;
     let base = format!("components/{id}/cuts");
@@ -1492,10 +1447,6 @@ fn check_seat(scene: &Scene, id: &str, plan: &Plan, b: &Bird, on: &str, xf: &Xf)
     );
 }
 
-/// The fix for an overlap (`rise` high) of a member with a birdmouth seat and `other`, when `other` is not its bearing
-/// member: the heel (plumb cut) is so deep that the member reaches below its bearing member's top into `other`. A
-/// shallower heel lifts the member by the difference, so the exact fix is the heel minus the overlap height (and no
-/// deeper than the bearing member).
 pub fn birdmouth_overlap_fix(m: &Comp, other: &Comp, comps: &[&Comp], rise: f64) -> Option<String> {
     let list = m.node.get("cuts")?.arr()?;
     let (k, e) = list.iter().enumerate().find(|(_, e)| e.get("type").and_then(Value::str) == Some("birdmouth"))?;

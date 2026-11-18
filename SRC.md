@@ -483,3 +483,11 @@ Geometry checks run once per distinct set of components drawn by the document's 
 ## engine/kerf-core/src/validate/bearing.rs
 
 SPEC 27.1 requires a member with a minimum-bearing trait, such as an I-joist, to meet that bearing at each end and intermediate support.
+
+## engine/kerf-core/src/cuts.rs
+
+SPEC 27.3 defines lumber and steel cuts. In the lengthwise builder frame, u follows the member and v points left across it; end cuts and notches modify the local profile before placement so every view, mesh and check sees it. A notch `by` another member is subtracted after placement and is not a placement dependency; `from`, `to`, birdmouth `on`, trim `to` and bevel `line` references are dependencies. A birdmouth without `at` uses the low outer top corner of its bearing member. The overlap fix for an overly deep heel reduces the heel by the overlap height, limited by the bearing depth.
+
+## engine/kerf-core/src/voids.rs
+
+SPEC 26.4 defines subtracted solids. Hosts are cut after placement and split into z slabs where a void is shorter than the host, so views, mesh and checks share the same holes. A missing void z range means the whole host. Component cutters use outer body silhouettes with holes filled, preventing concrete from entering a tube. Exact host loops remain only while each cutter is a single exact loop wholly inside as a new hole. Fills are clipped per view against solid silhouettes at the cut plane, excluding `fill.except` components. Touching slabs of the same component, instance and part identify cap seams for visibility and feature-edge suppression.
