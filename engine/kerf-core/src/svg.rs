@@ -1,5 +1,3 @@
-//! SVG exporter (SPEC 12): paper inches x 96 as user units, black ink, stroke-font text.
-
 use crate::drawing::{Drawing, Item};
 use crate::font::Font;
 use crate::geom::{self, Pt};
@@ -23,14 +21,10 @@ impl Default for Options {
     }
 }
 
-/// Model -> paper mapping for a drawing placed with its bounds' lower-left at paper (ox, oy_bottom).
 #[derive(Clone, Copy)]
 pub struct Map {
-    /// model inches per paper inch
     pub s: f64,
-    /// model x at paper x = ox
     pub x0: f64,
-    /// model y at paper y = oy (top)
     pub y1: f64,
     pub ox: f64,
     pub oy: f64,
@@ -45,7 +39,6 @@ impl Map {
     }
 }
 
-/// SVG coordinates: 3 decimals of a px.
 fn num(out: &mut Vec<u8>, x: f64) {
     let mut b = [0u8; 40];
     out.extend_from_slice(json::fmt_fixed(&mut b, x, 3).as_bytes());
@@ -116,7 +109,6 @@ fn escape_attr(out: &mut Vec<u8>, s: &str) {
     }
 }
 
-/// Emit the drawing's layers. The caller has opened the <svg>.
 pub fn emit_items(out: &mut Vec<u8>, d: &Drawing<'_>, m: Map, font: &Font) {
     let st = d.style;
     for layer in &d.layers {
@@ -208,7 +200,6 @@ fn emit_item(out: &mut Vec<u8>, st: &Style, it: &Item, m: Map, font: &Font) {
     }
 }
 
-/// Bare detail SVG: the drawing's bounds plus a margin, true paper scale.
 pub fn render(d: &Drawing<'_>, font: &Font, opt: &Options) -> Vec<u8> {
     let s = d.scale;
     let margin = if d.page_w > 0.0 { 0.0 } else { opt.margin_in };

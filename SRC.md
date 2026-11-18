@@ -403,3 +403,27 @@ Each component builder's `Params` supplies parser rules, catalog and schema rows
 ## engine/kerf-core/src/builders/truss.rs
 
 SPEC 5.8 and 27.1 define trusses. Side views draw heel, tail, chords and webs; end-on cuts show chord plies and web strips. Chord sizes are depth in the truss plane by thickness across it, so a flat 2x4 is `4x2`. Heel profiles put the bearing outer edge at the origin and rise toward positive x. Web strips extend beyond their centerline endpoints before clipping against the chord edges. Howe panel counts are four through 28 feet, six through 40 feet and eight beyond. In parallel-chord trusses, open runs use full panels until none fits; closed runs use the nearest whole panel count to fill the span exactly.
+
+## engine/kerf-core/src/svg.rs
+
+SPEC 12 defines SVG export: 96 user units per paper inch, black ink and stroke-font text. The mapping converts model inches through drawing scale to paper coordinates, with y measured downward from the top.
+
+## engine/kerf-core/src/dxf.rs
+
+SPEC 12 defines DXF export as ASCII AutoCAD R2000 (AC1015), modelspace in model inches with `$INSUNITS = 1`. LWPOLYLINE retains bulges, HATCH embeds patterns, and the KERF text style points to `romans.shx`. Handles are sequential from a fixed seed, with no timestamps; coordinates use deterministic decimals rounded to 1e-6.
+
+## engine/kerf-core/src/drawing.rs
+
+SPEC 10 defines the drawing IR; non-drawn picking regions are specified in section 16. Exporter-only fields do not belong to the JSON IR. Acknowledged warnings are omitted from the IR entirely when the document has no acknowledgement entries. Sheet page dimensions are in paper inches, while crop and content extents are in model or projected coordinates. Bulges retain extra precision in JSON.
+
+## engine/kerf-core/src/font.rs
+
+SPEC 15 and `spec/fonts/kerf-simplex.json` define the Hershey-derived stroke font. `build.rs` generates compile-time ASCII and synthetic glyph tables with the engine JSON parser; the degree glyph is computed as an octagon. Invalid UTF-8 decodes to `?`, consuming one byte or a whole truncated tail.
+
+## engine/kerf-core/src/textgeom.rs
+
+Text stroke polylines use the item's anchor, with rotation in degrees counterclockwise about that anchor.
+
+## engine/kerf-core/src/drawview.rs
+
+SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2 and 28.6 govern view construction and fit diagnostics. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet.

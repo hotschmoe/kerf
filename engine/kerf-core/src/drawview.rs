@@ -1,5 +1,3 @@
-//! Orchestrates a view into a Drawing: scene compile, section/iso geometry, annotations, title.
-
 use crate::annot::{self, AnnBox, AnnKind, Env, Landing, SheetInfo};
 use crate::compile;
 use crate::drawing::{Drawing, Item, KeyedEntry, LayerDef};
@@ -49,7 +47,6 @@ pub fn code_basis(doc: &Value) -> String {
     code.to_string()
 }
 
-/// `x` with exactly `dp` decimals, rounded half up on its shortest decimal digits (the engine's fixed-decimal rule for messages).
 fn fixed(x: f64, dp: usize) -> String {
     if !x.is_finite() {
         return "0".to_string();
@@ -97,16 +94,12 @@ struct FitInfo {
 
 pub const STANDARD_SCALES: [f64; 7] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0];
 
-/// Paper clearance (inches) kept between a view (its notes, list, title bubble) and the sheet frame or title block.
 const FRAME_CLEAR_IN: f64 = 0.125;
 
-/// The sheet area a view with its annotations and title must fit (paper inches): inside the frame and above the title
-/// block, `FRAME_CLEAR_IN` clear of both.
 pub fn fit_area(st: &Style) -> (f64, f64) {
     fit_area_of(st, st.sheet_w_in, st.sheet_h_in)
 }
 
-/// `fit_area` on a sheet of `w` x `h` paper inches (a layout's own `sheet`).
 pub fn fit_area_of(st: &Style, w: f64, h: f64) -> (f64, f64) {
     (w - 2.0 * st.margin_in - 2.0 * FRAME_CLEAR_IN, h - 2.0 * st.margin_in - st.title_block_h_in - 2.0 * FRAME_CLEAR_IN)
 }
@@ -118,7 +111,6 @@ struct Culprit {
     id: String,
 }
 
-/// Who extends furthest beyond the crop on one side (extents in model units, > 0 only).
 fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
     let mut best = Culprit { name: "the crop itself".to_string(), ext: 0.0, kind: None, id: String::new() };
     let mut notes_ext: f64 = 0.0;
@@ -150,7 +142,6 @@ fn side_culprit(fit: &FitInfo, crop: Box, side: u8) -> Culprit {
     }
     let te = side_ext(fit.title, crop, side);
     if te > best.ext + 1e-9 {
-        // the title sits under the lowest annotation: an annotation that reaches below the crop is the real culprit
         if best.ext > 1e-9 {
             best.name = format!("{} and the view title under it", best.name);
             best.ext = te;
@@ -178,7 +169,6 @@ fn side_ext(b: Box, crop: Box, side: u8) -> f64 {
     }
 }
 
-/// A paper/model number in a fix hint, rounded to 0.1.
 fn fmt_num(n: f64) -> String {
     json::number_string(math::round(n * 10.0) / 10.0)
 }
@@ -201,19 +191,16 @@ fn dim_offset_fix(fit: &FitInfo, big: &Culprit, need: f64, nfix: &mut usize, fix
     }
 }
 
-/// The scale and extents a view was laid out at, and the sheet area it has to fit.
 #[derive(Clone, Copy)]
 struct Frame<'a> {
     scale_text: &'a str,
     scale: f64,
     crop: Box,
     bounds: Box,
-    /// Sheet area (paper inches) inside the frame and above the title block, less the frame clearance.
     aw: f64,
     ah: f64,
 }
 
-/// W_VIEW_FIT (SPEC 18): overflow per edge, the culprit on each overflowing axis and the smallest fix first.
 fn view_fit(
     st: &Style,
     spec: &ViewSpec,
@@ -371,7 +358,6 @@ fn view_fit(
             ));
         }
     }
-    // a scale change only when the overflow is greater than 15% of the frame
     if ow > 0.15 * aw || oh > 0.15 * ah {
         let extra_w = pw - cw;
         let extra_h = ph - ch;
@@ -392,7 +378,6 @@ fn view_fit(
     diags.add_fix(Level::Warning, "W_VIEW_FIT", Some(view_id), Some(&format!("views/{view_id}")), msg, fixes);
 }
 
-/// W_VIEW_FIT for a schedule view (SPEC 26.1): its tables and notes are paper sized, so the fixes are about them.
 fn schedule_fit(spec: &ViewSpec, need: (f64, f64), area: (f64, f64), fit: &FitInfo, diags: &Diags) {
     let view_id = spec.id;
     let ((pw, ph), (aw, ah)) = (need, area);
@@ -441,7 +426,6 @@ fn schedule_fit(spec: &ViewSpec, need: (f64, f64), area: (f64, f64), fit: &FitIn
     );
 }
 
-/// One complete section pass at a fixed (resolved) crop and scale: geometry, annotations, title.
 struct SecPass {
     items: Vec<Item>,
     bounds: Box,
@@ -451,20 +435,14 @@ struct SecPass {
     keyed: Vec<KeyedEntry>,
 }
 
-/// How a layout (SPEC 26.2) builds one of its views; the default is a view on its own sheet.
 #[derive(Clone, Copy, Default)]
 pub struct ViewOpts<'a> {
-    /// Shared notes: each keyed note's number by note id; the view draws no DETAIL NOTES list.
     pub keys: Option<&'a [(String, u32)]>,
-    /// The layout checks the fit of its cells, so the view skips `W_VIEW_FIT` against the whole sheet.
     pub in_layout: bool,
-    /// The paper area an NTS view fits (its share of a layout); None = the whole sheet area.
     pub fit: Option<(f64, f64)>,
-    /// An iso view drawn at this scale factor instead of fitted (a layout's common scale over its `iso_ratio`).
     pub iso_factor: Option<f64>,
 }
 
-/// The width a view title may take in a layout: the drawing with its notes, less the bubble, and at least 3" (paper).
 fn title_wrap(items: Box, crop: Box, sc: f64) -> f64 {
     let mut b = items;
     b.add_box(crop);
@@ -473,7 +451,6 @@ fn title_wrap(items: Box, crop: Box, sc: f64) -> f64 {
 
 const GLYPH_INFO: &str = "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)";
 
-/// What every pass over a section view shares.
 #[derive(Clone, Copy)]
 struct SectionInputs<'a> {
     st: &'a Style,
@@ -487,7 +464,6 @@ struct SectionInputs<'a> {
     in_layout: bool,
 }
 
-/// `W_CUT_FILL` (SPEC 25.1): a cut part that lost its fill to an embedded part's hole, once per host and hole.
 fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
     let mut seen: Vec<(&str, &str)> = Vec::new();
     for f in faults {
@@ -554,7 +530,6 @@ fn nails_hidden_diags(hidden: &[crate::section::NailsHidden], spec: &ViewSpec, d
     }
 }
 
-/// Iso views: a nailing whose heads are all on faces turned away from the view or under other solids (SPEC 28.6).
 fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &ViewSpec, diags: &Diags) {
     let vid = spec.id;
     let view_op = |key: &str, value: &str| {
@@ -681,8 +656,6 @@ fn iso_nails_hidden_diags(hidden: &[iso::NailsHidden], scene: &Scene, spec: &Vie
     }
 }
 
-/// The title a view prints:a plan or elevation view's title through the style's `text.plan_title` /
-/// `text.elevation_title` (default "PLAN - {title}" / "{title}"), unless it already names its kind (SPEC 26.3).
 pub fn view_title(st: &Style, spec: &ViewSpec) -> String {
     let (template, words): (&str, &[&str]) = match spec.kind {
         Kind::Plan => (&st.plan_title, &["PLAN", "PLANS"]),
@@ -717,7 +690,6 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut all: Vec<Item> = base_items;
     all.extend(regions);
     all.extend(ann);
-    // title below the lowest annotation
     let mut tcrop = spec.crop;
     let ab = annot::items_box(font, &all);
     if !ab.is_empty() && ab.y0 < tcrop.y0 {
@@ -747,8 +719,6 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     SecPass { items: all, bounds, detail, fit, unverified, keyed }
 }
 
-/// A schedule view (SPEC 26.1): tables, the notes list and labels laid out in paper inches (scale factor 1) from the
-/// origin, the title under them. There is no geometry; the content box stands in for the crop.
 fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, .. } = inp;
     let mut sec = Section::new(scene, spec, &[]);
@@ -785,8 +755,6 @@ fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     SecPass { items: all, bounds, detail, fit, unverified, keyed }
 }
 
-/// Auto crop (SPEC 19): bounding box of the non-fill components visible in the section, plus 6".
-/// Fills (earth, gravel, sand, compacted fill) are left out and get clipped by the resulting crop.
 pub fn auto_crop(prisms: &[Prism], cut_z: f64) -> Box {
     let mut solid = Box::default();
     let mut any = Box::default();
@@ -817,7 +785,6 @@ pub fn auto_crop(prisms: &[Prism], cut_z: f64) -> Box {
     Box { x0: b.x0 - m, y0: b.y0 - m, x1: b.x1 + m, y1: b.y1 + m }
 }
 
-/// The component ids the view's annotations name (`target`, and the component of every `comp@anchor` Ref).
 fn annotated_ids<'a>(spec: &ViewSpec<'a>) -> Vec<&'a str> {
     fn walk<'a>(v: &'a Value, out: &mut Vec<&'a str>) {
         match v {
@@ -839,10 +806,6 @@ fn annotated_ids<'a>(spec: &ViewSpec<'a>) -> Vec<&'a str> {
     out
 }
 
-/// What stretches an auto crop (SPEC 18, W_VIEW_FIT): the components outside the main group of components that touch
-/// or nearly touch along x or y (more than 2'-0" of empty space splits groups; the main group is the one the view's
-/// annotations name most, then the largest), or, with one group, the components at the crop's edges. Returns the
-/// message part and the first fix.
 fn crop_culprits(scene: &Scene, prisms: &[Prism], spec: &ViewSpec, crop: Box) -> Option<(String, String)> {
     let cut_z = spec.cut_z;
     let view_id = spec.id;
@@ -947,11 +910,6 @@ struct SecResolved {
     pass: SecPass,
 }
 
-/// Resolve an omitted crop and/or scale (SPEC 19) and run the section pass. The scale is the first of the
-/// standard scales (largest first) at which view + notes + dimensions + title fit the sheet frame; every
-/// candidate is evaluated in order, so the result is stable. Explicit crop and scale are used as given.
-/// The crop of a "see other detail" view (only `ref`s, no model, SPEC 28.2): the point at the centre of its bubbles, so
-/// the view is as large as its refs and title.
 fn ref_crop(inp: SectionInputs, spec: &ViewSpec) -> Box {
     let mut probe = spec.clone();
     probe.crop = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
@@ -987,7 +945,6 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
     let mut last_diags: Vec<Diag> = Vec::new();
     for (k, &sc) in STANDARD_SCALES.iter().enumerate() {
         let is_last = k + 1 == STANDARD_SCALES.len();
-        // the crop alone must fit (necessary condition; skips hopeless candidates without a full pass)
         if !is_last && (rs.crop.width() / sc > aw + 1e-6 || rs.crop.height() / sc > ah + 1e-6) {
             continue;
         }
@@ -1012,14 +969,12 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
     }
 }
 
-/// The crop and scale a view's drawing actually uses once an omitted crop/scale is resolved.
 #[derive(Clone, Copy, Debug)]
 pub struct Resolved {
     pub crop: Box,
     pub scale: f64,
 }
 
-/// Section, plan and elevation views; iso views and fully explicit specs come back unchanged.
 pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> Resolved {
     let same = Resolved { crop: spec.crop, scale: spec.scale };
     if !spec.kind.is_flat() || (spec.has_crop && spec.has_scale) {
@@ -1045,8 +1000,6 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
     Resolved { crop: r.crop, scale: r.scale }
 }
 
-/// What a section, plan or elevation view draws: the scene its Refs resolve in (plan views: plan coordinates), its
-/// prisms, and its spec with the cut plane in `cut_z` (a plan's `cut_y`; an elevation cuts nothing).
 pub struct FlatView<'a> {
     pub scene: Option<Scene<'a>>,
     pub prisms: Vec<Prism>,
@@ -1074,7 +1027,6 @@ pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
     }
 }
 
-/// Build the Drawing for `view_id`. Returns None (with diagnostics) if the view does not exist or is invalid.
 pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Option<Drawing<'a>> {
     let Some(vnode) = view::find_view(doc, view_id) else {
         let ids = view::view_ids(doc);
@@ -1097,7 +1049,6 @@ pub fn build<'a>(doc: &Value, st: &'a Style, view_id: &str, diags: &Diags) -> Op
     build_from_scene(doc, st, &scene, &spec, diags)
 }
 
-/// Build a view's Drawing from an already compiled scene. `diags` receives view-level diagnostics.
 pub fn build_from_scene<'a>(
     doc: &Value,
     st: &'a Style,
@@ -1108,7 +1059,6 @@ pub fn build_from_scene<'a>(
     build_with(doc, st, scene, spec, diags, ViewOpts::default())
 }
 
-/// `build_from_scene` for a view of a layout (SPEC 26.2).
 pub fn build_with<'a>(
     doc: &Value,
     st: &'a Style,
@@ -1238,13 +1188,11 @@ pub fn build_with<'a>(
             }
             let mut b = annot::items_box(font, &all);
             b.add_box(res.crop);
-            // NTS views grow their (internal) fit factor until notes and title fit the sheet frame
             let pw = (b.x1 - b.x0) / scale;
             let ph = (b.y1 - b.y0) / scale;
             let (aw, ah) = opts.fit.unwrap_or_else(|| fit_area(st));
             let fits = pw <= aw + 1e-6 && ph <= ah + 1e-6;
             if !fits {
-                // the geometry shrinks with the factor, the annotations keep their paper size
                 let (gw, gh) = (res.crop.width(), res.crop.height());
                 let (room_w, room_h) = (aw - (pw - gw / scale), ah - (ph - gh / scale));
                 if room_w > 0.5 && room_h > 0.5 {
@@ -1265,7 +1213,6 @@ pub fn build_with<'a>(
             trial += 1;
         }
     }
-    // fit check against the sheet frame
     {
         let pw = (bounds.x1 - bounds.x0) / scale;
         let ph = (bounds.y1 - bounds.y0) / scale;

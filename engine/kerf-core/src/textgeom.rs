@@ -1,12 +1,9 @@
-//! Stroke-font text to model-space polylines (shared by SVG, PDF and the rasterizer).
-
 use crate::drawing::{Align, TextItem, VAlign};
 use crate::font::Font;
 use crate::geom::V2;
 use crate::math;
 use alloc::vec::Vec;
 
-/// Polylines for a text item (anchor at item.x, item.y; rotation about the anchor, degrees CCW).
 pub fn strokes(font: &Font, t: &TextItem) -> Vec<Vec<V2>> {
     let mut list = Vec::new();
     font.strokes_of(&mut list, &t.s, t.h);
