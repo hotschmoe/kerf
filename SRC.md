@@ -263,3 +263,11 @@ SPEC 26.1 defines table schedules. Their dimensions are in paper inches regardle
 ## engine/kerf-core/src/sheet.rs
 
 SPEC 12 and DESIGN 5 define sheet framing. Sheet geometry is built in paper inches and mapped back to model coordinates, so exporters handle it as a full-page drawing. Title-block values shrink to fit; if shrinking would go below three quarters of the normal height, a balanced two-line split is used when it yields larger text.
+
+## engine/kerf-core/src/layout.rs
+
+SPEC 26.2 and 28.2 define layouts and fit checks. Layout coordinates are paper inches multiplied by the first view's scale, so items from other scales, including text heights, use the ratio of scales. Explicit or document view scales are retained; iso views without their own scale use the common scale divided by `iso_ratio`. `sheet: auto` with a common scale chooses the smallest standard sheet reaching 1 inch to 1 foot, or the best achievable scale if none does. Layout note numbering merges explicit keys across views, merges unkeyed notes with matching text and citations, and numbers the resulting entries consecutively in layout order. Row titles align at the bottom, rows center across their width, and columns stack from the top.
+
+## engine/kerf-core/src/view.rs
+
+SPEC 6, 19, 24, 25.4, 26.1, 26.3, 28.2 and 28.5 define view parsing and selection. A schedule draws tables and notes without model geometry. Plan views look down the y axis and elevations toward negative z; plan defaults its cut to one inch below the highest drawn member. Scale zero means NTS fit. The author-set crop and scale flags distinguish explicit values from automatic fitting. Component selection combines the component's own view list with `only` and `omit` patterns, where `*` matches any run. A reference-only view with no `only` draws no model.

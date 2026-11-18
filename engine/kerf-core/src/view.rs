@@ -1,5 +1,3 @@
-//! View specs (SPEC 6): parsing and validation of `views[]`.
-
 use crate::geom::Box;
 use crate::json::Value;
 use crate::limits;
@@ -10,16 +8,12 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-/// Section, plan, elevation or isometric view; also the `kind` of the `Drawing` a view produces.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
     Section,
     Iso,
-    /// Tables and notes only (SPEC 26.1): no components, no crop, no model scale; laid out in paper inches.
     Schedule,
-    /// Looking down (-Y) at the horizontal cut plane `cut_y` (SPEC 26.3).
     Plan,
-    /// Looking toward -Z with nothing cut (SPEC 26.3).
     Elevation,
 }
 
@@ -34,7 +28,6 @@ impl Kind {
         }
     }
 
-    /// Exact 2D views drawn by the section engine (section, plan, elevation).
     pub fn is_flat(self) -> bool {
         matches!(self, Kind::Section | Kind::Plan | Kind::Elevation)
     }
@@ -53,12 +46,9 @@ pub enum NotesSide {
     Right,
     Left,
     Both,
-    /// Keyed notes only: the DETAIL NOTES list goes above the drawing.
     Above,
 }
 
-/// How a view's notes are drawn (SPEC 24): text at the leader end, a numbered tag at the leader end with the text in a
-/// DETAIL NOTES list, or the list alone (no tags, no leaders).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NotesStyle {
     Leader,
@@ -73,40 +63,29 @@ pub struct ViewSpec<'a> {
     pub number: String,
     pub title: &'a str,
     pub scale_text: &'a str,
-    /// Model inches per paper inch; 0 = NTS (fit).
     pub scale: f64,
     pub cut_z: f64,
-    /// Plan views: the height of the horizontal cut plane; None = the top of the highest drawn member less 1".
     pub cut_y: Option<f64>,
-    /// Plan and elevation views: the hidden parts of outlines draw as dashed hidden lines.
     pub hidden_lines: bool,
     pub crop: Box,
-    /// The author set `crop` / `scale` explicitly (SPEC 19). When false, drawview auto-fits them.
     pub has_crop: bool,
-    /// Iso views: `crop.z`, the z range the members are cut to (SPEC 28.5).
     pub crop_z: Option<[f64; 2]>,
     pub has_scale: bool,
     pub from: From,
     pub cutaway: bool,
     pub notes_side: NotesSide,
-    /// Keyed views: the side the number tags go (`tags_side`; Both = each nearer its landing).
     pub tags_side: NotesSide,
-    /// `notes_style` of the view; None = the style's `notes.mode`.
     pub notes_style: Option<NotesStyle>,
-    /// `notes_title`: the heading of the DETAIL NOTES list (None = the style's `notes.list_title`).
     pub notes_title: Option<&'a str>,
     pub annotations: &'a [Value],
     pub members: Members<'a>,
 }
 
-/// Which components a view draws (SPEC 25.4): a component's own `views` list, then the view's `only` and `omit`
-/// patterns (component ids, `*` matching any run of characters).
 #[derive(Clone, Debug, Default)]
 pub struct Members<'a> {
     pub view: &'a str,
     pub omit: Vec<&'a str>,
     pub only: Option<Vec<&'a str>>,
-    /// A schedule view draws no components.
     pub none: bool,
 }
 
@@ -121,7 +100,6 @@ impl<'a> Members<'a> {
         }
     }
 
-    /// The component with this id and document node is drawn (and checked) in the view.
     pub fn includes(&self, id: &str, node: &Value) -> bool {
         if self.none {
             return false;
@@ -144,8 +122,6 @@ impl<'a> Members<'a> {
     }
 }
 
-/// `kind` of a tables-and-notes view: "schedule", or its alias "sheet".
-/// A "see other detail" view (SPEC 28.2): its annotations are all `ref`s and it has no `only`, so it draws no model.
 pub fn ref_only(node: &Value) -> bool {
     node.get("only").is_none_or(Value::is_null)
         && node
@@ -162,7 +138,6 @@ pub fn is_glob(pat: &str) -> bool {
     pat.contains('*')
 }
 
-/// `*` matches any run of characters (also none); everything else matches itself.
 pub fn glob_match(pat: &str, s: &str) -> bool {
     let (p, t) = (pat.as_bytes(), s.as_bytes());
     let (mut pi, mut ti) = (0, 0);
@@ -201,7 +176,6 @@ fn parse_range(v: Option<&Value>) -> Option<[f64; 2]> {
 
 const DEFAULT_SECTION_SCALE: &str = "1\"=1'-0\"";
 
-/// Keys of a schedule view that describe model geometry: ignored, each with a `W_PARAM` naming it.
 fn schedule_only_keys(node: &Value, id: &str, base: &str, diags: &Diags) {
     for key in ["scale", "crop", "cut_z", "from", "cutaway", "omit", "only"] {
         let Some(v) = node.get(key).filter(|v| !v.is_null()) else { continue };
