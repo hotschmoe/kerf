@@ -1,17 +1,3 @@
-//! Polygon booleans (intersection, union, difference) on flattened polygons.
-//!
-//! Method: arrangement + classification. Every boundary edge of A and B is split at all mutual
-//! intersections (robust orientation predicates decide crossings, touches and collinear overlaps;
-//! cut points are computed once per pair so both edges share the same vertex), coincident vertices
-//! are merged within `SNAP`, each resulting sub-edge is classified against the other operand by its
-//! midpoint (inside / outside / on-boundary, with the on-boundary case resolved by edge direction),
-//! and the surviving edges are chained into loops. This handles degenerate input (shared edges,
-//! touching vertices, T-junctions, identical operands) deterministically, and is O(n*m), which is
-//! plenty for detail-sized polygons.
-//!
-//! Convention for operands and results: loops are CCW when they bound filled area and CW when they
-//! bound a hole.
-
 use crate::geom::{self, Loc, Pt, V2};
 use crate::math;
 use crate::sort;
@@ -26,7 +12,6 @@ pub enum Op {
     Diff,
 }
 
-/// Boundary band and vertex-merge distance, inches.
 pub const SNAP: f64 = 1e-7;
 
 #[derive(Clone, Copy)]
@@ -49,7 +34,6 @@ struct Sub {
     keep: bool,
 }
 
-/// Convert a Region (loop 0 outer, others holes; bulge loops) to oriented flattened loops.
 pub fn from_region<L: AsRef<[Pt]>>(loops: &[L], tol: f64) -> Vec<Vec<V2>> {
     loops
         .iter()
@@ -65,7 +49,6 @@ pub fn from_region<L: AsRef<[Pt]>>(loops: &[L], tol: f64) -> Vec<Vec<V2>> {
         .collect()
 }
 
-/// Orient a single loop CCW (filled).
 pub fn orient_ccw(pts: &mut [V2]) {
     if geom::signed_area_v(pts) < 0.0 {
         pts.reverse();
@@ -257,10 +240,7 @@ fn seg_param(p: V2, e: Edge) -> f64 {
     (p.sub(e.a).dot(ab) / ab.dot(ab)).clamp(0.0, 1.0)
 }
 
-/// Cut points of the edge pair (`i` of A, `j` of B). An endpoint within `SNAP` of the other edge splits that edge at the
-/// endpoint's own position, so edges that run together (coincident, or off by rounding noise such as a 180 degree
-/// rotation leaves) share their vertices and classify as boundary; a proper crossing found by the exact predicates
-/// splits both edges at one shared point.
+// Crossing edges must share a single computed vertex.
 fn split_pair(ea: Edge, eb: Edge, i: usize, j: usize, cuts: &mut [Vec<Cut>]) {
     for p in [eb.a, eb.b] {
         if geom::dist_point_seg(p, ea.a, ea.b) <= SNAP {
@@ -304,7 +284,6 @@ fn seg_box(e: Edge) -> geom::Box {
     geom::Box { x0: e.a.x.min(e.b.x), y0: e.a.y.min(e.b.y), x1: e.a.x.max(e.b.x), y1: e.a.y.max(e.b.y) }
 }
 
-/// Direction agreement of a sub-edge (direction `d`, midpoint `m`) with the operand edge it lies on.
 fn same_direction<L: AsRef<[V2]>>(loops: &[L], m: V2, d: V2) -> bool {
     let mut best = f64::INFINITY;
     let mut dir = V2::init(0.0, 0.0);
@@ -336,7 +315,6 @@ fn find(par: &mut [usize], x: usize) -> usize {
     r
 }
 
-/// Cluster nearby vertices. Returns the cluster id per input vertex (ids are dense, in first-seen order).
 fn snap_vertices(v: &[V2]) -> Vec<usize> {
     let n = v.len();
     let mut order: Vec<usize> = (0..n).collect();
@@ -454,7 +432,6 @@ fn chain(pos: &[V2], edges: &[Sub]) -> Vec<Vec<V2>> {
     loops
 }
 
-/// Drop duplicate and collinear vertices.
 fn clean_loop(pts: &[V2]) -> Vec<V2> {
     let mut cur = pts.to_vec();
     let mut changed = true;

@@ -1,6 +1,3 @@
-//! Clip bulge polylines (lines and arcs, exactly) to an axis-aligned box, and scan loops against
-//! axis-parallel lines.
-
 use crate::geom::{self, Box, Pt, V2};
 use crate::sort;
 use alloc::vec::Vec;

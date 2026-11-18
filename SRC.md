@@ -195,3 +195,23 @@ Input caps protect the engine from excessive work and allocation; limit errors d
 ## engine/kerf-core/src/math.rs
 
 The float routines use published musl constants and algorithms for reproducible results across targets. On wasm, compiler-builtins supplies `sqrt` as `f64.sqrt`; NaN and negative inputs use the soft result because NaN payloads are unspecified. The hardware square-root path was checked against the soft result on 302 million inputs (see engine NOTES). The huge-argument Payne-Hanek reduction uses precision 1, with two result words.
+
+## engine/kerf-core/src/geom.rs
+
+Bulge polylines follow DXF LWPOLYLINE semantics: a vertex's bulge is `tan(sweep/4)` for its outgoing segment, positive counterclockwise. Reversing a loop reverses segments and negates their bulges. Affine composition applies the right operand first. Orientation uses an error bound and, near zero, exact expansions with Dekker/Veltkamp product splitting. Winding-based point location treats counterclockwise loops as filled and clockwise loops as holes; the even-odd variant does not require orientation. Segment intersection can report two endpoints for collinear overlap.
+
+## engine/kerf-core/src/pathgeom.rs
+
+Open bulge paths have a zero bulge on their last vertex. Offsets are to the left for positive distances and miter line-line joints; fillet radii shrink where adjacent segments are too short. Ribbons have flat end caps.
+
+## engine/kerf-core/src/pathclip.rs
+
+Box clipping retains exact bulge arcs and lines rather than flattening them.
+
+## engine/kerf-core/src/clip.rs
+
+Polygon booleans split boundaries at shared crossings, merge nearby vertices within `SNAP`, classify sub-edges by midpoint and boundary direction, then chain surviving edges into loops. An endpoint within `SNAP` splits the other edge at the endpoint's own position, preventing rounding noise from separating coincident edges; proper crossings share one computed point. Filled boundaries are counterclockwise and holes clockwise. The arrangement is quadratic in the operand edge counts.
+
+## engine/kerf-core/src/crop.rs
+
+`W_CROP_STALE` distinguishes intentionally cropped members from members moved or resized out of a crop, and also warns when less than 10% remains visible in every drawing view. Section checks use the cut plane, elevation checks all members, and plan and iso crops are excluded because they are not model x/y crops.
