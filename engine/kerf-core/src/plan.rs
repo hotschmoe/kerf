@@ -1,10 +1,3 @@
-//! Plan views (SPEC 26.3): the model seen from above (looking -Y), cut by the horizontal plane y = `cut_y`.
-//!
-//! Every prism is an XY profile extruded over [z0, z1], so its plan is a set of rectangles in plan coordinates
-//! (x, -z): the x-intervals of the profile times the z range. A plan prism keeps the same shape as a section prism,
-//! with model y as its depth (higher is nearer the viewer), so the section engine draws the plan with `cut_y` as its
-//! cut plane: strips the plane crosses are cut (hatched), strips below it are outlines hidden by higher ones.
-
 use crate::clip;
 use crate::geom::{self, Box, FLAT_TOL, Pt, V2};
 use crate::math;
@@ -18,15 +11,12 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 const EPS: f64 = 1e-7;
-/// Adjacent strips of one member whose top surfaces meet at a smaller angle than this merge (arc chords, gentle slopes).
 const CREASE_RAD: f64 = 0.17;
 
-/// The plan point of a model point (x, z): plan y is -z, so the section viewer at +z stands at the bottom of the plan.
 pub fn plan_pt(x: f64, z: f64) -> V2 {
     V2::init(x, -z)
 }
 
-/// The default cut height: 1" below the top of the highest drawn member (fills excluded).
 pub fn default_cut_y(prisms: &[Prism]) -> f64 {
     let mut top = f64::NEG_INFINITY;
     for p in prisms.iter().filter(|p| p.kind == Kind::Body && p.role != Role::Soil) {
@@ -37,7 +27,6 @@ pub fn default_cut_y(prisms: &[Prism]) -> f64 {
     if top.is_finite() { top - 1.0 } else { 0.0 }
 }
 
-/// One x-interval of a profile: `lo`..`top` is its y extent (`top` capped at the cut), `tl`/`tr` the top at its ends.
 #[derive(Clone, Copy, Debug)]
 struct Strip {
     x0: f64,
@@ -49,13 +38,11 @@ struct Strip {
     cut: bool,
 }
 
-/// The y intervals of `flat` on the vertical line through x, as (lo, hi) pairs.
 fn column(flat: &[Vec<V2>], x: f64) -> Vec<[f64; 2]> {
     let ys = pathclip::scan(flat, x, true);
     ys.as_chunks::<2>().0.to_vec()
 }
 
-/// The lowest y and the top (capped at `cap`) of the parts of the column at x below `cap`.
 fn below(flat: &[Vec<V2>], x: f64, cap: f64) -> Option<(f64, f64)> {
     let mut lo = f64::INFINITY;
     let mut top = f64::NEG_INFINITY;
@@ -68,7 +55,6 @@ fn below(flat: &[Vec<V2>], x: f64, cap: f64) -> Option<(f64, f64)> {
     (top > lo).then_some((lo, top))
 }
 
-/// The plan strips of a flattened profile cut at `cut_y` (`f64::INFINITY`: nothing is cut, every strip is below).
 fn strips(flat: &[Vec<V2>], cut_y: f64) -> Vec<Strip> {
     let bx = clip::loops_box(flat);
     if bx.is_empty() || bx.y0 >= cut_y - EPS {
@@ -127,8 +113,6 @@ fn strips(flat: &[Vec<V2>], cut_y: f64) -> Vec<Strip> {
     merge(out)
 }
 
-/// Joins neighbouring strips below the cut whose top surfaces continue without a step or crease (the plan draws a
-/// line only where the top surface breaks).
 fn merge(strips: Vec<Strip>) -> Vec<Strip> {
     let mut out: Vec<Strip> = Vec::new();
     for s in strips {
@@ -152,7 +136,6 @@ fn merge(strips: Vec<Strip>) -> Vec<Strip> {
     out
 }
 
-/// A plan prism over the strip x0..x1 and the model z range z0..z1, with depth (model y) d0..d1.
 fn rect_prism(src: &Prism, x0: f64, x1: f64, z0: f64, z1: f64, d0: f64, d1: f64) -> Prism {
     let (a, b) = (plan_pt(x0, z1), plan_pt(x1, z0));
     Prism {
@@ -176,7 +159,6 @@ fn rect_prism(src: &Prism, x0: f64, x1: f64, z0: f64, z1: f64, d0: f64, d1: f64)
     }
 }
 
-/// A rebar plan prism: a bar of radius r along the plan polyline `center`, depth d0..d1.
 fn bar_prism(src: &Prism, center: Vec<Pt>, r: f64, d0: f64, d1: f64) -> Prism {
     Prism {
         comp: src.comp,
@@ -197,7 +179,6 @@ fn bar_prism(src: &Prism, center: Vec<Pt>, r: f64, d0: f64, d1: f64) -> Prism {
     }
 }
 
-/// A dot: a bar or bolt end-on in plan, cut by the plane.
 fn dot_prism(src: &Prism, c: V2, r: f64, cut_y: f64) -> Prism {
     Prism {
         comp: src.comp,
@@ -223,8 +204,6 @@ fn is_lumber_run_y(scene: &Scene, p: &Prism) -> bool {
     })
 }
 
-/// Rebar (and other swept bars) in plan: a bar along z is a line, a bar in the XY plane is a line along x where it
-/// lies below the cut and a dot where it crosses the cut.
 fn bar_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     let r = p.sweep_r;
     if p.centerline.len() < 2 {
@@ -290,9 +269,6 @@ fn bar_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     flush(&mut run, out);
 }
 
-/// Bars bent in the XZ plane in a section (cut plane z = `cut_z`) or an elevation (`f64::INFINITY`): a dot where the
-/// centreline crosses the cut, the centreline projected on XY where it runs behind the cut, nothing in front of it.
-/// Every other prism passes through unchanged.
 pub fn xz_bars_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
     let mut out = Vec::with_capacity(world.len());
     for p in world {
@@ -342,7 +318,6 @@ pub fn xz_bars_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
     out
 }
 
-/// An XZ bar in plan: its centreline at its height, cut when the plane passes through it.
 fn xz_bar_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     let Some(first) = p.path3.first() else { return };
     let (y, r) = (first[1], p.sweep_r);
@@ -354,7 +329,6 @@ fn xz_bar_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     out.push(bar_prism(p, center, r, d0, d1));
 }
 
-/// A prism of `src` over the XY loop `lp` and the z range z0..z1 (in plan views: the plan loop and the depth range).
 fn footprint_prism(src: &Prism, lp: Vec<Pt>, z0: f64, z1: f64) -> Prism {
     Prism {
         comp: src.comp,
@@ -373,7 +347,6 @@ fn footprint_prism(src: &Prism, lp: Vec<Pt>, z0: f64, z1: f64) -> Prism {
     }
 }
 
-/// An angled footprint in plan (SPEC 28.7): its exact outline, cut when the plane passes through its y range.
 fn footprint_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     let [y0, y1] = p.fp_y;
     if p.footprint.len() < 3 || y0 >= cut_y - EPS {
@@ -384,9 +357,6 @@ fn footprint_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     out.push(footprint_prism(p, lp, y0, y1));
 }
 
-/// Angled footprints in a section (cut plane z = `cut_z`) or an elevation (`f64::INFINITY`): the strips of the exact
-/// outline seen from the front, cut where the plane crosses it (SPEC 28.7). The other slabs of the footprint are not
-/// drawn; every other prism passes through unchanged.
 pub fn footprints_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
     if !world.iter().any(|p| p.fp_proxy) {
         return world;
@@ -408,7 +378,6 @@ pub fn footprints_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
     out
 }
 
-/// The plan prisms of the drawn world prisms, cut at `cut_y`. Loose fill (earth, gravel) is not drawn in plan.
 pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
     let mut out = Vec::new();
     for p in world {
@@ -475,7 +444,6 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
     out
 }
 
-/// Joins touching strips regardless of their tops (an outline only: hidden members).
 fn merge_all(strips: Vec<Strip>) -> Vec<Strip> {
     let mut out: Vec<Strip> = Vec::new();
     for s in strips {
@@ -492,7 +460,6 @@ fn merge_all(strips: Vec<Strip>) -> Vec<Strip> {
     out
 }
 
-/// A membrane crossing the cut is a line along z at each crossing; membranes below the cut lie under what is drawn.
 fn line_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     let pts = geom::flatten_polyline(&p.line_pts, false, FLAT_TOL);
     for w in pts.windows(2) {
@@ -518,7 +485,6 @@ fn line_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     }
 }
 
-/// Plan box of a set of world prisms: the x extent of their profiles times their z range, in plan coordinates.
 fn plan_box<'p>(ps: impl Iterator<Item = &'p Prism>) -> Box {
     let mut b = Box::default();
     for p in ps {
@@ -539,7 +505,6 @@ fn plan_box<'p>(ps: impl Iterator<Item = &'p Prism>) -> Box {
     b
 }
 
-/// The plan anchors of one component: per instance its plan box, the boxes of its parts and the z of its centre.
 fn plan_insts(c: &Comp) -> Vec<PlanInst> {
     (0..c.xfs.len())
         .map(|k| {
@@ -571,8 +536,6 @@ fn plan_insts(c: &Comp) -> Vec<PlanInst> {
         .collect()
 }
 
-/// The scene as a plan view sees it: the same components, with Refs resolved in plan coordinates (box anchors on the
-/// plan box of the instance or part, named anchors at their x and the z of the instance's centre).
 pub fn scene<'a>(src: &Scene<'a>) -> Scene<'a> {
     let mut s = Scene::new(src.style, src.diags, src.run);
     s.default_z = src.default_z;

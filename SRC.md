@@ -455,3 +455,15 @@ SPEC 25.3 and 25.6 define house text, abbreviation and coverage normalization ru
 ## engine/kerf-core/src/lint.rs
 
 SPEC 19, 21, 25.3, 25.4, 25.6 and 26.3 govern document linting. Unknown view-member patterns warn rather than fail so edits can arrive in any order. The note length limit is 130 characters; SPEC 21 says 120, but the limit accommodates a 121-character reference note (see engine NOTES). Mechanical text fixes preserve model numbers and are withheld if a rewrite is needed. A table's repeated text is linted once with its paths. Missing dimension directions are filled in on a rendering copy from the dominant axis, using plan coordinates for plan views; unresolved references remain for the view build to report. Acknowledgements may belong to components, views or annotations. Warnings are suppressed into `I_ACK`, while info codes are accepted as no-ops; strict checking keeps acknowledged warnings, and a complete diagnostic pass can report unmatched entries as `W_ACK_UNUSED`.
+
+## engine/kerf-core/src/iso.rs
+
+SPEC 8.2, 26.4, 27.2, 27.4, 28.6 and 28.7 define iso projection and visibility. For camera quadrant `(sx, sz)`, projection is `u = (sz*x - sx*z)*cos30`, `v = y - (sx*x + sz*z)*sin30`, with depth `sx*x + y + sz*z`; larger depth is nearer. Tessellated faces are indexed on a grid; candidate indices are deduplicated in ascending order. Edges hidden by other members of framing hardware draw dashed, but hardware remains a note target. Touching slabs from a void omit their shared cap edges. Component-relative annotation points project from the nearest end of the drawn extent, while points without a drawn component use the cut plane. Cutaway hatching is limited to front-facing caps.
+
+## engine/kerf-core/src/mesh.rs
+
+SPEC 11 defines the flat-shaded prism mesh and explicit feature edges. Holes are bridged from their rightmost vertices to visible outer vertices before ear clipping. Cap edges along a touching slab's seam are not feature edges. Swapping y and z for an x/z footprint extrusion reverses winding because the handedness changes.
+
+## engine/kerf-core/src/plan.rs
+
+SPEC 26.3 and 28.7 define plan views. Plan coordinates are `(x, -z)`, with model y as depth toward the viewer, so the section engine can draw plan strips at `cut_y`. Adjacent strips merge when their top surfaces do not make a visible break. Loose fill is omitted in plan. Bent x/z bars retain their exact centerline for plan and section/elevation views; angled footprints retain their exact outline. Plan references use per-instance and per-part plan boxes, with named anchors projected at the instance's center z.

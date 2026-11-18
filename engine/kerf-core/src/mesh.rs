@@ -1,6 +1,3 @@
-//! 3D mesh (SPEC 11): each prism extruded over [z0, z1] with flat-shaded faces and explicit
-//! feature edges (sharp edges + profile outlines).
-
 use crate::geom::{self, Pt, V2};
 use crate::json;
 use crate::math;
@@ -42,8 +39,6 @@ impl Part {
         self.edges.extend_from_slice(&[a[0] as f32, a[1] as f32, a[2] as f32, b[0] as f32, b[1] as f32, b[2] as f32]);
     }
 
-    /// Swaps y and z of everything added from vertex `v0`, triangle index `i0` and edge float `e0` on (a solid built
-    /// from an (x, z) outline extruded along "z" becomes one extruded along y); the winding flips with the handedness.
     fn swap_yz(&mut self, v0: usize, i0: usize, e0: usize) {
         for xs in [&mut self.positions[v0 * 3..], &mut self.normals[v0 * 3..], &mut self.edges[e0..]] {
             for c in xs.as_chunks_mut::<3>().0 {
@@ -151,7 +146,6 @@ fn clean_loop(loop_in: &[V2]) -> Vec<V2> {
     lp
 }
 
-/// Two segments cross at a point inside both (touching at an end does not count).
 fn crosses(a: V2, b: V2, c: V2, d: V2) -> bool {
     let o1 = b.sub(a).cross(c.sub(a));
     let o2 = b.sub(a).cross(d.sub(a));
@@ -161,8 +155,6 @@ fn crosses(a: V2, b: V2, c: V2, d: V2) -> bool {
         && ((o3 > 1e-12 && o4 < -1e-12) || (o3 < -1e-12 && o4 > 1e-12))
 }
 
-/// The outer loop with every hole joined to it by a two-way bridge (rightmost hole vertex to the nearest visible outer
-/// vertex), so the ear clipper triangulates a face with holes.
 fn bridge_holes(outer: &[V2], holes: &[Vec<V2>]) -> Vec<V2> {
     let mut poly = outer.to_vec();
     let right =
@@ -199,8 +191,6 @@ fn bridge_holes(outer: &[V2], holes: &[Vec<V2>]) -> Vec<V2> {
     poly
 }
 
-/// A prism over [z0, z1] from its loops (outer first, then holes). `seam` lists, per cap (z0, z1), the outline of the
-/// touching slab of the same member where a void split it: cap edges along it are not feature edges.
 fn extrude(b: &mut Part, loops_in: &[Vec<V2>], z0: f64, z1: f64, smooth_deg: f64, seam: [&[[V2; 2]]; 2]) {
     let Some(first) = loops_in.first() else { return };
     let lp = clean_loop(first);

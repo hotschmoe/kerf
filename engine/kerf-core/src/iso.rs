@@ -1,10 +1,3 @@
-//! Iso view with hidden-line removal on planar faces (SPEC 8.2).
-//!
-//! Projection (isometric drawing, axes at true length): for camera quadrant (sx, sz)
-//!   u = (sz*x - sx*z) * cos30,   v = y - (sx*x + sz*z) * sin30,   depth = sx*x + y + sz*z
-//! (larger depth = nearer the viewer). Prisms are tessellated into planar faces (two caps and one
-//! side face per profile segment); edges are tested against front-facing faces on a uniform grid.
-
 use crate::clip;
 use crate::compile;
 use crate::drawing::{HatchItem, Item, PathItem, RegionItem};
@@ -72,16 +65,11 @@ struct IsoPrism {
     embedded: bool,
     is_fill: bool,
     outline: OutlineMode,
-    /// Per cap (z0, z1): the outline of the touching slab of the same member where a void split it (SPEC 26.4); the
-    /// cap's edges along it are not drawn.
     seam: [Vec<[V2; 2]>; 2],
-    /// Framing hardware (SPEC 27.2): what other members hide of it draws dashed, and a note still lands on it.
     hw_dash: bool,
-    /// An angled concrete footprint (SPEC 28.7): `loops` are its plan outline in (x, z), extruded over y = z0..z1.
     axis_y: bool,
 }
 
-/// A visible face: outer loop and holes in paper-projected model units.
 #[derive(Clone, Debug)]
 pub struct OwnedShape {
     pub outer: Vec<V2>,
@@ -104,22 +92,16 @@ pub struct Vis {
     pub cut: bool,
 }
 
-/// A `nailing` component whose heads all lie on faces turned away from the view or under other solids.
 pub struct NailsHidden {
     pub id: String,
-    /// Each distinct reason, in nail order.
     pub why: Vec<HeadHidden>,
 }
 
-/// Why a fastener head does not show in an iso view.
 #[derive(PartialEq)]
 pub struct HeadHidden {
-    /// The component the head is on and the world face it sits on (left right top bottom front back).
     pub on: String,
     pub face: &'static str,
-    /// The solid in front of the head, or None when its face is turned away from the viewer.
     pub under: Option<String>,
-    /// A solid lying against the head's face (framing nailed up after): no view shows those heads.
     pub against: Option<String>,
 }
 
@@ -131,9 +113,7 @@ pub struct Iso {
     edges: Vec<Edge>,
     prisms: Vec<IsoPrism>,
     pub vis: Vec<Vis>,
-    /// Where each visible fastener head of a `nailing` component is (component index, paper-projected point).
     pub nail_marks: Vec<(u32, V2)>,
-    /// `nailing` components with heads in the view but none visible (SPEC 28.6).
     pub nails_hidden: Vec<NailsHidden>,
     gx0: f64,
     gy0: f64,
@@ -141,7 +121,6 @@ pub struct Iso {
     gh: f64,
     gn: usize,
     cells: Vec<Vec<u32>>,
-    /// Scratch bitmap over face indices for `candidates` (all zero between calls).
     seen: core::cell::RefCell<Vec<u64>>,
     eps: f64,
 }
@@ -171,8 +150,6 @@ impl Default for Iso {
 }
 
 impl Iso {
-    /// Landing candidates on the visible faces of `comp` (None: nothing of it is visible): the label point first, then
-    /// other well-inside points the note layout may move the arrow to when its leader hits something (as in a section).
     pub fn landing(&self, comp: &Comp, inst: Option<u32>, part: Option<&str>, crop: Box, h: f64) -> Option<Vec<V2>> {
         let mut shapes: Vec<Shape> = Vec::new();
         for v in &self.vis {
@@ -191,7 +168,6 @@ impl Iso {
         Some(shape::candidates_for(&shapes, crop, p, h))
     }
 
-    /// Non-drawn picking regions: the visible face chosen per prism (cut cap first).
     pub fn region_items(&self) -> Vec<Item> {
         let mut out = Vec::new();
         for v in &self.vis {
@@ -212,9 +188,6 @@ impl Iso {
         out
     }
 
-    /// Project a point given relative to a component (an `at` Ref, offset applied): it lies on the face of that
-    /// component (instance, part) nearest the viewer, so z is the near end of its drawn z extent (cutaway applied).
-    /// A point with no component, or one not drawn in this view, lies on the plane z = cut_z.
     pub fn project_on(&self, owner: Option<(u32, u32, Option<&str>)>, p: V2) -> V2 {
         let mut z: Option<f64> = None;
         if let Some((comp, inst, part)) = owner {
@@ -276,8 +249,6 @@ impl Iso {
         self.cells = lists;
     }
 
-    /// The face indices listed in the grid cells under `b`, ascending and without duplicates (the union of the
-    /// cell lists through a bitmap: the same set and order as sorting the concatenation and dropping repeats).
     fn candidates(&self, b: Box, out: &mut Vec<u32>) {
         out.clear();
         if self.cells.is_empty() {
@@ -328,7 +299,6 @@ impl Iso {
         self.occluder_at(m, dm, skip, cand).is_some()
     }
 
-    /// The first face in `cand` that lies in front of depth `dm` at `m`.
     fn occluder_at(&self, m: V2, dm: f64, skip: &[usize], cand: &[u32]) -> Option<usize> {
         cand.iter().map(|&fi| fi as usize).find(|&fi| {
             if skip.contains(&fi) {
@@ -339,7 +309,6 @@ impl Iso {
         })
     }
 
-    /// Visible parameter intervals of the screen segment a->b whose depth runs da -> db.
     fn visible(&self, a: V2, b: V2, da: f64, db: f64, skip: &[usize]) -> Vec<[f64; 2]> {
         let mut bb = Box::default();
         bb.add_point(a.x, a.y);
@@ -388,7 +357,6 @@ impl Iso {
 }
 
 impl Iso {
-    /// Visible parameter intervals of the screen segment a->b against the faces `among` only (less `skip`).
     fn visible_among(&self, a: V2, b: V2, da: f64, db: f64, among: &[usize], skip: &[usize]) -> Vec<[f64; 2]> {
         let mut bb = Box::default();
         bb.add_point(a.x, a.y);
@@ -444,8 +412,6 @@ fn add_contour_cuts(ts: &mut Vec<f64>, p: V2, q: V2, contour: &[V2]) {
         }
     }
 }
-
-// ---- tessellation ---------------------------------------------------------------------------------------
 
 struct FLoop {
     pts: Vec<V2>,
@@ -594,8 +560,6 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
     }
 }
 
-/// An angled footprint in iso (SPEC 28.7): its plan outline, cropped in x and y and cut back to z <= cut_z in a cutaway,
-/// extruded over its y range.
 fn footprint_iso(c: &Comp, p: &Prism, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPrism>) {
     if p.footprint.len() < 3 {
         return;
@@ -727,7 +691,6 @@ fn add_prism(iso: &mut Iso, pi: usize) {
     }
 }
 
-/// The parts of the cap edge p-q to draw: all of it, or where it is a seam, what the touching slab does not continue.
 fn cap_pieces(p: V2, q: V2, seam: &[[V2; 2]]) -> Vec<[f64; 2]> {
     if seam.is_empty() { vec![[0.0, 1.0]] } else { geom::uncovered(p, q, seam) }
 }
@@ -758,8 +721,6 @@ fn edge_key(ea: [f64; 3], eb: [f64; 3]) -> EdgeKey {
     if swap { [kb[0], kb[1], kb[2], ka[0], ka[1], ka[2]] } else { [ka[0], ka[1], ka[2], kb[0], kb[1], kb[2]] }
 }
 
-/// Build the iso view. `iso` is initialised here and stays alive for annotation landing/projection.
-/// Which 3D edges to draw: of edges with identical endpoints the heavier pen wins.
 fn unique_edges(iso: &Iso, style: &Style) -> Vec<bool> {
     let ne = iso.edges.len();
     let mut keep = vec![true; ne];
@@ -787,13 +748,11 @@ fn unique_edges(iso: &Iso, style: &Style) -> Vec<bool> {
     keep
 }
 
-/// The visible segments of one kept edge.
 struct Piece {
     edge: usize,
     segs: Vec<[V2; 2]>,
 }
 
-/// The visible parts of every kept edge that borders a front-facing face, projected.
 fn visible_pieces(iso: &Iso, keep: &[bool]) -> Vec<Piece> {
     let (sx, sz) = (iso.sx, iso.sz);
     let mut pieces: Vec<Piece> = Vec::new();
@@ -819,8 +778,6 @@ fn visible_pieces(iso: &Iso, keep: &[bool]) -> Vec<Piece> {
     pieces
 }
 
-/// The parts of framing hardware edges (SPEC 27.2) that other components hide (the hardware's own faces do not count),
-/// per edge, projected: they draw dashed.
 fn hidden_hardware(iso: &Iso, keep: &[bool], pieces: &[Piece]) -> Vec<(usize, Vec<[V2; 2]>)> {
     let (sx, sz) = (iso.sx, iso.sz);
     let mut out = Vec::new();
@@ -929,7 +886,6 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
     let hidden_hw = hidden_hardware(iso, &keep, &pieces);
 
     let mut items: Vec<Item> = Vec::new();
-    // hatch on cutaway caps (front-facing only)
     if spec.cutaway && sz > 0.0 {
         let mut cand: Vec<u32> = Vec::new();
         for ip in &iso.prisms {
@@ -985,7 +941,6 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
         }
     }
 
-    // chain visible pieces into paths, lighter pens first
     let mut pens: Vec<Pen> = Vec::new();
     for pc in &pieces {
         let pen = iso.edges[pc.edge].pen;
@@ -1050,7 +1005,6 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
         }
     }
 
-    // visible shapes per prism for note landing points
     let mut cand: Vec<u32> = Vec::new();
     let mut vis_out: Vec<Vis> = Vec::new();
     for (pi, ip) in iso.prisms.iter().enumerate() {
@@ -1165,7 +1119,6 @@ pub fn build(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, scale
     Result { items, scale: s, crop: cropb }
 }
 
-/// Fastener heads of `nailing` components (SPEC 27.4): a dot (screws: a circle with a cross) where the head is visible.
 fn nail_dots(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, s: f64, items: &mut Vec<Item>) {
     let (sx, sz) = (iso.sx, iso.sz);
     let pen = if style.pen(Pen::Steel).is_some() { Pen::Steel } else { Pen::Beyond };
@@ -1243,7 +1196,6 @@ fn nail_dots(iso: &mut Iso, scene: &Scene, spec: &ViewSpec, style: &Style, s: f6
     iso.nails_hidden = hidden;
 }
 
-/// Why a head is hidden: the face it sits on is turned away from the viewer, or face `fi` of a solid lies in front of it.
 fn hidden_head(iso: &Iso, scene: &Scene, n: &crate::model::Nail, fi: usize) -> HeadHidden {
     let out = n.face;
     let toward = out[0] * iso.sx + out[1] + out[2] * iso.sz;
@@ -1278,7 +1230,6 @@ fn hidden_head(iso: &Iso, scene: &Scene, n: &crate::model::Nail, fi: usize) -> H
     HeadHidden { on, face, under, against }
 }
 
-/// Grade-line chain (or full outline) of a fill's cut face.
 fn fill_outline(items: &mut Vec<Item>, ip: &IsoPrism, style: &Style, sx: f64, sz: f64) {
     let layer = style.layer_for_pen(Pen::Cut);
     let path = |pts: Vec<Pt>| {
