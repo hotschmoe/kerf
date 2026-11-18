@@ -47,3 +47,7 @@ Document ETags use the final4 Wyhash variant for their content hash.
 ## engine/kerf-cli/src/http.rs
 
 HTTP request parsing rejects malformed request heads and bounds both fixed-length and chunked bodies. Secret comparisons scan to the longer input length without content-dependent early exit.
+
+## engine/kerf-cli/src/workspace.rs
+
+The op log is adjacent to its document and is the only location for nondeterministic timestamps. A document's lock covers the full read-modify-write and log append; unsupported filesystem locks are tolerated. Atomic writes sync the new file before rename and attempt to sync the parent directory afterward. Log paths refuse symlinks, and reference paths must first pass path validation and are then canonicalized and rejected if they escape the served root. Workspace style lookup uses the nearest style in the document folder or its ancestors, as specified in SPEC 25.6.
