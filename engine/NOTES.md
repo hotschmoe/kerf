@@ -31,26 +31,17 @@ cargo build --release                      # target/release/kerf
 CARGO_TARGET_DIR=target/ui KERF_UI=../apps/web/dist-serve cargo build --release   # with the web UI (npm run build:serve first)
 node ../tools/build_wasm.mjs               # dist/kerf.wasm (profile small, export section pruned to the ABI, wasm-opt -Oz if on PATH)
 cargo build --profile fastbuild            # optimized, no LTO, incremental: ~4 s after an edit, runs ~1.02x release
-PATH=<repo>/tools/.venv/bin:$PATH tests/gates.sh [fuzz cases] [--serve]
+tests/gates.sh                         # blocking
+tests/test-heavy.sh                    # background
 ```
 `rustfmt.toml`: `max_width = 120`, `use_small_heuristics = "Max"`. `cargo clippy --all-targets -- -D warnings` is clean;
 the few `allow`s left are a long-argument list or two with no better shape, and the libm constants in `math.rs`.
 
-## Gates (all green on this tree)
-| gate | what it proves |
-|---|---|
-| `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
-| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view and every sheet layout (drawing JSON, sheet SVG, DXF, PDF, sheet PNG) of the documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
-| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (58 files, layouts included); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 342 checks of the CLI (stdout, stderr, exit code, files): what an agent sees |
-| `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
-| `tests/serve_smoke.mjs` | 227 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
-| `../apps/web`: `typecheck`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
+## Gates
 
-Golden PNGs for human review (`A.png`, `A-dxf.png`, `A-pdf.png` per view) come from `tests/make_golden.sh --png`; look at
-them after a visual change (`tools/svg2png.sh`, `tools/dxf_check.py --png`, `tools/pdf_check.py --png`), a drawing that
-passes the byte gate can still look wrong. `tools/compare_drawings.py a.json b.json` diffs two `kerf drawing` outputs
-geometrically (tolerance 1e-3).
+`tests/gates.sh` builds the release CLI and wasm, checks three representative export goldens, exercises CLI and serve workflows, runs a wasm export, and runs the browser save/open workflow. `tests/test-heavy.sh` runs the broader golden, wasm, CLI, serve, platform and browser suites and mutation fuzzing. See [engineering conventions](https://github.com/hotschmoe/hotschmoe-setup/blob/master/ENGINEERING.md).
+
+Render and inspect PNGs during visual review; `tools/compare_drawings.py` can compare drawing geometry.
 
 ## Rules that hold for every input (document, style, ops)
 - No raw float-to-int casts on untrusted data: `num::to_int*`. Numbers are validated where they enter: `json::parse`
