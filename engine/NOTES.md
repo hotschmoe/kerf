@@ -43,6 +43,8 @@ the few `allow`s left are a long-argument list or two with no better shape, and 
 
 Render and inspect PNGs during visual review; `tools/compare_drawings.py` can compare drawing geometry.
 
+On the current aarch64 Linux workspace, the blocking gate took 44 s and the background gate 6 min 14 s with `CARGO_BUILD_JOBS=4` and warm build artifacts. The wasm built without wasm-opt measured 1,576,241 bytes raw, 617,817 gzip and 499,813 Brotli. The test and comment policy audit is still in progress.
+
 ## Rules that hold for every input (document, style, ops)
 - No raw float-to-int casts on untrusted data: `num::to_int*`. Numbers are validated where they enter: `json::parse`
   rejects non-finite and > 9e15 numbers, invalid UTF-8, leading zeros and nesting over 200; `units::parse_*` is the one
