@@ -62,7 +62,6 @@ await t('static mode: chat is off with a note that it needs `kerf serve` and a l
   assert.match(s.status, /CHAT OFF/);
   assert.ok(s.comps >= 10); assert.equal(s.setup, false); assert.equal(s.attach, false);
   assert.deepEqual(page.errors, []);
-  await page.screenshot({ path: path.join(outDir, 'static-chat-off.png') });
   await page.close();
 });
 
@@ -133,7 +132,6 @@ await t('diagnostics: acknowledged warnings get their own section (code, compone
   await page.click('.diag.ack');
   assert.equal(await ev(page, 'window.__kerf.app.selection?.id'), 'sill_plate');
   assert.deepEqual(page.errors, []);
-  await page.screenshot({ path: path.join(outDir, 'diag-acknowledged.png') });
   await page.close();
 });
 
@@ -203,7 +201,7 @@ if (!fixture) {
       await new Promise((r) => setTimeout(r, 300));
       const file = path.join(outDir, name);
       if (tool) {
-        const r = spawnSync(py, [path.join(repo, 'tools', tool), file, '--png', path.join(outDir, `${fmt}.png`)], { encoding: 'utf8' });
+        const r = spawnSync(py, [path.join(repo, 'tools', tool), file], { encoding: 'utf8' });
         assert.equal(r.status, 0, (r.stdout || '') + (r.stderr || ''));
       } else {
         const txt = fs.readFileSync(file, 'utf8');
@@ -226,7 +224,6 @@ await t('layouts: a [LAYOUT S1] tab renders the sheet of several views; PDF expo
   const svg = await ev(page, `window.__kerf.app.getLayoutSvg('S1')`);
   assert.match(svg, /<svg/);
   assert.match(svg, /viewBox="0 0 1632 1056"/, '17x11 sheet');
-  await page.screenshot({ path: path.join(outDir, 'layout-S1.png') });
   const before = new Set(fs.readdirSync(outDir));
   await ev(page, `[...document.querySelectorAll('.iexport .btn')].find(b => b.textContent === 'PDF').click()`);
   const name = 'truss-bearing-cmu-S1.pdf';

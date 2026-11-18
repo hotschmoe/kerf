@@ -16,8 +16,6 @@ const repo = path.resolve(web, '../..');
 const REAL = process.argv.includes('--real');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7);
 const dist = path.join(web, 'dist-serve');
-const shots = process.env.KERF_SHOTS || fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-shots-'));
-fs.mkdirSync(shots, { recursive: true });
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-e2e-serve-'));
 const sample = JSON.parse(fs.readFileSync(path.join(repo, 'spec/details/truss-bearing-cmu.kerf.json'), 'utf8'));
 const TRUSS = 'truss-bearing-cmu.kerf.json';
@@ -82,7 +80,6 @@ const post = (m, p, b) => fetch(m.url + p, { method: 'POST', headers: { 'content
 const readDoc = (m, f) => JSON.parse(fs.readFileSync(path.join(m.dir, f), 'utf8'));
 const readLog = (m, f) => (fs.existsSync(path.join(m.dir, f + '.log.jsonl')) ? fs.readFileSync(path.join(m.dir, f + '.log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
 const note = (m, f, id) => readDoc(m, f).views[0].annotations.find((a) => a.id === id);
-const shot = async (page, name) => { await new Promise((r) => setTimeout(r, 250)); await page.screenshot({ path: path.join(shots, name + '.png') }); };
 const status = (page) => ev(page, 'document.getElementById("status").textContent');
 const waitFor = (page, js, timeout = 15000) => page.waitForFunction(js, { timeout }).catch(async (e) => { e.message += '\n      condition: ' + js.slice(0, 200) + '\n      console: ' + (await page.evaluate(`document.getElementById('msgs')?.innerText?.slice(-600)`).catch(() => '?')); throw e; });
 const idle = (page, timeout = 30000) => waitFor(page, 'window.__kerf && !window.__kerf.session.busy', timeout);
@@ -102,7 +99,6 @@ await t('workspace mode is detected; library lists docs live; first doc opens; h
   assert.match(await status(page), /AGENT OK/);
   assert.equal(await ev(page, 'window.__kerf.session.choice'), 'claude'); // first available local agent by default
   assert.equal(await ev(page, '!!document.querySelector(".librow.sel")'), true);
-  await shot(page, '01-workspace');
   // a document dropped into the folder appears (doc_added), counts update live (warnings from the engine's check)
   fs.copyFileSync(path.join(repo, 'spec/details/monopour-slab-door-recess.kerf.json'), path.join(m.dir, 'monopour.kerf.json'));
   await waitFor(page, 'document.querySelectorAll(".librow").length === 3');
@@ -129,7 +125,6 @@ await t('static mode is untouched: no workspace UI, no /api probe when static=1;
   assert.equal(await ev(page, 'document.querySelector("select.pick").disabled'), true);
   assert.match(await ev(page, 'document.querySelector("#msgs .intro").textContent'), /CHAT NEEDS `kerf serve` AND A LOCAL AGENT CLI \(claude, codex, grok OR pi\)/);
   assert.match(await status(page), /CHAT OFF/);
-  await shot(page, '09-static-chat-off');
   await page.close();
 });
 
@@ -178,7 +173,6 @@ await t('external edit: reloads in place (view, zoom, selection kept) and shows 
   assert.match(card.ops, /EXTERNAL REWORD/);
   assert.match(await status(page), /LOCAL AGENT · LAST EDIT \d+S AGO/);
   // log entries of an unrelated file also produce a card (labelled with the file)
-  await shot(page, '02-local-agent-card');
   // no reload loop: nothing further happens
   await new Promise((r) => setTimeout(r, 600));
   assert.equal(await ev(page, 'window.__kerf.app.rev'), rev + 1);
@@ -217,7 +211,6 @@ await t('designer edits go to /apply (actor designer, if_match), land on disk, a
   await waitFor(page, 'window.__kerf.app.opLog.filter(e => e.kind === "op").length === 3');
   assert.equal(readDoc(m, TRUSS).components.find((c) => c.id === 'anchor_bolt').embed, 9); // numbers stay numbers
   assert.match(readLog(m, TRUSS).at(-1).why, /Set anchor_bolt embed to 9/);
-  await shot(page, '14-param-edit');
   // undo writes the previous document back
   await ev(page, `document.querySelectorAll('.itabs .tab')[2].click()`);
   await page.waitForSelector('.logrow');
@@ -246,7 +239,6 @@ await t('409 conflict: stale if_match reloads the document and toasts DOCUMENT C
   assert.equal(note(m, TRUSS, 'n_truss').text, 'AGENT WON THE RACE'); // the stale edit was NOT written
   assert.equal(await noteText(page, 'n_truss'), 'AGENT WON THE RACE'); // and the UI shows the disk version
   assert.equal(await ev(page, 'window.__kerf.app.selection?.id'), 'n_truss');
-  await shot(page, '03-conflict-toast');
   noErrors(page, /ResizeObserver|409 \(Conflict\)/);
   await page.close();
 });
@@ -256,11 +248,9 @@ await t('NEW DETAIL form creates a library document and opens it; ADD SAMPLE imp
   const page = await open(m, 'fast=1');
   assert.equal(await ev(page, 'window.__kerf.app.doc'), null);
   assert.match(await ev(page, 'document.querySelector(".liblist").textContent'), /NO DETAILS IN THIS FOLDER YET/);
-  await shot(page, '04-empty-workspace');
   await page.click('#libnew');
   await page.waitForSelector('.dlg input');
   await page.type('.dlg input', 'Slab Edge Detail');
-  await shot(page, '05-new-detail-form');
   await ev(page, `[...document.querySelectorAll('.dlg .btn')].find(b => b.textContent === 'CREATE').click()`);
   await waitFor(page, 'window.__kerf.ws.file === "slab-edge-detail.kerf.json" && window.__kerf.app.doc');
   assert.ok(fs.existsSync(path.join(m.dir, 'slab-edge-detail.kerf.json')));
@@ -325,12 +315,10 @@ await t('reference panel: meta.references images beside the drawing (token), cap
   const box = await ev(page, `(() => { const b = document.querySelector('#viewport .vbody').getBoundingClientRect(), r = document.querySelector('.vref').getBoundingClientRect(); return { bR: b.right, bT: b.top, rL: r.left, rT: r.top, rW: r.width }; })()`);
   assert.ok(Math.abs(box.rL - box.bR) < 2 && Math.abs(box.rT - box.bT) < 2 && box.rW > 200, JSON.stringify(box));
   assert.equal(await ev(page, `[...document.querySelectorAll('.vtools .tab')].find(b => /REF/.test(b.textContent))?.textContent`), '[REF 4]');
-  await shot(page, '14-reference-panel');
   // click to zoom: overlay with the image, arrow keys step through the images, Escape closes
   await page.click('.refcard[data-path="refs/0123_truss_bearing.png"] .refimg');
   await waitFor(page, `document.querySelector('.refzoom img')?.naturalWidth > 500`);
   assert.match(await ev(page, `document.querySelector('.refzoom .mh').textContent`), /1\/2\s+TRUSS BEARING AT CMU/);
-  await shot(page, '15-reference-zoom');
   await page.keyboard.press('ArrowRight');
   await waitFor(page, `/2\\/2\\s+SAME DETAIL, VECTOR/.test(document.querySelector('.refzoom .mh').textContent)`);
   await page.keyboard.press('Escape');
@@ -344,7 +332,6 @@ await t('reference panel: meta.references images beside the drawing (token), cap
   // narrow: the panel stacks under the drawing
   await page.setViewport({ width: 420, height: 860 });
   await waitFor(page, `(() => { const b = document.querySelector('#viewport .vbody').getBoundingClientRect(), r = document.querySelector('.vref').getBoundingClientRect(); return r.top >= b.bottom - 2 && Math.abs(r.left - b.left) < 2; })()`);
-  await shot(page, '16-reference-narrow');
   // a document without references has no panel and no toggle
   await page.setViewport({ width: 1440, height: 900 });
   await page.click(`.librow[data-file="${FLUSH}"]`).catch(async () => { await ev(page, `document.querySelector('#mtabs .tab[data-p=console]').click()`); await page.click(`.librow[data-file="${FLUSH}"]`); });
@@ -384,7 +371,6 @@ await t('local agent: run via /api/agent/run, manila card with ▸ KERF APPLY li
   assert.match(await status(page), /LOCAL AGENT · LAST EDIT/);
   assert.equal(await ev(page, 'window.__kerf.session.busy'), false);
   assert.equal(await ev(page, `document.querySelector('#composer .btn.primary').textContent`), 'SEND');
-  await shot(page, '06-agent-run');
   if (!m.real) {
     assert.equal(m.state.agentRuns[0].agent, 'claude'); assert.equal(m.state.agentRuns[0].file, TRUSS); assert.equal(m.state.agentRuns[0].session_id, undefined);
   }
@@ -408,7 +394,6 @@ await t('local agent: STOP kills the run; a failing tool call renders ✗', asyn
   await waitFor(page, `[...document.querySelectorAll('#composer .btn')].at(-1).textContent === 'STOP'`);
   await waitFor(page, `document.querySelectorAll('.msg.agent .tl').length >= 2`);
   assert.match(await status(page), /AGENT BUSY/);
-  await shot(page, '07-agent-busy');
   await ev(page, `[...document.querySelectorAll('#composer .btn')].at(-1).click()`);
   await idle(page);
   assert.deepEqual(m.state.stops, ['run-1']);
@@ -441,7 +426,6 @@ await t('REAL agent bridge (.kerf/agents.json + scripted stream-json agent): car
   assert.match(firstNote.text, /\(AGENT\)$/);
   assert.equal(readLog(m, TRUSS).at(-1).who, 'agent');
   assert.equal(await ev(page, `localStorage.getItem('kerf.session.fakeagent.${TRUSS}')`), 'fake-sess-1');
-  await shot(page, '20-real-agent-run');
   // STOP
   await ev(page, `window.__kerf.con.sendText('SLOW please')`);
   await waitFor(page, `[...document.querySelectorAll('#composer .btn')].at(-1).textContent === 'STOP'`);
@@ -471,14 +455,12 @@ await t('the console lists local agents only: no API key, setup or provider stor
   assert.equal(await ev(page, 'Object.keys(localStorage).some(k => /apiKey|\\.key\\./.test(k))'), false);
   await page.select('select.pick', 'codex');
   assert.equal(await ev(page, `localStorage.getItem('kerf.agent')`), 'codex');
-  await shot(page, '10-agent-picker');
   await page.setViewport({ width: 420, height: 800 });
   await ev(page, `document.querySelector('#mtabs .tab[data-p=console]').click()`);
-  await shot(page, '13-narrow-console');
   noErrors(page);
   await page.close();
 }, { mockOnly: true });
 
 await browser.close();
-console.log(`\n${pass} passed, ${fail} failed, ${skipped} skipped. screenshots: ${shots}`);
+console.log(`\n${pass} passed, ${fail} failed, ${skipped} skipped.`);
 process.exit(fail ? 1 : 0);
