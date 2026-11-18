@@ -255,3 +255,11 @@ SPEC 6, 16, 20, 23, 24, 25.2, 26.2, 27.4 and 28.2 govern annotations. Layout eff
 ## engine/kerf-core/src/annot/notes.rs
 
 SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. Fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Citation sections containing digits retain case because paragraph letters are significant.
+
+## engine/kerf-core/src/annot/table.rs
+
+SPEC 26.1 defines table schedules. Their dimensions are in paper inches regardless of view scale, and their border's top-left corner is the placement origin. Cells fill the next free slot in each row, skipping slots covered by row spans, and must fit within the columns and section. Automatic widths account for unwrapped lines and at least the widest word; overflow in fixed-width columns reports `W_TABLE_CELL`. House-style lint excludes numeric cells, while coverage reads body-row numbers.
+
+## engine/kerf-core/src/sheet.rs
+
+SPEC 12 and DESIGN 5 define sheet framing. Sheet geometry is built in paper inches and mapped back to model coordinates, so exporters handle it as a full-page drawing. Title-block values shrink to fit; if shrinking would go below three quarters of the normal height, a balanced two-line split is used when it yields larger text.
