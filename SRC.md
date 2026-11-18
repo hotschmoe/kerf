@@ -35,3 +35,15 @@ A reference download must be listed by its document, remain inside the served fo
 ## engine/kerf-cli/src/serve/ui.rs
 
 The browser receives the default style merged with a workspace style under SPEC 25.6. The UI content-security policy includes a SHA-256 source for each inline script in the embedded index.
+
+## engine/kerf-cli/src/events.rs
+
+The bounded SSE ring never blocks publishers for a slow client; a client can lose frames that have aged out of the ring.
+
+## engine/kerf-cli/src/hash.rs
+
+Document ETags use the final4 Wyhash variant for their content hash.
+
+## engine/kerf-cli/src/http.rs
+
+HTTP request parsing rejects malformed request heads and bounds both fixed-length and chunked bodies. Secret comparisons scan to the longer input length without content-dependent early exit.

@@ -1,6 +1,3 @@
-//! HTTP/1.1 for `kerf serve`: strict request-head parsing (the request-smuggling shapes are refused),
-//! bounded bodies (Content-Length and chunked), response heads with the fixed security headers.
-
 use kerf_core::json;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::net::TcpStream;
@@ -64,7 +61,6 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
-/// Read one request head (up to the blank line). `Closed` means the peer closed before sending anything.
 pub fn read_head(r: &mut In) -> Result<Request, HeadError> {
     let mut head = Vec::new();
     loop {
@@ -447,7 +443,7 @@ pub fn query_param(query: &str, name: &str) -> Option<String> {
     None
 }
 
-/// Constant-time over the longer input; unequal lengths never match.
+// Compare all bytes up to the longer length without content-dependent early exit.
 pub fn secret_eql(a: &[u8], b: &[u8]) -> bool {
     let mut diff = a.len() ^ b.len();
     for i in 0..a.len().max(b.len()) {

@@ -1,6 +1,3 @@
-//! SSE hub: a bounded ring of pre-formatted frames. Publishers append, every SSE connection thread waits on the
-//! condition and copies the frames it has not seen yet. A slow client can lose old frames, never block publishers.
-
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex, MutexGuard};
 
@@ -52,7 +49,6 @@ impl Hub {
         self.lock().seq
     }
 
-    /// Block until frames newer than `*last` exist, append them to `out`, advance `*last`. False once closed.
     pub fn wait(&self, last: &mut u64, out: &mut Vec<u8>) -> bool {
         let mut st = self.lock();
         while st.seq == *last && !st.closed {
