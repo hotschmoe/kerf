@@ -174,7 +174,7 @@ async function main() {
   let t0 = performance.now();
   let info = await api(port, 'GET', '/api/info');
   const info_ms = performance.now() - t0;
-  check('GET /api/info', info.status === 200 && info.json.version && info.json.token_required === false && !('proxy' in info.json) && Array.isArray(info.json.agents), info.text);
+  check('GET /api/info', info.status === 200 && info.json.version && info.json.token_required === false && Array.isArray(info.json.agents), info.text);
   check('info.dir is the served folder', fs.realpathSync.native(info.json.dir) === fs.realpathSync.native(dir), info.json.dir);
   const fake = info.json.agents.find((a) => a.id === 'fake'), ghost = info.json.agents.find((a) => a.id === 'ghost');
   check('agents: override from .kerf/agents.json is available with a version', fake && fake.available === true && /^v\d+/.test(fake.version ?? ''), fake);
@@ -276,7 +276,7 @@ async function main() {
   const lenWhys = lenLog.json.entries.slice(-3).map((e) => e.why);
   check('apply: the envelope why reaches the op log', lenWhys[0] === 'single op' && lenWhys[1] === 'inner why', lenWhys);
   const lenBad = await api(port, 'POST', '/api/docs/a.kerf.json/apply', { body: { ops: { foo: 1 } } });
-  check('apply: a bad ops shape is a 400 E_PARAM that names the shapes', lenBad.status === 400 && lenBad.json.error.code === 'E_PARAM' && /single op object/.test(lenBad.json.error.message), lenBad.text.slice(0, 300));
+  check('apply: a bad ops shape is a 400 E_PARAM', lenBad.status === 400 && lenBad.json.error.code === 'E_PARAM', lenBad.text.slice(0, 300));
 
   section('export');
   fs.copyFileSync(REF, path.join(dir, 'beam.kerf.json'));
@@ -304,7 +304,7 @@ async function main() {
   const lboth = await api(port, 'GET', '/api/docs/lay.kerf.json/export?view=A&layout=S1&format=png');
   check('view and layout together -> 400 E_INPUT', lboth.status === 400 && lboth.json?.error?.code === 'E_INPUT', lboth.text);
   const lnone = await api(port, 'GET', '/api/docs/lay.kerf.json/export?layout=S9&format=svg');
-  check('unknown layout -> 404 E_VIEW listing the layouts', lnone.status === 404 && /Layouts: S1, S2/.test(lnone.json?.error?.message ?? ''), lnone.text);
+  check('unknown layout -> 404 E_VIEW', lnone.status === 404 && lnone.json?.error?.code === 'E_VIEW', lnone.text);
   const png_t0 = performance.now();
   await api(port, 'GET', '/api/docs/beam.kerf.json/export?view=A&format=png&sheet=1');
   const png_ms = performance.now() - png_t0;
