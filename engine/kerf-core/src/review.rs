@@ -1,7 +1,3 @@
-//! Review overlay of an export (SPEC 25.4, 25.6, `export` `review: true`): every component, annotation or view title
-//! with an acknowledged warning gets a dashed box and an `ACK n` tag, and the sheet (or the space above the detail) gets a stamp
-//! `N ACKNOWLEDGED WARNINGS` with one legend line per tag. The default export never carries it.
-
 use crate::annot;
 use crate::drawing::{Drawing, Item, PathItem, TextItem};
 use crate::drawview;
@@ -22,8 +18,6 @@ fn is_of(src: &str, id: &str) -> bool {
     src == id || src.strip_prefix(id).is_some_and(|r| r.starts_with('#'))
 }
 
-/// The model-space extent of what the drawing draws for an acknowledging owner: a component's geometry, an
-/// annotation's items (text included), a view's title.
 fn extent(d: &Drawing<'_>, font: &Font, owner: &AckOwner) -> Box {
     let src = match owner {
         AckOwner::Component(id) => return comp_extent(d, id),
@@ -37,7 +31,6 @@ fn extent(d: &Drawing<'_>, font: &Font, owner: &AckOwner) -> Box {
     annot::items_box(font, &mine)
 }
 
-/// The model-space extent of what the drawing draws for component `id`.
 fn comp_extent(d: &Drawing<'_>, id: &str) -> Box {
     let mut b = Box::default();
     let mut add = |pts: &[Pt]| b.add_box(geom::points_box(pts));
@@ -69,7 +62,6 @@ fn clip_chars(mut s: String, n: usize) -> String {
     s
 }
 
-/// One legend line per acknowledging owner: its tag, label and the codes with counts and reasons.
 fn legend_line(tag: usize, comp: &str, acked: &[&Acked]) -> String {
     let mut groups: Vec<(&str, &str, usize)> = Vec::new();
     for a in acked {
@@ -98,7 +90,6 @@ fn owners_of(acked: &[Acked]) -> Vec<&AckOwner> {
     owners
 }
 
-/// The stamp and the legend lines (at most LEGEND_LINES).
 fn legend(acked: &[Acked]) -> (String, Vec<String>) {
     let n = acked.len();
     let stamp = format!("{n} ACKNOWLEDGED WARNING{}", if n == 1 { "" } else { "S" });
@@ -129,7 +120,6 @@ impl Pens {
     }
 }
 
-/// A dashed box around every acknowledged component and an `ACK n` tag on its top edge (tags never overprint).
 fn marks(d: &Drawing<'_>, font: &Font, pens: &Pens) -> Vec<Item> {
     let s = d.scale;
     let th = d.style.text_height_in * s;
@@ -165,7 +155,6 @@ fn marks(d: &Drawing<'_>, font: &Font, pens: &Pens) -> Vec<Item> {
     items
 }
 
-/// The stamp and legend as a block whose top-left corner is (x, top), text height `th`.
 fn block(pens: &Pens, stamp: &str, lines: &[String], x: f64, top: f64, th: f64) -> Vec<Item> {
     let sh = 1.6 * th;
     let mut out = alloc::vec![pens.text(String::from(stamp), x, top - sh, sh, Pen::Title)];
@@ -182,7 +171,6 @@ fn block_size(font: &Font, stamp: &str, lines: &[String], th: f64) -> (f64, f64)
     (w, 1.6 * th + 0.4 * th + 1.5 * th * lines.len() as f64)
 }
 
-/// Review overlay of a drawing without a sheet: the marks, and the stamp and legend above everything.
 pub fn overlay<'a>(mut d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     let st = d.style;
     let th = st.text_height_in * d.scale;
@@ -201,8 +189,6 @@ pub fn overlay<'a>(mut d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     d
 }
 
-/// Review overlay of a sheet (`sheet::with_sheet` output): the marks, and the stamp and legend at the first free spot
-/// of the frame (scanning from the top left), with smaller text or fewer legend lines when nothing fits.
 pub fn overlay_sheet<'a>(mut d: Drawing<'a>, font: &Font) -> Drawing<'a> {
     let st = d.style;
     let s = d.scale;

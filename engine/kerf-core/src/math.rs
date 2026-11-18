@@ -1,6 +1,3 @@
-//! Float math that `core` lacks, ported from musl so every
-//! target produces identical bits. Only what the engine uses.
-
 // The constants are the published musl literals, kept verbatim.
 #![allow(clippy::excessive_precision, clippy::approx_constant, clippy::eq_op)]
 
@@ -37,13 +34,11 @@ pub fn ceil(x: f64) -> f64 {
     if x > 0.0 && t != x { t + 1.0 } else { t }
 }
 
-/// Round half away from zero.
 pub fn round(x: f64) -> f64 {
     let t = trunc(x);
     if (x - t).abs() >= 0.5 { t + 1.0f64.copysign(x) } else { t }
 }
 
-/// Correctly rounded square root.
 pub fn sqrt(x: f64) -> f64 {
     #[cfg(target_arch = "aarch64")]
     {
@@ -59,9 +54,7 @@ pub fn sqrt(x: f64) -> f64 {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        // `core::arch::wasm32::f64_sqrt` is unstable, but compiler-builtins defines the libm symbol `sqrt` on
-        // wasm32-unknown-unknown (as the `f64.sqrt` instruction) and LLVM lowers a call to it to `f64.sqrt` inline.
-        // NaN results of `f64.sqrt` have an unspecified payload, so NaN and negative inputs keep the soft result.
+        // wasm `f64.sqrt` leaves the NaN payload unspecified.
         unsafe extern "C" {
             #[link_name = "sqrt"]
             fn libm_sqrt(x: f64) -> f64;
@@ -69,8 +62,7 @@ pub fn sqrt(x: f64) -> f64 {
         if x.is_nan() || x < 0.0 {
             return f64::NAN;
         }
-        // SAFETY: `sqrt` takes any f64 and touches no memory; wasm `f64.sqrt` is IEEE 754 correctly rounded, so the
-        // result equals `sqrt_soft` bit for bit (checked on 302 million inputs against the hardware sqrt, see NOTES.md).
+        // SAFETY: `sqrt` accepts any f64 and does not access memory.
         return unsafe { libm_sqrt(x) };
     }
     #[allow(unreachable_code)]
@@ -117,7 +109,6 @@ fn sqrt_soft(x: f64) -> f64 {
     f64::from_bits((((ex + 52 + 1023) as u64) << 52) | (q & ((1 << 52) - 1)))
 }
 
-/// `floor(sqrt(n))` for `n = m * 2^56` (`m < 2^54`): a float Newton estimate, one integer correction, then exact fix-ups.
 fn isqrt(n: u128, m: u64) -> u64 {
     let nf = m as f64 * 72057594037927936.0;
     let mut y = f64::from_bits((bits(nf) >> 1) + (1023u64 << 51));
@@ -137,7 +128,6 @@ fn isqrt(n: u128, m: u64) -> u64 {
     r
 }
 
-/// `x * 2^n`, exact like C `scalbn`.
 pub fn ldexp(x: f64, n: i32) -> f64 {
     const MANT: u32 = 52;
     const MAX_BIASED: i64 = 2046;
@@ -593,7 +583,6 @@ const PIO2_TAB: [f64; 8] = [
     2.16741683877804819444e-51,
 ];
 
-/// The Payne-Hanek reduction for huge arguments, fixed at precision 1 (two result words, jk = 4).
 fn rem_pio2_large(x: &[f64; 3], y: &mut [f64; 2], e0: i32, nx: i32) -> i32 {
     const TWO24: f64 = 16777216.0;
     const TWOM24: f64 = 1.0 / 16777216.0;

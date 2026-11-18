@@ -1,5 +1,3 @@
-//! Beyond prisms: outlines hidden by nearer bodies, visible regions, top edges of `top` outlines.
-
 use super::cut::group_region;
 use super::hardware::is_path_bar;
 use super::occlusion::{Occ, PieceOut, hidden_pieces, visible_open, visible_pieces};
@@ -106,8 +104,6 @@ impl Section<'_> {
         }
     }
 
-    /// Elevation: members seen end-on (lumber with a cut mark, e.g. joists running toward the viewer) keep their X or
-    /// diagonal, cut away where nearer members hide it.
     fn end_grain_marks(&mut self, i: usize, p: &Prism, src: &str) {
         let st = self.style;
         let Some(m) = st.material(&p.material) else { return };
@@ -132,7 +128,6 @@ impl Section<'_> {
         }
     }
 
-    /// Elevation: earth and other loose fill keep their hatch on the part no nearer member hides.
     fn soil_hatch(&mut self, i: usize, p: &Prism, src: &str) {
         let st = self.style;
         let Some(m) = st.material(&p.material) else { return };
@@ -164,8 +159,6 @@ impl Section<'_> {
         }
     }
 
-    /// A member seen lengthwise is a stack of slabs: an edge of a slab that lies on the outline of a nearer slab of the
-    /// same member is that slab's edge, drawn once in the member's pen (not as a shared edge in the thin pen).
     fn off_nearer_slabs(&mut self, i: usize, p: &Prism, pieces: Vec<PieceOut>) -> Vec<PieceOut> {
         let mut edges: Vec<[V2; 2]> = Vec::new();
         let prisms = alloc::rc::Rc::clone(&self.prisms);
@@ -240,7 +233,6 @@ impl Section<'_> {
     }
 }
 
-/// The runs of a loop's edges whose outward normal points up the page, as open polylines.
 pub fn top_runs(lp: &[Pt]) -> Vec<Vec<Pt>> {
     let ccw = geom::signed_area(lp) >= 0.0;
     let mut out = Vec::new();
@@ -272,7 +264,6 @@ pub fn top_runs(lp: &[Pt]) -> Vec<Vec<Pt>> {
     out
 }
 
-/// An outline edge whose outward normal points up the page.
 pub fn edge_is_top(lp: &[Pt], i: usize, ccw: bool) -> bool {
     let p = lp[i];
     let q = lp[(i + 1) % lp.len()];

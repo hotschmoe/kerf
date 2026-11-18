@@ -1,5 +1,3 @@
-//! Drawing IR (SPEC 10): the model-space output of a view, input of every exporter.
-
 use crate::geom::{self, Pt};
 use crate::json;
 use crate::lint::{self, Acked};
@@ -10,7 +8,6 @@ use alloc::vec::Vec;
 
 pub use crate::pen::Pen;
 
-/// Which kind of view a drawing came from.
 pub use crate::view::Kind;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -93,7 +90,6 @@ impl TextItem {
     }
 }
 
-/// Non-drawn picking region (SPEC 16): exact closed loops of a visible cut region / beyond face.
 #[derive(Clone, Debug)]
 pub struct RegionItem {
     pub src: String,
@@ -152,12 +148,9 @@ pub struct Drawing<'a> {
     pub items: Vec<Item>,
     pub layers: Vec<LayerDef>,
     pub diagnostics: Vec<Diag>,
-    /// The warnings `acknowledge` suppressed on components this view draws (SPEC 25.4); None when the document has
-    /// no `acknowledge` entries (the IR then has no `acknowledged` key).
     pub acknowledged: Option<Vec<Acked>>,
     pub style: &'a Style,
 
-    // --- exporter extras (not part of the JSON IR) ---
     pub number: String,
     pub title: String,
     pub scale_label: String,
@@ -165,25 +158,18 @@ pub struct Drawing<'a> {
     pub date: String,
     pub code_basis: String,
     pub has_unverified: bool,
-    /// The model-space crop window (section) or the projected window (iso).
     pub crop: geom::Box,
-    /// Content extents excluding title items.
     pub detail_bounds: geom::Box,
     pub author: String,
     pub project: String,
     pub doc_title: String,
-    /// Page size in paper inches when `bounds` is a full sheet (0 = not a sheet).
     pub page_w: f64,
     pub page_h: f64,
-    /// The DETAIL NOTES entries of a view built for a layout with shared notes (SPEC 26.2); the view draws no list.
     pub keyed: Vec<KeyedEntry>,
-    /// A sheet layout (SPEC 26.2): the views placed on it; empty for a single view.
     pub cells: Vec<Cell>,
-    /// A layout's own sheet size (paper inches); None = the style's.
     pub sheet_size: Option<(f64, f64)>,
 }
 
-/// One DETAIL NOTES entry: its number, the text (with citations) and the text alone, and the first note with it.
 #[derive(Clone, Debug)]
 pub struct KeyedEntry {
     pub num: u32,
@@ -192,7 +178,6 @@ pub struct KeyedEntry {
     pub first: String,
 }
 
-/// A view placed on a layout: its id, its own scale and its extents in the layout's coordinates.
 #[derive(Clone, Debug)]
 pub struct Cell {
     pub view: String,
@@ -235,8 +220,6 @@ impl<'a> Drawing<'a> {
     }
 }
 
-// ---- JSON output ----------------------------------------------------------------------------------------
-
 fn raw(out: &mut Vec<u8>, s: &str) {
     out.extend_from_slice(s.as_bytes());
 }
@@ -253,7 +236,6 @@ fn write_pts(out: &mut Vec<u8>, pts: &[Pt]) {
         json::push_number(out, p.y);
         if p.b != 0.0 {
             out.push(b',');
-            // bulges keep extra precision
             let mut buf = [0u8; 40];
             raw(out, json::fmt_fixed(&mut buf, p.b, 6));
         }

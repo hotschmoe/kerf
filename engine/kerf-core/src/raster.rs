@@ -1,14 +1,3 @@
-//! PNG raster exporter (SPEC 12): renders exactly the items the SVG exporter shows (same Map, same pens,
-//! dashes, round caps/joins, even-odd fills, hatch lines, stroke-font text) into an 8-bit grayscale image
-//! (white paper, black ink) and encodes it with `png`.
-//!
-//! Rasterizer: every item is drawn into a coverage scratch (u8, union by max, so overlapping segments of
-//! one stroke never double-darken), then composited once onto the page (`dst *= 1 - coverage`).
-//!  * strokes: each flattened segment is a capsule; coverage = clamp(r + 0.5 - distance, 0, 1) per pixel
-//!    (a 1 px line is exactly one pixel wide). Row spans are computed analytically, so a long diagonal
-//!    hatch line costs O(length), not O(bbox).
-//!  * fills: even-odd scanline fill, 8 sub-scanlines per pixel row with exact horizontal coverage.
-
 use crate::drawing::{Drawing, Item};
 use crate::font::Font;
 use crate::geom::{self, Pt, V2};
@@ -23,16 +12,11 @@ use alloc::vec::Vec;
 pub const DEFAULT_PX: u32 = 1600;
 pub const MIN_PX: u32 = 200;
 pub const MAX_PX: u32 = 6000;
-/// Without `px` the image is at least this many pixels per paper inch wide (a 36x24 sheet: 3240 px), SPEC 28.2.
 pub const AUTO_PPI: f64 = 90.0;
-/// Longest side the page may reach (a tall sheet at 6000 px wide would otherwise be enormous).
 pub const MAX_SIDE: u32 = 8192;
 
 pub struct Options {
-    /// Requested image width in pixels (clamped to MIN_PX..=MAX_PX); None = DEFAULT_PX, or AUTO_PPI per paper inch
-    /// when that is wider.
     pub px: Option<u32>,
-    /// Paper margin around a bare (non-sheet) detail, as in the SVG exporter.
     pub margin_in: f64,
 }
 
@@ -45,16 +29,13 @@ impl Default for Options {
 pub struct Image {
     pub width: u32,
     pub height: u32,
-    /// Gray8, row 0 = top, 255 = white paper.
     pub pixels: Vec<u8>,
 }
 
-/// The canvas: coverage scratch, per-row dirty spans, strokes and fills.
 mod canvas;
 
 use canvas::{Canvas, Edge};
 
-/// Flatten a bulge polyline (model units) into `out` in pixel space.
 fn flatten(out: &mut Vec<V2>, m: svg::Map, k: f64, pts: &[Pt], closed: bool) {
     let Some(first) = pts.first() else { return };
     out.push(V2 { x: m.px(first.x) * k, y: m.py(first.y) * k });
@@ -91,7 +72,6 @@ fn layer_known(d: &Drawing<'_>, name: &str) -> bool {
     d.layers.iter().any(|l| l.name == name)
 }
 
-/// Page size in pixels and pixels per paper inch for the drawing at the requested width.
 pub struct Layout {
     pub w: u32,
     pub h: u32,
@@ -181,7 +161,6 @@ pub fn rasterize(d: &Drawing<'_>, font: &Font, opt: &Options) -> Image {
     Image { width: lay.w, height: lay.h, pixels: c.into_pixels() }
 }
 
-/// PNG bytes (gray8) of the drawing.
 pub fn render(d: &Drawing<'_>, font: &Font, opt: &Options) -> Result<Vec<u8>, EncodeError> {
     let img = rasterize(d, font, opt);
     png::encode_gray(img.width, img.height, &img.pixels)

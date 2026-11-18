@@ -689,8 +689,6 @@ pub fn allowed_keys_text(ty: &Entry) -> String {
     out
 }
 
-// ---- rendering -----------------------------------------------------------------------------------------
-
 fn obj(items: Vec<(&str, Value)>) -> Value {
     Value::Object(items.into_iter().map(|(k, v)| Member { key: k.to_string(), value: v }).collect())
 }

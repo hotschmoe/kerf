@@ -1,5 +1,3 @@
-//! Thin hardware: minimum metal thickness on paper, path bars and face-on ties.
-
 use super::occlusion::{Occ, visible_open};
 use super::{Section, Target};
 use crate::clip;
@@ -16,8 +14,6 @@ use alloc::vec::Vec;
 
 pub const MIN_METAL_PAPER_IN: f64 = 0.022;
 
-/// Which prisms draw in front (SPEC 28.4): every body of a hardware component whose `front` is true, or (unset) in a
-/// section view that cuts one of the members it is placed from.
 pub fn front_hardware(scene: &Scene, spec: &ViewSpec, prisms: &[Prism]) -> Vec<bool> {
     let cut = spec.cut_z;
     let eps = 1e-9;
@@ -58,8 +54,6 @@ pub fn front_hardware(scene: &Scene, spec: &ViewSpec, prisms: &[Prism]) -> Vec<b
     out
 }
 
-/// A hardware plate (a four-sided loop, no centerline) thinner on paper than the minimum: its long edge away from the
-/// member it lies on moves out to the minimum thickness (both edges half way when neither or both touch a member).
 fn thicken_plate(p: &Prism, others: &[(Vec<Vec<V2>>, geom::Box)], min_t: f64) -> Option<Vec<geom::Pt>> {
     let lp = p.loops.first()?;
     if p.loops.len() != 1 || lp.len() != 4 || lp.iter().any(|q| q.b != 0.0) {
@@ -101,8 +95,6 @@ fn thicken_plate(p: &Prism, others: &[(Vec<Vec<V2>>, geom::Box)], min_t: f64) ->
     Some(q.iter().map(|&w| geom::Pt::at(w, 0.0)).collect())
 }
 
-/// Metal sections thinner than the minimum paper thickness get a ribbon of that thickness around their centerline; framing
-/// hardware plates without one grow away from the member they lie on.
 pub fn thicken_thin_hardware(prisms: &[Prism], scale: f64) -> Vec<Prism> {
     let mut out = prisms.to_vec();
     let min_t = MIN_METAL_PAPER_IN * scale;
@@ -180,13 +172,11 @@ pub fn thicken_thin_hardware(prisms: &[Prism], scale: f64) -> Vec<Prism> {
     out
 }
 
-/// Reinforcing bar drawn as one centerline instead of an outline.
 pub fn is_path_bar(p: &Prism) -> bool {
     p.kind == Kind::Body && p.centerline.len() >= 2 && p.role == Role::Rebar
 }
 
 impl Section<'_> {
-    /// Nail or screw dots of a hardware plate seen face-on, where no nearer body hides them.
     pub fn nail_dots(&mut self, nails: &[V2], src: &str) {
         let crop = self.spec.crop;
         let r = (0.012 * self.spec.scale).max(0.04);
@@ -203,7 +193,6 @@ impl Section<'_> {
         }
     }
 
-    /// Face-on ties sit in front of everything: strokes behind them are cut away.
     pub fn knock_out_face_ties(&mut self) {
         let mut occs: Vec<Occ> = Vec::new();
         for i in 0..self.prisms.len() {
@@ -255,7 +244,6 @@ impl Section<'_> {
         }
     }
 
-    /// A strap seen face-on: outline in the steel pen, nail dots along its centerline.
     pub fn draw_face_tie(&mut self, i: usize, p: &Prism) {
         let crop = self.spec.crop;
         let src = self.src_name(p);

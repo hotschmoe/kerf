@@ -1,9 +1,3 @@
-//! nailing (SPEC 27.4): nails and screws placed from the members they join. Its parameters (`Params`, the single source for the
-//! parser and the catalog), the fastener size table, the note text form and the builder.
-//!
-//! Every member instance is a box in the frame of the first member (its local profile box times its z range): the builder
-//! finds the joint face between the boxes, lays the nails out on it and stores them in world coordinates (`Built.nails`).
-
 use super::common::{Ctx, fmt_ft_in, fmt_num, parse_actual};
 use crate::geom::{self, Box, V2, Xf};
 use crate::json::Value;
@@ -42,7 +36,6 @@ params! {
     }
 }
 
-/// A fastener size: shank diameter and length (inches), whether it is a screw, and the text the notes print.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Size {
     pub dia: f64,
@@ -72,7 +65,6 @@ const SCREW_GAUGE: [(u32, f64); 5] = [(6, 0.138), (8, 0.164), (10, 0.19), (12, 0
 
 pub const SIZE_FORMS: &str = "penny sizes 4d 6d 8d 10d 12d 16d 20d 30d 40d 50d 60d (common; add \" box\" or \" sinker\"), shank x length \"0.131x3\", or screws \"SDS25300\" (1/4\" SDS, length code 112 200 212 300 312 412 500 600 800), \"#10x3\"";
 
-/// Parse a fastener size. `screw` is the `fastener` param (SDS and #N sizes are screws regardless).
 pub fn parse_size(s: &str, screw: bool) -> Option<Size> {
     let t = s.trim_matches(' ');
     let lower = t.to_ascii_lowercase();
@@ -118,7 +110,6 @@ pub fn parse_size(s: &str, screw: bool) -> Option<Size> {
     (a.t < 1.0 && a.d <= 24.0 && a.d > a.t).then_some(Size { dia: a.t, len: a.d, screw, text })
 }
 
-/// Whole inches with a sixteenths fraction: `6"`, `12"`, `2 1/2"` (feet-inches from 10' up).
 pub fn inch_text(x: f64) -> String {
     if x >= 120.0 {
         return fmt_ft_in(x);
@@ -135,7 +126,6 @@ pub fn inch_text(x: f64) -> String {
     format!("{} {f}", fmt_num(whole))
 }
 
-/// Inputs of the text form, from the parsed params or straight from a document node.
 pub struct TextIn<'a> {
     pub pattern: Pattern,
     pub size: &'a str,
@@ -146,7 +136,6 @@ pub struct TextIn<'a> {
     pub stagger: bool,
 }
 
-/// The note text form: `(8) 16d NAILS STAGGERED`, `16d NAILS @ 12" O.C.`, `(2) 16d TOENAILS`, `8d @ 6" O.C. EDGE NAILING`.
 pub fn text_form(t: &TextIn) -> String {
     let size = t.size.trim_matches(' ');
     let spacing = t.spacing.or(match t.pattern {
@@ -190,7 +179,6 @@ pub fn text_form(t: &TextIn) -> String {
     out
 }
 
-/// The text form of a `nailing` document node (no diagnostics; bad values fall back to defaults). Coverage and notes use it.
 pub fn node_text(node: &Value) -> String {
     let s = |k: &str| node.get(k).and_then(Value::str).unwrap_or("");
     let own = s("text");
@@ -211,16 +199,10 @@ fn num_u32(x: f64) -> Option<u32> {
     crate::num::to_int::<u32>(math::round(x))
 }
 
-// ---- member boxes ------------------------------------------------------------------------------------
-
 const TOL: f64 = 0.01;
-/// Framing whose centerline is this close to a panel edge carries edge nailing (a built-up chord, a doubled stud at a
-/// joint), not field nailing.
 const EDGE_ZONE: f64 = 3.0;
-/// Field nails stop this far short of an edge row (the 2" minimum spacing of panel nails).
 const FIELD_CLEAR: f64 = 2.0;
 
-/// One member instance: its local box and the transforms between its local frame and the world.
 #[derive(Clone, Copy)]
 struct Member {
     comp: u32,
@@ -229,7 +211,6 @@ struct Member {
     inv: Xf,
     lo: [f64; 3],
     hi: [f64; 3],
-    /// A member named `id.part`: the index of that part's body in the component's prisms.
     part: Option<usize>,
 }
 
@@ -239,8 +220,6 @@ fn inverse(x: &Xf) -> Xf {
     Xf { a, b, c, d, tx: -(a * x.tx + c * x.ty), ty: -(b * x.tx + d * x.ty) }
 }
 
-/// The member boxes of a component: one per instance (`only`: that one). With `part`, one per body of that part (a
-/// truss's vertical web or bottom chord), each the box of its local outline and its own z range.
 fn members_of(c: &Comp, only: Option<usize>, part: Option<&str>) -> Vec<Member> {
     let mut boxes: Vec<(Box, f64, f64, Option<usize>)> = Vec::new();
     match part {
@@ -293,7 +272,6 @@ fn member_name(scene: &scene::Scene, m: &Member) -> String {
     if c.xfs.len() > 1 { format!("{}#{}{part}", c.id, m.inst) } else { format!("{}{part}", c.id) }
 }
 
-/// `b`'s box in `a`'s frame (the bounding box of its corners).
 fn box_in(a: &Member, b: &Member) -> ([f64; 3], [f64; 3]) {
     let mut bx = Box::default();
     for (x, y) in [(b.lo[0], b.lo[1]), (b.hi[0], b.lo[1]), (b.hi[0], b.hi[1]), (b.lo[0], b.hi[1])] {
@@ -321,7 +299,6 @@ fn unit(axis: usize, sign: f64) -> [f64; 3] {
     u
 }
 
-/// The name of a's local axis direction in the world: left/right/top/bottom by its dominant in-plane component, front/back for z.
 fn face_name(a: &Member, axis: usize, sign: f64) -> &'static str {
     if axis == 2 {
         return if sign > 0.0 { "front" } else { "back" };
@@ -349,7 +326,6 @@ fn axis_of_name(a: &Member, name: &str) -> Option<(usize, f64)> {
     None
 }
 
-/// A's local axis most parallel to a world axis.
 fn local_axis(a: &Member, w: Axis) -> usize {
     match w {
         Axis::Z => 2,
@@ -360,8 +336,6 @@ fn local_axis(a: &Member, w: Axis) -> usize {
     }
 }
 
-/// Where two boxes (in one frame) touch face to face: the axis, the side of `b` (+1: b beyond a's high face) and the overlap
-/// of the faces in the other two axes. The largest touching face wins.
 #[derive(Clone, Copy)]
 struct Contact {
     axis: usize,
@@ -398,7 +372,6 @@ fn contact(alo: [f64; 3], ahi: [f64; 3], blo: [f64; 3], bhi: [f64; 3]) -> Option
     best.map(|(_, c)| c)
 }
 
-/// How two boxes miss each other: the gap along each separated axis, or that they overlap.
 fn miss_text(alo: [f64; 3], ahi: [f64; 3], blo: [f64; 3], bhi: [f64; 3]) -> String {
     let names = ["x", "y", "z"];
     let mut gaps = Vec::new();
@@ -411,9 +384,6 @@ fn miss_text(alo: [f64; 3], ahi: [f64; 3], blo: [f64; 3], bhi: [f64; 3]) -> Stri
     if gaps.is_empty() { "their boxes overlap instead of meeting face to face".to_string() } else { gaps.join(", ") }
 }
 
-// ---- layout along a row ----------------------------------------------------------------------------
-
-/// Positions from `a` to `b` (both included) at a step of at most `s`.
 fn fill_span(a: f64, b: f64, s: f64) -> Vec<f64> {
     let len = b - a;
     if len <= 1e-9 || s <= 0.0 {
@@ -423,7 +393,6 @@ fn fill_span(a: f64, b: f64, s: f64) -> Vec<f64> {
     (0..=n).map(|k| a + len * k as f64 / n as f64).collect()
 }
 
-/// `n` positions at step `s` centered on `[a, b]`.
 fn centered(a: f64, b: f64, n: usize, s: f64) -> Vec<f64> {
     let mid = (a + b) / 2.0;
     let start = mid - (n.saturating_sub(1)) as f64 * s / 2.0;
@@ -439,7 +408,6 @@ struct Warn {
 struct Out {
     nails: Vec<Nail>,
     warns: Vec<Warn>,
-    /// Face nailing: the last member is thinner than the nail, so the members listed the other way round work too.
     flip: bool,
 }
 
@@ -471,13 +439,9 @@ struct Job<'a> {
     cp: &'a Params,
     through: bool,
     scene: &'a scene::Scene<'a>,
-    /// Member components in document order; each entry is every instance (or the one named with `#k`).
     groups: Vec<Vec<Member>>,
-    /// Edge and field: how many leading groups are the sheets the heads are on (the rest are the framing).
     sheets: usize,
-    /// The range entries as written (points resolved to world XY; numbers are z).
     range_pts: Option<[RangeEnd; 2]>,
-    /// The nailing's `views` (its scenario): fixes only name components drawn in one of them.
     views: Option<&'a Value>,
 }
 
@@ -497,7 +461,6 @@ fn quoted_list(items: &[String]) -> String {
 }
 
 impl Job<'_> {
-    /// `c` is drawn in a view the nailing is drawn in (either without `views` counts as every view).
     fn shares_view(&self, c: &Comp) -> bool {
         let names = |v: &Value| -> Vec<String> {
             v.arr().map_or(Vec::new(), |a| a.iter().filter_map(Value::str).map(String::from).collect())
@@ -515,8 +478,6 @@ impl Job<'_> {
         }
     }
 
-    /// Components (other than the nailing's members) whose boxes touch `a` face to face, for a fix.
-    /// Components not in the member list that lie against panel `a`'s face (thin axis `k`) behind any of `pts`.
     fn backing(&self, a: &Member, k: usize, pts: &[[f64; 3]]) -> Vec<String> {
         let listed: Vec<u32> = self.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
         let mut out: Vec<String> = Vec::new();
@@ -550,8 +511,6 @@ impl Job<'_> {
         out
     }
 
-    /// A component that is not a member lies against the stack's far face (`far` along `a`'s axis `k`, beyond it on
-    /// `side`) at `at`: nails driven from that side would start inside the framing.
     fn covered(&self, a: &Member, k: usize, side: f64, far: f64, at: [f64; 3]) -> bool {
         let listed: Vec<u32> = self.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
         self.scene.comps.iter().any(|c| {
@@ -678,8 +637,6 @@ impl Job<'_> {
         }
     }
 
-    /// Length check for nails square to a stack: `held` names the members the points hold in, `head` = thickness the
-    /// nail passes before them, `before` = thickness ahead of the last member, `total` = the stack.
     fn check_length(&self, out: &mut Out, held: &str, last: &str, head: f64, before: f64, total: f64) {
         let l = self.size.len;
         let d = self.size.dia;
@@ -827,7 +784,6 @@ fn is_penny(s: &Size) -> bool {
         && !s.text.contains(['x', 'X'])
 }
 
-/// The shortest penny size of the same kind at least `need` long.
 fn longer_size(s: &Size, need: f64) -> Option<String> {
     if !is_penny(s) {
         return None;
@@ -836,7 +792,6 @@ fn longer_size(s: &Size, need: f64) -> Option<String> {
     same_kind_table(s).iter().find(|e| e.2 + 1e-9 >= need).map(|e| format!("{}d{suffix}", e.0))
 }
 
-/// The longest penny size of the same kind between `need` and `max` long.
 fn shorter_size(s: &Size, need: f64, max: f64) -> Option<String> {
     if !is_penny(s) {
         return None;
@@ -860,9 +815,6 @@ fn suffix_of(s: &Size) -> &'static str {
     }
 }
 
-// ---- patterns ----------------------------------------------------------------------------------------
-
-/// The extent of the contiguous stack along `axis` beyond b's far face: members after the second one that continue it.
 fn stack_after(job: &Job, a: &Member, axis: usize, side: f64, far: f64, at: [f64; 3]) -> (f64, Option<String>) {
     let mut far = far;
     let mut last = None;
@@ -1027,7 +979,6 @@ fn face_pattern(job: &Job, out: &mut Out) {
     }
 }
 
-/// Thickness ahead of the last member of a stack longer than two: the stack less the last member's own thickness.
 fn last_before(job: &Job, a: &Member, axis: usize, side: f64, head: f64, far: f64, at: [f64; 3]) -> f64 {
     for g in job.groups.iter().skip(2) {
         for m in g {
@@ -1070,7 +1021,6 @@ fn expand_rows(pos: &[f64], rows: usize, limit: usize) -> Vec<(f64, usize)> {
     out
 }
 
-/// The smallest distance between consecutive nails of one row.
 fn row_spacing(pos: &[(f64, usize)], rows: usize) -> f64 {
     let mut best = f64::INFINITY;
     for r in 0..rows {
@@ -1175,7 +1125,6 @@ fn toenail_pattern(job: &Job, out: &mut Out, faces_in: &[String]) {
     }
 }
 
-/// One toenailed joint: the first member `a`, the joint axis `k` and side, its thickness along k and the side faces.
 struct Toe<'a> {
     a: &'a Member,
     k: usize,
@@ -1187,8 +1136,6 @@ struct Toe<'a> {
 }
 
 impl Toe<'_> {
-    /// Head and unit direction of a toenail of length `len` at `angle` on face `m`, at `x` along the joint: started
-    /// min(len/3, 3/4 of the member) back from the joint.
     fn nail(&self, m: usize, x: f64, len: f64, angle: f64) -> ([f64; 3], [f64; 3]) {
         let (n_axis, n_sign) = self.faces[m];
         let th = angle.to_radians();
@@ -1203,7 +1150,6 @@ impl Toe<'_> {
         (h, dir)
     }
 
-    /// The nails (indices into `placed`) whose points end outside every box of `bodies`.
     fn outside(&self, placed: &[(usize, f64)], len: f64, angle: f64, bodies: &[([f64; 3], [f64; 3])]) -> Vec<usize> {
         (0..placed.len())
             .filter(|&q| {
@@ -1216,8 +1162,6 @@ impl Toe<'_> {
     }
 }
 
-/// W_NAIL_LENGTH for toenails whose points leave the members. Every fix offered is checked with the same geometry (head
-/// started len/3 back, the size's own length, the angle), so applying one clears the warning.
 fn toenail_check(
     job: &Job,
     out: &mut Out,
@@ -1349,8 +1293,6 @@ fn toenail_check(
     out.warn("W_NAIL_LENGTH", msg, fixes.join("; or "));
 }
 
-/// The first drawn solid (not a member, not hardware, not a nailing) whose box holds `p` (in `a`'s frame): its name and
-/// box.
 fn solid_at(job: &Job, a: &Member, p: [f64; 3]) -> Option<(String, [f64; 3], [f64; 3])> {
     let listed: Vec<u32> = job.groups.iter().flat_map(|g| g.iter().map(|m| m.comp)).collect();
     for c in &job.scene.comps {
@@ -1370,11 +1312,8 @@ fn solid_at(job: &Job, a: &Member, p: [f64; 3]) -> Option<(String, [f64; 3], [f6
     None
 }
 
-/// A framing member behind a panel and the low / high corners of its box clipped to the panel (`box_in`).
 type Backing = (Member, [f64; 3], [f64; 3]);
 
-/// Framing behind a panel: the instances of the members after the sheets touching its thin axis, all on one side (the
-/// side of the first).
 fn framing(job: &Job, a: &Member, k: usize) -> (f64, Vec<Backing>) {
     let mut side = 0.0;
     let mut out = Vec::new();
@@ -1414,8 +1353,6 @@ fn panel_axis(a: &Member) -> usize {
     k
 }
 
-/// Edge and field: the leading `panel` members are the sheets side by side (at least the first; at least one member is
-/// left for the framing). A panel that lies against the thin face of an earlier sheet is backing, not another sheet.
 fn sheet_count(groups: &[Vec<Member>], panels: &[bool]) -> usize {
     let mut n = 1;
     while n + 1 < groups.len() && panels[n] {
@@ -1649,8 +1586,6 @@ fn panel_pattern(job: &Job, out: &mut Out, edges_in: &[String], field: bool) {
         }
     }
 }
-
-// ---- builder -----------------------------------------------------------------------------------------
 
 fn string_list(ctx: &mut Ctx, key: &str, v: Option<&Value>, allowed: &[&str]) -> Option<Vec<String>> {
     let Some(v) = v else { return Some(Vec::new()) };

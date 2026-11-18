@@ -1,7 +1,3 @@
-//! DXF exporter (SPEC 12): AutoCAD R2000 (AC1015) ASCII, modelspace at 1:1 model inches,
-//! $INSUNITS = 1. Entities: LWPOLYLINE (bulges), HATCH (pattern definitions embedded, or SOLID),
-//! TEXT (style KERF -> romans.shx). Handles are sequential from a fixed seed; no timestamps.
-
 use crate::drawing::{Align, Drawing, FillItem, HatchItem, Item, PathItem, TextItem, VAlign};
 use crate::geom::{self, Pt};
 use crate::json;
@@ -95,7 +91,6 @@ impl Writer {
     }
 }
 
-/// Shortest decimal of the value rounded to 1e-6 (deterministic, no exponent, never overflows).
 pub fn fmt_f(buf: &mut [u8; 40], x: f64) -> &str {
     json::fmt_fixed(buf, x, 6)
 }
@@ -189,7 +184,6 @@ fn hatch_header(w: &mut Writer, layer: &str, lw: i32, name: &str, solid: bool) {
     w.lit(&[(71, "0")]);
 }
 
-/// The ENTITIES payload and what the other sections need from it.
 struct Entities {
     bytes: Vec<u8>,
     next_handle: u32,
@@ -229,7 +223,6 @@ fn fill_entity(w: &mut Writer, st: &Style, f: &FillItem, ext: &mut geom::Box) {
     }
 }
 
-/// A HATCH with its pattern definition embedded, scaled to the drawing.
 fn hatch_entity(w: &mut Writer, d: &Drawing<'_>, h: &HatchItem, ext: &mut geom::Box) {
     if h.loops.is_empty() {
         return;
@@ -300,7 +293,6 @@ fn text_entity(w: &mut Writer, st: &Style, t: &TextItem, ext: &mut geom::Box) {
     ext.add_point(t.x, t.y);
 }
 
-/// HEADER and CLASSES sections.
 fn header(o: &mut Writer, ext: &geom::Box, handle_seed: u32) {
     o.lit(&[(0, "SECTION"), (2, "HEADER"), (9, "$ACADVER"), (1, "AC1015"), (9, "$HANDSEED")]);
     o.hex(5, handle_seed);
@@ -313,7 +305,6 @@ fn header(o: &mut Writer, ext: &geom::Box, handle_seed: u32) {
     o.lit(&[(30, "0"), (0, "ENDSEC"), (0, "SECTION"), (2, "CLASSES"), (0, "ENDSEC")]);
 }
 
-/// VPORT table: one active viewport framing the extents.
 fn table_vport(o: &mut Writer, ext: &geom::Box) {
     o.lit(&[
         (0, "TABLE"),
@@ -372,7 +363,6 @@ fn table_vport(o: &mut Writer, ext: &geom::Box) {
     ]);
 }
 
-/// LTYPE table: the standard linetypes plus one per dashed pen that is used.
 fn table_ltype(o: &mut Writer, d: &Drawing<'_>) {
     let st = d.style;
     let mut lts: Vec<(String, &[f64])> = Vec::new();
@@ -440,7 +430,6 @@ fn table_ltype(o: &mut Writer, d: &Drawing<'_>) {
     o.lit(&[(0, "ENDTAB")]);
 }
 
-/// LAYER table.
 fn table_layer(o: &mut Writer, d: &Drawing<'_>) {
     o.lit(&[(0, "TABLE"), (2, "LAYER"), (5, "2"), (330, "0"), (100, "AcDbSymbolTable")]);
     o.i(70, 1 + d.layers.len() as i64);
@@ -468,7 +457,6 @@ fn table_layer(o: &mut Writer, d: &Drawing<'_>) {
     o.lit(&[(0, "ENDTAB")]);
 }
 
-/// STYLE table: the text style that points at the SHX font.
 fn table_style(o: &mut Writer, st: &Style) {
     o.lit(&[
         (0, "TABLE"),
@@ -503,7 +491,6 @@ fn table_style(o: &mut Writer, st: &Style) {
     o.lit(&[(4, ""), (0, "ENDTAB")]);
 }
 
-/// VIEW and UCS tables (empty).
 fn tables_view_ucs(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
@@ -523,7 +510,6 @@ fn tables_view_ucs(o: &mut Writer) {
     ]);
 }
 
-/// APPID table.
 fn table_appid(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
@@ -543,7 +529,6 @@ fn table_appid(o: &mut Writer) {
     ]);
 }
 
-/// DIMSTYLE table.
 fn table_dimstyle(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
@@ -566,7 +551,6 @@ fn table_dimstyle(o: &mut Writer) {
     ]);
 }
 
-/// BLOCK_RECORD table: model and paper space.
 fn table_block_record(o: &mut Writer) {
     o.lit(&[
         (0, "TABLE"),
@@ -598,7 +582,6 @@ fn table_block_record(o: &mut Writer) {
     ]);
 }
 
-/// BLOCKS section.
 fn blocks_section(o: &mut Writer) {
     o.lit(&[
         (0, "SECTION"),
@@ -647,7 +630,6 @@ fn blocks_section(o: &mut Writer) {
     ]);
 }
 
-/// OBJECTS section and end of file.
 fn objects_section(o: &mut Writer) {
     o.lit(&[
         (0, "SECTION"),

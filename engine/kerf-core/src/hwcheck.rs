@@ -1,7 +1,3 @@
-//! Framing hardware checks (SPEC 27.2) once every component is placed: the builders' own findings (W_UNKNOWN_MODEL,
-//! W_HANGER_SIZE, W_HOLDOWN_ROD), a post base that bears on nothing (W_POST_BASE) and a holdown rod anchored in nothing
-//! (W_HOLDOWN_ROD).
-
 use crate::clip;
 use crate::geom::{self, FLAT_TOL, V2};
 use crate::model::{Bears, Diags, Kind, Level};
@@ -21,8 +17,6 @@ pub fn run(scene: &Scene<'_>, diags: &Diags) {
     }
 }
 
-/// The checks against the members under or around a hardware piece, over the components one or more views draw
-/// (SPEC 9, 28.1).
 pub fn drawn(comps: &[&Comp<'_>], diags: &Diags) {
     for c in comps {
         if let Some(b) = &c.built.hw.bears {

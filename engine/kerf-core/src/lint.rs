@@ -1,7 +1,3 @@
-//! Document lints (SPEC 19): W_UNKNOWN_KEY, W_NOTE_STYLE, W_DIM_ZERO, `acknowledge` handling (I_ACK),
-//! and the dim `dir` default. They look at the document and the compiled scene, not at geometry output;
-//! field names come from schema_fields / catalog (the same tables the parsers and `kerf schema` use).
-
 use crate::compile;
 use crate::coverage;
 use crate::geom::V2;
@@ -34,14 +30,10 @@ pub fn run(scene: &Scene, doc: &Value, cov: &[coverage::Item], diags: &Diags) {
     references::lint(doc, diags);
 }
 
-// ---- unknown keys ---------------------------------------------------------------------------------------
-
 struct Syn {
     key: &'static str,
     to: &'static str,
-    /// Object names the row applies to (empty = any).
     objs: &'static [&'static str],
-    /// Full replacement for the suggestion text.
     hint: &'static str,
 }
 
@@ -260,14 +252,10 @@ fn layout_keys(doc: &Value, diags: &Diags) {
     }
 }
 
-// ---- view membership (SPEC 25.4) -----------------------------------------------------------------------
-
 fn did_you_mean(x: &str, names: &[&str]) -> String {
     model::nearest(x, names).map(|n| format!(" Did you mean '{n}'?")).unwrap_or_default()
 }
 
-/// Component `views` must name existing views; view `omit` / `only` are lists of ids or `*` globs. An id or glob that
-/// matches no component warns (it may name a component a later edit adds), so ops can arrive in any order.
 fn members(doc: &Value, diags: &Diags) {
     let comps = arr_of(doc, "components").unwrap_or(&[]);
     let cids: Vec<&str> = comps.iter().map(|c| str_of(c, "id")).filter(|s| !s.is_empty()).collect();
@@ -364,13 +352,10 @@ fn members(doc: &Value, diags: &Diags) {
     }
 }
 
-// ---- note style -----------------------------------------------------------------------------------------
-
 fn is_word_char(c: u8) -> bool {
     c.is_ascii_alphanumeric()
 }
 
-/// Index of the next whole-word, case-insensitive match of `phrase` in `text` at or after `from`.
 fn find_word(text: &[u8], phrase: &str, from: usize) -> Option<usize> {
     let p = phrase.as_bytes();
     let mut i = from;
@@ -388,31 +373,22 @@ fn find_word(text: &[u8], phrase: &str, from: usize) -> Option<usize> {
 
 #[derive(Clone, Debug)]
 pub struct NoteStyle {
-    /// Human-readable list of the problems ("" = fine).
     pub issues: String,
-    /// The text with every problem that can be fixed mechanically fixed.
     pub fixed: String,
-    /// Some problem needs a rewrite (commentary, a dangling end, length): `fixed` does not cure it.
     pub rewrite: bool,
-    /// `fixed` keeps every model number of the text (upper-cased): a fix that would change one is not offered.
     pub fix_safe: bool,
 }
 
-/// Longest note, in characters: one idea per note. SPEC 21 says 120; the reference flush-beam strap note is 121 characters and
-/// the reference details must stay clean, so the limit is 130 (recorded in NOTES.md).
 const MAX_NOTE_LEN: usize = 130;
 
-/// Words that make a note read as a person talking (matched as whole words, case-insensitive).
 const CHATTER_WORDS: [&str; 2] = ["WE", "PLEASE"];
 const CHATTER_PHRASES: [&str; 2] = ["SHOULD BE", "NOTE:"];
 
-/// Words before a Roman numeral `I` (`TYPE I CEMENT`, `CLASS I`): not first person.
 const NUMERAL_BEFORE: [&str; 14] = [
     "TYPE", "CLASS", "GRADE", "CATEGORY", "CAT.", "ZONE", "GROUP", "PHASE", "LEVEL", "TIER", "STAGE", "OPTION", "CASE",
     "PART",
 ];
 
-/// The word that ends just before `at` (upper case, trailing spaces skipped).
 fn word_before(text: &[u8], at: usize) -> String {
     let mut e = at;
     while e > 0 && text[e - 1] == b' ' {
@@ -425,10 +401,8 @@ fn word_before(text: &[u8], at: usize) -> String {
     String::from_utf8_lossy(&text[s..e]).to_ascii_uppercase()
 }
 
-/// A note must not end on one of these: the thing it connects to is missing.
 const CONNECTOR_WORDS: [&str; 10] = ["W/", "AND", "OR", "TO", "@", "&", "PER", "WITH", "FOR", "OF"];
 
-/// Commentary in a note, as a short description ("" = none): first person, "NOTE:", "PLEASE", "SHOULD BE", a question.
 fn commentary(text: &[u8]) -> &'static str {
     if text.contains(&b'?') {
         return "a question mark";
@@ -472,13 +446,11 @@ fn last_token(text: &[u8]) -> &[u8] {
     }
 }
 
-/// The connector word a note ends on ("" = none), ignoring a trailing period.
 fn dangling_end(text: &[u8]) -> &'static str {
     let tok = trim_end(last_token(trim_end(text, b" \t\r\n.")), b".");
     CONNECTOR_WORDS.into_iter().find(|w| tok.eq_ignore_ascii_case(w.as_bytes())).unwrap_or("")
 }
 
-/// The text with case and runs of whitespace ignored, and no trailing period (to spot a note that repeats another).
 fn normalized_text(text: &str) -> String {
     let mut out = String::new();
     let mut space = false;
@@ -510,8 +482,6 @@ fn add_issue(list: &mut String, what: &str) {
     list.push_str(what);
 }
 
-/// Tokens a mechanical fix must leave alone apart from upper-casing: catalog and model numbers (`HU212-2`, `H2.5A`, `A35`),
-/// i.e. runs of letters, digits, `-`, `/` and inner `.` that hold both a letter and a digit.
 fn model_tokens(text: &[u8]) -> Vec<&[u8]> {
     let mut out = Vec::new();
     for raw in text.split(|c| matches!(c, b' ' | b'\t' | b'\r' | b'\n' | b'(' | b')' | b',' | b';' | b':')) {
@@ -525,7 +495,6 @@ fn model_tokens(text: &[u8]) -> Vec<&[u8]> {
     out
 }
 
-/// The text ends on a period that is not part of an abbreviation, a dotted token (`O.C.`) or a number/inch mark.
 fn trailing_period(t: &[u8], table: &house::Table) -> bool {
     if t.len() <= 1 || t[t.len() - 1] != b'.' {
         return false;
@@ -534,9 +503,6 @@ fn trailing_period(t: &[u8], table: &house::Table) -> bool {
     !(base.contains(&b'.') || table.is_period_abbr(base) || base.last().is_some_and(|&c| !c.is_ascii_alphabetic()))
 }
 
-/// Check one note text against the house style (SPEC 19, 25.3). Pure. Penny sizes (`16d`), ACI symbols (`db`, `ld`,
-/// `f'c`) and the style's `text.keep_case` tokens keep their case; a period after a house abbreviation is not a trailing
-/// period; a model number with a dash (`HU212-2/HUC212-2`) is not a dashed fraction.
 pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
     let tb = text.as_bytes();
     let mut issues = String::new();
@@ -614,8 +580,6 @@ pub fn check_note_text(text: &str, st: &Style) -> NoteStyle {
     NoteStyle { issues, fixed, rewrite, fix_safe }
 }
 
-/// The linted texts of a table (title, headers, cells, notes; not units), one entry per distinct text with every path
-/// that holds it, in first-seen order: a schedule repeats cells by nature, and one finding covers every copy.
 fn table_texts(an: &Value) -> Vec<(&str, Vec<String>)> {
     let mut out: Vec<(&str, Vec<String>)> = Vec::new();
     for (sub, text) in crate::annot::table::texts(an).into_iter().filter(|(p, _)| !p.ends_with("/unit")) {
@@ -627,7 +591,6 @@ fn table_texts(an: &Value) -> Vec<(&str, Vec<String>)> {
     out
 }
 
-/// ` (<lead> in 2 more cells: rows/1/1, rows/2/1)` for the paths after the first (empty for one path), at most 12 listed.
 fn also_in(lead: &str, subs: &[String]) -> String {
     match subs.len() {
         0 | 1 => String::new(),
@@ -641,8 +604,6 @@ fn also_in(lead: &str, subs: &[String]) -> String {
     }
 }
 
-/// `W_NOTE_STYLE` on every text of a table (title, headers, cells, notes; not units), once per distinct text; cells repeat
-/// by nature, so no repeat check.
 fn table_style(an: &Value, vid: &str, st: &Style, diags: &Diags) {
     let aid = str_of(an, "id");
     let mut listed = 0usize;
@@ -698,7 +659,6 @@ fn table_style(an: &Value, vid: &str, st: &Style, diags: &Diags) {
     }
 }
 
-/// `W_NOTE_STYLE` lines per table before the rest are summed up in one.
 const TABLE_STYLE_LISTED: usize = 8;
 
 fn note_style(doc: &Value, st: &Style, diags: &Diags) {
@@ -773,10 +733,6 @@ fn note_style(doc: &Value, st: &Style, diags: &Diags) {
     }
 }
 
-// ---- abbreviation forms (W_ABBREV, SPEC 25.6) -----------------------------------------------------------
-
-/// One text field the abbreviation rules read: who owns it (`note 'n1' in view A`), the op path that updates the owner,
-/// the field name and the text.
 struct AbbrField<'d> {
     id: &'d str,
     who: String,
@@ -825,9 +781,6 @@ fn abbr_fields(doc: &Value) -> Vec<AbbrField<'_>> {
     out
 }
 
-/// W_ABBREV: every abbreviation of a note, label, dim text, weld tail or view title that is not written in the approved
-/// form of the style's table (rules `period_on_shortened`, `dotted_initials`, `bare_acronyms`, `variants`), and every
-/// spelled-out word of the style's `always` list. One warning per token; the fix rewrites only the flagged tokens.
 fn abbrev_forms(doc: &Value, st: &Style, diags: &Diags) {
     let table = house::Table::new(st);
     for f in abbr_fields(doc) {
@@ -892,7 +845,6 @@ fn abbrev_forms(doc: &Value, st: &Style, diags: &Diags) {
     }
 }
 
-/// One flagged spelling of a table's texts (as written, with its rule) and every cell that holds it.
 struct AbbrGroup<'a> {
     written: &'a str,
     approved: &'a str,
@@ -904,8 +856,6 @@ struct AbbrGroup<'a> {
     fixed: String,
 }
 
-/// W_ABBREV on the texts of a table, one warning per flagged spelling however many cells hold it; the message lists the
-/// cells and the fix gives the first cell's text with every flagged token replaced.
 fn table_abbrev(an: &Value, vid: &str, aid: &str, st: &Style, table: &house::Table, diags: &Diags) {
     let mut groups: Vec<AbbrGroup> = Vec::new();
     for (text, subs) in table_texts(an) {
@@ -975,9 +925,6 @@ fn table_abbrev(an: &Value, vid: &str, aid: &str, st: &Style, table: &house::Tab
     }
 }
 
-// ---- meta.requested -------------------------------------------------------------------------------------
-
-/// `s` cut to at most `n` characters, with `...` when cut.
 fn clip_text(s: &str, n: usize) -> String {
     match s.char_indices().nth(n) {
         Some((i, _)) => format!("{}...", &s[..i]),
@@ -985,7 +932,6 @@ fn clip_text(s: &str, n: usize) -> String {
     }
 }
 
-/// `meta.requested` must be an array of non-empty strings; every item that matches nothing in the document warns.
 fn requested_missing(doc: &Value, cov: &[coverage::Item], diags: &Diags) {
     let Some(meta) = doc.get("meta") else { return };
     let Some(rv) = meta.get("requested") else { return };
@@ -1053,9 +999,6 @@ fn requested_missing(doc: &Value, cov: &[coverage::Item], diags: &Diags) {
     }
 }
 
-// ---- dim directions -------------------------------------------------------------------------------------
-
-/// Resolve a dim endpoint without reporting reference errors (the view build reports those).
 pub fn quiet_point(scene: &Scene, v: &Value) -> Option<V2> {
     let before = scene.diags.len();
     let p = scene.point(v, "", "");
@@ -1065,7 +1008,6 @@ pub fn quiet_point(scene: &Scene, v: &Value) -> Option<V2> {
     p
 }
 
-/// Default `dir`: the dominant axis between the points (|dx| >= |dy| gives h, else v).
 pub fn dominant_dir(from: V2, to: V2) -> &'static str {
     if (to.x - from.x).abs() >= (to.y - from.y).abs() { "h" } else { "v" }
 }
@@ -1078,8 +1020,6 @@ pub fn dim_measure(from: V2, to: V2, dir: &str) -> f64 {
     }
 }
 
-/// The scene a view's dimensions resolve in when it is not the model's: a plan view's Refs are plan points (x, -z),
-/// SPEC 26.3. None for every other kind (model XY is their drawing plane). Built only when the view has a dim.
 pub fn view_scene<'a>(scene: &Scene<'a>, v: &Value) -> Option<Scene<'a>> {
     let has_dim = arr_of(v, "annotations").unwrap_or(&[]).iter().any(|an| str_of(an, "type") == "dim");
     (has_dim && str_of(v, "kind") == "plan").then(|| crate::plan::scene(scene))
@@ -1148,7 +1088,6 @@ fn undirected(an: &Value) -> bool {
     str_of(an, "type") == "dim" && an.get("dir").is_none_or(Value::is_null)
 }
 
-/// True when some dim has no `dir` (the document needs `with_dim_dirs` before it is drawn).
 pub fn needs_dim_dirs(doc: &Value) -> bool {
     matches!(doc, Value::Object(_))
         && arr_of(doc, "views")
@@ -1166,8 +1105,6 @@ fn set_member(obj: &mut Value, key: &str, val: Value) {
     }
 }
 
-/// The document with `dir` filled in on every dim that lacks one (dominant axis of the view's plane). The stored document is
-/// never changed: renderers get this copy. Unresolvable endpoints are left alone (the view build reports them).
 pub fn with_dim_dirs<'d>(scene: &Scene, doc: &'d Value) -> Cow<'d, Value> {
     if !needs_dim_dirs(doc) {
         return Cow::Borrowed(doc);
@@ -1196,7 +1133,6 @@ pub fn with_dim_dirs<'d>(scene: &Scene, doc: &'d Value) -> Cow<'d, Value> {
     Cow::Owned(out)
 }
 
-/// Compile-and-patch for callers that hold only the document (api export/drawing): one extra compile, only when a dim lacks `dir`.
 pub fn with_dim_dirs_from_doc<'d>(doc: &'d Value, st: &Style) -> Cow<'d, Value> {
     if !needs_dim_dirs(doc) {
         return Cow::Borrowed(doc);
@@ -1206,15 +1142,10 @@ pub fn with_dim_dirs_from_doc<'d>(doc: &'d Value, st: &Style) -> Cow<'d, Value> 
     Cow::Owned(with_dim_dirs(&scene, doc).into_owned())
 }
 
-// ---- acknowledge ----------------------------------------------------------------------------------------
-
-/// Warnings are suppressed; info codes (I_*) are accepted as a no-op (an agent acknowledging I_SOLID_USED is not an error).
 fn is_ackable(code: &str) -> bool {
     code.starts_with("W_") || code.starts_with("I_")
 }
 
-/// What holds an `acknowledge` list (SPEC 25.4, 25.6): a component, an annotation of a view (note, dim, label, weld),
-/// or a view (its title and the view-level warnings).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AckOwner {
     Component(String),
@@ -1227,7 +1158,6 @@ fn is_annotation_path(p: &str) -> bool {
 }
 
 impl AckOwner {
-    /// The op path of the owner (`components/x`, `views/A/annotations/n1`, `views/A`).
     pub fn path(&self) -> String {
         match self {
             AckOwner::Component(id) => format!("components/{id}"),
@@ -1236,7 +1166,6 @@ impl AckOwner {
         }
     }
 
-    /// How summaries and the review legend name it: `x`, `A/n1`, `view A`.
     pub fn label(&self) -> String {
         match self {
             AckOwner::Component(id) => id.clone(),
@@ -1251,7 +1180,6 @@ impl AckOwner {
         }
     }
 
-    /// The view an annotation or view owner belongs to.
     pub fn view(&self) -> Option<&str> {
         match self {
             AckOwner::Component(_) => None,
@@ -1267,9 +1195,6 @@ impl AckOwner {
         }
     }
 
-    /// `d` is a warning about this owner: a component the warning names (its `id`, or quoted in a W_OVERLAP /
-    /// W_NEAR_MISS / W_UNTREATED_CONTACT message) unless it is about an annotation; an annotation or view whose path
-    /// holds the warning's path (and whose id is the warning's id, when it has one).
     fn matches(&self, d: &Diag) -> bool {
         let path = d.path.as_deref().unwrap_or("");
         let id_ok = |id: &str| d.id.as_deref().is_none_or(|x| x.is_empty() || x == id);
@@ -1291,7 +1216,6 @@ impl AckOwner {
     }
 }
 
-/// One object with an `acknowledge` key, in document order (components, then each view and its annotations).
 struct Holder<'d> {
     owner: AckOwner,
     node: &'d Value,
@@ -1325,8 +1249,6 @@ fn holders(doc: &Value) -> Vec<Holder<'_>> {
     out
 }
 
-/// Shape errors of `acknowledge` (array of {code, reason}; codes must be warning codes) on components, views and
-/// annotations.
 fn ack_shape(doc: &Value, diags: &Diags) {
     for h in holders(doc) {
         let Some(ak) = h.node.get("acknowledge") else { continue };
@@ -1388,7 +1310,6 @@ fn mentions(d: &Diag, id: &str) -> bool {
     false
 }
 
-/// `'id'` occurs in `msg` (any id length).
 fn quoted(msg: &str, id: &str) -> bool {
     let m = msg.as_bytes();
     let mut from = 0;
@@ -1405,8 +1326,6 @@ fn quoted(msg: &str, id: &str) -> bool {
     false
 }
 
-/// A warning that an `acknowledge` entry suppressed (SPEC 25.4): who acknowledged it, the entry's reason and the warning
-/// as it would have printed.
 #[derive(Clone, Debug)]
 pub struct Acked {
     pub owner: AckOwner,
@@ -1440,22 +1359,16 @@ pub fn acked_json(list: &[Acked]) -> Value {
     Value::Array(list.iter().map(Acked::to_json).collect())
 }
 
-/// The document has at least one `acknowledge` entry (on a component, a view or an annotation).
 pub fn has_acknowledge(doc: &Value) -> bool {
     holders(doc).iter().any(|h| arr_of(h.node, "acknowledge").is_some_and(|a| !a.is_empty()))
 }
 
-/// How `apply_acknowledge` treats acknowledged warnings.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct AckMode {
-    /// `kerf check --strict`: acknowledged warnings stay warnings (their message says who acknowledged them and why).
     pub strict: bool,
-    /// Every diagnostic of the document is in the list (all views built, no errors), so an entry that matched
-    /// nothing is stale: report it as W_ACK_UNUSED.
     pub complete: bool,
 }
 
-/// One W_ACK_UNUSED for the entries of `h` that suppressed nothing, with the exact op that removes them.
 fn unused_entries(h: &Holder<'_>, used: &[bool]) -> Option<Diag> {
     let all = entries(h.node);
     let valid = |it: &Value| matches!(it, Value::Object(_)) && !str_of(it, "reason").trim_matches(' ').is_empty();
@@ -1522,8 +1435,6 @@ fn unused_entries(h: &Holder<'_>, used: &[bool]) -> Option<Diag> {
     })
 }
 
-/// Replace every warning that a component, view or annotation acknowledges with one `I_ACK` info line (code, owner,
-/// reason) and return the suppressed warnings. Call after all other diagnostics are collected.
 pub fn apply_acknowledge(doc: &Value, diags: &Diags, mode: AckMode) -> Vec<Acked> {
     let hs = holders(doc);
     if hs.is_empty() {

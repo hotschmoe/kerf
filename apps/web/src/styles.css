@@ -1,4 +1,3 @@
-/* KERF — 1970s engineering workstation. Tokens and rules from spec/DESIGN.md. */
 @font-face { font-family: 'Plex Mono'; font-weight: 400; font-style: normal; font-display: block; src: url('./fonts/plex-mono-400.woff2') format('woff2'); }
 @font-face { font-family: 'Plex Mono'; font-weight: 500; font-style: normal; font-display: block; src: url('./fonts/plex-mono-500.woff2') format('woff2'); }
 @font-face { font-family: 'Plex Mono'; font-weight: 700; font-style: normal; font-display: block; src: url('./fonts/plex-mono-700.woff2') format('woff2'); }
@@ -24,7 +23,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 
 #app { display: grid; grid-template-rows: 40px minmax(0, 1fr) 24px; height: 100vh; height: 100dvh; min-width: 0; }
 
-/* ---------- header ---------- */
 #hdr { display: flex; align-items: center; gap: 20px; padding: 0 16px; border-bottom: 2px solid var(--ink); background: var(--paper); min-width: 0; }
 .wm { display: flex; align-items: center; gap: 10px; flex: none; }
 .wm b { font-weight: 700; font-size: 22px; letter-spacing: 0.2em; line-height: 1; }
@@ -38,7 +36,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #hdr .hf.doc, #hdr .hf.eng { flex: none; }
 #hdr .btns { display: flex; gap: 8px; flex: none; }
 
-/* ---------- buttons ---------- */
 .btn { height: 28px; padding: 0 12px; border: 1px solid var(--ink); background: var(--paper); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; white-space: nowrap; line-height: 26px; }
 .btn:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
@@ -48,7 +45,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .btn.sm { height: 22px; line-height: 20px; padding: 0 7px; font-size: 11px; }
 .btn:focus-visible, .tab:focus-visible, .row:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
-/* ---------- main grid ---------- */
 #main { display: grid; grid-template-columns: 360px minmax(0, 1fr) 320px; min-height: 0; min-width: 0; }
 .panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--paper); }
 #console { border-right: 1px solid var(--ink); }
@@ -56,7 +52,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .ph { height: 32px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--paper-2); border-bottom: 1px solid var(--ink); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
 .ph .r { color: var(--ink-2); }
 
-/* ---------- console ---------- */
 #msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
 .msg { border: 1px solid var(--ink); background: var(--paper); flex: none; }
 .msg .mh { display: flex; justify-content: space-between; padding: 2px 10px; border-bottom: 1px solid var(--ink); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -97,7 +92,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #composer .row .sp { flex: 1; }
 #composer .hint { font-size: 11px; color: var(--ink-2); }
 
-/* ---------- viewport ---------- */
 #viewport { border-left: 0; }
 .vt { height: 36px; flex: none; display: flex; align-items: stretch; justify-content: space-between; border-bottom: 1px solid var(--ink); background: var(--paper); padding: 0 8px 0 8px; min-width: 0; overflow: hidden; }
 .tabs { display: flex; align-items: stretch; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
@@ -120,7 +114,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .pzhost.drag { cursor: grabbing; }
 .pzhost .page { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
 .pzhost img { display: block; user-select: none; -webkit-user-drag: none; }
-/* REFERENCE panel (meta.references): beside the drawing when the column is wide, under it when narrow */
 #viewport { container-type: inline-size; }
 .vsplit { flex: 1; min-height: 0; display: flex; }
 .vsplit > .vbody { flex: 1; min-width: 0; }
@@ -164,7 +157,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .vmsg > div { background: var(--vellum); border: 1px solid var(--ink-2); padding: 14px 20px; max-width: 460px; }
 .vchip { position: absolute; left: 12px; bottom: 10px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); background: var(--vellum); border: 1px solid var(--rule-soft); padding: 1px 6px; pointer-events: none; }
 
-/* ---------- inspector ---------- */
 .itabs { flex: none; display: flex; border-bottom: 1px solid var(--ink); padding: 0 8px; height: 32px; }
 .ibody { flex: 1; min-height: 0; overflow: auto; }
 .idetail { flex: none; max-height: 46%; overflow: auto; border-top: 1px solid var(--ink); background: var(--paper); }
@@ -237,7 +229,6 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 .logrow li { overflow-wrap: anywhere; }
 .logbar { padding: 8px 12px; border-bottom: 1px solid var(--ink); display: flex; justify-content: space-between; align-items: center; background: var(--paper); position: sticky; top: 0; z-index: 2; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-2); text-transform: uppercase; }
 
-/* ---------- status line (3270 OIA) ---------- */
 #status { background: var(--term-bg); color: var(--term-fg); font-size: 12px; line-height: 24px; display: flex; padding: 0 12px; white-space: nowrap; overflow: hidden; border-top: 1px solid var(--ink); text-transform: uppercase; letter-spacing: 0.02em; }
 #status .seg { flex: none; }
 #status .seg:first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -247,7 +238,6 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 #status .warn { color: #F2C04A; }
 #status .dim { color: var(--term-dim); }
 
-/* ---------- floating panels ---------- */
 .float { position: fixed; z-index: 50; background: var(--paper); border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
 .menu { min-width: 280px; padding: 0; }
 .menu .mi { display: flex; flex-direction: column; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--rule-soft); background: transparent; padding: 7px 12px; cursor: pointer; }
@@ -263,7 +253,6 @@ table.t td.id { overflow-wrap: anywhere; font-weight: 500; }
 .dlg .acts { display: flex; gap: 8px; margin-top: 8px; }
 .scrim { position: fixed; inset: 0; z-index: 40; }
 
-/* ---------- narrow screens ---------- */
 #mtabs { display: none; }
 @media (max-width: 899px) {
   #app { grid-template-rows: 40px 32px minmax(0, 1fr) 24px; }
@@ -294,7 +283,6 @@ table.t.compact td.ty { text-transform: none; font-size: 11px; }
 table.t.compact th:nth-child(3) { width: auto; }
 table.t th { top: 38px; }
 
-/* ---------- workspace mode: library, provider picker, agent cards ---------- */
 .ph > span:first-child { white-space: nowrap; }
 .ph .r { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ph select.pick { height: 22px; max-width: 150px; min-width: 0; border: 1px solid var(--ink); background: var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0h8L4 5z' fill='%231A1A1A'/%3E%3C/svg%3E") no-repeat right 5px center; appearance: none; -webkit-appearance: none; padding: 0 18px 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); cursor: pointer; }

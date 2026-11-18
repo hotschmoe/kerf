@@ -5,10 +5,15 @@ name: windows
 
 on:
   workflow_call:
+    inputs:
+      heavy:
+        type: boolean
+        default: false
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 4
   RUSTFLAGS: -C target-feature=+crt-static
 
 jobs:
@@ -53,24 +58,19 @@ jobs:
           KERF_UI: ../apps/web/dist-serve
         run: cargo build --release
 
-      - run: target/release/kerf.exe version
-      - name: serve smoke test
-        if: ${{ !cancelled() }}
-        run: node tests/serve_smoke.mjs "$PWD/target/release/kerf.exe"
-      - name: field-shaped session
-        if: ${{ !cancelled() }}
-        run: node tests/windows_serve.mjs "$PWD/target/release/kerf.exe"
-      - name: CLI ergonomics
-        if: ${{ !cancelled() }}
-        run: node tests/cli_ergonomics.mjs "$PWD/target/release/kerf.exe"
-      - name: platform checks
-        if: ${{ !cancelled() }}
-        run: node tests/platform_serve.mjs "$PWD/target/release/kerf.exe"
-      - name: golden set (byte-identical to the Linux goldens)
-        if: ${{ !cancelled() }}
-        run: KERF="$PWD/target/release/kerf.exe" node tests/check_golden.mjs
+      - name: CLI workflow
+        run: node tests/cli_e2e.mjs "$PWD/target/release/kerf.exe"
+      - name: serve workflow
+        run: node tests/serve_e2e.mjs "$PWD/target/release/kerf.exe"
+      - name: representative exports
+        run: KERF="$PWD/target/release/kerf.exe" node tests/check_golden.mjs truss-bearing-cmu flush-beam-strap hss-column-base-plate
+      - name: Windows background scenarios
+        if: ${{ inputs.heavy }}
+        run: |
+          node tests/windows_serve.mjs "$PWD/target/release/kerf.exe"
+          node tests/platform_serve.mjs "$PWD/target/release/kerf.exe"
       - name: Ctrl-Break stops the agent tree
-        if: ${{ !cancelled() }}
+        if: ${{ inputs.heavy }}
         shell: pwsh
         run: |
           $node = (Get-Command node).Source

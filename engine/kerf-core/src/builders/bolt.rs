@@ -1,7 +1,3 @@
-//! bolt (structural bolt group): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-//! Heavy hex head and nut (across flats 1.5d + 1/8, head 0.625d tall, nut d tall), F436 washer (2d OD, 5/32 thick) under
-//! the nut, thread stick-out 0.5d. The head bears at the local origin; the grip runs down (side) or back along -z (end).
-
 use super::common::{Ctx, box_of_prisms, fmt_ft_in, fmt_num};
 use crate::geom::{Pt, V2};
 use crate::model::{self, Built, NamedAnchor, Prism};
@@ -32,7 +28,6 @@ params! {
 
 pub const WASHER_T: f64 = 0.15625;
 
-/// Across-flats width of the heavy hex head and nut.
 pub fn hex_flats(d: f64) -> f64 {
     1.5 * d + 0.125
 }
@@ -54,7 +49,6 @@ fn hex_loop(c: V2, flats: f64) -> Vec<Pt> {
     ]
 }
 
-/// The bolt axis positions in local XY, in bolt order (the same for every bolt of a z row).
 pub fn offsets(count: usize, spacing: f64, line: Line) -> Vec<(V2, f64)> {
     (0..count)
         .map(|k| {
@@ -176,8 +170,6 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     })
 }
 
-/// A weld stud (threaded, nut and washer on the plies above) or a headed shear stud, welded at the local origin and
-/// pointing up (+y).
 fn stud(bp: &Params) -> Built {
     let d = bp.diameter;
     let f = hex_flats(d);

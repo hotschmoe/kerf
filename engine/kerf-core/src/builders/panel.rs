@@ -1,5 +1,3 @@
-//! panel (SPEC 5, 28.6): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, fmt_ft_in, length_or_until, material_ok, one_prism, quad_of};
 use crate::geom::Box;
 use crate::model::{self, Built, Prism};
@@ -26,7 +24,6 @@ params! {
     }
 }
 
-/// The z centre of a face-on sheet of thickness `t` laid on `on` ("id", "id#k", "id.face_front", "id.face_back").
 fn on_face(ctx: &mut Ctx, on: &str, t: f64) -> Option<f64> {
     let (name, face) = match on.split_once('.') {
         Some((n, f)) => (n, f),
@@ -80,10 +77,8 @@ fn on_face(ctx: &mut Ctx, on: &str, t: f64) -> Option<f64> {
     Some(if face == "face_front" { z1 + t / 2.0 } else { z0 - t / 2.0 })
 }
 
-/// No sheet is thicker: an edge-on panel past this is a sheet faked face-on with `thickness` = its height (SPEC 28.6).
 const FACE_HINT: f64 = 1.5;
 
-/// W_PARAM for an edge-on panel thicker than any sheet, with the op that makes it a face-on sheet of the same size.
 fn face_hint(ctx: &mut Ctx, pp: &Params, length: f64) {
     let id = ctx.p.id;
     let z = ctx.p.raw("z").and_then(crate::json::Value::arr).and_then(|a| {

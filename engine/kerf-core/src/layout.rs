@@ -1,11 +1,3 @@
-//! Sheet layouts (SPEC 26.2): several views of one document on one sheet, each with its own bubble, title and scale,
-//! arranged in a row, a column or a grid, with one shared DETAIL NOTES list numbered without gaps over the layout, a
-//! common scale picked for the whole sheet, and the document-level default `scale`.
-//!
-//! A layout builds each view with `drawview::build_with` (any view kind), then maps every view's items into the
-//! layout's coordinates: paper inches times the scale of the layout's first view (so views at that scale keep model
-//! inches 1:1, a view at another scale is scaled by the ratio of the two, text heights included).
-
 use crate::annot::notes::{self, ListEntry, ListLook};
 use crate::compile;
 use crate::drawing::{Cell, Drawing, HatchItem, Item, KeyedEntry};
@@ -22,22 +14,16 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-/// Paper inches between neighbouring cells unless the layout sets `gap`.
 const DEFAULT_GAP_IN: f64 = 0.5;
 const MAX_GAP_IN: f64 = 4.0;
 const MIN_SHEET_IN: f64 = 5.0;
 const MAX_SHEET_IN: f64 = 60.0;
-/// The standard sheets, smallest first (ANSI A, ANSI B, ANSI C, ARCH C, ARCH D landscape): `sheet: "auto"` picks one
-/// and a `W_VIEW_FIT` fix may suggest a larger one.
 const SHEETS: [(f64, f64, &str); 5] =
     [(11.0, 8.5, "11x8.5"), (17.0, 11.0, "17x11"), (22.0, 17.0, "22x17"), (24.0, 18.0, "24x18"), (36.0, 24.0, "36x24")];
-/// `sheet: "auto"` with a common scale takes the smallest sheet at which the views reach this scale (1" = 1'-0"), or
-/// the largest scale any sheet reaches when none reaches it.
 const AUTO_TARGET_SCALE: f64 = 12.0;
 const MIN_ISO_RATIO: f64 = 0.1;
 const MAX_ISO_RATIO: f64 = 4.0;
 
-/// `"17x11"` or `[17, 11]`: width and height in paper inches.
 fn sheet_size(v: &Value) -> Option<(f64, f64)> {
     let (w, h) = match v {
         Value::String(s) => {
@@ -87,8 +73,6 @@ impl ListSide {
     }
 }
 
-/// An entry of `views`: a view id, or a nested list of view ids stacked across the parent direction (a column inside a
-/// row or a grid, a row inside a column).
 #[derive(Clone, Debug)]
 pub enum Entry<'a> {
     View(&'a str),
@@ -104,24 +88,18 @@ pub struct Layout<'a> {
     pub arrange: Arrange,
     pub shared: bool,
     pub side: ListSide,
-    /// None = `common`; else the scale every view without its own `scale` is drawn at.
     pub scale: Option<(f64, &'a str)>,
     pub gap: f64,
-    /// Sheet size (paper inches, width x height); None = the style's (or, with `auto_sheet`, not picked yet).
     pub sheet: Option<(f64, f64)>,
-    /// `sheet: "auto"`: the smallest standard sheet that holds the views (SPEC 28.2).
     pub auto_sheet: bool,
-    /// An iso view without its own scale is drawn at the common scale over this ratio (1 = the sections' size).
     pub iso_ratio: f64,
 }
 
-/// A view keeps its own scale in a layout: an explicit (or document) `scale`.
 fn fixed_scale(s: &ViewSpec) -> bool {
     s.has_scale
 }
 
 impl Layout<'_> {
-    /// The paper area an NTS view fits: the sheet area divided among the entries along each axis of the arrangement.
     fn share(&self, st: &Style) -> (f64, f64) {
         let (aw, ah) = self.area(st);
         let n = self.entries.len().max(1);
@@ -134,13 +112,11 @@ impl Layout<'_> {
         (part(aw, cols), part(ah, rows))
     }
 
-    /// The area the arranged views and the list must fit (paper inches), on the layout's sheet.
     fn area(&self, st: &Style) -> (f64, f64) {
         let (w, h) = self.sheet.unwrap_or((st.sheet_w_in, st.sheet_h_in));
         drawview::fit_area_of(st, w, h)
     }
 
-    /// The view ids in layout order (row-major, nested lists in place).
     pub fn views(&self) -> Vec<&str> {
         let mut out = Vec::new();
         for e in &self.entries {
@@ -158,7 +134,6 @@ pub fn layout_ids(doc: &Value) -> Vec<&str> {
     ls.iter().filter_map(|l| l.get("id").and_then(Value::str)).collect()
 }
 
-/// Some layout of the document names view `vid` (it is then fit-checked as part of that layout, SPEC 28.2).
 pub fn names_view(doc: &Value, vid: &str) -> bool {
     let Some(ls) = doc.get("layouts").and_then(Value::arr) else { return false };
     ls.iter().filter_map(|l| l.get("views").and_then(Value::arr)).flatten().any(|v| match v.arr() {
@@ -171,14 +146,11 @@ fn find_layout<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
     doc.get("layouts")?.arr()?.iter().find(|l| l.get("id").and_then(Value::str) == Some(id))
 }
 
-/// The document-level default `scale` (a numeric scale; NTS is not a default).
 pub fn doc_scale(doc: &Value) -> Option<(f64, &str)> {
     let t = doc.get("scale").and_then(Value::str)?;
     units::parse_scale(t).filter(|s| s.factor > 0.0).map(|s| (s.factor, t))
 }
 
-/// A view spec with the document's default `scale` applied: every view without its own `scale`, except iso views
-/// (NTS by default), is drawn at it.
 pub fn view_spec<'a>(doc: &'a Value, node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpec<'a>> {
     let mut spec = view::parse(node, index, diags)?;
     if !spec.has_scale
@@ -196,7 +168,6 @@ fn err(diags: &Diags, id: Option<&str>, path: &str, msg: String, fix: &str) {
     diags.add_fix(Level::Error, "E_PARAM", id, Some(path), msg, fix.to_string());
 }
 
-/// Parses layout `node` (index `i` in `layouts`); every problem is diagnosed, None when the layout cannot be built.
 pub fn parse<'a>(doc: &'a Value, node: &'a Value, i: usize, diags: &Diags) -> Option<Layout<'a>> {
     let Some(id) = node.get("id").and_then(Value::str).filter(|s| !s.is_empty()) else {
         err(
@@ -506,7 +477,6 @@ pub fn parse<'a>(doc: &'a Value, node: &'a Value, i: usize, diags: &Diags) -> Op
     })
 }
 
-/// Document checks of `layouts` and `scale` (run with the other document checks).
 pub fn check(doc: &Value, diags: &Diags) {
     if let Some(sv) = doc.get("scale").filter(|v| !v.is_null()) {
         let good = sv.str().and_then(units::parse_scale).is_some_and(|s| s.factor > 0.0);
@@ -555,7 +525,6 @@ pub fn check(doc: &Value, diags: &Diags) {
     }
 }
 
-/// A view's note `key` as the view would read it (1-999), else None.
 fn key_of(an: &Value) -> Option<u32> {
     let k = an.get("key")?.num()?;
     crate::num::to_int::<u32>(k).filter(|&n| f64::from(n) == k && (1..=999).contains(&n))
@@ -568,9 +537,6 @@ struct Group<'a> {
     num: u32,
 }
 
-/// The numbers of the layout's keyed notes (SPEC 26.2): notes with the same `key` share an entry across views, an
-/// unkeyed note shares the entry of an earlier note with the same text and cite, the rest are numbered in layout order
-/// into the lowest free numbers; the entries are then numbered 1..N in that order. Returns per view the note numbers.
 fn shared_keys<'a>(lay: &Layout, specs: &[ViewSpec<'a>], st: &Style, diags: &Diags) -> Vec<Vec<(String, u32)>> {
     let mut groups: Vec<Group> = Vec::new();
     let mut member: Vec<Vec<(String, usize)>> = Vec::new();
@@ -652,7 +618,6 @@ fn cite_text(c: Option<&Value>) -> Vec<u8> {
     out
 }
 
-/// The shape of the arrangement: leaves index the layout's views in order.
 enum Shape {
     Leaf(usize),
     Row(Vec<Shape>),
@@ -697,7 +662,6 @@ fn grid_dims(kids: &[Shape], cols: usize, sizes: &[(f64, f64)], gap: f64) -> (Ve
     (cw, rh)
 }
 
-/// Width and height (paper inches) of a shape.
 fn measure(s: &Shape, sizes: &[(f64, f64)], gap: f64) -> (f64, f64) {
     match s {
         Shape::Leaf(i) => sizes[*i],
@@ -721,9 +685,6 @@ fn measure(s: &Shape, sizes: &[(f64, f64)], gap: f64) -> (f64, f64) {
     }
 }
 
-/// Lower-left corner (paper inches) of every leaf: a shape fills the box `(x, y, w, h)` it is given; a leaf sits
-/// centred across and on the bottom of its box (the titles of one row share a line), rows centre in their width,
-/// columns stack from the top.
 fn place(s: &Shape, sizes: &[(f64, f64)], gap: f64, bx: [f64; 4], out: &mut [(f64, f64)]) {
     let [x, y, w, h] = bx;
     match s {
@@ -764,7 +725,6 @@ fn place(s: &Shape, sizes: &[(f64, f64)], gap: f64, bx: [f64; 4], out: &mut [(f6
     }
 }
 
-/// One view of the layout as built: its drawing and the paper size of its extents.
 #[derive(Clone)]
 struct Built<'s> {
     d: Drawing<'s>,
@@ -783,7 +743,6 @@ struct Ctx<'c, 'a> {
     st: &'a Style,
     scene: &'c Scene<'c>,
     font: &'c Font,
-    /// The paper area an NTS view of the layout fits: its share of the sheet.
     share: (f64, f64),
 }
 
@@ -807,8 +766,6 @@ fn with_scale<'v>(spec: &ViewSpec<'v>, sc: f64, label: &'v str) -> ViewSpec<'v> 
     s
 }
 
-/// The shared DETAIL NOTES entries of the built views, merged by number (the first view's text wins; a different text
-/// under one number warns).
 fn merge_entries(lay: &Layout, built: &[Built], diags: &Diags) -> Vec<KeyedEntry> {
     let mut out: Vec<(KeyedEntry, &str)> = Vec::new();
     for b in built {
@@ -848,7 +805,6 @@ fn merge_entries(lay: &Layout, built: &[Built], diags: &Diags) -> Vec<KeyedEntry
     v
 }
 
-/// The printed citation of a list entry (its text after the note body), quoted, or `no cite`.
 fn cite_part(e: &KeyedEntry) -> String {
     let c = e.text.strip_prefix(e.body.as_str()).unwrap_or(&e.text).trim();
     if c.is_empty() { "no cite".to_string() } else { format!("\"{c}\"") }
@@ -863,7 +819,6 @@ fn map_pts(pts: &[Pt], m: &impl Fn(f64, f64) -> (f64, f64)) -> Vec<Pt> {
         .collect()
 }
 
-/// A view's items mapped into the layout: `p' = (p - origin) * f + to`.
 fn map_items(items: &[Item], origin: (f64, f64), f: f64, to: (f64, f64)) -> Vec<Item> {
     let m = |x: f64, y: f64| ((x - origin.0) * f + to.0, (y - origin.1) * f + to.1);
     items
@@ -906,14 +861,12 @@ fn map_items(items: &[Item], origin: (f64, f64), f: f64, to: (f64, f64)) -> Vec<
         .collect()
 }
 
-/// The arranged views and the list (paper inches): leaf positions, the arrangement box and the list block.
 struct Arranged {
     pos: Vec<(f64, f64)>,
     arr: (f64, f64),
     total: (f64, f64),
 }
 
-/// Paper size of the DETAIL NOTES block for `entries` at the layout's look (one column, or two past 8 lines).
 fn list_size(st: &Style, font: &Font, entries: &[KeyedEntry], side: ListSide, arr_h: f64) -> (f64, f64) {
     if entries.is_empty() {
         return (0.0, 0.0);
@@ -958,8 +911,6 @@ fn arrange(
     Arranged { pos, arr, total }
 }
 
-/// Builds layout `id` into one Drawing in the layout's coordinates (SPEC 26.2). None (with diagnostics) when the layout
-/// does not exist, is invalid, or a view of it cannot be built.
 pub fn build<'a>(doc: &Value, st: &'a Style, id: &str, diags: &Diags) -> Option<Drawing<'a>> {
     if find_layout(doc, id).is_none() {
         let ids = layout_ids(doc);
@@ -975,7 +926,6 @@ pub fn build<'a>(doc: &Value, st: &'a Style, id: &str, diags: &Diags) -> Option<
     build_from_scene(doc, st, &scene, id, diags)
 }
 
-/// `build` with an already compiled scene.
 pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str, diags: &Diags) -> Option<Drawing<'a>> {
     let node = find_layout(doc, id)?;
     let li = doc.get("layouts").and_then(Value::arr).and_then(|ls| ls.iter().position(|l| core::ptr::eq(l, node)));
@@ -1086,7 +1036,6 @@ pub fn build_from_scene<'a>(doc: &Value, st: &'a Style, scene: &Scene, id: &str,
     compose(&c, &l, common, built, diags)
 }
 
-/// The views of a layout built at one common scale, with the paper size the arrangement and the list need.
 struct Trial<'a> {
     sc: f64,
     share: (f64, f64),
@@ -1094,8 +1043,6 @@ struct Trial<'a> {
     total: (f64, f64),
 }
 
-/// Builds the views without their own scale at common scale `sc` (0: none to pick; an iso view then fits its share of
-/// the sheet), an iso view at `sc` over the layout's `iso_ratio`.
 fn trial<'a, 'k>(
     c: &Ctx<'_, 'a>,
     lay: &Layout,
@@ -1230,8 +1177,6 @@ fn compose<'a>(
     Some(d)
 }
 
-/// `W_VIEW_FIT` for a layout: the size it needs against the sheet area, each cell's share, and the fixes that would fit
-/// (a smaller common scale, another arrangement, the list on another side).
 #[allow(clippy::too_many_arguments)]
 fn layout_fit(
     c: &Ctx,

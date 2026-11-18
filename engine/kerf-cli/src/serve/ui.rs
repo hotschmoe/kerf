@@ -1,5 +1,3 @@
-//! Static files of the embedded web UI and the Content-Security-Policy that goes with them.
-
 use super::Server;
 use crate::http::{self, Head, Out, Request};
 use std::io;
@@ -71,9 +69,7 @@ pub fn static_file(s: &Server, req: &Request, w: &mut Out, path: &str) -> io::Re
     Ok(ka)
 }
 
-/// The style the web UI loads (`style.json`): the embedded default merged with the served folder's company style
-/// (`kerf.kerfstyle.json`, SPEC 25.6), so the browser engine and the header's STYLE name match the server. None when the
-/// folder has no company style or it is not a JSON object (the built-in asset is served).
+// SPEC 25.6 defines the workspace style merge.
 fn workspace_style_json(s: &Server) -> Option<Vec<u8>> {
     use kerf_core::json::{self, Value};
     let text = std::fs::read(crate::workspace::find_style(&s.dir_abs)?).ok()?;
@@ -91,7 +87,6 @@ pub fn default_ui_csp() -> String {
     format!("{CSP_PREFIX}{CSP_SUFFIX}")
 }
 
-/// The UI's CSP plus a `'sha256-…'` source for every inline `<script>` of the embedded index.html.
 pub fn build_ui_csp() -> String {
     let mut out = String::from(CSP_PREFIX);
     for (_, data) in assets::FILES.iter().filter(|f| f.0 == "index.html") {

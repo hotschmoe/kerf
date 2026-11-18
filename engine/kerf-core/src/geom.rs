@@ -1,7 +1,3 @@
-//! 2D geometry primitives: vectors, bulge arcs, loops, transforms, robust orientation, and segment
-//! intersection. Loops are closed polylines of `Pt` (x, y, bulge); the bulge on vertex i describes the
-//! segment i -> i+1 with DXF LWPOLYLINE semantics (bulge = tan(theta/4), CCW positive).
-
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
 use crate::math;
@@ -9,7 +5,6 @@ use crate::num;
 use alloc::vec::Vec;
 use core::f64::consts::PI;
 
-/// Radians per degree and back, as full-precision literals.
 pub const RAD_PER_DEG: f64 = 0.017453292519943295769236907684886127134428718885417;
 pub const DEG_PER_RAD: f64 = 57.295779513082320876798154814105170332405472466564;
 
@@ -53,7 +48,6 @@ impl V2 {
         }
         V2 { x: self.x / l, y: self.y / l }
     }
-    /// Left normal (-y, x).
     pub fn perp(self) -> V2 {
         V2 { x: -self.y, y: self.x }
     }
@@ -138,8 +132,6 @@ impl Box {
     }
 }
 
-// ---- affine transforms ----------------------------------------------------------------------------
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Xf {
     pub a: f64,
@@ -168,7 +160,6 @@ impl Xf {
     pub fn det(&self) -> f64 {
         self.a * self.d - self.b * self.c
     }
-    /// `self` applied after `n`: (m * n)(p) = m(n(p)).
     pub fn mul(&self, n: Xf) -> Xf {
         let m = self;
         Xf {
@@ -188,7 +179,6 @@ impl Xf {
         let s = math::sin(rad);
         Xf { a: c, b: s, c: -s, d: c, tx: 0.0, ty: 0.0 }
     }
-    /// Rotate by `rad` about point `p`.
     pub fn rotate_about(rad: f64, p: V2) -> Xf {
         Xf::translate(p.x, p.y).mul(Xf::rotate(rad)).mul(Xf::translate(-p.x, -p.y))
     }
@@ -207,14 +197,11 @@ impl Xf {
     }
 }
 
-// ---- arcs -----------------------------------------------------------------------------------------
-
 #[derive(Clone, Copy, Debug)]
 pub struct Arc {
     pub c: V2,
     pub r: f64,
     pub a0: f64,
-    /// Signed sweep in radians (CCW positive).
     pub sweep: f64,
 }
 
@@ -225,7 +212,6 @@ impl Arc {
     }
 }
 
-/// Arc through p0 -> p1 with the given non-zero bulge.
 pub fn arc_of(p0: V2, p1: V2, bulge: f64) -> Arc {
     let chord = p1.sub(p0);
     let cl = chord.len();
@@ -249,7 +235,6 @@ pub struct Seg {
     pub bulge: f64,
 }
 
-/// Sub-segment of (p0, p1, bulge) between parameters t0 < t1 (parameter = fraction of the sweep or chord).
 pub fn sub_seg(p0: V2, p1: V2, bulge: f64, t0: f64, t1: f64) -> Seg {
     if bulge == 0.0 {
         return Seg { a: p0.lerp(p1, t0), b: p0.lerp(p1, t1), bulge: 0.0 };
@@ -260,7 +245,6 @@ pub fn sub_seg(p0: V2, p1: V2, bulge: f64, t0: f64, t1: f64) -> Seg {
     Seg { a, b, bulge: bulge_from_sweep(arc.sweep * (t1 - t0)) }
 }
 
-/// Point on the segment at parameter t.
 pub fn seg_point(p0: V2, p1: V2, bulge: f64, t: f64) -> V2 {
     if bulge == 0.0 {
         return p0.lerp(p1, t);
@@ -274,7 +258,6 @@ pub fn seg_point(p0: V2, p1: V2, bulge: f64, t: f64) -> V2 {
     arc_of(p0, p1, bulge).at(t)
 }
 
-/// Append the flattened points of segment p0 -> p1 (excluding p0, including p1). Chord sagitta <= tol.
 pub fn flatten_seg_into(list: &mut Vec<V2>, p0: V2, p1: V2, bulge: f64, tol: f64) {
     if bulge == 0.0 {
         list.push(p1);
@@ -288,13 +271,10 @@ pub fn flatten_seg_into(list: &mut Vec<V2>, p0: V2, p1: V2, bulge: f64, tol: f64
     list.push(p1);
 }
 
-/// Upper bound on the segments of one flattened arc.
 pub const MAX_ARC_STEPS: usize = 4096;
 
-/// Flattening tolerance of arcs for 2D section geometry and validation, model inches.
 pub const FLAT_TOL: f64 = 0.005;
 
-/// Segments for an arc of `sweep` radians when one segment may span at most `step` radians; clamped to [2, MAX_ARC_STEPS].
 pub fn steps_for_sweep(sweep: f64, step: f64) -> usize {
     num::to_int_clamped(math::ceil(sweep.abs() / step), 2usize, MAX_ARC_STEPS)
 }
@@ -327,7 +307,6 @@ pub fn flatten_loop(lp: &[Pt], tol: f64) -> Vec<V2> {
     out
 }
 
-/// Polyline flatten for open or closed pts (closed adds the wrap segment).
 pub fn flatten_polyline(pts: &[Pt], closed: bool, tol: f64) -> Vec<V2> {
     let mut out = Vec::new();
     let Some(first) = pts.first() else { return out };
@@ -340,7 +319,6 @@ pub fn flatten_polyline(pts: &[Pt], closed: bool, tol: f64) -> Vec<V2> {
     out
 }
 
-/// Signed area of a closed bulge loop (CCW positive), exact for arcs.
 pub fn signed_area(lp: &[Pt]) -> f64 {
     let n = lp.len();
     let mut s = 0.0;
@@ -378,7 +356,6 @@ pub fn loop_box(lp: &[Pt]) -> Box {
     b
 }
 
-/// Extend `b` by the extremes of an arc segment.
 pub fn seg_box_into(b: &mut Box, p0: V2, p1: V2, bulge: f64) {
     b.add_point(p0.x, p0.y);
     b.add_point(p1.x, p1.y);
@@ -394,7 +371,6 @@ pub fn seg_box_into(b: &mut Box, p0: V2, p1: V2, bulge: f64) {
     }
 }
 
-/// Floored float modulus (the result has the sign of `b`).
 fn fmod_floor(a: f64, b: f64) -> f64 {
     if a < 0.0 { ((a % b) + b) % b } else { a % b }
 }
@@ -413,8 +389,6 @@ pub fn points_box(pts: &[Pt]) -> Box {
     b
 }
 
-/// Reversing a bulge loop: vertex order reverses and segment i (v_i -> v_{i+1}, bulge b_i) becomes
-/// segment v_{i+1} -> v_i with bulge -b_i.
 pub fn reverse_loop(lp: &[Pt]) -> Vec<Pt> {
     let n = lp.len();
     (0..n)
@@ -426,8 +400,6 @@ pub fn reverse_loop(lp: &[Pt]) -> Vec<Pt> {
         .collect()
 }
 
-// ---- robust orientation ---------------------------------------------------------------------------
-
 fn two_sum(a: f64, b: f64) -> [f64; 2] {
     let s = a + b;
     let bb = s - a;
@@ -435,7 +407,7 @@ fn two_sum(a: f64, b: f64) -> [f64; 2] {
     [s, e]
 }
 
-/// Exact product error by Dekker/Veltkamp splitting (what a fused multiply-add gives, without needing one).
+// Dekker/Veltkamp splitting recovers the exact product error.
 fn two_prod(a: f64, b: f64) -> [f64; 2] {
     const SPLIT: f64 = 134217729.0;
     let p = a * b;
@@ -486,7 +458,6 @@ impl Exp {
     }
 }
 
-/// Sign of the orientation determinant: +1 if c is left of a->b, -1 right, 0 collinear (exact).
 pub fn orient2d(a: V2, b: V2, c: V2) -> i32 {
     let detleft = (a.x - c.x) * (b.y - c.y);
     let detright = (a.y - c.y) * (b.x - c.x);
@@ -516,8 +487,6 @@ pub fn orient2d(a: V2, b: V2, c: V2) -> i32 {
     e.sign()
 }
 
-// ---- point location -------------------------------------------------------------------------------
-
 pub fn dist_point_seg(p: V2, a: V2, b: V2) -> f64 {
     let ab = b.sub(a);
     let l2 = ab.dot(ab);
@@ -535,7 +504,6 @@ pub enum Loc {
     Boundary,
 }
 
-/// Winding-number point location against flattened loops (CCW filled / CW hole). `tol` is the boundary band.
 pub fn locate<L: AsRef<[V2]>>(p: V2, loops: &[L], tol: f64) -> Loc {
     let mut wn = 0i32;
     for lp in loops {
@@ -557,7 +525,6 @@ pub fn locate<L: AsRef<[V2]>>(p: V2, loops: &[L], tol: f64) -> Loc {
     if wn != 0 { Loc::Inside } else { Loc::Outside }
 }
 
-/// Even-odd variant for sets whose orientation is unspecified.
 pub fn locate_even_odd<L: AsRef<[V2]>>(p: V2, loops: &[L], tol: f64) -> Loc {
     let mut inside = false;
     for lp in loops {
@@ -616,10 +583,6 @@ pub fn centroid_v(pts: &[V2]) -> V2 {
     V2 { x: cx / (3.0 * a), y: cy / (3.0 * a) }
 }
 
-// ---- segment intersection -------------------------------------------------------------------------
-
-/// Intersection parameters of two straight segments. Fills `ta`/`tb` (positions along a and b in
-/// [0,1]) and returns the number of intersection points (0, 1, or 2 for collinear overlap).
 pub fn seg_seg(a0: V2, a1: V2, b0: V2, b1: V2, ta: &mut [f64; 2], tb: &mut [f64; 2]) -> usize {
     let d1 = orient2d(b0, b1, a0);
     let d2 = orient2d(b0, b1, a1);
@@ -680,8 +643,6 @@ pub fn seg_seg(a0: V2, a1: V2, b0: V2, b1: V2, ta: &mut [f64; 2], tb: &mut [f64;
     1
 }
 
-/// Parameters t (fraction of the sweep) at which the arc (p0,p1,bulge) meets the straight segment
-/// b0->b1, with the matching parameter u on the straight segment. Up to 2 hits.
 pub fn arc_seg(p0: V2, p1: V2, bulge: f64, b0: V2, b1: V2, ta: &mut [f64; 2], tb: &mut [f64; 2]) -> usize {
     let arc = arc_of(p0, p1, bulge);
     let d = b1.sub(b0);
@@ -736,7 +697,6 @@ pub fn arc_seg(p0: V2, p1: V2, bulge: f64, b0: V2, b1: V2, ta: &mut [f64; 2], tb
     n
 }
 
-/// Parameter intervals of the straight segment a-b not lying on any of `edges` (collinear overlap within 1e-6).
 pub fn uncovered(a: V2, b: V2, edges: &[[V2; 2]]) -> Vec<[f64; 2]> {
     let d = b.sub(a);
     let l = d.len();

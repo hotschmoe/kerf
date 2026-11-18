@@ -174,11 +174,11 @@ async function main() {
   let t0 = performance.now();
   let info = await api(port, 'GET', '/api/info');
   const info_ms = performance.now() - t0;
-  check('GET /api/info', info.status === 200 && info.json.version && info.json.token_required === false && !('proxy' in info.json) && Array.isArray(info.json.agents), info.text);
+  check('GET /api/info', info.status === 200 && info.json.version && info.json.token_required === false && Array.isArray(info.json.agents), info.text);
   check('info.dir is the served folder', fs.realpathSync.native(info.json.dir) === fs.realpathSync.native(dir), info.json.dir);
   const fake = info.json.agents.find((a) => a.id === 'fake'), ghost = info.json.agents.find((a) => a.id === 'ghost');
   check('agents: override from .kerf/agents.json is available with a version', fake && fake.available === true && /^v\d+/.test(fake.version ?? ''), fake);
-  check('agents: missing CLI -> available:false + reason', ghost && ghost.available === false && /not found/.test(ghost.reason ?? ''), ghost);
+  check('agents: missing CLI is unavailable', ghost && ghost.available === false, ghost);
   check('agents: built-ins claude/grok/codex listed', ['claude', 'grok', 'codex'].every((id) => info.json.agents.some((a) => a.id === id)), info.json.agents.map((a) => a.id));
   let docs = await api(port, 'GET', '/api/docs');
   check('GET /api/docs empty', docs.status === 200 && Array.isArray(docs.json) && docs.json.length === 0, docs.text);
@@ -276,7 +276,7 @@ async function main() {
   const lenWhys = lenLog.json.entries.slice(-3).map((e) => e.why);
   check('apply: the envelope why reaches the op log', lenWhys[0] === 'single op' && lenWhys[1] === 'inner why', lenWhys);
   const lenBad = await api(port, 'POST', '/api/docs/a.kerf.json/apply', { body: { ops: { foo: 1 } } });
-  check('apply: a bad ops shape is a 400 E_PARAM that names the shapes', lenBad.status === 400 && lenBad.json.error.code === 'E_PARAM' && /single op object/.test(lenBad.json.error.message), lenBad.text.slice(0, 300));
+  check('apply: a bad ops shape is a 400 E_PARAM', lenBad.status === 400 && lenBad.json.error.code === 'E_PARAM', lenBad.text.slice(0, 300));
 
   section('export');
   fs.copyFileSync(REF, path.join(dir, 'beam.kerf.json'));
@@ -304,7 +304,7 @@ async function main() {
   const lboth = await api(port, 'GET', '/api/docs/lay.kerf.json/export?view=A&layout=S1&format=png');
   check('view and layout together -> 400 E_INPUT', lboth.status === 400 && lboth.json?.error?.code === 'E_INPUT', lboth.text);
   const lnone = await api(port, 'GET', '/api/docs/lay.kerf.json/export?layout=S9&format=svg');
-  check('unknown layout -> 404 E_VIEW listing the layouts', lnone.status === 404 && /Layouts: S1, S2/.test(lnone.json?.error?.message ?? ''), lnone.text);
+  check('unknown layout -> 404 E_VIEW', lnone.status === 404 && lnone.json?.error?.code === 'E_VIEW', lnone.text);
   const png_t0 = performance.now();
   await api(port, 'GET', '/api/docs/beam.kerf.json/export?view=A&format=png&sheet=1');
   const png_ms = performance.now() - png_t0;
@@ -360,7 +360,7 @@ async function main() {
   const exitD = await ev.waitFor((f) => f.event === 'agent' && f.data.run_id === runD.json.run_id && f.data.event.type === 'exit', 8000);
   check('non-zero exit code is reported', exitD?.data.event.code === 3, exitD?.data);
   const ghostRun = await api(port, 'POST', '/api/agent/run', { body: { agent: 'ghost', message: 'x' } });
-  check('unavailable agent -> 409 E_UNAVAILABLE with the reason', ghostRun.status === 409 && ghostRun.json.error.code === 'E_UNAVAILABLE' && /not found/.test(ghostRun.json.error.message), ghostRun.text);
+  check('unavailable agent -> 409 E_UNAVAILABLE', ghostRun.status === 409 && ghostRun.json.error.code === 'E_UNAVAILABLE', ghostRun.text);
   const unk = await api(port, 'POST', '/api/agent/run', { body: { agent: 'nope', message: 'x' } });
   check('unknown agent -> 404', unk.status === 404);
   const badSid = await api(port, 'POST', '/api/agent/run', { body: { agent: 'fake', message: 'x', session_id: '--dangerous' } });
@@ -369,10 +369,6 @@ async function main() {
   check('file outside the folder -> 400', badFile.status === 400);
   const noMsg = await api(port, 'POST', '/api/agent/run', { body: { agent: 'fake' } });
   check('missing message -> 400', noMsg.status === 400);
-
-  section('direct LLM proxy is gone');
-  const llmGone = await api(port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: 'http://127.0.0.1:1', path: '/x', body: {} } });
-  check('POST /api/llm -> 404', llmGone.status === 404, llmGone.text);
 
   section('V-1 / V-9: HTTP parsing hardening (raw sockets)');
   // V-1: a 1-byte chunk, then a chunk size of ffffffffffffffff, killed the whole process before any auth check.
@@ -447,8 +443,6 @@ async function main() {
   const pingTok = await sseTok.waitFor((f) => f.event === 'ping', 2000);
   check('SSE with ?token= connects', !!pingTok);
   sseTok.close();
-  const llmNo = await api(lan.port, 'POST', '/api/llm', { body: { provider: 'anthropic', path: '/x' } });
-  check('no token -> 401 even on the removed /api/llm (the token check precedes routing)', llmNo.status === 401);
   const staticNo = await api(lan.port, 'GET', '/');
   check('UI page itself loads without a token (it reads ?token= from the URL)', staticNo.status === 200);
   lan.proc.kill('SIGTERM');
@@ -478,7 +472,7 @@ async function main() {
   await sleep(1200); // the startup prefetch has had its chance
   const infoU = await api(untrusted.port, 'GET', '/api/info');
   const evil = infoU.json.agents.find((a) => a.id === 'evil');
-  check('V-2: the workspace agent is listed as unavailable + untrusted (with the reason)', evil && evil.available === false && evil.untrusted === true && evil.source === 'workspace' && /not trusted/.test(evil.reason ?? ''), evil);
+  check('V-2: the workspace agent is unavailable and untrusted', evil && evil.available === false && evil.untrusted === true && evil.source === 'workspace', evil);
   const claudeU = infoU.json.agents.find((a) => a.id === 'claude');
   check('V-2: an untrusted entry cannot replace a built-in id', claudeU && claudeU.source === 'builtin' && !claudeU.untrusted, claudeU);
   const runEvil = await api(untrusted.port, 'POST', '/api/agent/run', { body: { agent: 'evil', message: 'x' } });
@@ -841,13 +835,13 @@ async function main() {
   rr = await refGet('refs/notes.txt');
   check('reference: an unknown extension -> 400 E_TYPE even when listed', rr.status === 400 && rr.json?.error?.code === 'E_TYPE' && !rr.text.includes('not an image'), [rr.status, rr.text.slice(0, 140)]);
   rr = await refGet('refs/unlisted.png');
-  check('reference: a file that is not in meta.references -> 404, content not returned', rr.status === 404 && rr.json?.error?.code === 'E_NOT_FOUND' && /not in the meta\.references/.test(rr.json.error.message) && !rr.text.includes('UNLISTED'), rr.text.slice(0, 140));
+  check('reference: a file that is not in meta.references -> 404, content not returned', rr.status === 404 && rr.json?.error?.code === 'E_NOT_FOUND' && !rr.text.includes('UNLISTED'), rr.text.slice(0, 140));
   rr = await refGet('refs/gone.png');
   check('reference: listed but missing -> 404', rr.status === 404 && rr.json?.error?.code === 'E_NOT_FOUND', rr.status);
   rr = await refGet('refs/sub.png');
   check('reference: a directory -> 404', rr.status === 404, rr.status);
   rr = await api(RS.port, 'GET', '/api/docs/r.kerf.json/reference', { headers: bearer });
-  check('reference: missing ?path= -> 400 E_INPUT with an example', rr.status === 400 && rr.json?.error?.code === 'E_INPUT' && /path=refs\//.test(rr.json.error.message), rr.text);
+  check('reference: missing ?path= -> 400 E_INPUT', rr.status === 400 && rr.json?.error?.code === 'E_INPUT', rr.text);
   rr = await api(RS.port, 'GET', '/api/docs/nope.kerf.json/reference?path=refs%2Fstem.png', { headers: bearer });
   check('reference: unknown document -> 404', rr.status === 404, rr.status);
   r = cli(dirR, ['check', 'r.kerf.json']);

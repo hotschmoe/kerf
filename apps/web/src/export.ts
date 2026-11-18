@@ -6,7 +6,6 @@ export type ExportFormat = keyof typeof MIME;
 
 export interface ExportResult { name: string; bytes: Uint8Array; ms: number }
 
-/** Export the active view (or, on a [LAYOUT] tab, the sheet layout) as `<docid>-<view>.<ext>` and trigger a browser download. */
 export async function exportActive(app: App, format: ExportFormat, save = true): Promise<ExportResult | null> {
   if (!app.doc) { app.flash('NOTHING TO EXPORT: NO DETAIL LOADED', 'warn'); return null; }
   const layout = app.mode === 'sheet' ? app.activeLayout : '';
@@ -14,10 +13,9 @@ export async function exportActive(app: App, format: ExportFormat, save = true):
   if (!view && !layout) { app.flash('NOTHING TO EXPORT: THE DOCUMENT HAS NO VIEWS', 'warn'); return null; }
   const t0 = performance.now();
   try {
-    // PDF is always a sheet; SVG is a sheet when the SHEET tab is showing; DXF is model-space only.
     const sheet = format === 'pdf' || ((format === 'svg' || format === 'png') && app.mode === 'sheet');
     let bytes: Uint8Array, name = `${app.doc.id}-${layout || view}.${format}`;
-    if (app.remote) { // workspace mode: the server exports the file on disk (every edit is already written there)
+    if (app.remote) {
       const r = await app.remote.exportFile(view ?? '', format, sheet, layout || undefined);
       if (!r) { app.flash('NOTHING TO EXPORT: NO FILE IS OPEN', 'warn'); return null; }
       bytes = r.bytes; name = r.name;

@@ -1,6 +1,3 @@
-//! Leader notes (SPEC 6.3) and keyed notes (SPEC 24): landing points, obstacles, routing of the note column, key tags and
-//! the DETAIL NOTES list, hit reporting, and note text with citations.
-
 use super::text::{ascii_fold, ascii_fold_flag, layer_name, path_item, text_item, upper_if, wrap};
 use super::{Env, Landing};
 use crate::catalog::Type;
@@ -29,7 +26,6 @@ use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-/// E_LIMIT for a note/label text over `limits::MAX_TEXT_CHARS` (reports and returns true).
 pub fn text_too_long(env: &Env, what: &str, id: &str, apath: &str, text: &str) -> bool {
     if text.len() <= limits::MAX_TEXT_CHARS {
         return false;
@@ -164,11 +160,6 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
     Some(cands)
 }
 
-/// When the label point `p` of a target sits on (or within half a text height of) what another member embedded in it
-/// draws (a bar, an anchor rod, a bolt), the nearest point of the target's region less those members that is well clear
-/// of every edge, so a leader to a footing does not end on a bar (SPEC 28.8), with that cleared region (the other
-/// landing candidates come from it). None when `p` is clear, or when no point of the cleared region is half a text
-/// height from its edges.
 fn off_embedded(
     sec: &mut crate::section::Section<'_>,
     comp: u32,
@@ -205,7 +196,6 @@ fn off_embedded(
     Some((q, cleared))
 }
 
-/// Landing candidates on drawn fasteners (SPEC 27.4): the one nearest their middle first, then the others outward.
 fn nail_candidates(marks: &[V2], crop: crate::geom::Box) -> Option<Vec<V2>> {
     let inside: Vec<V2> = marks.iter().copied().filter(|m| crop.contains(*m)).collect();
     if inside.is_empty() {
@@ -224,34 +214,24 @@ fn nail_candidates(marks: &[V2], crop: crate::geom::Box) -> Option<Vec<V2>> {
 pub struct NoteIn<'a> {
     pub id: &'a str,
     pub text: String,
-    /// The text without its citations (keyed lists compare it to say which field of a shared-key note differs).
     pub body: String,
     pub cands: Vec<V2>,
-    /// False when the note has an explicit `at` (never nudged).
     pub movable: bool,
     pub place: Option<V2>,
-    /// `column` hint of the note.
     pub column: Option<route::Side>,
-    /// Explicit `key` (keyed notes): the note's number in the list.
     pub key: Option<u32>,
-    /// The component the note points at: its `target`, else the component of its `at` Ref (empty for none).
     pub member: &'a str,
 }
 
-/// A dimension text or label box that leaders must keep away from, with what is needed to propose a fix.
 #[derive(Clone, Debug)]
 pub struct Obstacle {
     pub poly: [V2; 4],
     pub id: String,
     pub kind: route::ObstKind,
     pub text: String,
-    /// Index into the dimension specs (kind dim) or label specs (kind label).
     pub owner: usize,
-    /// dim: unit vector along which |offset| grows (before the sign of offset); label: unused
     pub axis: V2,
-    /// dim: current offset; label: current dx
     pub off: f64,
-    /// label: current dy
     pub off2: f64,
 }
 
@@ -270,7 +250,6 @@ pub struct Meta<'a> {
     pub axis: V2,
     pub off: f64,
     pub off2: f64,
-    /// Index into the dim / label specs.
     pub owner: usize,
 }
 
@@ -279,12 +258,9 @@ pub struct LabelSpec<'a> {
     pub k: usize,
     pub id: &'a str,
     pub text: &'a str,
-    /// Which end (or the middle) of each line sits on `at`.
     pub align: crate::drawing::Align,
-    /// Drawing-space position (author offset applied); None when an iso label does not project.
     pub base: Option<V2>,
     pub off: V2,
-    /// `pin`: never moved by the layout repair (overlaps then warn W_LABEL_OVERLAP).
     pub pin: bool,
 }
 
@@ -296,7 +272,6 @@ pub fn fmt_pt(p: V2) -> String {
     format!("[{}, {}]", num2(p.x), num2(p.y))
 }
 
-/// `x` with exactly `decimals` places (rounded half away from zero), integer arithmetic only.
 fn fixed(x: f64, decimals: u32) -> String {
     let scale = 10u64.pow(decimals);
     let n = num::to_int_clamped::<u64>(math::round(x.abs() * scale as f64), 0, u64::MAX);
@@ -316,7 +291,6 @@ pub fn dirs8() -> [V2; 8] {
     DIRS8.map(|(x, y)| V2::init(x, y))
 }
 
-/// Offset proposals for a dimension or label that a leader runs into (what the repair loop could not fix).
 pub fn obstacle_fix(o: &Obstacle, leaders: &[[V2; 3]], h: f64) -> Option<String> {
     match o.kind {
         route::ObstKind::Dim => {
@@ -369,18 +343,14 @@ fn note_fix_text(id: &str, fa: Option<V2>, fp: Option<V2>) -> Option<String> {
     fp.map(|p| format!("set note '{id}' \"place\": {}", fmt_pt(p)))
 }
 
-/// One way to move a note: a new landing (`at`), a fixed text position (`place`) or the other notes column.
 #[derive(Clone, Copy)]
 enum NoteFix {
     At(V2),
     Place(V2),
     Column(route::Side),
-    /// Every note without its own `column` to one side (the view's `tags_side`, or `notes_side` for leader notes).
     Side(route::Side),
 }
 
-/// Checks a proposed note fix the way the author would see it: the whole view laid out again with that one change.
-/// The router moves every other note too, so a fix that clears its own hit can create the next one somewhere else.
 struct Verifier<'v, 'a, 'e> {
     env: &'v Env<'a, 'e>,
     prep: &'v NotePrep,
@@ -391,12 +361,10 @@ struct Verifier<'v, 'a, 'e> {
     tries: usize,
 }
 
-/// Re-layouts a view may spend on checking its W_LEADER_HIT fixes, and their share of the layout effort limit.
 const VERIFY_TRIES: usize = 12;
 const VERIFY_WORK: u64 = route::DEFAULT_WORK_LIMIT / 4;
 
 impl Verifier<'_, '_, '_> {
-    /// The view's leader hits after the fix, when it lowers them (None: not checked, or no better).
     fn hits_after(&mut self, i: usize, f: NoteFix) -> Option<usize> {
         if self.tries == 0 || self.work.spent() {
             return None;
@@ -421,7 +389,6 @@ impl Verifier<'_, '_, '_> {
         (!r.budget_exhausted && r.hits.len() < self.base).then_some(r.hits.len())
     }
 
-    /// The first fix of `cands` (note index, fix) that lowers the view's hits, as fix text.
     fn first(&mut self, cands: &[(usize, NoteFix)]) -> Option<String> {
         for &(i, f) in cands {
             let Some(k) = self.hits_after(i, f) else { continue };
@@ -450,7 +417,6 @@ impl Verifier<'_, '_, '_> {
     }
 }
 
-/// The fixes worth checking for note `i`: its proposed `at` and `place`, then the other notes column.
 fn note_cands(i: usize, fa: Option<V2>, fp: Option<V2>, r: &route::Layout, out: &mut Vec<(usize, NoteFix)>) {
     out.extend(fa.map(|p| (i, NoteFix::At(p))));
     out.extend(fp.map(|p| (i, NoteFix::Place(p))));
@@ -589,9 +555,6 @@ pub fn report_hits(
     }
 }
 
-/// W_NOTE_LANDING (SPEC 25.2): a note with an explicit `at` must put its arrowhead on the drawing. In a section that is
-/// anywhere inside the crop (an arrow may point into an opening or the air above grade); in an iso it is a visible face
-/// or within half a text height of a drawn line, since the space between iso faces is not part of any member.
 pub fn check_landings(env: &Env, notes: &[NoteIn], r: &route::Layout, base_segs: &[[V2; 2]]) {
     let vid = env.spec.id;
     let tol = 0.5 * env.style.text_height_in * env.s;
@@ -650,26 +613,18 @@ pub fn check_landings(env: &Env, notes: &[NoteIn], r: &route::Layout, base_segs:
     }
 }
 
-/// Note text blocks (word wrap, sizes) and the routing parameters; independent of where dimensions end up.
 pub struct NotePrep {
     pub g: route::Geo,
     pub gutter: f64,
-    /// Circle/hex key tag radius (keyed views).
     pub tag_r: f64,
     pub keyed: bool,
     pub lines_of: Vec<Vec<String>>,
-    /// (w, hgt) of each note's text block.
     pub sizes: Vec<(f64, f64)>,
-    /// The drawn members the notes point at (bars, rods, hardware) as `Member` obstacles: another note's leader must
-    /// not cross them (SPEC 28.8). Filled by `member_obstacles`.
     pub members: Vec<route::Obst>,
-    /// For each member obstacle, how a W_LEADER_HIT names it: `anchor_bolt 'ab_j' (the target of note 'n_j')`.
     pub member_names: Vec<String>,
-    /// Each note's member group (`route::NoteIn::group`).
     pub groups: Vec<usize>,
 }
 
-/// `numbers` holds each note's key number in a keyed view and is empty otherwise.
 pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
     let st = env.style;
     let sc = env.s;
@@ -682,12 +637,10 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
         pad: 0.04 * sc,
     };
     let wrap_n = st.wrap_cols();
-    // circle and hex tags share one size, set by the widest number
     let widest = numbers.iter().map(|k| env.font.width(k.to_string(), h)).fold(0.0, f64::max);
     let tag_r = match st.key_tag {
         KeyTag::Plain => 0.0,
         KeyTag::Circle => (0.5 * widest + 0.35 * h).max(0.8 * h),
-        // the hexagon's inscribed circle holds the number
         KeyTag::Hex => (0.5 * widest + 0.35 * h).max(0.8 * h) * 2.0 / math::sqrt(3.0),
     };
     let mut lines_of = Vec::with_capacity(notes.len());
@@ -723,11 +676,6 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
     }
 }
 
-/// The members the notes of a section-like view point at that a leader must not cross (SPEC 28.8): every drawn piece
-/// of an anchor rod, a bolt or stud, or a bar seen end-on (a dot, not a bar seen lengthwise in a plan), as its own quad
-/// (a rod) or its box (a bar dot, a nut); hooks and other shapes that do not fill their box are left out. Long members
-/// (path bars, walls, hardware) are crossed by leaders as a matter of course and are not obstacles. One group per
-/// distinct member.
 pub fn member_obstacles(env: &mut Env, notes: &[NoteIn], prep: &mut NotePrep) {
     let scene = env.scene;
     let Landing::Section(sec) = &mut env.landing else { return };
@@ -825,7 +773,6 @@ fn route_with(
             group,
         })
         .collect();
-    // key tags go to the side `tags_side` names (default: nearer their landing point); notes_side places the list
     let side = match (prep.keyed, env.spec.tags_side, env.spec.notes_side) {
         (true, NotesSide::Left, _) => route::Side::Left,
         (true, NotesSide::Right, _) => route::Side::Right,
@@ -865,7 +812,6 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
             match st.key_tag {
                 KeyTag::Plain => {}
                 KeyTag::Circle => {
-                    // the leader starts on the circle, not a text gap away from it
                     start.x += if left { -g.pad } else { g.pad };
                     let quarter = core::f64::consts::SQRT_2 - 1.0;
                     let pts = [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)]
@@ -957,7 +903,6 @@ pub fn emit_notes(env: &mut Env, notes: &[NoteIn], prep: &NotePrep, r: &route::L
     }
 }
 
-/// One entry of the keyed notes list: its number, its text, and the first note with that number (the src of its text).
 pub struct ListEntry<'a> {
     pub num: u32,
     pub text: &'a str,
@@ -965,7 +910,6 @@ pub struct ListEntry<'a> {
     pub first: &'a str,
 }
 
-/// Keyed numbering (SPEC 24): a note's `key` is its number; the other notes take the lowest unused numbers in note order.
 pub fn key_numbers(notes: &[NoteIn]) -> Vec<u32> {
     let mut used: Vec<u32> = notes.iter().filter_map(|n| n.key).collect();
     let mut next = 1u32;
@@ -983,8 +927,6 @@ pub fn key_numbers(notes: &[NoteIn]) -> Vec<u32> {
         .collect()
 }
 
-/// Layout numbering (SPEC 26.2): each note takes the number the layout gave its id; a note the layout did not number
-/// (none should remain) takes the lowest number no other note uses.
 pub fn shared_numbers(notes: &[NoteIn], keys: &[(String, u32)]) -> Vec<u32> {
     let mut used: Vec<u32> = keys.iter().map(|k| k.1).collect();
     let mut next = 1u32;
@@ -1003,7 +945,6 @@ pub fn shared_numbers(notes: &[NoteIn], keys: &[(String, u32)]) -> Vec<u32> {
         .collect()
 }
 
-/// The list entries in number order; notes sharing a key share the first one's text (a different text warns).
 pub fn list_entries<'a>(env: &Env, notes: &'a [NoteIn], numbers: &[u32]) -> Vec<ListEntry<'a>> {
     let vid = env.spec.id;
     let mut out: Vec<ListEntry<'a>> = Vec::new();
@@ -1045,30 +986,22 @@ pub fn list_entries<'a>(env: &Env, notes: &'a [NoteIn], numbers: &[u32]) -> Vec<
     out
 }
 
-/// Lines a list keeps in one column (above the drawing, or beside one shorter than that).
 const ONE_COLUMN_LINES: usize = 8;
 
-/// How a DETAIL NOTES list is drawn: style, font, scale factor and where it goes relative to the drawing.
 pub struct ListLook<'a> {
     pub st: &'a Style,
     pub font: &'a Font,
     pub sc: f64,
     pub side: NotesSide,
-    /// The list heading; `None` is the style's `notes.list_title`.
     pub title: Option<&'a str>,
 }
 
-/// The DETAIL NOTES list (SPEC 24) of a view.
 pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
     let look =
         ListLook { st: env.style, font: env.font, sc: env.s, side: env.spec.notes_side, title: env.spec.notes_title };
     list_block(&look, entries, ext, &mut env.unknown_glyph)
 }
 
-/// The DETAIL NOTES list (SPEC 24): heading, rule, then `<n>.` and the wrapped text with a hanging indent. It sits beside
-/// (`notes_side` left/right) or above (`above`, `both`) `ext`, the drawing with its tags, dimensions and labels, and
-/// splits into two columns past 8 lines, or beside a taller drawing, once one column would be taller than the drawing.
-/// `unknown` is set when a character is not in the stroke font.
 pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mut bool) -> Vec<Item> {
     let ListLook { st, font, sc, side, title } = *look;
     let h = st.text_height_in * sc;
@@ -1085,7 +1018,6 @@ pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mu
     let total: usize = wrapped.iter().map(Vec::len).sum();
     let beside = matches!(side, NotesSide::Left | NotesSide::Right);
     let two = total > ONE_COLUMN_LINES && (!beside || total as f64 * pitch > ext.height());
-    // the first column ends at the entry that makes the taller column shortest (ties: the longer first column)
     let mut split = entries.len();
     if two {
         let mut best = usize::MAX;
@@ -1103,7 +1035,6 @@ pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mu
     let block_w = ncols * col_w + (ncols - 1.0) * gap;
     let first: usize = wrapped[..split].iter().map(Vec::len).sum();
     let rows = first.max(total - first) as f64;
-    // heading, its rule half a text height under the baseline, the first entry's cap 0.6 text heights under the rule
     let (rule_drop, lead) = (1.5 * h, 1.6 * h);
     let block_h = rule_drop + lead + (rows - 1.0) * pitch;
     let (x0, top) = match side {
@@ -1143,8 +1074,6 @@ pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mu
     out
 }
 
-/// A citation `section` under the case transform: words with a digit (`1926.755(a)(1)`, `R602.3(5)`) print as written,
-/// since paragraph letters are significant; plain words (`Table`) take the transform.
 fn section_text(env: &Env, section: &str) -> String {
     let mut out = String::with_capacity(section.len());
     for (i, w) in section.split(' ').enumerate() {
@@ -1160,9 +1089,6 @@ fn section_text(env: &Env, section: &str) -> String {
     out
 }
 
-/// The printed note: the text under the case transform, then each citation per `citations.format`. A citation's
-/// `section` keeps the case of its numbered parts (`section_text`) and `edition` prints as written; its code and the
-/// format's literal text take the case transform.
 pub fn note_text(env: &mut Env, text: &str, cites: &[Value]) -> String {
     let mut s = upper_if(env, text).into_owned();
     for c in cites {

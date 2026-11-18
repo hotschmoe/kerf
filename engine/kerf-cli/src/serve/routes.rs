@@ -1,5 +1,3 @@
-//! The route table, the per-route body caps and the request dispatcher.
-
 use super::conn::{BUSY_MS, arm, check_access};
 use super::{Server, agent, docs, stream, ui};
 use crate::http::{self, In, Out, Request};

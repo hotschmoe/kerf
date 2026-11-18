@@ -1,8 +1,3 @@
-//! Which components and annotations answer each line of `meta.requested` (SPEC 21, 25.3, 28.8). Words match after the
-//! house normalization (`house::Words`: abbreviations both ways, case, punctuation, plural s, `-ing` / `-ed` word forms,
-//! lengths); every candidate is one component or one annotation, and an item is covered when one candidate offers all
-//! of its words.
-
 use crate::house::{self, Words};
 use crate::json::Value;
 use crate::lint;
@@ -12,12 +7,9 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// The candidate that offers most of an uncovered item's words.
 pub struct Closest {
-    /// Where it is, e.g. `note 'n4' in view A`.
     pub source: String,
     pub text: String,
-    /// The item's words it lacks, as a person reads them.
     pub missing: Vec<String>,
     pub have: usize,
     pub total: usize,
@@ -63,7 +55,6 @@ pub fn requested_list(doc: &Value) -> &[Value] {
     doc.get("meta").and_then(|m| m.get("requested")).and_then(Value::arr).unwrap_or(&[])
 }
 
-/// What a weld symbol says, in words: `3/16 fillet weld all around`, `cjp complete joint penetration groove weld`.
 fn weld_text(an: &Value) -> String {
     let kind = match str_of(an, "weld") {
         "cjp" => "cjp complete joint penetration groove",
@@ -104,7 +95,6 @@ fn note_words_text(an: &Value) -> String {
     t
 }
 
-/// A dimension's words: its `text`, or else the length it measures (needs the compiled scene).
 fn dim_text(scene: Option<&Scene>, an: &Value) -> (String, Option<String>) {
     let text = str_of(an, "text");
     if !text.is_empty() {
@@ -123,8 +113,6 @@ fn dim_text(scene: Option<&Scene>, an: &Value) -> (String, Option<String>) {
     (crate::units::fmt_ft_in(len), Some(house::length_word(len)))
 }
 
-/// A table offers its title with its column headers, units and header rows as one candidate, each body row with that
-/// heading as another, and each of its notes (SPEC 26.1).
 fn table_candidates(an: &Value, aid: &str, vid: &str, w: &Words, out: &mut Vec<Cand>) {
     let texts = crate::annot::table::texts(an);
     let heading: Vec<&str> =
@@ -230,8 +218,6 @@ fn has(words: &[String], w: &[String]) -> bool {
     w.iter().any(|f| words.binary_search_by(|x| x.as_str().cmp(f)).is_ok())
 }
 
-/// One entry per non-empty `meta.requested` string: the components / annotations that cover it, and for an uncovered
-/// item the closest candidate. `scene` (when given) lets dimensions without `text` offer the length they measure.
 pub fn compute(doc: &Value, st: &Style, scene: Option<&Scene>) -> Vec<Item> {
     let items: Vec<&str> = requested_list(doc)
         .iter()

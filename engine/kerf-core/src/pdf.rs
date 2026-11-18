@@ -1,6 +1,3 @@
-//! PDF exporter (SPEC 12): PDF 1.7, one page at the style's sheet size, vector only, text as stroked
-//! paths (no fonts), deterministic object order, no timestamps.
-
 mod writer;
 
 use crate::drawing::{Drawing, Item};

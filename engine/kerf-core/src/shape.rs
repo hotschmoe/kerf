@@ -1,6 +1,3 @@
-//! Visible-region shapes and where a label or a note's arrow can land inside them (SPEC 6.3, SPEC 18): pure geometry on
-//! polygons with holes, used by both the section and the iso annotation code.
-
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
 use crate::clip;
@@ -129,8 +126,6 @@ pub struct Banded {
     pub inset: Box,
 }
 
-/// The grid point of `shapes` nearest `near` among those at least `min` and half the largest such distance from every
-/// edge (ties: the deeper one).
 pub fn clear_point_near(shapes: &[Shape], h: f64, near: V2, min: f64) -> Option<V2> {
     let mut bb = Box::default();
     for x in shapes {

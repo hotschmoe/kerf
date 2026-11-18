@@ -1,8 +1,3 @@
-//! Subtracted solids (SPEC 26.4). After placement, every concrete or masonry host loses what its `voids` entries and the
-//! sleeves passing through it occupy: the world prisms are cut once, split into slabs along z where a void is shorter
-//! than the host, so sections, iso, the mesh and the checks all see the same hole. Fills are clipped per view instead,
-//! by the solids the view's plane cuts with them (`clip_fill`).
-
 use crate::clip::{self, Op};
 use crate::geom::{self, Box, Pt, V2};
 use crate::json::{self, Value};
@@ -18,12 +13,9 @@ use alloc::vec::Vec;
 
 const EPS: f64 = 1e-9;
 const FLAT_TOL: f64 = geom::FLAT_TOL;
-/// The z range of a void shape without `z`: through the whole host.
 const Z_ALL: [f64; 2] = [-1e12, 1e12];
 const SHAPE_KEYS: [&str; 6] = ["rect", "circle", "points", "at", "anchor", "z"];
 
-/// One solid a void takes away: its outer loops (CCW, flattened), the exact loop when it is a single loop, its box and
-/// z range.
 #[derive(Clone, Debug)]
 pub struct Cutter {
     pub loops: Vec<Vec<V2>>,
@@ -35,21 +27,15 @@ pub struct Cutter {
 struct Void {
     host: usize,
     owner: usize,
-    /// How messages name the void: `'col'`, `voids[2] (rect)`, `sleeve 'sl'`.
     what: String,
-    /// How the host's summary line names it: `col`, `rect`, `sleeve sl`.
     name: String,
     path: String,
-    /// The entry of the host's `voids` this void came from (None: a sleeve's `through` or a notch).
     entry: Option<usize>,
-    /// The entry of the host's `cuts` this void came from (a lumber or steel notch `by`, SPEC 27.3).
     notch: Option<usize>,
     cutters: Vec<Cutter>,
     removed: bool,
 }
 
-/// Cut every host's world prisms by its voids, report voids that remove nothing (W_VOID_MISS) and keep the cutters on the
-/// host for W_COVER.
 pub fn apply(scene: &mut Scene) {
     check_except(scene);
     let mut voids = collect(scene);
@@ -131,7 +117,6 @@ fn unknown_id(scene: &Scene, from: &str, path: &str, what: &str, id: &str) {
     }
 }
 
-/// `fill.except` must name components.
 fn check_except(scene: &Scene) {
     for c in scene.comps.iter().filter(|c| c.state == State::Ok) {
         let Some(ev) = c.node.get("except").filter(|v| !v.is_null()) else { continue };
@@ -259,7 +244,6 @@ fn shape_kind(e: &Value) -> &'static str {
     ["rect", "circle", "points"].into_iter().find(|k| e.get(k).is_some()).unwrap_or("shape")
 }
 
-/// A sleeve's `through`: the hosts it is subtracted from.
 fn through(scene: &Scene, si: usize) -> Vec<Void> {
     let c = &scene.comps[si];
     let Some(tv) = c.node.get("through").filter(|v| !v.is_null()) else { return Vec::new() };
@@ -337,7 +321,6 @@ fn through(scene: &Scene, si: usize) -> Vec<Void> {
     out
 }
 
-/// A `voids` entry naming a component (`"col"` or `"col.part"`): its envelope per instance.
 fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str, key: &str) -> Option<Vec<Cutter>> {
     let host = &scene.comps[hi];
     if s.contains(['@', '#']) {
@@ -425,8 +408,6 @@ fn comp_void(scene: &Scene, hi: usize, s: &str, path: &str, key: &str) -> Option
     Some(cutters)
 }
 
-/// The solid a component occupies, per instance: the union of the outer outlines of its bodies (holes filled: concrete
-/// does not get inside a tube), over its whole z extent.
 fn envelope(c: &Comp, part: Option<&str>) -> Vec<Cutter> {
     let mut out = Vec::new();
     for k in 0..c.xfs.len() as u32 {
@@ -468,7 +449,6 @@ fn len_of(v: Option<&Value>) -> Option<f64> {
     v.and_then(units::parse_length)
 }
 
-/// A `voids` entry that is a shape: `{"rect": [w, h] | "circle": d | "points": [...], "at": Ref, "anchor", "z": [z0, z1]}`.
 fn shape_void(scene: &Scene, hi: usize, k: usize, e: &Value, path: &str) -> Option<Vec<Cutter>> {
     let host = &scene.comps[hi];
     let hid = host.id.as_str();
@@ -551,7 +531,6 @@ fn shape_void(scene: &Scene, hi: usize, k: usize, e: &Value, path: &str) -> Opti
     Some(vec![Cutter { bx: clip::loops_box(&loops), loops, exact: Some(ccw(&exact)), z }])
 }
 
-/// The slabs of host prism `p` with the voids `mine` taken away (`p` itself when none of them reaches it).
 fn split(p: &Prism, voids: &mut [Void], mine: &[usize]) -> Vec<Prism> {
     if !(p.kind == Kind::Body || p.dashed) || p.loops.is_empty() || p.role == Role::Void || p.role == Role::Soil {
         return vec![p.clone()];
@@ -637,8 +616,6 @@ struct Cut {
     exact: Option<Vec<Vec<Pt>>>,
 }
 
-/// `flat` minus the cutters (None: they remove nothing), and the indices of the cutters that removed area. The exact
-/// loops survive while every cutter is a single exact loop that lands wholly inside as a new hole.
 fn subtract(flat: &[Vec<V2>], exact_in: &[Vec<Pt>], cs: &[&Cutter]) -> (Option<Cut>, Vec<usize>) {
     let mut region = flat.to_vec();
     let mut exact = Some(exact_in.to_vec());
@@ -679,7 +656,6 @@ fn z_text(z: [f64; 2]) -> String {
     if z == Z_ALL { "through".to_string() } else { format!("z {}..{}", fmt_ft_in(z[0]), fmt_ft_in(z[1])) }
 }
 
-/// W_VOID_MISS: a void that takes nothing from its host.
 fn miss(scene: &Scene, v: &Void) {
     let host = &scene.comps[v.host];
     let owner = &scene.comps[v.owner];
@@ -780,10 +756,6 @@ fn miss(scene: &Scene, v: &Void) {
     scene.diags.add_fix(Level::Warning, "W_VOID_MISS", Some(&owner.id), Some(&v.path), msg, fix);
 }
 
-// ---- fills under solids ---------------------------------------------------------------------------------------
-
-/// The solids that clip the fills of a view at plane `z`: per component instance whose bodies reach across the plane,
-/// the union of their outer outlines (a tube or a W seen lengthwise clips as its whole silhouette).
 pub struct FillCutters {
     z: f64,
     solids: Vec<(u32, Vec<Vec<V2>>, Box)>,
@@ -843,8 +815,6 @@ pub fn fill_cutters(prisms: &[Prism], z: f64) -> FillCutters {
     FillCutters { z, solids }
 }
 
-/// A cut fill clipped by the solids it surrounds (minus its `except` components): None when nothing is taken away, else
-/// one prism per remaining piece (none when the solids cover it).
 pub fn clip_fill(scene: &Scene, fc: &FillCutters, p: &Prism) -> Option<Vec<Prism>> {
     if p.role != Role::Soil
         || p.kind != Kind::Body
@@ -896,7 +866,6 @@ pub fn clip_fill(scene: &Scene, fc: &FillCutters, p: &Prism) -> Option<Vec<Prism
     )
 }
 
-/// The view's prisms with its cut fills clipped (SPEC 26.4), in order (a fill in pieces gives consecutive prisms).
 pub fn clip_fills(scene: &Scene, prisms: &[Prism], z: f64) -> Vec<Prism> {
     if !prisms.iter().any(|p| p.role == Role::Soil) {
         return prisms.to_vec();
@@ -912,10 +881,6 @@ pub fn clip_fills(scene: &Scene, prisms: &[Prism], z: f64) -> Vec<Prism> {
     out
 }
 
-// ---- seams ---------------------------------------------------------------------------------------------------
-
-/// The boundary segments of the slabs of `p`'s member (same component, instance and part) that touch `p`'s cap at
-/// `z` (`p.z1` for `hi`, else `p.z0`), flattened with `flatten`. Empty when that cap is not a seam.
 pub fn seam_neighbors(world: &[Prism], p: &Prism, hi: bool, flatten: impl Fn(&Prism) -> Vec<Vec<V2>>) -> Vec<[V2; 2]> {
     if !p.seam[usize::from(hi)] {
         return Vec::new();

@@ -1,19 +1,11 @@
-//! Grayscale PNG encoder: 8-bit gray, adaptive scanline filters chosen per row by the minimum-sum-of-absolute-values
-//! heuristic, DEFLATE through `deflate`, zlib framing, CRC-32 per chunk. Deterministic: the same pixels always give the
-//! same bytes, on every target.
-
 mod deflate;
 
 use alloc::vec::Vec;
 
 const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-/// IHDR payload tail: bit depth 8, colour type 0 (gray), deflate, adaptive filtering, no interlace.
 const IHDR_FORMAT: [u8; 5] = [8, 0, 0, 0, 0];
-/// Largest IDAT payload.
 const IDAT_MAX: usize = 65536;
-/// Largest side the encoder accepts.
 const MAX_SIDE: u32 = 0x100_0000;
-/// zlib's NMAX: the longest run of bytes after which Adler-32's `b` still fits in 32 bits, so the modulo is deferred.
 const ADLER_NMAX: usize = 5552;
 const ADLER_MOD: u32 = 65521;
 
@@ -39,7 +31,6 @@ const CRC_TABLE: [u32; 256] = {
     table
 };
 
-/// Feeds `bytes` into a running (pre-conditioned) CRC-32 register.
 fn crc_feed(crc: u32, bytes: &[u8]) -> u32 {
     bytes.iter().fold(crc, |r, &b| CRC_TABLE[usize::from((r as u8) ^ b)] ^ (r >> 8))
 }
@@ -57,7 +48,6 @@ fn adler32(bytes: &[u8]) -> u32 {
     (b << 16) | a
 }
 
-/// zlib header, the raw deflate stream, and the Adler-32 of the uncompressed data, big-endian.
 fn zlib_frame(deflated: &[u8], raw: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(deflated.len() + 6);
     out.extend_from_slice(&[0x78, 0x9C]);
@@ -89,7 +79,6 @@ fn container(width: u32, height: u32, zlib: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A scanline filter's predictor for one pixel from its left, upper and upper-left neighbours (0 outside the image).
 trait Predict {
     fn at(left: u8, up: u8, up_left: u8) -> u8;
 }
@@ -140,15 +129,11 @@ impl Predict for Paeth {
     }
 }
 
-/// A residual's magnitude as a signed byte: the sum of these is the heuristic that picks the filter.
 #[inline(always)]
 fn magnitude(residual: u8) -> u64 {
     u64::from(if residual < 128 { residual } else { residual.wrapping_neg() })
 }
 
-/// Calls `sink(i, residual)` for every pixel of `row` filtered by `P` (`prev` is the row above, all zero for the
-/// first). The first pixel has no left or upper-left neighbour. Both slices are cut to one length first so the pixel
-/// loop needs no bounds checks.
 #[inline(always)]
 fn for_each_residual<P: Predict>(row: &[u8], prev: &[u8], mut sink: impl FnMut(usize, u8)) {
     let n = row.len();
@@ -173,7 +158,6 @@ fn write<P: Predict>(row: &[u8], prev: &[u8], out: &mut [u8]) {
     for_each_residual::<P>(row, prev, |i, r| out[i] = r);
 }
 
-/// The five PNG filters in the order of their type byte.
 const FILTER_COUNT: u8 = 5;
 
 fn filter_score(kind: u8, row: &[u8], prev: &[u8]) -> u64 {
@@ -196,8 +180,6 @@ fn filter_write(kind: u8, row: &[u8], prev: &[u8], out: &mut [u8]) {
     }
 }
 
-/// The filtered image: per row, the filter byte with the lowest score (the earliest on ties) followed by the row
-/// filtered with it.
 fn filter_image(width: usize, pixels: &[u8]) -> Vec<u8> {
     let zero_row = alloc::vec![0u8; width];
     let mut out = Vec::with_capacity(pixels.len() + pixels.len() / width);
@@ -219,7 +201,6 @@ fn filter_image(width: usize, pixels: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Encodes an 8-bit gray image. `pixels.len()` must equal `width * height`.
 pub fn encode_gray(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>, EncodeError> {
     if width == 0 || height == 0 || width > MAX_SIDE || height > MAX_SIDE {
         return Err(EncodeError::InvalidDimensions);

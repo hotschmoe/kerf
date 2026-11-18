@@ -1,6 +1,3 @@
-//! Helpers shared by the component builders (SPEC 5): the build context, rectangles/zones/prisms, nominal sizes, point-list parsing,
-//! `length`/`until`, cover, mirroring. A component type's own file (`builders/<type>.rs`) holds its `Params` and `build`.
-
 use crate::geom::{self, Box, Pt, V2};
 use crate::json::Value;
 use crate::limits;
@@ -17,14 +14,9 @@ pub struct Ctx<'a, 's, 'p> {
     pub scene: &'a Scene<'s>,
     pub style: &'a Style,
     pub p: Params<'p>,
-    /// Placement point (world) used as the origin of point-list builders.
     pub origin: V2,
-    /// Placement rotation (radians CCW): `until` measures along the member's rotated run direction.
     pub angle: f64,
-    /// The length of a two-point member (`from`/`to`, SPEC 27.3): it replaces `length`/`until`.
     pub span: Option<f64>,
-    /// Why the built geometry sits at absolute positions (a Ref point, a strap on a face), so an `at.anchor` cannot
-    /// move it (SPEC 28.1).
     pub fixed: Option<String>,
 }
 
@@ -53,7 +45,6 @@ pub fn one_prism(prism: Prism) -> Vec<Prism> {
 pub use crate::model::fmt_num;
 pub use crate::units::fmt_ft_in;
 
-/// Rect quads for cut marks. Corners CCW from bottom-left.
 pub fn quad_of(x0: f64, y0: f64, x1: f64, y1: f64) -> [V2; 4] {
     [V2::init(x0, y0), V2::init(x1, y0), V2::init(x1, y1), V2::init(x0, y1)]
 }
@@ -98,7 +89,6 @@ pub fn sawn_thickness(nt: u32) -> Option<f64> {
     }
 }
 
-/// Parse `NxM` as a sawn nominal size. None if it is not a recognised nominal size.
 pub fn parse_sawn(size: &str) -> Option<SawnSize> {
     let xi = size.find(['x', 'X'])?;
     let a: u32 = size.get(..xi)?.trim_matches(' ').parse().ok()?;
@@ -106,7 +96,6 @@ pub fn parse_sawn(size: &str) -> Option<SawnSize> {
     Some(SawnSize { t: sawn_thickness(a)?, d: sawn_depth(a, b)? })
 }
 
-/// Parse `AxB` actual sizes (lengths, e.g. "1.75x11.875" or "1 3/4x9 1/4").
 pub fn parse_actual(size: &str) -> Option<SawnSize> {
     let bytes = size.as_bytes();
     let xi = bytes.iter().position(|&c| c == b'x' || c == b'X' || c == 0xc3)?;
@@ -122,13 +111,9 @@ pub fn parse_actual(size: &str) -> Option<SawnSize> {
     Some(SawnSize { t: a, d: b })
 }
 
-/// Accepted magnitude of a polygon bulge: below the minimum the arc is a straight line to within rounding (and its radius overflows
-/// the arc flattener), above the maximum it is a near-full circle with an absurd radius.
 pub const MIN_BULGE: f64 = 1e-6;
 pub const MAX_BULGE: f64 = 1e3;
 
-/// Parse a points list. Literal [x,y(,b)] entries are relative to the placement point; Refs are
-/// absolute. The result is in local coordinates (world - origin for Refs).
 pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Option<Vec<Pt>> {
     let Some(arr) = v.arr() else {
         ctx.p.fail(key, format!("param '{key}' must be an array of points: [x, y], [x, y, bulge], \"comp@anchor\" or {{\"ref\": \"comp@anchor\", \"offset\": [dx, dy]}}"));
@@ -233,9 +218,6 @@ pub fn parse_point_list(ctx: &mut Ctx, key: &str, v: &Value, local: bool) -> Opt
     ok.then_some(out)
 }
 
-/// Anchors on a point list (SPEC 25.1): `vertex_k` at point k (1-based, after repeated points are dropped) and
-/// `edge_k_mid` at the middle of the edge from point k to the next (the arc's midpoint for a bulged edge); `closed`
-/// adds the edge from the last point back to the first.
 pub fn vertex_anchors(pts: &[Pt], closed: bool) -> Vec<model::NamedAnchor> {
     let n = pts.len();
     let mut out: Vec<model::NamedAnchor> = pts
@@ -282,7 +264,6 @@ pub fn material_ok(ctx: &mut Ctx, key: &str, name: &str) -> bool {
     false
 }
 
-/// `length` or `until` (SPEC 17) for members that run along x or y. Returns the length in inches.
 pub fn length_or_until(ctx: &mut Ctx, run: &str, hint: &str, note: &mut String) -> Option<f64> {
     if let Some(l) = ctx.span {
         return Some(l);
@@ -300,8 +281,6 @@ pub fn length_or_until(ctx: &mut Ctx, run: &str, hint: &str, note: &mut String) 
     until_length(ctx, run, note)
 }
 
-/// The extent `until` gives along `run` ("x" or "y", turned by the placement angle): from the placement anchor to the
-/// Ref's coordinate on that axis. The caller has checked that `until` is present.
 pub fn until_length(ctx: &mut Ctx, run: &str, note: &mut String) -> Option<f64> {
     let uv = ctx.p.raw("until")?;
     let anchor = ctx.p.raw("at").and_then(|at| at.get("anchor")).and_then(Value::str).unwrap_or("bottom_left");
@@ -377,7 +356,6 @@ fn read_cover_fields(p: &mut Params, key: &str, obj: &Value, base: model::Cover)
     })
 }
 
-/// None: a parameter error (already reported).
 pub fn parse_cover(ctx: &mut Ctx, key: &str, base: model::Cover) -> Option<ParsedCover> {
     let Some(v) = ctx.p.raw(key) else { return Some(ParsedCover { cover: base, parts: Vec::new(), set: false }) };
     if !matches!(v, Value::Object(_)) {
@@ -472,7 +450,6 @@ pub fn gauge_thickness(g: u32) -> Option<f64> {
     })
 }
 
-/// A style material when the style defines it, else `fallback` (custom styles may lack the v0.1.2 additions).
 pub fn material_or<'n>(ctx: &Ctx, name: &'n str, fallback: &'n str) -> &'n str {
     if ctx.style.material(name).is_some() { name } else { fallback }
 }

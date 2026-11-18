@@ -1,5 +1,3 @@
-//! Document endpoints: info, list, get, create, apply, log, export, reference.
-
 use super::{DocInfo, Server, bad_request, compute_info, etag_of, is_missing, lock, mtime_ns, parse_body};
 use crate::agents;
 use crate::http::{self, Head, Out, Request};
@@ -459,11 +457,9 @@ pub fn api_export(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &st
     Ok(ka)
 }
 
-/// Largest reference file the server sends (snips of drawing sets are far smaller).
 const MAX_REFERENCE: u64 = 64 << 20;
 
-/// `GET /api/docs/:file/reference?path=P`: a file listed in the document's `meta.references`, read from the served
-/// folder. The path must be relative, stay inside the folder (symbolic links included) and name an image or a PDF.
+// References must stay within the served directory, including through symlinks.
 pub fn api_reference(s: &Server, req: &Request, w: &mut Out, extra: &str, file: &str) -> io::Result<bool> {
     let ka = req.keep_alive;
     let Some(rel) = req.param("path").filter(|p| !p.is_empty()) else {

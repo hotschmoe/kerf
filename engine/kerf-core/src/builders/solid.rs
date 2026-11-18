@@ -1,5 +1,3 @@
-//! solid (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{
     Ctx, drop_duplicate_points, material_ok, one_prism, oriented_ccw, parse_point_list, vertex_anchors,
 };

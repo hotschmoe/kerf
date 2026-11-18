@@ -1,8 +1,3 @@
-//! Tables (SPEC 26.1): a schedule drawn as a ruled grid of cells, sized in paper inches so it does not depend on the view
-//! scale. `read` validates the document form (columns, header rows, body rows, spans), `render` lays it out (column
-//! widths, wrapping, row heights) and draws it with its top-left border corner at the origin; the caller places it.
-//! `texts` lists every text of a table for the house-style lint and coverage.
-
 use super::text::{ascii_fold, text_item, upper_if, wrap_width};
 use super::{Env, non_null, str_member};
 use crate::drawing::{Align, Item, PathItem, VAlign};
@@ -20,21 +15,16 @@ pub const MAX_ROWS: usize = 300;
 const MIN_WIDTH_IN: f64 = 0.1;
 const MAX_WIDTH_IN: f64 = 30.0;
 
-/// Which rules a table draws (SPEC 26.1).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Rules {
-    /// Border, header rule, every row and column rule.
     All,
-    /// Border, header rule, the rules inside the header and every column rule; no rules between body rows.
     Header,
-    /// Border and header rule.
     Outer,
     None,
 }
 
 struct Cell {
     text: String,
-    /// Path of the cell below the table's path, e.g. `rows/2/1` or `header/0/3`.
     path: String,
     row: usize,
     col: usize,
@@ -46,16 +36,13 @@ struct Cell {
 pub struct Table<'a> {
     pub k: usize,
     pub id: &'a str,
-    /// Drawing position of the border's top-left corner, when the author gave `at`.
     pub at: Option<V2>,
     apath: String,
     title: String,
     notes: Vec<String>,
     rules: Rules,
-    /// `columns[k].width` in paper inches.
     widths: Vec<Option<f64>>,
     cells: Vec<Cell>,
-    /// Cell index per grid slot, row-major.
     owner: Vec<usize>,
     nhead: usize,
     nrows: usize,
@@ -83,7 +70,6 @@ fn read_align(v: Option<&Value>) -> Result<Option<Align>, String> {
     }
 }
 
-/// The text of a cell, a title or a column header: a string, a number (printed as written in JSON) or null (empty).
 fn plain_text(v: Option<&Value>) -> Option<String> {
     match v {
         None | Some(Value::Null) => Some(String::new()),
@@ -181,8 +167,6 @@ fn read_cell(
     Some(RawCell { text, cs, rs, align })
 }
 
-/// Places the rows of one section (`header` or `rows`) on the grid, HTML style: each cell takes the next free slot of
-/// its row (slots covered by a rowspan from above are skipped) and must fit the columns and the section.
 fn place_section(
     env: &mut Env,
     t: &mut Table,
@@ -399,7 +383,6 @@ fn unit_text(unit: &str) -> String {
     if unit.starts_with('(') { unit.to_string() } else { format!("({unit})") }
 }
 
-/// A table annotation, or `None` (with diagnostics) when it cannot be drawn.
 pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: &str) -> Option<Table<'a>> {
     let cols = read_columns(env, id, apath, an)?;
     let ncols = cols.len();
@@ -583,7 +566,6 @@ pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apa
     Some(t)
 }
 
-/// Paper sizes (model units at the view scale) of the table layout.
 struct Metrics {
     h: f64,
     pitch: f64,
@@ -600,8 +582,6 @@ fn text_width(env: &Env, s: &str, h: f64) -> f64 {
     env.font.width(ascii_fold(s), h)
 }
 
-/// The width a cell's text wants: its longest line (each `\n` paragraph unwrapped) up to `cap`, but at least its widest
-/// word, plus the padding.
 fn wanted_width(env: &Env, text: &str, m: &Metrics, cap: f64) -> f64 {
     let mut natural: f64 = 0.0;
     let mut word: f64 = 0.0;
@@ -614,7 +594,6 @@ fn wanted_width(env: &Env, text: &str, m: &Metrics, cap: f64) -> f64 {
     natural.min(cap).max(word) + 2.0 * m.padx
 }
 
-/// Column boundaries (x from 0 to the right) and row boundaries (distance down from the top), model units.
 struct Grid {
     xs: Vec<f64>,
     ys: Vec<f64>,
@@ -697,7 +676,6 @@ fn rule_item(env: &Env, kind: RuleKind, src: &str, a: V2, b: V2) -> Item {
     })
 }
 
-/// The runs of consecutive true slots: (first, one past the last).
 fn runs(on: &[bool]) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let mut start: Option<usize> = None;
@@ -764,7 +742,6 @@ fn text_at(env: &mut Env, src: &str, s: &str, x: f64, y: f64, h: f64, align: Ali
     text_item(env, LayerKey::Notes, Pen::Anno, src, s, x, y, h, 0.0, align, VAlign::Baseline)
 }
 
-/// `W_TABLE_CELL`: a cell's text is wider than its fixed-width column(s) and runs over the rule.
 fn report_overflow(env: &Env, t: &Table, g: &Grid, m: &Metrics) {
     let vid = env.spec.id;
     for (c, lines) in t.cells.iter().zip(&g.lines) {
@@ -807,8 +784,6 @@ fn math_ceil2(x: f64) -> f64 {
     crate::math::ceil(x * 20.0 - 1e-9) / 20.0
 }
 
-/// The table drawn with the top-left corner of its border at the origin: title above (centred, underlined), cells, rules,
-/// notes below. Reports cells whose text overflows a fixed-width column.
 pub fn render(env: &mut Env, t: &Table) -> Vec<Item> {
     let m = metrics(env);
     let g = layout(env, t, &m);
@@ -881,7 +856,6 @@ pub fn render(env: &mut Env, t: &Table) -> Vec<Item> {
     out
 }
 
-/// Moves drawn table items by `d`.
 pub fn translate(items: &mut [Item], d: V2) {
     for it in items {
         match it {
@@ -900,8 +874,6 @@ pub fn translate(items: &mut [Item], d: V2) {
     }
 }
 
-/// Every text of a table annotation in the document with its path below the annotation: title, column headers and
-/// units, header and body cells, notes. Numbers are left out (nothing to lint, and coverage reads them from the rows).
 pub fn texts(an: &Value) -> Vec<(String, &str)> {
     let mut out: Vec<(String, &str)> = Vec::new();
     if let Some(t) = an.get("title").and_then(Value::str) {
@@ -935,7 +907,6 @@ pub fn texts(an: &Value) -> Vec<(String, &str)> {
     out
 }
 
-/// The texts of one body row (strings and numbers) for coverage.
 pub fn row_texts(an: &Value) -> Vec<String> {
     let cell = |v: &Value| match v {
         Value::Object(_) => plain_text(v.get("text")).unwrap_or_default(),

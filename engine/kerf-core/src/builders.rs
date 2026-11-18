@@ -1,14 +1,3 @@
-//! Component builders (SPEC 5): the registry. Every component type lives in its own file, `builders/<type>.rs`, that declares
-//!   - `Params`: the type's parameters (keys, defaults, choices, ranges and catalog text: see params.rs); the parser,
-//!     `kerf catalog` / `kerf schema <type>`, the accepted-key list and the canonical key order all come from it;
-//!   - `build(ctx)`: turn the parsed parameters into a `Built` (prisms, anchors, zones) in local coordinates, reporting problems as
-//!     E_PARAM diagnostics and returning `None` when the component cannot be built.
-//!
-//! Helpers shared by the builders are in `builders/common.rs`.
-//!
-//! Adding a component type: (1) a variant in `catalog::Type` and an entry in `catalog::ENTRIES`; (2) `builders/<type>.rs`;
-//! (3) the `mod`, the `build` arm and the `params_rows` arm below. Steps (1) and (3) are exhaustive matches.
-
 use crate::catalog::Type;
 use crate::model::Built;
 use crate::params::{ParamSet, Row};
@@ -64,7 +53,6 @@ pub fn build(ty: Type, ctx: &mut Ctx) -> Option<Built> {
     }
 }
 
-/// The parameter rows of every component type (the catalog's "params" table).
 pub fn params_rows(ty: Type) -> Vec<Row> {
     match ty {
         Type::Lumber => lumber::Params::rows(),
@@ -89,7 +77,6 @@ pub fn params_rows(ty: Type) -> Vec<Row> {
     }
 }
 
-/// Whether `key` names a parameter row of `ty` (what `catalog::allowed_key` asks per document key).
 pub fn params_has_key(ty: Type, key: &str) -> bool {
     match ty {
         Type::Lumber => lumber::Params::has_key(key),

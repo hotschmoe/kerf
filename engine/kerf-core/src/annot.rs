@@ -1,11 +1,3 @@
-//! Annotations (SPEC 6, 16, 23): leader or keyed notes with deterministic column layout, dimensions, labels, and the title
-//! block under a view.
-//!
-//! This file holds the layout context (`Env`) and the main entry `annotate` (parse, route, repair, assemble); the parts live in
-//! `annot/`: `text` (glyph folding, wrapping, text boxes), `notes` (landing, obstacles, routing, citations), `dims` (one
-//! dimension and the stacking of colliding ones), `repair` (the bounded repair loop), `knockout` (hatch under text) and
-//! `title` (the title bubble). `shape` has the landing geometry shared with the iso view.
-
 pub mod callout;
 pub mod dims;
 pub mod knockout;
@@ -50,28 +42,20 @@ pub struct Env<'a, 's> {
     pub font: &'a Font,
     pub scene: &'a Scene<'a>,
     pub spec: &'a ViewSpec<'a>,
-    /// Drawing scale factor (`S` in the layout notes).
     pub s: f64,
     pub crop: Box,
     pub diags: &'a Diags,
     pub landing: Landing<'a, 's>,
     pub unverified: bool,
     pub unknown_glyph: bool,
-    /// Extents of the annotation groups (model units), filled by `annotate` (used by the view-fit check).
     pub notes_box: Box,
     pub dims_box: Box,
     pub labels_box: Box,
-    /// Per-annotation extents (model units) for the view-fit diagnostic.
     pub ann_boxes: Vec<AnnBox>,
-    /// Layout effort shared by every pass and trial of one view build (None: each routing call gets its own default budget).
     pub work: Option<&'a route::Work>,
-    /// A layout with shared notes (SPEC 26.2): each keyed note's number by note id. The view then draws no DETAIL NOTES
-    /// list and leaves its entries in `keyed_out`.
     pub shared_keys: Option<&'a [(String, u32)]>,
     pub keyed_out: Vec<KeyedEntry>,
-    /// The document's `views`: a keyed note with a `key` and no text takes the text of a note with that key in any view.
     pub doc_views: &'a [Value],
-    /// Check W_LEADER_HIT fixes by laying the view out again (off for a layout's trial builds, which are discarded).
     pub verify_fixes: bool,
 }
 
@@ -110,7 +94,6 @@ impl<'a, 's> Env<'a, 's> {
         }
     }
 
-    /// The view's `notes_style`, else the style's `notes.mode`.
     pub fn notes_style(&self) -> NotesStyle {
         if self.spec.kind == Kind::Schedule {
             return NotesStyle::List;
@@ -124,7 +107,6 @@ pub enum AnnKind {
     Note,
     Dim,
     Label,
-    /// The keyed notes list (one box per view).
     List,
     Table,
 }
@@ -150,7 +132,6 @@ fn str_member<'v>(an: &'v Value, key: &str) -> Option<&'v str> {
     an.get(key).and_then(Value::str)
 }
 
-/// The component a note points at: its `target`, else the component of its `at` Ref ("" for none).
 fn note_member(an: &Value) -> &str {
     let at = non_null(an, "at");
     let s = str_member(an, "target")
@@ -164,8 +145,6 @@ fn non_null<'v>(an: &'v Value, key: &str) -> Option<&'v Value> {
     an.get(key).filter(|v| !v.is_null())
 }
 
-/// What a view's annotation list yields: the notes, dimensions and labels to lay out, and per annotation (in view order)
-/// its items so far, its note slot and its bookkeeping.
 struct Gathered<'a> {
     notes: Vec<NoteIn<'a>>,
     note_slot: Vec<Option<usize>>,
@@ -173,14 +152,11 @@ struct Gathered<'a> {
     meta: Vec<Meta<'a>>,
     dspecs: Vec<DimSpec<'a>>,
     lspecs: Vec<LabelSpec<'a>>,
-    /// Items placed exactly where the author put them (welds, reference bubbles), after their annotation index.
     welds: Vec<(usize, Vec<Item>)>,
     tables: Vec<table::Table<'a>>,
-    /// Per note: drawn only in the DETAIL NOTES list (list views; keyed notes without `target` or `at`).
     listed: Vec<bool>,
 }
 
-/// The id of annotation `k`, or a diagnostic and `None` when it has none or repeats an earlier one.
 fn annotation_id<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, seen: &mut Vec<&'a str>) -> Option<&'a str> {
     let vid = env.spec.id;
     let Some(id) = str_member(an, "id") else {
@@ -207,8 +183,6 @@ fn annotation_id<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, seen: &mut Vec<
     Some(id)
 }
 
-/// The component (index, instance, part) an `at` point is given relative to: a Ref, or the `ref` of `{ref, offset}`;
-/// for a literal `[x, y]` (or `@origin`), the note's `target` (`comp`, `comp.part`, `comp#k`) when it has one.
 fn at_owner<'v>(env: &Env, atv: &'v Value, target: &'v str) -> Option<(u32, u32, Option<&'v str>)> {
     let text = atv.str().or_else(|| atv.get("ref").and_then(Value::str));
     if let Some(r) = text.and_then(|t| scene::parse_ref(t).ok()).filter(|r| !r.origin) {
@@ -229,8 +203,6 @@ fn at_owner<'v>(env: &Env, atv: &'v Value, target: &'v str) -> Option<(u32, u32,
     Some((env.scene.find(cid)?.index, inst, part))
 }
 
-/// Drawing position of the model point `p` resolved from `atv`: itself in a section; in an iso, projected from the
-/// face nearest the viewer of the component it refers to (SPEC 25.2).
 fn at_drawn(env: &Env, atv: &Value, target: &str, p: V2) -> V2 {
     match &env.landing {
         Landing::Section(_) => p,
@@ -238,7 +210,6 @@ fn at_drawn(env: &Env, atv: &Value, target: &str, p: V2) -> V2 {
     }
 }
 
-/// A note's `key` (keyed views): a whole number from 1 to 999; anything else warns and is ignored.
 fn read_key(env: &Env, an: &Value, id: &str, apath: &str) -> Option<u32> {
     let kv = non_null(an, "key")?;
     let whole = kv.num().and_then(|k| num::to_int::<u32>(k).filter(|&n| f64::from(n) == k));
@@ -260,8 +231,6 @@ fn read_key(env: &Env, an: &Value, id: &str, apath: &str) -> Option<u32> {
     None
 }
 
-/// The note a keyed note with `key` and no text takes its text (and, unless it has its own, its `cite`) from: the first
-/// note with that key and a text in the view, else in the document's views in order (SPEC 24, 28.2).
 fn shared_key_note<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a Value> {
     let holder = |an: &&Value| {
         non_null(an, "key").and_then(Value::num) == Some(f64::from(key)) && str_member(an, "text").is_some()
@@ -274,7 +243,6 @@ fn shared_key_note<'a>(env: &Env<'a, '_>, key: u32) -> Option<&'a Value> {
     })
 }
 
-/// The text form of the `nailing` component a note targets (SPEC 27.4): a note on fasteners may leave out its text.
 fn nailing_text(env: &Env, an: &Value) -> Option<String> {
     let target = str_member(an, "target")?;
     let cid = target.find(['.', '#']).map_or(target, |d| &target[..d]);
@@ -282,7 +250,6 @@ fn nailing_text(env: &Env, an: &Value) -> Option<String> {
     (c.ty.ty == crate::catalog::Type::Nailing).then(|| crate::builders::nailing::node_text(c.node))
 }
 
-/// A note, or `None` (with a diagnostic) when it cannot be drawn.
 fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) -> Option<NoteIn<'a>> {
     let vid = env.spec.id;
     let style = env.notes_style();
@@ -431,7 +398,6 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
     None
 }
 
-/// `pin` on a dimension or label: true keeps it exactly where the author put it; anything but a boolean warns.
 fn read_pin(env: &Env, an: &Value, id: &str, apath: &str) -> bool {
     match non_null(an, "pin") {
         None => false,
@@ -501,7 +467,6 @@ fn read_dim<'a>(env: &Env<'a, '_>, an: &'a Value, k: usize, id: &'a str, apath: 
     })
 }
 
-/// A label and its offset from the `at` point.
 fn read_label<'a>(
     env: &mut Env<'a, '_>,
     an: &'a Value,
@@ -556,7 +521,6 @@ fn read_label<'a>(
     Some((LabelSpec { k, id, text, align, base, off, pin }, off))
 }
 
-/// Reads every annotation of the view; the invalid ones are diagnosed and skipped.
 fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
     let spec: &'a ViewSpec<'a> = env.spec;
     let vid = spec.id;
@@ -670,12 +634,6 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
     g
 }
 
-/// Annotate a view. Returns the annotation items (notes interleaved after their annotation's own
-/// items, in view order). Hatch lines in `base_items` are knocked out under dimension text and labels.
-///
-/// SPEC 20: dimensions are stacked (`stack_dims`), notes routed (`route::route`), and when leaders still hit
-/// dimension text or labels, a bounded repair loop (at most 8 passes) pushes those dimensions out and
-/// moves those labels, re-routing after each pass; the pass with the fewest hits wins.
 pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
     let Gathered { notes, note_slot, per, meta, mut dspecs, lspecs, mut welds, tables, listed } = gather(env);
     dims::chain_dims(&mut dspecs, 0.25 * env.s);
@@ -835,8 +793,6 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     result
 }
 
-/// `W_TABLE_OVERLAP` (SPEC 26.1): a table placed with `at` overprints another table, a note, dimension, label or the
-/// notes list, or the drawing's lines.
 fn table_overlaps(
     env: &Env,
     tables: &[table::Table],

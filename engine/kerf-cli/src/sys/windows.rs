@@ -73,19 +73,16 @@ const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
 const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
 const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x2;
 
-/// Fills `buf` from the system's CSPRNG (`ProcessPrng`, Windows 10 and later).
 pub fn random_bytes(buf: &mut [u8]) -> bool {
     // SAFETY: `buf` is valid for `buf.len()` writable bytes for the duration of the call.
     buf.is_empty() || unsafe { ProcessPrng(buf.as_mut_ptr(), buf.len()) } != 0
 }
 
-/// The agent is started suspended (so it can join its job before it runs, and a grandchild can never escape it)
-/// in its own process group (so the console's Ctrl-C reaches only the server, which then stops the agent).
+// Start suspended so descendants cannot escape before job assignment.
 pub fn prepare_agent(cmd: &mut Command) {
     cmd.creation_flags(CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP);
 }
 
-/// A handle that is closed on drop.
 struct Owned(Handle);
 
 // SAFETY: a kernel handle is a plain token, usable from any thread.
@@ -100,8 +97,6 @@ impl Drop for Owned {
     }
 }
 
-/// The agent and everything it started: a job object that kills its members when it is closed. When the job
-/// cannot be set up, only the agent's own process is terminated (grandchildren may survive).
 pub struct Group {
     job: Option<Owned>,
     leader: Option<Owned>,
@@ -144,8 +139,6 @@ fn new_job() -> Option<Owned> {
 }
 
 impl Group {
-    /// Puts a child started with [`prepare_agent`] into a new job and lets it run. A child that cannot be
-    /// resumed is terminated.
     pub fn adopt(child: &Child) -> io::Result<Group> {
         let process: RawHandle = child.as_raw_handle();
         let job = new_job().filter(|j| {
@@ -163,7 +156,6 @@ impl Group {
         Ok(group)
     }
 
-    /// Windows has no soft signal: both are a hard kill of the whole tree.
     pub fn signal(&self, _hard: bool) {
         if let Some(j) = &self.job {
             // SAFETY: `j` is a live job handle.
@@ -199,17 +191,13 @@ unsafe extern "system" fn on_ctrl(kind: u32) -> i32 {
     1
 }
 
-/// Ctrl-C, Ctrl-Break and console close/logoff/shutdown store a signal number into `flag`.
 pub fn install_shutdown_handler(flag: &'static AtomicU8) {
     let _ = SHUTDOWN.set(flag);
     // SAFETY: `on_ctrl` has the HandlerRoutine signature and only touches an atomic and sleeps.
     unsafe { SetConsoleCtrlHandler(Some(on_ctrl), 1) };
 }
 
-/// Exclusive lock on one byte far past any real end of file, held until `f` is closed, blocking until granted.
-/// Windows byte-range locks are mandatory, so locking the content (std's `File::lock` covers byte 0 on) would make a
-/// concurrent read of the log fail. A file system without locks (a network share, FAT) is tolerated: the server's
-/// own mutex still serialises its writes.
+// Lock beyond the log contents: Windows byte-range locks also block reads.
 pub fn lock_exclusive(f: &File) -> io::Result<()> {
     let mut ov =
         Overlapped { internal: 0, internal_high: 0, offset: 0, offset_high: 1 << 30, event: std::ptr::null_mut() };
@@ -222,9 +210,6 @@ fn is_runnable_ext(ext: &str) -> bool {
     ["exe", "com", "cmd", "bat"].iter().any(|e| ext.eq_ignore_ascii_case(e))
 }
 
-/// What `CreateProcess` would run for `bin`, looked up like a shell does: each `PATH` directory, with the `PATHEXT`
-/// extensions that can be started directly (`.exe`, `.com`, `.cmd`, `.bat`; npm shims are `.cmd`, a `.ps1` or an
-/// extensionless script cannot be run). Falls back to `bin` itself, which then fails as not found.
 pub fn resolve_program(bin: &str, path: &OsStr) -> PathBuf {
     let given = std::path::Path::new(bin);
     let has_ext = given.extension().and_then(OsStr::to_str).is_some_and(is_runnable_ext);
@@ -250,7 +235,6 @@ pub fn resolve_program(bin: &str, path: &OsStr) -> PathBuf {
     std::env::split_paths(path).find_map(|d| candidates(&d)).unwrap_or_else(|| bin.into())
 }
 
-/// `C:\dir` for the verbatim `\\?\C:\dir` that `canonicalize` returns (and `\\server\share` for `\\?\UNC\...`).
 pub fn plain_path(p: PathBuf) -> PathBuf {
     let s: OsString = p.clone().into_os_string();
     let Some(text) = s.to_str() else { return p };

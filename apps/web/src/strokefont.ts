@@ -1,7 +1,6 @@
-// Kerf stroke font (Hershey Simplex derivative, spec/fonts/kerf-simplex.json) -> polylines.
 import type { StrokeFont } from './types';
 
-export type Polyline = number[]; // flat [x0,y0,x1,y1,...]
+export type Polyline = number[];
 
 let font: StrokeFont | null = null;
 export function setFont(f: StrokeFont) { font = f; }
@@ -10,7 +9,6 @@ export function getFont(): StrokeFont {
   return font;
 }
 
-/** Fold characters the stroke font lacks to their ASCII look-alikes (engine text may contain them). */
 export function fold(s: string): string {
   return s.replace(/[\u2013\u2014\u2212]/g, '-').replace(/[\u2018\u2019\u2032]/g, "'").replace(/[\u201C\u201D\u2033]/g, '"')
     .replace(/\u00D7/g, 'X').replace(/\u00B7|\u2022/g, '.').replace(/\u00BD/g, '1/2').replace(/\u00BC/g, '1/4').replace(/\u00BE/g, '3/4')
@@ -30,7 +28,6 @@ export interface TextSpec {
   s: string; x: number; y: number; h: number; rot?: number; align?: string; valign?: string;
 }
 
-/** Strokes in model space for one text item, plus its axis-aligned bounding box. */
 export function layoutText(t0: TextSpec): { lines: Polyline[]; bbox: [number, number, number, number]; width: number } {
   const f = getFont();
   const t = { ...t0, s: fold(t0.s) };
@@ -55,7 +52,6 @@ export function layoutText(t0: TextSpec): { lines: Polyline[]; bbox: [number, nu
     }
     pen += g.adv;
   }
-  // bbox of the text box (cap height tall), rotated
   const corners: [number, number][] = [[ox, oy], [ox + width, oy], [ox + width, oy + t.h], [ox, oy + t.h]];
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [lx, ly] of corners) {

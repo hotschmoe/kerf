@@ -1,9 +1,4 @@
-//! wasm32 entry points: the raw ABI of SPEC 13.1 (no imports, no wasm-bindgen).
-//!
-//!   memory
-//!   kerf_alloc(len) -> ptr        kerf_free(ptr, len)
-//!   kerf_call(fn_ptr, fn_len, in_ptr, in_len) -> 0 ok | 1 error (output is error JSON)
-//!   kerf_out_ptr() / kerf_out_len()   (valid until the next call)
+// SPEC 13.1 defines the wasm ABI.
 
 #![no_std]
 
@@ -29,13 +24,11 @@ static OUT: Output = Output(UnsafeCell::new(Vec::new()));
 
 fn layout(len: u32) -> Layout {
     let size = (len as usize).max(1);
-    // Align 1 is always valid for a non-zero size below isize::MAX.
     Layout::from_size_align(size, 1).unwrap_or(Layout::new::<u8>())
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kerf_alloc(len: u32) -> u32 {
-    // SAFETY: the layout is non-zero sized.
     unsafe { alloc(layout(len)) as usize as u32 }
 }
 

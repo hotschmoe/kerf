@@ -1,7 +1,3 @@
-//! W_CROP_STALE: a component whose visible extent mostly falls outside an explicit section crop. A crop that cuts a
-//! member on purpose (break lines) is not stale: the warning needs an edit that moved or resized the member out of a
-//! crop it sat in, or a member of which less than 10% stays inside every view that draws it.
-
 use crate::geom::{self, Box};
 use crate::json::{self, Value};
 use crate::model::{Diags, Level};
@@ -13,10 +9,8 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 
 const STALE_FRACTION: f64 = 0.25;
-/// Outside fraction past which a member is lost from the view rather than cut by it.
 const LOST_FRACTION: f64 = 0.9;
 
-/// The scene and document as they were before an edit, so an edit that newly pushes a component out of the crop is reported.
 pub struct Before<'a> {
     pub scene: &'a Scene<'a>,
     pub doc: &'a Value,
@@ -55,8 +49,6 @@ fn inside1(lo: f64, hi: f64, c0: f64, c1: f64, eps: f64) -> f64 {
     (hi.min(c1) - lo.max(c0)).max(0.0) / (hi - lo)
 }
 
-/// The cut plane W_CROP_STALE measures a view's members against: a section's cut_z, nothing for an elevation (every
-/// member shows); plan and iso views are not checked (their crops are not in model x/y).
 fn crop_cut(spec: &ViewSpec<'_>) -> Option<f64> {
     match spec.kind {
         Kind::Section => Some(spec.cut_z),
@@ -92,7 +84,6 @@ fn shown_somewhere(c: &Comp<'_>, vs: &[Value], max_outside: f64) -> bool {
 enum Prior {
     None,
     Added,
-    /// Mostly inside the crop before the edit, with this extent.
     Inside(Box),
     Cut,
 }

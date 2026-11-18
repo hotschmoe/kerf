@@ -1,6 +1,3 @@
-//! Fasteners of `nailing` components in section, plan and elevation views (SPEC 27.4): a shank with a head bar where the
-//! nail lies in the drawing plane, a dot where it is seen end-on.
-
 use super::{Section, Target};
 use crate::drawing::FillItem;
 use crate::geom::{self, Loc, Pt, V2};
@@ -10,24 +7,18 @@ use crate::view::Kind as ViewKind;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// A `nailing` component that has fasteners inside the crop but draws none of them in this view.
 pub struct NailsHidden {
     pub id: String,
-    /// The z (y in a plan) just in front of its members, where a cut would show the nails.
     pub clear: f64,
 }
 
 const EPS: f64 = 1e-6;
 
 impl Section<'_> {
-    /// View coordinates of a world point: the drawing point and its depth toward the viewer.
     fn nail_view(&self, p: [f64; 3]) -> (V2, f64) {
         if self.spec.kind == ViewKind::Plan { (V2::init(p[0], -p[2]), p[1]) } else { (V2::init(p[0], p[1]), p[2]) }
     }
 
-    /// A solid that is not one of the nailing's members covers the point: cut by the plane, or beyond it and wholly in
-    /// front of depth `w`. The nailing's own members never hide it, cut or not: a fastener inside a cut member draws
-    /// over its section (SPEC 28.6). Embedded members (bolts, bars) never hide a nail.
     fn nail_hidden(&self, p: V2, w: f64, stack: &[u32]) -> bool {
         self.occs.iter().any(|o| {
             if !o.bx.contains(p) {

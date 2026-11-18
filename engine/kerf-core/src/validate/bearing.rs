@@ -1,6 +1,3 @@
-//! `W_BEARING` (SPEC 27.1): a member with a minimum bearing (`Traits::min_bearing`, the I-joist) laid along x on
-//! something under it must bear at least that length at each end support and at each intermediate support.
-
 use super::{Drawn, Pf, axis_aligned, z_gap};
 use crate::model::{Diags, Kind, Level, fmt_num};
 use crate::style::Role;

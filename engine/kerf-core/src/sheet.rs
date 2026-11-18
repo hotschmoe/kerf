@@ -1,8 +1,3 @@
-//! Sheet (SPEC 12, DESIGN 5): frame, title block and footer around a detail placed at true scale.
-//! `with_sheet` returns a Drawing whose bounds are the full page, in model coordinates (the sheet
-//! geometry is built in paper inches and mapped through the inverse of the paper scale), so every
-//! exporter can treat sheet and detail uniformly.
-
 use crate::annot;
 use crate::drawing::{Drawing, FillItem, Item, PathItem, TextItem};
 use crate::font::Font;
@@ -16,7 +11,6 @@ use alloc::vec::Vec;
 
 struct Ctx<'a> {
     st: &'a Style,
-    /// paper -> model
     s: f64,
     ox: f64,
     oy: f64,
@@ -71,9 +65,6 @@ impl Ctx<'_> {
     }
 }
 
-/// A title block value in its cell: one line at `h`, shrunk to the cell width; when that would go below 3/4 of `h`, two
-/// lines split at the space that balances them (at most `two_h` high each) if they come out larger. Never wider than
-/// `maxw`.
 fn fit_cell(font: &Font, s: &str, h: f64, maxw: f64, two_h: f64) -> (Vec<String>, f64) {
     let w = font.width(s, h);
     if w <= maxw {

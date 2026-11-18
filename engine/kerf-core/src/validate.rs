@@ -1,7 +1,3 @@
-//! Geometry checks over a compiled scene: overlaps, floating members, untreated wood on masonry, rebar cover,
-//! near-miss gaps, short sloped sheets and the citation tally. The geometry checks run once per distinct set of
-//! components the document's views draw (a view's `omit` removes components from its set).
-
 use crate::builders::world_box;
 use crate::clip::{self, Op};
 use crate::geom::{self, Loc, Pt, V2, Xf};
@@ -86,9 +82,6 @@ fn region_dist(a: &[Vec<V2>], b: &[Vec<V2>], limit: f64) -> f64 {
     best
 }
 
-/// How long the boundaries of `a` and `b` run side by side within `gap` of each other: the summed overlap of every pair of
-/// parallel edges (within 1 degree) that lie within `gap`. A corner near a face (a sloped rafter passing a wall corner)
-/// adds nothing.
 fn contact_len(a: &[Vec<V2>], b: &[Vec<V2>], gap: f64) -> f64 {
     let sin_tol = 0.0175;
     let mut total = 0.0;
@@ -173,19 +166,13 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     unverified_count(doc, diags);
 }
 
-/// The components one or more views draw (compiled, `visible`, not in the view's `omit`) and their prisms. `views`
-/// are the indices of those views in `views[]`; empty for the single set of a document without views.
 struct Drawn<'p, 'a> {
     comps: Vec<&'a Comp<'a>>,
     items: Vec<&'p Pf<'a>>,
-    /// The bodies of `shown: hidden` / `where_occurs` members: drawn dashed and never checked themselves, but what lies
-    /// against them is not floating.
     hidden: Vec<&'p Pf<'a>>,
     views: Vec<usize>,
 }
 
-/// The distinct component sets of the document's views (views that draw the same components share one) and the
-/// view ids. A document without views (or with more than the view limit) gets one set of every compiled component.
 fn drawn_sets<'p, 'a>(
     scene: &'a Scene<'a>,
     doc: &'a Value,
@@ -227,8 +214,6 @@ fn drawn_sets<'p, 'a>(
     (sets, ids)
 }
 
-/// Run one geometry check over every set. A finding is reported once; when it occurs in some views but not all,
-/// its message ends with the views it occurs in.
 fn each_set<'p, 'a>(sets: &[Drawn<'p, 'a>], ids: &[&str], diags: &Diags, check: impl Fn(&Drawn<'p, 'a>, &Diags)) {
     let mut found: Vec<(Diag, Vec<usize>)> = Vec::new();
     for s in sets {
@@ -252,8 +237,6 @@ fn each_set<'p, 'a>(sets: &[Drawn<'p, 'a>], ids: &[&str], diags: &Diags, check: 
     }
 }
 
-/// A placement finding about a point-list shape that a box or named `at.anchor` moved (SPEC 28.1: honoured since
-/// beta.2, ignored before) says so: the anchor, the shift and the op that puts the points back where they are written.
 fn anchor_hint(sets: &[Drawn<'_, '_>], d: &mut Diag) {
     if !matches!(d.code, "W_OVERLAP" | "W_FLOATING" | "W_COVER" | "W_BAR_OUTSIDE" | "W_NEAR_MISS") {
         return;
@@ -279,8 +262,6 @@ fn anchor_hint(sets: &[Drawn<'_, '_>], d: &mut Diag) {
     }
 }
 
-/// A component with a body that is not soil: its soil parts (a `slab_edge` `base`) clip fills like its solids do
-/// (SPEC 26.4, 28.8), so a fill overlapping them is not `W_OVERLAP`.
 fn has_solid_body(c: &Comp<'_>) -> bool {
     c.world.iter().any(|p| p.kind == Kind::Body && !matches!(p.role, Role::Soil | Role::Void))
 }
@@ -343,8 +324,6 @@ fn overlaps(s: &Drawn<'_, '_>, diags: &Diags) {
     }
 }
 
-/// The fix for an overlap: a member cast into concrete or masonry is subtracted from it (`voids`, or a sleeve's
-/// `through`, SPEC 26.4); otherwise the pieces should only touch.
 fn overlap_fix(p: &Pf<'_>, q: &Pf<'_>) -> String {
     const PLAIN: &str = "move or resize one of them so they only touch, or mark the inner one embedded:true if it is reinforcement or hardware";
     let (host, inner) = match (p.comp.ty.traits.takes_voids, q.comp.ty.traits.takes_voids) {
@@ -373,8 +352,6 @@ fn overlap_fix(p: &Pf<'_>, q: &Pf<'_>) -> String {
     )
 }
 
-/// Concrete and masonry pieces facing each other across less than this (a construction, control or keyed joint) are
-/// not floating.
 const JOINT_GAP: f64 = 1.0;
 
 fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
@@ -462,8 +439,6 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
     }
 }
 
-/// A strap `on` the front or back face of one member that also crosses another member whose face is not in that plane:
-/// over the second member it floats off the face (or runs inside the member when that member stands proud).
 fn strap_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, diags: &Diags) {
     let Some((host, face)) = c.node.get("on").and_then(Value::str).and_then(|o| o.rsplit_once('.')) else { return };
     if !matches!(face, "face_front" | "face_back") {
@@ -538,8 +513,6 @@ fn strap_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, dia
     );
 }
 
-/// An edge-on sheet (a thin strip in the drawing plane) that touches other components only at its ends or edges:
-/// nothing lies against either face, so it floats off the framing it should be nailed to (a stale `at` offset).
 fn panel_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, diags: &Diags) {
     for p in mine.iter().filter(|p| p.prism.kind == Kind::Body && p.prism.instance == 0) {
         let [l] = p.flat.as_slice() else { continue };
@@ -635,8 +608,6 @@ fn panel_faces(s: &Drawn<'_, '_>, c: &Comp<'_>, mine: &[&&Pf<'_>], gap: f64, dia
     }
 }
 
-/// A face-on strap (`connector` seen face-on, placed with `z`) that overlaps a member in plan and floats less than 1"
-/// in front of or behind it: that member, the face (`face_front` / `face_back`) and the gap (SPEC 27.2).
 fn face_host<'a>(s: &Drawn<'_, 'a>, c: &Comp<'a>, mine: &[&&Pf<'_>]) -> Option<(String, &'static str, f64)> {
     if !c.ty.traits.hardware || c.node.get("on").is_some() || !mine.iter().all(|p| p.prism.face_tie) {
         return None;
@@ -666,12 +637,8 @@ fn face_host<'a>(s: &Drawn<'_, 'a>, c: &Comp<'a>, mine: &[&&Pf<'_>]) -> Option<(
     best.map(|(g, id, f)| (id, f, g))
 }
 
-/// Wood and masonry that do not touch exactly count as in contact (W_UNTREATED_CONTACT) only where their outlines run
-/// side by side, within 1/32", for at least this long.
 const UNTREATED_MIN_CONTACT: f64 = 0.125;
 
-/// W_UNTREATED_CONTACT: untreated wood that touches concrete or masonry, on the drawn (cut) outlines: outlines that touch
-/// or overlap, or that run side by side within 1/32" for 1/8" or more.
 fn untreated(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut reported: Vec<[u32; 2]> = Vec::new();
     let gap = 1.0 / 32.0;
@@ -747,7 +714,6 @@ fn host_edges(outline: &[Pt], xf: &Xf) -> Vec<Edge> {
     out
 }
 
-/// The edges of a void outline (CCW) as faces of the concrete around it: the concrete's outward normal points into the void.
 fn void_edges(l: &[V2]) -> Vec<Edge> {
     let mut out = Vec::new();
     for (i, &p) in l.iter().enumerate() {
@@ -770,8 +736,6 @@ fn void_edges(l: &[V2]) -> Vec<Edge> {
     out
 }
 
-/// The cover required at `c` and the part zone it comes from: the first part override whose zone holds `c`, else the
-/// host's cover with the first zone that holds `c` (the part a `cover.parts.<part>` override would apply to).
 fn cover_for<'z>(h: &HostInfo, zones_world: &[ZoneBox<'z>], c: V2) -> (Cover, Option<&'z str>) {
     for pc in &h.part_cover {
         if let Some(z) = zones_world.iter().find(|z| z.name == pc.part && z.box_.contains(c)) {
@@ -794,8 +758,6 @@ fn cover_json(c: Cover, face: Option<usize>, value: f64) -> String {
     )
 }
 
-/// The op that lowers one face (0 bottom, 1 top, 2 sides) of a host's required cover to `value` and keeps the rest:
-/// on `part`'s override when the bar sits in a part zone, else on the host's own cover.
 fn cover_op(host_id: &str, h: &HostInfo, part: Option<&str>, face: usize, value: f64) -> String {
     let base = cover_json(h.cover, if part.is_none() { Some(face) } else { None }, value);
     let mut parts: Vec<String> = h
@@ -1085,7 +1047,6 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
     }
 }
 
-/// Whether `p` lies in (or on) a concrete or masonry host of the set whose z range meets the bar's.
 fn in_host(s: &Drawn<'_, '_>, bp: &Prism, p: V2) -> bool {
     s.comps.iter().any(|h| {
         let Some(host) = h.built.host.as_ref() else { return false };
@@ -1099,8 +1060,6 @@ fn in_host(s: &Drawn<'_, '_>, bp: &Prism, p: V2) -> bool {
     })
 }
 
-/// The point that puts a path bar outside its hosts: the middle of a bend in no host, else (when no point of the bar is
-/// in a host) the middle of its longest leg. A straight leg may run out of the concrete (a dowel, a bar welded to steel).
 fn path_outside(s: &Drawn<'_, '_>, bp: &Prism, pieces: &[Piece], centre: V2) -> Option<(V2, &'static str)> {
     for pc in pieces.iter().filter(|pc| pc.is_bend) {
         let m = pc.segs.get(pc.segs.len() / 2).map_or(pc.p0, |sg| sg[0]);
@@ -1114,8 +1073,6 @@ fn path_outside(s: &Drawn<'_, '_>, bp: &Prism, pieces: &[Piece], centre: V2) -> 
     if any || last { None } else { Some((centre, "the middle of its longest leg")) }
 }
 
-/// `W_BAR_OUTSIDE` (SPEC 25.1): an along-z bar centred in no concrete or masonry host drawn with it, or a path bar
-/// with a bend outside every host or no point in any. Silent when the set draws no host at all.
 fn bar_outside(s: &Drawn<'_, '_>, bar: &Comp<'_>, outside: &[(V2, &str)], diags: &Diags) {
     let Some(&(c, what)) = outside.first() else { return };
     let mut nearest: Option<(&str, f64)> = None;
@@ -1196,7 +1153,6 @@ fn unverified_count(doc: &Value, diags: &Diags) {
     }
 }
 
-/// One instance of a component (an `array` copy is its own box: o.c. framing is spaced, not short).
 #[derive(Clone, Copy)]
 struct CompBox<'a> {
     c: &'a Comp<'a>,
@@ -1206,8 +1162,6 @@ struct CompBox<'a> {
     z1: f64,
 }
 
-/// Members side by side across x (both see the gap with a long face: studs at 16" o.c. next to a jack stud, a post
-/// beside a stud) leave framing spaces at this gap and more. Stacked members (a gap along y) bear on each other.
 const SIDE_BY_SIDE_GAP: f64 = 1.0;
 
 fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {

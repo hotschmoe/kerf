@@ -1,5 +1,3 @@
-//! Cut prisms: fills, hatching, grain, outlines, cut marks.
-
 use super::hardware::is_path_bar;
 use super::joins::off_edges;
 use super::occlusion::PieceOut;
@@ -15,21 +13,17 @@ use crate::pen::Pen;
 use crate::style::CutMark;
 use alloc::vec::Vec;
 
-/// A cut part whose fill an embedded part's hole emptied: `lost` when the subtraction removed more than the hole's
-/// own area (a boolean failure; the hole is skipped and the part keeps its fill), else the hole covers the whole cut.
 pub struct FillFault {
     pub host: alloc::string::String,
     pub hole: alloc::string::String,
     pub lost: bool,
 }
 
-/// A visible region split into outer loops with their holes: exact loops (with bulges) and the flattened ones.
 pub struct Group {
     pub loops: Vec<Vec<Pt>>,
     pub flat: Vec<Vec<V2>>,
 }
 
-/// Angle in degrees (0..180) of the longest edge of a loop; hatch grain follows it.
 pub fn member_angle_deg(lp: &[Pt]) -> f64 {
     let mut best = -1.0;
     let mut ang = 0.0;
@@ -55,7 +49,6 @@ pub fn member_angle_deg(lp: &[Pt]) -> f64 {
     ang
 }
 
-/// Splits a region into outer loops with the holes inside each; `exact` (the prism's own loops) is used as given.
 pub fn group_region(region: &[Vec<V2>], exact: Option<&[Vec<Pt>]>) -> Vec<Group> {
     if let Some(ex) = exact {
         return alloc::vec![Group { loops: ex.to_vec(), flat: region.to_vec() }];

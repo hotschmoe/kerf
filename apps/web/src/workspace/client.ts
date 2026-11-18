@@ -1,5 +1,3 @@
-// HTTP/SSE client for `kerf serve` (spec/SERVE.md "HTTP API"). Token: ?token= -> sessionStorage -> Authorization: Bearer
-// (SSE cannot send headers, so /api/events takes ?token=).
 import type { AgentInfo } from '../chat/store';
 import type { ApplyResult, KerfDoc, Op } from '../types';
 
@@ -21,17 +19,16 @@ export class ServerError extends Error {
 const TOKEN_KEY = 'kerf.token';
 const ss = {
   get: () => { try { return sessionStorage.getItem(TOKEN_KEY) ?? ''; } catch { return ''; } },
-  set: (v: string) => { try { sessionStorage.setItem(TOKEN_KEY, v); } catch { /* ignore */ } },
+  set: (v: string) => { try { sessionStorage.setItem(TOKEN_KEY, v); } catch {} },
 };
 
-/** Take `?token=` from the URL into sessionStorage and scrub it from the address bar. */
 export function captureToken(): string {
   const u = new URL(location.href);
   const t = u.searchParams.get('token');
   if (t) {
     ss.set(t);
     u.searchParams.delete('token');
-    try { history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } catch { /* ignore */ }
+    try { history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); } catch {}
   }
   return ss.get();
 }
@@ -42,7 +39,6 @@ export class WorkspaceClient {
 
   authHeaders(): Record<string, string> { return this.token ? { authorization: `Bearer ${this.token}` } : {}; }
 
-  /** null = not a kerf server (static mode). Throws ServerError(401) when it is one but needs a token. */
   static async detect(origin: string, token: string, timeoutMs = 2500): Promise<{ client: WorkspaceClient; info: ServerInfo } | null> {
     const client = new WorkspaceClient(origin, token);
     const ac = new AbortController();
@@ -71,7 +67,7 @@ export class WorkspaceClient {
 
   private async fail(r: Response): Promise<never> {
     let code = `HTTP_${r.status}`, msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) { code = j.error.code ?? code; msg = j.error.message ?? msg; } } catch { /* not JSON */ }
+    try { const j = await r.json(); if (j?.error) { code = j.error.code ?? code; msg = j.error.message ?? msg; } } catch {}
     throw new ServerError(r.status, code, msg, r.headers.get('etag') ?? undefined);
   }
 
@@ -92,13 +88,12 @@ export class WorkspaceClient {
     return { doc: (await r.json()) as KerfDoc, etag: r.headers.get('etag') };
   }
 
-  /** The engine `apply` output. 409 (if_match mismatch) comes back as `{ conflict: true }`. */
   async apply(file: string, ops: Op[], why: string, actor: 'designer' | 'llm', ifMatch?: string | null): Promise<{ result?: ApplyResult; conflict?: boolean; etag: string | null }> {
     const r = await this.request('POST', `/docs/${encodeURIComponent(file)}/apply`, { ops, why, actor, ...(ifMatch ? { if_match: ifMatch } : {}) });
     if (r.status === 409) return { conflict: true, etag: r.headers.get('etag') };
     const etag = r.headers.get('etag');
     let j: unknown = null;
-    try { j = await r.json(); } catch { /* handled below */ }
+    try { j = await r.json(); } catch {}
     const o = j as (ApplyResult & { error?: unknown }) | null;
     if (o && typeof o === 'object' && 'ok' in o) {
       const res = { ...o, diagnostics: o.diagnostics ?? [], summary: o.summary ?? '' } as ApplyResult;
@@ -136,8 +131,8 @@ export class WorkspaceClient {
     await this.request('POST', '/agent/stop', { run_id: runId }).catch(() => undefined);
   }
 
-  /** SSE feed. Named events (`event: doc_changed`) and unnamed `data: {"type":...}` messages are both accepted. */
   events(on: (e: ServerEvent) => void, status: (online: boolean) => void): () => void {
+    // EventSource cannot send authorization headers.
     const url = `${this.apiBase}/events` + (this.token ? `?token=${encodeURIComponent(this.token)}` : '');
     const es = new EventSource(url);
     const deliver = (type: string, raw: string) => {

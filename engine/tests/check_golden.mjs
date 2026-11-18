@@ -16,12 +16,15 @@ const docs = [
   ...fs.readdirSync(path.join(root, 'spec', 'details')).filter((f) => f.endsWith('.kerf.json')).map((f) => path.join(root, 'spec', 'details', f)),
   ...fs.readdirSync(path.join(here, 'docs')).filter((f) => f.endsWith('.kerf.json')).map((f) => path.join(here, 'docs', f)),
 ];
+const selected = new Set(process.argv.slice(2));
+const selectedDocs = selected.size ? docs.filter((doc) => selected.has(path.basename(doc, '.kerf.json'))) : docs;
+if (selected.size && selectedDocs.length !== selected.size) throw new Error('Unknown golden detail');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kerf-golden-'));
 const py = process.env.PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3');
 const havePy = spawnSync(py, ['--version']).status === 0;
 let fail = 0, compared = 0;
 const kerf = (...a) => { const r = spawnSync(K, a, { encoding: 'utf8' }); return r; };
-for (const doc of docs) {
+for (const doc of selectedDocs) {
   const name = path.basename(doc, '.kerf.json');
   const g = path.join(goldenRoot, name);
   const views = JSON.parse(fs.readFileSync(doc, 'utf8')).views.map((v) => v.id);

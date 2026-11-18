@@ -1,7 +1,3 @@
-//! connector (SPEC 5, 27.2): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-//! Straps, ties and angles are a thickened polyline (`points`, or flush on a member face with `on`); hangers, post caps,
-//! post bases and holdowns are built in `hardware.rs` from the members they connect.
-
 use super::common::{Ctx, drop_duplicate_points, gauge_thickness, parse_point_list, vertex_anchors};
 use super::hardware;
 use crate::catalog::{self, Hardware, ModelMatch, Series};
@@ -52,7 +48,6 @@ params! {
     }
 }
 
-/// What `model` says about the connector.
 pub struct ModelInfo {
     pub name: String,
     pub table: Option<&'static Hardware>,
@@ -85,7 +80,6 @@ impl ModelInfo {
     }
 }
 
-/// The resolved gauge thickness, or None (reported).
 pub fn thickness(ctx: &mut Ctx, gauge_n: f64) -> Option<(u32, f64)> {
     let gauge_i = num::to_int::<u32>(crate::math::round(gauge_n)).unwrap_or(0);
     let Some(t) = gauge_thickness(gauge_i) else {

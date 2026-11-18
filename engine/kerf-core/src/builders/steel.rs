@@ -1,9 +1,3 @@
-//! steel (structural shapes): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-//! Dimensions come from `steel_shapes` (AISC subset). The cross-section is built in its own (u, v) plane, u across, v up,
-//! then laid out for the orientation: section (u, v) = (x, y) extruded along z; elevation (length, v) in-plane with u along z;
-//! plan (length, u) in-plane with v along z. Members seen lengthwise are stacks of rectangular slabs (flanges, web, walls,
-//! legs) at their own z, so iso and 3D stay true, and draw as elevations even when the section plane passes through them.
-
 use super::common::{Ctx, fmt_ft_in, length_or_until, material_ok, oriented_ccw};
 use super::steel_shapes::{self, Dims, Shape};
 use crate::geom::{Box, Pt, V2};
@@ -42,7 +36,6 @@ params! {
 
 const Q: f64 = 0.414_213_562_373_095_1;
 
-/// A rectangular piece of the cross-section (u0..u1 across, v0..v1 up) for lengthwise layouts.
 struct Slab {
     part: &'static str,
     u0: f64,
@@ -55,11 +48,9 @@ fn slab(part: &'static str, u0: f64, u1: f64, v0: f64, v1: f64) -> Slab {
     Slab { part, u0, u1, v0, v1 }
 }
 
-/// The cross-section of a shape in (u, v): width `w` along u, height `h` along v.
 struct Geo {
     w: f64,
     h: f64,
-    /// Section pieces: (part, loop). Closed shapes are split in two halves (simple loops for the mesh).
     pieces: Vec<(&'static str, Vec<Pt>)>,
     elev: Vec<Slab>,
     plan: Vec<Slab>,
@@ -78,7 +69,6 @@ fn pb(x: f64, y: f64, b: f64) -> Pt {
     Pt { x, y, b }
 }
 
-/// The loop reflected about u = w/2, counter-clockwise again.
 fn mirror_u(lp: &[Pt], w: f64) -> Vec<Pt> {
     oriented_ccw(lp.iter().map(|q| Pt { x: w - q.x, y: q.y, b: -q.b }).collect())
 }

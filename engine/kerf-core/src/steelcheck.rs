@@ -1,8 +1,3 @@
-//! Steel connection checks over a compiled scene (warnings, never errors): bolt edge distance against AISC 360 Table J3.4
-//! (W_BOLT_EDGE), bolt spacing against J3.3 (W_BOLT_SPACING) and fillet weld size against the thinner joined part, J2.2b
-//! and Table J2.4 (W_WELD_SIZE); anchor bolts against ACI 318-19 17.9: clear distance from the shaft to the concrete or
-//! masonry edge (W_BOLT_EDGE) and spacing between anchors (W_BOLT_SPACING).
-
 use crate::builders::steel_shapes;
 use crate::catalog::Type;
 use crate::clip::{self, Op};
@@ -15,11 +10,9 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-/// AISC 360-16 Table J3.4: minimum edge distance from the center of a standard hole, by bolt diameter.
 const EDGE_MIN: [(f64, f64); 7] =
     [(0.5, 0.75), (0.625, 0.875), (0.75, 1.0), (0.875, 1.125), (1.0, 1.25), (1.125, 1.5), (1.25, 1.625)];
 
-/// Minimum edge distance for a bolt of diameter `d` (the next tabulated size up; 1.25 d above 1 1/4").
 pub fn edge_min(d: f64) -> f64 {
     EDGE_MIN.iter().find(|(dt, _)| d <= dt + 1e-9).map_or(1.25 * d, |e| e.1)
 }
@@ -28,7 +21,6 @@ fn len_of(node: &Value, key: &str, default: f64) -> f64 {
     node.get(key).and_then(units::parse_length).unwrap_or(default)
 }
 
-/// The checks of one component or one annotation: bolt group spacing and weld sizes.
 pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     weld_sizes(scene, doc, diags);
     for b in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Bolt) {
@@ -55,8 +47,6 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     }
 }
 
-/// The checks between components, over the components one or more views draw (SPEC 9, 28.1): bolt edge distance to
-/// the steel it passes through, anchor edge distance to its host and spacing between anchors.
 pub fn drawn(comps: &[&Comp<'_>], diags: &Diags) {
     for b in comps.iter().filter(|c| c.ty.ty == Type::Bolt) {
         edge_distance(comps, b, len_of(b.node, "diameter", 0.75), diags);
@@ -64,11 +54,8 @@ pub fn drawn(comps: &[&Comp<'_>], diags: &Diags) {
     anchors(comps, diags);
 }
 
-/// ACI 318-19 17.9.2 / 20.5.1.3: an anchor's shaft keeps at least this clear distance to the concrete or masonry edge.
-/// Measured along the deeper 60% of the embedded shaft, so a grout bed or topping at the top does not count.
 const ANCHOR_EDGE_CLEAR: f64 = 1.5;
 
-/// The straight embedded shaft of one anchor bolt instance: from the top of its centerline to the bend (or its end).
 struct Shaft<'a> {
     c: &'a Comp<'a>,
     instance: u32,
@@ -227,7 +214,6 @@ fn seg_seg(p: V2, q: V2, r: V2, s: V2) -> f64 {
         .min(geom::dist_point_seg(r, p, q).min(geom::dist_point_seg(s, p, q)))
 }
 
-/// One bolt: its axis segment through the grip (side) or its center (end), and the grip's z range.
 struct Bolt {
     k: usize,
     instance: u32,
@@ -269,7 +255,6 @@ fn bolts_of(c: &Comp<'_>, grip: f64) -> Vec<Bolt> {
     out
 }
 
-/// Distance from `m` along `dir` to the first crossing of the loops' boundary.
 fn ray_to_edge(m: V2, dir: V2, loops: &[Vec<V2>]) -> f64 {
     let mut best = f64::INFINITY;
     for lp in loops {
@@ -386,13 +371,11 @@ fn edge_distance(comps: &[&Comp<'_>], bc: &Comp<'_>, d: f64, diags: &Diags) {
     }
 }
 
-/// A thickness as a sixteenth fraction when it is one (`1/4"`), else three decimals (`0.24"`).
 fn thk(x: f64) -> alloc::string::String {
     let n = crate::math::round(x * 16.0);
     if (x * 16.0 - n).abs() < 1e-6 { fmt_ft_in(x) } else { format!("{}\"", crate::model::fmt_num(x)) }
 }
 
-/// AISC 360-16 Table J2.4: minimum fillet weld size by the thinner part joined.
 fn fillet_min(t: f64) -> f64 {
     match t {
         t if t <= 0.25 + 1e-9 => 0.125,
@@ -402,12 +385,10 @@ fn fillet_min(t: f64) -> f64 {
     }
 }
 
-/// AISC 360-16 J2.2b: maximum fillet along an edge of material t thick.
 fn fillet_max(t: f64) -> f64 {
     if t < 0.25 { t } else { t - 0.0625 }
 }
 
-/// `members` of a weld must name two steel components: anything else is silently left out of W_WELD_SIZE otherwise.
 fn weld_members(scene: &Scene<'_>, vid: &str, id: &str, an: &Value, diags: &Diags) {
     let Some(mv) = an.get("members").filter(|m| !m.is_null()) else { return };
     let path = format!("views/{vid}/annotations/{id}/members");

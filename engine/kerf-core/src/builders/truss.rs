@@ -1,8 +1,3 @@
-//! truss (SPEC 5.8, 27.1): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-//! Side view (the truss in the section plane): a heel/tail end for the pitched, scissor and mono profiles, or a
-//! parallel-chord (floor / flat) truss with its open webs. End-on (the truss cut across, running along z): the chords cut
-//! and a web strip beyond them.
-
 use super::common::{Ctx, fmt_ft_in, fmt_num, mirror_built, parse_sawn, quad_of, zone_rect};
 use crate::clip;
 use crate::geom::{self, Box, Pt, V2};
@@ -53,7 +48,6 @@ params! {
     }
 }
 
-/// A chord size: (depth in the truss plane, thickness across it). "4x2" is a 2x4 laid flat.
 fn chord_size(s: &str) -> Option<(f64, f64)> {
     if let Some(sz) = parse_sawn(s) {
         return Some((sz.d, sz.t));
@@ -169,11 +163,8 @@ fn parse_pitch(ctx: &mut Ctx, key: &str, v: &Value) -> Option<f64> {
     Some(theta)
 }
 
-/// In-plane width of a heel-profile web or heel vertical (a 2x4 on edge).
 const WEB_W: f64 = 3.5;
 
-/// The outline of a pitched, scissor or mono truss over its whole span, in local coordinates (the drawn end's bearing
-/// outer edge at the origin, the truss rising toward +x): the top chord's lower edge and the bottom chord's top edge.
 struct Outline {
     l: f64,
     y0: f64,
@@ -191,23 +182,18 @@ impl Outline {
     fn half(&self, x: f64) -> f64 {
         if self.mono { x } else { x.min(self.l - x) }
     }
-    /// Lower edge of the top chord (extended past the bearings for the tails).
     fn yt(&self, x: f64) -> f64 {
         self.y0 + self.sl * self.half(x)
     }
-    /// Underside of the bottom chord.
     fn yb0(&self, x: f64) -> f64 {
         if self.scissor { self.sb * (self.half(x) - self.bw).max(0.0) } else { 0.0 }
     }
-    /// Top edge of the bottom chord.
     fn yb(&self, x: f64) -> f64 {
         if self.scissor { self.yb0(x) + self.db_v } else { self.db }
     }
-    /// Direction of the top chord's lower edge at x (left to right).
     fn top_dir(&self, x: f64) -> V2 {
         V2::init(1.0, if self.mono || x < self.l / 2.0 { self.sl } else { -self.sl })
     }
-    /// Direction of the bottom chord's top edge at x.
     fn bot_dir(&self, x: f64) -> V2 {
         let x0 = self.half(x);
         let rising = self.scissor && x0 > self.bw;
@@ -226,16 +212,12 @@ impl Outline {
     fn bot(&self, x: f64) -> V2 {
         V2::init(x, self.yb(x))
     }
-    /// A web panel point on the top chord's centreline.
     fn top_panel(&self, x: f64) -> V2 {
         V2::init(x, self.yt(x) + self.v_thick / 2.0)
     }
-    /// A web panel point on the bottom chord's centreline.
     fn bot_panel(&self, x: f64) -> V2 {
         V2::init(x, self.yb(x) - self.db_v / 2.0)
     }
-    /// The x in [lo, hi] where the top chord's lower edge comes down to the bottom chord's top (the heel joint), by
-    /// bisection on a stretch where the clear height rises from <= 0 at `lo`.
     fn meet(&self, lo: f64, hi: f64) -> f64 {
         let (mut a, mut b) = (lo, hi);
         for _ in 0..60 {
@@ -248,7 +230,6 @@ impl Outline {
         }
         (a + b) / 2.0
     }
-    /// Everything under the top chord's lower edge, from `x0` to `x1`.
     fn under(&self, x0: f64, x1: f64) -> Vec<V2> {
         let deep = -1.0e4;
         let mut pts = vec![V2::init(x0, deep), V2::init(x1, deep), self.top(x1)];
@@ -258,7 +239,6 @@ impl Outline {
         pts.push(self.top(x0));
         pts
     }
-    /// Everything above the bottom chord's top edge, from `x0` to `x1`.
     fn above(&self, x0: f64, x1: f64) -> Vec<V2> {
         let high = 1.0e4;
         let mut pts = vec![self.bot(x0)];
@@ -274,7 +254,6 @@ impl Outline {
         pts.push(V2::init(x0, high));
         pts
     }
-    /// The bottom chord band from `x0` to `x1` (both edges).
     fn band(&self, x0: f64, x1: f64) -> Vec<V2> {
         let mut xs = vec![x0];
         if self.scissor {
@@ -291,7 +270,6 @@ impl Outline {
     }
 }
 
-/// Wood prisms (one per outer loop, with the holes inside it) from a boolean result.
 fn region_prisms(part: &str, region: &[Vec<V2>]) -> Vec<Prism> {
     let mut out = Vec::new();
     for outer in region.iter().filter(|l| geom::signed_area_v(l) > 1e-6) {
@@ -306,9 +284,6 @@ fn region_prisms(part: &str, region: &[Vec<V2>]) -> Vec<Prism> {
     out
 }
 
-/// A web strip `w` wide along the centreline `a`-`b` (`a` on the top chord running along `ca`, `b` on the bottom chord
-/// along `cb`), run on past both ends far enough that clipping it to the clear space between the chords cuts both of its
-/// edges on the chord edges.
 fn web_strip(a: V2, b: V2, ca: V2, cb: V2, w: f64) -> Vec<V2> {
     let d = b.sub(a).norm();
     let n = d.perp().scale(w / 2.0);
@@ -319,8 +294,6 @@ fn web_strip(a: V2, b: V2, ca: V2, cb: V2, w: f64) -> Vec<V2> {
     lp
 }
 
-/// The web centrelines of `pattern` over the whole truss, as (top chord point, bottom chord point) pairs. `xl`/`xr`: the
-/// inner faces of the end verticals (heel ends: the bearing outer edges).
 fn web_lines(o: &Outline, pattern: Webs, xl: f64, xr: f64, tall: [bool; 2]) -> Vec<(V2, V2)> {
     let l = o.l;
     let clear = |x: f64| o.yt(x) - o.yb(x);
@@ -393,7 +366,6 @@ fn web_lines(o: &Outline, pattern: Webs, xl: f64, xr: f64, tall: [bool; 2]) -> V
     out.into_iter().filter(|(t, b)| clear(t.x) >= 2.0 && clear(b.x) >= 2.0).collect()
 }
 
-/// Howe panel count for a span: 4 up to 28', 6 up to 40', else 8.
 fn howe_panels(l: f64) -> usize {
     if l <= 28.0 * 12.0 {
         4
@@ -404,8 +376,6 @@ fn howe_panels(l: f64) -> usize {
     }
 }
 
-/// Pitched, scissor and mono trusses in side view: the drawn end (heel, raised heel, hung end, mono high end or integral
-/// parapet), the tail, the chords and the web pattern of the whole truss, cut at `span_shown` (or the whole truss).
 fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let theta = parse_pitch(ctx, "pitch", &tp.pitch)?;
     let (dt, db) = (ch.dt, ch.db);
@@ -791,8 +761,6 @@ fn heel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     })
 }
 
-/// The half-width along a chord of a web of width `w` that climbs `h` over the horizontal run `p` between its outer
-/// edges (the edges meet the chords on horizontal cuts).
 fn web_half(w: f64, h: f64, p: f64) -> f64 {
     let mut hw = w / 2.0;
     for _ in 0..8 {
@@ -803,7 +771,6 @@ fn web_half(w: f64, h: f64, p: f64) -> f64 {
     hw
 }
 
-/// A parallel-chord (floor or flat) truss in side view: chords, the end vertical and alternating diagonal webs.
 fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let Some(d) = tp.depth else {
         ctx.p.fail(
@@ -975,9 +942,6 @@ fn parallel_side(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     })
 }
 
-/// Alternating diagonal webs of width `w` between the chord faces `y` over `x`, starting down from the top chord at
-/// `x[0]`. `open`: panels of `p` until no full one fits before `x[1]` (the truss runs on past the drawing); closed: the
-/// whole number of panels nearest `p` that fills `x` exactly (between two verticals).
 fn diagonals(prisms: &mut Vec<Prism>, webs: &mut Box, x: [f64; 2], y: [f64; 2], w: f64, p: f64, open: bool) {
     let (len, h) = (x[1] - x[0], y[1] - y[0]);
     let fits = |s: f64| s > 2.0 * web_half(w, h, s) + 0.25;
@@ -1015,8 +979,6 @@ fn diagonals(prisms: &mut Vec<Prism>, webs: &mut Box, x: [f64; 2], y: [f64; 2], 
     }
 }
 
-/// `verticals` of a parallel-chord truss: web centres measured from the bearing's outer edge, increasing, each web of
-/// width `w` clear of the end vertical (inner face at `x_min`) and of the others, inside the drawn length `xe`.
 fn parse_verticals(ctx: &mut Ctx, x_min: f64, xe: f64, w: f64) -> Option<Vec<f64>> {
     let Some(v) = ctx.p.raw("verticals").filter(|v| !v.is_null()) else { return Some(Vec::new()) };
     let fix = "e.g. \"verticals\": [24] (a vertical web centred 24\" from bearing_outer)";
@@ -1068,8 +1030,6 @@ fn parse_verticals(ctx: &mut Ctx, x_min: f64, xe: f64, w: f64) -> Option<Vec<f64
     Some(out)
 }
 
-/// A truss cut across (running along z): the plies of both chords cut, and a web strip between them behind the cut
-/// at every `web_spacing` along the truss.
 fn end_on(ctx: &mut Ctx, tp: &Params, ch: &Chords) -> Option<Built> {
     let Some(d) = tp.depth else {
         ctx.p.fail("depth", "orient \"end_on\" needs 'depth' (the truss height at the cut, bottom of bottom chord to top of top chord, e.g. 18 for a floor truss or the height of a roof truss where the section crosses it)".into());

@@ -1,8 +1,4 @@
-//! The structural steel shape table behind `steel.shape`: an AISC Steel Construction Manual (Shapes Database v16) subset
-//! for residential and light commercial work. Rolled-shape dimensions are the tabulated decimal values; HSS and pipe walls
-//! are the design thickness 0.93 x nominal (AISC 360 B4.2). Root fillets of angles and channels are approximations by size
-//! (the database lists k only for W shapes).
-
+// AISC Shapes Database v16; wall design thickness follows AISC 360 B4.2.
 use crate::math;
 use crate::num;
 use crate::units;
@@ -10,33 +6,23 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// Dimensions of one shape, inches.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Dims {
-    /// Wide flange: depth, flange width, web and flange thickness, k (design) = flange thickness + root fillet.
     W { d: f64, bf: f64, tw: f64, tf: f64, k: f64 },
-    /// Square or rectangular HSS: height, width, design wall.
     Rect { h: f64, b: f64, t: f64 },
-    /// Round HSS or pipe: outside diameter, design wall.
     Round { od: f64, t: f64 },
-    /// Angle with legs `vert` (drawn vertical) and `horiz`, thickness and root fillet radius.
     Angle { vert: f64, horiz: f64, t: f64, r: f64 },
-    /// Channel (C, MC): depth, flange width, web thickness, average flange thickness, root fillet radius.
     Channel { d: f64, bf: f64, tw: f64, tf: f64, r: f64 },
-    /// Plate: thickness and width.
     Plate { t: f64, w: f64 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
-    /// Canonical designation, e.g. `W8x18`, `HSS4x4x1/4`, `PIPE3STD`, `L4x3x3/8`, `PL1/2x8`.
     pub name: String,
     pub dims: Dims,
-    /// Wall, leg or plate thickness for weld and fit checks (the thinnest element of a W or channel).
     pub t_min: f64,
 }
 
-/// W shapes: name, d, bf, tw, tf, k_des.
 #[allow(clippy::approx_constant)] // tabulated dimensions, not pi
 const W: &[(&str, f64, f64, f64, f64, f64)] = &[
     ("W4x13", 4.16, 4.06, 0.280, 0.345, 0.595),
@@ -110,7 +96,6 @@ const W: &[(&str, f64, f64, f64, f64, f64)] = &[
     ("W24x76", 23.9, 8.99, 0.440, 0.680, 1.18),
 ];
 
-/// Square and rectangular HSS: height, width, nominal walls.
 const HSS_RECT: &[(f64, f64, &[f64])] = &[
     (2.0, 2.0, &[0.125, 0.1875, 0.25]),
     (2.5, 2.5, &[0.125, 0.1875, 0.25]),
@@ -147,7 +132,6 @@ const HSS_RECT: &[(f64, f64, &[f64])] = &[
     (12.0, 8.0, &[0.1875, 0.25, 0.3125, 0.375, 0.5, 0.625]),
 ];
 
-/// Round HSS: outside diameter, nominal walls.
 const HSS_ROUND: &[(f64, &[f64])] = &[
     (1.9, &[0.12, 0.145, 0.188, 0.2]),
     (2.375, &[0.125, 0.154, 0.188, 0.218, 0.25]),
@@ -165,7 +149,6 @@ const HSS_ROUND: &[(f64, &[f64])] = &[
     (8.625, &[0.188, 0.25, 0.322, 0.375, 0.5, 0.625]),
 ];
 
-/// Pipe: nominal size text, outside diameter, nominal wall STD, nominal wall XS.
 #[allow(clippy::approx_constant)] // tabulated dimensions, not 1/pi
 const PIPE: &[(&str, f64, f64, f64)] = &[
     ("1-1/2", 1.9, 0.145, 0.2),
@@ -179,7 +162,6 @@ const PIPE: &[(&str, f64, f64, f64)] = &[
     ("8", 8.625, 0.322, 0.5),
 ];
 
-/// Angles: long leg, short leg, thicknesses.
 const ANGLES: &[(f64, f64, &[f64])] = &[
     (2.0, 2.0, &[0.125, 0.1875, 0.25, 0.3125, 0.375]),
     (2.5, 2.5, &[0.1875, 0.25, 0.3125, 0.375, 0.5]),
@@ -206,7 +188,6 @@ const ANGLES: &[(f64, f64, &[f64])] = &[
     (8.0, 4.0, &[0.4375, 0.5, 0.5625, 0.625, 0.75, 0.875, 1.0]),
 ];
 
-/// Channels C and MC: name, d, bf, tw, tf (average).
 const CHANNELS: &[(&str, f64, f64, f64, f64)] = &[
     ("C3x4.1", 3.0, 1.41, 0.170, 0.273),
     ("C3x5", 3.0, 1.50, 0.258, 0.273),
@@ -252,7 +233,6 @@ const CHANNELS: &[(&str, f64, f64, f64, f64)] = &[
 
 const HSS_DESIGN: f64 = 0.93;
 
-/// `3.5` -> `3-1/2`, `0.25` -> `1/4`, `12` -> `12` (sixteenths; falls back to the decimal).
 pub fn frac_text(x: f64) -> String {
     let Some(n) = num::to_int::<i64>(math::round(x * 16.0)) else { return crate::model::fmt_num(x) };
     if (x * 16.0 - n as f64).abs() > 1e-6 {
@@ -270,7 +250,6 @@ pub fn frac_text(x: f64) -> String {
     }
 }
 
-/// Three-decimal text of a round HSS dimension (`4.000`, `0.250`).
 fn dec3(x: f64) -> String {
     let n = num::to_int_clamped::<i64>(math::round(x * 1000.0), 0, i64::MAX);
     format!("{}.{:03}", n / 1000, n % 1000)
@@ -317,7 +296,6 @@ fn angle_root(long: f64) -> f64 {
     }
 }
 
-/// Names of the table entries (and the accepted forms) for `kerf catalog`.
 pub fn catalog_text() -> String {
     let w: Vec<&str> = W.iter().map(|r| r.0).collect();
     let mut hss: Vec<String> = Vec::new();
@@ -348,7 +326,6 @@ pub fn catalog_text() -> String {
     )
 }
 
-/// Parse a designation; Err is the E_PARAM message (what was not found and the nearest table entries).
 pub fn lookup(text: &str) -> Result<Shape, String> {
     let s: String = text.chars().filter(|c| *c != ' ').collect();
     let up = s.to_ascii_uppercase();

@@ -1,5 +1,3 @@
-//! lumber (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{
     Ctx, fmt_ft_in, length_or_until, material_ok, material_or, one_prism, parse_actual, parse_sawn, quad_of,
     until_length,

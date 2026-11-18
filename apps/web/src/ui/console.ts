@@ -1,11 +1,9 @@
-// Operator console: chat history (designer plain, KERF/CLAUDE manila cards with tool activity) + composer.
 import type { App } from '../app';
 import type { ChatEvent } from '../chat/agent';
 import type { ChatSession } from '../chat/session';
 import type { AgentCard } from '../workspace/workspace';
 import { h, btn, hhmm, clear } from './dom';
 
-/** Tool input for display: a whole-document `set` collapses to a one-line stand-in. */
 export function abbrevInput(input: unknown): string {
   return JSON.stringify(input, (k, v) => {
     if (k === 'ops' && Array.isArray(v)) {
@@ -16,7 +14,6 @@ export function abbrevInput(input: unknown): string {
   }, 2);
 }
 
-/** Minimal inline formatting for the agent's replies: **bold** and `code`. Everything else stays plain text. */
 export function fmtInline(text: string): (Node | string)[] {
   const out: (Node | string)[] = [];
   const re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
@@ -30,7 +27,6 @@ export function fmtInline(text: string): (Node | string)[] {
   return out;
 }
 
-/** LOCAL AGENT card for an op-log entry written by someone other than this browser (the user's agent, a terminal `kerf apply`). */
 export function agentLogCard(c: AgentCard): HTMLElement {
   const e = c.entry;
   const n = e.ops?.length ?? 0;
@@ -120,7 +116,7 @@ export function mountConsole(app: App, el: HTMLElement, session: ChatSession) {
       }
       case 'assistant-start':
         if (!card) newCard(e.who);
-        seg = null; // next text starts a new segment
+        seg = null;
         break;
       case 'text':
         if (!card) newCard();
@@ -151,7 +147,7 @@ export function mountConsole(app: App, el: HTMLElement, session: ChatSession) {
         break;
       }
       case 'notice':
-        if (card && cardBody && !cardBody.childElementCount && !cardBody.textContent) card.remove(); // a failed request leaves no empty card behind
+        if (card && cardBody && !cardBody.childElementCount && !cardBody.textContent) card.remove();
         msgs.append(h('div.notice', { class: e.level === 'err' ? 'err' : e.level === 'warn' ? 'warn' : '' }, e.text));
         card = null; cardBody = null; seg = null; tools = null;
         break;
@@ -201,11 +197,9 @@ export function mountConsole(app: App, el: HTMLElement, session: ChatSession) {
 
   return {
     renderIntro,
-    /** a LOCAL AGENT card from the op log (edits made outside this browser) */
     addAgentCard(c: AgentCard) { intro.remove(); msgs.append(agentLogCard(c)); scroll(); },
     notice(text: string, level: 'info' | 'warn' | 'err' = 'info') { msgs.append(h('div.notice', { class: level === 'err' ? 'err' : level === 'warn' ? 'warn' : '' }, text)); scroll(); },
     refreshPicker: fillPicker,
-    /** programmatic send (tests) */
     sendText(t: string) { ta.value = t; send(); },
     setText(t: string) { ta.value = t; },
   };

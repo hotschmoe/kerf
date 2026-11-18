@@ -1,5 +1,3 @@
-//! Dimensions (SPEC 6.5): the dimension line, extension lines, terminators and text of one dimension, and the stacking of dimensions that would collide.
-
 use super::text::{DEG_PER_RAD, RAD_PER_DEG, ascii_fold, path_item, text_item, text_poly, upper_if};
 use super::{DIM_VARIANTS, DimDir, Env};
 use crate::drawing::{Align, Item, VAlign};
@@ -13,8 +11,6 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// A parsed dimension. Its drawn offset is `off0` (authored) pushed outward by `push` (layout repair) and by
-/// the automatic stacking (SPEC 20).
 #[derive(Clone, Copy, Debug)]
 pub struct DimSpec<'a> {
     pub k: usize,
@@ -24,14 +20,9 @@ pub struct DimSpec<'a> {
     pub dir: DimDir,
     pub off0: f64,
     pub text: Option<&'a str>,
-    /// `pin`: drawn at `off0` exactly, never stacked or pushed (overlaps then warn W_LABEL_OVERLAP).
     pub pin: bool,
-    /// The offset as written; `off0` differs when the dimension is lined up with its chain (`chain_dims`).
     pub authored: f64,
-    /// The chain the dimension belongs to: the index of its first member (itself when it chains with nothing).
     pub chain: usize,
-    /// Whether the low / high end of the dimension line (left / bottom first) continues into another dimension of
-    /// its chain, so text that does not fit goes past the chain's free ends first.
     pub shared: [bool; 2],
 }
 
@@ -40,33 +31,27 @@ impl DimSpec<'_> {
         if self.off0 >= 0.0 { 1.0 } else { -1.0 }
     }
 
-    /// The coordinate the dimension measures (x for h, y for v).
     fn measured(&self, p: V2) -> f64 {
         if self.dir == DimDir::V { p.y } else { p.x }
     }
 
-    /// The coordinate its offset is taken across (y for h, x for v).
     fn across(&self, p: V2) -> f64 {
         if self.dir == DimDir::V { p.x } else { p.y }
     }
 
-    /// The end points, lower measured coordinate first.
     fn ends(&self) -> [V2; 2] {
         if self.measured(self.from) <= self.measured(self.to) { [self.from, self.to] } else { [self.to, self.from] }
     }
 
-    /// Where the offset counts from: the outer of the two points on the side of the offset.
     fn base(&self) -> f64 {
         let (a, b) = (self.across(self.from), self.across(self.to));
         if self.off0 >= 0.0 { a.max(b) } else { a.min(b) }
     }
 
-    /// The across coordinate of the dimension line at the authored offset.
     fn line_at(&self) -> f64 {
         self.base() + self.off0
     }
 
-    /// Length measured by the dimension (model units).
     pub fn span(&self) -> f64 {
         match self.dir {
             DimDir::V => (self.to.y - self.from.y).abs(),
@@ -75,7 +60,6 @@ impl DimSpec<'_> {
         }
     }
 
-    /// Unit vector along the dimension line (from the lower / left end), the direction its text slides in.
     pub fn along(&self) -> V2 {
         match self.dir {
             DimDir::V => V2::init(0.0, 1.0),
@@ -84,7 +68,6 @@ impl DimSpec<'_> {
         }
     }
 
-    /// Unit vector along which the line moves when |offset| grows (before the sign of the offset).
     pub fn axis(&self) -> V2 {
         match self.dir {
             DimDir::V => V2::init(1.0, 0.0),
@@ -94,14 +77,11 @@ impl DimSpec<'_> {
     }
 }
 
-/// The drawn pieces of one dimension, for conflict tests (SPEC 20 stacking and outside text).
 #[derive(Clone, Copy, Debug)]
 pub struct DimShape {
     pub segs: [[V2; 2]; 6],
     pub n: usize,
-    /// The dimension line proper (between the extension lines).
     pub line: [V2; 2],
-    /// The text box (padded).
     pub text: [V2; 4],
     pub fits: bool,
 }
@@ -124,23 +104,15 @@ impl DimShape {
     }
 }
 
-/// The outside-text place only chain members get: centred on the own span, a text row out (see `dim_build`).
 const CENTRED_OUT: usize = 6;
-/// Beside the extended line past the far / near end like 0/1, but on the side away from the object (where that is not
-/// the reading side): for text that would land on the object.
 const BESIDE_OUT: usize = 7;
 
-/// Text placed beside the dimension line extended past an end (0/1 and the BESIDE_OUT pair).
 fn beside(variant: usize) -> bool {
     !(2..=CENTRED_OUT).contains(&variant)
 }
 
-/// Two chain ends meet when their measured coordinates agree to this (model inches).
 const CHAIN_EPS: f64 = 1.0 / 64.0;
 
-/// SPEC 28.3 chain dimensions: h (or v) dimensions on the same side whose spans follow each other end to end (they
-/// share an end point, or an end coordinate with dimension lines within `near` of each other) form one chain, and every
-/// member is drawn on the chain's outermost authored line. A chain never holds two overlapping spans.
 pub fn chain_dims(specs: &mut [DimSpec], near: f64) {
     let n = specs.len();
     let mut root: Vec<usize> = (0..n).collect();
@@ -220,13 +192,6 @@ pub fn chain_dims(specs: &mut [DimSpec], near: f64) {
     }
 }
 
-/// Build one dimension. `offset` is the signed dimension-line offset (SPEC 16). When the text does not fit
-/// between the extension lines it goes outside (SPEC 20), never smaller and never dropped, and never on its own line
-/// (SPEC 28.3). `variant` picks where: 0/1 beside the dimension line extended past the far / near end, 2-5 raised out
-/// of the axis (outward / inward of the object) at the far / near end, joined to the line by a short leader, 6 (chain
-/// members) centred on its own span a text row out on the side away from the object, joined by a leader, 7/8 as 0/1
-/// on the side of the line away from the object. `slide` moves text that fits along the line from its middle (the
-/// layout repair slides it off a note leader, SPEC 25.2).
 pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide: f64, out: &mut Vec<Item>) -> DimShape {
     let st = env.style;
     let sc = env.s;
@@ -357,8 +322,6 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide:
     sh
 }
 
-/// A label: one text item per line (a newline in `text` breaks it), the block centered vertically on `at` and each line
-/// aligned on it.
 pub fn label_items(env: &mut Env, id: &str, text: &str, at: V2, align: Align, out: &mut Vec<Item>) {
     let t = upper_if(env, text).into_owned();
     let h = env.style.label_height_in * env.s;
@@ -382,7 +345,6 @@ pub fn polys_overlap(p: &[V2; 4], q: &[V2; 4]) -> bool {
     (0..4).any(|i| poly_hits_seg(q, p[i], p[(i + 1) % 4])) || (0..4).any(|i| geom::point_in_loop_eo(q[i], p))
 }
 
-/// Parallel dimension lines that run on top of each other (within `tol`, with a shared stretch).
 pub fn lines_collide(a: [V2; 2], b: [V2; 2], tol: f64) -> bool {
     let da = a[1].sub(a[0]);
     let db = b[1].sub(b[0]);
@@ -446,7 +408,6 @@ struct DimPlaced {
     items: Vec<Item>,
 }
 
-/// What a dimension's text or lines collide with: the other dimensions already placed and the labels.
 fn conflicts_of(sh: &DimShape, placed: &[(usize, DimShape)], labels: &[(&str, [V2; 4])], tol: f64) -> usize {
     let mut c: usize = placed.iter().map(|(_, o)| dim_conflicts(sh, o, tol)).sum();
     for (_, lp) in labels {
@@ -460,14 +421,6 @@ fn conflicts_of(sh: &DimShape, placed: &[(usize, DimShape)], labels: &[(&str, [V
     c
 }
 
-/// SPEC 20 dimension stacking: dims are placed shortest first; a dimension whose line would overlap another
-/// one, or whose text would overprint another dimension's text or lines, moves out in steps of 0.25 paper
-/// inch (outside text first tries the other places before the dimension line moves). A chain (SPEC 28.3) is placed
-/// and moved as one, by its overall span; text that does not fit goes past a free end of the chain before a shared
-/// one. `pushes` is the extra outward distance chosen by the layout repair (a chain takes its largest), `slides` the
-/// text slides (for text that does not fit: +1 / -1, the end the repair moved it away from). A pinned dimension (or a
-/// chain with a pinned member) stays at its offset. Fills the effective offsets `eff`, the items, and per dimension
-/// `blockers`: what it collides with at its authored offset (pushes included), named for the diagnostics (SPEC 25.2).
 #[allow(clippy::too_many_arguments)]
 pub fn stack_dims(
     env: &mut Env,

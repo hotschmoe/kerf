@@ -1,5 +1,3 @@
-//! rebar (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, world_box};
 use crate::clip;
 use crate::geom::{self, Box, FLAT_TOL, Pt, V2, Xf};
@@ -122,15 +120,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     })
 }
 
-/// Most legs one straight run of an XZ bar is cut into for the checks, iso and mesh (a diagonal run is a staircase).
 const XZ_STEPS_MAX: usize = 48;
-/// Bounds on the legs of one XZ bar: points of its coarse centreline, and staircase slabs over all diagonal runs.
 const XZ_POINTS_MAX: usize = 200;
 const XZ_SLABS_MAX: usize = 400;
 
-/// A bar lying flat at height `y`, bent in the XZ plane (SPEC 26.3). Its prisms are axis legs (a run along x is a
-/// bar seen lengthwise, a run along z a dot extruded along z, a diagonal run a staircase of short slabs) with the whole
-/// centreline on the first one, which section, plan and elevation views draw from.
 fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
     let r = d / 2.0;
     if rp.place.is_some() {
@@ -240,9 +233,6 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
     })
 }
 
-/// Anchors on a path bar (SPEC 25.1), all on its centreline: `start`, `end`, `bend_k` at the middle of the bend at
-/// interior point k + 1 (the point of the bar nearest that corner) and `seg_k_mid` at the middle of the straight part of
-/// leg k (point k to k + 1).
 fn path_anchors(vs: &[V2], center: &[geom::Pt]) -> Vec<NamedAnchor> {
     let flat = geom::flatten_polyline(center, false, FLAT_TOL);
     let nearest = |q: V2| {
@@ -284,8 +274,6 @@ fn path_anchors(vs: &[V2], center: &[geom::Pt]) -> Vec<NamedAnchor> {
     out
 }
 
-/// Where `place.station` puts a single bar along the zone: an offset from the zone box's left (bottom) side, or the x (y)
-/// of a Ref, which follows the member it names when the host is resized.
 #[derive(Clone, Copy)]
 enum Station {
     Offset(f64),
@@ -293,7 +281,6 @@ enum Station {
 }
 
 impl Station {
-    /// The station as a world coordinate along x (`horizontal`) or y, given the zone box's low side on that axis.
     fn coord(self, lo: f64, horizontal: bool) -> f64 {
         match self {
             Station::Offset(o) => lo + o,
@@ -537,8 +524,6 @@ fn rect_v(b: Box) -> Vec<V2> {
     vec![V2::init(b.x0, b.y0), V2::init(b.x1, b.y0), V2::init(b.x1, b.y1), V2::init(b.x0, b.y1)]
 }
 
-/// The region bars are placed in (world): the host's outline, cut to the part's box for `in: "comp.part"`. A host
-/// without an outline (not concrete or cmu) is its box.
 fn zone_region(host: &Comp<'_>, xf: &Xf, part_box: Option<Box>) -> Vec<Vec<V2>> {
     let Some(h) = host.built.host.as_ref() else {
         return vec![rect_v(part_box.unwrap_or_else(|| world_box(xf, host.built.box_)))];
@@ -551,9 +536,6 @@ fn zone_region(host: &Comp<'_>, xf: &Xf, part_box: Option<Box>) -> Vec<Vec<V2>> 
     if (clip::total_area(&cut) - full).abs() <= 1e-9 * full.max(1.0) { vec![rect] } else { cut }
 }
 
-/// The face of `zone` toward `dir`: the run of collinear edges whose outward normal points within 60 degrees of `dir`
-/// and lies furthest along it (ties: the longer, then the first), as (start, end, outward normal) with start at the
-/// lower x (bottom/top) or lower y (left/right).
 fn face_run(zone: &[Vec<V2>], dir: V2) -> Option<(V2, V2, V2)> {
     let mut best: Option<(V2, V2, V2)> = None;
     let mut best_key = f64::NEG_INFINITY;
@@ -590,8 +572,6 @@ fn face_run(zone: &[Vec<V2>], dir: V2) -> Option<(V2, V2, V2)> {
     Some(if flip { (b, a, nrm) } else { (a, b, nrm) })
 }
 
-/// Where the line x = `line` (`horizontal` faces) or y = `line` meets the outermost edge of `zone` facing `dir`, with
-/// the cosine between that edge's normal and `dir`.
 fn face_at(zone: &[Vec<V2>], dir: V2, horizontal: bool, line: f64) -> Option<(V2, f64)> {
     let mut best: Option<(V2, f64)> = None;
     for lp in zone {

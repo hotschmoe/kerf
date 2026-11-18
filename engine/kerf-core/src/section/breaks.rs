@@ -1,5 +1,3 @@
-//! Break lines where cut members, and steel seen lengthwise, run off the crop.
-
 use super::Class;
 use super::Section;
 use crate::drawing::PathItem;

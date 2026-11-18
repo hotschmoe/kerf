@@ -1,5 +1,3 @@
-//! Text helpers of the annotation layout (SPEC 16): glyph folding to the stroke font's ASCII set, character-count wrapping, text boxes and the text/path items every annotation emits.
-
 use super::Env;
 use crate::drawing::{Align, Item, PathItem, TextItem, VAlign};
 use crate::font::Font;
@@ -14,8 +12,6 @@ use alloc::vec::Vec;
 pub const RAD_PER_DEG: f64 = 0.017453292519943295;
 pub const DEG_PER_RAD: f64 = 57.29577951308232;
 
-/// Glyph folding (SPEC 16): dashes -> '-', smart quotes -> straight, x-sign -> X, vulgar fractions ->
-/// " n/d", anything else non-ASCII -> '?'. `unknown` is set when a '?' substitution happened.
 pub fn ascii_fold_flag<'s>(s: &'s str, unknown: Option<&mut bool>) -> Cow<'s, str> {
     if s.is_ascii() {
         return Cow::Borrowed(s);
@@ -81,12 +77,10 @@ pub fn path_item(env: &Env, pen: Pen, src: &str, pts: &[V2], closed: bool) -> It
     Item::Path(PathItem { layer: String::from(env.style.layer_for_pen(pen)), pen, src: String::from(src), closed, pts })
 }
 
-/// The style's case transform: upper case, except the tokens whose case is significant (SPEC 25.3: `16d`, `db`, `f'c`, ...).
 pub fn upper_if<'s>(env: &Env, s: &'s str) -> Cow<'s, str> {
     if env.style.text_case_upper { Cow::Owned(house::upper(s, env.style)) } else { Cow::Borrowed(s) }
 }
 
-/// Text box polygon (rotated) with padding.
 pub fn text_poly(font: &Font, t: &TextItem, pad: f64) -> [V2; 4] {
     let w = font.width(&t.s, t.h);
     let ox = match t.align {
@@ -138,7 +132,6 @@ pub fn items_box(font: &Font, items: &[Item]) -> Box {
     b
 }
 
-/// Qualifiers that stay on the line of the dimension before them (`24" MIN.`, `16" O.C.`).
 const QUALIFIERS: [&str; 14] =
     ["MIN", "MIN.", "MAX", "MAX.", "O.C.", "OC", "TYP", "TYP.", "CLR", "CLR.", "EA.", "EMBED", "EMBED.", "LAP"];
 
@@ -151,8 +144,6 @@ fn is_fraction(w: &str) -> bool {
     b.first().is_some_and(u8::is_ascii_digit) && w.contains('/')
 }
 
-/// The words of `text`, with the pieces of one value kept together: a whole number and its fraction (`1 1/2"`), `@`
-/// and the spacing after it, and a dimension and its qualifier (`24" MIN.`).
 fn wrap_words(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut glue_next = false;
@@ -177,8 +168,6 @@ fn wrap_words(text: &str) -> Vec<String> {
     out
 }
 
-/// Greedy word wrap at `chars_in` characters; words longer than a line are split. The pieces of one value stay on
-/// one line when it fits (`wrap_words`).
 pub fn wrap(text: &str, chars_in: usize) -> Vec<String> {
     let chars = chars_in.max(1);
     let mut lines: Vec<String> = Vec::new();
@@ -219,9 +208,6 @@ pub fn wrap(text: &str, chars_in: usize) -> Vec<String> {
     lines
 }
 
-/// Greedy word wrap at a paper width: the lines of each paragraph of `text` (split at `\n`) no wider than `max_w` at
-/// text height `h`. The pieces of one value stay together when they fit (`wrap_words`); a word wider than `max_w` is
-/// never split and takes a line of its own (the caller reports the overflow).
 pub fn wrap_width(font: &Font, text: &str, h: f64, max_w: f64) -> Vec<String> {
     let units = |s: &str| font.width_units(ascii_fold(s));
     let max_units = max_w * font.cap / h.max(1e-12) + 1e-9;

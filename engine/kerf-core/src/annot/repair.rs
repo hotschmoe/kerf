@@ -1,5 +1,3 @@
-//! Layout repair (SPEC 20): re-rendering the dimension labels and the repair moves for a dimension or label that sits on a note leader.
-
 use super::dims::{DimSpec, base_hits, label_items, polys_overlap, stack_dims};
 use super::notes::{self, LabelSpec, Meta, MetaKind, NotePrep, Obstacle, clear_of_leaders, dirs8};
 use super::text::text_poly;
@@ -16,7 +14,6 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-/// One rendering of the dimensions and labels (stacked, with the repair pushes applied) plus what the router needs.
 pub struct Render<'a> {
     pub per: Vec<Vec<Item>>,
     pub obstacles: Vec<Obstacle>,
@@ -24,7 +21,6 @@ pub struct Render<'a> {
     pub knock: Vec<[V2; 4]>,
     pub ext: Box,
     pub meta: Vec<Meta<'a>>,
-    /// Per dimension: what it collides with at its authored offset (the stacking moved it out).
     pub dim_blockers: Vec<Vec<String>>,
 }
 
@@ -108,8 +104,6 @@ pub fn render_dim_labels<'a>(
     Render { per, obstacles, soft, knock, ext, meta, dim_blockers }
 }
 
-/// Where a moved dimension text or label may go: at least a text height `h` from every leader, and off every note
-/// text block (or key tag).
 pub struct Clearance<'l> {
     pub leaders: &'l [[V2; 3]],
     pub notes: Vec<[V2; 4]>,
@@ -138,10 +132,6 @@ impl Clearance<'_> {
     }
 }
 
-/// Clear a dimension's text off the note leaders that hit it. First the text slides along the dimension line (in
-/// half text heights, staying between the extension lines), so the line stays where the author put it; text that does
-/// not fit moves to the other end first (`slide` +1 / -1 then marks the end it avoids). When neither clears it, the
-/// dimension is pushed out by whole dimension spacings (0.25 paper inch). A pinned dimension stays.
 pub fn repair_dim(
     env: &Env,
     o: &Obstacle,
@@ -200,12 +190,8 @@ pub fn repair_dim(
     false
 }
 
-/// Labels move at most this many text heights from where the author put them (SPEC 25.2).
 const LABEL_MOVE_CAP: f64 = 6.0;
 
-/// Move a label (smallest move first, up/down before sideways) to where no leader comes within a text height
-/// and it overprints no other label or dimension text; prefers a spot that does not sit on drawn outlines.
-/// A pinned label never moves.
 pub fn repair_label(o: &Obstacle, obsts: &[Obstacle], cl: &Clearance, lpush: &mut [V2], dl: &DimLab) -> bool {
     let h = cl.h;
     let dirs = dirs8();
@@ -249,18 +235,12 @@ pub fn repair_label(o: &Obstacle, obsts: &[Obstacle], cl: &Clearance, lpush: &mu
 pub struct Best<'a> {
     pub r: route::Layout,
     pub rd: Render<'a>,
-    /// The repair pushes of this pass (dimension: outward distance; label: shift) and, per pushed item, the note whose
-    /// leader it was moved away from.
     pub dpush: Vec<f64>,
     pub lpush: Vec<V2>,
     pub dnote: Vec<Option<usize>>,
     pub lnote: Vec<Option<usize>>,
 }
 
-/// Routes the notes, then repairs what hits dimension text or labels: pushes those dimensions out and moves those
-/// labels, re-routing after each pass (at most `MAX_REPAIR_PASSES`, stopping when clean or after two passes in a row
-/// that did not get better). The pass with the fewest hits wins.
-/// Passes of re-routing the repair loop makes at most.
 const MAX_REPAIR_PASSES: usize = 8;
 
 pub fn solve<'a>(
@@ -276,7 +256,6 @@ pub fn solve<'a>(
     let mut lpush = alloc::vec![V2::init(0.0, 0.0); dl.lspecs.len()];
     let mut dnote: Vec<Option<usize>> = alloc::vec![None; dl.dspecs.len()];
     let mut lnote: Vec<Option<usize>> = alloc::vec![None; dl.lspecs.len()];
-    // route, then repair what hits dimension text or labels (bounded, deterministic)
     let mut best: Option<Best<'a>> = None;
     let mut stale = 0usize;
     for pass in 0..MAX_REPAIR_PASSES {
@@ -288,7 +267,6 @@ pub fn solve<'a>(
         } else {
             stale += 1;
         }
-        // stop when clean, or when two passes in a row did not get better
         let stop = r.hits.is_empty() || stale >= 2;
         let mut changed = false;
         let snap = better.then(|| (dpush.clone(), lpush.clone(), dnote.clone(), lnote.clone()));
@@ -338,7 +316,6 @@ pub fn solve<'a>(
     best
 }
 
-/// Moves below this many paper inches are not reported (SPEC 25.2).
 const MOVE_REPORT_IN: f64 = 0.125;
 
 fn num2(x: f64) -> String {
@@ -357,8 +334,6 @@ fn and_list(items: &[String]) -> String {
     }
 }
 
-/// I_ANNOT_MOVED (SPEC 25.2): every dimension the stacking or the repair drew more than 1/8" (paper) away from its
-/// authored offset, and every label the repair moved that far, with what it was moved away from and how to keep it.
 pub fn report_moves(env: &Env, notes: &[NoteIn], dl: &DimLab, best: &Best) {
     let vid = env.spec.id;
     let s = env.s;
@@ -451,9 +426,6 @@ pub fn report_moves(env: &Env, notes: &[NoteIn], dl: &DimLab, best: &Best) {
     }
 }
 
-/// W_LABEL_OVERLAP (SPEC 25.2): a label whose text overprints another label or a dimension's text, a pinned
-/// dimension whose text overprints another dimension's text, and a note's text (or key tag) on a label or dimension
-/// text. Proposes a label offset that clears it.
 pub fn report_overlaps(env: &Env, notes: &[NoteIn], prep: &NotePrep, dl: &DimLab, best: &Best) {
     let rd = &best.rd;
     let vid = env.spec.id;

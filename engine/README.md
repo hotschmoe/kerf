@@ -30,13 +30,14 @@ Rustup installs the toolchain pinned in `rust-toolchain.toml` on first use. Rele
 (Windows) reproduce what it builds.
 
 ## Test
+
+The [engineering conventions](https://github.com/hotschmoe/hotschmoe-setup/blob/master/ENGINEERING.md) define the testing policy. Install the Python tooling with `../tools/setup.sh` and web dependencies with `cd ../apps/web && npm ci` before running the gates.
+
 ```sh
-PATH=../tools/.venv/bin:$PATH tests/gates.sh 1000 --serve    # build, golden, wasm, CLI, fuzz (1000 cases), serve
-cargo clippy --all-targets -- -D warnings && cargo fmt --check
+cd engine
+tests/gates.sh       # blocking: build, representative exports, CLI, serve, wasm, browser
+tests/test-heavy.sh # background: full corpus, fuzz and broader scenarios
+cargo fmt --check
 ```
-The gates: `tests/check_golden.sh` (every export of every view byte-identical to `tests/golden`, DXF and PDF audits),
-`tests/wasm_golden.mjs` + `tests/wasm_check.mjs`, `tests/cli_ergonomics.mjs`, `tests/fuzz.py`, `tests/serve_smoke.mjs`.
-CI (`ci.yml`) runs all of this on Linux, the CLI gates on macOS and the shipped build on Windows x86_64 and aarch64
-(`windows.yml`); see `NOTES.md` for the job list.
-After an intended output change: `tests/make_golden.sh`, review the diff (and the PNGs with `--png`), commit it with the
-change. `NOTES.md` explains each gate and the rules the engine keeps; `PERF.md` how to benchmark.
+
+The blocking export comparison covers three reference details. For a visual change, render PNGs with `tools/dxf_check.py --png`, `tools/pdf_check.py --png` or `tools/shot.mjs` and inspect them as a review practice.

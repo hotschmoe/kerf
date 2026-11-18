@@ -1,15 +1,3 @@
-// Local agent runner (workspace mode): POST /api/agent/run, then render the SSE `agent` events as console cards.
-// Event shapes (one per stdout JSON line of the agent CLI; verified live for `claude -p --output-format stream-json --verbose`):
-//   {type:"system", subtype:"init", session_id}
-//   {type:"assistant", message:{content:[{type:"text",text} | {type:"tool_use",id,name,input} | {type:"thinking"}]}}
-//   {type:"user", message:{content:[{type:"tool_result", tool_use_id, content: string | [{type:"text",text}], is_error}]}}
-//   {type:"result", subtype, is_error, result, session_id, ...}          (final; its text was already streamed as an assistant block)
-//   {type:"text", text}                                                  (plain-text agents)
-//   {type:"exit", code, session_id?}                                     (added by the server)
-// Also understood (recorded from the real CLIs, see test/fixtures/agent-*.jsonl):
-//   Grok Build `-p --output-format streaming-json`:  {type:"text", data:"<delta>"} · {type:"tool_call", toolCallId, toolName, rawInput}
-//        · {type:"tool_call_update", toolCallId, status:"completed", rawOutput:{output_for_prompt, exit_code}} · {type:"end", sessionId}
-//   Codex `exec --json`:  {type:"item.completed", item:{type:"agent_message", text} | {type:"command_execution", command, aggregated_output, exit_code}}
 import type { App } from '../app';
 import type { Workspace } from '../workspace/workspace';
 import { store, type AgentInfo } from './store';
@@ -25,12 +13,11 @@ export type ChatEvent =
 type Json = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
-/** One-line card title for a tool call: Bash `kerf apply …` reads like a Kerf command, file tools like their verb. */
 export function toolTitle(name: string, input: Json): string {
   const clip = (s: string, n = 72) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
   name = TOOL_ALIAS[name] ?? name;
   if (name === 'Bash') {
-    // codex wraps commands: /bin/bash -lc '<cmd>'
+    // Codex wraps command invocations in a shell.
     const cmd = str(input.command).trim().replace(/^(?:\/\S*\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/, '$2');
     const first = cmd.split('\n')[0].replace(/\s*<<-?\s*['"]?\w+['"]?\s*$/, ' <<').replace(/\s+/g, ' ');
     return clip(/^kerf\b/.test(first) ? first : `BASH ${first}`);
@@ -40,7 +27,6 @@ export function toolTitle(name: string, input: Json): string {
   return clip(`${name.toUpperCase()} ${rel}`.trim());
 }
 
-/** the other agents' tool names, mapped to the Claude Code names the cards are written in */
 const TOOL_ALIAS: Record<string, string> = { run_terminal_command: 'Bash', shell: 'Bash', command_execution: 'Bash', read_file: 'Read', write: 'Write', search_replace: 'Edit', list_dir: 'LS' };
 
 function resultText(c: unknown): string {
@@ -49,7 +35,6 @@ function resultText(c: unknown): string {
   return '';
 }
 
-/** `0 errors 1 warning` in a kerf summary -> "✓ 0 ERR 1 WARN" */
 export function resultStatus(text: string, ok: boolean): string {
   if (!ok) return '✗ ERROR';
   const m = /(\d+)\s+errors?\b[^\d]*(\d+)\s+warnings?/i.exec(text);
@@ -62,7 +47,6 @@ export class AgentRunner {
   private listeners = new Set<(e: ChatEvent) => void>();
   private open = new Map<string, { title: string; input: unknown }>();
   private sawExit = false;
-  /** raw events that matched no known shape (debugging aid, `window.__kerf.agent.unknown`) */
   unknown: unknown[] = [];
 
   constructor(private app: App, private ws: Workspace, private info: () => AgentInfo[]) {}
@@ -72,7 +56,6 @@ export class AgentRunner {
 
   async stop() { if (this.runId) await this.ws.client.agentStop(this.runId); }
 
-  /** Never throws. */
   async send(id: string, text: string): Promise<void> {
     if (this.busy) return;
     const agent = this.info().find((a) => a.id === id);

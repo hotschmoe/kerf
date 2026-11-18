@@ -1,7 +1,3 @@
-//! Reference bubbles (SPEC 26.2): a detail callout, the detail number over the sheet number in a split circle, with an
-//! optional leader to the point it refers to and an optional text beside it (`SEE`, `SIM.`). Placed exactly where the
-//! author puts it, like a weld symbol: the note layout does not move it.
-
 use super::text::{path_item, text_item, upper_if};
 use super::{Env, Landing, at_drawn, non_null};
 use crate::drawing::{Align, FillItem, Item, PathItem, VAlign};
@@ -18,20 +14,15 @@ pub struct RefSpec<'a> {
     pub detail: String,
     pub sheet: String,
     pub text: Option<&'a str>,
-    /// Bubble centre (drawing space).
     pub center: V2,
-    /// Where the leader points (drawing space); None draws no leader.
     pub at: Option<V2>,
 }
 
-/// Default bubble position from the leader point: 3/4" (paper) up and right, or the first clear spot of `AUTO_DIRS` at
-/// `AUTO_STEPS` (SPEC 28.8).
 const AUTO_PLACE_IN: f64 = 0.75;
 const AUTO_STEPS: [f64; 3] = [0.75, 1.25, 2.0];
 const AUTO_DIRS: [(f64, f64); 8] =
     [(1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0), (1.4, 0.0), (-1.4, 0.0), (0.0, 1.4), (0.0, -1.4)];
 
-/// The bubble radius for its texts (paper 1/4" at least).
 fn radius(env: &Env, detail: &str, sheet: &str) -> f64 {
     let s = env.s;
     let h = env.style.text_height_in * s;
@@ -40,9 +31,6 @@ fn radius(env: &Env, detail: &str, sheet: &str) -> f64 {
     (0.25 * s).max(wide * 0.5 + 0.06 * s)
 }
 
-/// Where a ref bubble goes without `place`: 3/4" paper up and right of `at` when the bubble sits on empty paper there,
-/// else the first spot of the eight directions at 3/4", 1 1/4" and 2" whose bubble (plus 1/16") clears every drawn
-/// member, hatch and fill of the view; up and right when none does. An iso keeps up and right.
 fn auto_place(env: &mut Env, at: V2, rad: f64) -> V2 {
     let s = env.s;
     let default = at.add(V2::init(AUTO_PLACE_IN * s, AUTO_PLACE_IN * s));

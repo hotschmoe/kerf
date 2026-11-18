@@ -22,16 +22,10 @@ const FULL_MARKER: &str = "<!-- FULL -->";
 const MAX_READ: u64 = 256 << 20;
 const TOOL: &str = "kerf-cli";
 
-/// A failure that ends the process as `kerf: <message>` with exit code 2.
 #[derive(Debug)]
 enum Fail {
     Io(io::Error),
-    /// An I/O error on a named file: `cannot read <path>: ...`.
-    File {
-        verb: &'static str,
-        path: String,
-        source: io::Error,
-    },
+    File { verb: &'static str, path: String, source: io::Error },
     FileTooBig,
     StreamTooLong,
     InvalidUtf8,
@@ -83,8 +77,6 @@ fn stderr(text: &str) {
     let _ = io::stderr().write_all(text.as_bytes());
 }
 
-/// With `panic = "abort"` a panic would otherwise end in SIGABRT and a core dump. A panic is a bug (overflow checks are on
-/// in release builds), so say so, say where, and exit with EX_SOFTWARE.
 fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
         let what = info.payload_as_str().unwrap_or("panic");
@@ -151,7 +143,6 @@ fn say(text: &str) -> Res<()> {
 
 use workspace::trim_ws;
 
-/// `--ops` takes the ops themselves (starts with `[` or `{`) or the path of a file that holds them.
 fn ops_from_arg(arg: &str) -> Res<Vec<u8>> {
     let t = arg.trim_start_matches([' ', '\t', '\r', '\n']);
     if t.starts_with(['[', '{']) {
@@ -160,8 +151,6 @@ fn ops_from_arg(arg: &str) -> Res<Vec<u8>> {
     read_file(arg)
 }
 
-/// Fold text to pure ASCII for Windows consoles (PowerShell mangles UTF-8): dashes, quotes, x-sign, degree sign,
-/// vulgar fractions and NBSP get readable ASCII; anything else becomes `?`.
 fn ascii_fold(bytes: &[u8]) -> Res<Vec<u8>> {
     let text = std::str::from_utf8(bytes).map_err(|_| Fail::InvalidUtf8)?;
     let mut out = String::with_capacity(text.len());
@@ -198,7 +187,6 @@ fn ascii_fold(bytes: &[u8]) -> Res<Vec<u8>> {
     Ok(out.into_bytes())
 }
 
-/// `cli-guide.md` has two parts: the short guide, then (after the marker line) notes that only `kerf guide --full` prints.
 fn guide_split(text: &str) -> (&str, &str) {
     match text.find(FULL_MARKER) {
         None => (text, ""),
@@ -230,7 +218,6 @@ struct Opts {
     pos: Vec<String>,
 }
 
-/// `Err(())` means print the usage and exit 2 (any message was already written).
 fn parse_opts(args: &[String]) -> Result<Opts, ()> {
     let mut o = Opts::default();
     let mut it = args.iter();
@@ -274,8 +261,7 @@ fn parse_opts(args: &[String]) -> Result<Opts, ()> {
     Ok(o)
 }
 
-/// The style file a document command uses: `--style`, else the nearest `kerf.kerfstyle.json` in the document's folder or
-/// an ancestor (SPEC 25.6). The flag tells whether it was found rather than given.
+// SPEC 25.6 defines workspace style lookup.
 fn style_path(o: &Opts, doc_path: &str) -> Option<(String, bool)> {
     if let Some(s) = &o.style {
         return Some((s.clone(), false));
@@ -283,7 +269,6 @@ fn style_path(o: &Opts, doc_path: &str) -> Option<(String, bool)> {
     workspace::style_for_doc(doc_path).map(|p| (p.to_string_lossy().into_owned(), true))
 }
 
-/// The `STYLE` line `check` and `apply` print first when a style file applies.
 fn style_line(style: Option<&(String, bool)>) -> String {
     match style {
         Some((p, true)) => format!("STYLE {p} (workspace style; --style overrides)\n"),
@@ -292,7 +277,6 @@ fn style_line(style: Option<&(String, bool)>) -> String {
     }
 }
 
-/// `{"doc": <file>, "style": <file>?, ...extra}` from raw document text.
 fn build_input(doc: &[u8], style_path: Option<&str>, extra: &str) -> Res<Vec<u8>> {
     let mut out = b"{\"doc\":".to_vec();
     out.extend_from_slice(trim_ws(doc));
@@ -315,8 +299,7 @@ fn json_string(s: &str) -> String {
     String::from_utf8_lossy(&b).into_owned()
 }
 
-/// Appends the op-log line. The document is already written (atomically), so a failure here is reported on stderr
-/// (what failed, that the document is fine) and the caller exits 3. Returns true when the log line was appended.
+// The document is already committed; log failure must not imply a failed document write.
 fn log_write(
     doc_path: &str,
     lock: Option<&mut DocLock>,
@@ -343,7 +326,6 @@ fn log_write(
     }
 }
 
-/// The server's ETag of a document: `"<mtime_ms>-<size>-<wyhash64 hex16 of the bytes>"`.
 fn etag_of(mtime_ms: i128, size: u64, bytes: &[u8]) -> String {
     format!("\"{mtime_ms}-{size}-{:016x}\"", hash::wyhash(0, bytes))
 }
@@ -357,7 +339,6 @@ pub fn mtime_ms(meta: &fs::Metadata) -> i128 {
     }
 }
 
-/// Does `want` (an ETag with or without quotes, or just the 16-hex content hash) name the current content of `doc_path`?
 fn if_match_ok(doc_path: &str, want: &str) -> Res<bool> {
     let bytes = read_file(doc_path)?;
     let meta = fs::metadata(doc_path)?;
@@ -378,7 +359,7 @@ fn create_op(file: &str, id: &str, title: &str) -> String {
     )
 }
 
-/// `ERROR <code> <path>: <message>  Fix: <fix>` (SPEC 19). `path` falls back to the diagnostic id, then `-`.
+// SPEC 19 defines diagnostic output.
 fn diag_error_line(d: &Value) -> String {
     let field = |k: &str| d.get(k).and_then(Value::str).filter(|s| !s.is_empty());
     let code = d.get("code").and_then(Value::str).unwrap_or("E_UNKNOWN");
@@ -403,14 +384,11 @@ fn print_error_diags(res: &Value) {
 }
 
 struct PreparedOps {
-    /// Compact JSON array of ops (what the engine and the op log get).
     text: String,
-    /// The `why` of an `{"ops":[...],"why":"..."}` envelope.
     why: Option<String>,
 }
 
-/// Parse the ops text and normalize it to an ops array (SPEC 21: array, single op, or `{"ops":[...],"why":"..."}`).
-/// On failure prints the error (`nothing written`) and returns None.
+// SPEC 21 defines the accepted ops input forms.
 fn prepare_ops(raw: &[u8]) -> Option<PreparedOps> {
     let parsed = match json::parse(trim_ws(raw)) {
         Ok(v) => v,
@@ -435,7 +413,6 @@ fn prepare_ops(raw: &[u8]) -> Option<PreparedOps> {
     Some(PreparedOps { text: String::from_utf8_lossy(&out).into_owned(), why: norm.why })
 }
 
-/// Print an engine failure `{"error": {code, message}}` as `ERROR <code>: <message>`; falls back to the raw bytes.
 fn print_api_error(bytes: &[u8]) {
     if let Ok(v) = json::parse(bytes)
         && let Some(e) = v.get("error")
@@ -679,8 +656,6 @@ fn cmd_call(o: &Opts) -> Res<u8> {
     Ok(u8::from(!r.ok))
 }
 
-/// What a document command sends to the engine besides the document: the extra JSON members and, for apply, the ops
-/// text and the `why` of an `{"ops":[...],"why":"..."}` envelope (the op log needs both after the call).
 #[derive(Default)]
 struct DocCall {
     extra: String,
@@ -688,7 +663,6 @@ struct DocCall {
     why: Option<String>,
 }
 
-/// Check the command line of a document command and fill `call`. Returns an exit code (after printing why) when it is wrong.
 fn prepare_doc_call(cmd: &str, o: &Opts, call: &mut DocCall) -> Res<Option<u8>> {
     call.ops_text = "[]".to_string();
     for (on, flag, only) in [(o.strict, "--strict", "check"), (o.review, "--review", "export")] {
@@ -777,8 +751,6 @@ fn prepare_doc_call(cmd: &str, o: &Opts, call: &mut DocCall) -> Res<Option<u8>> 
     Ok(None)
 }
 
-/// `apply -w` / `fmt -w` read, edit and write under the advisory lock `kerf serve` uses for the same document, so parallel
-/// writers queue instead of silently losing each other's edits; --if-match makes a stale writer fail instead of overwriting.
 fn lock_for_write(cmd: &str, o: &Opts, doc_path: &str) -> Res<Result<Option<DocLock>, u8>> {
     let is_apply_w = cmd == "apply" && o.write && !o.dry_run;
     if o.if_match.is_some() && !is_apply_w {
@@ -826,7 +798,6 @@ fn finish_fmt(o: &Opts, doc_path: &str, bytes: &[u8]) -> Res<u8> {
     Ok(0)
 }
 
-/// Report the result of `apply` or `check` (summary, errors on stderr) and, for `apply -w`, write the document and its log line.
 fn finish_apply_check(
     actor: &str,
     cmd: &str,
@@ -882,7 +853,6 @@ fn finish_apply_check(
     Ok(if logged { 0 } else { 3 })
 }
 
-/// The commands that take a document: drawing, export, apply, check, fmt, mesh (anything else is an unknown command).
 fn cmd_doc(actor: &str, cmd: &str, o: &Opts) -> Res<u8> {
     let Some(doc_path) = o.pos.first() else {
         stderr(&format!("kerf {cmd}: missing <doc>\n"));

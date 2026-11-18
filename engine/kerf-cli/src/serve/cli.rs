@@ -1,5 +1,3 @@
-//! `kerf serve` startup: arguments, token, bind, the poller, the accept loop.
-
 use super::conn::{MAX_CONNS, conn_watchdog, serve_conn};
 use super::{Config, POLL_MS, SERVE_USAGE, Server, agent, ui};
 use crate::agents::{self, Manager};

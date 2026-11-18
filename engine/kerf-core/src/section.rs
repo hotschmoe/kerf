@@ -1,5 +1,3 @@
-//! Section view (SPEC 8.1): exact 2D cut / beyond / hatch with crop, break lines and dedupe.
-
 mod beyond;
 mod breaks;
 mod cut;
@@ -38,14 +36,12 @@ pub enum Class {
     Drop,
 }
 
-/// Which stroke list a stroke is added to.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Target {
     Strokes,
     Ghosts,
 }
 
-/// A prism's flattened loops, shared between the section and its occluders.
 pub type Flat = Rc<Vec<Vec<V2>>>;
 
 pub struct Section<'s> {
@@ -54,7 +50,6 @@ pub struct Section<'s> {
     pub spec: &'s ViewSpec<'s>,
     pub prisms: Rc<[Prism]>,
     pub cls: Vec<Class>,
-    /// Framing hardware drawn in front (SPEC 28.4): solid, over what it overlaps on paper.
     pub front: Vec<bool>,
     flat: Vec<Option<Flat>>,
     pub occs: Vec<Occ>,
@@ -67,10 +62,8 @@ pub struct Section<'s> {
     pub truncated_hatch: bool,
     pub fill_faults: Vec<FillFault>,
     pub crop_loop: Vec<V2>,
-    /// Where each drawn fastener of a `nailing` component is (component index, point): its notes land there.
     pub nail_marks: Vec<(u32, V2)>,
     pub nails_hidden: Vec<NailsHidden>,
-    /// Per prism, the edges it shares with the bodies of the same casting (not drawn).
     joins: Vec<Vec<[V2; 2]>>,
 }
 
@@ -128,7 +121,6 @@ impl<'s> Section<'s> {
         }
     }
 
-    /// The id of the component a prism belongs to, with `#k` for array instance k.
     pub fn src_name(&self, p: &Prism) -> String {
         let Some(c) = self.scene.comps.get(p.comp as usize) else { return String::new() };
         if c.arr_count > 1 {
@@ -147,12 +139,10 @@ impl<'s> Section<'s> {
         f
     }
 
-    /// `which` if the style still defines that pen (a user style can delete one), else the beyond pen.
     pub fn pen_for(&self, which: Pen) -> Pen {
         if self.style.pen(which).is_some() { which } else { Pen::Beyond }
     }
 
-    /// Fill materials draw with the pen of their kind (steel, rebar); every other fill material draws in the beyond pen.
     pub fn pen_for_role(&self, role: Role) -> Pen {
         match role {
             Role::Steel => self.pen_for(Pen::Steel),
@@ -182,7 +172,6 @@ impl<'s> Section<'s> {
         }
     }
 
-    /// Clip a path to the crop and add the pieces as strokes.
     pub fn add_clipped(&mut self, target: Target, pts: &[Pt], closed: bool, pen: Pen, src: &str, embedded: bool) {
         for pc in pathclip::clip_path(pts, closed, self.spec.crop) {
             self.add_stroke(target, pc.pts, pc.closed, pen, src, embedded);
@@ -264,8 +253,6 @@ impl<'s> Section<'s> {
         self.break_lines();
     }
 
-    /// The polyline a `line` prism (membrane) is drawn along. A vapor retarder keeps its dashed line visibly separate
-    /// from the host edge it follows (0.03 paper inch at least).
     pub fn line_points(&self, p: &Prism) -> Vec<Pt> {
         if !(p.role == Role::VaporRetarder && p.centerline.len() >= 2 && !p.line_pts.is_empty()) {
             return p.line_pts.clone();
@@ -278,7 +265,6 @@ impl<'s> Section<'s> {
         pathgeom::offset_open(&p.centerline, side * gap)
     }
 
-    /// Sawn or engineered lumber lying in the section plane (run x/y): cut along its length, not end-on.
     pub fn is_lengthwise_lumber(&self, p: &Prism) -> bool {
         if !p.quads.is_empty() || p.loops.is_empty() || p.loops[0].len() < 3 {
             return false;
@@ -286,7 +272,6 @@ impl<'s> Section<'s> {
         self.scene.comps.get(p.comp as usize).is_some_and(|c| c.ty.traits.lengthwise_grain)
     }
 
-    /// Non-drawn picking regions: one item per visible cut region / beyond face (outer loop + holes).
     pub fn region_items(&mut self) -> Vec<Item> {
         let mut out = Vec::new();
         let prisms = Rc::clone(&self.prisms);
@@ -332,7 +317,6 @@ impl<'s> Section<'s> {
         out
     }
 
-    /// Items in paint order, with coincident collinear edges deduplicated.
     pub fn finish(&mut self) -> Vec<Item> {
         let mut items: Vec<Item> = Vec::new();
         self.knock_out_face_ties();

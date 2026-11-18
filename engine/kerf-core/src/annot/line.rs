@@ -1,6 +1,3 @@
-//! Boundary lines (SPEC 29.2): a dashed or solid polyline through model points, for what is not a component (a no-load
-//! zone, an influence line, a property or limit line). Placed exactly where the author puts it, like a weld symbol.
-
 use super::text::path_item;
 use super::{Env, at_drawn, non_null};
 use crate::drawing::Item;

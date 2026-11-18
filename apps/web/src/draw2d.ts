@@ -1,8 +1,7 @@
-// Drawing IR (SPEC §10) -> Canvas2D. Used by the interactive viewport AND by the kerf_render rasterizer.
 import type { BPt, Drawing, DrawItem } from './types';
 import { layoutText } from './strokefont';
 
-export interface View2D { zoom: number; tx: number; ty: number } // screen px = tx + zoom*x ; ty - zoom*y
+export interface View2D { zoom: number; tx: number; ty: number }
 
 export interface Batch {
   kind: 'stroke' | 'fill';
@@ -14,12 +13,12 @@ export interface Batch {
 
 export interface SrcGeom {
   id: string;
-  closed: number[][]; // flattened closed loops [x,y,x,y,...] (closed paths, hatch outers, fills)
-  open: number[][];   // flattened open polylines
-  texts: [number, number, number, number][]; // text boxes
+  closed: number[][];
+  open: number[][];
+  texts: [number, number, number, number][];
   textItems: { x: number; y: number; h: number; s: string }[];
-  outline: Path2D;    // true-arc outline of everything (for hover)
-  region: Path2D;     // closed loops with even-odd (for selection tint)
+  outline: Path2D;
+  region: Path2D;
   bbox: [number, number, number, number];
 }
 
@@ -29,7 +28,6 @@ export function baseId(src: string | undefined): string | undefined {
   return i < 0 ? src : src.slice(0, i);
 }
 
-/** Add polyline-with-bulges to a Path2D using true arcs. */
 export function addBulgePath(p: Path2D, pts: BPt[], closed: boolean) {
   const n = pts.length;
   if (!n) return;
@@ -58,7 +56,6 @@ export function arcOf(x0: number, y0: number, x1: number, y1: number, bulge: num
   return { cx, cy, r, a0: Math.atan2(y0 - cy, x0 - cx), sweep };
 }
 
-/** Flatten a bulge polyline to [x,y,...] with chord angle step ~ 8 degrees. */
 export function flatten(pts: BPt[], closed: boolean): number[] {
   const out: number[] = [];
   const n = pts.length;
@@ -95,7 +92,6 @@ function polyArea(l: number[]): number {
 export class DrawingModel {
   batches: Batch[] = [];
   bySrc = new Map<string, SrcGeom>();
-  /** bounds of ALL items (incl. text), model inches */
   bounds: [number, number, number, number];
 
   constructor(public drawing: Drawing) {
@@ -187,15 +183,12 @@ export class DrawingModel {
     this.bounds = isFinite(bx0) ? [bx0, by0, bx1, by1] : (drawing.bounds ?? [0, 0, 1, 1]);
   }
 
-  /** Pick the best src at a model point. tol = pick tolerance in model inches. */
   pick(x: number, y: number, tol: number): string | null {
-    // 1. text boxes (notes are the thing designers grab)
     for (const g of this.bySrc.values()) {
       for (const [x0, y0, x1, y1] of g.texts) {
         if (x >= x0 - tol * 0.3 && x <= x1 + tol * 0.3 && y >= y0 - tol * 0.5 && y <= y1 + tol * 0.5) return g.id;
       }
     }
-    // 2. near an open polyline / closed outline
     let bestD = tol, best: string | null = null;
     for (const g of this.bySrc.values()) {
       if (x < g.bbox[0] - tol || x > g.bbox[2] + tol || y < g.bbox[1] - tol || y > g.bbox[3] + tol) continue;
@@ -205,7 +198,6 @@ export class DrawingModel {
       }
     }
     if (best) return best;
-    // 3. smallest closed loop containing the point
     let bestA = Infinity;
     for (const g of this.bySrc.values()) {
       if (x < g.bbox[0] || x > g.bbox[2] || y < g.bbox[1] || y > g.bbox[3]) continue;
@@ -217,7 +209,6 @@ export class DrawingModel {
       }
     }
     if (best) return best;
-    // 4. near a closed outline
     bestD = tol;
     for (const g of this.bySrc.values()) {
       for (const l of g.closed) {
@@ -259,9 +250,7 @@ function pointInPoly(l: number[], px: number, py: number): boolean {
 export interface PaintOpts {
   ink: string;
   dpr: number;
-  /** note being dragged: its text batches are skipped and returned for the caller to draw offset */
   skipTextOf?: string;
-  /** minimum stroke in device px */
   minPx?: number;
 }
 
@@ -270,7 +259,6 @@ export function penModelWidth(model: DrawingModel, pen: string): number {
   return (p.width_mm / 25.4) * model.drawing.scale;
 }
 
-/** Paint all batches. Context transform must already map model space to device pixels (y flipped). */
 export function paintBatches(ctx: CanvasRenderingContext2D, model: DrawingModel, zoomPx: number, opts: PaintOpts, only?: (b: Batch) => boolean) {
   const minW = (opts.minPx ?? 1) / (zoomPx * opts.dpr);
   ctx.lineCap = 'round';
@@ -296,7 +284,6 @@ export function paintBatches(ctx: CanvasRenderingContext2D, model: DrawingModel,
   ctx.setLineDash([]);
 }
 
-/** Fit transform for a model-space box into a w x h CSS px area with padding px. */
 export function fitView(bounds: [number, number, number, number], w: number, h: number, pad = 32): View2D {
   const bw = Math.max(bounds[2] - bounds[0], 1e-6), bh = Math.max(bounds[3] - bounds[1], 1e-6);
   const zoom = Math.max(1e-4, Math.min((w - 2 * pad) / bw, (h - 2 * pad) / bh));

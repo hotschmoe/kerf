@@ -1,5 +1,3 @@
-//! anchor bolt (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, box_of_prisms, oriented_ccw};
 use crate::geom::{self, Pt, V2};
 use crate::model::fmt_num;
@@ -212,7 +210,6 @@ fn extras(ap: &Params) -> alloc::string::String {
     out
 }
 
-/// "WxWxT" (lengths): the plate washer's width and thickness.
 fn parse_plate_washer(ctx: &mut Ctx, t: &str) -> Option<(f64, f64)> {
     let parts: Vec<&str> = t.split(['x', 'X']).collect();
     let vals: Vec<f64> = parts.iter().filter_map(|p| crate::units::parse_length_str(p.trim())).collect();
@@ -226,7 +223,6 @@ fn parse_plate_washer(ctx: &mut Ctx, t: &str) -> Option<(f64, f64)> {
     Some((vals[0].max(vals[1]), vals[2]))
 }
 
-/// The bottom and top (local y, from the placement point) of the member the rod passes through, on the rod's axis.
 fn plate_faces(ctx: &mut Ctx, name: &str) -> Option<(f64, f64)> {
     let m = super::hardware::member(ctx, "plate", name)?;
     let o = ctx.origin;

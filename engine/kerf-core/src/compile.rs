@@ -434,8 +434,6 @@ fn placement_order(scene: &mut Scene) -> Vec<usize> {
     order
 }
 
-// ---- placement -----------------------------------------------------------------------------------------
-
 struct AtSpec<'n> {
     anchor: &'n str,
     /// `at.anchor` is written (a point list's local origin lands on `to` otherwise, SPEC 28.1).

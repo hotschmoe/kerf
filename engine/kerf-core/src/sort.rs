@@ -1,22 +1,10 @@
-//! The engine's one stable sort. Comparators in geometry code are not always strict weak orders (tolerances), so the
-//! algorithm is fixed and total: it never panics, always yields a permutation, and gives the same result for the same
-//! comparisons on every target. Std's sort is not used because it may panic on an inconsistent comparator.
-//!
-//! Binary insertion sort on blocks of [`BLOCK`], then bottom-up merging. A run that fits the merge buffer (4 KiB of
-//! elements) is merged through it; longer runs are merged in place with SymMerge (Kim and Kutzner): a split found by
-//! binary search, a rotation, and two smaller merges. Slices longer than a block are sorted as an index permutation
-//! through one non-generic code path (which keeps the wasm small) and moved into place once.
-
 use alloc::vec::Vec;
 
-/// Elements sorted by insertion before merging starts.
 const BLOCK: usize = 20;
 const MERGE_BUFFER_BYTES: usize = 4096;
 
-/// `less(x, y)` on positions of the sorted slice.
 type Less<'a> = &'a dyn Fn(usize, usize) -> bool;
 
-/// Stable sort by the strict "less than" `less`. Sorted and stable whenever `less` is a strict weak ordering.
 pub fn stable<T, F: Fn(&T, &T) -> bool>(items: &mut [T], less: F) {
     let n = items.len();
     if n <= BLOCK {
@@ -33,7 +21,6 @@ pub fn stable<T, F: Fn(&T, &T) -> bool>(items: &mut [T], less: F) {
     apply_permutation(items, &order);
 }
 
-/// Binary insertion sort: each element goes right after the last element before it that is not greater.
 fn insertion_sort<T>(v: &mut [T], less: &impl Fn(&T, &T) -> bool) {
     for i in 1..v.len() {
         if !less(&v[i], &v[i - 1]) {
@@ -69,7 +56,6 @@ fn sort_runs(v: &mut [usize], buf: &mut [usize], less: Less) {
     }
 }
 
-/// Merges the sorted runs `v[..m]` and `v[m..]` (both non-empty).
 fn merge(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     if !less(v[m], v[m - 1]) {
         return;
@@ -83,8 +69,6 @@ fn merge(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     }
 }
 
-/// The left elements not greater than the first right one are already in place; the rest of the left run goes through
-/// `buf` and is merged front to back (ties keep the left element first).
 fn merge_low(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     let (mut a, mut hi) = (0, m - 1);
     while a < hi {
@@ -111,8 +95,6 @@ fn merge_low(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     v[k..k + left - i].copy_from_slice(&buf[i..left]);
 }
 
-/// The right elements not less than the last left one are already in place; the rest of the right run goes through
-/// `buf` and is merged back to front.
 fn merge_high(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     let (mut lo, mut end) = (m + 1, v.len());
     while lo < end {
@@ -139,8 +121,7 @@ fn merge_high(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     v[..j].copy_from_slice(&buf[..j]);
 }
 
-/// SymMerge: split both runs at the point where the left tail and the right head swap places, rotate, and merge the two
-/// halves.
+// SymMerge is the in-place merge of Kim and Kutzner.
 fn sym_merge(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     let mid = v.len() / 2;
     let (mut start, mut hi) = if m > mid { (m - (v.len() - mid), mid) } else { (0, m) };
@@ -165,7 +146,6 @@ fn sym_merge(v: &mut [usize], m: usize, buf: &mut [usize], less: Less) {
     }
 }
 
-/// `items[k] = old items[order[k]]` for a permutation `order`, by swaps (any `T`).
 fn apply_permutation<T>(items: &mut [T], order: &[usize]) {
     let mut at: Vec<usize> = (0..items.len()).collect();
     let mut pos = at.clone();

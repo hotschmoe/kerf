@@ -21,7 +21,7 @@ history). `README.md` is the short version of this file, `PERF.md` has the numbe
   `serve/*` (routes, connections, SSE, UI hashing). `build.rs` embeds the web UI named by `KERF_UI` (relative to the
   workspace root; empty means a page that says the UI is missing).
 - `kerf-wasm`: cdylib, the SPEC 13.1 ABI, 120 lines plus a 90-line size-class allocator (`heap.rs`); a panic traps.
-- `tests/`: `docs/` + `golden/` (see Gates), the Node/Python/bash gates, `tests/gates.sh` runs them all. `bench/`:
+- `tests/`: `docs/` + `golden/` (see Gates), the Node/Python/bash gates; `tests/gates.sh` is blocking and `tests/test-heavy.sh` runs the background suite. `bench/`:
   the benchmark and profiling scripts (`PERF.md`). `../tools/build_wasm.mjs` builds `dist/kerf.wasm`.
 
 ## Build, run, test
@@ -31,26 +31,19 @@ cargo build --release                      # target/release/kerf
 CARGO_TARGET_DIR=target/ui KERF_UI=../apps/web/dist-serve cargo build --release   # with the web UI (npm run build:serve first)
 node ../tools/build_wasm.mjs               # dist/kerf.wasm (profile small, export section pruned to the ABI, wasm-opt -Oz if on PATH)
 cargo build --profile fastbuild            # optimized, no LTO, incremental: ~4 s after an edit, runs ~1.02x release
-PATH=<repo>/tools/.venv/bin:$PATH tests/gates.sh [fuzz cases] [--serve]
+tests/gates.sh                         # blocking
+tests/test-heavy.sh                    # background
 ```
 `rustfmt.toml`: `max_width = 120`, `use_small_heuristics = "Max"`. `cargo clippy --all-targets -- -D warnings` is clean;
 the few `allow`s left are a long-argument list or two with no better shape, and the libm constants in `math.rs`.
 
-## Gates (all green on this tree)
-| gate | what it proves |
-|---|---|
-| `cargo build --release`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` | builds, lints, formatting |
-| `tests/check_golden.sh` | `tests/make_golden.sh` regenerates the drawing JSON, SVG (bare and sheet), DXF, PDF, PNG (bare and sheet), mesh and check summary of every view and every sheet layout (drawing JSON, sheet SVG, DXF, PDF, sheet PNG) of the documents (`../spec/details/*`, `tests/docs/*`) into a temp tree; every file is byte-identical to `tests/golden`, every summary has 0 errors, every DXF passes `dxf_check.py` (ezdxf audit), every PDF is vector (`pdf_check.py`) |
-| `tests/wasm_golden.mjs`, `tests/wasm_check.mjs` | the wasm output equals the native goldens byte for byte (58 files, layouts included); the module has 0 imports and exactly the six ABI exports |
-| `tests/cli_ergonomics.mjs` | 342 checks of the CLI (stdout, stderr, exit code, files): what an agent sees |
-| `tests/fuzz.py N seed` | mutation fuzz of the reference documents (hostile numbers, styles, ops) through check/drawing/export: no crash, no hang. Run it on a debug build too: overflow checks, debug assertions |
-| `tests/serve_smoke.mjs` | 227 checks of `kerf serve` on temp folders: routes, tokens, hostile HTTP, SSE, the agent bridge with `fake-agent.mjs`/`fake-grok.mjs`, op log, symlinks, limits, reference files. `tests/windows_serve.mjs` is the field-shaped session written for Windows (it runs everywhere) |
-| `../apps/web`: `typecheck`, `test:unit`, `test:e2e`, `test:serve [-- --real]`, `build` | the UI against this engine |
+## Gates
 
-Golden PNGs for human review (`A.png`, `A-dxf.png`, `A-pdf.png` per view) come from `tests/make_golden.sh --png`; look at
-them after a visual change (`tools/svg2png.sh`, `tools/dxf_check.py --png`, `tools/pdf_check.py --png`), a drawing that
-passes the byte gate can still look wrong. `tools/compare_drawings.py a.json b.json` diffs two `kerf drawing` outputs
-geometrically (tolerance 1e-3).
+`tests/gates.sh` builds the release CLI and wasm, checks three representative export goldens, exercises CLI and serve workflows, runs a wasm export, and runs the browser save/open workflow. `tests/test-heavy.sh` runs the broader golden, wasm, CLI, serve, platform and browser suites and mutation fuzzing. See [engineering conventions](https://github.com/hotschmoe/hotschmoe-setup/blob/master/ENGINEERING.md).
+
+Render and inspect PNGs during visual review; `tools/compare_drawings.py` can compare drawing geometry.
+
+On the current aarch64 Linux workspace, the blocking gate took 44 s and the background gate 6 min 14 s with `CARGO_BUILD_JOBS=4` and warm build artifacts. The wasm built without wasm-opt measured 1,576,241 bytes raw, 617,817 gzip and 499,813 Brotli. The test and comment policy audit is still in progress.
 
 ## Rules that hold for every input (document, style, ops)
 - No raw float-to-int casts on untrusted data: `num::to_int*`. Numbers are validated where they enter: `json::parse`
@@ -471,11 +464,7 @@ geometrically (tolerance 1e-3).
   builds use it; the `toolchain` composite action runs `rustup toolchain install` (plain rustup, no third-party actions)
   and restores `~/.cargo` + `engine/target` keyed on `Cargo.lock`, the toolchain file, runner and job shape.
   Raise the pin together with `rust-version` when a newer language feature is needed.
-- `ci.yml` (push to `master` and `dev-hotschmoe`, PR, manual): `lint` (fmt, clippy native and wasm32), `engine` (release
-  build, `check_golden.sh`, wasm through binaryen version_123 `wasm-opt` + `wasm_golden` + `wasm_check`, `cli_ergonomics`,
-  `serve_smoke`, `platform_serve`, `fuzz.py 300 1` on a debug build), `web` (typecheck, unit, UI embedded in a release
-  build for `serve_smoke`, `test:e2e`, `test:serve` mock and `--real`, `build`), `macos` (golden, `cli_ergonomics`,
-  `serve_smoke` on `macos-latest`) and `windows` (`windows.yml`).
+- `ci.yml` keeps `lint`, `engine`, `web`, `macos`, and `windows` job names. The blocking jobs run the focused workflows; the `heavy` job runs on the nightly schedule. Windows-specific background scenarios also run on that schedule.
 - `release.yml` (tag `v*`): `version` refuses a tag that differs from `[workspace.package] version`; the Windows gate and
   the Linux gates (wasm-opt required, the UI is built from that wasm) must pass; then six native builds with
   `KERF_UI` set (musl static on `ubuntu-24.04` / `ubuntu-24.04-arm`, MSVC `+crt-static` on `windows-latest` /
@@ -491,7 +480,7 @@ geometrically (tolerance 1e-3).
 
 All `unsafe` lives in `kerf-cli/src/sys/` (`unix.rs`, `windows.rs`: safe wrappers, `#![deny(unsafe_op_in_unsafe_fn)]`, a `// SAFETY:` per block); zero crates. Built and run on a Windows 11 x86_64 machine (2026-10-31)
 (release and debug): `serve_smoke.mjs` 189/189 (190 on Linux: one POSIX-only check), `windows_serve.mjs` 32/32, `cli_ergonomics.mjs` 145/145, `tests/platform_serve.mjs` 16/16,
-`tests/ctrl_break.ps1`, `tests/check_golden.mjs` (101 outputs byte-identical to the Linux goldens, DXF/PDF checkers clean), clippy `-D warnings` clean. `windows.yml` runs the same gates on every push against the shipped configuration (release, `+crt-static`, UI embedded) on `windows-latest` (x86_64) and the native `windows-11-arm` (aarch64-pc-windows-msvc); both are required and green, including `ctrl_break.ps1` (exit 130, tree gone) and the 101 goldens byte-identical, with no engine change needed for aarch64. The runners' `%TEMP%` is an 8.3 short path (`RUNNER~1`) while the engine reports the long one, so the tests compare `fs.realpathSync.native`.
+`tests/ctrl_break.ps1`, `tests/check_golden.mjs` and clippy were clean in that historical run. `windows.yml` now runs the focused CLI, serve and three-detail export workflows on both Windows runners; platform and Ctrl-Break scenarios run on schedule. The runners' `%TEMP%` is an 8.3 short path (`RUNNER~1`) while the engine reports the long one, so the tests compare `fs.realpathSync.native`.
 - **Agent runs**: the agent is created suspended (`CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP`), assigned to its own job object with `KILL_ON_JOB_CLOSE`, then resumed (`NtResumeProcess`). Stop, timeout, sweep and
   server exit are `TerminateJobObject` (exit code 1, no SIGTERM stage); a server killed hard closes the job and takes the tree with it. If the job cannot be made the leader alone is terminated (`TerminateProcess`).
 - **Agent CLIs**: std only finds `.exe`, so `sys::resolve_program` walks `PATH` (the agent's PATH has kerf's directory first) with the runnable `PATHEXT` extensions (`.exe .com .cmd .bat`): npm `.cmd` shims work, a

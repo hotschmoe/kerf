@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Every engine gate in one run: release build, golden set, wasm (goldens + ABI), CLI ergonomics, mutation fuzz and, with
-# --serve, the `kerf serve` smoke test. Usage: tests/gates.sh [fuzz cases=300] [--serve]
-# Needs tools/.venv on PATH (the DXF/PDF checkers) and, for a size-faithful wasm, wasm-opt.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-N=${1:-300}
-cargo build --release -q
-node ../tools/build_wasm.mjs >/dev/null
-tests/check_golden.sh | tail -1
-node tests/wasm_golden.mjs | tail -1
-node tests/wasm_check.mjs dist/kerf.wasm ../spec/details/truss-bearing-cmu.kerf.json A "$(mktemp -d)/a.svg" | grep -E "ABI|imports" | head -1
-node tests/cli_ergonomics.mjs "$PWD/target/release/kerf" | tail -1
-KERF=$PWD/target/release/kerf python3 tests/fuzz.py "$N" 1 | tail -1
-if [ "${2:-}" = "--serve" ]; then node tests/serve_smoke.mjs "$PWD/target/release/kerf" | tail -1; fi
+root=$PWD/..
+target=${CARGO_TARGET_DIR:-$PWD/target}
+case $target in /*) ;; *) target=$PWD/$target ;; esac
+binary=$target/release/kerf
+if [ -x "$root/tools/.venv/bin/python" ]; then
+  export PATH="$root/tools/.venv/bin:$PATH"
+fi
+export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
+cargo build --release
+node ../tools/build_wasm.mjs
+KERF="$binary" node tests/check_golden.mjs truss-bearing-cmu flush-beam-strap hss-column-base-plate
+node tests/cli_e2e.mjs "$binary"
+node tests/serve_e2e.mjs "$binary"
+node tests/wasm_check.mjs dist/kerf.wasm ../spec/details/truss-bearing-cmu.kerf.json A
+(
+  cd ../apps/web
+  KERF_WASM="$root/engine/dist/kerf.wasm" npm run build
+  KERF_E2E_CASE='save / open .kerf.json round trip' node test/e2e.mjs
+)

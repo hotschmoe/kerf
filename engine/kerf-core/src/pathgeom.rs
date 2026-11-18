@@ -1,10 +1,7 @@
-//! Polyline helpers for thickened members: fillets, offsets, ribbons.
-
 use crate::geom::{self, Pt, V2};
 use crate::math;
 use alloc::vec::Vec;
 
-/// Reverse an open bulge polyline (the last vertex carries bulge 0).
 pub fn reverse_open(pts: &[Pt]) -> Vec<Pt> {
     let n = pts.len();
     (0..n)
@@ -47,7 +44,6 @@ fn line_intersect(a0: V2, a1: V2, b0: V2, b1: V2) -> Option<V2> {
     Some(a0.add(r.scale(t)))
 }
 
-/// Offset an open bulge polyline to its left by `d` (negative = right). Line-line joints are mitered.
 pub fn offset_open(pts: &[Pt], d: f64) -> Vec<Pt> {
     let nseg = pts.len().saturating_sub(1);
     if nseg == 0 {
@@ -81,7 +77,6 @@ pub fn offset_open(pts: &[Pt], d: f64) -> Vec<Pt> {
     out
 }
 
-/// Closed ribbon around `center`: `left` to the left side, `right` to the right side, flat end caps.
 pub fn ribbon(center: &[Pt], left: f64, right: f64) -> Vec<Pt> {
     let l = offset_open(center, left);
     let r = reverse_open(&offset_open(center, -right));
@@ -106,8 +101,6 @@ pub fn ribbon(center: &[Pt], left: f64, right: f64) -> Vec<Pt> {
     cleaned
 }
 
-/// Fillet the interior vertices of a polyline with radius `r_fillet` (reduced where segments are short).
-/// Output is an open bulge polyline.
 pub fn fillet(pts: &[V2], r_fillet: f64) -> Vec<Pt> {
     if pts.len() < 3 || r_fillet <= 0.0 {
         return pts.iter().map(|&p| Pt::at(p, 0.0)).collect();

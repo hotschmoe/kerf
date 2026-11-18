@@ -1,4 +1,3 @@
-// LIBRARY: the workspace's documents (workspace mode only), live from the server; sits above the console messages.
 import type { Workspace } from '../workspace/workspace';
 import { slug } from '../workspace/workspace';
 import { h, clear, btn } from './dom';
@@ -6,7 +5,7 @@ import { popup } from './popup';
 
 const K_COLLAPSED = 'kerf.libCollapsed';
 const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
-const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
+const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
 
 export function mountLibrary(ws: Workspace, el: HTMLElement) {
   let collapsed = lsGet(K_COLLAPSED) === '1';
