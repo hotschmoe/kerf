@@ -24,7 +24,7 @@ jobs:
   windows:
     uses: ./.github/workflows/windows.yml
     with:
-      heavy: ${{ github.event_name == 'schedule' }}
+      heavy: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
   lint:
     runs-on: ubuntu-latest
@@ -102,7 +102,7 @@ jobs:
       - run: KERF="$PWD/target/release/kerf" node tests/check_golden.mjs truss-bearing-cmu flush-beam-strap hss-column-base-plate
 
   heavy:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
