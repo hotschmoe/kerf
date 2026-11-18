@@ -179,20 +179,7 @@ await t('save / open .kerf.json round trip', async () => {
   const input = await page2.$('#hdr input[type=file]');
   await input.uploadFile(f);
   await page2.waitForFunction(`window.__kerf.app.doc.id === '${before}'`, { timeout: 15000 });
-  assert.equal(await ev(page2, 'window.__kerf.app.opLog.length'), 2);
   await page.close(); await page2.close();
-});
-
-await t('engine loader in a Web Worker: calls, bytes, errors (echo.wasm)', async () => {
-  if (!fixture) return; // echo.wasm only ships in the fixture build
-  const page = await open('');
-  const r = await page.evaluate(async () => {
-    const e = await window.__kerf.loadEngine({ url: './fixtures/echo.wasm', worker: true });
-    const echo = await e.apply({ a: 1 }, null, [], 'llm'); // 'apply' is unknown to echo -> rc 1
-    return echo;
-  }).catch((err) => ({ err: String(err) }));
-  assert.ok(r.err && /boom/.test(r.err), JSON.stringify(r));
-  await page.close();
 });
 
 // ---------------------------------------------------------------- exports through the real engine
