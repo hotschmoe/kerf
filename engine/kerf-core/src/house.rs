@@ -1,18 +1,11 @@
-//! House text rules shared by the note lint, the renderer's case transform and the `meta.requested` coverage (SPEC 25.3):
-//! the abbreviation table, the tokens whose case is significant, the dashed-fraction test, and the normalized word list
-//! coverage matches on.
-
 use crate::style::{AbbrevRules, Style};
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// A house abbreviation and the word(s) it stands for (the first entry is the canonical spelling).
 pub struct Abbr {
     pub abbr: &'static str,
     pub words: &'static [&'static str],
-    /// The bare letters are also an ordinary word: coverage reads them as the abbreviation only when written with the period.
     pub dot: bool,
-    /// How often the reference sets write this form (0 = not counted), for spec/styles/ABBREVIATIONS.md.
     pub refs: u16,
 }
 
@@ -30,9 +23,6 @@ impl Abbr {
     }
 }
 
-/// The approved forms of the built-in list `us-structural`: US structural practice as written in the MASS reference sets
-/// (US Southwest firms, 2014-2024), periods on shortened words, dotted initials for phrases, none on material/product
-/// acronyms (SPEC 25.3, 25.6). A note may end on any of these with its period; coverage reads each as its words.
 pub static ABBREVIATIONS: [Abbr; 141] = [
     ab("A.B.", &["ANCHOR BOLT"]).refs(25),
     ab("ABV.", &["ABOVE"]).refs(27),
@@ -177,14 +167,10 @@ pub static ABBREVIATIONS: [Abbr; 141] = [
     ab("WWR", &["WELDED WIRE REINFORCEMENT"]),
 ];
 
-/// A spelling in use that is not the approved form: W_ABBREV (rule `variants`) asks for `to`; coverage reads it as the words
-/// of `to`.
 pub struct Variant {
     pub from: &'static str,
     pub to: &'static str,
-    /// The bare letters are an ordinary word (`PLY`): only the spelling with its period is the variant.
     pub dot: bool,
-    /// Added to the W_ABBREV message ("" = nothing to add).
     pub why: &'static str,
     pub refs: u16,
 }
@@ -199,10 +185,6 @@ impl Variant {
     }
 }
 
-/// The variants of `us-structural`: each maps to the form the reference sets use most, or the one the MASS principal
-/// engineer chose (`BOT.`, `P.T.`, `N.T.S.`, `PL`). Any spelling that differs from an approved form only in periods
-/// (`TYP`, `OC`, `C.M.U.`) breaks a period rule without an entry; the listed ones of that kind (`UNO`, `NTS`, `EOR`,
-/// `PL.`) are here for their counts and also break the period rule, not `variants`.
 pub static VARIANTS: [Variant; 17] = [
     var("ADDL.", "ADD'L"),
     var("BLK'G", "BLKG.").refs(28),
@@ -229,11 +211,8 @@ pub static VARIANTS: [Variant; 17] = [
     var("UNO", "U.N.O.").refs(68),
 ];
 
-/// Abbreviations that end a note with their period although they stand for no word coverage should expand.
 pub const PERIOD_ONLY: [&str; 2] = ["NO", "NOS"];
 
-/// ACI / AISC / NDS symbols and units whose lower case is significant (`48 db`, `ld`, `f'c`, `Fy`, `3,000 psi`). Matched
-/// exactly, optionally after a number (`8db`).
 pub const KEEP_CASE: [&str; 33] = [
     "db", "ld", "ldh", "ldc", "ldt", "lc", "lst", "f'c", "f'ci", "f'm", "f'g", "fy", "fyt", "fu", "fc", "fr", "fs",
     "Fy", "Fu", "Fb", "Fv", "Fc", "Fp", "Fnt", "Fnv", "ksi", "psi", "psf", "plf", "pcf", "kip", "kips", "ksf",
@@ -243,17 +222,14 @@ fn is_tok_byte(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'\'' || c >= 0x80
 }
 
-/// The case-significant core of a token: `’` read as `'`.
 fn tok_core(t: &[u8]) -> String {
     String::from_utf8_lossy(t).replace('\u{2019}', "'")
 }
 
-/// A penny nail size (`16d`, `8d`): digits then a lower-case d.
 fn is_penny(t: &[u8]) -> bool {
     t.len() >= 2 && t[t.len() - 1] == b'd' && t[..t.len() - 1].iter().all(u8::is_ascii_digit)
 }
 
-/// `t` is a token (a run of letters, digits and apostrophes) whose case the house style keeps as written.
 pub fn keep_case_token(t: &[u8], st: &Style) -> bool {
     if is_penny(t) {
         return true;
@@ -266,7 +242,6 @@ pub fn keep_case_token(t: &[u8], st: &Style) -> bool {
     KEEP_CASE.contains(&rest.as_str()) || st.keep_case.iter().any(|k| *k == rest || k.as_bytes() == t)
 }
 
-/// Token spans `(start, end)` of `text` for the case rules.
 pub fn case_tokens(text: &[u8]) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -288,7 +263,6 @@ pub fn case_tokens(text: &[u8]) -> Vec<(usize, usize)> {
     out
 }
 
-/// Upper-case `text` except the tokens whose case is significant (penny sizes, ACI symbols, the style's `text.keep_case`).
 pub fn upper_bytes(text: &[u8], st: &Style) -> Vec<u8> {
     let mut out = text.to_ascii_uppercase();
     for (s, e) in case_tokens(text) {
@@ -303,7 +277,6 @@ pub fn upper(text: &str, st: &Style) -> String {
     String::from_utf8_lossy(&upper_bytes(text.as_bytes(), st)).into_owned()
 }
 
-/// Lower-case letters outside the tokens whose case is significant.
 pub fn has_folding_lowercase(text: &[u8], st: &Style) -> bool {
     case_tokens(text).into_iter().any(|(s, e)| {
         let t = &text[s..e];
@@ -311,8 +284,6 @@ pub fn has_folding_lowercase(text: &[u8], st: &Style) -> bool {
     })
 }
 
-/// A dashed fraction (`1-1/2"`) whose dash is at `k`: a whole number that starts a token, the dash, then a proper fraction
-/// with a 2..64 power-of-two denominator that ends the token. `HU212-2/HUC212-2` is a model number, not a fraction.
 pub fn dash_fraction_at(t: &[u8], k: usize) -> bool {
     if t.get(k) != Some(&b'-') || k == 0 || !t[k - 1].is_ascii_digit() {
         return false;
@@ -349,18 +320,11 @@ pub fn has_dash_fraction(t: &[u8]) -> bool {
     (0..t.len()).any(|k| dash_fraction_at(t, k))
 }
 
-// ---- the style's abbreviation table and W_ABBREV (SPEC 25.6) ----------------------------------------------------
-
-/// How an approved abbreviation is written, which decides the rule a deviation from it breaks.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Form {
-    /// A shortened word with its period: `TYP.`, `CONC.`.
     Shortened,
-    /// Dotted initials of a phrase: `O.C.`, `U.N.O.`.
     Initials,
-    /// No periods: material and product acronyms and symbols (`CMU`, `LVL`, `T&B`, `THRU`).
     Bare,
-    /// An apostrophe contraction: `REQ'D`, `ADD'L`.
     Contraction,
 }
 
@@ -376,8 +340,6 @@ pub fn form_of(abbr: &str) -> Form {
     }
 }
 
-/// The W_ABBREV rules: the four form rules a style can switch off (`notes.abbreviations.rules`) and the style's
-/// `always` list.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Rule {
     PeriodOnShortened,
@@ -409,26 +371,21 @@ impl Rule {
     }
 }
 
-/// One spelling of the table: an approved form (`to` empty) or a variant of one.
 pub struct Entry<'s> {
     pub abbr: &'s str,
     pub words: Vec<&'s str>,
-    /// The bare letters are an ordinary word (`SIM`, `TO`): they count as this entry only when written with its periods.
     pub dot: bool,
-    /// A variant: the approved form it is written as.
     pub to: &'s str,
     pub why: &'s str,
     pub refs: u16,
 }
 
-/// The abbreviations of a style: the built-in list (`extends`), less `remove`, plus `approved` and `variants`.
 pub struct Table<'s> {
     pub entries: Vec<Entry<'s>>,
     pub always: Vec<&'s str>,
     pub rules: AbbrevRules,
 }
 
-/// One abbreviation of a text not written as the style wants (W_ABBREV): the byte span, the rule, and the approved form.
 pub struct Hit<'s> {
     pub start: usize,
     pub end: usize,
@@ -438,8 +395,6 @@ pub struct Hit<'s> {
     pub why: &'s str,
 }
 
-/// The rule a spelling of entry `e` that is not its approved form breaks: a period rule when it differs from the approved
-/// form only in periods (`TYP`, `UNO`, `C.M.U.`, `PL.`), else `variants` (`BOTT.`, `REQD`).
 pub fn rule_for(e: &Entry) -> Rule {
     let target = if e.to.is_empty() { e.abbr } else { e.to };
     if !e.to.is_empty() && !same_key(e.abbr, target) {
@@ -453,7 +408,6 @@ pub fn rule_for(e: &Entry) -> Rule {
     }
 }
 
-/// `a` and `b` spell the same letters, ignoring periods and case.
 fn same_key(a: &str, b: &str) -> bool {
     let mut x = a.bytes().filter(|&c| c != b'.');
     let mut y = b.bytes().filter(|&c| c != b'.');
@@ -518,12 +472,10 @@ impl<'s> Table<'s> {
         Table { entries, always: cfg.always.iter().map(String::as_str).collect(), rules: cfg.rules }
     }
 
-    /// The approved entry spelled `a` (case-insensitive).
     pub fn approved(&self, a: &str) -> Option<&Entry<'s>> {
         self.entries.iter().find(|e| e.to.is_empty() && e.abbr.eq_ignore_ascii_case(a))
     }
 
-    /// Style mistakes the table reveals: a variant of no approved form, an `always` entry that is not approved.
     pub fn problems(&self) -> Vec<String> {
         let mut out = Vec::new();
         for e in self.entries.iter().filter(|e| !e.to.is_empty() && e.words.is_empty()) {
@@ -546,8 +498,6 @@ impl<'s> Table<'s> {
         out
     }
 
-    /// `base` (a note's last word without its period) is an abbreviation of the table, also one written in the wrong form
-    /// (`OC.`: W_ABBREV reports that), `NO` or `NOS`; the bare letters of an ordinary-word entry (`TO.`) are not.
     pub fn is_period_abbr(&self, base: &[u8]) -> bool {
         let same = |a: &str| a.trim_end_matches('.').as_bytes().eq_ignore_ascii_case(base);
         let letters = String::from_utf8_lossy(base);
@@ -559,7 +509,6 @@ impl<'s> Table<'s> {
         self.entries.iter().any(|e| same_key(e.abbr, tok))
     }
 
-    /// The rule `tok` (one token as written, `’` read as `'`) breaks, with the approved entry it should be written as.
     fn check(&self, tok: &str) -> Option<(Rule, &Entry<'s>)> {
         if let Some(e) = self.entries.iter().find(|e| e.abbr.eq_ignore_ascii_case(tok)) {
             return if e.to.is_empty() { None } else { Some((rule_for(e), e)) };
@@ -589,7 +538,6 @@ impl<'s> Table<'s> {
 const CURLY_APOS: [u8; 3] = [0xE2, 0x80, 0x99];
 const CURLY_OPEN1: [u8; 3] = [0xE2, 0x80, 0x98];
 
-/// Length of the token character at `i` (ASCII letter, digit, `.`, `'`, `&`, `-`, or a curly apostrophe), if any.
 fn abbr_char(b: &[u8], i: usize) -> Option<usize> {
     let c = b[i];
     if c.is_ascii_alphanumeric() || matches!(c, b'.' | b'\'' | b'&' | b'-') {
@@ -599,7 +547,6 @@ fn abbr_char(b: &[u8], i: usize) -> Option<usize> {
     (t == CURLY_APOS || t == CURLY_OPEN1).then_some(3)
 }
 
-/// Bytes inside double quotes (`"..."`, `“...”`); a `"` or `”` right after a digit is an inch mark, not a quote.
 fn quoted_bytes(b: &[u8]) -> Vec<bool> {
     let mut m = alloc::vec![false; b.len()];
     let mut inq = false;
@@ -627,7 +574,6 @@ fn quoted_bytes(b: &[u8]) -> Vec<bool> {
     m
 }
 
-/// `phrase` at `i` of `b` as whole words, case-insensitive.
 fn word_at(b: &[u8], i: usize, phrase: &str) -> bool {
     let p = phrase.as_bytes();
     i + p.len() <= b.len()
@@ -636,8 +582,6 @@ fn word_at(b: &[u8], i: usize, phrase: &str) -> bool {
         && !(i + p.len() < b.len() && b[i + p.len()].is_ascii_alphanumeric())
 }
 
-/// The abbreviations of `text` the style wants written otherwise (W_ABBREV, SPEC 25.6), in text order. Tokens with a
-/// digit (`HU212-2`, `16d`, `H2.5A`), case-significant tokens (`f'c`) and text inside double quotes are never read.
 pub fn abbrev_hits<'s>(text: &str, st: &Style, t: &Table<'s>) -> Vec<Hit<'s>> {
     let b = text.as_bytes();
     let quoted = quoted_bytes(b);
@@ -745,9 +689,6 @@ fn count(n: u16) -> String {
     if n == 0 { String::new() } else { alloc::format!("{n}") }
 }
 
-/// The table of `st` as Markdown (`kerf schema abbreviations`, spec/styles/ABBREVIATIONS.md): the rules in force, then one
-/// row per approved form with its meaning, its form and the other spellings W_ABBREV flags (the listed variants, with
-/// their counts in the reference sets, and the period-only deviation).
 pub fn abbreviations_markdown(st: &Style) -> String {
     use alloc::format;
     let t = Table::new(st);
@@ -810,7 +751,6 @@ pub fn abbreviations_markdown(st: &Style) -> String {
     out
 }
 
-/// `text` with every hit replaced by its approved form and nothing else changed.
 pub fn apply_hits(text: &str, hits: &[Hit]) -> String {
     let mut out = String::with_capacity(text.len() + 8);
     let mut at = 0;
@@ -826,12 +766,8 @@ pub fn apply_hits(text: &str, hits: &[Hit]) -> String {
     out
 }
 
-// ---- coverage words ---------------------------------------------------------------------------------------------
-
 const STOP_WORDS: [&str; 13] = ["w", "with", "and", "at", "of", "the", "a", "an", "to", "for", "in", "on", "per"];
 
-/// One normalized word. `req`: it counts when it comes from a `meta.requested` item (the pieces of a length with units
-/// do not, the length does); candidates count every word.
 #[derive(Clone, Debug)]
 struct Tok {
     s: String,
@@ -854,8 +790,6 @@ fn sixteenths(inch: f64) -> i64 {
     crate::num::to_int_clamped(inch * 16.0 + 0.5, 0, 1 << 52)
 }
 
-/// A length at `i` (lower-case text): `15'-0"`, `4'`, `1 1/2"`, `5/8"`, `48in`, `15 ft`, `2.5 in.`; also a bare proper
-/// fraction (`3/16`, `unit` false). Returns the end, the length in 1/16 in and whether units were written.
 fn length_at(b: &[u8], i: usize) -> Option<(usize, i64, bool)> {
     if i > 0 && (b[i - 1].is_ascii_alphanumeric() || matches!(b[i - 1], b'.' | b'/')) {
         return None;
@@ -950,8 +884,6 @@ fn length_at(b: &[u8], i: usize) -> Option<(usize, i64, bool)> {
     None
 }
 
-/// Raw words of `text`: lower case, `’` as `'`, letters joined across `.` in dotted abbreviations (`o.c.`), across `&`
-/// (`t&b`) and `'` (`req'd`, `f'c`); a plural `s` dropped; lengths added as `len:<sixteenths>`; stop words dropped.
 fn raw_tokens(text: &str) -> Vec<Tok> {
     let low = text.replace(['\u{2019}', '\u{2032}'], "'").replace(['\u{201D}', '\u{2033}'], "\"").to_ascii_lowercase();
     let b = low.as_bytes();
@@ -1027,16 +959,12 @@ fn raw_tokens(text: &str) -> Vec<Tok> {
     out
 }
 
-/// One rewrite of the coverage normalization: these words (an abbreviation, or one spelling of its words) read as `to`.
-/// A `dot` rule (the abbreviation is also a plain word) applies only to the abbreviation written with its period, and a
-/// candidate then offers the written word too, so `alt` asks for `ALT.` and `alt.` asks for `ALTERNATE` or `ALT.`.
 struct Rewrite {
     from: Vec<String>,
     to: Vec<String>,
     dot: bool,
 }
 
-/// The abbreviation table (built in, plus the style's `notes.abbreviations`) as word rewrites.
 pub struct Words {
     rules: Vec<Rewrite>,
 }
@@ -1115,8 +1043,6 @@ impl Words {
         out
     }
 
-    /// The normalized words a `meta.requested` item asks for, each with its word forms (`forms`): the word is found
-    /// when a candidate offers any of them.
     pub fn wanted(&self, text: &str) -> Vec<Vec<String>> {
         let mut out: Vec<Vec<String>> = Vec::new();
         for t in self.rewrite(raw_tokens(text)) {
@@ -1129,7 +1055,6 @@ impl Words {
         out
     }
 
-    /// The normalized words a candidate text offers with their word forms, sorted (binary search).
     pub fn offered(&self, text: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for t in self.rewrite(raw_tokens(text)) {
@@ -1142,8 +1067,6 @@ impl Words {
     }
 }
 
-/// `-ing` and `-ed` words whose base word names something else on a structural drawing (`BLOCKING` is not `BLOCK`,
-/// `TOPPING` is not `TOP`), so they keep only their own form.
 const UNSTEMMED: [&str; 22] = [
     "bedding",
     "blocking",
@@ -1169,9 +1092,6 @@ const UNSTEMMED: [&str; 22] = [
     "topping",
 ];
 
-/// The base forms of an `-ing` / `-ed` word, used besides the word itself: `nailed`, `nailing` -> `nail`; `bracing` ->
-/// `brac`, `brace`; `lapped` -> `lap`; `specified` -> `specify`. The stem keeps at least 4 letters and a vowel, a doubled
-/// final consonant (not l, s, z) is undoubled, `-eed` words and `UNSTEMMED` stay as written.
 fn forms(w: &str) -> Vec<String> {
     let b = w.as_bytes();
     if !b.iter().all(u8::is_ascii_lowercase) || UNSTEMMED.contains(&w) {
@@ -1201,12 +1121,10 @@ fn forms(w: &str) -> Vec<String> {
     alloc::vec![String::from(stem), alloc::format!("{stem}e")]
 }
 
-/// A length in 1/16 in as the coverage word a measured dimension offers.
 pub fn length_word(inches: f64) -> String {
     alloc::format!("len:{}", sixteenths(inches.abs()))
 }
 
-/// Shown in a diagnostic: a normalized word the way a person reads it (`len:768` is `4'-0"`).
 pub fn display_word(w: &str) -> String {
     match w.strip_prefix("len:").and_then(|n| n.parse::<i64>().ok()) {
         Some(n) => crate::units::fmt_ft_in(n as f64 / 16.0),

@@ -447,3 +447,11 @@ SPEC 21, 25.3, 26.1 and 28.8 define requested-item coverage. Normalized words in
 ## engine/kerf-core/src/review.rs
 
 SPEC 25.4 and 25.6 define the opt-in review overlay. It marks acknowledged owners with dashed boxes and numbered tags and adds a stamp and legend; ordinary exports omit them. On sheets, the overlay scans for free space in the frame and reduces text size or legend length if necessary.
+
+## engine/kerf-core/src/house.rs
+
+SPEC 25.3 and 25.6 define house text, abbreviation and coverage normalization rules. The built-in `us-structural` forms derive from the MASS reference sets; shortened words use periods, phrase initials use dots, and material/product acronyms do not. Ambiguous abbreviations that are ordinary words count as abbreviations only when written with their periods. ACI/AISC/NDS symbols, penny sizes and configured tokens retain significant case. The abbreviation checker skips digit-bearing and case-significant tokens and quoted text; an inch mark after a digit does not open a quote. Coverage normalizes lengths to sixteenths, abbreviations, plural endings and selected verb forms; words such as BLOCKING and TOPPING keep their own form because their stems mean something else. Dashed fractions require a proper fraction with a power-of-two denominator from 2 to 64, so model numbers are not rewritten as fractions. The schema abbreviation table includes approved forms, variants and reference-set counts.
+
+## engine/kerf-core/src/lint.rs
+
+SPEC 19, 21, 25.3, 25.4, 25.6 and 26.3 govern document linting. Unknown view-member patterns warn rather than fail so edits can arrive in any order. The note length limit is 130 characters; SPEC 21 says 120, but the limit accommodates a 121-character reference note (see engine NOTES). Mechanical text fixes preserve model numbers and are withheld if a rewrite is needed. A table's repeated text is linted once with its paths. Missing dimension directions are filled in on a rendering copy from the dominant axis, using plan coordinates for plan views; unresolved references remain for the view build to report. Acknowledgements may belong to components, views or annotations. Warnings are suppressed into `I_ACK`, while info codes are accepted as no-ops; strict checking keeps acknowledged warnings, and a complete diagnostic pass can report unmatched entries as `W_ACK_UNUSED`.
