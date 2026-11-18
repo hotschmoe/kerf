@@ -375,3 +375,15 @@ SPEC 26.4 defines sleeve parameters and geometry.
 ## engine/kerf-core/src/builders/solid.rs
 
 SPEC 5 defines solid parameters and geometry.
+
+## engine/kerf-core/src/builders/rebar.rs
+
+SPEC 5, 25.1 and 26.3 define reinforcing bars. Flat x/z bars use axis legs, approximating diagonal runs with short stair-step slabs for checks, iso and mesh; the first slab carries the complete centerline used by section, plan and elevation. Path-bar anchors lie on that centerline: bends use the point nearest the corner and segment anchors use the middle of the straight run. Station references follow the referenced member when its host is resized. Placement uses a host's outline or its box if it has no outline, clipped to the part box when a part is selected.
+
+## engine/kerf-core/src/builders/steel.rs
+
+The AISC subset in `steel_shapes` supplies dimensions. Cross-sections use u across and v up; section maps these to x/y, elevation uses length/v, and plan uses length/u. Lengthwise members are built as slabs at their true z positions, so iso and 3D retain their shape even though section draws them as elevations. Closed section profiles are split into simple loops for the mesh.
+
+## engine/kerf-core/src/builders/steel_shapes.rs
+
+The table is a subset of AISC Shapes Database v16. Rolled shapes use tabulated decimal dimensions; HSS and pipe walls use design thickness 0.93 times nominal per AISC 360 B4.2. Angle and channel root fillets are approximated by size. Weld and fit checks use the thinnest element of a wide flange or channel. Table tuples use W designation/depth/flange width/web thickness/flange thickness/design k; rectangular HSS height/width/nominal walls; round HSS diameter/nominal walls; pipe designation/diameter/STD wall/XS wall; angles long leg/short leg/thicknesses; and channels designation/depth/flange width/web thickness/average flange thickness.
