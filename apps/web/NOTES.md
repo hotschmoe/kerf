@@ -79,10 +79,8 @@ next message; NEW clears them. Agents take text only (no image attach). Static m
 `spec/llm/system.md` is no longer loaded by the web app (`kerf guide` embeds it).
 
 ## Tests
-- `test/e2e.mjs` (8): static mode (chat-off note), notes/undo/drag, save/open, exports + dxf/pdf checks.
-- `test/e2e-serve.mjs` (14 vs mock, 10 vs real): detection, live library, external edit reload (view/zoom/selection preserved) + LOCAL AGENT card, designer edits (`if_match`,
-  log, no echo reload), 409, NEW/ADD SAMPLE, export, reference panel (token, captions, zoom, PDF, missing file, toggle, narrow stacking), token, offline, scripted agent run/resume/STOP, agent picker.
-  `test/mock-serve.mjs` implements SERVE.md with the real engine wasm; the REAL server passes everything runnable (the rest is mock-only: it needs mock hooks). Screenshots: `KERF_SHOTS=dir`.
+
+The blocking gate is `cd engine && tests/gates.sh`; the background gate is `cd engine && tests/test-heavy.sh`. The blocking browser case exercises save/open with the real wasm engine. The background gate runs the broader browser workflows with `test/mock-serve.mjs` and a real-server agent bridge using `test/fake-agent.mjs`. See the [engineering conventions](https://github.com/hotschmoe/hotschmoe-setup/blob/master/ENGINEERING.md).
 
 ## Decisions
 - **Renderer**: plain `WebGLRenderer` (WebGL2). Measured with a minimal scene: WebGL path 586 kB raw / 146 kB gzip (three core + renderer);
