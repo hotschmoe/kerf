@@ -155,3 +155,27 @@ Feature edges come from the mesh rather than triangle edges. The orthographic ca
 ## apps/web/src/styles.css
 
 Design tokens and rules follow `spec/DESIGN.md`.
+
+## engine/kerf-core/src/pdf.rs
+
+SPEC 12 defines the PDF export. It uses vector paths for text, deterministic object order and no timestamps.
+
+## engine/kerf-core/src/pdf/writer.rs
+
+Cross-reference entries record object-header offsets, and `startxref` points to the cross-reference table. Offsets are padded to ten digits; an offset of 10^10 or more widens its entry.
+
+## engine/kerf-core/src/png.rs
+
+The encoder emits deterministic grayscale PNGs. It chooses the row filter by minimum sum of signed residual magnitudes, choosing the earliest filter on ties. Adler-32 is reduced in runs of zlib's NMAX (5552) to keep its accumulator within 32 bits. The first row has a zero previous row.
+
+## engine/kerf-core/src/png/deflate.rs
+
+The deterministic compressor uses greedy-lazy LZ77 and hash chains with zlib level-6-style parameters (good 8, nice 128, lazy 16, chain 128), then Huffman blocks. The raw stream is wrapped by the PNG encoder. Its 64 KiB table is allocated directly on the heap to avoid a large stack temporary.
+
+## engine/kerf-core/src/raster.rs
+
+SPEC 12 and 28.2 govern raster export. Items use a grayscale coverage scratch with max union, composited once per item so overlapping stroke segments do not darken twice. Strokes are capsules with analytically bounded row spans; fills use eight even-odd sub-scanlines per row. Default width accounts for 90 pixels per paper inch, subject to image size limits.
+
+## engine/kerf-core/src/raster/canvas.rs
+
+Pixel coordinates are clamped before conversion to indices; float-to-integer conversion saturates and converts NaN to zero. Coverage is accumulated per item. The dash walker terminates because styles admit only dashes at least 0.01 mm long. Fill coverage uses min/max rather than clamp so NaN gives zero rather than propagating.

@@ -1,17 +1,9 @@
-//! The raster canvas: a gray8 page (255 = paper), a per-item coverage scratch and per-row dirty spans.
-//!
-//! Every float is converted to an index with `as`, which saturates (NaN gives 0), after the surrounding float logic has
-//! clamped it to the buffer, so no input can index outside a buffer. Float operations are written in a fixed order: the
-//! pixels are part of the golden files.
-
 use crate::geom::V2;
 use crate::math::{ceil, floor, round, sqrt};
 use alloc::vec::Vec;
 
-/// Longest image side.
 pub const MAX_SIDE: usize = 8192;
 
-/// Weight of one of the 8 sub-scanlines of a fill, in `f32` like the accumulator.
 const SUB_WEIGHT: f32 = 1.0 / 8.0;
 const SUB_SCANLINES: usize = 8;
 
@@ -28,16 +20,12 @@ pub struct Canvas {
     h: usize,
     pix: Vec<u8>,
     cov: Vec<u8>,
-    /// Per row, the columns `(first, last)` the coverage scratch has touched.
     dirty: Vec<Option<(usize, usize)>>,
-    /// Per-column coverage of one fill row (`w + 2` entries: crossings may land on `w`).
     acc: Vec<f32>,
-    /// Edge crossings of one sub-scanline.
     xs: Vec<f64>,
 }
 
 impl Canvas {
-    /// A white page of `w` x `h` pixels, each clamped to `1..=MAX_SIDE` (`raster::layout` already keeps them there).
     pub fn new(w: usize, h: usize) -> Canvas {
         let (w, h) = (w.clamp(1, MAX_SIDE), h.clamp(1, MAX_SIDE));
         Canvas {
@@ -61,13 +49,11 @@ impl Canvas {
         span.1 = span.1.max(last);
     }
 
-    /// Raises the coverage of `(x, y)` to `v`.
     fn raise(&mut self, y: usize, x: usize, v: u8) {
         let c = &mut self.cov[y * self.w + x];
         *c = (*c).max(v);
     }
 
-    /// Composites the coverage scratch onto the page (`dst *= 1 - coverage`) and clears it.
     pub fn flush(&mut self) {
         for (y, span) in self.dirty.iter_mut().enumerate() {
             let Some((first, last)) = span.take() else { continue };
@@ -83,8 +69,6 @@ impl Canvas {
         }
     }
 
-    /// Unions a round-capped segment of half-width `r` (pixels) into the coverage scratch:
-    /// coverage = clamp(r + 0.5 - distance, 0, 1) per pixel, rows spanned analytically.
     pub fn capsule(&mut self, a: V2, b: V2, r: f64) {
         let (wf, hf) = (self.w as f64, self.h as f64);
         let rr = r + 0.5;
@@ -147,9 +131,6 @@ impl Canvas {
         }
     }
 
-    /// Strokes a flattened polyline (pixel space), optionally dashed (an odd dash list repeats,
-    /// as in SVG). The dash walker advances by float amounts and ends because the style admits
-    /// only dashes of at least 0.01 mm.
     pub fn stroke(&mut self, p: &[V2], r: f64, dash: Option<&[f64]>) {
         match p {
             [] => {}
@@ -191,8 +172,6 @@ impl Canvas {
         }
     }
 
-    /// Even-odd fill of the closed edges (pixel space) into the coverage scratch: 8 sub-scanlines
-    /// per row with exact horizontal coverage, crossings sorted with the stable sort.
     pub fn fill(&mut self, es: &[Edge]) {
         let (wf, hf) = (self.w as f64, self.h as f64);
         let (ymin, ymax) = es

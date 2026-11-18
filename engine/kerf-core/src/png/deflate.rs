@@ -1,8 +1,3 @@
-//! DEFLATE compression: greedy-lazy LZ77 with hash chains (good 8, nice 128, lazy 16, chain 128 as zlib's default level
-//! 6) fed through one 64 KiB window, then Huffman-coded blocks. The exact token choices are part of the output format:
-//! PNG goldens are byte-compared, so changing a heuristic changes every PNG. `deflate_raw(&[u8]) -> Vec<u8>` is the
-//! raw stream; `png::zlib_frame` adds the zlib header and trailer.
-
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -151,8 +146,6 @@ fn heap_remove_root(nodes: &[Node], heap: &mut [u16]) {
     heap_sift_down(nodes, &mut heap[..last], 0);
 }
 
-/// Huffman code lengths and codes for `freqs` (`out_bits` zero-filled on entry). Returns the total
-/// encoded bits and the index of the last used symbol.
 fn huffman_build(
     freqs: &[u16],
     out_codes: &mut [u16],
@@ -289,7 +282,6 @@ fn build_values(freqs: &[u16], out_codes: &mut [u16], bits: &[u8], bit_counts: &
     total
 }
 
-/// Run-length encodes the code lengths with the code-length alphabet. Returns the extra bit count.
 fn build_clen(dyn_bits: &[u8], values: &mut Vec<u8>, extra: &mut Vec<u8>, freqs: &mut [u16; 19]) -> u32 {
     let mut extra_bitsize = 0u32;
     let mut rest = dyn_bits;
@@ -334,7 +326,6 @@ fn clen_hlen(freqs: &[u16; 19]) -> u32 {
     max
 }
 
-/// A table of `N` entries set to 0xffff, allocated on the heap directly (no 64 KiB stack temporary).
 fn table<const N: usize>() -> Box<[u16; N]> {
     vec![0xffff; N].into_boxed_slice().try_into().unwrap_or_else(|_| unreachable!())
 }
@@ -673,7 +664,6 @@ impl Compressor {
     }
 }
 
-/// Little-endian `u64` of `s[i..i + 8]` (LLVM folds the eight loads into one).
 #[inline(always)]
 fn load64(s: &[u8], i: usize) -> u64 {
     let _len = s.len();
@@ -688,8 +678,6 @@ fn load64(s: &[u8], i: usize) -> u64 {
         | u64::from(p[7]) << 56
 }
 
-/// Common prefix length of `prev` and `bytes`, at most 258 (`MAX_LENGTH`): 8 bytes per step, the first difference
-/// in an unequal step located by `trailing_zeros` of the XOR.
 fn match_len(prev: &[u8], bytes: &[u8]) -> u16 {
     let mut cap = bytes.len();
     if prev.len() < cap {
@@ -714,7 +702,6 @@ fn match_len(prev: &[u8], bytes: &[u8]) -> u16 {
     n as u16
 }
 
-/// The raw DEFLATE stream of `data` (no zlib header or trailer: `png::zlib_frame` adds them).
 pub fn deflate_raw(data: &[u8]) -> Vec<u8> {
     let mut c = Compressor::new();
     c.write_all(data);
