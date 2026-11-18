@@ -1,4 +1,3 @@
-// Interactive 2D viewport: vellum + blue grid + Drawing IR, pan/zoom/fit, hover/select by src, note dragging.
 import type { Drawing } from './types';
 import { DrawingModel, baseId, fitView, paintBatches, type View2D } from './draw2d';
 import { fmtFtIn } from './units';
@@ -33,7 +32,6 @@ export class Viewport2D {
   private drag: null | { kind: 'pan'; sx: number; sy: number; tx: number; ty: number; moved: boolean }
     | { kind: 'note'; id: string; mx: number; my: number; dx: number; dy: number; ref: [number, number]; moved: boolean } = null;
   lastPaintMs = 0;
-  /** true once the user pans/zooms; until then every resize re-fits the drawing */
   private touched = false;
 
   constructor(private host: HTMLElement, private cb: Viewport2DCallbacks) {
@@ -92,7 +90,7 @@ export class Viewport2D {
     if (w === this.w && h === this.h && dpr === this.dpr) return;
     const hadSize = this.w > 0;
     if (hadSize && w > 0 && this.model && !this.touched) { this.w = w; this.h = h; this.dpr = dpr; this.canvas.width = Math.max(1, Math.round(w * dpr)); this.canvas.height = Math.max(1, Math.round(h * dpr)); this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px'; this.fit(); return; }
-    if (hadSize && w > 0 && this.model) this.view = { ...this.view, tx: this.view.tx + (w - this.w) / 2, ty: this.view.ty + (h - this.h) / 2 }; // keep the view centered
+    if (hadSize && w > 0 && this.model) this.view = { ...this.view, tx: this.view.tx + (w - this.w) / 2, ty: this.view.ty + (h - this.h) / 2 };
     this.w = w; this.h = h; this.dpr = dpr;
     this.canvas.width = Math.max(1, Math.round(w * dpr));
     this.canvas.height = Math.max(1, Math.round(h * dpr));
@@ -134,7 +132,8 @@ export class Viewport2D {
       const inText = g?.texts.some(([x0, y0, x1, y1]) => x >= x0 - 0.5 && x <= x1 + 0.5 && y >= y0 - 0.5 && y <= y1 + 0.5);
       if (g && g.textItems.length && inText) {
         const t = g.textItems[0];
-        this.drag = { kind: 'note', id, mx: sx, my: sy, dx: 0, dy: 0, ref: [t.x, t.y + t.h], moved: false }; // SPEC: place = top-left of the first text line (cap height above its baseline)
+        // SPEC places notes at the first line’s top-left, above its baseline.
+        this.drag = { kind: 'note', id, mx: sx, my: sy, dx: 0, dy: 0, ref: [t.x, t.y + t.h], moved: false };
         return;
       }
     }
@@ -192,13 +191,12 @@ export class Viewport2D {
       const px = sp * zoom;
       const alpha = Math.max(0, Math.min(1, (px - 5) / 9));
       if (alpha <= 0.02) return;
-      // a coarser level stays visible; a finer one fades out
       ctx.globalAlpha = li === 0 ? alpha * 0.9 : li === 1 ? alpha : alpha * 0.55;
       ctx.strokeStyle = col;
       ctx.beginPath();
       const i0 = Math.floor(x0 / sp), i1 = Math.ceil(x1 / sp);
       for (let i = i0; i <= i1; i++) {
-        if (li === 0 && i % 4 === 0) continue; // drawn by the 1" level
+        if (li === 0 && i % 4 === 0) continue;
         if (li === 1 && px < 60 && i % 12 === 0 && 12 * zoom > 14) continue;
         const sx = Math.round((tx + i * sp * zoom) * dpr) + 0.5;
         ctx.moveTo(sx, 0); ctx.lineTo(sx, this.canvas.height);
@@ -231,7 +229,6 @@ export class Viewport2D {
       const drag = this.drag?.kind === 'note' && this.drag.moved ? this.drag : null;
       paintBatches(ctx, m, zoom, { ink: COL.ink, dpr, skipTextOf: drag?.id });
       const onePx = 1 / (zoom * dpr);
-      // selection tint + outline, hover outline
       const sel = this.selected && m.bySrc.get(this.selected);
       if (sel) {
         ctx.fillStyle = 'rgba(29,78,158,0.15)';
@@ -261,6 +258,5 @@ export class Viewport2D {
     this.lastPaintMs = performance.now() - t0;
   }
 
-  /** model-space cursor label, e.g. for status line */
   static fmtCursor(x: number, y: number): string { return `X ${fmtFtIn(x)} Y ${fmtFtIn(y)}`; }
 }

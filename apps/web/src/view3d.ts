@@ -1,5 +1,3 @@
-// 3D viewport (three.js, WebGL2). Flat-shaded faces in style colors, feature edges as constant-width lines
-// (never derived from triangles), own tiny orbit/pan/zoom controller, orthographic camera (plotter look).
 import {
   WebGLRenderer, Scene, OrthographicCamera, BufferGeometry, Float32BufferAttribute, Mesh as TMesh,
   MeshLambertMaterial, Color, AmbientLight, DirectionalLight, GridHelper, Vector3, Box3, Raycaster, Vector2,
@@ -22,8 +20,8 @@ export class View3D {
   private scene = new Scene();
   private camera = new OrthographicCamera(-1, 1, 1, -1, -10000, 10000);
   private target = new Vector3();
-  private az = Math.PI / 4; private el = Math.PI / 6; // iso defaults
-  private radius = 100; // ortho: only scales the near/far; zoom via camera.zoom
+  private az = Math.PI / 4; private el = Math.PI / 6;
+  private radius = 100;
   private parts: PartObj[] = [];
   private group = new Object3D();
   private grid: GridHelper | null = null;
@@ -83,7 +81,6 @@ export class View3D {
       g.setIndex(part.indices);
       if (!part.normals?.length) g.computeVertexNormals();
       const col = new Color(part.color || '#C9A46A');
-      // muted, slightly desaturated drafting tone
       const hsl = { h: 0, s: 0, l: 0 }; col.getHSL(hsl); col.setHSL(hsl.h, hsl.s * 0.82, Math.min(0.9, hsl.l * 1.02 + 0.02));
       const mat = new MeshLambertMaterial({ color: col, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
       const mesh3 = new TMesh(g, mat);
@@ -121,7 +118,6 @@ export class View3D {
   private cutZ: number | null = null;
   private capObjs: Object3D[] = [];
 
-  /** Section cut at z (keeps z <= cutZ, the far side from the viewer) with manila stencil caps; null = off. */
   setCut(z: number | null) {
     this.cutZ = z;
     for (const o of this.capObjs) { this.group.remove(o); (o as TMesh).geometry?.dispose(); }
@@ -184,7 +180,6 @@ export class View3D {
   }
 
   private camDir(): Vector3 {
-    // camera sits at +Z (front), azimuth rotates toward +X, elevation up
     return new Vector3(Math.sin(this.az) * Math.cos(this.el), Math.sin(this.el), Math.cos(this.az) * Math.cos(this.el));
   }
 
@@ -209,14 +204,12 @@ export class View3D {
     const size = this.box.getSize(new Vector3());
     this.radius = Math.max(size.length() * 2, 100);
     this.updateCamera();
-    // project the 8 box corners into camera space
     const inv = new Matrix4().copy(this.camera.matrixWorld).invert();
     let mx = 0, my = 0;
     for (let i = 0; i < 8; i++) {
       const v = new Vector3(i & 1 ? this.box.max.x : this.box.min.x, i & 2 ? this.box.max.y : this.box.min.y, i & 4 ? this.box.max.z : this.box.min.z).applyMatrix4(inv);
       mx = Math.max(mx, Math.abs(v.x - 0)); my = Math.max(my, Math.abs(v.y - 0));
     }
-    // v is relative to camera; center offset handled because target is the box center (projects to origin)
     const a = this.w / this.h;
     this.viewHalf = Math.max(my * 1.18, (mx * 1.18) / a, 4);
     this.camera.zoom = 1;
@@ -259,7 +252,6 @@ export class View3D {
       this.el = Math.max(-1.5, Math.min(1.5, this.el + dy * 0.008));
       this.updateCamera();
     } else {
-      // pan in the camera plane
       const unit = (this.viewHalf * 2) / (this.h * this.camera.zoom);
       const right = new Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
       const up = new Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
@@ -291,7 +283,6 @@ export class View3D {
     this.raf = requestAnimationFrame(() => { this.raf = 0; this.renderer.render(this.scene, this.camera); });
   }
 
-  /** Synchronous render, e.g. before taking a screenshot. */
   renderNow() { if (!this.failed) this.renderer.render(this.scene, this.camera); }
 
   dispose() { this.renderer?.dispose(); }

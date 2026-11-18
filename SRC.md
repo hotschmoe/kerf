@@ -135,3 +135,23 @@ SPEC 10, 11, 13 and 14 define the drawing, mesh, engine and operation types. A `
 ## apps/web/src/units.ts
 
 SPEC 1 defines architectural feet-inches formatting.
+
+## apps/web/src/draw2d.ts
+
+SPEC 10 defines the drawing input. `View2D` maps model coordinates to screen coordinates as `(tx + zoom*x, ty - zoom*y)`. Source geometry uses flattened x/y pairs for picking, true arcs for outlines, and even-odd regions for selection tint. Picking prioritizes text boxes, nearby open paths, the smallest containing closed loop, then nearby closed outlines. Painting requires a model-to-device transform with y flipped; dragged note text can be omitted for separate offset painting.
+
+## apps/web/src/strokefont.ts
+
+The stroke font derives from Hershey Simplex; its data is in `spec/fonts/kerf-simplex.json`. Polylines contain flat x/y pairs, and unsupported characters are folded to ASCII look-alikes.
+
+## apps/web/src/view2d.ts
+
+Until the user pans or zooms, resizing refits the drawing. Note placement follows the SPEC convention: the top-left of the first text line, one cap height above its baseline. Grid levels avoid drawing coincident lines twice.
+
+## apps/web/src/view3d.ts
+
+Feature edges come from the mesh rather than triangle edges. The orthographic camera uses zoom for magnification and radius for its near and far planes; its front direction is +Z, azimuth turns toward +X and elevation points upward. A section cut retains z at or below the cut and uses stencil caps.
+
+## apps/web/src/styles.css
+
+Design tokens and rules follow `spec/DESIGN.md`.
