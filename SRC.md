@@ -215,3 +215,35 @@ Polygon booleans split boundaries at shared crossings, merge nearby vertices wit
 ## engine/kerf-core/src/crop.rs
 
 `W_CROP_STALE` distinguishes intentionally cropped members from members moved or resized out of a crop, and also warns when less than 10% remains visible in every drawing view. Section checks use the cut plane, elevation checks all members, and plan and iso crops are excluded because they are not model x/y crops.
+
+## engine/kerf-core/src/annot/dims.rs
+
+Dimensions follow SPEC 6.5, 20, 25.2 and 28.3. Non-overlapping adjacent spans on the same side can form a chain, drawn on its outermost authored line and placed and moved as a unit. Text that does not fit is placed outside instead of being reduced or omitted, preferring a chain's free end. Variants select ends, raised positions with leaders, and the side away from the object. Stacking places shorter spans first and moves conflicts outward in 0.25 paper-inch steps; pinned dimensions and chains containing them stay at their authored offset. Repair can also slide text or push a dimension, and blockers are retained for diagnostics.
+
+## engine/kerf-core/src/annot/repair.rs
+
+SPEC 20 and 25.2 govern bounded repair. Text first slides along a dimension line, then a dimension is pushed outward if needed; pinned dimensions and labels do not move. Labels prefer the smallest move, vertical before horizontal. Each pass reroutes notes; the loop stops when clear, after two passes without improvement, or at its pass limit, and keeps the pass with fewest hits. Moves over 1/8 paper inch are reported as `I_ANNOT_MOVED`.
+
+## engine/kerf-core/src/annot/text.rs
+
+SPEC 16 and 25.3 define glyph folding and case handling: significant tokens retain case. Wrapping keeps the pieces of a dimension or spacing together when they fit. Character-count wrapping splits an overlong word; paper-width wrapping leaves it whole for the caller to diagnose as overflow.
+
+## engine/kerf-core/src/annot/callout.rs
+
+Reference bubbles follow SPEC 26.2 and 28.8 and stay at an explicitly authored location. Without `place`, section-like views try up-right first, then the first clear candidate in eight directions at three distances; an iso uses up-right. The bubble radius fits its text and is at least 1/4 paper inch.
+
+## engine/kerf-core/src/annot/knockout.rs
+
+SPEC 18 requires hatch lines to be cut under notes, dimension text and labels.
+
+## engine/kerf-core/src/annot/line.rs
+
+Boundary lines follow SPEC 29.2 and remain at their authored positions.
+
+## engine/kerf-core/src/annot/title.rs
+
+View title bubbles and scale lines follow SPEC 6.4 and 6.5; layout title wrapping leaves overlong words intact.
+
+## engine/kerf-core/src/annot/weld.rs
+
+Weld symbols use AWS A2.4 basics, appear in section views, and stay at their explicit position. Arrow-side symbols are below the reference line and other-side symbols above it. Length and pitch use inches and sixteenths, without feet.

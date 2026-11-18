@@ -1,5 +1,3 @@
-//! Title bubble, title text and scale line under a view (SPEC 6.4).
-
 use super::Env;
 use super::text::{ascii_fold, layer_name, path_item, text_item, upper_if};
 use crate::drawing::{Align, Item, PathItem, VAlign};
@@ -15,11 +13,9 @@ pub struct SheetInfo<'a> {
     pub scale_text: &'a str,
     pub sheet: &'a str,
     pub unverified: bool,
-    /// Layouts (SPEC 26.2): a title wider than this (model units) wraps at spaces; 0 keeps one line.
     pub wrap_w: f64,
 }
 
-/// The title in lines no wider than `w` (a word wider than `w` keeps its own line).
 fn title_lines(env: &Env, title: &str, h: f64, w: f64) -> Vec<String> {
     if w <= 0.0 || env.font.width(ascii_fold(title), h) <= w {
         return alloc::vec![String::from(title)];
@@ -38,7 +34,6 @@ fn title_lines(env: &Env, title: &str, h: f64, w: f64) -> Vec<String> {
     lines
 }
 
-/// Title under the view: bubble, title text with heavy underline, scale (SPEC 6.5). Returns the lowest y used.
 pub fn title_items(env: &mut Env, info: &SheetInfo, tcrop: Box, out: &mut Vec<Item>) -> f64 {
     let st = env.style;
     let sc = env.s;

@@ -1,5 +1,3 @@
-//! Hatch knockout (SPEC 18): hatch lines are cut where a note, dimension text or label sits on them.
-
 use crate::drawing::Item;
 use crate::geom::{self, V2};
 use crate::sort;

@@ -1,9 +1,3 @@
-//! Weld symbols (AWS A2.4 basics): an arrow to the joint, a horizontal reference line, the weld symbol below the line for
-//! the arrow side and above it for the other side (fillet triangle with its vertical leg on the left; bevel groove for CJP and
-//! PJP), the size left of the symbol, the length and pitch (`L-P`) right of it, an all-around circle and a field-weld flag at
-//! the elbow, and a tail with its text.
-//! Placement is explicit (`at` + `offset`): the symbol is not moved by the note layout. Section views only.
-
 use super::text::{path_item, text_item, upper_if};
 use super::{Env, non_null, str_member};
 use crate::drawing::{Align, FillItem, Item, VAlign};
@@ -165,13 +159,11 @@ pub fn read<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str) 
     })
 }
 
-/// Size text: sixteenths as a fraction (`3/16`, `5/16`, `1/2`), else the decimal.
 pub fn size_text(x: f64) -> String {
     let t = units::fmt_ft_in(x);
     String::from(t.trim_end_matches('"'))
 }
 
-/// Length or pitch text in whole inches and sixteenths, never feet (`2`, `1 1/2`, `12`, `24`).
 fn inch_text(x: f64) -> String {
     let whole = math::floor(x + 1.0 / 32.0);
     let rest = x - whole;
