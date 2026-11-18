@@ -247,3 +247,11 @@ View title bubbles and scale lines follow SPEC 6.4 and 6.5; layout title wrappin
 ## engine/kerf-core/src/annot/weld.rs
 
 Weld symbols use AWS A2.4 basics, appear in section views, and stay at their explicit position. Arrow-side symbols are below the reference line and other-side symbols above it. Length and pitch use inches and sixteenths, without feet.
+
+## engine/kerf-core/src/annot.rs
+
+SPEC 6, 16, 20, 23, 24, 25.2, 26.2, 27.4 and 28.2 govern annotations. Layout effort can be shared across a view's passes and trials. Shared-layout keyed notes use layout-assigned numbers and leave list entries for the layout to draw. A keyed note without text first looks for the same key in its view, then in the document's views, inheriting citations if it has none; a note on nailing can derive text from its target. Leader-hit fix verification is disabled for discarded layout trials. Annotations are emitted in view order, and hatching is knocked out under text.
+
+## engine/kerf-core/src/annot/notes.rs
+
+SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. Fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Citation sections containing digits retain case because paragraph letters are significant.
