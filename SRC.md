@@ -467,3 +467,19 @@ SPEC 11 defines the flat-shaded prism mesh and explicit feature edges. Holes are
 ## engine/kerf-core/src/plan.rs
 
 SPEC 26.3 and 28.7 define plan views. Plan coordinates are `(x, -z)`, with model y as depth toward the viewer, so the section engine can draw plan strips at `cut_y`. Adjacent strips merge when their top surfaces do not make a visible break. Loose fill is omitted in plan. Bent x/z bars retain their exact centerline for plan and section/elevation views; angled footprints retain their exact outline. Plan references use per-instance and per-part plan boxes, with named anchors projected at the instance's center z.
+
+## engine/kerf-core/src/hwcheck.rs
+
+SPEC 9, 27.2 and 28.1 govern framing-hardware warnings after placement. Checks include missing bearing under post bases and holdown rods anchored in nothing, in addition to findings from the builders, over components drawn in at least one view.
+
+## engine/kerf-core/src/steelcheck.rs
+
+These are warnings, not errors. AISC 360-16 Table J3.4 governs bolt edge distances, J3.3 bolt spacing, and J2.2b and Table J2.4 fillet weld limits. Edge distance uses the next tabulated bolt size, or 1.25 diameters above 1 1/4 inch. ACI 318-19 sections 17.9 and 20.5.1.3 govern anchor edge and spacing checks; edge clearance is measured along the deeper 60% of the embedded shaft so a top grout bed or topping does not count. Weld-size checks require two steel components.
+
+## engine/kerf-core/src/validate.rs
+
+Geometry checks run once per distinct set of components drawn by the document's views, reporting a finding once and naming the views when it applies only to some. Hidden or `where_occurs` bodies are not checked themselves but can support other members. A fill overlapping the soil part of a component with a solid body is not an overlap. Untreated wood near-contact with concrete or masonry requires outlines within 1/32 inch for at least 1/8 inch. Rebar cover uses the first containing part override or the host cover; a straight leg can leave its host, but a path bar with an exposed bend or no point inside any host warns. The outside-bar warning is silent when no host is drawn. Other checks distinguish intentional framing spaces, floating edge-on sheets and straps, and the effects of absolute point-list placement.
+
+## engine/kerf-core/src/validate/bearing.rs
+
+SPEC 27.1 requires a member with a minimum-bearing trait, such as an I-joist, to meet that bearing at each end and intermediate support.
