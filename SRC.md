@@ -339,3 +339,39 @@ SPEC 5 defines flashing parameters and geometry.
 ## engine/kerf-core/src/builders/hardware.rs
 
 SPEC 27.2 defines framing hardware. Plates are placed in world coordinates and made local to the placement point so the section, plan, elevation, iso and mesh agree. A truss hanger seats its bottom chord profile. Post-cap coverage depends on the bearing overlap, with a separate case for a beam butting at a post edge. `W_HOLDOWN_ROD` suggestions use a rod within eight inches in plan and z and drawn in a view with the holdown.
+
+## engine/kerf-core/src/builders/common.rs
+
+SPEC 5, 17, 25.1, 27.3 and 28.1 govern shared builder inputs. A two-point member's measured length overrides `length` and `until`; `until` measures along the rotated member axis. Literal point-list coordinates are relative to the placement point, while references are absolute and converted to local coordinates when requested by the builder. Reference-based geometry and a strap on a face cannot be moved by `at.anchor`. Polygon bulges are bounded to prevent near-straight radius overflow and near-full-circle extreme radii. Point-list vertex anchors are one-based after duplicate points are dropped, and edge-midpoint anchors follow the arc for bulged edges. Missing style materials fall back to a supported material.
+
+## engine/kerf-core/src/builders/ijoist.rs
+
+SPEC 27.1 defines I-joists. Their cross-section uses u across the flanges and v upward. A z-running joist is seen end-on, with wood cut marks and an OSB web; an x-running joist uses slabs at their actual z positions and is drawn as an elevation even where cut, while other views retain the I shape.
+
+## engine/kerf-core/src/builders/insulation.rs
+
+SPEC 5 defines insulation parameters and geometry.
+
+## engine/kerf-core/src/builders/joint.rs
+
+SPEC 5 defines joint parameters and geometry.
+
+## engine/kerf-core/src/builders/lumber.rs
+
+SPEC 5 defines lumber parameters and geometry.
+
+## engine/kerf-core/src/builders/membrane.rs
+
+SPEC 5 defines membrane parameters and geometry.
+
+## engine/kerf-core/src/builders/panel.rs
+
+SPEC 5 and 28.6 define panels. A face-on sheet is positioned from its host's selected face. An edge-on sheet thicker than any sheet triggers a diagnostic suggesting an equivalent face-on sheet.
+
+## engine/kerf-core/src/builders/sleeve.rs
+
+SPEC 26.4 defines sleeve parameters and geometry.
+
+## engine/kerf-core/src/builders/solid.rs
+
+SPEC 5 defines solid parameters and geometry.

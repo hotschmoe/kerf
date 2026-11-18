@@ -1,9 +1,3 @@
-//! ijoist (SPEC 27.1): prefabricated wood I-joist from a generic series table (depth x flange width), its parameters and
-//! its builder. The cross-section is built in (u, v), u across the flanges, v up. Run z lays it out end-on: flanges cut
-//! with the wood X, the OSB web between them. Run x lays it along x as slabs at their true z (flanges, web, stiffeners,
-//! squash blocks), drawn as an elevation even where the section plane passes through it, so the side view shows the
-//! flange lines and the web outline with no lamination, and iso, plan and 3D see the real I shape.
-
 use super::common::{Ctx, fmt_ft_in, length_or_until, material_ok, quad_of};
 use crate::geom::{Box, V2};
 use crate::model::{self, Built, NamedAnchor, Prism, Zone};
@@ -61,14 +55,12 @@ fn size_text(d: f64, b: f64) -> String {
     format!("{} x {}", dash_frac(d), dash_frac(b))
 }
 
-/// `11-7/8` style (the catalog form) of a length on the 1/16 grid.
 fn dash_frac(x: f64) -> String {
     let t = fmt_ft_in(x);
     let t = t.trim_end_matches('"');
     t.replacen(' ', "-", 1)
 }
 
-/// The table entry nearest to (depth, flange) for the error message.
 fn nearest(d: f64, b: f64) -> (f64, f64) {
     let mut best = (11.875, 2.3125);
     let mut score = f64::INFINITY;
@@ -91,7 +83,6 @@ struct Slab {
     u1: f64,
     v0: f64,
     v1: f64,
-    /// Extent along the joist (run x: x0..x1; run z: centred on the section, `x1 - x0` long).
     x0: f64,
     x1: f64,
     cut_mark: bool,

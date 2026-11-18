@@ -1,5 +1,3 @@
-//! membrane (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, vertex_anchors, vs_of};
 use crate::geom::{self, V2};
 use crate::json::Value;

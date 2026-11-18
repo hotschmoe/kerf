@@ -1,5 +1,3 @@
-//! sleeve (SPEC 26.4): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, fmt_ft_in, material_ok};
 use crate::geom::{self, Box, Pt};
 use crate::model::{self, Built, Prism};
