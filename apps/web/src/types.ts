@@ -1,7 +1,5 @@
-// Shared types: Kerf document, Drawing IR (SPEC §10), Mesh (SPEC §11), engine API (SPEC §13), ops (SPEC §14).
-
 export type Pt = [number, number];
-export type BPt = [number, number] | [number, number, number]; // x, y, bulge?
+export type BPt = [number, number] | [number, number, number];
 
 export interface Citation {
   code: string;
@@ -22,7 +20,6 @@ export interface Annotation {
   [k: string]: unknown;
 }
 
-/** A sheet of several views (SPEC 26.2): `views` entries are view ids or nested lists of them. */
 export interface Layout {
   id: string;
   title?: string;
@@ -81,7 +78,6 @@ export interface Diagnostic {
   fix?: string;
 }
 
-/** A warning an `acknowledge` entry suppressed (SPEC 25.4): the acknowledging component, its reason, the warning as it would have printed. */
 export interface Acknowledged {
   code: string;
   id: string;

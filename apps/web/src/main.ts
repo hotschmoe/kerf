@@ -28,14 +28,12 @@ async function boot() {
     if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
     return r.json() as Promise<T>;
   };
-  const useWorker = params.get('worker') === '1'; // measured: main thread is faster for these call sizes (see NOTES)
+  const useWorker = params.get('worker') === '1';
   const enginePromise: Promise<Engine> = FIXTURE
     ? import('./fixture-engine').then((m) => m.createFixtureEngine())
     : loadEngine({ url: './kerf.wasm', worker: useWorker, preloaded: pre.wasm ?? null });
-  // Workspace mode = served by `kerf serve` (GET /api/info answers). Anything else is static mode, exactly as before.
   const origin = params.get('server') ?? location.origin;
   const token = captureToken();
-  // Only the `kerf serve` bundle (build:serve), the dev server, or ?server=/?workspace=1 probe for a server: a statically hosted build never makes the request.
   const probe = import.meta.env.VITE_SERVE === '1' || import.meta.env.DEV || params.has('server') || params.get('workspace') === '1';
   const detectPromise = !probe || params.get('static') === '1' || !/^https?:/.test(origin) ? Promise.resolve(null) : WorkspaceClient.detect(origin, token).catch((e) => { throw e instanceof ServerError && e.status === 401 ? new Error('THIS WORKSPACE NEEDS A TOKEN. OPEN THE URL THAT `kerf serve` PRINTED (…/?token=…).') : e; });
   const [engine, style, font, samples, detected] = await Promise.all([
@@ -56,7 +54,6 @@ async function boot() {
   };
   const session = new ChatSession({ app, ws });
 
-  // ---- UI ----
   const $ = (id: string) => document.getElementById(id)!;
   let con: ReturnType<typeof mountConsole>;
   const hooks: HeaderHooks = {
@@ -77,7 +74,6 @@ async function boot() {
   mountInspector(app, $('inspector'));
   mountStatus(app, $('status'), ws);
 
-  // narrow-screen tabs
   const main = $('main');
   const mtabs = $('mtabs');
   const showPanel = (p: string) => { main.dataset.show = p; mtabs.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.p === p)); vp.vp2.resize(); vp.view3?.resize(); };
@@ -85,21 +81,18 @@ async function boot() {
     mtabs.append(h('button.tab', { type: 'button', 'data-p': p, class: p === 'viewport' ? 'on' : '', on: { click: () => showPanel(p) } }, `[${l}]`));
   }
 
-  // keyboard: F = fit
   document.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement)?.matches?.('input,textarea,select')) return;
     if (e.key === 'f' || e.key === 'F') { if (app.mode === 'view') vp.vp2.fit(); else if (app.mode === 'sheet') vp.sheet.fit(); else vp.view3?.fit(); }
   });
 
-  // ---- debug / test hooks ----
   const w = window as unknown as Record<string, unknown>;
   w.__kerf = { app, session, ws, vp, con, exportActive: (f: 'dxf' | 'pdf' | 'svg' | 'png', save = true) => exportActive(app, f, save), engine, popup, loadEngine, version: 1, params: Object.fromEntries(params), mode: ws ? 'workspace' : 'static' };
 
-  // ---- startup actions from URL ----
   if (ws) {
     ws.start();
     await ws.refreshDocs();
-    let last: string | null = null; try { last = localStorage.getItem('kerf.lastDoc'); } catch { /* ignore */ }
+    let last: string | null = null; try { last = localStorage.getItem('kerf.lastDoc'); } catch {}
     const want = params.get('doc');
     const pick = [want, last].find((f) => f && ws.docs.some((d) => d.file === f)) ?? (want ? null : ws.docs[0]?.file);
     if (want && !pick) app.flash(`NO SUCH DOCUMENT IN THE LIBRARY: ${want}`, 'err');
@@ -116,7 +109,6 @@ async function boot() {
   const sel = params.get('select'); if (sel) app.setSelection(sel);
   if (params.get('cut') === '1') { const t = setInterval(() => { const v3 = vp.view3; if (v3 && v3.ok && v3.cut === null && (window as unknown as { __rendered3d?: boolean }).__rendered3d) { v3.setCut(app.view?.cut_z ?? 0); clearInterval(t); (window as unknown as { __cut?: boolean }).__cut = true; } }, 100); }
   const tab = params.get('tab'); if (tab) (document.querySelector(`.itabs .tab:nth-child(${['parts', 'notes', 'diff', 'diag'].indexOf(tab) + 1})`) as HTMLElement | null)?.click();
-  // The chrome must be in IBM Plex Mono before anything signals ready (font-display: block hides text until loaded).
   await Promise.all(['400 13px', '500 12px', '700 22px'].map((f) => document.fonts.load(`${f} "Plex Mono"`))).catch(() => undefined);
   await document.fonts.ready;
   w.__fontOk = document.fonts.check('13px "Plex Mono"');
@@ -124,7 +116,7 @@ async function boot() {
   app.perf.uiReady = performance.now() - t0;
   w.__ready = true;
   if (!app.doc) w.__rendered = true;
-  if (params.get('shot3d')) { /* reserved */ }
+  if (params.get('shot3d')) {}
 }
 
 boot().catch((e) => {

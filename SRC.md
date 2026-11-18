@@ -107,3 +107,31 @@ External op-log entries appear as local-agent cards. Whole-document set operatio
 ## apps/web/src/ui/status.ts
 
 A leading `opt` marker identifies status segments hidden on narrow screens.
+
+## apps/web/src/app.ts
+
+Document mutations and remote reloads are serialized. Workspace undo applies only to operations on the current file and writes the restored state to disk. The client records its own writes to distinguish their `doc_changed` echoes from external edits. Part summary parsing takes the last ` x ... y ` pair because a parameter can itself contain ` x `.
+
+## apps/web/src/engine-raw.ts
+
+SPEC 13.1 defines the wasm ABI. Allocations can grow wasm memory, so the client constructs its memory view after allocating both inputs. The loader supplies stubs for unexpected imports even though the spec requires none.
+
+## apps/web/src/engine.ts
+
+The client emulates missing engine operations, recording them in `compat`; local operation application is used only when the wasm engine lacks `apply`. The HTML bootstrap may provide an already-started wasm fetch.
+
+## apps/web/src/main.ts
+
+Main-thread wasm is the default based on measured call sizes (see the web NOTES); `worker=1` opts in to the worker. Static builds do not probe for a workspace unless requested; serve and development builds do. UI readiness waits for the Plex Mono fonts because font-display can hide text while they load.
+
+## apps/web/src/export.ts
+
+Workspace exports use the file on disk. PDF is always a sheet; SVG and PNG are sheets in sheet mode; DXF is model-space only.
+
+## apps/web/src/types.ts
+
+SPEC 10, 11, 13 and 14 define the drawing, mesh, engine and operation types. A `BPt` contains x and y and optionally a bulge; sheet layouts and acknowledgements are specified in sections 26.2 and 25.4.
+
+## apps/web/src/units.ts
+
+SPEC 1 defines architectural feet-inches formatting.

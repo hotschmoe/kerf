@@ -1,4 +1,3 @@
-// Application model: the one KerfDoc + style + engine, op log, selection, view state, caches.
 import type { Acknowledged, ApplyResult, Actor, Diagnostic, Drawing, KerfDoc, Layout, Mesh, Op, StrokeFont, View } from './types';
 import type { Engine, InspectQuery } from './engine';
 import { EngineCallError } from './engine';
@@ -19,21 +18,14 @@ export interface LogEntry {
   before: KerfDoc | null;
   changed: string[];
   undone?: boolean;
-  /** workspace mode: the library file this entry belongs to (undo never crosses documents) */
   file?: string | null;
 }
 
-/** Workspace mode: the document lives in a folder served by `kerf serve`; every write goes through the server. */
 export interface Remote {
   readonly file: string | null;
-  /** apply through the server (creating the file on first write when none is open); `conflict` = someone else edited (HTTP 409) */
   apply(ops: Op[], actor: Actor, why: string): Promise<ApplyResult & { conflict?: boolean }>;
-  /** current file content from the server (also refreshes the remembered ETag), null when no file is open */
   fetchCurrent(): Promise<{ doc: KerfDoc } | null>;
-  /** remember a document state we know is on disk (own writes) so the echo `doc_changed` is not treated as external */
-  /** export through the server (workspace mode): the file on disk is what is exported */
   exportFile(view: string, format: string, sheet: boolean, layout?: string): Promise<{ name: string; bytes: Uint8Array } | null>;
-  /** a file listed in the open document's `meta.references`, read from the served folder */
   fetchReference(path: string): Promise<{ blob: Blob; etag: string | null }>;
   noteKnown(doc: KerfDoc): void;
   isKnown(doc: KerfDoc): boolean;
@@ -47,22 +39,18 @@ export class App {
   doc: KerfDoc | null = null;
   summary = '';
   diagnostics: Diagnostic[] = [];
-  /** Warnings suppressed by `acknowledge` (SPEC 25.4), shown apart from the diagnostics. */
   acknowledged: Acknowledged[] = [];
   opLog: LogEntry[] = [];
   rev = 0;
   activeView = '';
-  /** a sheet layout (SPEC 26.2) shown in SHEET mode instead of the active view; '' = the active view's sheet */
   activeLayout = '';
   mode: Mode = 'view';
   selection: Selection = null;
   hover: string | null = null;
   cursor: [number, number] | null = null;
-  /** transient status-line message (e.g. EXPORTED ...), cleared after a few seconds */
   message: { text: string; level: 'ok' | 'err' | 'warn' } | null = null;
   claude: { state: 'OFF' | 'OK' | 'BUSY' | 'ERR'; detail?: string } = { state: 'OFF' };
   perf: Record<string, number> = {};
-  /** set in workspace mode; null in static mode (everything below behaves exactly as before) */
   remote: Remote | null = null;
 
   private listeners = new Map<Ev, Set<() => void>>();
@@ -83,20 +71,17 @@ export class App {
   }
   emit(ev: Ev) { this.listeners.get(ev)?.forEach((f) => f()); }
 
-  /** Serialize engine operations that mutate the doc. */
   private queue<T>(fn: () => Promise<T>): Promise<T> {
     const p = this.chain.then(fn, fn);
     this.chain = p.catch(() => undefined);
     return p;
   }
 
-  // ---- views ----
   get views(): View[] { return this.doc?.views ?? []; }
   get view(): View | undefined { return this.views.find((v) => v.id === this.activeView); }
   get layouts(): Layout[] { return this.doc?.layouts ?? []; }
   setMode(m: Mode) { if (m !== this.mode || this.activeLayout) { this.mode = m; this.activeLayout = ''; this.emit('view'); } }
   setActiveView(id: string) { if (id !== this.activeView) { this.activeView = id; if (this.mode !== 'view' && this.mode !== 'sheet') this.mode = 'view'; this.emit('view'); } }
-  /** show sheet layout `id` (SPEC 26.2) in SHEET mode */
   setActiveLayout(id: string) { if (id !== this.activeLayout || this.mode !== 'sheet') { this.activeLayout = id; this.mode = 'sheet'; this.emit('view'); } }
 
   setSelection(id: string | null) {
@@ -119,7 +104,6 @@ export class App {
 
   setClaude(state: App['claude']) { this.claude = state; this.emit('claude'); }
 
-  // ---- doc mutation ----
   emptyDoc(): KerfDoc { return { kerf: '0.1', id: 'untitled', title: '', meta: {}, components: [], views: [] }; }
 
   async applyOps(ops: Op[], actor: Actor, why: string): Promise<ApplyResult> {
@@ -148,7 +132,6 @@ export class App {
     });
   }
 
-  /** Reload the open document from the server in place (view, zoom and selection survive). Runs inside the queue. */
   private async reloadFromRemote(why: string): Promise<boolean> {
     const cur = await this.remote?.fetchCurrent().catch(() => null);
     if (!cur) return false;
@@ -160,7 +143,6 @@ export class App {
     return true;
   }
 
-  /** `doc_changed` from the server: reload when the file differs from what we hold (our own writes echo back identical). */
   syncFromRemote(why = 'edited on disk'): Promise<boolean> {
     return this.queue(async () => {
       const cur = await this.remote?.fetchCurrent().catch(() => null);
@@ -169,7 +151,6 @@ export class App {
     });
   }
 
-  /** Reject toast for a failed designer edit; a 409 already toasted DOCUMENT CHANGED ON DISK. */
   rejected(res: ApplyResult & { conflict?: boolean }, prefix: string) {
     if (res.conflict) return;
     this.flash(`${prefix}: ${res.error ?? res.diagnostics[0]?.message ?? ''}`.slice(0, 150), 'err');
@@ -189,7 +170,6 @@ export class App {
     this.emit('doc'); this.emit('log'); this.emit('view'); this.emit('selection');
   }
 
-  /** Replace the whole document as a designer action (open file / sample). */
   async openDoc(doc: KerfDoc, why: string): Promise<ApplyResult> {
     const res = await this.queue(async () => {
       const before = this.doc;
@@ -208,9 +188,7 @@ export class App {
     return res;
   }
 
-  /** Undo the last op group (restores its before-snapshot). */
   async undo(): Promise<boolean> {
-    // workspace mode: only real op groups can be undone (an undo is itself a write to the file on disk)
     const last = [...this.opLog].reverse().find((e) => !e.undone && e.kind !== 'undo' && (!this.remote || (e.kind === 'op' && e.file === this.remote.file)));
     if (!last) return false;
     return this.queue(async () => {
@@ -244,7 +222,6 @@ export class App {
     });
   }
 
-  // ---- derived data (cached per rev) ----
   getDrawing(view = this.activeView): Promise<Drawing> {
     if (!this.doc) return Promise.reject(new Error('no document'));
     let p = this.drawingCache.get(view);
@@ -304,13 +281,11 @@ export class App {
     return this.engine.inspect(this.doc, this.style, q);
   }
 
-  /** Parsed parts rows from the engine summary text (SPEC §13: id padded 14, type+params padded 44, x range, y range). */
   partsRows(): PartRow[] {
     const rows: PartRow[] = [];
     const lines = this.summary.split('\n');
     const comps = new Set(this.doc?.components.map((c) => c.id) ?? []);
     for (const raw of lines) {
-      // " id  type params…   x <range>  y <range>": params may itself contain " x " (e.g. 8" x 4 courses), so take the LAST " x ... y " pair
       const m = /^\s*(\S+)\s+(\S+)\s+(.*)\s+x\s+(\S.*?)\s+y\s+(\S.*?)\s*$/.exec(raw);
       if (!m || !comps.has(m[1].replace(/#\d+$/, ''))) continue;
       rows.push({ no: String(rows.length + 1).padStart(2, '0'), id: m[1], type: m[2], params: m[3].trim(), x: m[4], y: m[5], raw });

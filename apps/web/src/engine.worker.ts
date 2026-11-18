@@ -1,4 +1,3 @@
-// Runs RawEngine in a Web Worker so long engine calls never block the UI thread.
 import { RawEngine, EngineCallError } from './engine-raw';
 
 let eng: RawEngine | null = null;

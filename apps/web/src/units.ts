@@ -1,4 +1,3 @@
-// Architectural feet-inches formatting (SPEC §1): nearest 1/16", fractions reduced, no feet under 12".
 export function fmtFtIn(inches: number): string {
   if (!Number.isFinite(inches)) return '-';
   const neg = inches < 0;
@@ -19,7 +18,6 @@ export function fmtFtIn(inches: number): string {
   return (neg ? '-' : '') + body;
 }
 
-/** Scale factor -> "1-1/2\"=1'-0\"" style label when it is one of the standard architectural scales. */
 export function scaleLabel(factor: number): string {
   const std: Record<number, string> = {
     4: '3"=1\'-0"', 8: '1 1/2"=1\'-0"', 12: '1"=1\'-0"', 16: '3/4"=1\'-0"', 24: '1/2"=1\'-0"', 32: '3/8"=1\'-0"', 48: '1/4"=1\'-0"',

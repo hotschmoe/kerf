@@ -1,7 +1,3 @@
-// Raw wasm ABI loader (SPEC §13.1). The ONE place that talks to kerf.wasm
-// (engine/dist/kerf.wasm). Synchronous; wrapped by engine.ts
-// (direct, or inside a Web Worker).
-
 interface Exports {
   memory: WebAssembly.Memory;
   kerf_alloc(len: number): number;
@@ -41,7 +37,6 @@ export class RawEngine {
       e.wasmBytes = (wasm as ArrayBuffer).byteLength;
       module = await WebAssembly.compile(wasm as BufferSource);
     }
-    // The spec says no imports are required; stub any that exist so a stray import never blocks loading.
     const imports: WebAssembly.Imports = {};
     for (const imp of WebAssembly.Module.imports(module)) {
       (imports[imp.module] ??= {})[imp.name] =
@@ -60,13 +55,12 @@ export class RawEngine {
   }
   loadMs = 0;
 
-  /** Low-level call; returns [rc, bytes]. */
   callRaw(fn: string, input: Uint8Array): [number, Uint8Array] {
     const x = this.x;
     const fb = enc.encode(fn);
     const fp = x.kerf_alloc(fb.length);
     const ip = x.kerf_alloc(Math.max(input.length, 1));
-    // memory may have grown during alloc: take views AFTER allocating
+    // Allocations can grow memory and invalidate earlier views.
     const mem = new Uint8Array(x.memory.buffer);
     mem.set(fb, fp);
     mem.set(input, ip);
@@ -83,7 +77,6 @@ export class RawEngine {
     if (this.stats.length > 500) this.stats.splice(0, 250);
   }
 
-  /** JSON in, JSON out. Throws EngineCallError (with the parsed error payload) when the engine returns rc=1. */
   callJson<T>(fn: string, input: unknown): T {
     const t0 = performance.now();
     const bytes = enc.encode(JSON.stringify(input ?? {}));
@@ -91,12 +84,11 @@ export class RawEngine {
     this.record(fn, t0, bytes.length, out.length);
     const text = dec.decode(out);
     let parsed: unknown = text;
-    try { parsed = JSON.parse(text); } catch { /* keep text */ }
+    try { parsed = JSON.parse(text); } catch {}
     if (rc !== 0) throw new EngineCallError(fn, errorText(parsed), parsed);
     return parsed as T;
   }
 
-  /** JSON in, raw bytes out (export). */
   callBytes(fn: string, input: unknown): Uint8Array {
     const t0 = performance.now();
     const bytes = enc.encode(JSON.stringify(input ?? {}));
@@ -105,7 +97,7 @@ export class RawEngine {
     if (rc !== 0) {
       const text = dec.decode(out);
       let parsed: unknown = text;
-      try { parsed = JSON.parse(text); } catch { /* text */ }
+      try { parsed = JSON.parse(text); } catch {}
       throw new EngineCallError(fn, errorText(parsed), parsed);
     }
     return out;

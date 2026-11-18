@@ -1,4 +1,3 @@
-// Typed, async engine API (SPEC §13) over the raw wasm ABI. The wasm runs in a worker or directly.
 import type { ApplyResult, CheckResult, Drawing, KerfDoc, Mesh, Op, Actor } from './types';
 import { RawEngine, EngineCallError, type CallStat } from './engine-raw';
 import EngineWorker from './engine.worker?worker';
@@ -15,7 +14,6 @@ export type InspectQuery =
 
 export interface Engine {
   readonly kind: 'wasm' | 'fixture';
-  /** engine functions this build lacks and the app emulates client-side (empty once the engine is complete) */
   compat?: Set<string>;
   info: EngineVersion;
   stats: CallStat[];
@@ -38,7 +36,6 @@ type Caller = {
   bytes(fn: string, input: unknown): Promise<Uint8Array>;
 };
 
-/** Client-side SPEC §14 op application, used ONLY while an engine build has no `apply` yet (reported in `engine.compat`). */
 function applyOpsLocal(doc: KerfDoc, ops: Op[]): { doc: KerfDoc; changed: string[] } {
   const merge = (t: any, p: any): any => {
     if (p === null || typeof p !== 'object' || Array.isArray(p)) return p;
@@ -123,7 +120,7 @@ function wrap(c: Caller, stats: CallStat[], meta: { loadMs: number; wasmBytes: n
   return e;
 }
 
-export interface LoadOptions { url: string; worker?: boolean; /** wasm bytes already being fetched (index.html starts the fetch early) */ preloaded?: Promise<ArrayBuffer> | null }
+export interface LoadOptions { url: string; worker?: boolean; preloaded?: Promise<ArrayBuffer> | null }
 
 export async function loadEngine(opts: LoadOptions): Promise<Engine> {
   const stats: CallStat[] = [];
