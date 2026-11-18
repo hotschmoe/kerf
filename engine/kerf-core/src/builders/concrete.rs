@@ -1,5 +1,3 @@
-//! concrete (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{
     Ctx, ParsedCover, drop_duplicate_points, fmt_ft_in, fmt_num, material_ok, mirror_built, one_prism, oriented_ccw,
     parse_cover, parse_point_list, vertex_anchors, zone_rect,
@@ -58,7 +56,6 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
 }
 
-/// The two plain blocks: a rectangle, or the same with the `footing` part (and its zone).
 fn rect_or_footing(ctx: &mut Ctx, cp: &Params, sh: Shape, material: &str, cov: ParsedCover) -> Option<Built> {
     let hint = "rect/footing need width and height";
     let w = cp.width.unwrap_or_else(|| {
@@ -116,11 +113,9 @@ fn polygon(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Opti
     })
 }
 
-/// Most slabs one z interval of a footprint with an angled edge is cut into for the checks; all intervals together.
 const FP_STEPS_MAX: usize = 48;
 const FP_SLABS_MAX: usize = 400;
 
-/// Whether two segments cross or touch away from a shared end (a footprint must be a simple polygon).
 fn segments_meet(a0: V2, a1: V2, b0: V2, b1: V2) -> bool {
     let mut ta = [0.0; 2];
     let mut tb = [0.0; 2];
@@ -132,9 +127,6 @@ fn segments_meet(a0: V2, a1: V2, b0: V2, b1: V2) -> bool {
     })
 }
 
-/// A plan footprint (SPEC 28.7): an outline in [x, z] with a thickness in y. Its prisms are z slabs, one per run of
-/// z between the outline's vertices, with the outline's x intervals; an angled edge makes a staircase of thin slabs
-/// for the checks, and section, plan, elevation, iso and 3D draw the exact outline carried on the first slab.
 fn footprint(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Option<Built> {
     if ctx.angle != 0.0 {
         ctx.p.fail("rotate", "a footprint is drawn in plan ([x, z] points) and rotate/slope tilt the section plane: give the angled outline in 'points' instead".into());
@@ -291,7 +283,6 @@ fn footprint(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Op
     })
 }
 
-/// A slab with an optional footing, haunch and recess along its edge.
 fn slab_edge(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Option<Built> {
     let st = cp.slab_thickness;
     let sl = cp.slab_length;

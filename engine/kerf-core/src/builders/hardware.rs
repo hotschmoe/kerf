@@ -1,8 +1,3 @@
-//! Framing hardware placed from the members it connects (SPEC 27.2): joist hangers, post caps, post bases, holdowns, and
-//! straps flush on a member face (`on`). Every plate is a thin prism at its true place in 3D (built in world coordinates,
-//! then made local to the placement point), so section, plan, elevation, iso and the mesh agree; plates that nearer
-//! members hide draw dashed (`hw_dash`).
-
 use super::common::{
     Ctx, drop_duplicate_points, oriented_ccw, parse_point_list, sawn_depth, sawn_thickness, vertex_anchors,
 };
@@ -22,7 +17,6 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// A member the hardware is placed from: one instance's plan-free 3D extent and its flattened profile.
 pub struct Member {
     pub id: String,
     pub ty: &'static str,
@@ -32,9 +26,7 @@ pub struct Member {
     pub z0: f64,
     pub z1: f64,
     pub flat: Vec<Vec<V2>>,
-    /// A truss's bottom chord profile (empty for other members): a truss hanger seats and braces that chord.
     pub chord: Vec<Vec<V2>>,
-    /// Every (component index, instance) the member is made of.
     pub parts: Vec<(u32, u32)>,
 }
 
@@ -44,7 +36,6 @@ impl Member {
     }
 }
 
-/// The member a host key names (`id` or `id#k`), or None (reported).
 pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
     let (id, inst) = match name.split_once('#') {
         Some((a, b)) => {
@@ -103,7 +94,6 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
     Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat, chord, parts })
 }
 
-/// Plates collected in world coordinates.
 pub(super) struct Kit {
     pub(super) prisms: Vec<Prism>,
     zlo: f64,
@@ -143,7 +133,6 @@ impl Kit {
         self.poly(part, model::rect_loop(x0, y0, x1, y1), z, nails);
     }
 
-    /// A box in a face frame: `u` outward from a face at `f` (sign `s`) along x (`along_x`) or z, `v` along the face.
     fn frame_box(&mut self, part: &str, fr: &Frame, u: [f64; 2], y: [f64; 2], v: [f64; 2], nails: &[(f64, f64)]) {
         let uw = [fr.f + fr.s * u[0], fr.f + fr.s * u[1]];
         if fr.along_x {
@@ -155,7 +144,6 @@ impl Kit {
         }
     }
 
-    /// A polygon in the (u, y) plane over `v`: exact when u runs along x; as a stack of slabs when u runs along z.
     fn frame_poly(&mut self, part: &str, fr: &Frame, uy: &[(f64, f64)], v: [f64; 2]) {
         if fr.along_x {
             let pts = uy.iter().map(|&(u, y)| Pt::new(fr.f + fr.s * u, y)).collect();
@@ -176,7 +164,6 @@ impl Kit {
         }
     }
 
-    /// The Built: prisms local to `origin`, centred on the kit's z middle.
     pub(super) fn finish(self, origin: V2, anchors: Vec<NamedAnchor>, info: String, hw: model::HwInfo) -> Built {
         let zc = (self.zlo + self.zhi) / 2.0;
         let prisms: Vec<Prism> = self
@@ -212,7 +199,6 @@ impl Kit {
     }
 }
 
-/// A face frame: the face at coordinate `f` of x (`along_x`) or z, outward sign `s`.
 struct Frame {
     along_x: bool,
     f: f64,
@@ -241,7 +227,6 @@ fn reject_placement(ctx: &mut Ctx, kind: Kind) -> bool {
     ctx.p.ok
 }
 
-/// The member (or the union of the members listed) a host key names; None when missing or bad (reported).
 pub(super) fn need(ctx: &mut Ctx, v: Option<&Value>, key: &str, kind: Kind, hint: &str) -> Option<Member> {
     let Some(v) = v else {
         ctx.p.fail(key, format!("kind {} needs '{key}': {hint}", kind.tag()));
@@ -385,13 +370,11 @@ fn num_json(x: f64) -> String {
     model::fmt_num(math::round(x * 10000.0) / 10000.0)
 }
 
-/// The y range of a profile on the vertical line x (lowest bottom, highest top), if it crosses it.
 pub(super) fn y_at(flat: &[Vec<V2>], x: f64) -> Option<(f64, f64)> {
     let ys = pathclip::scan(flat, x, true);
     Some((*ys.first()?, *ys.last()?))
 }
 
-/// The nominal size a hanger model is made for (`LUS210` 2x10, `HU212-2` two 2x12, `HU410` 4x10, `IUS2.06/11.88`).
 fn model_size(name: &str, prefix: &str) -> Option<(f64, f64)> {
     let up = name.to_ascii_uppercase();
     let rest = up.strip_prefix(prefix)?;
@@ -726,9 +709,6 @@ fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) ->
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: V2::init((px0 + px1) / 2.0, top) }], info, hw))
 }
 
-/// The stretch of a beam a post cap's side plates cover, along the beam: the part over the post where the beam bears on
-/// at least half the post (crossing it, or spliced over it), else the post's width measured from where the beam meets
-/// the post (a T or corner beam that butts the other beam at the post's edge).
 fn cap_span(post: [f64; 2], beam: [f64; 2]) -> [f64; 2] {
     let w = post[1] - post[0];
     let over = [post[0].max(beam[0]), post[1].min(beam[1])];
@@ -741,7 +721,6 @@ fn cap_span(post: [f64; 2], beam: [f64; 2]) -> [f64; 2] {
     }
 }
 
-/// `span` less the stretches `holes` cover (other beams butting the plate's face), in order.
 fn cut_out(span: [f64; 2], holes: &[[f64; 2]]) -> Vec<[f64; 2]> {
     let mut out = vec![span];
     for h in holes {
@@ -954,8 +933,6 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat_top".into(), p: seat_pt }], info, hw))
 }
 
-/// The anchor bolt or bolt nearest to a post (within 8" in plan and z, drawn in a view with the holdown), for the
-/// W_HOLDOWN_ROD fix.
 fn nearest_rod(scene: &Scene, holdown: &crate::scene::Comp, post: Box, zc: f64) -> Option<String> {
     let mut best: Option<(f64, String)> = None;
     for c in &scene.comps {
@@ -976,7 +953,6 @@ fn nearest_rod(scene: &Scene, holdown: &crate::scene::Comp, post: Box, zc: f64) 
 
 const FACES: [&str; 6] = ["face_left", "face_right", "face_top", "face_bottom", "face_front", "face_back"];
 
-/// A strap flush on a member face (`on`).
 pub fn build_on(
     ctx: &mut Ctx,
     cp: &Params,

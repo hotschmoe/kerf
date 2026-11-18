@@ -1,5 +1,3 @@
-//! flashing (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, drop_duplicate_points, gauge_thickness, material_or, mirror_built, parse_point_list};
 use crate::geom::{self, Pt, V2, Xf};
 use crate::model::fmt_num;

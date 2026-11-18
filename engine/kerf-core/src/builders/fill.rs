@@ -1,5 +1,3 @@
-//! fill (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, drop_duplicate_points, one_prism, oriented_ccw, parse_point_list, vertex_anchors};
 use crate::geom;
 use crate::model::{self, Built, OutlineMode, Prism};

@@ -307,3 +307,35 @@ Visible and hidden path portions are split at occluder outlines. Closed-loop pie
 ## engine/kerf-core/src/section/strokes.rs
 
 Coincident collinear spans keep the heavier pen, except members of one component keep a thin copy. Open strokes chain only when both pen and source match; returning to the start closes a loop.
+
+## engine/kerf-core/src/builders/anchor_bolt.rs
+
+SPEC 5 defines anchor bolts. A plate washer size uses `width x width x thickness`; rod extents through a host are measured along its axis from the placement point.
+
+## engine/kerf-core/src/builders/bolt.rs
+
+Structural bolts use a heavy hex head and nut with across-flats width `1.5d + 1/8`, head height `0.625d`, nut height `d`, an F436 washer of outside diameter `2d` and thickness `5/32`, and thread stick-out `0.5d`. The head bears at the local origin and the grip runs down or toward negative z. Weld and shear studs point up from the local origin.
+
+## engine/kerf-core/src/builders/cmu_wall.rs
+
+SPEC 5 defines masonry walls. Course ranges are one-based from the bottom; adjacent bond-beam courses form zones, with `bond_beam` naming the highest. Section walls use course shells, cells and bed joints; face-on walls have joint-patterned front and back shells and grouted cells.
+
+## engine/kerf-core/src/builders/concrete.rs
+
+SPEC 28.7 defines plan footprints as x/z outlines with y thickness. Angled edges use thin z slabs for checks, while the exact outline carried on the first slab is used by section, plan, elevation, iso and 3D drawing.
+
+## engine/kerf-core/src/builders/connector.rs
+
+SPEC 5 and 27.2 define connectors. Straps, ties and angles use thickened polylines or a member face; hangers, caps, bases and holdowns are built from their connected members by `hardware.rs`.
+
+## engine/kerf-core/src/builders/fill.rs
+
+SPEC 5 defines fill parameters and geometry.
+
+## engine/kerf-core/src/builders/flashing.rs
+
+SPEC 5 defines flashing parameters and geometry.
+
+## engine/kerf-core/src/builders/hardware.rs
+
+SPEC 27.2 defines framing hardware. Plates are placed in world coordinates and made local to the placement point so the section, plan, elevation, iso and mesh agree. A truss hanger seats its bottom chord profile. Post-cap coverage depends on the bearing overlap, with a separate case for a beam butting at a post edge. `W_HOLDOWN_ROD` suggestions use a rod within eight inches in plan and z and drawn in a view with the holdown.

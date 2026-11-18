@@ -1,5 +1,3 @@
-//! cmu wall (SPEC 5): its parameters (`Params`, the single source for the parser and the catalog) and its builder.
-
 use super::common::{Ctx, fmt_num, parse_cover, zone_rect};
 use crate::geom::{self, Box, V2};
 use crate::json::Value;
@@ -37,7 +35,6 @@ const COURSE: f64 = 8.0;
 const UNIT_H: f64 = 7.625;
 const JOINT: f64 = 0.375;
 
-/// The courses a list param names (`[4, [6, 8]]`: 4, 6, 7 and 8), as flags indexed by course - 1. None after an E_PARAM.
 fn course_flags(ctx: &mut Ctx, key: &str, v: Option<&Value>, n: usize) -> Option<Vec<bool>> {
     let mut flags = alloc::vec![false; n];
     let Some(v) = v else { return Some(flags) };
@@ -73,7 +70,6 @@ fn course_flags(ctx: &mut Ctx, key: &str, v: Option<&Value>, n: usize) -> Option
     Some(flags)
 }
 
-/// Runs of adjacent flagged courses as (first, last), 1-based, bottom up.
 fn runs(flags: &[bool]) -> Vec<(usize, usize)> {
     let mut out: Vec<(usize, usize)> = Vec::new();
     for (i, &f) in flags.iter().enumerate() {
@@ -94,7 +90,6 @@ fn runs_text(rs: &[(usize, usize)]) -> String {
     parts.join(", ")
 }
 
-/// Bottom and top y of courses a..=b (1-based).
 fn course_span(a: usize, b: usize) -> (f64, f64) {
     ((a - 1) as f64 * COURSE, (b - 1) as f64 * COURSE + UNIT_H)
 }
@@ -115,7 +110,6 @@ fn actual_width(ctx: &mut Ctx, x: f64) -> Option<f64> {
     None
 }
 
-/// What both runs share once the parameters are checked.
 struct Wall {
     w: f64,
     fs: f64,
@@ -205,7 +199,6 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     Some(built)
 }
 
-/// The bond-beam zones and anchors: `bond_beam_<k>` per run of adjacent courses, `bond_beam` = the highest.
 fn bond_beam_zones(wall: &Wall, x0: f64, x1: f64, zones: &mut Vec<Zone>, anchors: &mut Vec<NamedAnchor>) -> V2 {
     let mut center = V2::init((x0 + x1) / 2.0, wall.total_h);
     let rs = runs(&wall.bb);
@@ -222,7 +215,6 @@ fn bond_beam_zones(wall: &Wall, x0: f64, x1: f64, zones: &mut Vec<Zone>, anchors
     center
 }
 
-/// The `grout` zone: one rectangle per run of grouted courses between `x0` and `x1`.
 fn grout_zone(wall: &Wall, x0: f64, x1: f64) -> Option<Zone> {
     let rs = runs(&wall.grouted);
     if rs.is_empty() {
@@ -239,7 +231,6 @@ fn grout_zone(wall: &Wall, x0: f64, x1: f64) -> Option<Zone> {
     Some(Zone { name: "grout".into(), loops, box_: bx })
 }
 
-/// The wall in section (run z): per course two face shells, the cell (grouted or a beyond web line) and a bed joint.
 fn run_z(wall: &Wall, top_joint: bool) -> Built {
     let (w, fs, n, total_h) = (wall.w, wall.fs, wall.n, wall.total_h);
     let mut prisms: Vec<Prism> = Vec::new();
@@ -308,9 +299,6 @@ fn run_z(wall: &Wall, top_joint: bool) -> Built {
     }
 }
 
-/// The wall seen face-on (run x): it runs along x for `length`, its thickness along z. Per panel (between control
-/// joints) a front and a back face shell carrying the joint pattern (bed joints at every course, head joints in the
-/// bond), and the grouted cells between them.
 fn run_x(ctx: &mut Ctx, cp: &Params, wall: &Wall) -> Option<Built> {
     let (w, fs, n, total_h) = (wall.w, wall.fs, wall.n, wall.total_h);
     let Some(len) = cp.length else {
