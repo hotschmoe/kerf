@@ -14,7 +14,7 @@ node ../tools/build_wasm.mjs
 KERF="$binary" node tests/check_golden.mjs truss-bearing-cmu flush-beam-strap hss-column-base-plate
 node tests/cli_e2e.mjs "$binary"
 node tests/serve_e2e.mjs "$binary"
-node tests/wasm_check.mjs dist/kerf.wasm ../spec/details/truss-bearing-cmu.kerf.json A "${TMPDIR:-/tmp}/kerf-gate-wasm.svg"
+node tests/wasm_check.mjs dist/kerf.wasm ../spec/details/truss-bearing-cmu.kerf.json A
 (
   cd ../apps/web
   KERF_WASM="$root/engine/dist/kerf.wasm" npm run build
