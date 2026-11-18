@@ -1,5 +1,3 @@
-//! Where a note can land on a thin member (membrane, flashing, thin panel) so the leader hits the member and not what is beside it.
-
 use crate::catalog::Traits;
 use crate::geom::{self, Box, V2};
 use crate::model::Kind;
@@ -80,8 +78,6 @@ struct Sample {
     d: f64,
 }
 
-/// Up to six landing points for a note on a thin component, best first, or `None` when the component is not thin or the
-/// preferred point already hits it.
 pub fn candidates(
     sec: &mut Section<'_>,
     comp: &Comp<'_>,

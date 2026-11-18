@@ -427,3 +427,23 @@ Text stroke polylines use the item's anchor, with rotation in degrees counterclo
 ## engine/kerf-core/src/drawview.rs
 
 SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2 and 28.6 govern view construction and fit diagnostics. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet.
+
+## engine/kerf-core/src/hatch.rs
+
+Hatch lines follow AutoCAD `.pat` semantics and are clipped by the even-odd region rule.
+
+## engine/kerf-core/src/shape.rs
+
+SPEC 6.3 and 18 govern landing geometry on visible polygons with holes. Candidate grid points must clear every edge by at least the requested minimum and half the maximum clearance; nearest to the preferred point wins, with deeper clearance breaking ties.
+
+## engine/kerf-core/src/thinland.rs
+
+Thin-member note landing considers up to six candidates, best first, when the preferred point misses a membrane, flashing or thin panel.
+
+## engine/kerf-core/src/coverage.rs
+
+SPEC 21, 25.3, 26.1 and 28.8 define requested-item coverage. Normalized words include abbreviation expansion, case and punctuation normalization, plural and verb forms, and lengths. A single component or annotation must offer all words of an item. A table offers its title and column/header text as one candidate, each body row with that heading as another, and each note separately. A dimension without explicit text can offer its measured length when a compiled scene is available.
+
+## engine/kerf-core/src/review.rs
+
+SPEC 25.4 and 25.6 define the opt-in review overlay. It marks acknowledged owners with dashed boxes and numbered tags and adds a stamp and legend; ordinary exports omit them. On sheets, the overlay scans for free space in the frame and reduces text size or legend length if necessary.
