@@ -1,8 +1,3 @@
-//! Connection limits, deadlines and the access rules (token, Host, Origin).
-//!
-//! One thread per connection. Every phase arms a deadline on the connection (`arm`); a watchdog thread shuts the
-//! socket down once it passes, which wakes the blocked read or write. `arm(0)` disarms (SSE waiting).
-
 use super::{Server, lock, routes};
 use crate::http::{self, In, Out, Request};
 use std::cell::RefCell;
@@ -15,7 +10,6 @@ use std::time::Duration;
 pub const MAX_CONNS: u32 = 256;
 pub const MAX_SSE_STREAMS: u32 = 32;
 pub const MAX_REQUESTS_PER_CONN: u32 = 1000;
-/// One handler, apart from SSE.
 pub const BUSY_MS: u64 = 120_000;
 
 #[derive(Clone, Copy)]
@@ -45,7 +39,7 @@ fn elapsed_ns(base: std::time::Instant) -> i64 {
     i64::try_from(base.elapsed().as_nanos()).unwrap_or(i64::MAX)
 }
 
-/// Deadline for the rest of what this connection is doing; 0 disarms.
+// Zero disarms the watchdog while an SSE connection waits.
 pub fn arm(ms: u64) {
     CURRENT.with(|c| {
         if let Some((conn, base)) = c.borrow().as_ref() {

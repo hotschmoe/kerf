@@ -1,6 +1,3 @@
-//! `POST /api/agent/run` and `POST /api/agent/stop`: validate the request, save attached images into
-//! `.kerf/attachments`, start or stop a run of the agent bridge.
-
 use super::{ATTACHMENT_TTL_S, Server, bad_request, parse_body};
 use crate::agents::{StartError, StartParams, StopResult};
 use crate::http::{self, Out, Request};
@@ -116,7 +113,6 @@ pub fn api_agent_run(s: &Server, req: &Request, w: &mut Out, extra: &str) -> io:
     Ok(ka)
 }
 
-/// Creates `path` under the served folder when missing and insists it is a real directory, not a symlink.
 fn ensure_real_dir(root: &Path, path: &str) -> Result<(), BadImages> {
     let full = root.join(path);
     match fs::create_dir(&full) {
@@ -194,7 +190,6 @@ fn save_images(s: &Server, iv: &Value) -> Result<Vec<String>, BadImages> {
     Ok(out)
 }
 
-/// Standard base64 with padding, as `std.base64.standard.Decoder`: no whitespace, trailing bits must be zero.
 fn base64_decode(s: &str) -> Option<Vec<u8>> {
     let b = s.as_bytes();
     if !b.len().is_multiple_of(4) {

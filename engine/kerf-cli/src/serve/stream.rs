@@ -1,5 +1,3 @@
-//! The SSE stream (`GET /api/events`).
-
 use super::conn::arm;
 use super::{MAX_SSE_STREAMS, Server};
 use crate::http::{self, Head, Out};
