@@ -1,11 +1,9 @@
-// Workspace mode controller: library list, the open file, live events (SSE), and the App's `Remote` (all writes go to the server).
 import type { App, Remote } from '../app';
 import type { ApplyResult, Actor, KerfDoc, Op } from '../types';
 import { ServerError, type DocRow, type ServerEvent, type ServerInfo, type ServerLogEntry, type WorkspaceClient } from './client';
 
 export type WsEvent = 'docs' | 'file' | 'online' | 'agent-edit';
 
-/** key-sorted JSON, so the same document compares equal however a writer ordered its keys */
 export function stable(v: unknown): string {
   return JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 }
@@ -20,17 +18,15 @@ export class Workspace implements Remote {
   file: string | null = null;
   etag: string | null = null;
   online = false;
-  /** wall-clock ms of the last agent log entry seen (status line: LOCAL AGENT · LAST EDIT 12S AGO) */
   lastAgentEdit: number | null = null;
-  /** a run started from this UI is active: its own tool cards already tell the story, so log cards are suppressed */
   uiRunActive = false;
-  /** the server polls the folder every 500 ms, so log lines of a finished UI run trail its exit event */
+  // Poll-delayed log entries must not duplicate cards from the UI-started run.
   private suppressUntil = 0;
   endUiRun() { this.uiRunActive = false; this.suppressUntil = Date.now() + 2000; }
   private known: string[] = [];
   private listeners = new Map<string, Set<(a?: unknown) => void>>();
   private agentHandlers = new Map<string, (ev: unknown) => void>();
-  /** agent events that arrived before the run's handler was registered (the POST answer races the SSE stream) */
+  // SSE events may arrive before the POST response registers the run handler.
   private agentBuffer = new Map<string, unknown[]>();
   private stopEvents: (() => void) | null = null;
   private docsTimer = 0;
@@ -48,7 +44,6 @@ export class Workspace implements Remote {
   }
   private emit(ev: WsEvent | 'card', a?: unknown) { this.listeners.get(ev)?.forEach((f) => f(a)); }
 
-  // ---------------- Remote (used by App) ----------------
   noteKnown(doc: KerfDoc) { this.known.unshift(stable(doc)); this.known.length = Math.min(this.known.length, 6); }
   isKnown(doc: KerfDoc) { return this.known.includes(stable(doc)); }
 
@@ -104,7 +99,6 @@ export class Workspace implements Remote {
     throw new Error('could not find a free file name');
   }
 
-  // ---------------- library ----------------
   async refreshDocs() {
     try { this.docs = await this.client.listDocs(); } catch { return; }
     this.emit('docs');
@@ -117,7 +111,7 @@ export class Workspace implements Remote {
       this.file = file; this.etag = etag;
       this.known = [];
       this.noteKnown(doc);
-      try { localStorage.setItem('kerf.lastDoc', file); } catch { /* ignore */ }
+      try { localStorage.setItem('kerf.lastDoc', file); } catch {}
       const r = await this.app.openDoc(doc, `library ${file}`);
       if (!r.ok) { this.app.flash(`OPEN FAILED: ${r.error ?? r.diagnostics[0]?.message ?? file}`.slice(0, 160), 'err'); return false; }
       this.emit('file');
@@ -128,7 +122,6 @@ export class Workspace implements Remote {
     }
   }
 
-  /** Create a library document (like `kerf new`) and open it. With `content`, the document body is imported through apply. */
   async create(name: string, title?: string, content?: KerfDoc): Promise<string | null> {
     const file = fileFor(name);
     try {
@@ -151,7 +144,6 @@ export class Workspace implements Remote {
     return file;
   }
 
-  // ---------------- events ----------------
   start() {
     this.stopEvents = this.client.events((e) => this.onEvent(e), (online) => {
       const was = this.online;

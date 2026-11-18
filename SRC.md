@@ -75,3 +75,11 @@ Chat is available only when the UI has a workspace served by `kerf serve`; it ru
 ## apps/web/src/chat/store.ts
 
 Agent choice and resume sessions are stored per agent and document. Local storage can be unavailable, so access failures are tolerated; selection falls back to the first available agent and then the first listed agent.
+
+## apps/web/src/workspace/client.ts
+
+A token supplied in the URL is stored in session storage and removed from the address bar. HTTP requests use a bearer header; the SSE connection uses a query token because EventSource cannot set that header. Both named SSE events and unnamed JSON messages are accepted.
+
+## apps/web/src/workspace/workspace.ts
+
+Documents are compared with key-sorted JSON so key order alone does not trigger reloads. SSE agent events can precede the run's POST response, so they are buffered until the handler is registered. A UI-started run suppresses duplicate log cards during the run and briefly afterward because the server's folder poller can publish its log entries after the exit event.
