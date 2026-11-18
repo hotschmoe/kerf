@@ -240,8 +240,6 @@ pub fn fmt_dec(x: f64) -> String {
     String::from(json::fmt_number(&mut b, x))
 }
 
-// ---- scales ----------------------------------------------------------------------------------------
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Scale {
     /// Model inches per paper inch. 0 means NTS (fit to frame).
@@ -325,8 +323,6 @@ pub fn scale_label(factor: f64) -> String {
     }
     format!("1:{}", fmt_dec(factor))
 }
-
-// ---- slopes ----------------------------------------------------------------------------------------
 
 /// `"4:12"` (rise:run) or a number of degrees. Returns radians.
 pub fn parse_slope(v: &Value) -> Option<f64> {

@@ -362,8 +362,6 @@ pub fn parse(src: &[u8]) -> Result<Value, ParseError> {
     })
 }
 
-// ---- numbers -------------------------------------------------------------------------------------
-
 /// Kerf number format: round to 1e-4, shortest decimal, no exponent, `-0` -> `0`.
 pub fn fmt_number(buf: &mut [u8; 40], x: f64) -> &str {
     fmt_fixed(buf, x, 4)
@@ -475,8 +473,6 @@ pub fn round4(x: f64) -> f64 {
     let r = math::round(x * 10000.0) / 10000.0;
     if r == 0.0 { 0.0 } else { r }
 }
-
-// ---- writer --------------------------------------------------------------------------------------
 
 pub fn write_string(out: &mut Vec<u8>, s: &str) {
     out.push(b'"');
@@ -649,8 +645,6 @@ pub fn write_compact(out: &mut Vec<u8>, v: &Value) {
         }
     }
 }
-
-// ---- builders --------------------------------------------------------------------------------------
 
 pub fn obj<K: Into<String>>(members: impl IntoIterator<Item = (K, Value)>) -> Value {
     Value::Object(members.into_iter().map(|(k, value)| Member { key: k.into(), value }).collect())
