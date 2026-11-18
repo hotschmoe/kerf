@@ -25,8 +25,12 @@ const cdp = await browser.target().createCDPSession();
 await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: outDir });
 
 let pass = 0, fail = 0, skipped = 0;
+const selected = process.env.KERF_E2E_CASE;
+let matched = false;
 const results = [];
 async function t(name, fn) {
+  if (selected && name !== selected) return;
+  matched = true;
   try { await fn(); pass++; results.push(['ok', name]); console.log('  ok  ' + name); }
   catch (e) { fail++; results.push(['FAIL', name, String(e.stack || e)]); console.log('FAIL  ' + name + '\n      ' + String(e.message || e).split('\n').join('\n      ')); }
 }
@@ -239,4 +243,5 @@ await t('layouts: a [LAYOUT S1] tab renders the sheet of several views; PDF expo
 await browser.close();
 server.kill();
 console.log(`\n${pass} passed, ${fail} failed, ${skipped} skipped (engine function missing). artifacts: ${outDir}`);
+if (selected && !matched) { console.error(`Unknown browser test: ${selected}`); process.exit(1); }
 process.exit(fail ? 1 : 0);
