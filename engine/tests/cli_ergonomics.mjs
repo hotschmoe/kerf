@@ -86,7 +86,7 @@ section('2. kerf schema, kerf new --template, kerf call help, kerf guide');
   r = kerf(['new', 't.kerf.json', '--template', 'section', '--title', 'MY TITLE']);
   check('new --template section', r.code === 0 && fs.existsSync(path.join(tmp, 't.kerf.json')), r);
   r = kerf(['check', 't.kerf.json']);
-  check('template checks with 0 errors and 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  check('template checks with 0 errors and 0 warnings', r.code === 0 && !/^WARN /m.test(r.out), r.out);
   r = kerf(['export', 't.kerf.json', '--view', 'A', '--format', 'png', '-o', 't.png']);
   check('template exports', r.code === 0 && fs.statSync(path.join(tmp, 't.png')).size > 1000, r);
   r = kerf(['new', 't.kerf.json', '--template', 'section']);
@@ -137,11 +137,11 @@ section('3. W_UNKNOWN_KEY, dim dir default + W_DIM_ZERO, W_NOTE_STYLE');
 {
   for (const f of ['flush-beam-strap', 'monopour-slab-door-recess', 'truss-bearing-cmu']) {
     const r = kerf(['check', path.join(DETAILS, f + '.kerf.json')]);
-    check(`reference ${f}: 0 errors, 0 warnings`, /0 errors  0 warnings/.test(r.out), r.out.split('\n')[0]);
+    check(`reference ${f}: 0 errors, 0 warnings`, (r.code === 0 && !/^WARN /m.test(r.out)), r.out.split('\n')[0]);
   }
   for (const f of fs.readdirSync(DOCS).filter((n) => n.endsWith('.kerf.json'))) {
     const r = kerf(['check', path.join(DOCS, f)]);
-    check(`tests/docs/${f}: 0 errors, 0 warnings`, /0 errors  0 warnings/.test(r.out), r.out.split('\n')[0]);
+    check(`tests/docs/${f}: 0 errors, 0 warnings`, (r.code === 0 && !/^WARN /m.test(r.out)), r.out.split('\n')[0]);
   }
   kerf(['new', 'k.kerf.json', '--template', 'section']);
   const ops = [
@@ -194,7 +194,7 @@ section('4. acknowledge (I_ACK, logged) and lumber.barrier');
   r = kerf(['apply', 'b.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/sill', value: { acknowledge: [{ code: 'E_PARAM', reason: 'x' }, { code: 'W_OVERLAP' }] } }])]);
   check('invalid acknowledgements', r.code === 1 && /\bE_PARAM\b/.test(r.err), r);
   r = kerf(['apply', 'b.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/sill', value: { acknowledge: null, barrier: 'sill_seal' } }]), '-w', '--why', 'sealer']);
-  check('barrier sill_seal clears W_UNTREATED_CONTACT and adds the strip part', r.code === 0 && /0 errors  0 warnings/.test(r.out) && /\+ sill_seal/.test(r.out) && !/I_ACK/.test(r.out), r.out);
+  check('barrier sill_seal clears W_UNTREATED_CONTACT and adds the strip part', r.code === 0 && !/^WARN /m.test(r.out) && /\+ sill_seal/.test(r.out) && !/I_ACK/.test(r.out), r.out);
   r = kerf(['call', 'inspect'], { input: JSON.stringify({ doc: readJson('b.kerf.json'), query: { q: 'component', id: 'sill' } }) });
   const comp = JSON.parse(r.out);
   check('sill has a barrier part and is raised 1/8"', comp.parts.some((p) => p.name === 'barrier') && Math.abs(comp.bbox[3] - comp.bbox[1] - 1.625) < 1e-6, comp.bbox);
@@ -234,7 +234,7 @@ section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_*
 {
   const ref = JSON.parse(fs.readFileSync(path.join(DETAILS, 'truss-bearing-cmu.kerf.json'), 'utf8'));
   let r = kerf(['check', path.join(DETAILS, 'truss-bearing-cmu.kerf.json')]);
-  check('negative: the reference truss detail has 0 warnings', /0 errors  0 warnings/.test(r.out), r.out.split('\n')[0]);
+  check('negative: the reference truss detail has 0 warnings', (r.code === 0 && !/^WARN /m.test(r.out)), r.out.split('\n')[0]);
   // e07 repro: pitch changed (8:12: steep enough that the longer roof leaves the crop), sheathing follows with slope "@truss" but keeps a literal length that stops short
   const e07 = JSON.parse(JSON.stringify(ref));
   e07.components.find((c) => c.id === 'truss').pitch = '8:12';
@@ -247,11 +247,11 @@ section('6. W_SHORT_SLOPE (e07 repro), the roof-pitch recipe, acknowledge of I_*
   r = kerf(['apply', 'e07.kerf.json', 'pitch.json', '-w', '--why', 'sheathing follows the truss']);
   check('the guide recipe (update with until, length null) clears W_SHORT_SLOPE; the explicit crop now clips the longer roof: W_CROP_STALE (the e07 gap)', r.code === 0 && !/W_SHORT_SLOPE/.test(r.out) && /^WARN W_CROP_STALE roof_sheathing: after this edit/m.test(r.out) && /until truss@top_chord_end/.test(r.out), r.out);
   r = kerf(['apply', 'e07.kerf.json', '--ops', JSON.stringify({ op: 'update', path: 'views/A', value: { crop: null, scale: null } }), '-w', '--why', 'auto-fit the roof']);
-  check('removing the crop and scale (the warning\'s fix) leaves 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  check('removing the crop and scale (the warning\'s fix) leaves 0 warnings', r.code === 0 && !/^WARN /m.test(r.out), r.out);
   // steeper pitch on the reference with the recipe: still 0 warnings, sheathing follows
   write('pitch8.json', [{ op: 'update', path: 'components/truss', value: { pitch: '8:12' } }]);
   r = kerf(['apply', 'e07.kerf.json', 'pitch8.json', '-w', '--why', 'steeper']);
-  check('pitch 8:12 with slope @truss + until: 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  check('pitch 8:12 with slope @truss + until: 0 warnings', r.code === 0 && !/^WARN /m.test(r.out), r.out);
   // acknowledge of an info code: accepted, no error
   const ackI = [{ op: 'update', path: 'components/truss', value: { acknowledge: [{ code: 'I_SOLID_USED', reason: 'not applicable' }] } }];
   r = kerf(['apply', 'e07.kerf.json', '--ops', JSON.stringify(ackI), '--dry-run']);
@@ -347,7 +347,7 @@ section('8. v0.1.5 (SPEC 21): meta.requested coverage');
   check('invalid meta.requested', r.code === 1 && /\bE_PARAM\b/.test(r.err), r);
   for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-strap']) {
     const o = kerf(['check', path.join(DETAILS, d + '.kerf.json')]);
-    check(`reference ${d}: no meta.requested, so no COVERAGE block and 0 warnings`, !/COVERAGE/.test(o.out) && /0 errors  0 warnings/.test(o.out), o.out.split('\n')[0]);
+    check(`reference ${d}: no meta.requested, so no COVERAGE block and 0 warnings`, !/COVERAGE/.test(o.out) && (o.code === 0 && !/^WARN /m.test(o.out)), o.out.split('\n')[0]);
   }
 }
 
@@ -388,7 +388,7 @@ section('10. v0.1.5 (SPEC 21): note lint extensions');
   check('a note that repeats another one names it', /^WARN W_NOTE_STYLE n_dup:/m.test(r.out), r.out);
   for (const d of ['truss-bearing-cmu', 'monopour-slab-door-recess', 'flush-beam-strap']) {
     const o = kerf(['check', path.join(DETAILS, d + '.kerf.json')]);
-    check(`reference ${d} still has 0 warnings`, /0 errors  0 warnings/.test(o.out), o.out.split('\n')[0]);
+    check(`reference ${d} still has 0 warnings`, (o.code === 0 && !/^WARN /m.test(o.out)), o.out.split('\n')[0]);
   }
 }
 
@@ -485,7 +485,7 @@ section('13. keyed notes (SPEC 24): tags, DETAIL NOTES list, shared keys, list m
     return { r, d: r.code === 0 ? JSON.parse(r.out) : null };
   };
   let o = kerf(['check', path.join(DETAILS, 'stud-wall-stem-footing.kerf.json')]);
-  check('reference stud-wall-stem-footing has 0 warnings', /0 errors  0 warnings/.test(o.out), o.out.split('\n')[0]);
+  check('reference stud-wall-stem-footing has 0 warnings', (o.code === 0 && !/^WARN /m.test(o.out)), o.out.split('\n')[0]);
 
   let { d } = drawing('k1.kerf.json', base, 'A');
   const tagOf = (id) => texts(d).filter((t) => t.src === id && t.valign === 'middle').map((t) => t.s);
@@ -1205,7 +1205,7 @@ section('#14 fills under solids, voids around embedded members, sleeves');
   const earth = { id: 'earth', type: 'fill', material: 'earth', points: [[-30, 0], [30, 0], [30, -40], [-30, -40]] };
   write('v1.kerf.json', doc([ftg, stem, earth], [], crop));
   let r = kerf(['check', 'v1.kerf.json']);
-  check('an earth rectangle around a footing and stem: 0 warnings (a fill over a solid is not W_OVERLAP)', r.code === 0 && /0 errors +0 warnings/.test(r.out), r.out);
+  check('an earth rectangle around a footing and stem: 0 warnings (a fill over a solid is not W_OVERLAP)', r.code === 0 && !/^WARN /m.test(r.out), r.out);
   r = kerf(['drawing', 'v1.kerf.json', '--view', 'A']);
   let a = srcArea(items(r), 'hatch', 'earth');
   check('the earth hatch is the rectangle minus the footing and the buried stem (2400 - 240 - 192 sq in)', Math.abs(a - 1968) < 0.01, a);
@@ -1230,7 +1230,7 @@ section('#14 fills under solids, voids around embedded members, sleeves');
   check('the cut pour is 576 sq in less the column (6 x 21.75), plate (12 x 0.75) and grout (20.25)', Math.abs(a - (576 - 130.5 - 9 - 20.25)) < 0.01, a);
   r = kerf(['apply', 'v2.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/col', value: { shape: 'HSS8x8x1/4' } }]), '-w', '--why', 'bigger column']);
   a = srcArea(items(kerf(['drawing', 'v2.kerf.json', '--view', 'A'])), 'region', 'pour');
-  check('resizing the column needs no change to the pour: still 0 warnings, the hole is 8" wide', r.code === 0 && /0 errors +0 warnings/.test(r.out) && Math.abs(a - (576 - 174 - 9 - 20.25)) < 0.01, [a, r.out]);
+  check('resizing the column needs no change to the pour: still 0 warnings, the hole is 8" wide', r.code === 0 && !/^WARN /m.test(r.out) && Math.abs(a - (576 - 174 - 9 - 20.25)) < 0.01, [a, r.out]);
   r = kerf(['apply', 'v2.kerf.json', '--ops', JSON.stringify([{ op: 'remove', path: 'components/col' }])]);
   check('removing a referenced member', r.code === 1, r);
 
@@ -1269,7 +1269,7 @@ section('#14 fills under solids, voids around embedded members, sleeves');
   check('a sleeve through a non-host: E_PARAM naming the types that take a sleeve', /^ERROR E_PARAM sl:/m.test(r.out), r.out);
   write('v4.kerf.json', doc([{ ...wall, width: 8, height: 36 }, { ...sl, pipe: 3, run: 'x', length: 8, through: 'wall', at: { anchor: 'middle_left', to: [0, 18] } }]));
   r = kerf(['check', 'v4.kerf.json']);
-  check('a sleeve seen lengthwise (run x) through an 8" wall: 0 warnings', r.code === 0 && /0 errors +0 warnings/.test(r.out) && /run x L=8" through wall/.test(r.out), r.out);
+  check('a sleeve seen lengthwise (run x) through an 8" wall: 0 warnings', r.code === 0 && !/^WARN /m.test(r.out) && /run x L=8" through wall/.test(r.out), r.out);
   write('v4.kerf.json', doc([{ ...sl, run: 'x' }]));
   r = kerf(['check', 'v4.kerf.json']);
   check('a sleeve along x without length: E_PARAM', r.code === 1 && /^ERROR E_PARAM sl:/m.test(r.out), r.out);
@@ -1294,7 +1294,7 @@ section('#9. plan and elevation views, shown hidden / where_occurs, rebar plane 
     { id: 'C', kind: 'plan', title: 'BASE PLATE PLAN', crop: { x: [-10, 52], z: [-44, 18] } },
     { id: 'D', kind: 'plan', title: 'Z', crop: { x: [-10, 52], y: [-18, 44] } }]));
   let r = kerf(['check', 'vk1.kerf.json']);
-  check('a footing, stem walls, a dowel and an xz corner bar: section and plan from one model, 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  check('a footing, stem walls, a dowel and an xz corner bar: section and plan from one model, 0 warnings', r.code === 0 && !/^WARN /m.test(r.out), r.out);
   let d = items('vk1.kerf.json', 'B');
   check('plan drawing kind is "plan"', d.kind === 'plan', d.kind);
   check('plan: the dowel crossing the cut is a filled dot', d.items.some((i) => i.t === 'fill' && i.src === 'dowel'), d.items.filter((i) => i.src === 'dowel'));
@@ -1505,10 +1505,10 @@ section('#10. ijoist component, truss profiles, end-on trusses, W_BEARING');
   const shLoop = (file) => (items(file, 'A').items.find((i) => i.t === 'region' && i.src === 'sh')?.loops ?? [[]])[0];
   let lp = shLoop('tr1.kerf.json');
   const yAt = (pts, pick) => pts.reduce((a, p) => (pick(p[0], a[0]) ? p : a), pts[0] ?? [0, 0])[1];
-  check('mono: end vertical heel_height tall, sheathing with slope "@t" falls with the top chord (0 warnings)', /0 errors  0 warnings/.test(r.out) && /truss 3:12 mono high end 2'-0"/.test(r.out) && lp.length > 0 && yAt(lp, (x, b) => x > b) < yAt(lp, (x, b) => x < b) - 8, r.out);
+  check('mono: end vertical heel_height tall, sheathing with slope "@t" falls with the top chord (0 warnings)', (r.code === 0 && !/^WARN /m.test(r.out)) && /truss 3:12 mono high end 2'-0"/.test(r.out) && lp.length > 0 && yAt(lp, (x, b) => x > b) < yAt(lp, (x, b) => x < b) - 8, r.out);
   write('tr2.kerf.json', roof({ profile: 'scissor', pitch: '6:12', bottom_pitch: '3:12' }, 't@tail_top'));
   r = kerf(['check', 'tr2.kerf.json']);
-  check('scissor: bottom chord at bottom_pitch, sheathing follows the top chord', /0 errors  0 warnings/.test(r.out) && /truss 6:12 scissor \(bottom 3:12\)/.test(r.out), r.out);
+  check('scissor: bottom chord at bottom_pitch, sheathing follows the top chord', (r.code === 0 && !/^WARN /m.test(r.out)) && /truss 6:12 scissor \(bottom 3:12\)/.test(r.out), r.out);
   write('tr3.kerf.json', roof({ profile: 'scissor', pitch: '4:12', bottom_pitch: '5:12' }));
   check('scissor bottom_pitch steeper than pitch: E_PARAM', /^ERROR E_PARAM t:/m.test(kerf(['check', 'tr3.kerf.json']).out));
   write('tr4.kerf.json', roof({ profile: 'parallel_chord' }));
@@ -1518,7 +1518,7 @@ section('#10. ijoist component, truss profiles, end-on trusses, W_BEARING');
   write('tr6.kerf.json', roof({ profile: 'parallel_chord', depth: 18, bearing: 'top_chord' }));
   r = kerf(['check', 'tr6.kerf.json']);
   d = items('tr6.kerf.json', 'A');
-  check('floor truss, top chord bearing: one component, 4x2 chords, open webs (no overlap warnings)', /0 errors  0 warnings/.test(r.out) && /truss parallel chord 1'-6" deep, 4x2\+4x2 chords, top chord bearing/.test(r.out) && d.items.filter((i) => i.t === 'region' && i.src === 't').length >= 5, r.out);
+  check('floor truss, top chord bearing: one component, 4x2 chords, open webs (no overlap warnings)', (r.code === 0 && !/^WARN /m.test(r.out)) && /truss parallel chord 1'-6" deep, 4x2\+4x2 chords, top chord bearing/.test(r.out) && d.items.filter((i) => i.t === 'region' && i.src === 't').length >= 5, r.out);
   write('tr7.kerf.json', roof({ profile: 'parallel_chord', orient: 'end_on', depth: 18, plies: 2, at: { anchor: 'bottom_left', to: 'plate@top_left' } }));
   r = kerf(['check', 'tr7.kerf.json']);
   d = items('tr7.kerf.json', 'A');
@@ -1564,14 +1564,14 @@ section('#12 lumber cuts and two-point members');
   const m = /^WARN W_BIRDMOUTH_DEPTH rafter: 'rafter' birdmouth cuts 1 15\/16" into the 3 1\/2" depth \(55%\) .*Fix: shorten the seat to 2 1\/16" .*(\{"op":"update","path":"components\/rafter","value":\{"cuts":\[\{"type":"birdmouth","on":"plate","tail":12,"seat":2.0625\},\{"type":"plumb","end":"both"\}\]\}\})/m.exec(r.out);
   check('a 2x4 at 8:12 on a 3 1/2" seat cuts 55% of its depth: W_BIRDMOUTH_DEPTH with the seat op', m !== null, r.out);
   r = kerf(['apply', 'c2.kerf.json', '--ops', m ? m[1] : '[]', '-w', '--why', 'shorter seat']);
-  check('applying that op clears it', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  check('applying that op clears it', r.code === 0 && !/^WARN /m.test(r.out), r.out);
 
   write('c3.kerf.json', doc([stud, plate, { ...rafter, at: { anchor: 'bottom_left', to: [-10, 4] } }]));
   r = kerf(['check', 'c3.kerf.json']);
   const m3 = /^WARN W_CUT_MISS rafter: the birdmouth seat of 'rafter' does not bear on 'plate': the seat is [^.]+ above its top .*(\{"op":"update","path":"components\/rafter","value":\{"at":\{"anchor":"seat_outer","to":"plate@top_left"\}\}\})/m.exec(r.out);
   check('a birdmouth placed off its plate: W_CUT_MISS with the at op that seats it', m3 !== null, r.out);
   r = kerf(['apply', 'c3.kerf.json', '--ops', m3 ? m3[1] : '[]', '-w', '--why', 'seat it']);
-  check('applying it seats the rafter: 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out), r.out);
+  check('applying it seats the rafter: 0 warnings', r.code === 0 && !/^WARN /m.test(r.out), r.out);
   const wall = { id: 'wall', type: 'cmu_wall', width: 8, courses: 2, at: { anchor: 'top_left', to: [-2, 0] } };
   const p3 = { id: 'plate', type: 'lumber', size: '2x4', orient: 'flat', treated: true, at: { anchor: 'bottom_left', to: [0, 0] } };
   write('c4.kerf.json', doc([wall, p3, { ...rafter, size: '2x10', treated: true, cuts: [{ type: 'birdmouth', on: 'plate', heel: 1.5, tail: 12 }] }]));
@@ -1592,7 +1592,7 @@ section('#12 lumber cuts and two-point members');
   check('the web bears flat on the bottom chord (y 1 1/2) and the top chord (y 14), level cuts', Math.abs(Math.min(...ys) - 1.5) < 1e-6 && Math.abs(Math.max(...ys) - 14) < 1e-6 && ys.filter((y) => Math.abs(y - 1.5) < 1e-6).length === 2 && ys.filter((y) => Math.abs(y - 14) < 1e-6).length === 2, ys);
   r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/tc', value: { at: { anchor: 'bottom_left', to: [0, 18] } } }]), '-w', '--why', 'deeper truss']);
   ys = pts(regions('c5.kerf.json', 'web')).map((p) => p[1]);
-  check('moving the top chord: the web follows, still 0 warnings', r.code === 0 && /0 errors  0 warnings/.test(r.out) && Math.abs(Math.max(...ys) - 18) < 1e-6, [ys, r.out]);
+  check('moving the top chord: the web follows, still 0 warnings', r.code === 0 && !/^WARN /m.test(r.out) && Math.abs(Math.max(...ys) - 18) < 1e-6, [ys, r.out]);
   r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'remove', path: 'components/tc' }])]);
   check('removing a from/to member', r.code === 1, r);
   r = kerf(['apply', 'c5.kerf.json', '--ops', JSON.stringify([{ op: 'update', path: 'components/web', value: { length: 20 } }])]);
@@ -1784,7 +1784,7 @@ section('#11. framing hardware');
     { id: 'R', kind: 'iso', from: 'front_right', annotations: [{ id: 'n1', type: 'note', text: 'CS20 STRAP', target: 'cs' }] }];
   write('hw2.kerf.json', doc([post, beam, { id: 'cs', type: 'connector', model: 'CS20', on: 'post.face_left', points: [[0, 6], [0, 30]] }], strapViews));
   r = kerf(['check', 'hw2.kerf.json']);
-  check('CS20 on post.face_left: no z arithmetic, 0 warnings', /0 errors  0 warnings/.test(r.out), r.out);
+  check('CS20 on post.face_left: no z arithmetic, 0 warnings', (r.code === 0 && !/^WARN /m.test(r.out)), r.out);
   let d = items('hw2.kerf.json', 'L');
   check('front_left iso: the strap on the near face draws solid', d.items.some((i) => i.t === 'path' && i.src === 'cs' && i.pen !== 'hidden') && texts(d, 'n1').length > 0, d.err);
   d = items('hw2.kerf.json', 'R');
@@ -1801,7 +1801,7 @@ section('#11. framing hardware');
   write('hw3.kerf.json', doc([hdr, joist, { id: 'hgr', type: 'connector', model: 'LUS28', carried: 'joist', carrying: 'hdr' }],
     [{ id: 'A', kind: 'section', annotations: [{ id: 'n1', type: 'note', text: 'LUS28 HANGER', target: 'hgr' }] }, { id: 'I', kind: 'iso' }, { id: 'E', kind: 'elevation' }, { id: 'P', kind: 'plan' }]));
   r = kerf(['check', 'hw3.kerf.json']);
-  check('face-mount hanger from carried/carrying: one component, sized from the joist, 0 warnings', /hgr +connector LUS28 hanger \(face\) 18 ga, 6 1\/8" tall x 1 1\/2" seat, carries joist from hdr/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  check('face-mount hanger from carried/carrying: one component, sized from the joist, 0 warnings', /hgr +connector LUS28 hanger \(face\) 18 ga, 6 1\/8" tall x 1 1\/2" seat, carries joist from hdr/m.test(r.out) && (r.code === 0 && !/^WARN /m.test(r.out)), r.out);
   d = items('hw3.kerf.json', 'A');
   check('section: the hanger of the cut joist draws solid in front (SPEC 28.4) and the note lands on it', d.items.some((i) => i.t === 'path' && i.src === 'hgr' && i.pen === 'steel') && !d.items.some((i) => i.t === 'path' && i.src === 'hgr' && i.pen === 'hidden') && texts(d, 'n1').length > 0, d.items.filter((i) => i.src === 'hgr').length);
   r = kerf(['mesh', 'hw3.kerf.json']);
@@ -1832,7 +1832,7 @@ section('#11. framing hardware');
   write('hw4.kerf.json', doc([stem, sill, hpost, rod(3, 12), { id: 'hd', type: 'connector', model: 'HDU5', post: 'hp', rod: 'rod' }],
     [{ id: 'A', kind: 'section', annotations: [{ id: 'n1', type: 'note', text: 'HDU5', target: 'hd' }] }]));
   r = kerf(['check', 'hw4.kerf.json']);
-  check('holdown on the post face toward its rod: 0 warnings', /hd +connector HDU5 holdown 10 ga, 10" tall, left face of hp, rod rod/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  check('holdown on the post face toward its rod: 0 warnings', /hd +connector HDU5 holdown 10 ga, 10" tall, left face of hp, rod rod/m.test(r.out) && (r.code === 0 && !/^WARN /m.test(r.out)), r.out);
 
   const pad = { id: 'pad', type: 'concrete', shape: 'rect', width: 16, height: 10, z: [-8, 8], at: { anchor: 'top_center', to: [0, -2] } };
   write('hw5.kerf.json', doc([post, beam, pad, { id: 'pb', type: 'connector', model: 'ABU44', post: 'post' }, { id: 'cap', type: 'connector', model: 'CCQ44', post: 'post', beam: 'beam' }]));
@@ -1846,7 +1846,7 @@ section('#11. framing hardware');
     { id: 'r2', type: 'anchor_bolt', diameter: 0.75, embed: 6, hook: 'adhesive', plate: 'bp', at: { to: [3, 0] } }],
   [{ id: 'A', kind: 'section', annotations: [{ id: 'n1', type: 'note', text: 'LEVELING NUT', target: 'r1.leveling_nut' }] }]));
   r = kerf(['check', 'hw6.kerf.json']);
-  check('anchor rod through a base plate with a leveling nut and plate washer: projection fitted, 0 warnings', /r1 +anchor_bolt 0.75" dia, embed 8", proj 3 3\/8", headed hook, through bp, leveling nut, plate washer 3x3x1\/4/m.test(r.out) && /0 errors  0 warnings/.test(r.out), r.out);
+  check('anchor rod through a base plate with a leveling nut and plate washer: projection fitted, 0 warnings', /r1 +anchor_bolt 0.75" dia, embed 8", proj 3 3\/8", headed hook, through bp, leveling nut, plate washer 3x3x1\/4/m.test(r.out) && (r.code === 0 && !/^WARN /m.test(r.out)), r.out);
   d = items('hw6.kerf.json', 'A');
   check('a note lands on the leveling nut part', texts(d, 'n1').length > 0, d.err);
   write('hw6.kerf.json', doc([ftg, { id: 'r1', type: 'anchor_bolt', leveling_nut: true, at: { to: [0, 0] } }, { id: 'r2', type: 'anchor_bolt', projection: 0, at: { to: [4, 0] } }, { id: 'r3', type: 'anchor_bolt', projection: 0, nut_washer: false, hook: 'headed', at: { to: [-4, 0] } }]));
@@ -1881,7 +1881,7 @@ section('22. #22 shared notes and layout sizing');
   delete note(d, 'B', 'n_stud').text;
   write('k22.kerf.json', d);
   let r = kerf(['check', 'k22.kerf.json']);
-  check('a keyed note with only a key takes the text of that key in another view: no error, no W_PARAM', r.code === 0 && /0 errors  0 warnings/.test(r.out) && !/W_PARAM/.test(r.out), r.out);
+  check('a keyed note with only a key takes the text of that key in another view: no error, no W_PARAM', r.code === 0 && !/^WARN /m.test(r.out) && !/W_PARAM/.test(r.out), r.out);
   r = kerf(['drawing', 'k22.kerf.json', '--view', 'B']);
   const vb = JSON.parse(r.out).items.filter((i) => i.t === 'text').map((i) => i.s);
   r = kerf(['drawing', 'k22.kerf.json', '--layout', 'S1']);
@@ -2074,7 +2074,7 @@ section('#23. dimensions in plan and elevation, chain dims, dim text off its own
   const text = (d, src) => d.items.find((i) => i.t === 'text' && i.src === src);
   const close = (a, b) => Math.abs(a - b) < 1e-6;
   let r = kerf(['check', DPE]);
-  check('plan dims between rods that differ only in z: no W_DIM_ZERO, 0 warnings', /0 errors  0 warnings/.test(r.out) && !/W_DIM_ZERO/.test(r.out), r.out);
+  check('plan dims between rods that differ only in z: no W_DIM_ZERO, 0 warnings', (r.code === 0 && !/^WARN /m.test(r.out)) && !/W_DIM_ZERO/.test(r.out), r.out);
   const p = items(DPE, 'P');
   check('plan: a v dim between rods measures the plan vertical (-z), dir defaults to the plan axis', text(p, 'v2')?.s === '9"' && text(p, 'h2')?.s === '9"', p.err);
   const hy = ['h1', 'h2', 'h3'].map((id) => text(p, id)?.y);
@@ -2312,7 +2312,7 @@ section('#25. truss webs, heels, span, parapet, iso crop z');
 
   r = sum({ pitch: '0.25:12', parapet: 30, span_shown: 48 }, [{ id: 'psh', type: 'panel', material: 'plywood', thickness: 0.5, length: 30, run: 'y', at: { anchor: 'top_right', to: 't@parapet_top' } }]);
   a = anchors({ pitch: '0.25:12', parapet: 30, span_shown: 48 });
-  check('integral parapet: end vertical 30" above the top chord, parapet_top anchor, no tail', /0 errors  0 warnings/.test(r.out) && /integral parapet 2'-6"/.test(r.out) && a.parapet_top !== undefined && a.tail_top === undefined && Math.abs(a.parapet_top[1] - a.heel_block_top[1] - 30) < 1e-6, r.out);
+  check('integral parapet: end vertical 30" above the top chord, parapet_top anchor, no tail', (r.code === 0 && !/^WARN /m.test(r.out)) && /integral parapet 2'-6"/.test(r.out) && a.parapet_top !== undefined && a.tail_top === undefined && Math.abs(a.parapet_top[1] - a.heel_block_top[1] - 30) < 1e-6, r.out);
   r = sum({ profile: 'parallel_chord', depth: 24, parapet: 30, span_shown: 48 });
   check('parallel-chord truss and parapet are accepted', r.code === 0, r.out);
 
