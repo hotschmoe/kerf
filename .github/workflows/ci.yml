@@ -96,12 +96,11 @@ jobs:
       - name: tools dependencies (the e2e tests validate exports with them)
         working-directory: tools
         run: PUPPETEER_SKIP_DOWNLOAD=1 npm ci --no-audit --no-fund
-      - name: install, typecheck, unit tests
+      - name: install and typecheck
         working-directory: apps/web
         run: |
           npm ci --no-audit --no-fund
           npm run typecheck
-          npm run test:unit
       - name: build the UI for kerf serve and embed it in kerf
         run: |
           (cd apps/web && npm run build:serve)

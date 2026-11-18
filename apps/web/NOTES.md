@@ -13,7 +13,6 @@ npm run build:serve     # the bundle `kerf serve` embeds -> dist-serve/ (relativ
 npm run dev             # vite dev server on :5173 (dev:fixture = no engine). Probes /api/info on the page origin; use
                         #   http://localhost:5173/?server=http://127.0.0.1:7700 with `kerf serve --allow-origin http://localhost:5173`
 npm run typecheck
-npm run test:unit       # node test/unit.mjs  (Vite SSR loader: units, stroke font, raw ABI loader, agent store, agent events)
 node test/e2e.mjs       # puppeteer, STATIC mode: chat-off note, notes/undo/drag, save/open, exports + dxf/pdf checks
 npm run test:serve      # puppeteer, WORKSPACE mode vs test/mock-serve.mjs (real engine wasm, scripted agent); needs dist-serve
 KERF_SERVE_BIN=<kerf built with KERF_UI=...dist-serve> node test/e2e-serve.mjs --real     # the same suite vs the REAL server
@@ -80,7 +79,6 @@ next message; NEW clears them. Agents take text only (no image attach). Static m
 `spec/llm/system.md` is no longer loaded by the web app (`kerf guide` embeds it).
 
 ## Tests
-- `test/unit.mjs` (10): units, stroke font, raw ABI loader, agent store, agent event parsing for 3 CLIs (fixtures recorded from the real CLIs).
 - `test/e2e.mjs` (8): static mode (chat-off note), notes/undo/drag, save/open, worker loader (fixture only), exports + dxf/pdf checks.
 - `test/e2e-serve.mjs` (14 vs mock, 10 vs real): detection, live library, external edit reload (view/zoom/selection preserved) + LOCAL AGENT card, designer edits (`if_match`,
   log, no echo reload), 409, NEW/ADD SAMPLE, export, reference panel (token, captions, zoom, PDF, missing file, toggle, narrow stacking), token, offline, scripted agent run/resume/STOP, `/api/llm` is 404 and `/api/info` has no `proxy`, agent picker.

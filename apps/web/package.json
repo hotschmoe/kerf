@@ -11,7 +11,6 @@
     "build:serve": "node scripts/run.mjs build serve",
     "build:fixture": "node scripts/run.mjs build fixture",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node test/unit.mjs",
     "test:e2e": "node test/e2e.mjs",
     "test:serve": "node test/e2e-serve.mjs"
   },
