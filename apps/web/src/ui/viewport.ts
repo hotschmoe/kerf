@@ -1,4 +1,3 @@
-// Center column: view tabs [SECTION A] [ISO B] [3D] [SHEET] [LAYOUT S1], tool buttons, the three viewers and the REFERENCE panel.
 import type { App } from '../app';
 import { Viewport2D } from '../view2d';
 import type { View3D, Preset } from '../view3d';

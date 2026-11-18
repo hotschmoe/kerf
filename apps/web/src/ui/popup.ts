@@ -1,6 +1,5 @@
 import { h } from './dom';
 
-/** Floating paper panel anchored under `anchor`, closed by a click outside or Escape. */
 export function popup(anchor: HTMLElement, content: HTMLElement, align: 'left' | 'right' = 'left'): () => void {
   const scrim = h('div.scrim');
   const box = h('div.float', content);

@@ -1,5 +1,4 @@
-// REFERENCE panel: the images a detail is redrawn from (`meta.references`, SPEC 23), next to the drawing.
-// Workspace mode reads each file through `kerf serve`; a click opens it in a pan/zoom overlay.
+// SPEC 23 defines reference paths.
 import type { App } from '../app';
 import type { KerfDoc } from '../types';
 import { h, clear, btn } from './dom';
@@ -34,7 +33,7 @@ export function mountReferences(app: App, onToggle: () => void) {
 
   function setOpen(v: boolean) {
     open = v;
-    try { localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+    try { localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch {}
     el.classList.toggle('hide', !shown());
     if (shown()) void render();
     onToggle();

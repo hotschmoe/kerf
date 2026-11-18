@@ -83,3 +83,27 @@ A token supplied in the URL is stored in session storage and removed from the ad
 ## apps/web/src/workspace/workspace.ts
 
 Documents are compared with key-sorted JSON so key order alone does not trigger reloads. SSE agent events can precede the run's POST response, so they are buffered until the handler is registered. A UI-started run suppresses duplicate log cards during the run and briefly afterward because the server's folder poller can publish its log entries after the exit event.
+
+## apps/web/src/ui/panzoom.ts
+
+The image viewer revokes object URLs it creates for SVG data; URLs passed by callers remain caller-owned.
+
+## apps/web/src/ui/header.ts
+
+In workspace mode, samples and opened files are imported into the library rather than replacing an unsaved scratch document.
+
+## apps/web/src/ui/references.ts
+
+Workspace references are loaded through `kerf serve`; their paths are specified in SPEC 23.
+
+## apps/web/src/ui/inspector.ts
+
+Acknowledged diagnostics appear separately from ordinary diagnostics; the list omits the corresponding `I_ACK` entries. A null compact setting selects compact mode automatically when there are many parts.
+
+## apps/web/src/ui/console.ts
+
+External op-log entries appear as local-agent cards. Whole-document set operations are abbreviated in the displayed tool input.
+
+## apps/web/src/ui/status.ts
+
+A leading `opt` marker identifies status segments hidden on narrow screens.

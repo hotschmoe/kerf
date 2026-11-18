@@ -3,7 +3,6 @@ import { fmtFtIn } from '../units';
 import { h, clear } from './dom';
 import type { Workspace } from '../workspace/workspace';
 
-/** 12S / 3M / 2H */
 export function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   return s < 90 ? `${s}S` : s < 5400 ? `${Math.round(s / 60)}M` : `${Math.round(s / 3600)}H`;
@@ -15,7 +14,7 @@ export function mountStatus(app: App, el: HTMLElement, ws: Workspace | null = nu
   const draw = () => {
     clear(el);
     const c = app.counts();
-    const segs: (HTMLElement | string)[][] = [];  // an optional leading 'opt' marks segments hidden on narrow screens
+    const segs: (HTMLElement | string)[][] = [];
     let state: HTMLElement;
     if (app.message) state = h('span', { class: app.message.level === 'err' ? 'bad' : app.message.level === 'warn' ? 'warn' : '' }, app.message.text);
     else if (app.claude.state === 'BUSY') state = h('span', 'WORKING');
@@ -54,7 +53,7 @@ export function mountStatus(app: App, el: HTMLElement, ws: Workspace | null = nu
   for (const ev of ['doc', 'selection', 'hover', 'cursor', 'status', 'claude', 'view'] as const) app.on(ev, render);
   if (ws) {
     ws.on('online', render); ws.on('agent-edit', render);
-    setInterval(() => { if (ws.lastAgentEdit !== null) render(); }, 1000); // the "N S AGO" counter
+    setInterval(() => { if (ws.lastAgentEdit !== null) render(); }, 1000);
   }
   draw();
 }

@@ -9,7 +9,6 @@ export interface SampleInfo { file: string; id: string; title: string }
 export interface HeaderHooks {
   samples: SampleInfo[];
   openSample(s: SampleInfo): Promise<void>;
-  /** workspace mode: samples and files are IMPORTED into the library folder instead of replacing an unsaved scratch document */
   ws: Workspace | null;
   loadSample(s: SampleInfo): Promise<KerfDoc>;
 }
@@ -35,7 +34,7 @@ export function mountHeader(app: App, el: HTMLElement, hooks: HeaderHooks) {
     if (!f) return;
     try {
       const d = JSON.parse(await f.text()) as KerfDoc;
-      if (ws) { // import into the workspace folder
+      if (ws) {
         const name = f.name.replace(/\.kerf\.json$|\.json$/i, '') || d.id;
         if (await ws.create(name, d.title, d)) app.flash(`ADDED ${f.name.toUpperCase()} TO THE LIBRARY`);
         return;

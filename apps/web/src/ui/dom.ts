@@ -1,7 +1,6 @@
 type Child = Node | string | number | false | null | undefined;
 type Attrs = Record<string, unknown> & { class?: string; style?: string; on?: Record<string, EventListener> };
 
-/** Minimal hyperscript: h('div.card', {title:'x'}, child, ...) */
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K | string, attrs?: Attrs | Child, ...children: Child[]): HTMLElementTagNameMap[K] & HTMLElement {
   const tm = /^[a-z0-9-]*/i.exec(tag)![0];
   const el = document.createElement(tm || 'div') as HTMLElement;

@@ -1,5 +1,3 @@
-// Inspector: PARTS / NOTES / DIFF / DIAG tabs, selected-item detail (component params + anchors, note editor with
-// citations and the designer-only VERIFIED toggle), and the export buttons.
 import type { App } from '../app';
 import type { Acknowledged, Annotation, Citation, Diagnostic, Op } from '../types';
 import { h, clear, btn } from './dom';
@@ -18,7 +16,7 @@ function fmtVal(v: unknown): string {
 
 export function mountInspector(app: App, el: HTMLElement) {
   let tab: Tab = 'parts';
-  let compact: boolean | null = null; // null = automatic (compact when there are many parts)
+  let compact: boolean | null = null;
   const phRight = h('span.r');
   const tabsEl = h('div.itabs');
   const body = h('div.ibody');
@@ -110,7 +108,6 @@ export function mountInspector(app: App, el: HTMLElement) {
     return wrap;
   }
 
-  /** The diagnostics list without the I_ACK lines: acknowledged warnings get their own section. */
   function shownDiags(): Diagnostic[] { return app.diagnostics.filter((d) => d.code !== 'I_ACK'); }
   function diagList(): HTMLElement {
     const ds = shownDiags();
@@ -139,7 +136,6 @@ export function mountInspector(app: App, el: HTMLElement) {
       h('div', h('div.dc', d.code + (d.id ? ` · ${d.id}` : '')), h('div.dm', d.message), d.fix ? h('div.df', 'FIX: ' + d.fix) : null));
   }
 
-  // ---------- detail pane ----------
   let detailToken = 0;
   async function renderDetail() {
     const t = ++detailToken;
@@ -153,12 +149,10 @@ export function mountInspector(app: App, el: HTMLElement) {
     detail.append(sec);
     const kv = h('div.kv');
     sec.append(kv);
-    // ordered field map: declared document fields first, overridden/extended by what the engine resolves
     const fields = new Map<string, unknown>();
     const prow = app.partsRows().find((r) => r.id === c.id || r.id === `${c.id}#0`);
     if (prow) { fields.set('x extent', prow.x); fields.set('y extent', prow.y); }
     for (const [k, v] of Object.entries(c)) if (k !== 'id' && k !== 'type') fields.set(k, v);
-    // scalar fields written in the document (size, length, label, ...) are editable: one `update components/<id>` op per change (designer)
     const editable = new Set(Object.entries(c).filter(([k, v]) => k !== 'id' && k !== 'type' && (typeof v === 'string' || typeof v === 'number')).map(([k]) => k));
     const editCell = (k: string, v: unknown): HTMLElement => {
       const inp = h('input.pe', { value: String(v), spellcheck: false, 'aria-label': `Edit ${k}`, 'data-key': k }) as HTMLInputElement;
@@ -262,7 +256,6 @@ export function mountInspector(app: App, el: HTMLElement) {
     for (const tr of Array.from(body.querySelectorAll('tr.row'))) tr.classList.remove('sel');
     if (tab === 'parts' || tab === 'notes') renderBody();
     void renderDetail();
-    // bring the selected row into view
     body.querySelector('tr.row.sel')?.scrollIntoView({ block: 'nearest' });
   });
   rerender();

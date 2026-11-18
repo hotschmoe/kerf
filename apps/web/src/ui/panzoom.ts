@@ -1,4 +1,3 @@
-// One image on a paper page with wheel zoom, drag pan and double-click fit (the SHEET tab, reference zoom).
 import { h } from './dom';
 
 export class ImageViewer {
@@ -7,7 +6,7 @@ export class ImageViewer {
   private k = 1; private tx = 0; private ty = 0;
   private drag: { x: number; y: number; tx: number; ty: number } | null = null;
   private url = '';
-  /** object URL created by this viewer (setSvg), revoked when the next image replaces it */
+  // Only object URLs created by this viewer are revoked.
   private owned = '';
   private iw = 1056; private ih = 816;
   private userMoved = false;
@@ -27,13 +26,11 @@ export class ImageViewer {
     host.addEventListener('dblclick', () => this.fit());
     new ResizeObserver(() => { if (host.clientWidth && this.url && !this.userMoved) this.fit(); }).observe(host);
   }
-  /** Show SVG text; the object URL belongs to this viewer. */
   async setSvg(svg: string) {
     this.release();
     this.owned = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     await this.load(this.owned);
   }
-  /** Show an image whose URL the caller owns (it stays valid when this viewer moves on). */
   async setSrc(src: string, alt?: string) {
     this.release();
     if (alt !== undefined) this.img.alt = alt;
@@ -54,7 +51,6 @@ export class ImageViewer {
     this.img.src = src;
     await this.img.decode().catch(() => undefined);
     this.iw = this.img.naturalWidth || 1056; this.ih = this.img.naturalHeight || 816;
-    // present at the image's natural pixel size; zoom is applied on the wrapper
     this.img.style.width = this.iw + 'px'; this.img.style.height = this.ih + 'px';
     this.userMoved = false;
     this.fit();
