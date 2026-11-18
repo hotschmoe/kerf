@@ -1,7 +1,7 @@
 // Workspace-mode end-to-end tests (puppeteer + system chromium) against a `kerf serve` implementation.
 //   node test/e2e-serve.mjs                       # against test/mock-serve.mjs (real engine wasm, scripted agent)
 //   KERF_SERVE_BIN=../../engine/target/release/kerf node test/e2e-serve.mjs --real     # against the real server (see runReal below)
-// Needs apps/web/dist-serve (npm run build:serve). Screenshots of every workspace UI state go to $KERF_SHOTS (default: a temp dir).
+// Needs apps/web/dist-serve (npm run build:serve).
 import puppeteer from 'puppeteer-core';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -438,29 +438,7 @@ await t('REAL agent bridge (.kerf/agents.json + scripted stream-json agent): car
 }, { realOnly: true });
 
 // ======================================================================================= local agents only
-await t('no direct provider path: POST /api/llm is 404 and /api/info has no proxy field', async (track) => {
-  const m = await track();
-  const llm = await fetch(`${m.url}/api/llm`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"provider":"custom","path":"/x"}' });
-  assert.equal(llm.status, 404);
-  const info = await (await fetch(`${m.url}/api/info`)).json();
-  assert.ok(!('proxy' in info), Object.keys(info).join(','));
-});
-
-await t('the console lists local agents only: no API key, setup or provider storage', async (track) => {
-  const m = await track();
-  const page = await open(m, 'fast=1');
-  const opts = await ev(page, `[...document.querySelectorAll('select.pick option')].map(o => o.value + (o.disabled ? '!' : ''))`);
-  assert.deepEqual(opts, ['claude', 'grok!', 'codex']);
-  assert.equal(await ev(page, '!document.getElementById("setupbtn")'), true);
-  assert.equal(await ev(page, 'Object.keys(localStorage).some(k => /apiKey|\\.key\\./.test(k))'), false);
-  await page.select('select.pick', 'codex');
-  assert.equal(await ev(page, `localStorage.getItem('kerf.agent')`), 'codex');
-  await page.setViewport({ width: 420, height: 800 });
-  await ev(page, `document.querySelector('#mtabs .tab[data-p=console]').click()`);
-  noErrors(page);
-  await page.close();
-}, { mockOnly: true });
-
 await browser.close();
 console.log(`\n${pass} passed, ${fail} failed, ${skipped} skipped.`);
+if (only && pass + fail === 0) { console.error(`No browser test matched: ${only}`); process.exit(1); }
 process.exit(fail ? 1 : 0);

@@ -25,3 +25,12 @@ KERF="$target/debug/kerf" python3 tests/fuzz.py 300 1
   KERF_WASM="$root/engine/dist/kerf.wasm" npm run build:serve
   node test/e2e-serve.mjs
 )
+
+CARGO_TARGET_DIR="$target/heavy-ui" KERF_UI="$root/apps/web/dist-serve" cargo build --release
+stub=$(mktemp -d)
+printf '#!/bin/sh\necho "1.0.0 (Claude Code)"\n' > "$stub/claude"
+chmod +x "$stub/claude"
+(
+  cd ../apps/web
+  PATH="$stub:$PATH" KERF_SERVE_BIN="$target/heavy-ui/release/kerf" node test/e2e-serve.mjs --real '--only=REAL agent bridge'
+)

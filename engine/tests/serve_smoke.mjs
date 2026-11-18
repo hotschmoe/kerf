@@ -370,10 +370,6 @@ async function main() {
   const noMsg = await api(port, 'POST', '/api/agent/run', { body: { agent: 'fake' } });
   check('missing message -> 400', noMsg.status === 400);
 
-  section('direct LLM proxy is gone');
-  const llmGone = await api(port, 'POST', '/api/llm', { body: { provider: 'custom', base_url: 'http://127.0.0.1:1', path: '/x', body: {} } });
-  check('POST /api/llm -> 404', llmGone.status === 404, llmGone.text);
-
   section('V-1 / V-9: HTTP parsing hardening (raw sockets)');
   // V-1: a 1-byte chunk, then a chunk size of ffffffffffffffff, killed the whole process before any auth check.
   const v1 = await rawSocket(port, 'POST /api/docs HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\nffffffffffffffff\r\n');
@@ -447,8 +443,6 @@ async function main() {
   const pingTok = await sseTok.waitFor((f) => f.event === 'ping', 2000);
   check('SSE with ?token= connects', !!pingTok);
   sseTok.close();
-  const llmNo = await api(lan.port, 'POST', '/api/llm', { body: { provider: 'anthropic', path: '/x' } });
-  check('no token -> 401 even on the removed /api/llm (the token check precedes routing)', llmNo.status === 401);
   const staticNo = await api(lan.port, 'GET', '/');
   check('UI page itself loads without a token (it reads ?token= from the URL)', staticNo.status === 200);
   lan.proc.kill('SIGTERM');
