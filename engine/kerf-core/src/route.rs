@@ -170,8 +170,6 @@ const W_NEAR_BASE: f64 = 100.0;
 const W_NEAR: f64 = 200.0;
 const W_SOFT_CROSS: f64 = 25.0;
 
-// ---- geometry helpers --------------------------------------------------------------------------------
-
 fn cross3(o: V2, a: V2, b: V2) -> f64 {
     (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
 }
@@ -253,8 +251,6 @@ pub fn leader_of(left_side: bool, x: f64, top: f64, w: f64, hgt: f64, landing: V
 fn box_poly(x: f64, top: f64, w: f64, hgt: f64) -> [V2; 4] {
     [V2::init(x, top - hgt), V2::init(x + w, top - hgt), V2::init(x + w, top), V2::init(x, top)]
 }
-
-// ---- layout context ----------------------------------------------------------------------------------
 
 /// `hard` counts the hits between notes (leader/leader, leader/text block); `hits` all of them, dimension text and
 /// labels included. Dimension text and labels can be moved by the caller afterwards, so the search ranks `hard` first.
@@ -595,8 +591,6 @@ impl Ctx<'_> {
         self.ov.clone_from(&s.ov);
     }
 
-    // ---- exact column solver -------------------------------------------------------------------------
-
     /// Re-solve one column by dynamic programming (see the module doc). Returns false (state untouched) when
     /// no feasible assignment exists.
     fn solve_column(&mut self, col_left: bool) -> bool {
@@ -926,8 +920,6 @@ fn untangle(c: &mut Ctx) {
         }
     }
 }
-
-// ---- entry point -------------------------------------------------------------------------------------
 
 /// Route the notes. The search first ignores `Member` obstacles, so a layout that crosses no member is the one the
 /// rules always gave; when its leaders cross members, a second search counts them too, and its layout is taken when it

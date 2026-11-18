@@ -16,8 +16,6 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::{Ref, RefCell};
 
-// ---- diagnostics -----------------------------------------------------------------------------------
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Level {
     Error,
@@ -144,8 +142,6 @@ pub fn diag_to_json(d: &Diag) -> Value {
     }
     Value::Object(m)
 }
-
-// ---- prisms ---------------------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Kind {
@@ -565,8 +561,6 @@ pub fn length_or_diag(
     None
 }
 
-// ---- param extraction -------------------------------------------------------------------------------
-
 pub struct Params<'a> {
     pub diags: &'a Diags,
     pub node: &'a Value,
@@ -854,8 +848,6 @@ pub fn kind_or_text(v: &Value) -> String {
         _ => v.kind_name().to_string(),
     }
 }
-
-// ---- text helpers ------------------------------------------------------------------------------------
 
 pub fn edit_distance(x: &str, y: &str) -> usize {
     let (x, y) = (x.as_bytes(), y.as_bytes());
