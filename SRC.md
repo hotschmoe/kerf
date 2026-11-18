@@ -179,3 +179,19 @@ SPEC 12 and 28.2 govern raster export. Items use a grayscale coverage scratch wi
 ## engine/kerf-core/src/raster/canvas.rs
 
 Pixel coordinates are clamped before conversion to indices; float-to-integer conversion saturates and converts NaN to zero. Coverage is accumulated per item. The dash walker terminates because styles admit only dashes at least 0.01 mm long. Fill coverage uses min/max rather than clamp so NaN gives zero rather than propagating.
+
+## engine/kerf-core/src/sort.rs
+
+Geometry comparators with tolerances may be inconsistent. This fixed stable-sort algorithm never panics and always produces a permutation even then; sorted, stable output is guaranteed for strict weak orderings. It insertion-sorts blocks and merges bottom-up using a 4 KiB buffer or the Kim and Kutzner SymMerge algorithm. Larger slices sort an index permutation through one non-generic path to reduce wasm size.
+
+## engine/kerf-core/src/num.rs
+
+Float-to-integer conversion truncates toward zero and rejects non-finite or out-of-range values. The clamped variant maps NaN to the lower bound.
+
+## engine/kerf-core/src/limits.rs
+
+Input caps protect the engine from excessive work and allocation; limit errors describe how to get under the cap.
+
+## engine/kerf-core/src/math.rs
+
+The float routines use published musl constants and algorithms for reproducible results across targets. On wasm, compiler-builtins supplies `sqrt` as `f64.sqrt`; NaN and negative inputs use the soft result because NaN payloads are unspecified. The hardware square-root path was checked against the soft result on 302 million inputs (see engine NOTES). The huge-argument Payne-Hanek reduction uses precision 1, with two result words.
