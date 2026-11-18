@@ -395,3 +395,11 @@ SPEC 27.4 defines nail and screw placement. Member-instance boxes are compared i
 ## engine/kerf-core/src/builders/tie.rs
 
 SPEC 28.4 defines ties and angles placed from two members. The joint is located on their profiles; ties wrap it and angles occupy its inside corner. The selected face determines face-on versus edge-on hardware, and plates are built in world coordinates. Notches are applied before finding the joint so the tie lands on the meeting faces. `W_TIE_LEG` reports a leg extending past its member onto non-framing and suggests shortening it, transferring the remaining length to the other leg when there is room.
+
+## engine/kerf-core/src/builders.rs
+
+Each component builder's `Params` supplies parser rules, catalog and schema rows, accepted keys and canonical key order. Adding a type requires a `catalog::Type` variant and entry, its builder module, and registry arms for building and parameter rows; exhaustive matches enforce the registry changes.
+
+## engine/kerf-core/src/builders/truss.rs
+
+SPEC 5.8 and 27.1 define trusses. Side views draw heel, tail, chords and webs; end-on cuts show chord plies and web strips. Chord sizes are depth in the truss plane by thickness across it, so a flat 2x4 is `4x2`. Heel profiles put the bearing outer edge at the origin and rise toward positive x. Web strips extend beyond their centerline endpoints before clipping against the chord edges. Howe panel counts are four through 28 feet, six through 40 feet and eight beyond. In parallel-chord trusses, open runs use full panels until none fits; closed runs use the nearest whole panel count to fill the span exactly.
