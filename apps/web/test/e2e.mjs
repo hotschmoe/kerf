@@ -24,7 +24,7 @@ const browser = await puppeteer.launch({
 const cdp = await browser.target().createCDPSession();
 await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: outDir });
 
-let pass = 0, fail = 0, skipped = 0;
+let pass = 0, fail = 0;
 const selected = process.env.KERF_E2E_CASE;
 let matched = false;
 const results = [];
@@ -141,7 +141,7 @@ await t('2D: click selects by src; dragging a note issues an update op with plac
   const page = await open('sample=truss-bearing-cmu');
   await page.waitForFunction('window.__rendered===true');
   await new Promise((r) => setTimeout(r, 400));
-  if (!(await ev(page, `!!window.__kerf.vp.vp2.model.bySrc.get('n_plate')`))) { console.log('      (engine drawing has no note n_plate yet: SKIP)'); skipped++; await page.close(); return; }
+  assert.ok(await ev(page, `!!window.__kerf.vp.vp2.model.bySrc.get('n_plate')`), 'drawing is missing note n_plate');
   const box = await page.$eval('#host2d canvas', (c) => { const r = c.getBoundingClientRect(); return { x: r.x, y: r.y }; });
   // locate note n_plate's first text item on screen
   const pos = await ev(page, `(() => { const vp = window.__kerf.vp.vp2; const g = vp.model.bySrc.get('n_plate'); const b = g.texts[0]; const v = vp.view;
@@ -198,8 +198,6 @@ if (!fixture) {
       const name = `truss-bearing-cmu-A.${fmt}`;
       for (let i = 0; i < 100 && !fs.existsSync(path.join(outDir, name)); i++) {
         await new Promise((r) => setTimeout(r, 100));
-        const st = await ev(page, 'document.getElementById("status").textContent');
-        if (/EXPORT FAILED.*(UNKNOWN FUNCTION|NOT IMPLEMENTED|UNSUPPORTED EXPORT FORMAT|EXPORT FORMAT MUST BE)/i.test(st)) { console.log(`      (engine lacks ${fmt} export: SKIP)`); skipped++; await page.close(); return; }
       }
       assert.ok(fs.existsSync(path.join(outDir, name)), 'download ' + name + ' missing; have ' + fs.readdirSync(outDir).filter((f) => !before.has(f)));
       await new Promise((r) => setTimeout(r, 300));
@@ -242,6 +240,6 @@ await t('layouts: a [LAYOUT S1] tab renders the sheet of several views; PDF expo
 
 await browser.close();
 server.kill();
-console.log(`\n${pass} passed, ${fail} failed, ${skipped} skipped (engine function missing). artifacts: ${outDir}`);
+console.log(`\n${pass} passed, ${fail} failed. artifacts: ${outDir}`);
 if (selected && !matched) { console.error(`Unknown browser test: ${selected}`); process.exit(1); }
 process.exit(fail ? 1 : 0);
