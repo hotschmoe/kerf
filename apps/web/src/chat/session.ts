@@ -1,5 +1,3 @@
-// The chat session: which local agent is selected and the one send/stop surface the console uses.
-// Chat exists only in workspace mode (`kerf serve`): the agent CLI runs on this machine, never a remote API.
 import type { App } from '../app';
 import type { Workspace } from '../workspace/workspace';
 import { AgentRunner, type ChatEvent } from './agent';
@@ -35,7 +33,6 @@ export class ChatSession {
     this.listeners.forEach((f) => f());
   }
 
-  /** can the selected agent take a message right now? `why` is console text when not. */
   ready(): { ok: true } | { ok: false; why: string } {
     if (!this.o.ws) return { ok: false, why: CHAT_NEEDS_SERVER };
     const a = this.agents().find((x) => x.id === this.choice);
@@ -54,6 +51,5 @@ export class ChatSession {
 
   stop() { void this.agent?.stop(); }
 
-  /** NEW: forget the agent's resume session for this document */
   newConversation() { store.clearSessions(this.o.ws?.file ?? null); }
 }

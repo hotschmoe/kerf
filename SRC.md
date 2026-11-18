@@ -63,3 +63,15 @@ The workspace directory is the source of truth. A poller notices external docume
 ## engine/kerf-cli/src/main.rs
 
 The panic hook reports internal failures and exits with EX_SOFTWARE rather than allowing the abort profile to produce a core dump. Document writers hold the workspace lock across read, edit, write and log append; `--if-match` rejects stale writes. A log append failure occurs after the document has been written and is reported with exit code 3. The CLI folds non-ASCII text for Windows consoles. Workspace style precedence and accepted ops forms are specified in SPEC 25.6 and 21.
+
+## apps/web/src/chat/agent.ts
+
+The agent runner consumes the local server's SSE stream. Event shapes for the supported agents are illustrated by the recorded fixtures under `apps/web/test/fixtures/agent-*.jsonl`. If the event stream remains offline for 20 seconds, the run can no longer report an exit and the UI stops waiting. Unrecognized events are kept in `window.__kerf.agent.unknown` for debugging.
+
+## apps/web/src/chat/session.ts
+
+Chat is available only when the UI has a workspace served by `kerf serve`; it runs local agent CLIs.
+
+## apps/web/src/chat/store.ts
+
+Agent choice and resume sessions are stored per agent and document. Local storage can be unavailable, so access failures are tolerated; selection falls back to the first available agent and then the first listed agent.
