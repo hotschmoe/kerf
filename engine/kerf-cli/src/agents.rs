@@ -1,12 +1,3 @@
-//! Agent bridge: run a local coding-agent CLI (Claude Code, Grok Build, Codex, ...) headless inside the
-//! served folder and stream its stdout to SSE `agent` events. Agents are command templates, so a new CLI is
-//! configuration (`<dir>/.kerf/agents.json`), not code.
-//!
-//! Template: `{ "id", "name", "detect": [...], "argv": [...], "resume": [...] }`. Placeholders: `{message}`,
-//! `{session_id}`, `{dir}`, `{file}`; the single element `{resume}` expands to the `resume` list when a
-//! session id was given and to nothing otherwise. Session ids are picked up from any top-level `session_id`,
-//! `sessionId` or `thread_id` string in the agent's JSON lines, plus pi's `{"type":"session","id":...}`.
-
 use crate::events::Hub;
 use crate::sys::{self, Group};
 use kerf_core::json::{self, Value};
@@ -38,7 +29,7 @@ const DETECT_TTL: Duration = Duration::from_secs(30);
 const DETECT_TIMEOUT: Duration = Duration::from_secs(8);
 const KILL_GRACE: Duration = Duration::from_millis(3000);
 const MAX_EVENT_BYTES: usize = 1 << 20;
-/// E2BIG, or ERROR_FILENAME_EXCED_RANGE (the 32 767 character command line) on Windows.
+// E2BIG on Unix; ERROR_FILENAME_EXCED_RANGE on Windows.
 const ARG_TOO_LONG: i32 = if cfg!(windows) { 206 } else { 7 };
 
 fn builtin(id: &str, name: &str, argv: &[&str], resume: &[&str]) -> Template {
@@ -127,8 +118,6 @@ pub fn context_message(message: &str, file: Option<&str>) -> String {
     }
 }
 
-/// Built-ins plus `<dir>/.kerf/agents.json` entries (new id) or, when `trust` is set, replacing (same id). Without
-/// `trust` a workspace entry never replaces a built-in and carries `untrusted`: nothing of it is executed.
 pub fn load_templates(dir: &Path, trust: bool) -> Vec<Template> {
     let mut list = builtin_templates();
     let Some(text) = read_workspace_file(&dir.join(".kerf/agents.json")) else { return list };
@@ -153,8 +142,7 @@ pub fn load_templates(dir: &Path, trust: bool) -> Vec<Template> {
     list
 }
 
-/// Reads a small file of the served folder, refusing a symlink at the last component (a prompt-injected agent
-/// can plant `.kerf/agents.json -> /somewhere`).
+// Workspace-controlled files must not be symlinks.
 fn read_workspace_file(path: &Path) -> Option<Vec<u8>> {
     let meta = std::fs::symlink_metadata(path).ok()?;
     if !meta.is_file() {
@@ -194,7 +182,6 @@ fn parse_template(v: &Value) -> Option<Template> {
     })
 }
 
-/// Expands placeholders; a `None` session id drops the `{resume}` element.
 pub fn expand_argv(t: &Template, message: &str, session_id: Option<&str>, dir: &str, file: &str) -> Vec<String> {
     let mut out = Vec::new();
     for arg in &t.argv {
@@ -242,7 +229,7 @@ fn drain_limited(mut r: impl Read + Send + 'static, limit: u64) -> thread::JoinH
     })
 }
 
-/// Runs the template's detect command (never for an untrusted template: it would execute a workspace command).
+// Never execute a detection command from an untrusted workspace.
 pub fn detect(t: &Template) -> Detected {
     if t.untrusted {
         return unavailable(UNTRUSTED_REASON.into());
@@ -372,8 +359,6 @@ impl Manager {
         }
     }
 
-    /// Called after the agent's pipes are drained and before its `exit` event, so the server can publish the
-    /// document changes the run made ahead of it.
     pub fn set_before_exit(&mut self, f: impl Fn() + Send + Sync + 'static) {
         self.before_exit = Some(Box::new(f));
     }
@@ -386,7 +371,6 @@ impl Manager {
         self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Detection results are cached for 30 s per template; concurrent callers share one probe.
     pub fn detect_cached(&self, t: &Template) -> Detected {
         if t.untrusted {
             return unavailable(UNTRUSTED_REASON.into());
@@ -422,7 +406,6 @@ impl Manager {
         (!finished).then(|| (r.id.clone(), r.agent.clone()))
     }
 
-    /// Asks the active run to stop and waits for it to be gone (SIGTERM, then SIGKILL after the grace period).
     pub fn shutdown(&self) {
         if let Some(r) = self.lock().active.clone() {
             let mut st = r.lock();

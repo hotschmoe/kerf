@@ -1,13 +1,3 @@
-//! `kerf serve`: local workspace server (spec/SERVE.md). One process serves the embedded web UI and a JSON/SSE API
-//! over a folder of `*.kerf.json` documents. The folder is the source of truth: a 500 ms poller (mtime + size) turns
-//! CLI/agent edits into SSE events, designer edits go through `apply` with optimistic concurrency (ETag / if_match)
-//! and are logged like CLI edits.
-//!
-//! Every connection is a thread, so long-lived SSE streams never block other requests. This file holds the `Server`
-//! (the folder scan, the edit log, the ETag rules); the rest is in `serve/`: `cli` (arguments, bind, startup), `conn`
-//! (limits, deadlines, access rules), `routes` (route table, body caps, dispatcher), the handlers `docs`, `agent` and
-//! `stream`, and `ui` (static files and the CSP).
-
 pub mod agent;
 mod cli;
 mod conn;
@@ -111,7 +101,6 @@ pub struct Server {
 }
 
 impl Server {
-    /// `,"style":<file>` of the served folder's company style (`kerf.kerfstyle.json` there or above, SPEC 25.6), or "".
     pub fn style_member(&self) -> Vec<u8> {
         workspace::style_member(workspace::find_style(&self.dir_abs).as_deref())
     }
@@ -272,7 +261,6 @@ impl Server {
         fs::symlink_metadata(self.path(&workspace::log_path(name))).map_or(0, |m| m.len())
     }
 
-    /// New complete, valid log lines of a document since the last scan (at most the newest 200).
     fn read_new_log(&self, f: &mut FileState) -> Vec<String> {
         const WINDOW: u64 = 4 << 20;
         let lp = self.path(&workspace::log_path(&f.name));
@@ -349,7 +337,6 @@ impl Server {
         eprintln!("kerf serve: warning: could not append to op log {lp}: {e} (the document was written)");
     }
 
-    /// Record our own write of `name`: refresh its state, publish doc_added/doc_changed and the log line.
     pub fn note_write_locked(&self, st: &mut Scan, name: &str, is_new: bool, who: &str, log_line: Option<&[u8]>) {
         let Ok(meta) = fs::metadata(self.path(name)) else { return };
         let (m, size) = (mtime_ns(&meta), meta.len());

@@ -51,3 +51,15 @@ HTTP request parsing rejects malformed request heads and bounds both fixed-lengt
 ## engine/kerf-cli/src/workspace.rs
 
 The op log is adjacent to its document and is the only location for nondeterministic timestamps. A document's lock covers the full read-modify-write and log append; unsupported filesystem locks are tolerated. Atomic writes sync the new file before rename and attempt to sync the parent directory afterward. Log paths refuse symlinks, and reference paths must first pass path validation and are then canonicalized and rejected if they escape the served root. Workspace style lookup uses the nearest style in the document folder or its ancestors, as specified in SPEC 25.6.
+
+## engine/kerf-cli/src/agents.rs
+
+Workspace agent templates cannot replace built-ins or execute detection commands unless trusted; the workspace configuration file itself cannot be a symlink. The `{resume}` argument expands only when a session ID is present; session IDs are collected from `session_id`, `sessionId`, `thread_id`, or a pi session event. Agent pipe output is drained before the server publishes document changes and emits the exit event. Detection is cached for 30 seconds, with concurrent callers sharing a probe. On Unix, shutdown sends the process group a soft stop followed by a hard stop after the grace period; Windows uses a hard termination for both.
+
+## engine/kerf-cli/src/serve.rs
+
+The workspace directory is the source of truth. A poller notices external document edits and publishes SSE events; server-originated writes update the scan state before publishing so they are not echoed as external edits. Only regular document files are served. Log scanning skips a line larger than its read window so it does not retry that line forever.
+
+## engine/kerf-cli/src/main.rs
+
+The panic hook reports internal failures and exits with EX_SOFTWARE rather than allowing the abort profile to produce a core dump. Document writers hold the workspace lock across read, edit, write and log append; `--if-match` rejects stale writes. A log append failure occurs after the document has been written and is reported with exit code 3. The CLI folds non-ASCII text for Windows consoles. Workspace style precedence and accepted ops forms are specified in SPEC 25.6 and 21.
