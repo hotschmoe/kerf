@@ -1,6 +1,3 @@
-//! Size-class allocator over `memory.grow` for the freestanding module (one thread, no imports).
-//! Blocks are powers of two from 16 bytes; freed blocks go on a per-class list and are reused.
-
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
 
@@ -77,7 +74,7 @@ unsafe impl GlobalAlloc for Heap {
         if class_of(layout) == class_of(new_layout) {
             return ptr;
         }
-        // SAFETY: standard grow-copy-free.
+        // SAFETY: ptr is valid for layout; the new allocation is checked before copying.
         unsafe {
             let new = self.alloc(new_layout);
             if !new.is_null() {
