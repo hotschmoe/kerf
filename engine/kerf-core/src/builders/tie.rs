@@ -1,8 +1,3 @@
-//! Ties and angles placed from the two members they join (SPEC 28.4): a tie wraps the joint (H2.5A, H3, RSP4, LTP4), an
-//! angle sits in its inside corner (A34, A35). The joint is found on paper (one member on the other, or side by side);
-//! `face` puts the hardware on the members' z faces (seen face-on in a section) or on one side of the joint (seen
-//! edge-on). Plates are built in world coordinates like the other framing hardware (`hardware.rs`).
-
 use super::common::Ctx;
 use super::connector::{Face, Kind, ModelInfo, Params, Side};
 use super::hardware::{Kit, Member, model_text, need};
@@ -22,8 +17,6 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// The joint on paper: a line at `c` (y when one member sits on the other, x when they are side by side) where the
-/// members touch over `lo..hi` along it.
 struct Joint {
     horiz: bool,
     c: f64,
@@ -42,13 +35,11 @@ impl Joint {
     }
 }
 
-/// The lowest and highest point of a member's profile across the joint line at `l`.
 fn extent_at(m: &Member, horiz: bool, l: f64) -> Option<(f64, f64)> {
     let v = pathclip::scan(&m.flat, l, horiz);
     Some((*v.first()?, *v.last()?))
 }
 
-/// The member's extent along the joint line at `n` (its loops' spans merged), the span holding `lm` or the nearest one.
 fn span_at(m: &Member, horiz: bool, n: f64, lm: f64) -> Option<(f64, f64)> {
     let mut iv: Vec<(f64, f64)> = Vec::new();
     for lp in &m.flat {
@@ -106,8 +97,6 @@ fn find_joint(a: &Member, b: &Member) -> Option<Joint> {
     None
 }
 
-/// A leg of a tie along the joint's normal: on the low member (`low`, running away from the joint to lower n) or the
-/// high one, at `l` along the joint, `len` long, in the plane z.
 struct Leg {
     low: bool,
     l: f64,
@@ -115,8 +104,6 @@ struct Leg {
     z: f64,
 }
 
-/// What lies at `pt` in plane z, other than the members of the tie (built components only): its id and whether it is
-/// framing a leg can be nailed to.
 fn solid_at(ctx: &Ctx, pt: V2, z: f64, skip: &[(u32, u32)]) -> Option<(String, bool)> {
     use crate::catalog::Type;
     let views = |v: Option<&Value>| -> Option<Vec<String>> {
@@ -146,9 +133,6 @@ fn solid_at(ctx: &Ctx, pt: V2, z: f64, skip: &[(u32, u32)]) -> Option<(String, b
     None
 }
 
-/// W_TIE_LEG: a leg longer than its member is deep along the leg runs past the member's far face onto something that is
-/// not framing (concrete, masonry, nothing). The fix shortens it to the member and gives the rest to the other leg when
-/// that member has room.
 fn long_legs(
     ctx: &Ctx,
     j: &Joint,
@@ -223,8 +207,6 @@ fn long_legs(
     out
 }
 
-/// A member notched for the other (`cuts` notch `by` it: a let-in ledger) is drawn notched only once every member is
-/// placed; the joint is found on the notched profile, so the tie sits on the faces that meet in the notch.
 fn let_in(scene: &Scene, m: &mut Member, other: &Member) -> bool {
     let names_other = |by: &str| {
         let id = crate::compile::host_id(by);
@@ -245,8 +227,6 @@ fn let_in(scene: &Scene, m: &mut Member, other: &Member) -> bool {
     true
 }
 
-/// A solid other than the two members at `p` (paper) and depth `z`: a member lying against the face a face-on tie
-/// would be nailed to (eave blocking against a truss at the heel). The first one in document order.
 fn against_face<'s>(scene: &'s Scene, views: Option<&Value>, a: &Member, b: &Member, p: V2, z: f64) -> Option<&'s str> {
     let names = |v: &Value| -> Vec<String> {
         v.arr().map_or(Vec::new(), |l| l.iter().filter_map(Value::str).map(String::from).collect())

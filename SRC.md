@@ -387,3 +387,11 @@ The AISC subset in `steel_shapes` supplies dimensions. Cross-sections use u acro
 ## engine/kerf-core/src/builders/steel_shapes.rs
 
 The table is a subset of AISC Shapes Database v16. Rolled shapes use tabulated decimal dimensions; HSS and pipe walls use design thickness 0.93 times nominal per AISC 360 B4.2. Angle and channel root fillets are approximated by size. Weld and fit checks use the thinnest element of a wide flange or channel. Table tuples use W designation/depth/flange width/web thickness/flange thickness/design k; rectangular HSS height/width/nominal walls; round HSS diameter/nominal walls; pipe designation/diameter/STD wall/XS wall; angles long leg/short leg/thicknesses; and channels designation/depth/flange width/web thickness/average flange thickness.
+
+## engine/kerf-core/src/builders/nailing.rs
+
+SPEC 27.4 defines nail and screw placement. Member-instance boxes are compared in the first member's frame; the largest touching face defines the joint, and placed nails are stored in world coordinates. Part references use each part body's own box and z range. SDS and numbered `#N` fasteners are screws regardless of the `fastener` parameter. In panel layouts, framing near an edge belongs to edge nailing, and field nails stop short of edge rows to maintain the 2-inch minimum spacing. Leading side-by-side panels are sheets, while a panel behind an earlier sheet is backing. Toenail heads start `min(length/3, 3/4 member thickness)` from the joint; length-fix proposals are checked using the same head placement, actual fastener length and angle so the fix clears the warning. Diagnostic fixes only name components visible in a view shared with the nailing.
+
+## engine/kerf-core/src/builders/tie.rs
+
+SPEC 28.4 defines ties and angles placed from two members. The joint is located on their profiles; ties wrap it and angles occupy its inside corner. The selected face determines face-on versus edge-on hardware, and plates are built in world coordinates. Notches are applied before finding the joint so the tie lands on the meeting faces. `W_TIE_LEG` reports a leg extending past its member onto non-framing and suggests shortening it, transferring the remaining length to the other leg when there is room.
