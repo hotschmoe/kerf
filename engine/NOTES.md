@@ -21,7 +21,7 @@ history). `README.md` is the short version of this file, `PERF.md` has the numbe
   `serve/*` (routes, connections, SSE, UI hashing). `build.rs` embeds the web UI named by `KERF_UI` (relative to the
   workspace root; empty means a page that says the UI is missing).
 - `kerf-wasm`: cdylib, the SPEC 13.1 ABI, 120 lines plus a 90-line size-class allocator (`heap.rs`); a panic traps.
-- `tests/`: `docs/` + `golden/` (see Gates), the Node/Python/bash gates, `tests/gates.sh` runs them all. `bench/`:
+- `tests/`: `docs/` + `golden/` (see Gates), the Node/Python/bash gates; `tests/gates.sh` is blocking and `tests/test-heavy.sh` runs the background suite. `bench/`:
   the benchmark and profiling scripts (`PERF.md`). `../tools/build_wasm.mjs` builds `dist/kerf.wasm`.
 
 ## Build, run, test
@@ -462,11 +462,7 @@ Render and inspect PNGs during visual review; `tools/compare_drawings.py` can co
   builds use it; the `toolchain` composite action runs `rustup toolchain install` (plain rustup, no third-party actions)
   and restores `~/.cargo` + `engine/target` keyed on `Cargo.lock`, the toolchain file, runner and job shape.
   Raise the pin together with `rust-version` when a newer language feature is needed.
-- `ci.yml` (push to `master` and `dev-hotschmoe`, PR, manual): `lint` (fmt, clippy native and wasm32), `engine` (release
-  build, `check_golden.sh`, wasm through binaryen version_123 `wasm-opt` + `wasm_golden` + `wasm_check`, `cli_ergonomics`,
-  `serve_smoke`, `platform_serve`, `fuzz.py 300 1` on a debug build), `web` (typecheck, unit, UI embedded in a release
-  build for `serve_smoke`, `test:e2e`, `test:serve` mock and `--real`, `build`), `macos` (golden, `cli_ergonomics`,
-  `serve_smoke` on `macos-latest`) and `windows` (`windows.yml`).
+- `ci.yml` keeps `lint`, `engine`, `web`, `macos`, and `windows` job names. The blocking jobs run the focused workflows; the `heavy` job runs on the nightly schedule. Windows-specific background scenarios also run on that schedule.
 - `release.yml` (tag `v*`): `version` refuses a tag that differs from `[workspace.package] version`; the Windows gate and
   the Linux gates (wasm-opt required, the UI is built from that wasm) must pass; then six native builds with
   `KERF_UI` set (musl static on `ubuntu-24.04` / `ubuntu-24.04-arm`, MSVC `+crt-static` on `windows-latest` /
@@ -482,7 +478,7 @@ Render and inspect PNGs during visual review; `tools/compare_drawings.py` can co
 
 All `unsafe` lives in `kerf-cli/src/sys/` (`unix.rs`, `windows.rs`: safe wrappers, `#![deny(unsafe_op_in_unsafe_fn)]`, a `// SAFETY:` per block); zero crates. Built and run on a Windows 11 x86_64 machine (2026-10-31)
 (release and debug): `serve_smoke.mjs` 189/189 (190 on Linux: one POSIX-only check), `windows_serve.mjs` 32/32, `cli_ergonomics.mjs` 145/145, `tests/platform_serve.mjs` 16/16,
-`tests/ctrl_break.ps1`, `tests/check_golden.mjs` (101 outputs byte-identical to the Linux goldens, DXF/PDF checkers clean), clippy `-D warnings` clean. `windows.yml` runs the same gates on every push against the shipped configuration (release, `+crt-static`, UI embedded) on `windows-latest` (x86_64) and the native `windows-11-arm` (aarch64-pc-windows-msvc); both are required and green, including `ctrl_break.ps1` (exit 130, tree gone) and the 101 goldens byte-identical, with no engine change needed for aarch64. The runners' `%TEMP%` is an 8.3 short path (`RUNNER~1`) while the engine reports the long one, so the tests compare `fs.realpathSync.native`.
+`tests/ctrl_break.ps1`, `tests/check_golden.mjs` and clippy were clean in that historical run. `windows.yml` now runs the focused CLI, serve and three-detail export workflows on both Windows runners; platform and Ctrl-Break scenarios run on schedule. The runners' `%TEMP%` is an 8.3 short path (`RUNNER~1`) while the engine reports the long one, so the tests compare `fs.realpathSync.native`.
 - **Agent runs**: the agent is created suspended (`CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP`), assigned to its own job object with `KILL_ON_JOB_CLOSE`, then resumed (`NtResumeProcess`). Stop, timeout, sweep and
   server exit are `TerminateJobObject` (exit code 1, no SIGTERM stage); a server killed hard closes the job and takes the tree with it. If the job cannot be made the leader alone is terminated (`TerminateProcess`).
 - **Agent CLIs**: std only finds `.exe`, so `sys::resolve_program` walks `PATH` (the agent's PATH has kerf's directory first) with the runnable `PATHEXT` extensions (`.exe .com .cmd .bat`): npm `.cmd` shims work, a
