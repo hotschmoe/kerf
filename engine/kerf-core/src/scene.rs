@@ -257,7 +257,7 @@ impl<'a> Scene<'a> {
     }
 
     pub fn resolve_ref_str(&self, r#ref: &str, from_id: &str, path: &str) -> Option<V2> {
-        let d = self.diags;
+        let d = self.diags.once();
         let Ok(r) = parse_ref(r#ref) else {
             d.add_fix(
                 Level::Error,
