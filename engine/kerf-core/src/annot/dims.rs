@@ -192,7 +192,15 @@ pub fn chain_dims(specs: &mut [DimSpec], near: f64) {
     }
 }
 
-pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide: f64, out: &mut Vec<Item>) -> DimShape {
+pub fn dim_build(
+    env: &mut Env,
+    d: &DimSpec,
+    offset: f64,
+    variant: usize,
+    slide: f64,
+    members: &[MemberArea],
+    out: &mut Vec<Item>,
+) -> DimShape {
     let st = env.style;
     let sc = env.s;
     let gap = st.ext_gap_in * sc;
@@ -314,8 +322,29 @@ pub fn dim_build(env: &mut Env, d: &DimSpec, offset: f64, variant: usize, slide:
             q.add(u.scale(s * (tgap + tw * 0.5)))
         }
     };
-    let ti = text_item(env, LayerKey::Dims, Pen::Dim, d.id, &label, center.x, center.y, th, ang, Align::Center, valign);
-    if let Item::Text(t) = &ti {
+    let mut ti =
+        text_item(env, LayerKey::Dims, Pen::Dim, d.id, &label, center.x, center.y, th, ang, Align::Center, valign);
+    if let Item::Text(t) = &mut ti {
+        if !fits && variant != CENTRED_OUT && env.spec.kind == crate::view::Kind::Elevation {
+            let poly = text_poly(env.font, t, 0.015 * sc);
+            let along = u.scale(if matches!(variant, 0 | 2 | 4 | BESIDE_OUT) { 1.0 } else { -1.0 });
+            let edge = members
+                .iter()
+                .filter(|m| member_hits(core::slice::from_ref(*m), &poly) > 0)
+                .map(|m| member_end(m, &poly, along))
+                .fold(f64::NEG_INFINITY, f64::max);
+            let near = poly.iter().map(|p| p.dot(along)).fold(f64::INFINITY, f64::min);
+            let shift = along.scale((edge - near + tgap).max(0.0));
+            t.x += shift.x;
+            t.y += shift.y;
+            if let Some(Item::Path(stem)) = out.last_mut()
+                && let Some(end) = stem.pts.last_mut()
+            {
+                end.x += shift.x;
+                end.y += shift.y;
+                sh.segs[sh.n - 1][1] = sh.segs[sh.n - 1][1].add(shift);
+            }
+        }
         sh.text = text_poly(env.font, t, 0.015 * sc);
     }
     out.push(ti);
@@ -408,6 +437,48 @@ struct DimPlaced {
     items: Vec<Item>,
 }
 
+pub struct MemberArea {
+    pub id: String,
+    pub loops: Vec<Vec<V2>>,
+}
+
+fn member_end(member: &MemberArea, poly: &[V2; 4], along: V2) -> f64 {
+    let across = along.perp();
+    let mut strip = Box::default();
+    for p in member.loops.iter().flatten() {
+        strip.add_point(p.dot(along), p.dot(across));
+    }
+    strip.y0 = poly.iter().map(|p| p.dot(across)).fold(f64::INFINITY, f64::min);
+    strip.y1 = poly.iter().map(|p| p.dot(across)).fold(f64::NEG_INFINITY, f64::max);
+    member
+        .loops
+        .iter()
+        .flat_map(|l| {
+            l.iter().enumerate().filter_map(move |(k, p)| {
+                let q = l[(k + 1) % l.len()];
+                crate::pathclip::clip_seg(
+                    V2::init(p.dot(along), p.dot(across)),
+                    V2::init(q.dot(along), q.dot(across)),
+                    strip,
+                )
+                .map(|s| s[0].x.max(s[1].x))
+            })
+        })
+        .fold(f64::NEG_INFINITY, f64::max)
+}
+
+pub fn member_hits(members: &[MemberArea], poly: &[V2; 4]) -> usize {
+    members
+        .iter()
+        .filter(|m| {
+            poly.iter().any(|&p| m.loops.iter().fold(false, |inside, l| inside ^ geom::point_in_loop_eo(p, l)))
+                || m.loops
+                    .iter()
+                    .any(|l| l.iter().enumerate().any(|(k, &p)| poly_hits_seg(poly, p, l[(k + 1) % l.len()])))
+        })
+        .count()
+}
+
 fn conflicts_of(sh: &DimShape, placed: &[(usize, DimShape)], labels: &[(&str, [V2; 4])], tol: f64) -> usize {
     let mut c: usize = placed.iter().map(|(_, o)| dim_conflicts(sh, o, tol)).sum();
     for (_, lp) in labels {
@@ -428,6 +499,7 @@ pub fn stack_dims(
     pushes: &[f64],
     slides: &[f64],
     base_segs: &[[V2; 2]],
+    members: &[MemberArea],
     labels: &[(&str, [V2; 4])],
     items: &mut [Vec<Item>],
     eff: &mut [f64],
@@ -473,9 +545,9 @@ pub fn stack_dims(
                 let mut kbest: Option<DimPlaced> = None;
                 let mut kbest_rank = (usize::MAX, usize::MAX, usize::MAX);
                 let chained = d.shared[0] || d.shared[1];
-                for v in (0..DIM_VARIANTS).filter(|&v| v != CENTRED_OUT || chained) {
+                for v in 0..DIM_VARIANTS {
                     let mut its = Vec::new();
-                    let sh = dim_build(env, d, off, v, slide, &mut its);
+                    let sh = dim_build(env, d, off, v, slide, members, &mut its);
                     let sib: usize = picks.iter().map(|(_, p)| dim_conflicts(&sh, &p.shape, tol)).sum();
                     let at_far = matches!(v, 0 | 2 | 4 | BESIDE_OUT);
                     let at_shared = v != CENTRED_OUT && d.shared[usize::from(at_far)];
@@ -484,12 +556,12 @@ pub fn stack_dims(
                     let avoided = v != CENTRED_OUT && (slide > 0.0) == at_far && slide != 0.0;
                     let pen = match (sh.fits, v) {
                         (true, _) => 0,
-                        (false, CENTRED_OUT) => 1,
+                        (false, CENTRED_OUT) => usize::from(chained),
                         _ if at_shared => 2,
                         _ => 0,
                     } + if !sh.fits && avoided { 3 } else { 0 };
-                    let bh = if sh.fits { 0 } else { base_hits(base_segs, &sh.text) };
-                    let rank = (c, pen, bh);
+                    let bh = if sh.fits { 0 } else { base_hits(base_segs, &sh.text) + member_hits(members, &sh.text) };
+                    let rank = (c + bh, pen, usize::from(!sh.fits && !chained && v != CENTRED_OUT));
                     let fits = sh.fits;
                     if rank < kbest_rank {
                         kbest_rank = rank;

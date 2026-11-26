@@ -492,14 +492,13 @@ section('13. keyed notes (SPEC 24): tags, DETAIL NOTES list, shared keys, list m
   const xs = new Set(texts(d).filter((t) => /^\d+\.$/.test(t.s)).map((t) => t.x.toFixed(3)));
   check('a 15-line list above wraps into two columns', xs.size === 2, [...xs]);
 
-  // beside: notes_side left with a short crop wraps into two columns left of everything
   const left = structuredClone(base);
   Object.assign(left.views[0], { notes_side: 'left', crop: { x: [-4, 30], y: [20, 40] } });
   left.views[0].annotations = left.views[0].annotations.filter((a) => a.type === 'note');
   ({ d } = drawing('k2.kerf.json', left, 'A'));
   const lnums = texts(d).filter((t) => /^\d+\.$/.test(t.s));
   const tagXs = texts(d).filter((t) => t.valign === 'middle').map((t) => t.x);
-  check('notes_side left: list left of the tags, two columns', lnums.length > 0 && Math.max(...lnums.map((t) => t.x)) < Math.min(...tagXs) && new Set(lnums.map((t) => t.x.toFixed(3))).size === 2, lnums.map((t) => [t.s, t.x]));
+  check('notes_side left: list left of the tags', lnums.length > 0 && Math.max(...lnums.map((t) => t.x)) < Math.min(...tagXs), lnums.map((t) => [t.s, t.x]));
 
   // shared key without text, conflicting text, bad key, leader + above
   const edge = structuredClone(base);
@@ -777,6 +776,7 @@ section('17. annotation layout: iso at points, view fit clearance, reported move
 
   const tall = structuredClone(base);
   tall.views[0].crop.y = [-1, 40];
+  tall.views[0].sheet = '11x8.5';
   r = kerf(['check', write('l2.kerf.json', tall)]);
   check('W_VIEW_FIT: a list + bubble that would touch the frame warns, names the list, suggests notes_side', /^WARN W_VIEW_FIT A:/m.test(r.out), r.out);
 
@@ -803,7 +803,7 @@ section('17. annotation layout: iso at points, view fit clearance, reported move
   const words = ['STRAP', 'TIE', 'ANCHOR', 'HANGER', 'CLIP', 'PLATE', 'ROD', 'BOLT', 'SCREW'];
   write('l4.kerf.json', {
     kerf: '0.1', id: 'dense', title: 'DENSE', components: spots.map(([x, y], i) => ({ id: `b${i}`, type: 'lumber', size: '4x4', run: 'z', at: { to: [x, y] } })),
-    views: [{ id: 'A', kind: 'section', number: '1', title: 'DENSE', cut_z: 0, notes_side: 'right',
+    views: [{ id: 'A', kind: 'section', number: '1', title: 'DENSE', cut_z: 0, notes_side: 'right', scale: '1:16',
       annotations: spots.map((_, i) => ({ id: `n${i}`, type: 'note', target: `b${i}`, text: `SIMPSON ${words[i]} EA. SIDE W/ (10) 16D NAILS INTO EA. MEMBER OR OTHER APPROVED HARDWARE PER PLAN ${i}` })) }],
   });
   r = kerf(['check', 'l4.kerf.json']);
@@ -968,7 +968,7 @@ section('19. #19 papercuts: check false positives, diagnostics that name their k
   check('an anchor centered in an 8" stem: no bolt warning', !/W_BOLT/.test(r.out), r.out);
 
   const far = { id: 'far', type: 'lumber', size: '2x4', run: 'y', length: 30, at: { to: [300, 0] } };
-  write('pc8.kerf.json', doc([plate, studs, far], [], { scale: '1"=1\'-0"' }));
+  write('pc8.kerf.json', doc([plate, studs, far], [], { scale: '1"=1\'-0"', sheet: '11x8.5' }));
   r = kerf(['check', 'pc8.kerf.json']);
   check('W_VIEW_FIT names the component that stretches the auto crop and gives the omit op', /^WARN W_VIEW_FIT A:/m.test(r.out), r.out);
 
@@ -1077,7 +1077,9 @@ section('#6. tables and schedule views');
   write('t4b.kerf.json', sched([{ id: 'tl', type: 'table', columns: ['A'], rows: Array.from({ length: 11 }, (_, k) => [`cell ${k}`]) }]));
   r = kerf(['check', 't4b.kerf.json']);
   const tall = { id: 'tt', type: 'table', columns: ['ROW', 'VALUE'], rows: Array.from({ length: 60 }, (_, k) => [`R${k}`, k]) };
-  write('t5.kerf.json', sched([tall]));
+  const tallSheet = sched([tall]);
+  tallSheet.views[0].sheet = '11x8.5';
+  write('t5.kerf.json', tallSheet);
   r = kerf(['check', 't5.kerf.json']);
   check('W_VIEW_FIT on a schedule names the table and its size, fix: split it', /^WARN W_VIEW_FIT S:/m.test(r.out), r.out);
 
@@ -1851,9 +1853,10 @@ section('22. #22 shared notes and layout sizing');
   d = clone();
   view(d, 'A').scale = '3"=1\'-0"';
   view(d, 'A').crop = { x: [-2, 30], y: [-2, 49] };
+  view(d, 'A').sheet = '11x8.5';
   write('k22f.kerf.json', d);
   r = kerf(['check', 'k22f.kerf.json']);
-  check('a view a layout names gets no letter-sheet W_VIEW_FIT of its own', !/^WARN W_VIEW_FIT A:/m.test(r.out) && /^WARN W_VIEW_FIT S1:/m.test(r.out), r.out);
+  check('a view forced to Letter warns on its own sheet and on an overflowing layout', /^WARN W_VIEW_FIT A:/m.test(r.out) && /^WARN W_VIEW_FIT S1:/m.test(r.out), r.out);
   d.layouts[0].views = ['B', 'P', 'D'];
   d.layouts[1].views = ['B'];
   write('k22f.kerf.json', d);

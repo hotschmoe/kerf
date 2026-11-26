@@ -23,6 +23,7 @@ struct Joint {
     lo: f64,
     hi: f64,
     first_low: bool,
+    gap: f64,
 }
 
 impl Joint {
@@ -63,7 +64,7 @@ fn span_at(m: &Member, horiz: bool, n: f64, lm: f64) -> Option<(f64, f64)> {
     })
 }
 
-fn find_joint(a: &Member, b: &Member) -> Option<Joint> {
+fn find_joint(a: &Member, b: &Member, max_gap: f64) -> Option<Joint> {
     for horiz in [true, false] {
         let (a0, a1, b0, b1) =
             if horiz { (a.bx.x0, a.bx.x1, b.bx.x0, b.bx.x1) } else { (a.bx.y0, a.bx.y1, b.bx.y0, b.bx.y1) };
@@ -73,14 +74,14 @@ fn find_joint(a: &Member, b: &Member) -> Option<Joint> {
         }
         let k = 32;
         let step = (o1 - o0) / f64::from(k);
-        let mut hits: [Vec<(f64, f64)>; 2] = [Vec::new(), Vec::new()];
+        let mut hits: [Vec<(f64, f64, f64)>; 2] = [Vec::new(), Vec::new()];
         for i in 0..k {
             let l = o0 + step * (f64::from(i) + 0.5);
             let (Some(ea), Some(eb)) = (extent_at(a, horiz, l), extent_at(b, horiz, l)) else { continue };
-            if (ea.0 - eb.1).abs() <= 0.5 {
-                hits[1].push((l, eb.1));
-            } else if (eb.0 - ea.1).abs() <= 0.5 {
-                hits[0].push((l, ea.1));
+            if ea.0 - eb.1 >= -0.03125 && ea.0 - eb.1 <= max_gap + 1e-6 {
+                hits[1].push((l, eb.1, (ea.0 - eb.1).max(0.0)));
+            } else if eb.0 - ea.1 >= -0.03125 && eb.0 - ea.1 <= max_gap + 1e-6 {
+                hits[0].push((l, ea.1, (eb.0 - ea.1).max(0.0)));
             }
         }
         let first_low = hits[0].len() > hits[1].len();
@@ -92,6 +93,7 @@ fn find_joint(a: &Member, b: &Member) -> Option<Joint> {
             lo: (first.0 - step / 2.0).max(o0),
             hi: (last.0 + step / 2.0).min(o1),
             first_low,
+            gap: h[h.len() / 2].2,
         });
     }
     None
@@ -147,7 +149,7 @@ fn long_legs(
     let depth = |leg: &Leg| -> Option<f64> {
         let m = if leg.low { p } else { q };
         let (lo, hi) = extent_at(m, j.horiz, leg.l)?;
-        Some(if leg.low { j.c - lo } else { hi - j.c })
+        Some(if leg.low { j.c - lo } else { hi - j.c - j.gap })
     };
     let room = |low: bool| {
         legs.iter().filter(|g| g.low == low).filter_map(|g| depth(g).map(|d| d - g.len)).fold(f64::INFINITY, f64::min)
@@ -158,7 +160,7 @@ fn long_legs(
         if over <= 0.0625 {
             continue;
         }
-        let n = if leg.low { j.c - d - 0.05 } else { j.c + d + 0.05 };
+        let n = if leg.low { j.c - d - 0.05 } else { j.c + j.gap + d + 0.05 };
         let beyond = solid_at(ctx, j.world(leg.l, n), leg.z, &skip);
         if beyond.as_ref().is_some_and(|b| b.1) {
             continue;
@@ -316,7 +318,19 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
         return None;
     }
     let w = cp.width.or(mi.strap_width()).unwrap_or(if angle { 2.5 } else { 1.375 });
-    let Some(j) = find_joint(&a, &b) else {
+    let max_gap = cp.gap.unwrap_or(0.5);
+    if max_gap < 0.0 {
+        ctx.p.fail(
+            "gap",
+            "gap must be nonnegative: the clear distance or intermediate layer thickness between members".into(),
+        );
+        return None;
+    }
+    let Some(j) = find_joint(&a, &b, max_gap) else {
+        if let Some(j) = find_joint(&a, &b, crate::limits::MAX_COORD_IN) {
+            ctx.p.fail("gap",format!("'{}' and '{}' are separated by {} (allowed {}); for an intentional gap/intervening layer, Fix: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"gap\":{}}}}}",a.id,b.id,fmt_ft_in(j.gap),fmt_ft_in(max_gap),ctx.p.id,model::fmt_num(j.gap)));
+            return None;
+        }
         ctx.p.fail(
             "members",
             format!(
@@ -345,6 +359,9 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
             ),
         );
         return None;
+    }
+    if j.gap > 0.03125 {
+        return bridge(ctx, cp, mi, kind, gauge_i, t, w, &a, &b, &j, lg);
     }
     let (p, q) = if j.first_low { (&a, &b) } else { (&b, &a) };
     let (lp, lq) = if j.first_low { (lg[0], lg[1]) } else { (lg[1], lg[0]) };
@@ -421,6 +438,7 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
     let mut kit = Kit::new();
     let mut on_legs: Vec<Leg> = Vec::new();
     let mut blocked_warn: Option<model::Diag> = None;
+    let mut path_warn: Option<model::Diag> = None;
     let part = kind.tag();
     let nails_on = |l: f64, n0: f64, n1: f64| -> Vec<V2> {
         [1.0 / 3.0, 2.0 / 3.0].iter().map(|k| j.world(l, n0 + (n1 - n0) * k)).collect()
@@ -430,6 +448,24 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
         let dir = if matches!(face, Face::Left | Face::Bottom) { -1.0 } else { 1.0 };
         let side_of = |s: (f64, f64)| if dir < 0.0 { s.0 } else { s.1 };
         let (fp, fq) = (side_of(sp), side_of(sq));
+        if !angle && (fp - fq).abs() > w {
+            let id = ctx.p.id;
+            path_warn = Some(super::hardware::warn(
+                ctx,
+                "W_TIE_PATH",
+                "face",
+                format!(
+                    "tie '{id}': the {} faces of '{}' and '{}' are {} apart along the joint; the schematic wraps that entire distance between the remote member faces instead of bending at the crossing",
+                    face.tag(),
+                    a.id,
+                    b.id,
+                    fmt_ft_in((fp - fq).abs())
+                ),
+                format!(
+                    "put it on the crossing members' z face: {{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"face\":\"front\",\"side\":\"left\"}}}} (use back/right for the other locations)"
+                ),
+            ));
+        }
         let path: Vec<(f64, f64)> = if angle {
             if dir * (fp - fq) > 0.25 {
                 vec![(fq, j.c + lq), (fq, j.c), (fq + dir * lp, j.c)]
@@ -587,6 +623,7 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
     };
     let mut warns = long_legs(ctx, &j, p, q, &on_legs, if j.first_low { [0, 1] } else { [1, 0] }, [lp, lq]);
     warns.extend(blocked_warn);
+    warns.extend(path_warn);
     let desc = mi.desc();
     let info = format!(
         "connector {}{}{gauge_i} ga, {} {} to {} on the {where_txt}",
@@ -597,8 +634,166 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
         b.id
     );
     let members = a.parts.iter().chain(&b.parts).copied().collect();
-    let joins = [a.id.split('+').map(String::from).collect(), b.id.split('+').map(String::from).collect()];
+    let joins = [
+        a.id.split('+').map(crate::compile::host_id).map(String::from).collect(),
+        b.id.split('+').map(crate::compile::host_id).map(String::from).collect(),
+    ];
     let hw = model::HwInfo { members, joins, warns, ..Default::default() };
     let origin = ctx.origin;
     Some(kit.finish(origin, vec![NamedAnchor { name: "joint".into(), p: j.world(lm, j.c) }], info, hw))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn bridge(
+    ctx: &mut Ctx,
+    cp: &Params,
+    mi: &ModelInfo,
+    kind: Kind,
+    gauge_i: u32,
+    t: f64,
+    w: f64,
+    a: &Member,
+    b: &Member,
+    j: &Joint,
+    lg: [f64; 2],
+) -> Option<Built> {
+    let lg = if cp.legs.is_none() {
+        mi.table.filter(|h| h.length > j.gap).map_or(lg, |h| [(h.length - j.gap) / 2.0; 2])
+    } else {
+        lg
+    };
+    if kind == Kind::Angle {
+        ctx.p.fail("kind", format!("a gap bridge cannot infer an angle's inside corner; use explicit angle points, or a flat tie bridge: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"kind\":\"tie\"}}}}",ctx.p.id));
+        return None;
+    }
+    let face = cp.face.unwrap_or(Face::Front);
+    if !matches!(face, Face::Front | Face::Back) || ctx.p.has("z") {
+        ctx.p.fail("face", format!("a connector across a gap uses front/back faces; Fix: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"face\":\"front\",\"z\":null,\"side\":null}}}}", ctx.p.id));
+        return None;
+    }
+    let front = face == Face::Front;
+    let (za, zb) = if front { (a.z1, b.z1) } else { (a.z0, b.z0) };
+    let (low, high, lp, lq) = if j.first_low { (a, b, lg[0], lg[1]) } else { (b, a, lg[1], lg[0]) };
+    let l = (j.lo + j.hi) / 2.0 + cp.along.unwrap_or(0.0);
+    let n0 = j.c - lp;
+    let n1 = j.c + j.gap + lq;
+    let z = if front { za.max(zb) } else { za.min(zb) };
+    let mut kit = Kit::new();
+    let mut on_legs = Vec::new();
+    let rect = |l0: f64, l1: f64, n0: f64, n1: f64| j.pts(&[(l0, n0), (l1, n0), (l1, n1), (l0, n1)]);
+    if (za - zb).abs() > 0.125 {
+        if ctx.p.has("along") {
+            ctx.p.fail(
+                "along",
+                "a gap tie bent onto a side is located by that side; remove along and use side left/right".into(),
+            );
+            return None;
+        }
+        let a_near = if front { za < zb } else { za > zb };
+        let (near, wide) = if a_near { (a, b) } else { (b, a) };
+        let near_low = core::ptr::eq(near, low);
+        let wn = if near_low { j.c + j.gap + 0.01 } else { j.c - 0.01 };
+        let Some(span) = span_at(wide, j.horiz, wn, l) else {
+            ctx.p.fail("members", "gap tie has no mounting profile at its wide member".into());
+            return None;
+        };
+        let dir = if cp.side == Side::Right { 1.0 } else { -1.0 };
+        let edge = if dir < 0.0 { span.0 } else { span.1 };
+        let z = if a_near { za } else { zb };
+        let out = if front { 1.0 } else { -1.0 };
+        let (near0, near1, wide0, wide1) =
+            if near_low { (n0, j.c + j.gap, j.c + j.gap, n1) } else { (j.c, n1, n0, j.c) };
+        on_legs.push(Leg {
+            low: near_low,
+            l: edge - dir * w / 2.0,
+            len: if near_low { lp } else { lq },
+            z: z - out * 0.01,
+        });
+        on_legs.push(Leg {
+            low: !near_low,
+            l: edge - dir * 0.05,
+            len: if near_low { lq } else { lp },
+            z: z + out * w / 2.0,
+        });
+        kit.poly(
+            kind.tag(),
+            rect(edge, edge - dir * w, near0, near1),
+            [z, z + out * t],
+            vec![j.world(edge - dir * w / 2.0, (near0 + near1) / 2.0)],
+        );
+        kit.poly(kind.tag(), rect(edge, edge + dir * t, wide0, wide1), [z, z + out * w], Vec::new());
+    } else {
+        let out = if front { 1.0 } else { -1.0 };
+        on_legs.push(Leg { low: true, l, len: lp, z: z - out * 0.01 });
+        on_legs.push(Leg { low: false, l, len: lq, z: z - out * 0.01 });
+        kit.poly(
+            kind.tag(),
+            j.pts(&[(l - w / 2.0, n0), (l + w / 2.0, n0), (l + w / 2.0, n1), (l - w / 2.0, n1)]),
+            [z, z + if front { t } else { -t }],
+            vec![j.world(l, j.c - lp / 2.0), j.world(l, j.c + j.gap + lq / 2.0)],
+        );
+    }
+    let mut warns = long_legs(ctx, j, low, high, &on_legs, if j.first_low { [0, 1] } else { [1, 0] }, [lp, lq]);
+    if let Some(h) = mi.table.filter(|h| h.length > 0.0 && lg[0] + lg[1] + j.gap > h.length + 0.125) {
+        let value = if h.length > j.gap {
+            format!(
+                "\"legs\":[{},{}]",
+                model::fmt_num((h.length - j.gap) / 2.0),
+                model::fmt_num((h.length - j.gap) / 2.0)
+            )
+        } else {
+            let next = crate::catalog::HARDWARE
+                .iter()
+                .find(|h| h.kind == "strap" && h.length > j.gap + 3.0)
+                .map_or("CS16", |h| h.model);
+            format!("\"model\":\"{next}\",\"kind\":\"tie\",\"legs\":[1.5,1.5]")
+        };
+        warns.push(super::hardware::warn(ctx,"W_TIE_PATH","legs",format!("tie '{}': legs plus the {} gap need {}, exceeding model {} length {}",ctx.p.id,fmt_ft_in(j.gap),fmt_ft_in(lg[0]+lg[1]+j.gap),mi.name,fmt_ft_in(h.length)),format!("fit the developed plate length (confirm any model change with the manufacturer): {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{{value}}}}}",ctx.p.id)));
+    }
+    let deflection = mi.series.is_some_and(|s| matches!(s.prefix, "DTC" | "STC" | "HTC"));
+    if cp.gap.is_none() || deflection {
+        let fix = if deflection {
+            let mut ack = ctx.p.raw("acknowledge").and_then(Value::arr).unwrap_or(&[]).to_vec();
+            ack.push(crate::json::obj([
+                ("code", Value::String("W_CONNECTOR_GAP".into())),
+                (
+                    "reason",
+                    Value::String(
+                        "schematic clip; manufacturer slot travel and fastening are specified in the detail note"
+                            .into(),
+                    ),
+                ),
+            ]));
+            let value = crate::json::obj([("gap", Value::Number(j.gap)), ("acknowledge", Value::Array(ack))]);
+            let mut bytes = Vec::new();
+            crate::json::write_compact(&mut bytes, &value);
+            format!(
+                "after specifying manufacturer movement and fastening in the note, acknowledge the missing slot geometry: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{}}}",
+                ctx.p.id,
+                String::from_utf8(bytes).unwrap_or_default()
+            )
+        } else {
+            format!(
+                "confirm this intentional gap/layer thickness: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"gap\":{}}}}}",
+                ctx.p.id,
+                model::fmt_num(j.gap)
+            )
+        };
+        warns.push(super::hardware::warn(ctx,"W_CONNECTOR_GAP","gap",format!("connector '{}': '{}' and '{}' are separated by {}; a schematic face plate bridges the gap. A deflection clip's slot and permitted movement are not modeled",ctx.p.id,low.id,high.id,fmt_ft_in(j.gap)),fix));
+    }
+    let members = a.parts.iter().chain(&b.parts).copied().collect();
+    let joins = [vec![crate::compile::host_id(&a.id).to_string()], vec![crate::compile::host_id(&b.id).to_string()]];
+    Some(kit.finish(
+        ctx.origin,
+        vec![NamedAnchor { name: "joint".into(), p: j.world(l, j.c + j.gap / 2.0) }],
+        format!(
+            "connector {}{} {gauge_i} ga across {} gap between {} and {}",
+            model_text(mi),
+            kind.tag(),
+            fmt_ft_in(j.gap),
+            a.id,
+            b.id
+        ),
+        model::HwInfo { warns, members, joins, ..Default::default() },
+    ))
 }

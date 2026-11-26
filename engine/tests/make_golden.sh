@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generates the golden set: for every reference detail and test document, the drawing IR, SVG (bare and sheet), DXF, PDF,
 # PNG (bare and sheet), mesh and the check summary of each view.
-#   tests/make_golden.sh [--out DIR] [--png]
+#   tests/make_golden.sh [--out DIR] [--png] [--only NAME]
 # Without --out it rewrites tests/golden. --png also renders review images (sheet SVG via chromium, DXF via ezdxf, PDF via
 # pdfium; needs tools/.venv). KERF overrides the binary (default target/release/kerf).
 set -euo pipefail
@@ -10,16 +10,25 @@ K=${KERF:-target/release/kerf}
 T=../tools
 OUT=tests/golden
 PNG=0
+ONLY=()
 while [ $# -gt 0 ]; do
   case $1 in
     --out) OUT=$2; shift ;;
     --png) PNG=1 ;;
-    *) echo "usage: $0 [--out DIR] [--png]" >&2; exit 2 ;;
+    --only) ONLY+=("$2"); shift ;;
+    *) echo "usage: $0 [--out DIR] [--png] [--only NAME]" >&2; exit 2 ;;
   esac
   shift
 done
 for doc in ../spec/details/*.kerf.json tests/docs/*.kerf.json; do
   name=$(basename "$doc" .kerf.json)
+  if [ ${#ONLY[@]} -gt 0 ]; then
+    selected=0
+    for candidate in "${ONLY[@]}"; do
+      if [ "$candidate" = "$name" ]; then selected=1; fi
+    done
+    if [ "$selected" = 0 ]; then continue; fi
+  fi
   d=$OUT/$name
   mkdir -p "$d"
   $K check "$doc" > "$d/summary.txt" 2>&1 || true

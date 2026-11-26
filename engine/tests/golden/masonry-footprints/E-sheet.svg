@@ -84,6 +84,14 @@
 <path d="M297 291.15L759 291.15" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>
 </g>
+<g id="S-DETL-HIDN" inkscape:groupmode="layer" inkscape:label="S-DETL-HIDN">
+<g data-src="e_wall">
+<path d="M291 371.588L524.438 371.588L524.438 354.713L291 354.713L291 371.588" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68" stroke-dasharray="7.559 3.78"/>
+<path d="M531.563 371.588L765 371.588L765 354.713L531.563 354.713L531.563 371.588" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68" stroke-dasharray="7.559 3.78"/>
+<path d="M291 299.588L524.438 299.588L524.438 282.713L291 282.713L291 299.588" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68" stroke-dasharray="7.559 3.78"/>
+<path d="M531.563 299.588L765 299.588L765 282.713L531.563 282.713L531.563 299.588" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68" stroke-dasharray="7.559 3.78"/>
+</g>
+</g>
 <g id="S-ANNO-NOTE" inkscape:groupmode="layer" inkscape:label="S-ANNO-NOTE">
 <g data-src="n_cj">
 <path d="M824.571 276.927L825.429 276.498L826.714 275.213L826.714 284.213" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.68"/>

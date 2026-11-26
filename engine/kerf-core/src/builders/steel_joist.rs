@@ -260,6 +260,7 @@ fn section(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built> {
         ("seat", w / 2.0, d - g.sd),
         ("top_chord", w / 2.0, d),
         ("top_chord_bottom", w / 2.0, d - leg),
+        ("top_flange_bottom", w / 2.0, d - t),
         ("top_chord_tip_left", 0.0, d - t),
         ("top_chord_tip_right", w, d - t),
     ];
@@ -415,6 +416,7 @@ fn elevation(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built>
     for (n, y, x0, x1) in [
         ("top_chord", d, 0.0, l),
         ("top_chord_bottom", d - leg, 0.0, l),
+        ("top_flange_bottom", d - t, 0.0, l),
         ("bottom_chord_top", leg, bx0, bx1),
         ("bottom_chord", 0.0, bx0, bx1),
     ] {

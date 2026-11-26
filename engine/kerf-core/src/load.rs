@@ -87,7 +87,10 @@ pub fn load_after_edit<'a>(
             {
                 drawview::build_from_scene(&vdoc, st, &scene, &spec, &vd);
             }
-            diags.extend(vd.into_vec());
+            let in_layout = layout::names_view(&vdoc, vid);
+            diags.extend(vd.into_vec().into_iter().filter(|d| {
+                !with_views || !in_layout || d.level == Level::Error || matches!(d.code, "W_VIEW_FIT" | "I_VIEW_SHEET")
+            }));
         }
         if with_views && views.len() == va.len() {
             for lid in layout::layout_ids(&vdoc) {
@@ -285,6 +288,7 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
                     | "I_KEY_RENUMBERED"
                     | "I_LAYOUT_SHEET"
                     | "I_CMU_PLAN_UNITS"
+                    | "I_VIEW_SHEET"
             )
         {
             continue;

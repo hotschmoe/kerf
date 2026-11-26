@@ -266,7 +266,7 @@ fn text_entity(w: &mut Writer, st: &Style, t: &TextItem, ext: &mut geom::Box) {
     w.f(20, t.y);
     w.lit(&[(30, "0")]);
     w.f(40, t.h);
-    w.s(1, &t.s);
+    w.s(1, &t.s.replace('°', "%%d"));
     if t.rot != 0.0 {
         w.f(50, t.rot);
     }

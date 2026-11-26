@@ -68,6 +68,7 @@ struct IsoPrism {
     seam: [Vec<[V2; 2]>; 2],
     hw_dash: bool,
     axis_y: bool,
+    axis_x: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -195,7 +196,7 @@ impl Iso {
                 if ip.comp != comp || ip.instance != inst || part.is_some_and(|pn| ip.part != pn) {
                     continue;
                 }
-                let near = if ip.axis_y {
+                let near = if ip.axis_y || ip.axis_x {
                     let zs = ip.loops.iter().flatten().map(|v| v.y);
                     if self.sz > 0.0 { zs.fold(f64::NEG_INFINITY, f64::max) } else { zs.fold(f64::INFINITY, f64::min) }
                 } else if self.sz > 0.0 {
@@ -207,6 +208,28 @@ impl Iso {
             }
         }
         proj(self.sx, self.sz, [p.x, p.y, z.unwrap_or(self.cut_z)])
+    }
+
+    pub fn project_station(&self, owner: Option<(u32, u32, Option<&str>)>, p: V2, station: f64) -> V2 {
+        let mut lo = f64::INFINITY;
+        let mut hi = f64::NEG_INFINITY;
+        if let Some((comp, inst, part)) = owner {
+            for ip in &self.prisms {
+                if ip.comp == comp && ip.instance == inst && part.is_none_or(|pn| ip.part == pn) {
+                    if ip.axis_y {
+                        for q in ip.loops.iter().flatten() {
+                            lo = lo.min(q.y);
+                            hi = hi.max(q.y);
+                        }
+                    } else {
+                        lo = lo.min(ip.z0);
+                        hi = hi.max(ip.z1);
+                    }
+                }
+            }
+        }
+        let z = if lo <= hi { station.clamp(lo, hi) } else { station };
+        proj(self.sx, self.sz, [p.x, p.y, z])
     }
 
     fn cell_range(&self, b: Box) -> [usize; 4] {
@@ -476,6 +499,12 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
             if ghost || p.role == Role::Void {
                 continue;
             }
+            if c.ty.ty == crate::catalog::Type::Rebar
+                && c.node.get("plane").and_then(crate::json::Value::str) == Some("yz")
+            {
+                yz_bar_iso(c, p, spec, crop, out);
+                continue;
+            }
             if p.fp_proxy {
                 footprint_iso(c, p, spec, crop, out);
                 continue;
@@ -553,10 +582,60 @@ fn gather(scene: &Scene, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPr
                         seam: seam.clone(),
                         hw_dash: p.hw_dash,
                         axis_y: false,
+                        axis_x: false,
                     });
                 }
             }
         }
+    }
+}
+
+fn yz_bar_iso(c: &Comp, p: &Prism, spec: &ViewSpec, crop: Option<Box>, out: &mut Vec<IsoPrism>) {
+    let Some(first) = p.path3.first() else {
+        return;
+    };
+    let center: Vec<Pt> = p.path3.iter().map(|v| Pt::new(v[1], v[2])).collect();
+    let r = p.sweep_r;
+    let rib = crate::pathgeom::ribbon(&center, r, r);
+    let mut region = clip::from_region(&[rib], geom::FLAT_TOL);
+    let (mut x0, mut x1) = (first[0] - r, first[0] + r);
+    let (mut y0, mut y1) = (-1e7, 1e7);
+    let (mut z0, mut z1) = (-1e7, if spec.cutaway { spec.cut_z } else { 1e7 });
+    if let Some(b) = crop {
+        x0 = x0.max(b.x0);
+        x1 = x1.min(b.x1);
+        y0 = b.y0;
+        y1 = b.y1;
+    }
+    if let Some([a, b]) = spec.crop_z {
+        z0 = a;
+        z1 = z1.min(b);
+    }
+    if x1 <= x0 || y1 <= y0 || z1 <= z0 {
+        return;
+    }
+    let mask = clip::from_region(&[crate::model::rect_loop(y0, z0, y1, z1)], geom::FLAT_TOL);
+    region = clip::boolean(&region, &mask, clip::Op::Intersect);
+    for group in crate::section::group_region(&region, None) {
+        out.push(IsoPrism {
+            src: src_of(c, p.instance),
+            instance: p.instance,
+            comp: c.index,
+            part: p.part.clone(),
+            loops: group.flat,
+            z0: x0,
+            z1: x1,
+            cap_cut: false,
+            pen: None,
+            material: p.material.clone(),
+            embedded: p.embedded,
+            is_fill: false,
+            outline: p.outline,
+            seam: [Vec::new(), Vec::new()],
+            hw_dash: p.hw_dash,
+            axis_y: false,
+            axis_x: true,
+        });
     }
 }
 
@@ -576,14 +655,16 @@ fn footprint_iso(c: &Comp, p: &Prism, spec: &ViewSpec, crop: Option<Box>, out: &
         return;
     }
     let keep = vec![V2::init(x0, -big), V2::init(x1, -big), V2::init(x1, z1), V2::init(x0, z1)];
-    let region = clip::boolean(core::slice::from_ref(&p.footprint), core::slice::from_ref(&keep), clip::Op::Intersect);
-    for outer in region.into_iter().filter(|l| geom::signed_area_v(l) > 0.0) {
+    let mut footprint = vec![p.footprint.clone()];
+    footprint.extend(p.fp_holes.iter().cloned());
+    let region = clip::boolean(&footprint, core::slice::from_ref(&keep), clip::Op::Intersect);
+    for group in crate::section::group_region(&region, None) {
         out.push(IsoPrism {
             src: src_of(c, p.instance),
             instance: p.instance,
             comp: c.index,
             part: p.part.clone(),
-            loops: vec![outer],
+            loops: group.flat,
             z0: y0,
             z1: y1,
             cap_cut: false,
@@ -595,6 +676,7 @@ fn footprint_iso(c: &Comp, p: &Prism, spec: &ViewSpec, crop: Option<Box>, out: &
             seam: [Vec::new(), Vec::new()],
             hw_dash: p.hw_dash,
             axis_y: true,
+            axis_x: false,
         });
     }
 }
@@ -627,16 +709,31 @@ fn mk_face(iso: &mut Iso, n: [f64; 3], verts: &[[f64; 3]], holes3: &[Vec<[f64; 3
 fn add_prism(iso: &mut Iso, pi: usize) {
     let Some(ip) = iso.prisms.get(pi) else { return };
     let (z0, z1, cap_cut, ip_pen, axis_y) = (ip.z0, ip.z1, ip.cap_cut, ip.pen, ip.axis_y);
+    let axis_x = ip.axis_x;
     let seam = ip.seam.clone();
     let loops: Vec<FLoop> = ip.loops.iter().map(|l| flatten_sharp(l)).collect();
     let Some(first) = loops.first() else { return };
-    let at = |p: V2, h: f64| -> [f64; 3] { if axis_y { [p.x, h, p.y] } else { [p.x, p.y, h] } };
+    let at = |p: V2, h: f64| -> [f64; 3] {
+        if axis_x {
+            [h, p.x, p.y]
+        } else if axis_y {
+            [p.x, h, p.y]
+        } else {
+            [p.x, p.y, h]
+        }
+    };
     let lift = |pts: &[V2], z: f64| -> Vec<[f64; 3]> { pts.iter().map(|&p| at(p, z)).collect() };
     let top_v = lift(&first.pts, z1);
     let bot_v = lift(&first.pts, z0);
     let top_h: Vec<Vec<[f64; 3]>> = loops[1..].iter().map(|fl| lift(&fl.pts, z1)).collect();
     let bot_h: Vec<Vec<[f64; 3]>> = loops[1..].iter().map(|fl| lift(&fl.pts, z0)).collect();
-    let (n_top, n_bot) = if axis_y { ([0.0, 1.0, 0.0], [0.0, -1.0, 0.0]) } else { ([0.0, 0.0, 1.0], [0.0, 0.0, -1.0]) };
+    let (n_top, n_bot) = if axis_x {
+        ([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0])
+    } else if axis_y {
+        ([0.0, 1.0, 0.0], [0.0, -1.0, 0.0])
+    } else {
+        ([0.0, 0.0, 1.0], [0.0, 0.0, -1.0])
+    };
     let ftop = mk_face(iso, n_top, &top_v, &top_h, pi);
     let fbot = mk_face(iso, n_bot, &bot_v, &bot_h, pi);
     for (li, fl) in loops.iter().enumerate() {
@@ -646,7 +743,13 @@ fn add_prism(iso: &mut Iso, pi: usize) {
             let p = fl.pts[i];
             let q = fl.pts[(i + 1) % n];
             let d = q.sub(p).norm();
-            let nn = if axis_y { [d.y, 0.0, -d.x] } else { [d.y, -d.x, 0.0] };
+            let nn = if axis_x {
+                [0.0, d.y, -d.x]
+            } else if axis_y {
+                [d.y, 0.0, -d.x]
+            } else {
+                [d.y, -d.x, 0.0]
+            };
             let verts = [at(p, z0), at(q, z0), at(q, z1), at(p, z1)];
             side_faces.push(mk_face(iso, nn, &verts, &[], pi));
         }

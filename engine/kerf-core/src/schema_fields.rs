@@ -127,7 +127,7 @@ pub static VIEW: Object = Object {
             name: "kind",
             ty: "section|plan|elevation|iso|schedule",
             def: "section",
-            desc: "section = 2D cut at cut_z looking toward -Z; plan = looking down at the cut plane cut_y (members it crosses are cut and hatched, members below draw as outlines; vertical bars are dots, bars in the XZ plane paths; plan point [x, y] = model (x, -z)); elevation = looking toward -Z with nothing cut (nearer members hide farther ones, members the crop cuts get break lines); iso = hidden-line 3D. One model gives all of them: keep members in their real orientation; schedule = tables, notes and labels only (no components, no crop or scale, paper inches from [0, 0], caption SCALE: NTS; \"sheet\" is accepted for it)",
+            desc: "section = 2D cut at cut_z looking toward -Z; plan = looking down at the cut plane cut_y (members it crosses are cut and hatched, members below draw as outlines; vertical bars are dots, bars in the XZ plane paths; plan point [x, y] = model (x, -z)); elevation = looking toward -Z with nothing cut (nearer members hide farther ones, members the crop cuts get break lines); iso = hidden-line 3D. One model gives all of them: keep members in their real orientation; schedule = tables, notes and labels only (no components, no crop or scale, paper inches from [0, 0], caption SCALE: NTS; kind \"sheet\" is an alias for kind \"schedule\"; view sheet sizes standalone exports; layouts[].sheet sizes layouts)",
             ..Field::NONE
         },
         Field {
@@ -154,7 +154,7 @@ pub static VIEW: Object = Object {
             name: "cut_z",
             ty: "length",
             def: "0",
-            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn: to show members without cutting them use kind \"elevation\". Also the default z of in-plane members and anchor bolts (an elevation's cut_z only sets that; a plan ignores it)",
+            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn: to show members without cutting them use kind \"elevation\". Also the default z of included in-plane members and anchor bolts: the first document section/elevation sets depth only for members it includes; other scenarios use the zero model datum (an elevation's cut_z only sets that; a plan ignores it)",
             ..Field::NONE
         },
         Field {
@@ -193,9 +193,9 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "notes_side",
-            ty: "right|left|both|above",
+            ty: "right|left|both|above|below",
             def: "both",
-            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point, or to the other side when its leader would run through a cut member and the view still fits (W_LEADER_HIT with the `column` to set when it cannot). keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
+            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point, or to the other side when its leader would run through a cut member and the view still fits (W_LEADER_HIT with the `column` to set when it cannot). keyed/list: where the DETAIL NOTES list goes (both = above; below is accepted); the number tags follow `tags_side`",
             ..Field::NONE
         },
         Field {
@@ -240,6 +240,13 @@ pub static VIEW: Object = Object {
             ..Field::NONE
         },
         VIEW_ACK_FIELD,
+        Field {
+            name: "sheet",
+            ty: "auto|WxH|[width,height]",
+            def: "auto",
+            desc: "single-view sheet size in paper inches (5..60 each). Auto grows from the style sheet through 17x11, 22x17, 24x18 and 36x24, aiming for at least 1 inch = 1 foot before shrinking further. Fixed scale and schedule tables keep their size. I_VIEW_SHEET reports a larger page. Does not change layout sheets; W_VIEW_FIT if content still exceeds the frame or title block",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"A\",\"kind\":\"section\",\"number\":\"1\",\"title\":\"WALL AT SILL\",\"scale\":\"1\\\"=1'-0\\\"\",\"cut_z\":0,\"crop\":{\"x\":[-12,18],\"y\":[-8,30]},\"notes_side\":\"both\",\"annotations\":[]}",
     ..Object::NONE
@@ -371,7 +378,13 @@ pub static LABEL: Object = Object {
             desc: "\"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y]. The text block is centered vertically on it",
             ..Field::NONE
         },
-        Field { name: "offset", ty: "[dx, dy]", def: "[0, 0]", desc: "model inches added to `at`", ..Field::NONE },
+        Field {
+            name: "offset",
+            ty: "[dx, dy]",
+            def: "[0, 0]",
+            desc: "view-coordinate inches added after projecting `at`; in section these are model inches",
+            ..Field::NONE
+        },
         Field {
             name: "pin",
             ty: "bool",
@@ -387,6 +400,13 @@ pub static LABEL: Object = Object {
             ..Field::NONE
         },
         ACK_FIELD,
+        Field {
+            name: "z",
+            ty: "length",
+            def: "view cut_z",
+            desc: "iso label Ref's station along model z, clamped to the visible extrusion's span; literal at [x,y] is already in view coordinates",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"l_ext\",\"type\":\"label\",\"text\":\"EXTERIOR\",\"at\":\"sill@top_left\",\"offset\":[-6,6]}",
     ..Object::NONE
@@ -395,7 +415,7 @@ pub static LABEL: Object = Object {
 pub static WELD: Object = Object {
     name: "weld",
     brief: "AWS weld symbol at a joint",
-    summary: "AWS weld symbol (annotation of type weld): arrow to the joint, reference line, fillet / CJP / PJP symbol with its size (below the line = arrow side, above = other side), all-around circle, field-weld flag, tail text. Placed exactly where you put it (not moved by the note layout). Section views only.",
+    summary: "AWS weld symbol (annotation of type weld): arrow to the joint, reference line, fillet / CJP / PJP symbol with its size (below the line = arrow side, above = other side), all-around circle, field-weld flag, tail text. Placed exactly where you put it (not moved by note layout); text overprints warn W_LABEL_OVERLAP with an offset op. Section views only.",
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"weld\"", required: true, desc: "annotation type", ..Field::NONE },
@@ -599,7 +619,7 @@ pub static OPS: Object = Object {
             ..Field::NONE
         },
     ],
-    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label | weld | table | line | ref\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields (not `annotations`: use the annotation paths)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  add    layouts                          value = a layout object (`kerf schema layout`; unique id)\n  update layouts/<id>                     merge patch of layout fields (`views`, `sheet`, `notes`, ...: arrays whole)\n  remove components/<id> | views/<view> | views/<view>/annotations/<id> | layouts/<id>\n          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)\n  set    doc                              value = the whole document (first build)\n  set    components/<id> | layouts/<id>    replace the whole component or layout\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
+    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label | weld | table | line | ref\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields; `annotations` replaces the whole list (prefer annotation paths for small edits)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  add    layouts                          value = a layout object (`kerf schema layout`; unique id)\n  update layouts/<id>                     merge patch of layout fields (`views`, `sheet`, `notes`, ...: arrays whole)\n  remove components/<id> | views/<view> | views/<view>/annotations/<id> | layouts/<id>\n          (references are checked against the final batch: remove/re-point referrers or re-add the component anywhere in that batch)\n  set    scale                            value = scale, or null to remove document scale\n  remove scale                            auto-fit document scale\n  set    doc                              value = the whole document (first build)\n  set    components/<id> | layouts/<id>    replace the whole component or layout\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
     example: "[{\"op\":\"add\",\"path\":\"components\",\"value\":{\"id\":\"sill\",\"type\":\"lumber\",\"size\":\"2x6\",\"orient\":\"flat\",\"treated\":true}},{\"op\":\"update\",\"path\":\"views/A/annotations/n_sill\",\"value\":{\"text\":\"2X6 PT SILL PLATE W/ SEALER\"}},{\"op\":\"remove\",\"path\":\"components/old\"}]",
 };
 
@@ -735,7 +755,7 @@ pub static CUTS: Object = Object {
             name: "x",
             ty: "length",
             def: "",
-            desc: "notch at top/bottom: distance from the start end; hole: distance from the start end to its centre",
+            desc: "notch at top/bottom: distance from the start end; hole: distance from the start end to its centre; steel holes may cross an edge but must intersect stock; wood holes stay wholly inside",
             ..Field::NONE
         },
         Field {
@@ -746,7 +766,7 @@ pub static CUTS: Object = Object {
             ..Field::NONE
         },
     ],
-    notes: "Two-point members: lumber and steel take `from` and `to` (points: Refs, {ref, offset} or [x, y]) instead of at/length/until/rotate/slope; `align` center|top|bottom picks the line that runs between them. An end at a Ref to a member is trimmed to the face of that member it meets (an explicit cut for that end replaces it), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both with no computed angle or length, and follows them when they move.\nAnchors: seat_outer, seat_inner, heel_bottom (birdmouth), start_top, start_bottom, end_top, end_bottom (the cut corners); hole_k_center, hole_k_top, hole_k_bottom, hole_k_start, hole_k_end (k = 1.. over the holes in list order); notch_k_start, notch_k_end (on the face), notch_k_inner_start, notch_k_inner_end (the inside corners; k = 1.. over the rectangle notches), for the limit dimensions (\"from\": \"joist@hole_1_top\", \"to\": \"joist@hole_1_bottom\", \"text\": \"D/3 MAX.\"); the 9 box anchors stay those of the uncut member.\nHoles and notches in sawn lumber are checked against the IRC: W_HOLE_LIMIT (run x joists, rafters, beams, R502.8.1: diameter over D/3, under 2 in. from the top or bottom edge or from another hole or notch; run y studs, R602.6: over 40% of the depth, under 5/8 in. from the edge; an I-joist hole that touches a flange) and W_NOTCH_LIMIT (run x: deeper than D/6 or longer than D/3, D/4 at an end corner; run y studs: deeper than 25%). The span is unknown, so \"not in the middle third\" is a note you write. Engineered lumber and steel are not checked (manufacturer / engineer).\nDiagnostics: W_BIRDMOUTH_DEPTH (the seat cuts more than 1/3 of the depth; fix: the seat that keeps 2/3), W_CUT_MISS (a seat off its bearing member, a trim whose line misses its member, a notch that removes nothing; each fix is an op), W_OVERLAP of a birdmouth member below its plate prints the heel that lifts it clear; E_PARAM for a cut that does not fit (seat through the member, notch deeper than the member, end cuts that cross).",
+    notes: "Two-point members: lumber and steel take `from` and `to` (points: Refs, {ref, offset} or [x, y]) instead of at/length/until/rotate/slope; `align` center|top|bottom picks the line that runs between them. An end at a Ref to a member is trimmed to the face of that member it meets (an explicit cut for that end replaces it), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both with no computed angle or length, and follows them when they move.\nAnchors: seat_outer, seat_inner, heel_bottom (birdmouth), start_top, start_bottom, end_top, end_bottom (the cut corners); hole_k_center, hole_k_top, hole_k_bottom, hole_k_start, hole_k_end (k = 1.. over the holes in list order); notch_k_start, notch_k_end (on the face), notch_k_inner_start, notch_k_inner_end (the inside corners; k = 1.. over the rectangle notches), for the limit dimensions (\"from\": \"joist@hole_1_top\", \"to\": \"joist@hole_1_bottom\", \"text\": \"D/3 MAX.\"); the 9 box anchors stay those of the uncut member.\nHoles and notches in sawn lumber are checked against the IRC: W_HOLE_LIMIT (run x joists, rafters, beams, R502.8.1: diameter over D/3, under 2 in. from the top or bottom edge or from another hole or notch; run y studs, R602.6: over 40% of the depth, under 5/8 in. from the edge; an I-joist hole that touches a flange) and W_NOTCH_LIMIT (run x: deeper than D/6 or longer than D/3, D/4 at an end corner; run y studs: deeper than 25%). The span is unknown, so \"not in the middle third\" is a note you write. Engineered lumber and steel are not checked (manufacturer / engineer).\nDiagnostics: W_BIRDMOUTH_DEPTH (the seat cuts more than 1/3 of the depth; fix: the seat that keeps 2/3), W_CUT_MISS (a seat off its bearing member, a trim whose line misses its member or implicitly extends over two depths past its endpoint (left square), a notch that removes nothing; each fix is an op), W_OVERLAP of a birdmouth member below its plate prints the heel that lifts it clear; E_PARAM for a cut that does not fit (seat through the member, notch deeper than the member, crossed/zero-area end cuts; positive-area triangular bevels are allowed).",
     example: "[{\"type\":\"birdmouth\",\"on\":\"top_plate\",\"tail\":12},{\"type\":\"plumb\",\"end\":\"both\"},{\"type\":\"notch\",\"by\":\"ledger\"},{\"type\":\"hole\",\"d\":2,\"x\":30}]",
 };
 
@@ -846,7 +866,7 @@ pub static LAYOUT: Object = Object {
     ],
     notes: concat!(
         "Ops: {\"op\":\"add\",\"path\":\"layouts\",\"value\":{...}}, {\"op\":\"update\",\"path\":\"layouts/S1\",\"value\":{...}}, {\"op\":\"remove\",\"path\":\"layouts/S1\"}; the document default scale: {\"op\":\"set\",\"path\":\"scale\",\"value\":\"3/4\\\"=1'-0\\\"\"}.\n",
-        "A layout is always drawn as one sheet; single-view export (`--view`) is unchanged. `kerf check` builds every layout: W_VIEW_FIT (path layouts/<id>) when the sheet cannot hold it, with each view's size and the fixes that fit (scale, arrangement, list side); I_KEY_RENUMBERED when the shared numbers differ from the notes' keys; W_PARAM names the field (text or cite) in which two notes under one number differ. A view a layout names is fit-checked only as part of it (no letter-sheet W_VIEW_FIT of its own)."
+        "A layout is always drawn as one sheet; single-view export (`--view`) independently fits its own view sheet. `kerf check` builds every layout: W_VIEW_FIT (path layouts/<id>) when the sheet cannot hold it, with each view's size and the fixes that fit (scale, arrangement, list side); I_KEY_RENUMBERED when the shared numbers differ from the notes' keys; W_PARAM names the field (text or cite) in which two notes under one number differ. A view a layout names also gets its own W_VIEW_FIT when its standalone sheet cannot fit; its leader and annotation diagnostics in check come from the layout scale."
     ),
     example: "{\"id\":\"S1\",\"views\":[\"A\",\"B\",\"C\",\"D\"],\"arrange\":\"grid\",\"columns\":2,\"notes\":\"shared\",\"scale\":\"common\"}",
 };

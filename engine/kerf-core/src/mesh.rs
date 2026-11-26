@@ -406,6 +406,21 @@ pub fn build(scene: &Scene<'_>, include_fills: bool) -> Vec<Part> {
             if pr.kind == Kind::Line && pr.line_pts.is_empty() {
                 continue;
             }
+            if c.ty.ty == crate::catalog::Type::Rebar
+                && c.node.get("plane").and_then(crate::json::Value::str) == Some("yz")
+            {
+                if let Some(first) = pr.path3.first() {
+                    let center: Vec<V2> = pr.path3.iter().map(|v| V2::init(v[1], v[2])).collect();
+                    tube(&mut part, &center, pr.sweep_r, first[0]);
+                    for data in [&mut part.positions, &mut part.normals, &mut part.edges] {
+                        for v in data.as_chunks_mut::<3>().0 {
+                            *v = [v[2], v[0], v[1]];
+                        }
+                    }
+                    parts.push(part);
+                }
+                continue;
+            }
             if pr.centerline.len() >= 2 && pr.sweep_r > 0.0 && !pr.loops.is_empty() && pr.zhalf == 0.0 {
                 let cl = geom::flatten_polyline(&pr.centerline, false, 0.02);
                 tube(&mut part, &cl, pr.sweep_r, (pr.z0 + pr.z1) / 2.0);
@@ -414,7 +429,9 @@ pub fn build(scene: &Scene<'_>, include_fills: bool) -> Vec<Part> {
             }
             if pr.fp_proxy {
                 if pr.footprint.len() >= 3 {
-                    extrude(&mut part, core::slice::from_ref(&pr.footprint), pr.fp_y[0], pr.fp_y[1], 20.0, [&[], &[]]);
+                    let mut region = alloc::vec![pr.footprint.clone()];
+                    region.extend(pr.fp_holes.iter().cloned());
+                    extrude(&mut part, &region, pr.fp_y[0], pr.fp_y[1], 20.0, [&[], &[]]);
                     part.swap_yz(0, 0, 0);
                     parts.push(part);
                 }

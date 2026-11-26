@@ -3110,3 +3110,262 @@ and the pieces to remove.
 | `W_HOLE_LIMIT` | warning | a bored hole in sawn lumber over the IRC size or edge limits; an I-joist hole in a flange |
 | `W_NOTCH_LIMIT` | warning | a notch in sawn lumber over the IRC depth or length limits |
 | `I_CMU_PLAN_UNITS` | info | a CMU wall cut in plan keeps its bare shells because the document draws its webs as `cmu` pieces (listed by `kerf check`) |
+
+## 33. v0.2.0-beta.5: sheets and annotations
+
+**Single-view sheets.** A view accepts `sheet`: `"auto"` (default), `"WxH"`, or `[width,height]` in paper inches,
+5..60 each. Auto starts with the style's sheet and tries larger standard sheets in order: 17x11, 22x17, 24x18,
+36x24 (never smaller than the style sheet). At each size, section/plan/elevation views without a scale try every
+standard scale largest first with the complete notes, dimensions, tables and wrapped title. Auto selects the first
+fitting page with scale at least 1"=1'-0"; if none reaches that target, the smallest page achieving the largest
+fitting scale wins. Explicit view/document scales and schedule tables retain their size and grow the page instead.
+An NTS iso fits independently as before. A standalone fit retains safe automatic note-side changes and tries
+another scale/page rather than reverting them merely to squeeze the view into a smaller page. No fitting standard
+page: keep the largest page and warn `W_VIEW_FIT`.
+`I_VIEW_SHEET` names a page larger than the style's sheet, its size and scale, with the update op that pins its size.
+The selected size applies to all single-view `--sheet` exports; layouts retain their own sheet and scale.
+
+Every standalone sheet is checked, including a view named in a layout. `W_VIEW_FIT` names the view, needed and
+available paper size, overflow and contributing annotations; a larger-paper fix is an `update views/<id>` op.
+The usable area is inside the frame and above the title block with 1/8" clearance at each edge. When checking a
+document, annotation/leader diagnostics of layout views come from the chosen layout scale, not a separate standalone
+scale. Layout build diagnostics also enter the document check. A view in several layouts is checked in each.
+
+**Lists and captions.** Keyed/list `notes_side` additionally accepts `"below"`: left-aligned with drawing extents,
+its top one gutter below them. Leader views with above/below warn `W_PARAM` and use both columns. Side lists may be
+taller than the geometry: their one-column height budget is usable page/cell height minus one paper inch for the
+caption; only taller lists with more than eight lines split into two columns. Above/below lists retain balanced
+two-column splitting. Captions wrap in standalone views as well as layouts, within the available paper/cell width.
+
+**Dimension text and fixes.** Text longer than its measured span may use a centered outward position with a short
+stem even outside a chain. Variant/offset selection includes collisions between outside text and drawn member lines
+so moving text off one annotation does not silently put it on a member. Text remains full paper height. A numeric
+dimension-offset `W_LEADER_HIT` fix is offered only after rebuilding the complete view at its current scale and
+finding no leader hits or annotation overlaps; its exact update op includes `pin:true` and pins an automatic view
+scale. Otherwise the diagnostic retains a note-placement or view-wide remedy; it does not claim an unchecked translated dimension box is a fix.
+Leader diagnostics state their drawing scale. Each automatic scale trial has a fresh routing work budget.
+Unresolved dense routing remains `W_LEADER_HIT`.
+
+**Degree and iso labels.** Text folding preserves U+00B0, already supported by the plotter font. All exporters draw
+the degree glyph (R2000 DXF TEXT uses its ASCII %%d control code). In an iso, a label's Ref uses model z at the
+view's `cut_z` (default 0), clamped to the drawn member's extrusion span; optional label `z` selects a different station. An offset inside its Ref is still model XY.
+A literal label `at:[x,y]` is already in view coordinates; top-level label `offset:[dx,dy]` is added after projection.
+For example `{"id":"l_open","type":"label","text":"OPENING","at":{"ref":"lintel@center","offset":[0,-16]},"z":0}`
+places the label at the opening's station instead of the nearest extrusion end. Existing note landings retain their
+visible-face selection.
+
+## 34. v0.2.0-beta.5: connectors and fasteners
+
+### 34.1 Member references and joint paths
+Connector member fields accept `id`, `id#k`, `id.part`, `id#k.part` and their existing lists. Only solid bodies
+of the named part participate in placement; an unknown part is E_REF_UNKNOWN listing available parts. Dependency order
+continues to use the component id. A connector may name two distinct parts of one component only where the
+builder can distinguish them; member ties currently reject two references to the same component instance.
+
+A tie whose selected left/right (or top/bottom) faces are separated along the joint by more than its strap width
+emits `W_TIE_PATH`: the schematic otherwise wraps the entire offset between those faces. Its exact update op
+selects front/side left at the crossing (back/right for the other locations). This identifies geometry that cannot
+stand in for a short twist strap. `MTS12` now has a 12-inch schematic strap length.
+
+`connector.gap` is a nonnegative length for member ties (a separated angle requires explicit points): the allowed gap or intervening layer thickness between two mounting
+members. Without it, placement still searches within 1/2 inch. A gap over 1/32 inch draws a straight front/back
+face bridge, with the lower leg on the lower member and upper leg on the upper member, rather than probing
+inside the empty joint. Coplanar mounting faces give a straight plate; unequal z faces bend one leg onto the wide member's side at the crossing. The tie bridge supports `along` for coplanar faces,
+`legs`, width and gauge; it rejects side-face placement. For an exact model with default legs, the gap is
+subtracted from catalog length before dividing it between the two legs. Explicit legs exceeding the developed
+catalog length emit W_TIE_PATH with a shorter-leg or longer-model op. An unspecified gap emits `W_CONNECTOR_GAP` with the
+actual gap and an exact `gap` update op. Explicit gap confirms the intended separation. DTC/STC/HTC remain W_CONNECTOR_GAP even with explicit gap:
+their deflection slots and movement allowances are not modeled. Their exact fix preserves existing acknowledgements
+and records the schematic limitation after manufacturer movement/fastening are specified in the note.
+
+### 34.2 Hangers and tension ties
+Default hanger height uses an exact table model's height when available. Otherwise it uses 85% of carried depth;
+for a truss this is its bottom chord at the hanging end, including end-on trusses, rather than its full depth.
+A named family-only truss hanger with no explicit height emits `W_HANGER_SIZE` asking for the manufacturer height
+and supplying the current schematic height as an exact update op. Explicit height remains authoritative.
+`HUS26` has a 5 7/16-inch height and `LU24` has a 3 1/8-inch height, matching the supplied authoring repros;
+other existing table heights are retained. Bracing and size checks remain active.
+
+A sloping carried member draws a sloping seat. `W_HANGER_SLOPE` warns for a non-LSS model that has no modeled
+slope/skew adjustment and offers a slope-adjustable model op; manufacturer model and dimensions must be confirmed.
+Plan skew is outside the current framing placement model. When hanger placement fails because a carried member
+runs into its support, its fix preserves cuts at the other end. If the proposed trim is already present, the
+message explains that the centerline trim missed, and supplies an explicit vertical bevel line at the support
+face instead of repeating that trim. Apply remains atomic on the original failure.
+
+DTT-family `connector` holdowns use a horizontal x-axis `bolt` in `rod` and a joist in `post`. `face` is front/back
+(default toward the bolt). `height` is horizontal body length (default 6 15/16), `width` its vertical dimension
+(default 3 1/4), and `seat` its vertical seat thickness (default gauge). The seat is at the bolt nut bearing;
+the back follows the joist face and screws enter the wood. DTT rejects seat_height: the bolt sets the seat. `W_CONNECTOR_ORIENT` identifies unsupported bolt
+orientations (no surrogate geometry) or a body extending off the joist, with exact corrective ops. This wood
+connection does not demand foundation embedment; ordinary uplift holdowns retain their foundation check.
+
+Anchor-bolt `plate` association scans the plate in the bolt's rotated frame. Default projection and nut/washer
+bearing are measured along the actual rod axis, including horizontal ledger rods.
+
+### 34.3 Continuous wraps
+`connector.on` accepts its existing single face string or a three-face array:
+`["post.face_front","beam.face_top","post.face_back"]` (also back/top/front). This is one connector and one
+summary item, with constant strap width across both legs and the top. Front/back faces must align with the beam,
+and the full width must fit at the shared x station. Optional points must have equal x and zero bulges; their
+lowest y sets both lower ends. Without points the first member's face center supplies x and each post bottom
+supplies its lower end. The beam top supplies the upper bend. Other wrap sequences are E_PARAM, never silently
+flattened to a 2D strap. Wraps reject explicit at/z/rotate/slope/mirror/lay/side placement.
+
+### 34.4 Nailing through stacks and explicit rows
+Face nailing intersects successive backing layers and requires a continuous stack, including intermediary panels.
+Receivers at the same driving depth (e.g. rim and blocking) are alternatives; nails are placed over each backing
+footprint. Any listed receiver touching the head member may start a path. Placement and length checks use that shared footprint; a row
+cannot center on the sole plate while missing its listed rim. A listed receiving group missed by every drawn nail also emits W_NAIL_MEMBERS.
+A stack with no common path emits W_NAIL_MEMBERS
+and draws no face nails for that joint. Its exact members op limits the connection to the first two only if
+that is the intended joint; otherwise correct the member geometry or references.
+
+`nailing.row_offsets` optionally supplies one positive increasing distance per row, measured from the lower
+edge across the shared footprint in the first member's local frame. For example `rows:2,row_offsets:[1.5,7.75]`
+places two rows at those distances rather than at thirds. It is face-only; cardinality and ordering errors are
+E_PARAM. An offset outside a joint's width warns W_NAIL_MEMBERS and draws nothing for that joint, with the op
+removing row_offsets to restore automatic placement. Existing edge-distance checks use actual outer offsets.
+If end clearances collapse several requested nails to the same position, W_NAIL_SPACING reports the requested
+and distinct counts instead of silently dropping duplicate fasteners; its count op explicitly accepts the
+available quantity. The default remains evenly spaced rows; `along` selects the direction they run.
+
+### 34.5 Rods and screw eyes
+The existing `bolt.kind` vocabulary appends `threaded_rod` and `eye_screw`. Both use orient side (rotate to point
+them), diameter, count/spacing/line, and required positive length. Rods reject grip and thread (they are fully threaded and sized by length). A threaded rod starts at the placement point
+and runs downward by length, with blunt ends, full schematic threads and no head or nut. Optional `coupler`
+is the sleeve length downward from the top, no greater than rod length (schematic outside diameter 1.75d).
+Anchors include start, end and tip (head_bearing aliases start for the shared bolt placement default); parts are shank and coupler. It has no concrete-anchor spacing/embedment
+semantics. `eye_screw` is a single wood screw with its shoulder at the placement point, length down into wood,
+and a schematic ring (outside diameter 6d, inside diameter 4d) above the shoulder; anchor eye is its center.
+Screw length/thread rules still apply. Existing wood_screw and lag_screw remain the plain single-screw forms.
+
+## 35. v0.2.0-beta.5: concrete, masonry and ops
+
+### 35.1 Reinforcement across hosts (#36)
+
+`W_COVER` measures exposed concrete/masonry boundaries. A shared face is internal wherever another host continues
+across it at the bar's depth; it requires no cover, with or without a shared `pour`. Partial contacts split an edge:
+the uncovered remainder still requires cover. Straight legs measure transverse cover in their own direction;
+ends may continue into another host (as before), and bends measure to every exposed face. Every host entered by a path is checked, rather than only the host
+containing its longest leg's midpoint. Footprints use their actual section at that depth (round hosts use the circular
+chord), not their bounding box. CMU/grout surrogate pieces wholly inside a native CMU host defer to that host's cover.
+A CMU void edge backed by steel is a steel interface, not an exposed masonry face. Other void edges retain cover.
+The fix names an existing part override only when that override supplies the requirement. Negative clear cover means
+the bar surface crosses an exposed face: lowering required cover to zero cannot fix it; a path-bar fix moves the
+failing leg's authored points inward. Recheck the whole bar after any geometry change.
+
+Rebar `plane: "yz"` adds transverse vertical paths. `points` are literal `[y,z]` lengths; `x` is the constant x
+coordinate (default 0), a length or a Ref whose x is used. Example:
+`{"type":"rebar","size":"#4","mode":"path","plane":"yz","x":4,"points":[[2,-8],[24,-8]],"hook":{"end":{"angle":90,"toward":"up"}}}`.
+Hook directions use the authored coordinate plane: right/left change its first coordinate (y), up/down its second
+(z). The bar uses the same bounded leg approximation as xz bars for checks and its complete centerline for
+plan/section projections, a smooth transverse ribbon in iso and a swept circular mesh. XY rotate/slope is refused
+on a yz path; change the [y,z] points instead. `W_COVER` remains an XY check; z-face cover is not checked. `tie` still uses xy or xz;
+a yz tie request is `E_PARAM` directing the author to yz points and hooks. `epoxy` remains xy only.
+
+### 35.2 Masonry units and bond beams (#37)
+
+`cmu_wall.width` additionally accepts nominal 16 (or actual 15.625). `form: "pier"` is a square two-cell column unit:
+actual width by actual depth, run z, stack bond, with end and central webs in 3D. Its natural depth is the actual width;
+a numeric `z` moves its centre, and an explicit z range must have that depth. Example:
+`{"id":"pier","type":"cmu_wall","width":16,"form":"pier","courses":3,"grout":"solid"}`.
+This does not introduce a nominal 24-inch pier unit.
+
+`units` maps one-based course strings to `lintel` (solid CMU bottom under the core) or `inverted_bond_beam` (solid top).
+Those courses are grouted. Example: `"units":{"1":"lintel","3":"inverted_bond_beam"}`. An `open_end`, `knockout`
+or `knock_out` selector currently draws the standard two-cell profile with `W_PARAM`, naming the course and the exact
+update removing that selector; specify the unmodelled unit in a construction note. Other unknown unit names fail.
+
+`bond_beams` retains numbers and `[first,last]` course ranges and additionally accepts run-x spans:
+`"bond_beams":[{"course":3,"x":[0,72]},{"course":4,"x":[72,120]}]`.
+`x` is measured locally from the wall's left end, with `0 <= start < end <= length`. Full courses and partial spans
+add to `bond_beam_courses`. Beam courses/spans have inset dashed bands in elevation; partial spans grout their core
+continuously in plan and stop at their specified lengths and control joints. Zones `bond_beam_<k>` are ordered from
+the bottom (then left); the highest is also `bond_beam`, with corresponding centre anchors. The grout zone includes
+partial spans. Ordinary cells and head joints continue outside those spans.
+
+Native plan grout around vertical reinforcement with `grout: "reinforced"` counts as contact in `W_FLOATING`, for
+both bar and wall. A floating bar in an ungrouted CMU cell names the wall and course, with an update adding that course
+to `bond_beams` for horizontal reinforcement. Vertical reinforcement uses `grout: "reinforced"` or `"solid"`.
+Footprints remain physical pieces: open, ungrouted cells do not become reinforcement hosts by proximity. Shared
+piece faces are internal for cover, but a bar traversing empty cells still warns `W_BAR_OUTSIDE`; add a native CMU
+host and specify the reinforced cells/bond-beam courses rather than reducing the cover of individual webs.
+
+**Migration of s-40-05, s-40-06, s-40-07, s-40-08, s-40-11 and s-40-14.** These library details predate native plan
+units and draw CMU webs, grout and mortar as concrete footprints. `I_CMU_PLAN_UNITS` preserves their legacy plan and
+now lists overlapping surrogate CMU/grout/mortar pieces and exact removal ops. Apply those ops together, re-pointing
+or removing annotations/placement refs that target the old pieces in the same batch. Keep native walls and all real
+reinforcement; use `grout: "reinforced"` for vertical cells and `bond_beams` for horizontal courses. Remove obsolete
+hand-drawn joint line annotations after reviewing which ones the native joints replace. Recheck each view, remove
+stale acknowledgements with the printed ops, and inspect plan and cutaway iso (`cutaway:true, cut_z:0`).
+Do not remove a real grout bed or adjacent wall just because its material is grout or CMU: inspect the listed pieces.
+The source library is not rewritten by an engine upgrade.
+
+### 35.3 Ops and CLI contracts (#39)
+
+`{"op":"set","path":"scale","value":null}` removes document scale, exactly like `remove scale`.
+Other whole-object null sets fail with an instruction to use the explicit remove op; a missing `value` remains an error.
+Merge-patch updates retain null-as-key-removal semantics.
+
+Component removal reference safety is checked against the final batch. Removing before removing/re-pointing its
+referrers, or removing then re-adding the same ID, succeeds when the final document has no dangling reference to the
+removed ID. A final dangling reference is `E_REF_UNKNOWN`, naming its referrers and original removal op; nothing is
+written. Other operations retain their sequential order (an update still needs its target to exist at that op).
+`update views/<id>` accepts `annotations` as a whole-list replacement; annotation paths remain preferable for small
+edits. Citation sanitization still applies: an LLM cannot introduce a verified citation through the replacement.
+
+View `kind: "sheet"` aliases `kind: "schedule"` (paper-space content). The separate view `sheet` property sizes
+standalone exports (§33); `layouts[].sheet` sizes layouts. `kerf schema view` distinguishes kind from paper size.
+`anchor_bolt.plate` measures plate entry/exit along the rotated rod axis, so projection and nut/washer placement
+follow a horizontal or inclined rod as well as a vertical rod.
+
+## 36. v0.2.0-beta.5: round-2 authoring fixes
+
+### 36.1 Stairs and member references
+
+Concrete `stair.cover` is public (`bottom`, `top`, `sides`, `parts`), using the concrete-host parser.
+Wood stringers stay equally spaced across `width`; even counts no longer move a stringer to the center cut.
+Hardware member names accept `id#instance.part`, including `stair.stringer`. On wood stairs, both `carried:"stair"`
+and `carried:"stair.stringer"` select one physical stringer nearest the connector's default section depth. The hanger fits its actual thickness and local end profile, including the sloped soffit; model-depth checks
+use that local profile. `nailing.members` expands the part into physical stringers.
+`stair.stringer@<box-anchor>` addresses the stringer profile; `top_cut_top`, `top_cut_bottom`, `top_bearing`,
+`seat_front` and `seat_back` remain anchors on the stair component.
+
+### 36.2 Round and embedded concrete
+
+Round concrete accepts `voids` and sleeve subtraction for rectangular XY cutter profiles with finite or through
+z ranges. The cylinder is partitioned at cutter y boundaries; each XZ footprint retains its holes in plan, section,
+iso and mesh. Vertical round steel posts retain circular XZ void envelopes. Curved/sloping XY cutters return `E_PARAM` at the void entry with a removal op and guidance to use
+rectangular voids or embedded geometry. Angled non-round footprints retain §28.7's restriction.
+Square embedded wood posts keep square plan profiles; reinforcement retains circular cut dots.
+Metal component voids are cast-in interfaces, excluded from `W_COVER`; shape voids and nonmetal component voids
+remain exposed boundaries. Exterior host-cover checks remain active.
+
+### 36.3 Steel, fasteners and annotations
+
+Steel `cuts` holes can meet or cross an edge (weld-access holes/open copes); the cutter must intersect the stock
+rectangle. Wood retains its wholly-inside hole restriction. A plan cut through a nonembedded `steel` plate
+(`shape:"PL..."`) draws its outline rather than a solid black face, keeping embedded bolt groups readable.
+`bolt.kind:"self_drilling_screw"` draws a screw with `diameter`, `length`, `thread`, head and point, without a nut.
+AISC bolt edge/spacing checks apply only to `kind:"bolt"`; screws and welded studs skip them. Metal screw selection
+and AISI/product design remain author responsibilities.
+`steel_joist` adds `top_flange_bottom` and (elevation) `top_flange_bottom_start/end`: the actual horizontal chord
+flange underside. `top_chord_bottom` still denotes the bottom of the vertical angle leg band.
+`W_SCREW_PENETRATION` identifies side wood/lag screws whose axis reaches wood within 6D beyond the tip but whose tip
+does not enter. The fix gives a length op providing 6D entry or directs the head to the actual flange underside;
+product suitability remains a design check. End-on screw penetration is not checked.
+Fixed weld text now receives `W_LABEL_OVERLAP` against actual rendered text polygons after note layout (notes,
+keyed tags/lists, dimensions, labels, tables and other welds). Its offset op clears current text; inspect the
+re-laid-out view. Weld symbols remain fixed. Plan reinforcement leaders choose actual visible bar regions rather
+than the center between bars.
+
+### 36.4 Cuts and scenario depth
+
+End cuts may meet at one face when the triangular area remains positive; crossed or zero-area cuts are `E_PARAM`.
+An implicit two-point trim extending a corner more than two member depths beyond its endpoint stays square and
+reports `W_CUT_MISS` with the square-end op. An explicit trim opts into extension after author review.
+The first document section/elevation sets natural depth only for members it includes (`views`, `only`, `omit`).
+Other scenarios use the zero model datum. This limits legacy first-cut inheritance to its own scenario; later cut planes
+do not reposition geometry. Use explicit `z` for later scenarios that need a noncentral datum.
+Shared members still have one depth; use explicit `z` when several cuts must share physical geometry.

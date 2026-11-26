@@ -1,0 +1,234 @@
+{
+  "kerf": "0.1",
+  "id": "connector-fasteners",
+  "title": "CONNECTORS AND FASTENERS",
+  "run": [
+    -12,
+    12
+  ],
+  "components": [
+    {
+      "id": "post",
+      "type": "lumber",
+      "size": "4x4",
+      "run": "y",
+      "length": 12,
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "beam",
+      "type": "lumber",
+      "size": "4x6",
+      "run": "x",
+      "face": "wide",
+      "length": 12,
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          -4,
+          12
+        ]
+      }
+    },
+    {
+      "id": "wrap",
+      "type": "connector",
+      "model": "CS16",
+      "on": [
+        "post.face_front",
+        "beam.face_top",
+        "post.face_back"
+      ]
+    },
+    {
+      "id": "eye",
+      "type": "bolt",
+      "kind": "eye_screw",
+      "diameter": 0.25,
+      "length": 1.25,
+      "rotate": 180,
+      "at": {
+        "to": [
+          5,
+          11.25
+        ]
+      }
+    },
+    {
+      "id": "rod",
+      "type": "bolt",
+      "kind": "threaded_rod",
+      "diameter": 0.375,
+      "length": 7,
+      "coupler": 1.25,
+      "at": {
+        "to": [
+          5,
+          10.5
+        ]
+      }
+    },
+    {
+      "id": "lower",
+      "type": "lumber",
+      "size": "2x6",
+      "orient": "flat",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          18,
+          0
+        ]
+      }
+    },
+    {
+      "id": "upper",
+      "type": "lumber",
+      "size": "2x6",
+      "run": "x",
+      "face": "wide",
+      "length": 8,
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          18,
+          2
+        ]
+      }
+    },
+    {
+      "id": "clip",
+      "type": "connector",
+      "model": "DTC",
+      "members": [
+        "lower",
+        "upper"
+      ],
+      "legs": [
+        1.25,
+        2
+      ],
+      "gap": 0.5,
+      "acknowledge": [
+        {
+          "code": "W_CONNECTOR_GAP",
+          "reason": "schematic clip; manufacturer slot travel and fastening are specified in the detail note"
+        }
+      ]
+    },
+    {
+      "id": "rim",
+      "type": "lumber",
+      "size": "2x6",
+      "orient": "flat",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          36,
+          0.75
+        ]
+      }
+    },
+    {
+      "id": "sheet",
+      "type": "panel",
+      "thickness": 0.75,
+      "length": 12,
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          36,
+          2.25
+        ]
+      }
+    },
+    {
+      "id": "sole",
+      "type": "lumber",
+      "size": "2x6",
+      "orient": "flat",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [
+          36,
+          3
+        ]
+      }
+    },
+    {
+      "id": "nails",
+      "type": "nailing",
+      "members": [
+        "sole",
+        "sheet",
+        "rim"
+      ],
+      "size": "16d",
+      "count": 4,
+      "spacing": 6,
+      "rows": 2,
+      "row_offsets": [
+        1.5,
+        4
+      ],
+      "along": "z"
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "cut_z": 0,
+      "annotations": [
+        {
+          "id": "n_wrap",
+          "type": "note",
+          "text": "CONT. CS16 STRAP OVER BEAM",
+          "target": "wrap"
+        },
+        {
+          "id": "n_rod",
+          "type": "note",
+          "text": "3/8\" DIA. THREADED HANGER ROD W/ COUPLER",
+          "target": "rod"
+        },
+        {
+          "id": "n_clip",
+          "type": "note",
+          "text": "DTC CLIP AT 1/2\" DEFLECTION GAP, INSTALL PER MFR.",
+          "target": "clip"
+        },
+        {
+          "id": "n_nails",
+          "type": "note",
+          "target": "nails"
+        }
+      ],
+      "title": "CONNECTOR SECTION"
+    },
+    {
+      "id": "I",
+      "kind": "iso",
+      "from": "front_left",
+      "annotations": [],
+      "title": "CONNECTOR ISOMETRIC"
+    }
+  ],
+  "layouts": [
+    {
+      "id": "S1",
+      "views": [
+        "A",
+        "I"
+      ],
+      "arrange": "column",
+      "sheet": "auto"
+    }
+  ]
+}

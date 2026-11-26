@@ -9,13 +9,13 @@ use alloc::vec::Vec;
 
 param_enum! { pub enum Orient { Side = "side", End = "end" } }
 param_enum! { pub enum Line { X = "x", Y = "y", Z = "z" } }
-param_enum! { pub enum BoltKind { Bolt = "bolt", WeldStud = "weld_stud", HeadedStud = "headed_stud", LagScrew = "lag_screw", WoodScrew = "wood_screw" } }
+param_enum! { pub enum BoltKind { Bolt = "bolt", WeldStud = "weld_stud", HeadedStud = "headed_stud", LagScrew = "lag_screw", WoodScrew = "wood_screw", ThreadedRod = "threaded_rod", EyeScrew = "eye_screw", SelfDrillingScrew = "self_drilling_screw" } }
 param_enum! { pub enum Hole { Standard = "standard", Oversize = "oversize", ShortSlot = "short_slot", LongSlot = "long_slot" } }
 param_enum! { pub enum SlotDir { X = "x", Y = "y" } }
 
 params! {
     pub struct Params {
-        kind: Enum(BoltKind) = BoltKind::Bolt => { desc: "bolt: head, grip, washer and nut; lag_screw: hex head and washer on the placement point, plain shank then threads and a point, `length` long, no nut (steel plate or wood side member to wood); wood_screw: structural wood screw with a hex washer head (SDS, SDWS, #14: put the model in grade), threads and point, no nut (built-up LVL plies, ledgers); weld_stud: threaded stud welded at the placement point (no head), grip UP through the plies, washer and nut on top (wood nailers on steel); headed_stud: shear stud welded at the placement point, `grip` = its length after welding, head 1.6d x 0.5d (embed plates, composite decks). Studs are side only: rotate the component to point them" },
+        kind: Enum(BoltKind) = BoltKind::Bolt => { desc: "bolt: head, grip, washer and nut; lag_screw: hex head and washer on the placement point, plain shank then threads and a point, `length` long, no nut (steel plate or wood side member to wood); self_drilling_screw: metal sheet screw (threads and point, no nut, no AISC bolt edge/spacing or wood penetration check; product design by manufacturer/AISI); wood_screw: structural wood screw with a hex washer head (SDS, SDWS, #14: put the model in grade), threads and point, no nut (built-up LVL plies, ledgers); weld_stud: threaded stud welded at the placement point (no head), grip UP through the plies, washer and nut on top (wood nailers on steel); headed_stud: shear stud welded at the placement point, `grip` = its length after welding, head 1.6d x 0.5d (embed plates, composite decks). threaded_rod: no head/nut, fully threaded length downward from placement (optional coupler), no concrete-anchor checks; eye_screw: wood screw with a schematic eye (OD 6d, ID 4d), length under the eye shoulder. Studs, rods and eyes are side only: rotate the component to point them" },
         diameter: LenPos = 0.75 => { desc: "bolt diameter: 0.5, 0.625, 0.75 (typical), 0.875, 1" },
         grade: Str = "A325" => { desc: "free text for notes and the summary: A307, A325, A490, F1554 ..." },
         grip: LenPos = 1.0 => { desc: "thickness of the plies clamped between head and nut (sum of plate and flange thicknesses); the head bears at the placement point" },
@@ -24,12 +24,13 @@ params! {
         spacing: LenPos = 3.0 => { desc: "center-to-center spacing along `line` (AISC minimum 2 2/3 d, 3d preferred; W_BOLT_SPACING)" },
         line: Enum(Line) = Line::X => { desc: "direction of the row from bolt 1: x or z for side bolts, x or y for end bolts" },
         washer: Bool = true => { desc: "draw the hardened washer under the nut" },
-        length: OptLenPos => { def: "screws: required", desc: "lag_screw / wood_screw: length under the head, into the wood. The point lands at anchor tip; penetration into the main member = length - grip" },
-        thread: OptLenPos => { def: "lag: length/2 + 1/2 (6 max); wood_screw: 2/3 length", desc: "lag_screw / wood_screw: threaded length up from the point; the rest is plain shank (keep the threads out of the side member)" },
+        length: OptLenPos => { def: "screws/rod: required", desc: "lag_screw / wood_screw / eye_screw / self_drilling_screw: length under the head/eye into the receiver; threaded_rod: total rod length. The point lands at anchor tip; penetration into the main member = length - grip" },
+        thread: OptLenPos => { def: "lag: length/2 + 1/2 (6 max); wood_screw: 2/3 length", desc: "lag_screw / wood_screw / eye_screw / self_drilling_screw: threaded length up from the point; the rest is plain shank (keep the threads out of the side member)" },
         hole: Enum(Hole) = Hole::Standard => { desc: "hole in the ply under the head (AISC 360 Table J3.3): standard (d + 1/16), oversize, short_slot or long_slot (slip connections at joist seats, ledger angles, deflection clips). End-on bolts draw the oversize hole or slot outline around the bolt (a standard hole is hidden by the head); side-on bolts carry it in the summary and notes only" },
         slot_length: OptLenPos => { def: "table: short d + 5/16, long 2.5 d", desc: "overall length of a slot when the detail gives it (e.g. 1.5 or 2.5), with hole short_slot or long_slot" },
         slot_dir: Enum(SlotDir) = SlotDir::X => { desc: "end-on bolts: direction of the slot's long axis in the drawing, x (horizontal slot) or y (vertical slot)" },
         counterbore: Bool = false => { desc: "weld_stud: washer and nut sit in a bored pocket in the top ply, the stud end flush with the top of the grip, so nothing projects above the plies (sheathing or joists bear flat); draws the pocket (washer OD + 1/8\", part `counterbore`). Needs grip >= washer + nut + d/2" },
+        coupler: OptLenPos => { desc: "threaded_rod only: optional sleeve length down from the placement point; sleeve outside diameter is a schematic 1.75d. No nut, head or foundation embedment is implied" },
     }
 }
 
@@ -81,7 +82,38 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail("line", "line z runs along the axis of an end bolt: use line x or y".into());
         return None;
     }
-    let screw_kind = matches!(bp.kind, BoltKind::LagScrew | BoltKind::WoodScrew);
+    if bp.kind == BoltKind::ThreadedRod {
+        for key in ["thread", "grip"] {
+            if ctx.p.has(key) {
+                ctx.p.fail(key, format!("threaded_rod is fully threaded and sized by length; remove '{key}'"));
+                return None;
+            }
+        }
+        let Some(len) = bp.length else {
+            ctx.p.fail("length", "threaded_rod needs length: the total rod length down from the placement point; no concrete embedment or head is implied".into());
+            return None;
+        };
+        if !side || bp.counterbore || bp.hole != Hole::Standard {
+            ctx.p
+                .fail("orient", "threaded_rod uses orient side and a standard hole; rotate it to point the rod".into());
+            return None;
+        }
+        if bp.coupler.is_some_and(|c| c > len) {
+            ctx.p.fail("coupler", "coupler length must not exceed the rod length".into());
+            return None;
+        }
+        return Some(threaded_rod(&bp, len));
+    }
+    if bp.coupler.is_some() {
+        ctx.p.fail("coupler", "coupler is only used by kind threaded_rod".into());
+        return None;
+    }
+    if bp.kind == BoltKind::EyeScrew && !side {
+        ctx.p.fail("orient", "eye_screw uses orient side; rotate it to point the screw".into());
+        return None;
+    }
+    let screw_kind =
+        matches!(bp.kind, BoltKind::LagScrew | BoltKind::WoodScrew | BoltKind::EyeScrew | BoltKind::SelfDrillingScrew);
     let slotted = matches!(bp.hole, Hole::ShortSlot | Hole::LongSlot);
     if bp.slot_length.is_some() && !slotted {
         ctx.p.fail(
@@ -101,7 +133,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail(
             k,
             format!(
-                "'{k}' is for kind lag_screw or wood_screw; a {} is sized by \"grip\" (the plies it clamps{})",
+                "'{k}' is for kind lag_screw, wood_screw, eye_screw or self_drilling_screw; a {} is sized by \"grip\" (the plies it clamps{})",
                 bp.kind.tag(),
                 if bp.kind == BoltKind::HeadedStud { ": the stud's length" } else { "" }
             ),
@@ -429,9 +461,9 @@ fn hole_outline(bp: &Params, o: V2) -> Option<Prism> {
     })
 }
 
-fn thread_loop(x: f64, y0: f64, y1: f64, d: f64) -> Vec<Pt> {
+fn thread_loop(x: f64, y0: f64, y1: f64, d: f64, pointed: bool) -> Vec<Pt> {
     let (rc, rr) = (d / 2.0, 0.37 * d);
-    let tip = d.min(0.5 * (y0 - y1));
+    let tip = if pointed { d.min(0.5 * (y0 - y1)) } else { 0.0 };
     let body = y0 - y1 - tip;
     let n = crate::num::to_int_clamped::<usize>(crate::math::floor(body / (d / 3.0)), 1, 400);
     let p = body / n as f64;
@@ -472,8 +504,16 @@ fn screw(bp: &Params, len: f64, thread: f64) -> Built {
             prisms.push(Prism {
                 zhalf: d / 2.0,
                 zoff: zo,
-                ..steel("thread", model::one_loop(thread_loop(o.x, -plain, -len, d)))
+                ..steel("thread", model::one_loop(thread_loop(o.x, -plain, -len, d, true)))
             });
+            if bp.kind == BoltKind::EyeScrew {
+                let outer = model::circle_loop(o.x, 3.0 * d, 3.0 * d);
+                let inner = crate::geom::reverse_loop(&model::circle_loop(o.x, 3.0 * d, 2.0 * d));
+                prisms.push(Prism { zhalf: d / 2.0, zoff: zo, ..steel("eye", vec![outer, inner]) });
+                anchors.push(NamedAnchor { name: "eye".into(), p: V2::init(o.x, 3.0 * d) });
+                anchors.push(NamedAnchor { name: format!("bolt_{}", k + 1), p: o });
+                continue;
+            }
             if wt > 0.0 {
                 prisms.push(Prism {
                     zhalf: wr,
@@ -533,4 +573,47 @@ fn screw(bp: &Params, len: f64, thread: f64) -> Built {
 
 fn default_grade(bp: &Params) -> bool {
     bp.grade == "A325"
+}
+
+fn threaded_rod(bp: &Params, len: f64) -> Built {
+    let d = bp.diameter;
+    let mut prisms = Vec::new();
+    let mut anchors = vec![
+        NamedAnchor { name: "head_bearing".into(), p: V2::init(0.0, 0.0) },
+        NamedAnchor { name: "start".into(), p: V2::init(0.0, 0.0) },
+        NamedAnchor { name: "end".into(), p: V2::init(0.0, -len) },
+        NamedAnchor { name: "tip".into(), p: V2::init(0.0, -len) },
+    ];
+    for (k, (o, zo)) in offsets(usize::from(bp.count), bp.spacing, bp.line).iter().enumerate() {
+        prisms.push(Prism {
+            zhalf: d / 2.0,
+            zoff: *zo,
+            centerline: vec![Pt::new(o.x, 0.0), Pt::new(o.x, -len)],
+            sweep_r: d / 2.0,
+            ..steel("shank", model::one_loop(thread_loop(o.x, 0.0, -len, d, false)))
+        });
+        if let Some(c) = bp.coupler {
+            prisms.push(Prism {
+                zhalf: 0.875 * d,
+                zoff: *zo,
+                ..steel("coupler", model::one_loop(model::rect_loop(o.x - 0.875 * d, -c, o.x + 0.875 * d, 0.0)))
+            });
+        }
+        anchors.push(NamedAnchor { name: format!("bolt_{}", k + 1), p: *o });
+    }
+    let box_ = box_of_prisms(&prisms);
+    Built {
+        prisms,
+        anchors,
+        box_,
+        nat_z: Some(d),
+        info: format!(
+            "bolt threaded_rod {}\" dia. x {}, {} rod(s){}",
+            fmt_num(d),
+            fmt_ft_in(len),
+            bp.count,
+            bp.coupler.map_or(String::new(), |c| format!(", {} coupler", fmt_ft_in(c)))
+        ),
+        ..Built::default()
+    }
 }

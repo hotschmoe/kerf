@@ -254,6 +254,7 @@ pub struct Prism {
     pub fp_proxy: bool,
     /// The plan outline [x, z] (CCW) of an angled footprint, with its y range `fp_y`.
     pub footprint: Vec<V2>,
+    pub fp_holes: Vec<Vec<V2>>,
     pub fp_y: [f64; 2],
     /// Plan views: the floor of a shallow recess in a cut concrete member (a depressed slab), drawn hatched like the cut
     /// with its edge as a line (it never joins its own casting).
@@ -303,6 +304,7 @@ impl Default for Prism {
             face_on: false,
             fp_proxy: false,
             footprint: Vec::new(),
+            fp_holes: Vec::new(),
             fp_y: [0.0; 2],
             recess: false,
             existing: false,

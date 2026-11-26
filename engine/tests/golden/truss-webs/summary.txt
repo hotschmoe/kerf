@@ -18,3 +18,7 @@ DOC truss-webs  19 components  9 views  0 errors  0 warnings  0 acknowledged
  p_plate       lumber (2) 2x6 flat run z                   x 0"..5 1/2"      y 0"..3"
  p_truss       truss parallel chord 2'-0" deep, 4x2+4x2 chords, bottom chord bearing, webs @ 1'-9" x 0"..4'-0"       y 3"..4'-9"
  p_shtg        panel plywood 1/2" x 3'-0" run y            x -1/2"..0"       y 1'-9"..4'-9"
+INFO I_VIEW_SHEET C: single-view sheet C: 36 x 24 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/C","value":{"sheet":[36,24]}}
+INFO I_VIEW_SHEET D: single-view sheet D: 24 x 18 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/D","value":{"sheet":[24,18]}}
+INFO I_VIEW_SHEET H: single-view sheet H: 36 x 24 paper inches at 3/4" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/H","value":{"sheet":[36,24]}}
+INFO I_VIEW_SHEET P: single-view sheet P: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/P","value":{"sheet":[17,11]}}

@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"beam-on-post-iso-at","view":"B","kind":"section","scale":8,"bounds":[-14.7679,14.9,22.8786,48],
+{"kerf_drawing":"0.1","doc":"beam-on-post-iso-at","view":"B","kind":"section","scale":8,"bounds":[-14.7679,14.9,22.8786,48.5],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-PATT","lineweight_mm":0.09},{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-DETL-BRKL","lineweight_mm":0.25},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-DIMS","lineweight_mm":0.13},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -33,8 +33,8 @@
 {"t":"path","layer":"S-ANNO-DIMS","pen":"dim","src":"d_pin","closed":false,"pts":[[0,46.25],[3.5,46.25]]},
 {"t":"path","layer":"S-DETL-CUT","pen":"profile","src":"d_pin","closed":false,"pts":[[-0.1768,46.0732],[0.1768,46.4268]]},
 {"t":"path","layer":"S-DETL-CUT","pen":"profile","src":"d_pin","closed":false,"pts":[[3.3232,46.0732],[3.6768,46.4268]]},
-{"t":"path","layer":"S-ANNO-DIMS","pen":"dim","src":"d_pin","closed":false,"pts":[[3.5,46.25],[8.9464,46.25]]},
-{"t":"text","layer":"S-ANNO-DIMS","pen":"dim","src":"d_pin","s":"3 1/2\"","x":6.5357,"y":46.625,"h":0.75,"rot":0,"align":"center","valign":"baseline"},
+{"t":"path","layer":"S-ANNO-DIMS","pen":"dim","src":"d_pin","closed":false,"pts":[[1.75,46.25],[1.75,47.375]]},
+{"t":"text","layer":"S-ANNO-DIMS","pen":"dim","src":"d_pin","s":"3 1/2\"","x":1.75,"y":48.125,"h":0.75,"rot":0,"align":"center","valign":"middle"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"l_brg","s":"BEARING","x":9.75,"y":32,"h":0.625,"rot":0,"align":"center","valign":"middle"},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","closed":true,"pts":[[-6,17.4,1],[-1,17.4,1]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","s":"2","x":-3.5,"y":17.4,"h":1.25,"rot":0,"align":"center","valign":"middle"},

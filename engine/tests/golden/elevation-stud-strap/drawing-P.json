@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"elevation-stud-strap","view":"P","kind":"plan","scale":16,"bounds":[-36.3571,-26.15,90.6429,8],
+{"kerf_drawing":"0.1","doc":"elevation-stud-strap","view":"P","kind":"plan","scale":16,"bounds":[-36.3571,-29.65,90.6429,8],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-DETL-STL","lineweight_mm":0.35},{"name":"S-DETL-HIDN","lineweight_mm":0.18},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-DIMS","lineweight_mm":0.13},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -48,12 +48,12 @@
 {"t":"path","layer":"S-ANNO-DIMS","pen":"dim","src":"d1","closed":false,"pts":[[30,-8.75],[33,-8.75]]},
 {"t":"path","layer":"S-DETL-CUT","pen":"profile","src":"d1","closed":false,"pts":[[29.6464,-9.1036],[30.3536,-8.3964]]},
 {"t":"path","layer":"S-DETL-CUT","pen":"profile","src":"d1","closed":false,"pts":[[32.6464,-9.1036],[33.3536,-8.3964]]},
-{"t":"path","layer":"S-ANNO-DIMS","pen":"dim","src":"d1","closed":false,"pts":[[33,-8.75],[38.3214,-8.75]]},
-{"t":"text","layer":"S-ANNO-DIMS","pen":"dim","src":"d1","s":"3\"","x":36.2857,"y":-8,"h":1.5,"rot":0,"align":"center","valign":"baseline"},
-{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","closed":true,"pts":[[-4,-21.15,1],[6,-21.15,1]]},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","s":"B","x":1,"y":-21.15,"h":2.5,"rot":0,"align":"center","valign":"middle"},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","s":"PLAN - WALL AT POST","x":8.4,"y":-20.83,"h":2.5,"rot":0,"align":"left","valign":"baseline"},
-{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","closed":false,"pts":[[8.4,-21.95],[50.9,-21.95]]},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:P","s":"SCALE: 3/4\" = 1'-0\"","x":8.4,"y":-24.41,"h":1.5,"rot":0,"align":"left","valign":"baseline"}
+{"t":"path","layer":"S-ANNO-DIMS","pen":"dim","src":"d1","closed":false,"pts":[[31.5,-8.75],[31.5,-11]]},
+{"t":"text","layer":"S-ANNO-DIMS","pen":"dim","src":"d1","s":"3\"","x":31.5,"y":-12.5,"h":1.5,"rot":0,"align":"center","valign":"middle"},
+{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","closed":true,"pts":[[-4,-24.65,1],[6,-24.65,1]]},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","s":"B","x":1,"y":-24.65,"h":2.5,"rot":0,"align":"center","valign":"middle"},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","s":"PLAN - WALL AT POST","x":8.4,"y":-24.33,"h":2.5,"rot":0,"align":"left","valign":"baseline"},
+{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","closed":false,"pts":[[8.4,-25.45],[50.9,-25.45]]},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:P","s":"SCALE: 3/4\" = 1'-0\"","x":8.4,"y":-27.91,"h":1.5,"rot":0,"align":"left","valign":"baseline"}
 ],
 "diagnostics":[]}

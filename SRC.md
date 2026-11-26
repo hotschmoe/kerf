@@ -218,7 +218,7 @@ Polygon booleans split boundaries at shared crossings, merge nearby vertices wit
 
 ## engine/kerf-core/src/annot/dims.rs
 
-Dimensions follow SPEC 6.5, 20, 25.2 and 28.3. Non-overlapping adjacent spans on the same side can form a chain, drawn on its outermost authored line and placed and moved as a unit. Text that does not fit is placed outside instead of being reduced or omitted, preferring a chain's free end. Variants select ends, raised positions with leaders, and the side away from the object. Stacking places shorter spans first and moves conflicts outward in 0.25 paper-inch steps; pinned dimensions and chains containing them stay at their authored offset. Repair can also slide text or push a dimension, and blockers are retained for diagnostics.
+Dimensions follow SPEC 6.5, 20, 25.2, 28.3 and 33. Short text variants also consider filled/hatch member regions (excluding soil) and prefer a centered outward position with a short stem; no clear variant leaves a W_LABEL_OVERLAP finding. Non-overlapping adjacent spans on the same side can form a chain, drawn on its outermost authored line and placed and moved as a unit. Text that does not fit is placed outside instead of being reduced or omitted, preferring a chain's free end. Variants select ends, raised positions with leaders, and the side away from the object. Stacking places shorter spans first and moves conflicts outward in 0.25 paper-inch steps; pinned dimensions and chains containing them stay at their authored offset. Repair can also slide text or push a dimension, and blockers are retained for diagnostics.
 
 ## engine/kerf-core/src/annot/repair.rs
 
@@ -226,7 +226,7 @@ SPEC 20 and 25.2 govern bounded repair. Text first slides along a dimension line
 
 ## engine/kerf-core/src/annot/text.rs
 
-SPEC 16 and 25.3 define glyph folding and case handling: significant tokens retain case. Wrapping keeps the pieces of a dimension or spacing together when they fit. Character-count wrapping splits an overlong word; paper-width wrapping leaves it whole for the caller to diagnose as overflow.
+SPEC 16, 25.3 and 33 define glyph folding and case handling; U+00B0 survives normalization for the existing degree glyph: significant tokens retain case. Wrapping keeps the pieces of a dimension or spacing together when they fit. Character-count wrapping splits an overlong word; paper-width wrapping leaves it whole for the caller to diagnose as overflow.
 
 ## engine/kerf-core/src/annot/callout.rs
 
@@ -242,7 +242,7 @@ Boundary lines follow SPEC 29.2 and remain at their authored positions. SPEC 30.
 
 ## engine/kerf-core/src/annot/title.rs
 
-View title bubbles and scale lines follow SPEC 6.4 and 6.5; layout title wrapping leaves overlong words intact.
+View title bubbles and scale lines follow SPEC 6.4, 6.5 and 33; standalone and layout captions wrap to available width, leaving overlong words intact for the fit diagnostic.
 
 ## engine/kerf-core/src/annot/weld.rs
 
@@ -254,7 +254,7 @@ SPEC 6, 16, 20, 23, 24, 25.2, 26.2, 27.4 and 28.2 govern annotations. Layout eff
 
 ## engine/kerf-core/src/annot/notes.rs
 
-SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. Fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Citation sections containing digits retain case because paragraph letters are significant. The through-side of a note (SPEC 30.3) is measured on a horizontal reach from its first landing candidate to each crop edge through the cut bodies of other components; the router only reports it.
+SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. SPEC 33: numeric dimension offset proposals rebuild the complete view with that dimension pinned; they require no remaining leader hits or annotation overlaps, and pin an automatic view scale with the repair. Other fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Side lists get the page/cell height minus one paper inch for the caption, rather than the geometry height; below lists top-align under the drawing. Citation sections containing digits retain case because paragraph letters are significant. The through-side of a note (SPEC 30.3) is measured on a horizontal reach from its first landing candidate to each crop edge through the cut bodies of other components; the router only reports it.
 
 ## engine/kerf-core/src/annot/table.rs
 
@@ -418,6 +418,8 @@ SPEC 12 defines SVG export: 96 user units per paper inch, black ink and stroke-f
 
 ## engine/kerf-core/src/dxf.rs
 
+SPEC 33: R2000 TEXT degree signs use the ASCII `%%d` control code, avoiding UTF-8 decoded as the legacy DXF code page ([Autodesk reference](https://help.autodesk.com/cloudhelp/2024/ENU/AutoCAD-Core/files/GUID-968CBC1D-BA99-4519-ABDD-88419EB2BF92.htm)).
+
 SPEC 12 defines DXF export as ASCII AutoCAD R2000 (AC1015), modelspace in model inches with `$INSUNITS = 1`. LWPOLYLINE retains bulges, HATCH embeds patterns, and the KERF text style points to `romans.shx`. Handles are sequential from a fixed seed, with no timestamps; coordinates use deterministic decimals rounded to 1e-6.
 
 ## engine/kerf-core/src/drawing.rs
@@ -434,7 +436,7 @@ Text stroke polylines use the item's anchor, with rotation in degrees counterclo
 
 ## engine/kerf-core/src/drawview.rs
 
-SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2 and 28.6 govern view construction and fit diagnostics. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet. SPEC 30.3: `sided_pass` builds a view with the automatic note sides and falls back to a pass without them when only that one fits the frame at the scale being tried, so a side change never costs a scale step.
+SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2, 28.6 and 33 govern view construction and fit diagnostics. Standalone builds fit complete annotations on each candidate sheet, aiming at factor <=12 before accepting smaller scales, and honor a per-view sheet override. Explicit scales and paper-sized tables trigger sheet growth. Trials are isolated from returned diagnostics; only the selected sheet is rebuilt for reporting. Each scale trial resets its routing work budget so earlier rejected candidates cannot exhaust later ones. Named layout views still receive standalone sheet-fit warnings, while document annotation findings come from the chosen layout cells. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet. SPEC 30.3: `sided_pass` builds a view with the automatic note sides and falls back to a pass without them when only that one fits the frame at the scale being tried, so a layout side change never costs a scale step. Standalone fits keep the safe side change and try another scale/page instead (SPEC 33).
 
 ## engine/kerf-core/src/hatch.rs
 
@@ -466,7 +468,7 @@ SPEC 19, 21, 25.3, 25.4, 25.6 and 26.3 govern document linting. Unknown view-mem
 
 ## engine/kerf-core/src/iso.rs
 
-SPEC 8.2, 26.4, 27.2, 27.4, 28.6 and 28.7 define iso projection and visibility. For camera quadrant `(sx, sz)`, projection is `u = (sz*x - sx*z)*cos30`, `v = y - (sx*x + sz*z)*sin30`, with depth `sx*x + y + sz*z`; larger depth is nearer. Tessellated faces are indexed on a grid; candidate indices are deduplicated in ascending order. Edges hidden by other members of framing hardware draw dashed, but hardware remains a note target. Touching slabs from a void omit their shared cap edges. Component-relative annotation points project from the nearest end of the drawn extent, while points without a drawn component use the cut plane. Cutaway hatching is limited to front-facing caps.
+SPEC 8.2, 26.4, 27.2, 27.4, 28.6 and 28.7 define iso projection and visibility. For camera quadrant `(sx, sz)`, projection is `u = (sz*x - sx*z)*cos30`, `v = y - (sx*x + sz*z)*sin30`, with depth `sx*x + y + sz*z`; larger depth is nearer. Tessellated faces are indexed on a grid; candidate indices are deduplicated in ascending order. Edges hidden by other members of framing hardware draw dashed, but hardware remains a note target. Touching slabs from a void omit their shared cap edges. Component-relative note points project from the nearest end of the drawn extent. SPEC 33: label Refs instead use cut_z or label z, clamped to the drawn span; literal at and top-level label offset use view coordinates. Cutaway hatching is limited to front-facing caps.
 
 ## engine/kerf-core/src/mesh.rs
 
@@ -521,3 +523,102 @@ SPEC 30.1: placement is dependency order with ties broken by document order, exc
 ## beta.4 integration of SPEC 30–32
 
 Leader-through-member checks include the cut body prisms of steel joists, metal deck and its topping, steel stair treads and concrete/wood stairs. Embedded reinforcement and beyond geometry keep the SPEC 30 exclusions. The unsupported flat-plate check counts wood stair bodies as carried wood; support detection already accepts bodies of every type. Existing members obstruct leaders and support plates normally, and CMU plans supply their sliced unit geometry.
+
+
+## v0.2.0-beta.5 integration (SPEC 33–36)
+
+### Sheets and annotations (SPEC 33)
+
+Standalone sheet trials rebuild complete annotations with a fresh routing budget. Fitting includes lists, tables,
+wrapped captions and frame/title clearance. Layout checks use layout-scale annotations while standalone fitting
+remains independent. Dimension repair ops rebuild the whole view and pin both offset and automatic scale.
+Elevation short-dimension collision scoring includes visible Region outlines as well as hatch/fill geometry, so
+hole callouts cannot put outside text inside an unhatched member. Section and plan placement retain their
+filled-member collision rules. Beside/end callout stems extend along the
+measured axis past the intersected member section within the text-width strip before trying a larger dimension
+offset. Hidden contextual members and soil do not reserve their interiors as text obstacles.
+Iso label Refs project at their requested model-z station; literal positions and final offsets use view coordinates.
+
+### Connectors and fasteners (SPEC 34)
+
+Member lookup filters world bodies by optional part before computing placement bounds; dependency lookup still strips
+part/instance suffixes. Exact hanger heights override the generic carried-depth heuristic, while a truss fallback
+uses its bottom chord and warns that a manufacturer height is required. A repeated failed trim is replaced in the
+printed fix by a world-space bevel line; cuts at the other end are preserved.
+
+DTT geometry follows the horizontal bolt nut-bearing anchor, rather than using a foundation holdown rotated after
+placement. Only x-axis bolts and front/back joist mounting are supported. It does not populate the foundation rod
+relationship, so the ordinary holdown foundation check cannot misclassify a wood tension connection.
+
+A gap bridge keeps its two mounting legs outside their respective members and spans the intervening air/layers.
+Unequal z faces bend the wide member's leg onto its side at the crossing; the plate never travels to its far z end.
+An unconfirmed gap warns with its actual separation. Three-face wraps have constant width at one x station and
+separate front, top and back plates in one connector; they are not three counted connectors.
+
+Deflection clip bridges keep a warning about missing slot geometry even when the
+clear gap is explicit; acknowledging it records the schematic limitation without discarding earlier reasons.
+
+Exact-model gap ties allocate only the remaining developed length to
+default legs; leg-overhang checks use the high member's boundary after the gap, and still recognize adjacent framing.
+
+Face nails start at any listed receiver touching the head member. Receivers at the same driving depth are
+alternatives (rim and blocking); deeper layers intersect the shared footprint and must form a continuous stack.
+Length probes then use that footprint, so a sole/sheathing/rim row cannot silently miss its rim. Explicit row
+offsets are measured from the common footprint's lower cross-row edge in the head member's frame.
+
+After face placement, each listed receiving group must intersect a drawn nail segment in its own member frame;
+otherwise W_NAIL_MEMBERS exposes the missing attachment even when another receiver produced valid nails. The
+check uses member bounds, matching the existing face-joint approximation; it does not certify contact with every
+web inside a compound truss.
+
+Collapsed same-row face-nail positions are diagnosed before geometric deduplication, so the requested count cannot
+silently become a smaller drawing count.
+
+Threaded rods and screw eyes extend the bolt kind enum without a new component registry entry. Rods have blunt
+threads and optional schematic sleeve couplers; they never enter the concrete-anchor pair checks. Eye dimensions
+are schematic ratios to diameter, not manufacturer model dimensions. Length is below the eye shoulder. The ring
+is a body with an actual opening, not an annotation circle.
+
+### Concrete, masonry and ops (SPEC 35)
+
+`validate::host_section` evaluates a footprint at the bar's z station; circular hosts use an analytic chord to avoid
+slice approximation warnings at exactly specified cover. `segment_in_region` restricts each leg to each host it
+enters. `exposed_edges` splits boundaries at other hosts and discards only intervals continued across their outward
+normal, independent of pour identity. CMU void edges backed by steel are interfaces, and native walls take precedence
+over legacy CMU/grout/mortar cover surrogates they enclose. Negative cover fixes move authored path points in the
+correct local/reference coordinate frame instead of offering a zero-cover setting that cannot clear the warning.
+
+`cmu_reinforcement_contact` uses the same reinforced vertical-cell interpretation as native plan drawing. It is a
+contact inference, not a new whole-wall grout solid; ungrouted horizontal courses remain findings with a beam-course
+fix. `plan::cmu_units` retains legacy fallback, but passes all overlapping surrogate IDs to the migration diagnostic.
+Partial bond-beam core strips subtract the webs only in their span; disconnected shells are separate region groups.
+`cmu_wall` creates actual-size square pier webs and special-course top/bottom strips; beam bands are hidden-pen ghost
+lines so they describe internal reinforcement in elevation without introducing physical geometry or contact.
+
+YZ paths reuse the bounded xz leg builder with x/y exchanged for checks, retaining a full 3D centerline for
+projections, a transverse ribbon for iso and a cyclically permuted circular sweep for mesh. A yz
+hook's directions follow its input [y,z] plane. `compile::collect_deps` includes the fixed-axis x Ref as well as y.
+
+`ops::Ctx` records component removals and their originating op indices, applies mutations sequentially, then checks
+references to IDs absent from the final component list. View annotation list replacements still sanitize citations.
+`anchor_bolt::plate_faces` scans plate geometry in the rod's local frame, so axial distances also work after rotation.
+
+### Round-2 geometry (SPEC 36)
+
+`compile::place_component` uses the first document section/elevation depth only for members it includes; other scenarios use zero model datum, before any builder
+resolves member references. A shared member remains one solid; explicit z is the contract across several cuts.
+`hardware::member` parses parts and chooses a single stair stringer nearest that depth; hanger end sampling already
+supplies the real vertical depth and sloped seat. Even-count stair arrays now preserve physical spacing.
+
+`voids::split_round` partitions the vertical cylinder at orthogonal cutter y boundaries and subtracts rectangles in
+XZ. Each piece stores the outside footprint plus `fp_holes`; plan, section, iso and mesh preserve those holes.
+Vertical PIPE/round-HSS/TUBE component cutters carry their circular XZ envelope separately from the XY prism, so
+round-pier subtraction keeps a circular hole rather than its elevation bounding box.
+The thin XY proxies remain available to geometry checks. Curved/sloping XY cutters error rather than render an
+uncut cylinder. `Cutter::cover_face` excludes metal component interfaces from exposed-face cover measurements.
+
+`steelcheck::screw_penetration` measures side screw axes against drawn wood profiles at their real z. It reports
+zero entry only; it is not a screw design/capacity check. AISC checks are reserved for through bolts.
+`annot::weld_text_overlaps` compares rendered text polygons after final layout and suggests a clear current offset;
+the fix is advisory because changing extents can move automatic columns. Plan plate fill is suppressed for PL
+members, preserving filled steel sections and embedded fastener marks.

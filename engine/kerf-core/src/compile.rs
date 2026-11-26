@@ -90,8 +90,10 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
             out.push(s.split('.').next().unwrap_or(s));
         }
     }
-    if let Some(y) = node.get("y") {
-        add_ref_dep(y, out);
+    for key in ["x", "y"] {
+        if let Some(v) = node.get(key) {
+            add_ref_dep(v, out);
+        }
     }
     crate::cuts::collect_deps(node, out, add_ref_dep);
     if node.get("type").and_then(Value::str) == Some("connector") {
@@ -172,7 +174,7 @@ pub fn compile<'a>(doc: &'a Value, st: &'a Style, diags: &'a Diags) -> Scene<'a>
     scene
 }
 
-/// Stage 1: `run` (default z extent) and the first section view's `cut_z` (default z of in-plane members). False when the
+/// Stage 1: `run` and the first section/elevation's depth, limited to its included members. False when the
 /// document is not an object (reported).
 fn read_settings<'a>(scene: &mut Scene<'a>, doc: &'a Value) -> bool {
     let diags = scene.diags;
@@ -226,6 +228,9 @@ fn read_settings<'a>(scene: &mut Scene<'a>, doc: &'a Value) -> bool {
                 "keep one view per sheet detail (usually 2 to 6), or split the document".into(),
             );
         }
+        scene.depth_view = va
+            .iter()
+            .find(|v| matches!(v.get("kind").and_then(Value::str).unwrap_or("section"), "section" | "elevation"));
         for v in va {
             let kind = v.get("kind").map_or("section", |k| k.str().unwrap_or("section"));
             if kind == "iso" || kind == "plan" {
@@ -839,6 +844,9 @@ fn place_component(scene: &mut Scene, idx: usize) {
         let c = &scene.comps[idx];
         (c.id.clone(), c.ty, c.node, c.index)
     };
+    scene.default_z = scene.depth_view.and_then(|v| {
+        v.get("cut_z").and_then(units::parse_length).map(|z| if Members::of(v).includes(&id, node) { z } else { 0.0 })
+    });
     let diags = scene.diags;
     let mut p = Params::new(diags, node, &id, "components", ty.name());
     scene.comps[idx].state = State::Failed;

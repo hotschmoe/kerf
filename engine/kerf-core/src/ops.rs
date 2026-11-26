@@ -26,6 +26,7 @@ struct Ctx<'d> {
     changed: Vec<String>,
     op_index: usize,
     ok: bool,
+    removed: Vec<(String, usize)>,
 }
 
 impl Ctx<'_> {
@@ -256,8 +257,15 @@ fn apply_one(c: &mut Ctx, raw: &Value) {
         "set" => Kind::Set,
         _ => return c.fail("E_OP", path, format!("unknown op \"{kind_s}\"; use add, update, remove or set")),
     };
-    if kind != Kind::Remove && value.is_none_or(Value::is_null) {
+    if kind != Kind::Remove && value.is_none() {
         return c.fail("E_OP", path, format!("op {kind_s} {path} needs a \"value\""));
+    }
+    if kind != Kind::Remove && value.is_some_and(Value::is_null) {
+        if kind == Kind::Set && path == "scale" {
+            let removal = with_key(raw.clone(), "op", Value::String("remove".to_string()));
+            return apply_one(c, &removal);
+        }
+        return c.fail("E_OP", path, format!("op {kind_s} {path} cannot use null as its value; use {{\"op\":\"remove\",\"path\":\"{path}\"}} to remove it"));
     }
     let seg: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     let Some(&root) = seg.first() else { return c.fail("E_OP", path, "empty path".to_string()) };
@@ -466,10 +474,7 @@ fn apply_components(c: &mut Ctx, op: &Op) {
                 return;
             }
             Kind::Remove => {
-                let deps = dependents(c, id);
-                if !deps.is_empty() {
-                    return c.fail("E_REF_UNKNOWN", op.path, format!("cannot remove '{id}': still referenced by {}. Remove or re-point those first (or remove them in the same op batch before this op)", scene::join_ids(&deps)));
-                }
+                c.removed.push((id.to_string(), c.op_index));
                 list.remove(idx);
                 c.set_list("components", list);
                 c.touch(id);
@@ -502,13 +507,11 @@ fn apply_views(c: &mut Ctx, op: &Op) {
         let Some(vi) = index_of_id(&list, vid) else { return unknown_id(c, "view", vid, &list, op.path) };
         if op.seg.len() == 2 {
             if op.kind == Kind::Update {
-                if value.get("annotations").is_some() {
-                    return c.fail("E_OP", op.path, format!("update views/{vid} cannot carry \"annotations\"; use add/update/remove on views/{vid}/annotations[/<id>]"));
-                }
                 if id_change(value, vid).is_some() {
                     return c.fail("E_OP", op.path, "view ids cannot be changed by update".to_string());
                 }
-                list[vi] = json::merge_patch(&list[vi], value);
+                let patch = sanitize_annotations(c, value);
+                list[vi] = json::merge_patch(&list[vi], &patch);
                 c.set_list("views", list);
                 c.touch(vid);
                 return;
@@ -630,13 +633,26 @@ pub fn normalize(input: &Value, diags: &Diags) -> Option<Normalized> {
 
 pub fn apply(doc: &Value, ops_input: &Value, actor: Actor, diags: &Diags) -> Option<Applied> {
     let norm = normalize(ops_input, diags)?;
-    let mut c = Ctx { diags, actor, doc: doc.clone(), changed: Vec::new(), op_index: 0, ok: true };
+    let mut c = Ctx { diags, actor, doc: doc.clone(), changed: Vec::new(), op_index: 0, ok: true, removed: Vec::new() };
     for (i, op) in norm.ops.iter().enumerate() {
         c.op_index = i;
         apply_one(&mut c, op);
         if !c.ok {
             return None;
         }
+    }
+    for (id, index) in c.removed.clone() {
+        if index_of_id(&c.list("components"), &id).is_some() {
+            continue;
+        }
+        let deps = dependents(&c, &id);
+        if !deps.is_empty() {
+            c.op_index = index;
+            c.fail("E_REF_UNKNOWN", &format!("components/{id}"), format!("cannot remove '{id}': the final batch still references it from {}. Remove or re-point those references in this batch, or re-add '{id}'", scene::join_ids(&deps)));
+        }
+    }
+    if !c.ok {
+        return None;
     }
     Some(Applied { doc: c.doc, changed: c.changed })
 }

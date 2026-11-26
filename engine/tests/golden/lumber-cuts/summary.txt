@@ -14,3 +14,6 @@ DOC lumber-cuts  15 components  6 views  0 errors  0 warnings  0 acknowledged
  beam          lumber 3.5x12 x wide run x L=4'-0" cuts: 2 notches minus notch cplate x 16'-8"..20'-8"  y 0"..1'-0"
  cplate        lumber 2x4 x narrow run x L=2'-0"           x 15'-8"..17'-8"  y 10 1/2"..1'-0"
  kicker        steel L3x3x1/4 elevation run x L=2'-4 1/16" from post@middle_right+[0, -6] to beam@bottom_left+[18, 0] cuts: trim to post start, trim to beam end x 16'-11 1/2"..18'-3 3/4" y -2'-2 7/8"..0"
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}
+INFO I_VIEW_SHEET C: single-view sheet C: 17 x 11 paper inches at 1 1/2" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/C","value":{"sheet":[17,11]}}
+INFO I_VIEW_SHEET E: single-view sheet E: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/E","value":{"sheet":[17,11]}}

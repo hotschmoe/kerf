@@ -45,10 +45,10 @@ kerf schema note dim cite
 - Scenarios: one view each, one origin; scenario members get `"views":["B"]`, shared none; one sheet: `kerf schema layout`.
 - Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one). Consult `kerf schema <topic>` before guessing.
 
-## Diagnostics you will meet (each prints its own fix)
+## Diagnostics (each prints its fix)
 W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP / W_UNSUPPORTED (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
 W_SHORT_SLOPE, W_LEADER_HIT / W_VIEW_FIT (layout), W_NOTE_STYLE / W_ABBREV (note text), W_UNKNOWN_KEY,
-W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, I_* (info).
+W_REQUESTED_MISSING, W_CROP_STALE (drop `crop`/`scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, W_SCREW_PENETRATION, I_* (info).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.
@@ -81,8 +81,8 @@ Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you a
 the designer verifies. Never present a design as engineered: capacities, spacing, nailing are the mfr.'s / EOR's.
 
 ## Views and annotations
-`crop`/`scale` are optional (auto-fit: non-fill components + 6 in, largest standard scale that fits); set them only
-to frame on purpose (`W_VIEW_FIT` checks). The layout places notes and clears leader collisions (note `column` forces
+`crop`/`scale` auto-fit (non-fill members + 6 in); view `sheet` auto-grows or takes e.g. "22x17".
+`W_VIEW_FIT` checks notes, tables and title too; pin crop/scale to frame on purpose. The layout places notes and clears leader collisions (note `column` forces
 a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed: `"notes_style":"keyed"` (tags +
 DETAIL NOTES list at `notes_side`; tags one side: `tags_side`; same `key` = one entry). Dim `dir` default: dominant
 axis; `offset` > 0 above (h) / right of (v) the points, < 0 below / left.
@@ -127,8 +127,8 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   that holds the views at the layout's numeric `scale`, or with `common` at 1"=1'-0" (`I_LAYOUT_SHEET` says which).
   Doc-level `"scale"` sets one scale for every view. Point at another detail with a `ref` annotation
   (`{"type":"ref","detail":"3","sheet":"S-50.01","at":"beam@top_right","text":"SIM."}`); a view holding only refs is a
-  "see other detail" scenario and draws no model. A view a layout names is fit-checked only in the layout: `W_VIEW_FIT`
-  on `layouts/S1` lists every view's size and the fix that fits (larger `sheet`, other `arrange`, list `notes_side`).
+  "see other detail" scenario and draws no model. Standalone sheets fit independently, even for views in layouts. `W_VIEW_FIT` on `layouts/S1` lists every view's size
+  and fixes (larger `sheet`, other `arrange`, list `notes_side`). Check uses the layout scale for its leader diagnostics.
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
   (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens, a plural
   s and `-ing`/`-ed` endings (`END NAILED` = `END NAIL`, `BRACING` = `BRACE`; not `BLOCKING`/`BLOCK`, `TOPPING`/`TOP`,
@@ -318,7 +318,7 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   "round","diameter":24,"height":60,"at":{"to":[0,0]}}` (placed by the axis at the top), a circle in plan. Hoops:
   `{"type":"rebar","size":"#3","plane":"xz","y":{"ref":"pier@top_center","offset":[0,-3]},"tie":{"in":"pier","cover":3,
   "shape":"hoop"},"array":{"axis":"y","count":5,"spacing":-12}}`. A post or pipe cast into it is `"embedded": true`
-  (a round takes no `voids`): a bollard is the round footing plus `{"type":"steel","shape":"PIPE6STD","orient":
+  (or subtract rectangular-profile `voids`): a bollard is the round footing plus `{"type":"steel","shape":"PIPE6STD","orient":
   "elevation","run":"y","length":84,"embedded":true}`.
 - Recipes with no new type. ICF wall: a `concrete` rect core with an `insulation` leaf on each face (`{"type":
   "insulation","width":2.5,"height":48,"at":{"anchor":"bottom_right","to":"core@bottom_left"}}`), bars in the core as
@@ -345,3 +345,77 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   lists the `layouts` paths: `{"op":"update","path":"layouts/S1","value":{"columns":3}}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.
+
+## 33. v0.2.0-beta.5: sheets and annotations
+
+- View paper: `{"sheet":"22x17"}`; also `"auto"` (default) or `[22,17]`, 5..60 inches each. Auto grows through
+  17x11/22x17/24x18/36x24 toward 1"=1'-0"; fixed scales/schedules retain size. `I_VIEW_SHEET`: growth;
+  `W_VIEW_FIT`: overflow. Standalone `sheet` and `layouts[].sheet` are independent; check uses layout-scale annotations.
+- Below list: `{"notes_style":"keyed","notes_side":"below"}` (also list). Side lists may exceed drawing height;
+  captions wrap. Short dim text moves outward; verified `W_LEADER_HIT` fixes include `pin:true` and pin auto scale.
+  Residual text/member collisions: `W_LABEL_OVERLAP`. Text such as `{"type":"label","text":"45°","at":[0,0]}` prints °.
+- Iso station: `{"type":"label","text":"OPENING","at":{"ref":"lintel@center","offset":[0,-16]},"z":0}`.
+  Label `z` overrides view `cut_z`, clamped to extrusion. Ref offsets: model XY; literal `at` and final `offset`: view XY.
+
+## 34. v0.2.0-beta.5: connectors and fasteners
+
+- Part refs: `{"carried":"truss.bottom_chord","carrying":"beam"}`; `id#k.part` also works.
+- Tie bridge: `{"gap":0.5,"face":"front","side":"left","legs":[3,3]}`; back also works; `width`,`gauge`, coplanar `along`
+  retained. `W_TIE_PATH`: remote wrap/overlong legs; `W_TIE_LEG`: mounting. Default model legs debit gap from length.
+  `W_CONNECTOR_GAP` confirms separation; DTC/STC/HTC retain it for unmodeled slots: supply manufacturer movement/
+  fastening notes, then the emitted acknowledgement. Three-face wrap: `{"on":["post.face_front","beam.face_top","post.face_back"]}`
+  (or back/top/front), constant `width`; optional `points` share x, lowest y sets ends; default uses post center/bottoms.
+- Hanger: `{"model":"HUS26","carried":"truss","carrying":"beam"}` uses height 5 7/16; LU24 uses 3 1/8.
+  Fallback: 85% of member/bottom-chord depth. `height` confirms size (`W_HANGER_SIZE`); `W_HANGER_SLOPE` flags fixed models
+  on slopes (plan skew unsupported). A failed existing trim gets a bevel-line op preserving other cuts.
+- DTT: `{"model":"DTT2Z","post":"joist","rod":"bolt","face":"front"}` needs horizontal x-axis bolt, front/back mounting.
+  `height`: body length; `width`: vertical size; `seat`: thickness; nut bearing sets seat (no `seat_height`).
+  `W_CONNECTOR_ORIENT`: unsupported orientation/off-joist body. No foundation check.
+- Face rows: `{"members":["sole","sheet","rim"],"rows":2,"row_offsets":[1.5,7.75]}`; positive increasing offsets across the
+  common footprint from its lower edge; `along` sets row axis. Same-depth receivers are alternatives, deeper layers
+  continuous. `W_NAIL_MEMBERS`: missed backing/outside rows; `W_NAIL_SPACING`: collapsed count. Omit offsets for equal rows.
+- Rod: `{"type":"bolt","kind":"threaded_rod","diameter":0.375,"length":18,"coupler":1.5}`; fully threaded down, no head/nut/
+  anchor checks; no `grip`/`thread`; coupler <= length; anchors `start`,`end`,`tip` (`head_bearing` aliases start).
+- Eye: `{"type":"bolt","kind":"eye_screw","diameter":0.25,"length":1.25,"thread":0.8}`; length below shoulder, schematic
+  OD 6d/ID 4d, anchor `eye`. Rod/eye require `orient:"side"`; use `rotate` to point them.
+- Rotated anchor: `{"type":"anchor_bolt","rotate":-90,"plate":"ledger"}` measures projection along rod axis.
+
+## 35. v0.2.0-beta.5: concrete, masonry and ops
+
+- `W_COVER`: exposed faces of every entered host, independent of `pour`; shared joints/metal interfaces exempt.
+  Negative external cover needs geometry repair. `W_BAR_OUTSIDE` still flags open cells.
+- YZ bar: `{"type":"rebar","size":"#4","mode":"path","plane":"yz","x":4,"points":[[2,-8],[24,-8]],"hook":{"end":{"angle":90,"toward":"up"}}}`.
+  `x`: length/Ref; points [y,z]. No XY rotate/slope; tie xy/xz, epoxy xy; cover XY only.
+- Pier: `{"type":"cmu_wall","width":16,"form":"pier","courses":3,"grout":"solid"}`; actual 15.625 square.
+- Units: `{"units":{"1":"lintel","3":"inverted_bond_beam"}}`: solid bottom/top, grouted. `open_end`,`knockout`,`knock_out`
+  draw standard units with `W_PARAM`/removal ops; retain special-unit requirements in notes.
+- Partial beams: `{"bond_beams":[{"course":3,"x":[0,72]},{"course":4,"x":[72,120]}]}`; local run-x spans, additive to
+  `bond_beam_courses`; dashed elevation bands/plan grout; zones `bond_beam_<k>`,`bond_beam`, anchors with `_center`.
+- Native grout: `{"grout":"reinforced","bond_beams":[3]}`; vertical cells/horizontal courses host bars (`W_FLOATING`).
+  `I_CMU_PLAN_UNITS` lists legacy surrogate removals (s-40-05/06/07/08/11/14): apply/re-point refs in one batch, keep walls/
+  bars, inspect plan and `{"cutaway":true,"cut_z":0}` iso. Empty cells remain voids.
+- Clear scale: `{"op":"set","path":"scale","value":null}`; other null sets need remove; updates retain null-as-removal.
+- Final-state safety: `[{"op":"remove","path":"components/old"},{"op":"remove","path":"components/referrer"}]`;
+  remove/re-point every referrer or re-add ID anywhere in batch; final dangling refs fail atomically.
+- Replace annotations: `{"op":"update","path":"views/A","value":{"annotations":[]}}`; citations sanitized.
+- Schedule alias: `{"kind":"sheet","sheet":"22x17"}`: schedule content on standalone 22x17 paper.
+
+## 36. v0.2.0-beta.5: round-2 authoring fixes
+
+- Stair cover: `{"cover":{"bottom":3,"top":1.5,"sides":1.5,"parts":{}}}` applies to generated/hosted bars.
+  `{"carried":"stair.stringer"}` (or whole stair) selects one wood stringer/local end profile; nailing expands parts.
+  Even counts stay equally spaced; anchors `top_cut_top`,`top_cut_bottom`,`top_bearing`,`seat_front`,`seat_back`.
+- Round void: `{"shape":"round","diameter":16,"height":36,"voids":["post"]}`; rectangular XY cutters support z ranges;
+  curved/sloped XY cutters give `E_PARAM`. Embedded square wood stays square; vertical pipes keep circular XZ clearances.
+- Steel edge hole: `{"cuts":[{"type":"hole","d":1.5,"x":0.75}]}` must intersect stock; wood holes stay inside.
+  Cut `shape:"PL..."` plans outline plates to expose bolt heads.
+- Metal screw: `{"type":"bolt","kind":"self_drilling_screw","diameter":0.212,"length":1.25,"thread":0.8}`: no nut, AISC or
+  wood-entry check (manufacturer/AISI design). AISC checks apply only to `kind:"bolt"`.
+- `W_SCREW_PENETRATION`: side lag/wood tip stops before wood; use emitted length or actual flange underside:
+  `{"rotate":180,"at":{"to":"joist@top_flange_bottom_start"}}`; also `top_flange_bottom`,`top_flange_bottom_end`.
+  `top_chord_bottom` remains angle-band bottom. End-on entry is unchecked.
+- Weld text `W_LABEL_OVERLAP`: `{"type":"weld","offset":[8,8]}`; use emitted offset and inspect re-layout.
+- Triangular bevel: `{"cuts":[{"type":"bevel","end":"end","line":[[0,0],[12,6]]}]}`; area must remain positive.
+  `W_CUT_MISS` leaves implicit trims square beyond 2 depths extension; accept square-end op or review explicit trim.
+- Datum: `{"z":0}`; first section/elevation affects only included members, unrelated scenarios use zero; later cuts
+  do not move solids. Shared members/noncentral scenarios require explicit `z`.

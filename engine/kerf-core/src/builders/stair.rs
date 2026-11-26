@@ -28,10 +28,11 @@ params! {
         landing_thickness: LenPos = 4.0 => { desc: "concrete: thickness of that top slab" },
         bars: Str = "" => { def: "null", desc: "concrete: main bar size, e.g. \"#4\": draws the main bar (part main_bar: down into the toe, along the soffit at cover.bottom, bent level into the landing) and the cross bars on it as dots @ bar_spacing (part cross_bars)" },
         nosing_bars: Str = "" => { def: "null", desc: "concrete: nosing bar size, e.g. \"#4\": one bar along each nosing (part nosing_bars)" },
+        cover: OptRaw => { desc: "concrete: clear cover {bottom, top, sides, parts}, in inches; applies to generated bars and hosted reinforcement" },
         bar_spacing: LenPos = 12.0 => { desc: "concrete: spacing of the cross bars along the main bar" },
         material: Str = "concrete" => { desc: "concrete: any style material" },
         size: Str = "2x12" => { desc: "wood: stringer size, sawn nominal" },
-        stringers: Int(u8, 1, 8) = 3 => { desc: "wood: number of stringers across width (one is cut by the section)" },
+        stringers: Int(u8, 1, 8) = 3 => { desc: "wood: number of equally spaced stringers across width; set cut_z through a physical stringer to cut it" },
         tread_thickness: LenPos = 1.5 => { desc: "wood: tread board thickness (1 1/2 = 2x, 1 = 5/4)" },
         riser_thickness: Len = 0.75 => { desc: "wood: riser board thickness (0 = open risers)" },
         treated: Bool = false => { desc: "wood: preservative treated stringers (exterior stairs, stringers bearing on concrete)" },
@@ -377,10 +378,13 @@ fn wood(ctx: &mut Ctx, sp: &Params) -> Option<Built> {
     let width = sp.width.unwrap_or(36.0);
     let st = sz.t;
     let count = usize::from(sp.stringers);
+    if width < st * count as f64 {
+        ctx.p.fail("width", "width must fit all stringers at their actual thickness".to_string());
+        return None;
+    }
     let mut prisms: Vec<Prism> = Vec::new();
     for k in 0..count {
         let zoff = if count == 1 { 0.0 } else { (k as f64 / (count as f64 - 1.0) - 0.5) * (width - st) };
-        let zoff = if count % 2 == 0 && k == count / 2 { 0.0 } else { zoff };
         prisms.push(Prism {
             part: "stringer".to_string(),
             material: material.to_string(),

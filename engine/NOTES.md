@@ -6,6 +6,56 @@ nothing else. Rust 1.96 stable, edition 2024. It replaced the Zig engine on 2026
 Drawing IR on every view, the CLI ergonomics and the `kerf serve` smoke tests were identical; the Zig tree is in git
 history). `README.md` is the short version of this file, `PERF.md` has the numbers.
 
+
+## v0.2.0-beta.5 integration (SPEC 33–36)
+
+The sheets, hardware, concrete and round-2 branches are integrated in the working tree; the orchestrator owns
+staging, the merge commit and release version bump. Cargo.toml stays 0.2.0-beta.4. No git metadata or source MASS
+library is written. Agent-local validation/status history is preserved in `.archive/b5-integ/engine-agent-notes.md`.
+
+- Standalone view `sheet` auto-grows; keyed/list `notes_side:below`, wrapped captions, outward short dimensions,
+  verified pinned dimension fixes, degree glyphs and iso label `z` are public. Layout checks use their actual scale.
+- Connector parts, layered nailing, `row_offsets`, tie `gap` and three-face `on`, model hanger heights, horizontal
+  DTT/anchor plates, threaded rods with `coupler` and screw eyes retain hardware behavior.
+- Shared-face cover, yz rebar, 16-inch CMU piers, special course `units`, partial `bond_beams`, native grout contact,
+  migration ops, final-batch removal checks and view annotation replacement retain concrete behavior.
+- Round-2 adds stair `cover`/single-stringer hangers, physical even spacing, round-host voids, square embedded wood,
+  edge-opening steel holes, readable PL plans, metal screws, actual joist flange anchors, screw-entry/weld/trim
+  warnings and scenario-local depth inheritance. AISC edge/spacing checks apply only to through bolts.
+
+Build and validation: `cargo build --release`; `tests/gates.sh` is the blocking gate. Integration also runs every
+requested background comparison and check without adding blocking tests. Use the shared tooling venv on PATH and
+KERF_CHROME=/usr/bin/google-chrome. Exact logs, copied library, visual pairs and per-document verdicts live under
+`/home/hotschmoe/github/mass-details/work/codex/b5-integ/`.
+
+Final integration validation on pinned Rust 1.99.1: release build; native and wasm Clippy with warnings denied;
+formatting; 994 native golden outputs with DXF/PDF audits; CLI and serve E2E; 656 ergonomics checks; serve smoke;
+platform serve; wasm build, 70/70 golden comparisons, 100 scoped native/wasm feature outputs and ABI check; debug build plus 300 mutations x 3 functions
+(zero crashes); web typecheck; and the complete tests/gates.sh (including web save/open) all pass. The final
+release rebuild took 48 s; the preceding help-only rebuild took 31 s. Short guide: 12,164 bytes (limit 12,288).
+Wasm without wasm-opt: 1,883,977 raw / 734,808 gzip-9 / 590,248 Brotli-11 bytes via tools/size_report.sh.
+
+Visual review accepted 20 changed reference/test documents: 239 changed outputs, including 32 view drawings and
+one layout drawing. Selective make_golden.sh regeneration retains all other bytes; previous bytes are preserved
+in .archive/b5-integ/golden-before/. A discovered short hole-dimension regression was fixed in the engine:
+elevation annotation scoring sees visible outline regions, beside/end stems clear the local member section, and
+hidden context does not reserve an interior. Section/plan behavior is retained; the broad trial was narrowed after
+reviewing the s-80-11 wall-pocket sheet. Both reference and real stair/steel sheets were inspected after this fix.
+
+Regression: all 138 real documents/style/refs copied into b5-integ/lib; errors 0 -> 0, strict WARN lines 36 -> 58,
+strict-clean documents 118 -> 108, acknowledgements 15 -> 10. All 92 per-file output differences and one explanation
+per diagnostic class are in regression.txt. Nine true exterior-cover findings replace five false joint/interface
+findings; five stale acknowledgements surface. Hardware adds nine findings, screw entry and implicit trim add one
+each, and actual layout-scale leader findings change by +2 net. Fourteen varied S1 layouts (12 required and two
+warning follow-ups) were exported before/after and inspected, with no clipped/lost content or worse physical scale.
+No source library document, Git index/ref, package version or blocking-test registration was changed.
+
+Known limits: no plan-skew/3D hanger placement, arbitrary wrap sequences, manufacturer deflection-slot geometry,
+sloped plumb-face nailing or general truss web contact. YZ cover remains XY; yz ties require explicit paths/hooks.
+Open-end/knockout CMU selectors warn and use standard geometry. Curved/sloping XY cutters on round hosts error.
+Screw entry checks cover side lag/wood screws only; weld offsets and dense annotation repairs require visual review.
+Implicit plan context, continuation intent and target-free leader notes remain unsupported.
+
 ## beta.4 merge of master issue #31 (SPEC 30–32)
 
 The working-tree conflicts in SRC, these notes, SPEC and the CLI guide retain both sides in full. SPEC now orders
@@ -733,7 +783,7 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   (I_KEY_RENUMBERED says so) so "no gaps" holds even when the authored keys skip numbers; an unkeyed note joins an
   earlier entry with the same text and cite (the s-10-01 drafts repeat texts across scenarios without keys); scale
   precedence view > layout numeric > document `scale` > `common`; iso views stay NTS in a layout (fitted to their
-  share); view titles wrap in layouts only (at least 3" paper wide); the layout's coordinates are paper inches times
+  share); view titles wrap within standalone pages and layout cells (at least 3" paper wide in layouts); the layout's coordinates are paper inches times
   the first view's scale (DXF keeps that view 1:1). The layout W_VIEW_FIT keeps the code W_VIEW_FIT with id = the
   layout and path `layouts/<id>`. The `ref` annotation's leader point is `at` (as for notes) and its bubble `place`.
 - Sheet title block DETAIL NO: a layout without `number` prints the sheet alone (`S-10.01`), not `/S-10.01`; the same

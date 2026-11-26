@@ -6,3 +6,4 @@ DOC general-round-pier  7 components  2 views  0 errors  0 warnings  0 acknowled
  v_front       rebar #5 path L=4'-7"                       x -5/16"..5/16"   y -4'-9"..-2"
  hoops         rebar #3 hoop 1'-6" dia out to out in 'pier' at 3 cover at y -3" [x5 y @ -1'-0"] x -9"..9"         y -4'-3 3/16"..-2 13/16"
  post          lumber 6x6 y PT wide run y L=2'-0"          x -2 3/4"..2 3/4" y 0"..2'-0"
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}

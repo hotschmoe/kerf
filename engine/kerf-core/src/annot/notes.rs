@@ -136,6 +136,25 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
         }
         Landing::Iso(iso) => return iso.landing(comp, inst, part, env.crop, h),
     }
+    if comp.ty.traits.reinforcement
+        && env.spec.kind == crate::view::Kind::Plan
+        && shapes_src.iter().all(|r| {
+            let b = clip::loops_box(core::slice::from_ref(r));
+            b.width().max(b.height()) <= 1.1 * comp.built.bar_d
+        })
+    {
+        let marks: Vec<V2> = shapes_src
+            .iter()
+            .map(|r| clip::loops_box(core::slice::from_ref(r)).center())
+            .filter(|p| geom::locate_even_odd(*p, &shapes_src, 1e-9) != geom::Loc::Outside)
+            .collect();
+        if let Some(mut candidates) = nail_candidates(&marks, env.crop) {
+            if let Some(primary) = shape::label_point(&shape::shapes_of(&shapes_src)) {
+                crate::sort::stable(&mut candidates, |a, b| a.dist(primary) < b.dist(primary));
+            }
+            return Some(candidates);
+        }
+    }
     let mut lp = shape::banded_label_point(&shape::shapes_of(&shapes_src), env.crop, h)?;
     let mut moved_from: Option<V2> = None;
     if let Landing::Section(sec) = &mut env.landing
@@ -291,47 +310,78 @@ pub fn dirs8() -> [V2; 8] {
     DIRS8.map(|(x, y)| V2::init(x, y))
 }
 
-pub fn obstacle_fix(o: &Obstacle, leaders: &[[V2; 3]], h: f64) -> Option<String> {
-    match o.kind {
-        route::ObstKind::Dim => {
-            let sgn = if o.off >= 0.0 { 1.0 } else { -1.0 };
-            for k in 1..=24u32 {
-                let delta = math::ceil(f64::from(k) * 0.5 * h * 4.0) / 4.0;
-                for dirn in [1.0f64, -1.0] {
-                    let no = o.off + sgn * dirn * delta;
-                    if dirn < 0.0 && no.abs() < 2.0 * h {
-                        continue;
-                    }
-                    if clear_of_leaders(leaders, &o.poly, o.axis.scale(sgn * dirn * delta), h) {
-                        return Some(format!(
-                            "set dim '{}' \"offset\": {} (now {})",
-                            o.id,
-                            json::number_string(no),
-                            json::number_string(o.off)
-                        ));
-                    }
+fn obstacle_fix(env: &Env, o: &Obstacle, obstacles: &[Obstacle], leaders: &[[V2; 3]], h: f64) -> Option<String> {
+    if !env.verify_fixes || o.kind != route::ObstKind::Dim || env.spec.kind == crate::view::Kind::Plan {
+        return None;
+    }
+    let doc = env.doc?;
+    let mut tries = 0;
+    for k in 1..=24u32 {
+        let delta = math::ceil(f64::from(k) * 0.5 * h * 4.0) / 4.0;
+        for direction in [1.0, -1.0] {
+            let shift = o.axis.scale(if o.off >= 0.0 { direction * delta } else { -direction * delta });
+            let offset = o.off + if o.off >= 0.0 { direction * delta } else { -direction * delta };
+            if offset * o.off <= 0.0
+                || offset.abs() < 2.0 * h
+                || !clear_of_leaders(leaders, &o.poly, shift, h)
+                || obstacles
+                    .iter()
+                    .any(|b| b.id != o.id && super::dims::polys_overlap(&o.poly.map(|p| p.add(shift)), &b.poly))
+            {
+                continue;
+            }
+            if tries >= 4 {
+                return None;
+            }
+            tries += 1;
+            let mut annotations = env.spec.annotations.to_vec();
+            let an = annotations.iter_mut().find(|a| a.get("id").and_then(Value::str) == Some(&o.id))?;
+            let Value::Object(members) = an else { return None };
+            for (key, value) in [("offset", Value::Number(offset)), ("pin", Value::Bool(true))] {
+                if let Some(m) = members.iter_mut().find(|m| m.key == key) {
+                    m.value = value;
+                } else {
+                    members.push(json::Member { key: key.to_string(), value });
                 }
             }
-        }
-        route::ObstKind::Label => {
-            for k in 1..=24u32 {
-                let delta = math::ceil(f64::from(k) * 0.5 * h * 4.0) / 4.0;
-                for dv in dirs8() {
-                    let dn = dv.norm().scale(delta);
-                    if clear_of_leaders(leaders, &o.poly, dn, h) {
-                        return Some(format!(
-                            "set label '{}' \"offset\": [{}, {}] (now [{}, {}])",
-                            o.id,
-                            json::number_string(math::round((o.off + dn.x) * 100.0) / 100.0),
-                            json::number_string(math::round((o.off2 + dn.y) * 100.0) / 100.0),
-                            json::number_string(o.off),
-                            json::number_string(o.off2)
-                        ));
-                    }
-                }
+            let mut spec = env.spec.clone();
+            spec.annotations = &annotations;
+            spec.scale = env.s;
+            spec.has_scale = true;
+            spec.crop = env.crop;
+            spec.has_crop = true;
+            let diags = crate::model::Diags::new();
+            let opts = crate::drawview::ViewOpts {
+                in_layout: true,
+                keys: env.shared_keys,
+                own_list: env.own_list,
+                iso_factor: Some(env.s),
+                ..crate::drawview::ViewOpts::default()
+            };
+            crate::drawview::build_with(doc, env.style, env.scene, &spec, &diags, opts)?;
+            if diags
+                .to_vec()
+                .iter()
+                .all(|d| d.level != crate::model::Level::Error && !matches!(d.code, "W_LEADER_HIT" | "W_LABEL_OVERLAP"))
+            {
+                let scale_op = if env.spec.has_scale {
+                    String::new()
+                } else {
+                    format!(
+                        "{{\"op\":\"update\",\"path\":\"views/{}\",\"value\":{{\"scale\":\"1:{}\"}}}},",
+                        env.spec.id,
+                        json::number_string(env.s)
+                    )
+                };
+                return Some(format!(
+                    "[{scale_op}{{\"op\":\"update\",\"path\":\"views/{}/annotations/{}\",\"value\":{{\"offset\":{},\"pin\":true}}}}] (checked by rebuilding the whole view at {}; no leader hits or annotation overlaps)",
+                    env.spec.id,
+                    o.id,
+                    json::number_string(offset),
+                    crate::units::scale_label(env.s)
+                ));
             }
         }
-        route::ObstKind::Member => {}
     }
     None
 }
@@ -517,7 +567,7 @@ pub fn report_hits(
                 } else {
                     format!("label '{}' ('{}')", o.id, o.text)
                 };
-                fix = obstacle_fix(o, &r.leaders, g.h);
+                fix = obstacle_fix(env, o, obsts, &r.leaders, g.h);
                 if fix.is_none() {
                     note_cands(ht.note, ht.fix_at, ht.fix_place, r, &mut cands);
                 }
@@ -529,7 +579,7 @@ pub fn report_hits(
                 let both = if prep.keyed {
                     env.spec.tags_side == NotesSide::Both
                 } else {
-                    matches!(env.spec.notes_side, NotesSide::Both | NotesSide::Above)
+                    matches!(env.spec.notes_side, NotesSide::Both | NotesSide::Above | NotesSide::Below)
                 };
                 if both && side_fix.is_none() {
                     let sides =
@@ -551,7 +601,8 @@ pub fn report_hits(
             Some(me.id),
             Some(&format!("views/{vid}/annotations/{}", me.id)),
             format!(
-                "view {vid}: the leader (or arrowhead) of note '{}' {rel} {what}; {}",
+                "view {vid}: at {}, the leader (or arrowhead) of note '{}' {rel} {what}; {}",
+                crate::units::scale_label(env.s),
                 me.id,
                 rule.replace("{h}", &fixed(env.style.text_height_in, 3))
             ),
@@ -725,7 +776,7 @@ pub fn through_free(
     let both = if prep.keyed {
         env.spec.tags_side == NotesSide::Both
     } else {
-        matches!(env.spec.notes_side, NotesSide::Both | NotesSide::Above)
+        matches!(env.spec.notes_side, NotesSide::Both | NotesSide::Above | NotesSide::Below)
     };
     if !both {
         return None;
@@ -921,7 +972,7 @@ fn route_with(
         (true, _, _) => route::Side::Both,
         (false, _, NotesSide::Left) => route::Side::Left,
         (false, _, NotesSide::Right) => route::Side::Right,
-        (false, _, NotesSide::Both | NotesSide::Above) => route::Side::Both,
+        (false, _, NotesSide::Both | NotesSide::Above | NotesSide::Below) => route::Side::Both,
     };
     let mut p = route::Params::new(prep.g, crop, crop.x0.min(ext.x0), crop.x1.max(ext.x1), prep.gutter, side);
     p.light = light;
@@ -1136,16 +1187,23 @@ pub struct ListLook<'a> {
     pub sc: f64,
     pub side: NotesSide,
     pub title: Option<&'a str>,
+    pub height: Option<f64>,
 }
 
 pub fn list_items(env: &mut Env, entries: &[ListEntry], ext: Box) -> Vec<Item> {
-    let look =
-        ListLook { st: env.style, font: env.font, sc: env.s, side: env.spec.notes_side, title: env.spec.notes_title };
+    let look = ListLook {
+        st: env.style,
+        font: env.font,
+        sc: env.s,
+        side: env.spec.notes_side,
+        title: env.spec.notes_title,
+        height: env.list_height,
+    };
     list_block(&look, entries, ext, &mut env.unknown_glyph)
 }
 
 pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mut bool) -> Vec<Item> {
-    let ListLook { st, font, sc, side, title } = *look;
+    let ListLook { st, font, sc, side, title, height } = *look;
     let h = st.text_height_in * sc;
     let pitch = h * st.line_spacing;
     let gap = st.gutter_in * sc;
@@ -1159,7 +1217,8 @@ pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mu
     let col_w = (indent + text_w).max(font.width(ascii_fold(&title), h));
     let total: usize = wrapped.iter().map(Vec::len).sum();
     let beside = matches!(side, NotesSide::Left | NotesSide::Right);
-    let two = total > ONE_COLUMN_LINES && (!beside || total as f64 * pitch > ext.height());
+    let room = height.map_or(ext.height(), |h| h * sc - 3.1 * st.text_height_in * sc);
+    let two = total > ONE_COLUMN_LINES && (!beside || total as f64 * pitch > room);
     let mut split = entries.len();
     if two {
         let mut best = usize::MAX;
@@ -1183,6 +1242,7 @@ pub fn list_block(look: &ListLook, entries: &[ListEntry], ext: Box, unknown: &mu
         NotesSide::Left => (ext.x0 - gap - block_w, ext.y1),
         NotesSide::Right => (ext.x1 + gap, ext.y1),
         NotesSide::Both | NotesSide::Above => (ext.x0, ext.y1 + gap + block_h),
+        NotesSide::Below => (ext.x0, ext.y0 - gap),
     };
     let rule_y = top - rule_drop;
     let col_x = |c: usize| x0 + c as f64 * (col_w + gap);

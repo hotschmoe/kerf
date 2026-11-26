@@ -18,13 +18,13 @@ const DEFAULT_GAP_IN: f64 = 0.5;
 const MAX_GAP_IN: f64 = 4.0;
 const MIN_SHEET_IN: f64 = 5.0;
 const MAX_SHEET_IN: f64 = 60.0;
-const SHEETS: [(f64, f64, &str); 5] =
+pub const SHEETS: [(f64, f64, &str); 5] =
     [(11.0, 8.5, "11x8.5"), (17.0, 11.0, "17x11"), (22.0, 17.0, "22x17"), (24.0, 18.0, "24x18"), (36.0, 24.0, "36x24")];
 const AUTO_TARGET_SCALE: f64 = 12.0;
 const MIN_ISO_RATIO: f64 = 0.1;
 const MAX_ISO_RATIO: f64 = 4.0;
 
-fn sheet_size(v: &Value) -> Option<(f64, f64)> {
+pub fn sheet_size(v: &Value) -> Option<(f64, f64)> {
     let (w, h) = match v {
         Value::String(s) => {
             let (a, b) = s.split_once(['x', 'X'])?;
@@ -771,7 +771,7 @@ fn build_view<'a>(
     iso_factor: Option<f64>,
 ) -> Option<Built<'a>> {
     let vd = Diags::new();
-    let opts = ViewOpts { keys, own_list: false, in_layout: true, fit: Some(c.share), iso_factor };
+    let opts = ViewOpts { keys, own_list: false, in_layout: true, fit: Some(c.share), iso_factor, trial: false };
     let d = drawview::build_with(c.doc, c.st, c.scene, spec, &vd, opts)?;
     Some(Built { d, diags: vd.into_vec() })
 }
@@ -891,7 +891,7 @@ fn list_size(st: &Style, font: &Font, entries: &[KeyedEntry], side: ListSide, ar
     }
     let le: Vec<ListEntry> =
         entries.iter().map(|e| ListEntry { num: e.num, text: &e.text, body: &e.body, first: &e.first }).collect();
-    let look = ListLook { st, font, sc: 1.0, side: list_notes_side(side), title: None };
+    let look = ListLook { st, font, sc: 1.0, side: list_notes_side(side), title: None, height: None };
     let ext = Box { x0: 0.0, y0: 0.0, x1: 1.0, y1: arr_h.max(1.0) };
     let mut unk = false;
     let b = crate::annot::items_box(font, &notes::list_block(&look, &le, ext, &mut unk));
@@ -1136,7 +1136,7 @@ fn compose<'a>(
     if !entries.is_empty() {
         let le: Vec<ListEntry> =
             entries.iter().map(|e| ListEntry { num: e.num, text: &e.text, body: &e.body, first: &e.first }).collect();
-        let look = ListLook { st, font, sc: sref, side: list_notes_side(lay.side), title: None };
+        let look = ListLook { st, font, sc: sref, side: list_notes_side(lay.side), title: None, height: None };
         let mut unk = false;
         let mut block = notes::list_block(&look, &le, arr_box, &mut unk);
         if lay.side == ListSide::Below {
@@ -1163,8 +1163,8 @@ fn compose<'a>(
         layout_fit(c, lay, common, &built, &sizes, list, (pw, ph), &ld);
     }
     let lay_diags = ld.into_vec();
-    diags.extend(lay_diags.iter().cloned());
     out_diags.extend(lay_diags);
+    diags.extend(out_diags.iter().cloned());
     let first = &built[0].d;
     let mut d = Drawing::new(
         first.doc.clone(),

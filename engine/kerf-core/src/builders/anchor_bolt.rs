@@ -226,12 +226,14 @@ fn parse_plate_washer(ctx: &mut Ctx, t: &str) -> Option<(f64, f64)> {
 fn plate_faces(ctx: &mut Ctx, name: &str) -> Option<(f64, f64)> {
     let m = super::hardware::member(ctx, "plate", name)?;
     let o = ctx.origin;
-    let ys = crate::pathclip::scan(&m.flat, o.x, true);
+    let local = geom::Xf::rotate(-ctx.angle).mul(geom::Xf::translate(-o.x, -o.y));
+    let flat: Vec<Vec<V2>> = m.flat.iter().map(|l| l.iter().map(|&p| local.apply(p)).collect()).collect();
+    let ys = crate::pathclip::scan(&flat, 0.0, true);
     let (Some(&bot), Some(&top)) = (ys.first(), ys.last()) else {
         ctx.p.fail(
             "plate",
             format!(
-                "plate '{}' is not over the rod (x {}): it spans x {}..{}",
+                "plate '{}' does not cross the rod axis at placement x {} (plate world x {}..{}); place the rod through the plate",
                 m.id,
                 fmt_ft_in(o.x),
                 fmt_ft_in(m.bx.x0),
@@ -240,11 +242,11 @@ fn plate_faces(ctx: &mut Ctx, name: &str) -> Option<(f64, f64)> {
         );
         return None;
     };
-    if bot < o.y {
+    if bot < -1e-6 {
         ctx.p.fail(
             "plate",
             format!(
-                "plate '{}' bottom (y {}) is below the rod's top of concrete (y {}); the rod passes up through the plate",
+                "plate '{}' starts {} behind the rod placement along its rotated axis (placement y {}); move the rod placement to the host face so the plate is on its projecting side",
                 m.id,
                 fmt_ft_in(bot),
                 fmt_ft_in(o.y)
@@ -252,5 +254,5 @@ fn plate_faces(ctx: &mut Ctx, name: &str) -> Option<(f64, f64)> {
         );
         return None;
     }
-    Some((bot - o.y, top - o.y))
+    Some((bot.max(0.0), top))
 }

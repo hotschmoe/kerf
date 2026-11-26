@@ -37,7 +37,8 @@ impl Member {
 }
 
 pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
-    let (id, inst) = match name.split_once('#') {
+    let (head, part) = name.split_once('.').map_or((name, None), |(h, p)| (h, Some(p)));
+    let (id, inst) = match head.split_once('#') {
         Some((a, b)) => {
             match b.parse::<usize>() {
                 Ok(k) => (a, k),
@@ -47,7 +48,7 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
                 }
             }
         }
-        None => (name, 0),
+        None => (head, 0),
     };
     let scene: &Scene = ctx.scene;
     let Some(c) = scene.find(id) else {
@@ -72,11 +73,38 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
         );
         return None;
     }
+    if let Some(pn) = part
+        && !c.world.iter().any(|p| p.part == pn)
+    {
+        ctx.p.fail_code(
+            "E_REF_UNKNOWN",
+            key,
+            format!("'{key}': '{id}' has no part '{pn}'; parts: {}", scene.part_names(c).join(", ")),
+        );
+        return None;
+    }
+    let stringer = c.ty.ty == crate::catalog::Type::Stair
+        && c.node.get("kind").and_then(Value::str) == Some("wood")
+        && part.is_none_or(|p| p == "stringer");
+    let selected = if stringer {
+        let cut = scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0);
+        c.world.iter().filter(|p| p.instance as usize == inst && p.part == "stringer").min_by(|a, b| {
+            let dist = |p: &Prism| ((p.z0 + p.z1) / 2.0 - cut).abs();
+            dist(a).total_cmp(&dist(b))
+        })
+    } else {
+        None
+    };
     let mut bx = Box::default();
     let (mut z0, mut z1) = (f64::INFINITY, f64::NEG_INFINITY);
     let mut flat = Vec::new();
     let mut chord = Vec::new();
-    for p in c.world.iter().filter(|p| p.instance as usize == inst && p.kind == model::Kind::Body) {
+    for p in c.world.iter().filter(|p| {
+        p.instance as usize == inst
+            && p.kind == model::Kind::Body
+            && part.is_none_or(|pn| p.part == pn)
+            && (!stringer || selected.is_some_and(|q| core::ptr::eq(*p, q)))
+    }) {
         let f = clip::from_region(&p.loops, FLAT_TOL);
         bx.add_box(clip::loops_box(&f));
         if c.ty.name() == "truss" && p.part == "bottom_chord" {
@@ -87,11 +115,28 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
         z1 = z1.max(p.z1);
     }
     if bx.is_empty() || z0 >= z1 {
-        ctx.p.fail(key, format!("'{key}': '{id}' has no solid body to mount on"));
+        let mut parts: Vec<&str> = Vec::new();
+        for p in c.world.iter().filter(|p| p.kind == model::Kind::Body && !p.part.is_empty()) {
+            if !parts.contains(&p.part.as_str()) {
+                parts.push(&p.part);
+            }
+        }
+        ctx.p.fail(key, format!("'{key}': '{name}' has no solid body to mount on; available parts: {}. Use '{head}' for the whole member", parts.join(", ")));
         return None;
     }
     let parts = vec![(c.index, u32::try_from(inst).unwrap_or(0))];
-    Some(Member { id: c.id.clone(), ty: c.ty.name(), idx: c.index as usize, inst, bx, z0, z1, flat, chord, parts })
+    Some(Member {
+        id: if part.is_some() { name.to_string() } else { c.id.clone() },
+        ty: c.ty.name(),
+        idx: c.index as usize,
+        inst,
+        bx,
+        z0,
+        z1,
+        flat,
+        chord,
+        parts,
+    })
 }
 
 pub(super) struct Kit {
@@ -294,7 +339,7 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option<B
         ctx.p
             .fail("members", format!("'members' places a tie or angle; kind {} takes {}", kind.tag(), only.join(", ")));
     }
-    for key in ["legs", "along"] {
+    for key in ["legs", "along", "gap"] {
         if !tie && ctx.p.has(key) {
             ctx.p.fail(
                 key,
@@ -437,7 +482,7 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
                     fmt_ft_in(c.bx.x1),
                     fmt_ft_in(b.bx.x0),
                     fmt_ft_in(b.bx.x1),
-                    update_op(&c.id, "cuts", &format!("[{{\"type\":\"trim\",\"end\":\"{end}\",\"to\":\"{}\"}}]", b.id))
+                    hanger_cut_fix(ctx, &c, &b, end)
                 ),
             );
             return None;
@@ -468,7 +513,16 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
         (c.bx.y0, c.bx.y0, c.bx.height(), c.bx.width(), (c.bx.x0 + c.bx.x1) / 2.0)
     };
     let w = cp.width.unwrap_or(wc);
-    let h = cp.height.unwrap_or_else(|| r16(0.85 * depth));
+    let chord = if along_x {
+        y_at(&c.chord, end + s * 0.01).map(|(lo, hi)| hi - lo)
+    } else if !c.chord.is_empty() {
+        Some(clip::loops_box(&c.chord).height())
+    } else {
+        None
+    };
+    let h = cp.height.unwrap_or_else(|| {
+        mi.table.filter(|h| h.kind.contains("hanger")).map_or_else(|| r16(0.85 * chord.unwrap_or(depth)), |h| h.length)
+    });
     let fl = 1.0;
     let (v0, v1) = (cv - w / 2.0, cv + w / 2.0);
     let ulen = gap.max(0.0) + seat_len;
@@ -516,7 +570,6 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
     }
     let mut warns = Vec::new();
     let id = ctx.p.id.to_string();
-    let chord = if along_x { y_at(&c.chord, end + s * 0.01).map(|(lo, hi)| hi - lo) } else { None };
     let (brace, braced) = match chord {
         Some(d) => (d, format!("the bottom chord of '{}'", c.id)),
         None => (depth, format!("'{}'", c.id)),
@@ -532,6 +585,16 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
             format!("hanger '{id}' is {} tall but '{}' is only {} deep", fmt_ft_in(h), c.id, fmt_ft_in(depth)),
             update_op(&id, "height", &num_json(r16(0.85 * depth))),
         ));
+    }
+    if cp.height.is_none() && mi.table.is_none() && chord.is_some() && !mi.name.is_empty() {
+        warns.push(warn(ctx, "W_HANGER_SIZE", "height", format!("hanger '{id}': model {} has no catalog height; the schematic uses 85% of the bottom chord depth ({}), not the full truss. Set the actual manufacturer height", mi.name, fmt_ft_in(h)), update_op(&id, "height", &num_json(h))));
+    }
+    if along_x
+        && (ybot_e - ybot_f).abs() > 0.01
+        && !mi.name.is_empty()
+        && !mi.name.to_ascii_uppercase().starts_with("LSS")
+    {
+        warns.push(warn(ctx, "W_HANGER_SLOPE", "model", format!("hanger '{id}': '{}' slopes at its seat; {} has no modeled slope/skew adjustment. The drawn sloping seat is schematic", c.id, mi.name), format!("select a slope-adjustable hanger, e.g. {} (confirm the model and dimensions with its manufacturer)", update_op(&id, "model", "\"LSSU\""))));
     }
     if (w - wc).abs() > 0.125 {
         warns.push(warn(
@@ -592,10 +655,54 @@ fn hanger(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> O
         b.id
     );
     let origin = ctx.origin;
-    let joins = [c.id.split('+').map(String::from).collect(), b.id.split('+').map(String::from).collect()];
+    let joins = [
+        c.id.split('+').map(crate::compile::host_id).map(String::from).collect(),
+        b.id.split('+').map(crate::compile::host_id).map(String::from).collect(),
+    ];
     let members = c.parts.iter().chain(&b.parts).copied().collect();
     let hw = model::HwInfo { warns, joins, members, ..Default::default() };
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat".into(), p: seat_pt }], info, hw))
+}
+
+fn hanger_cut_fix(ctx: &Ctx, c: &Member, b: &Member, end: &str) -> String {
+    let Some(node) = ctx.scene.comps.get(c.idx).map(|c| &c.node) else { return String::new() };
+    let mut cuts = node.get("cuts").and_then(Value::arr).unwrap_or(&[]).to_vec();
+    let trim = cuts.iter().any(|cut| {
+        cut.get("type").and_then(Value::str) == Some("trim")
+            && cut.get("end").and_then(Value::str) == Some(end)
+            && cut
+                .get("to")
+                .and_then(Value::str)
+                .is_some_and(|id| crate::compile::host_id(id) == crate::compile::host_id(&b.id))
+    });
+    let face = if end == "end" { b.bx.x0 } else { b.bx.x1 };
+    let cut = if trim {
+        format!(
+            "{{\"type\":\"bevel\",\"end\":\"{end}\",\"line\":[[{},{}],[{},{}]]}}",
+            num_json(face),
+            num_json(c.bx.y0 - 1.0),
+            num_json(face),
+            num_json(c.bx.y1 + 1.0)
+        )
+    } else {
+        format!("{{\"type\":\"trim\",\"end\":\"{end}\",\"to\":\"{}\"}}", b.id)
+    };
+    if let Ok(cut) = crate::json::parse(cut.as_bytes()) {
+        cuts.retain(|cut| cut.get("end").and_then(Value::str) != Some(end));
+        cuts.push(cut);
+    }
+    let mut bytes = Vec::new();
+    crate::json::write_compact(&mut bytes, &Value::Array(cuts));
+    let json = String::from_utf8(bytes).unwrap_or_default();
+    format!(
+        "{}{}",
+        if trim {
+            "the existing trim missed the host centerline; replace that end cut by an explicit face line: "
+        } else {
+            ""
+        },
+        update_op(&c.id, "cuts", &json)
+    )
 }
 
 fn post_cap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> Option<Built> {
@@ -769,7 +876,7 @@ fn post_base(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -
     let bears = model::Bears {
         y: yb,
         plan: [px0 - t, px1 + t, pz0 - t, pz1 + t],
-        post: p.id.split('+').map(String::from).collect(),
+        post: p.id.split('+').map(crate::compile::host_id).map(String::from).collect(),
         post_y0: py0,
         standoff: so,
     };
@@ -797,6 +904,9 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
         }
         None => None,
     };
+    if mi.series.is_some_and(|s| s.prefix == "DTT") {
+        return tension_tie(ctx, cp, mi, gauge_i, t, &p, rod.as_ref());
+    }
     let scene: &Scene = ctx.scene;
     let rod_axis = rod.as_ref().map(|m| {
         let c = &scene.comps[m.idx];
@@ -933,6 +1043,112 @@ fn holdown(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, gauge_i: u32, t: f64) -> 
     Some(kit.finish(origin, vec![NamedAnchor { name: "seat_top".into(), p: seat_pt }], info, hw))
 }
 
+fn tension_tie(
+    ctx: &mut Ctx,
+    cp: &Params,
+    mi: &ModelInfo,
+    gauge_i: u32,
+    t: f64,
+    post: &Member,
+    rod: Option<&Member>,
+) -> Option<Built> {
+    if cp.seat_height.is_some() {
+        ctx.p.fail(
+            "seat_height",
+            format!("a DTT seat follows the bolt nut bearing; Fix: {}", update_op(ctx.p.id, "seat_height", "null")),
+        );
+        return None;
+    }
+    let Some(rod) = rod else {
+        ctx.p.fail(
+            "rod",
+            "a tension tie needs rod: the horizontal bolt through its seat and the connected wood members".into(),
+        );
+        return None;
+    };
+    let rc = &ctx.scene.comps[rod.idx];
+    let xf = rc.xfs[rod.inst];
+    let axis = xf.apply_dir(V2::init(0.0, -1.0));
+    if axis.y.abs() > 1e-6 || rc.node.get("orient").and_then(Value::str) == Some("end") {
+        let id = ctx.p.id;
+        let warns = vec![warn(
+            ctx,
+            "W_CONNECTOR_ORIENT",
+            "rod",
+            format!(
+                "tension tie '{id}': only a horizontal x-axis bolt is supported; no upright holdown surrogate is drawn for rod '{}'",
+                rod.id
+            ),
+            format!(
+                "use a horizontal bolt: {} (then place its head through the wood connection)",
+                update_op(&rod.id, "rotate", "90")
+            ),
+        )];
+        return Some(Built {
+            box_: post.bx,
+            points_mode: true,
+            hw: model::HwInfo { warns, ..Default::default() },
+            info: format!("connector {}tension tie (draws nothing: unsupported rod orientation)", model_text(mi)),
+            ..Built::default()
+        });
+    }
+    let nut = Scene::anchor_point(rc, rod.inst, None, "nut_bearing")?;
+    let sign = if axis.x > 0.0 { 1.0 } else { -1.0 };
+    let face = cp.face.unwrap_or(if rod.zc() >= post.zc() { Face::Front } else { Face::Back });
+    if !matches!(face, Face::Front | Face::Back) {
+        ctx.p.fail(
+            "face",
+            format!(
+                "horizontal tension tie screws to a front/back joist face; Fix: {}",
+                update_op(ctx.p.id, "face", "\"front\"")
+            ),
+        );
+        return None;
+    }
+    let zf = if face == Face::Front { post.z1 } else { post.z0 };
+    let out = if face == Face::Front { 1.0 } else { -1.0 };
+    let length = cp.height.unwrap_or(6.9375);
+    let width = cp.width.unwrap_or(3.25);
+    let seat_t = cp.seat.unwrap_or(t);
+    let xs = [nut.x, nut.x + sign * length];
+    let ys = [nut.y - width / 2.0, nut.y + width / 2.0];
+    let mut kit = Kit::new();
+    kit.rect("back", xs, ys, [zf, zf + out * t], Vec::new());
+    kit.rect("seat", [nut.x, nut.x + sign * seat_t], ys, [zf, rod.zc() + out * 0.5], Vec::new());
+    for k in [0.25, 0.5, 0.75] {
+        let x = nut.x + sign * length * k;
+        kit.rect("screw", [x - 0.0625, x + 0.0625], [nut.y - 0.0625, nut.y + 0.0625], [zf - out * 1.5, zf], Vec::new());
+        if let Some(p) = kit.prisms.last_mut() {
+            p.embedded = true;
+            p.hw_dash = false;
+        }
+    }
+    let mut warns = Vec::new();
+    if xs[0].min(xs[1]) < post.bx.x0 - 0.125
+        || xs[0].max(xs[1]) > post.bx.x1 + 0.125
+        || ys[0] < post.bx.y0
+        || ys[1] > post.bx.y1
+    {
+        warns.push(warn(ctx,"W_CONNECTOR_ORIENT","post",format!("tension tie '{}': its horizontal body at x {}..{}, y {}..{} extends off '{}'; the bolt's nut bearing sets the seat",ctx.p.id,fmt_ft_in(xs[0].min(xs[1])),fmt_ft_in(xs[0].max(xs[1])),fmt_ft_in(ys[0]),fmt_ft_in(ys[1]),post.id),format!("place the bolt nut at the joist end and center it within the joist depth; resize the body if required: {}",update_op(ctx.p.id,"height",&num_json(length.min(post.bx.width()))))));
+    }
+    let members = post.parts.iter().chain(&rod.parts).copied().collect();
+    let hw = model::HwInfo { warns, members, ..Default::default() };
+    Some(kit.finish(
+        ctx.origin,
+        vec![NamedAnchor { name: "seat_top".into(), p: nut }, NamedAnchor { name: "seat".into(), p: nut }],
+        format!(
+            "connector {}horizontal tension tie {gauge_i} ga, {} long x {} wide on {} face of {}, bolt {}",
+            model_text(mi),
+            fmt_ft_in(length),
+            fmt_ft_in(width),
+            face.tag(),
+            post.id,
+            rod.id
+        ),
+        hw,
+    ))
+}
+
 fn nearest_rod(scene: &Scene, holdown: &crate::scene::Comp, post: Box, zc: f64) -> Option<String> {
     let mut best: Option<(f64, String)> = None;
     for c in &scene.comps {
@@ -952,6 +1168,106 @@ fn nearest_rod(scene: &Scene, holdown: &crate::scene::Comp, post: Box, zc: f64) 
 }
 
 const FACES: [&str; 6] = ["face_left", "face_right", "face_top", "face_bottom", "face_front", "face_back"];
+
+pub fn build_wrap(
+    ctx: &mut Ctx,
+    cp: &Params,
+    mi: &ModelInfo,
+    on: &Value,
+    gauge_i: u32,
+    t: f64,
+    width: f64,
+) -> Option<Built> {
+    let faces = on.arr().unwrap_or(&[]);
+    let names: Vec<(&str, &str)> = faces.iter().filter_map(Value::str).filter_map(|s| s.rsplit_once('.')).collect();
+    if names.len() != 3
+        || names[1].1 != "face_top"
+        || !matches!((names[0].1, names[2].1), ("face_front", "face_back") | ("face_back", "face_front"))
+    {
+        ctx.p.fail("on","a wrap uses [\"post.face_front\",\"beam.face_top\",\"post.face_back\"] (or back/top/front); other multi-face paths are not supported".into());
+        return None;
+    }
+    for key in ["at", "z", "rotate", "slope", "mirror", "lay", "side"] {
+        if ctx.p.has(key) {
+            ctx.p.fail(key, format!("a wrap is placed from its faces; remove '{key}'"));
+        }
+    }
+    if !ctx.p.ok {
+        return None;
+    }
+    let a = member(ctx, "on", names[0].0)?;
+    let b = member(ctx, "on", names[1].0)?;
+    let c = member(ctx, "on", names[2].0)?;
+    let (front, back) = if names[0].1 == "face_front" { (&a, &c) } else { (&c, &a) };
+    let pts = match cp.points.as_ref() {
+        Some(v) => Some(parse_point_list(ctx, "points", v, true)?),
+        None => None,
+    };
+    let xc = pts.as_ref().and_then(|p| p.first()).map_or((a.bx.x0 + a.bx.x1) / 2.0, |p| p.x + ctx.origin.x);
+    if pts.as_ref().is_some_and(|p| p.iter().any(|p| (p.x + ctx.origin.x - xc).abs() > 1e-6 || p.b != 0.0)) {
+        ctx.p.fail(
+            "points",
+            "wrap points must lie on one vertical station (same x, no bulges); their lower y sets the strap ends"
+                .into(),
+        );
+        return None;
+    }
+    if [&a, &b, &c].iter().any(|m| xc - width / 2.0 < m.bx.x0 - 1e-6 || xc + width / 2.0 > m.bx.x1 + 1e-6)
+        || (front.z1 - b.z1).abs() > 0.125
+        || (back.z0 - b.z0).abs() > 0.125
+        || a.bx.y1 > b.bx.y1
+        || c.bx.y1 > b.bx.y1
+    {
+        ctx.p.fail("on","wrap faces must align with the beam's front/back, and the full strap width must fit on all three faces; set points to a shared x station".into());
+        return None;
+    }
+    let bottom = pts.as_ref().map(|p| p.iter().map(|p| p.y + ctx.origin.y).fold(f64::INFINITY, f64::min));
+    let ya = bottom.unwrap_or(a.bx.y0);
+    let yc = bottom.unwrap_or(c.bx.y0);
+    let top = b.bx.y1;
+    if ya >= top || yc >= top {
+        ctx.p.fail("points", "wrap lower ends must be below the beam top".into());
+        return None;
+    }
+    let x = [xc - width / 2.0, xc + width / 2.0];
+    let mut kit = Kit::new();
+    for (face, lo, hi, z) in [
+        (
+            names[0].1,
+            ya,
+            top,
+            if names[0].1 == "face_front" { [front.z1, front.z1 + t] } else { [back.z0 - t, back.z0] },
+        ),
+        (
+            names[2].1,
+            yc,
+            top,
+            if names[2].1 == "face_front" { [front.z1, front.z1 + t] } else { [back.z0 - t, back.z0] },
+        ),
+    ] {
+        kit.rect(face, x, [lo, hi], z, Vec::new());
+        if let Some(p) = kit.prisms.last_mut() {
+            p.face_tie = true;
+        }
+    }
+    kit.rect("wrap_top", x, [top, top + t], [back.z0 - t, front.z1 + t], Vec::new());
+    let members = a.parts.iter().chain(&b.parts).chain(&c.parts).copied().collect();
+    Some(kit.finish(
+        ctx.origin,
+        vec![
+            NamedAnchor { name: "start".into(), p: V2::init(xc, ya) },
+            NamedAnchor { name: "end".into(), p: V2::init(xc, yc) },
+            NamedAnchor { name: "top".into(), p: V2::init(xc, top) },
+        ],
+        format!(
+            "connector {}wrap strap {gauge_i} ga x {}, front/top/back over {}",
+            model_text(mi),
+            fmt_ft_in(width),
+            b.id
+        ),
+        model::HwInfo { members, ..Default::default() },
+    ))
+}
 
 pub fn build_on(
     ctx: &mut Ctx,

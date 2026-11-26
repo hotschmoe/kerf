@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"truss-webs","view":"H","kind":"section","scale":48,"bounds":[-6,-55.2,438,94.5],
+{"kerf_drawing":"0.1","doc":"truss-webs","view":"H","kind":"section","scale":16,"bounds":[-6,-22.4,438,94.5],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-DETL-HIDN","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -45,10 +45,10 @@
 {"t":"region","src":"h_truss","part":"heel_web","instance":0,"cut":true,"loops":[[[0,6.5],[3.5,6.5],[3.5,13.9773],[0,12.8107]]]},
 {"t":"region","src":"h_truss","part":"heel_web","instance":0,"cut":true,"loops":[[[428.5,6.5],[432,6.5],[432,12.8107],[428.5,13.9773]]]},
 {"t":"region","src":"h_truss","part":"web","instance":0,"cut":true,"loops":[[[214.25,84.2273],[214.25,8.4032],[147.5957,62.0092],[142.25,60.2273],[142.25,7.5084],[76.6988,38.377],[70.25,36.2273],[70.25,6.8056],[10.8083,16.4134],[3.6454,14.0258],[50.2058,6.5],[73.75,6.5],[73.75,35.8969],[136.1761,6.5],[145.75,6.5],[145.75,59.0022],[211.0317,6.5],[220.9683,6.5],[286.25,59.0022],[286.25,6.5],[295.8239,6.5],[358.25,35.8969],[358.25,6.5],[381.7942,6.5],[428.3546,14.0258],[421.1917,16.4134],[361.75,6.8056],[361.75,36.2273],[355.3012,38.377],[289.75,7.5084],[289.75,60.2273],[284.4043,62.0092],[217.75,8.4032],[217.75,84.2273],[216,84.8107]]]},
-{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","closed":true,"pts":[[-6,-40.2,1],[24,-40.2,1]]},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","s":"8","x":9,"y":-40.2,"h":7.5,"rot":0,"align":"center","valign":"middle"},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","s":"HOWE TRUSS, RAISED HEELS","x":31.2,"y":-39.24,"h":7.5,"rot":0,"align":"left","valign":"baseline"},
-{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","closed":false,"pts":[[31.2,-42.6],[191.2,-42.6]]},
-{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:H","s":"SCALE: 1/4\" = 1'-0\"","x":31.2,"y":-49.98,"h":4.5,"rot":0,"align":"left","valign":"baseline"}
+{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","closed":true,"pts":[[-6,-17.4,1],[4,-17.4,1]]},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","s":"8","x":-1,"y":-17.4,"h":2.5,"rot":0,"align":"center","valign":"middle"},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","s":"HOWE TRUSS, RAISED HEELS","x":6.4,"y":-17.08,"h":2.5,"rot":0,"align":"left","valign":"baseline"},
+{"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:H","closed":false,"pts":[[6.4,-18.2],[59.7333,-18.2]]},
+{"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:H","s":"SCALE: 3/4\" = 1'-0\"","x":6.4,"y":-20.66,"h":1.5,"rot":0,"align":"left","valign":"baseline"}
 ],
-"diagnostics":[]}
+"diagnostics":[{"level":"info","code":"I_VIEW_SHEET","id":"H","path":"views/H/sheet","message":"single-view sheet H: 36 x 24 paper inches at 3/4\" = 1'-0\"; fitted with the notes, tables and wrapped title","fix":"keep this paper size: {\"op\":\"update\",\"path\":\"views/H\",\"value\":{\"sheet\":[36,24]}}"}]}
