@@ -324,6 +324,36 @@ pub fn xz_bars_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
 fn xz_bar_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     let Some(first) = p.path3.first() else { return };
     let (y, r) = (first[1], p.sweep_r);
+    if p.path3.iter().any(|c| (c[1] - y).abs() > EPS) {
+        for w in p.path3.windows(2) {
+            let (mut a, mut b) = (w[0], w[1]);
+            if a[1].min(b[1]) - r >= cut_y {
+                continue;
+            }
+            if (a[1] < cut_y) != (b[1] < cut_y) {
+                let t = (cut_y - a[1]) / (b[1] - a[1]);
+                let c = [a[0] + t * (b[0] - a[0]), cut_y, a[2] + t * (b[2] - a[2])];
+                out.push(dot_prism(p, plan_pt(c[0], c[2]), r, cut_y));
+                if a[1] >= cut_y {
+                    a = c;
+                } else {
+                    b = c;
+                }
+            }
+            if a[1].min(b[1]) >= cut_y {
+                continue;
+            }
+            let (v, w) = (plan_pt(a[0], a[2]), plan_pt(b[0], b[2]));
+            if v.dist(w) < EPS {
+                out.push(dot_prism(p, v, r, a[1].min(b[1])));
+            } else {
+                let d0 = a[1].min(b[1]) - r;
+                let d1 = (a[1].max(b[1]) + r).min(cut_y + r);
+                out.push(bar_prism(p, alloc::vec![Pt::at(v, 0.0), Pt::at(w, 0.0)], r, d0, d1));
+            }
+        }
+        return;
+    }
     if y - r >= cut_y {
         return;
     }
@@ -420,20 +450,21 @@ fn round_rect(b: Box, ccw: bool) -> Vec<Pt> {
 /// A cut wall whose webs the document draws itself as `cmu` pieces of other components (SPEC 32.7).
 pub struct OwnCells {
     pub wall: u32,
-    pub piece: u32,
-    pub count: usize,
+    pub pieces: Vec<u32>,
 }
 
 /// A CMU wall the plan cuts shows its units: face shells, cross webs, cells and head joints (SPEC 32.7).
 /// Returns which world prisms it drew.
 fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, own: &mut Vec<OwnCells>) -> Vec<bool> {
     let mut done = alloc::vec![false; world.len()];
+    let mut paired = alloc::vec![false;world.len()];
     let wall = |p: &Prism| scene.comps.get(p.comp as usize).filter(|c| c.ty.ty == crate::catalog::Type::CmuWall);
     let same = |a: &Prism, b: &Prism| a.comp == b.comp && a.instance == b.instance;
     let cuts = |b: &Box| b.y0 < cut_y - EPS && b.y1 > cut_y + EPS;
     for i in 0..world.len() {
         let p = &world[i];
-        let Some(comp) = wall(p).filter(|_| !done[i] && p.kind == Kind::Body && p.material == "cmu") else {
+        let Some(comp) = wall(p).filter(|_| !done[i] && !paired[i] && p.kind == Kind::Body && p.material == "cmu")
+        else {
             continue;
         };
         let Some(b) = plain_rect(p).filter(cuts) else { continue };
@@ -448,6 +479,8 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, o
             ((r[0] - run[0]).abs() < 1e-6 && (r[1] - run[1]).abs() < 1e-6).then_some((j, qb))
         });
         let Some((j, qb)) = pair else { continue };
+        paired[i] = true;
+        paired[j] = true;
         let (ta, tb) = (across(p, &b), across(&world[j], &qb));
         let shell = ta[1] - ta[0];
         let (t0, t1) = (ta[0].min(tb[0]), ta[1].max(tb[1]));
@@ -469,9 +502,29 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, o
         };
         let mut pieces: Vec<u32> = world.iter().filter(in_core).map(|q| q.comp).collect();
         pieces.dedup();
-        if let Some(&piece) = pieces.first() {
-            if !own.iter().any(|o| o.wall == p.comp) {
-                own.push(OwnCells { wall: p.comp, piece, count: pieces.len() });
+        if !pieces.is_empty() {
+            for q in world.iter().filter(|q| {
+                if !matches!(q.material.as_str(), "grout" | "mortar") || wall(q).is_some() {
+                    return false;
+                }
+                let Some(qb) = q.loops.first().map(|l| geom::points_box(l)).filter(cuts) else {
+                    return false;
+                };
+                let (s, t) = if p.face_on { ([qb.x0, qb.x1], [q.z0, q.z1]) } else { ([q.z0, q.z1], [qb.x0, qb.x1]) };
+                s[1] > run[0] + EPS && s[0] < run[1] - EPS && t[1] > t0 + EPS && t[0] < t1 - EPS
+            }) {
+                if !pieces.contains(&q.comp) {
+                    pieces.push(q.comp);
+                }
+            }
+            if let Some(found) = own.iter_mut().find(|o| o.wall == p.comp) {
+                for piece in pieces {
+                    if !found.pieces.contains(&piece) {
+                        found.pieces.push(piece);
+                    }
+                }
+            } else {
+                own.push(OwnCells { wall: p.comp, pieces });
             }
             continue;
         }
@@ -484,8 +537,13 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, o
         if crate::builders::cmu_wall::is_bond_beam(comp.node, course + 1) {
             for (k, q) in world.iter().enumerate() {
                 let below = q.loops.first().is_some_and(|l| geom::points_box(l).y1 <= cut_y + EPS);
-                if same(p, q) && below {
-                    done[k] = true;
+                if same(p, q) {
+                    if below {
+                        done[k] = true;
+                    }
+                    if q.material == "cmu" {
+                        paired[k] = true;
+                    }
                 }
             }
             continue;
@@ -497,7 +555,13 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, o
                 .map(|s| s[0].x)
                 .collect()
         } else {
-            let first = run[0] + if course % 2 == 1 { 8.0 } else { 16.0 } - CMU_JOINT / 2.0;
+            let first = run[0]
+                + if comp.node.get("form").and_then(|v| v.str()) != Some("pier") && course % 2 == 1 {
+                    8.0
+                } else {
+                    16.0
+                }
+                - CMU_JOINT / 2.0;
             (0..2000).map(|k| first + 16.0 * f64::from(k)).take_while(|s| *s < run[1] - 1e-6).collect()
         };
         sort::stable(&mut joints, |a, b| a < b);
@@ -560,8 +624,19 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, o
                     let (s, t) = if p.face_on { (v.x, v.y) } else { (v.y, v.x) };
                     s > c[0] && s < c[1] && t > cell_t[0] && t < cell_t[1]
                 });
-                let grouted =
-                    if by_bars && !(p.face_on && solid_grout.is_some()) { has_bar } else { solid_grout.is_some() };
+                let cell_mid = cb.center();
+                let grout_here = world.iter().any(|q| {
+                    same(p, q)
+                        && q.material == "grout"
+                        && q.loops.first().is_some_and(|l| {
+                            let b = geom::points_box(l);
+                            let (ss, tt) = (along(q, &b), across(q, &b));
+                            let cb = to_plan(ss, tt);
+                            cuts(&b) && cb.contains(cell_mid)
+                        })
+                });
+                let grouted = (crate::builders::cmu_wall::solid_course(comp.node, course + 1) && grout_here)
+                    || (by_bars && has_bar);
                 if grouted {
                     let mut g = rect_prism(solid_grout.unwrap_or(p), 0.0, 1.0, 0.0, 1.0, b.y0, b.y1);
                     g.part = String::from("grout");
@@ -571,13 +646,59 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, o
                     out.push(g);
                 }
             }
-            out.push(unit);
+            let mut beam_cuts = Vec::new();
+            if p.face_on {
+                for span in comp.node.get("bond_beams").and_then(|v| v.arr()).unwrap_or(&[]) {
+                    if span.get("course").and_then(|v| v.num()) != Some((course + 1) as f64) {
+                        continue;
+                    }
+                    let Some([a, end_value]) = span.get("x").and_then(|v| v.arr()) else { continue };
+                    let (Some(a), Some(end), Some(xf)) = (
+                        crate::units::parse_length(a),
+                        crate::units::parse_length(end_value),
+                        comp.xfs.get(p.instance as usize),
+                    ) else {
+                        continue;
+                    };
+                    let (a, end) = (xf.apply(V2::init(a, 0.0)).x, xf.apply(V2::init(end, 0.0)).x);
+                    let (lo, hi) = (u[0].max(a.min(end)), u[1].min(a.max(end)));
+                    if hi <= lo {
+                        continue;
+                    }
+                    let bb = to_plan([lo, hi], cell_t);
+                    let cut = model::rect_loop(bb.x0, bb.y0, bb.x1, bb.y1);
+                    beam_cuts.push(clip::from_region(core::slice::from_ref(&cut), FLAT_TOL));
+                    let mut grout = rect_prism(p, 0.0, 1.0, 0.0, 1.0, b.y0, b.y1);
+                    grout.material = "grout".into();
+                    grout.part = "grout".into();
+                    grout.role = Role::Grout;
+                    grout.loops = model::one_loop(cut);
+                    out.push(grout);
+                }
+            }
+            if beam_cuts.is_empty() {
+                out.push(unit);
+            } else {
+                let mut region = clip::from_region(&unit.loops, FLAT_TOL);
+                for cut in &beam_cuts {
+                    region = clip::boolean(&region, cut, clip::Op::Diff);
+                }
+                for group in crate::section::group_region(&region, None) {
+                    let mut part = unit.clone();
+                    part.loops = group.loops;
+                    out.push(part);
+                }
+            }
         }
         for (k, q) in world.iter().enumerate() {
             let Some(qb) = q.loops.first().map(|l| geom::points_box(l)).filter(|_| same(p, q)) else { continue };
             let r = along(q, &qb);
             let under = r[0] < run[1] - EPS && r[1] > run[0] + EPS;
-            let hidden = qb.y1 <= cut_y + EPS || (cuts(&qb) && (q.part == "grout" || q.kind == Kind::Ghost));
+            let hidden = qb.y1 <= cut_y + EPS
+                || (cuts(&qb)
+                    && (q.part == "grout"
+                        || q.kind == Kind::Ghost
+                        || (comp.node.get("form").and_then(|v| v.str()) == Some("pier") && q.material == "cmu")));
             if k == i || k == j || (under && hidden) {
                 done[k] = true;
             }

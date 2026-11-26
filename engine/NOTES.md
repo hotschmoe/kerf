@@ -6,6 +6,81 @@ nothing else. Rust 1.96 stable, edition 2024. It replaced the Zig engine on 2026
 Drawing IR on every view, the CLI ergonomics and the `kerf serve` smoke tests were identical; the Zig tree is in git
 history). `README.md` is the short version of this file, `PERF.md` has the numbers.
 
+
+## beta.5 concrete, masonry and ops (#36, #37, #39)
+
+Working tree only on `b5-concrete`; no index/ref writes, commits, installs or GitHub issue mutations. Contract:
+SPEC §35, with the implementation invariants in SRC. No dependencies or blocking tests were added. No file was
+deleted; the previous masonry E golden bytes are preserved in `.archive/b5-concrete/masonry-footprints/`.
+
+- #36: shared host faces are excluded from W_COVER without relying on `pour`; split contacts retain exposed edge
+  intervals. Each path leg uses its own direction and is clipped to every host it enters. Actual footprint sections
+  replace box hosting; round sections use analytic chords. Steel-backed CMU void edges are interfaces, and a native
+  wall takes cover ownership over enclosed legacy CMU/grout pieces. Negative cover no longer offers the impossible
+  cover-0 fix; XY paths get an authored-point geometry op. `plane:"yz"`, optional constant `x` (length or Ref), and
+  literal `[y,z]` points support transverse hooks. Iso uses a smooth transverse ribbon, mesh a circular sweep.
+- #37: nominal 16 / actual 15.625 CMU; `form:"pier"` makes a square two-cell unit at true depth with end/central webs.
+  `units:{"1":"lintel","3":"inverted_bond_beam"}` supplies solid bottoms/tops and grout. Run-x `bond_beams` also
+  takes `{course:3,x:[0,72]}` spans; elevation bands, plan core grout, named zones and control-joint gaps follow them.
+  Native reinforced vertical cells count as contact; remaining floating horizontal bars identify the ungrouted
+  course and offer a bond-beam op. Open cells between footprint pieces remain physical voids and warn; do not
+  acknowledge them as if they were grout. Use native walls and the migration below.
+- #39: `set scale` null is removal; other null sets direct the author to remove. Component removal references are
+  checked at final batch state (safe replacement/removal ordering succeeds; dangling references fail atomically).
+  View updates can replace annotations with citation sanitization. View schema explicitly identifies kind sheet
+  as the schedule alias, with paper sizing on layouts[].sheet. Anchor plate distances follow the rotated rod axis.
+
+Author examples:
+`{"type":"rebar","size":"#4","mode":"path","plane":"yz","x":4,"points":[[2,-8],[24,-8]],"hook":{"end":{"angle":90,"toward":"up"}}}`
+`{"id":"pier","type":"cmu_wall","width":16,"form":"pier","courses":3,"grout":"solid"}`
+`{"op":"update","path":"components/wall","value":{"bond_beams":[{"course":3,"x":[0,72]},{"course":4,"x":[72,120]}]}}`
+`{"op":"set","path":"scale","value":null}`
+
+Migration: I_CMU_PLAN_UNITS now enumerates surrogate CMU/grout/mortar pieces over every panel of a wall and prints
+one removal batch. Keep walls and bars; re-point any notes/anchors in that batch, set reinforced vertical grout and
+horizontal beam courses, then review obsolete joint line annotations. Independent copies of all six library details
+s-40-05/-06/-07/-08/-11/-14 were migrated using those printed removals (45/52/24/9/28/7 pieces respectively). Every
+fallback clears. Applying the printed grout-course fixes leaves five details strict-clean; s-40-07 retains a real
+b_dowel footing bottom-cover finding. The original library was not edited.
+
+Reproduction and review files are in `/home/hotschmoe/github/mass-details/work/codex/b5-concrete/`: real copies of
+132 source documents (the current folder has 132, rather than the request's estimated 138), workspace style and real
+refs, baseline/current logs, per-file regression.txt, reproduction ops/PNGs and migration ops/checks. The pad/slab
+PNG remains byte-identical to beta.4 while its false joint warning clears. Inspected the 16-inch pier section and
+plan, stepped beam elevation/plan, special-unit section, rotated ledger rods, smooth yz hook, both real S1 layouts,
+and migrated corner/control-joint plans. A 16-case matrix varies 4/12-inch pieces, shared/separate pours, point order
+and host order; no internal-face finding remains. Atomic dangling removal, remove/re-add, set-null, annotation-list
+replacement and unsupported-unit diagnostics were exercised with the real CLI.
+
+Known limits: open_end/knockout/knock_out selectors explicitly warn W_PARAM and draw the standard unit profile,
+with the exact op removing the unsupported selector. A 24-inch pier unit is not introduced. YZ ties still require
+explicit path points/hooks; tie uses xy/xz and epoxy xy. Rotate/slope is refused on yz paths. Cover remains in XY;
+z-face cover is not checked. Reinforced vertical-cell contact is inferred as in plan, rather than adding whole-wall
+grout solids to section/iso. The user should inspect the cutaway and specify grout courses when needed.
+
+Final validation (engine Rust 1.99.1, required tooling venv on PATH): release build, Clippy all targets with
+warnings denied, rustfmt check, CLI E2E and serve E2E pass. Ergonomics passes 655/655. The complete native comparison
+passes all 978 outputs and DXF/PDF audits on the final build in four batches (316/230/209/223 outputs); an earlier
+full run also passed, and a repeated single-process run received SIGTERM, so the final comparison was partitioned.
+WASM builds without wasm-opt, matches 70/70 native goldens and 16/16 additional feature drawings byte-for-byte.
+`tools/size_report.sh`: 1,811,497 raw / 706,960 gzip-9 / 568,047 Brotli-11 bytes. Short guide: 12,106 bytes (was
+12,111, limit 12,288). Schema, catalog and full guide were checked for the new fields and limitations.
+
+Release regression over all 132 copied details: errors 0 -> 0; strict WARN lines 52 -> 55; strict-clean files
+111 -> 108. Thirteen files have diagnostic changes. Four false cover findings disappear (three shared joints,
+one steel-backed CMU void); their four stale acknowledgements become W_ACK_UNUSED. Five real cover findings are
+new: s-10-04 p_dow's bend (1 in. vs 3) and slab side (2.75 vs 3), s-20-01 d_lbar0/1 (1.45 vs 1.5), s-40-07 b_dowel
+footing bottom (2.6875 vs 3). s-40-12 loses two false native-cell vertical-bar floating findings; its three existing
+horizontal missing-grout warnings gain exact wall/course fixes. The six legacy CMU details gain detailed migration
+ops in their informational messages. Other warning classes are unchanged. Every per-file diff and class explanation
+is in the requested regression.txt, with full baseline/current logs beside it.
+
+Only the existing masonry-footprints E drawing golden was regenerated (drawing IR, bare/sheet SVG, DXF, PDF,
+bare/sheet PNG), to distinguish beam courses with inset dashed bands and retain control-joint gaps. The band inset
+was increased after inspecting the small-scale sheet so it reads separately from the bed-joint line. All other
+golden bytes and every reference document were retained. Full file list, authoring examples and gate evidence:
+`/home/hotschmoe/github/mass-details/work/codex/b5-concrete/HANDOFF.txt`.
+
 ## beta.4 merge of master issue #31 (SPEC 30–32)
 
 The working-tree conflicts in SRC, these notes, SPEC and the CLI guide retain both sides in full. SPEC now orders
@@ -722,6 +797,10 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   diagram (one member, nothing bearing) is still `W_FLOATING` and is acknowledged.
 
 ## SPEC ISSUES
+- beta.5 (#36/#37): shared-face cover is geometric, independent of pour identity; straight legs measure transverse
+  cover in their own direction. Nominal-16 square piers use the inherited shell/web thickness and two cells, rather
+  than introducing a vendor-specific 24-inch unit. Reinforced vertical-cell contact follows native plan inference;
+  open-end/knock-out selectors warn instead of silently claiming special geometry. SPEC §35 records these choices.
 - Integrating SPEC 30 with 31/32: the original through-member type list omitted steel joists, deck and stairs, and
   the unsupported-plate load list omitted wood stairs. Include their cut body prisms in leader obstruction and wood
   stair bodies in the plate's carried wood, because replacing equivalent legacy typed geometry should retain the

@@ -502,20 +502,20 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
 
 fn own_cells_diags(scene: &Scene, own: &[plan::OwnCells], view_id: &str, diags: &Diags) {
     for o in own {
-        let (Some(wall), Some(piece)) = (scene.comps.get(o.wall as usize), scene.comps.get(o.piece as usize)) else {
+        let Some(wall) = scene.comps.get(o.wall as usize) else {
             continue;
         };
-        let more = if o.count > 1 { format!(" and {} more", o.count - 1) } else { String::new() };
+        let pieces: Vec<&str> =
+            o.pieces.iter().filter_map(|&i| scene.comps.get(i as usize).map(|c| c.id.as_str())).collect();
+        let ops: Vec<String> =
+            pieces.iter().map(|id| format!("{{\"op\":\"remove\",\"path\":\"components/{id}\"}}")).collect();
         diags.add_fix(
             Level::Info,
             "I_CMU_PLAN_UNITS",
             Some(&wall.id),
             Some(&format!("views/{view_id}")),
-            format!(
-                "view {view_id}: wall '{}' keeps its two face shells in this plan because the document draws its webs itself ('{}'{more}: material cmu, inside the wall)",
-                wall.id, piece.id
-            ),
-            "remove those pieces and the grout pieces in the cells: a cmu_wall cut by a plan view draws its own units, webs, cells and head joints, and grouts the cells that hold a vertical bar (`kerf schema cmu_wall`)".to_string(),
+            format!("view {view_id}: wall '{}' keeps its two face shells because legacy CMU webs are drawn separately; overlapping CMU/grout/mortar pieces: {}",wall.id,pieces.join(", ")),
+            format!("migrate this plan by removing the surrogate pieces in one batch (re-point any notes or anchors that target them in that batch): [{}]. Native cmu_wall draws the units and grouted cells; retain reinforcement, use grout reinforced for vertical bars and bond_beams for horizontal courses, then review the plan and cutaway iso",ops.join(",")),
         );
     }
 }

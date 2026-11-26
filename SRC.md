@@ -521,3 +521,28 @@ SPEC 30.1: placement is dependency order with ties broken by document order, exc
 ## beta.4 integration of SPEC 30–32
 
 Leader-through-member checks include the cut body prisms of steel joists, metal deck and its topping, steel stair treads and concrete/wood stairs. Embedded reinforcement and beyond geometry keep the SPEC 30 exclusions. The unsupported flat-plate check counts wood stair bodies as carried wood; support detection already accepts bodies of every type. Existing members obstruct leaders and support plates normally, and CMU plans supply their sliced unit geometry.
+
+
+## beta.5 concrete/masonry reinforcement and ops (SPEC 35)
+
+`validate::host_section` evaluates a footprint at the bar's z station; circular hosts use an analytic chord to avoid
+slice approximation warnings at exactly specified cover. `segment_in_region` restricts each leg to each host it
+enters. `exposed_edges` splits boundaries at other hosts and discards only intervals continued across their outward
+normal, independent of pour identity. CMU void edges backed by steel are interfaces, and native walls take precedence
+over legacy CMU/grout/mortar cover surrogates they enclose. Negative cover fixes move authored path points in the
+correct local/reference coordinate frame instead of offering a zero-cover setting that cannot clear the warning.
+
+`cmu_reinforcement_contact` uses the same reinforced vertical-cell interpretation as native plan drawing. It is a
+contact inference, not a new whole-wall grout solid; ungrouted horizontal courses remain findings with a beam-course
+fix. `plan::cmu_units` retains legacy fallback, but passes all overlapping surrogate IDs to the migration diagnostic.
+Partial bond-beam core strips subtract the webs only in their span; disconnected shells are separate region groups.
+`cmu_wall` creates actual-size square pier webs and special-course top/bottom strips; beam bands are hidden-pen ghost
+lines so they describe internal reinforcement in elevation without introducing physical geometry or contact.
+
+YZ paths reuse the bounded xz leg builder with x/y exchanged for checks, retaining a full 3D centerline for
+projections, a transverse ribbon for iso and a cyclically permuted circular sweep for mesh. A yz
+hook's directions follow its input [y,z] plane. `compile::collect_deps` includes the fixed-axis x Ref as well as y.
+
+`ops::Ctx` records component removals and their originating op indices, applies mutations sequentially, then checks
+references to IDs absent from the final component list. View annotation list replacements still sanitize citations.
+`anchor_bolt::plate_faces` scans plate geometry in the rod's local frame, so axial distances also work after rotation.

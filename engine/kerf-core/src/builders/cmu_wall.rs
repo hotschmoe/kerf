@@ -10,14 +10,17 @@ use alloc::vec::Vec;
 
 param_enum! { pub enum Grout { Solid = "solid", Reinforced = "reinforced", None = "none" } }
 param_enum! { pub enum Run { Z = "z", X = "x" } }
+param_enum! { pub enum Form { Wall = "wall", Pier = "pier" } }
 param_enum! { pub enum Bond { Running = "running", Stack = "stack" } }
 
 params! {
     pub struct Params {
-        width: Num = 8.0 => { desc: "nominal 6, 8, 10, 12 => actual 5.625, 7.625, 9.625, 11.625" },
+        width: Num = 8.0 => { desc: "nominal 6, 8, 10, 12, 16 => actual 5.625, 7.625, 9.625, 11.625, 15.625" },
+        form: Enum(Form) = Form::Wall => { desc: "wall: continuous wall; pier: square two-cell column unit, actual width by actual width (16 nominal = 15.625 square), run z, stack bond; z defaults to the actual unit depth" },
+        units: OptRaw => { def: "null", desc: "special units by one-based course: {\"1\":\"lintel\",\"3\":\"inverted_bond_beam\"}. lintel: solid CMU bottom under the cell; inverted_bond_beam: solid top over the cell. Both always grouted. open_end, knockout: standard-unit fallback with W_PARAM and an exact removal op; describe the special unit in a construction note" },
         courses: Int(u8, 1, 200) => { desc: "number of 8\" courses (7.625 unit + 0.375 mortar joint)" },
         bond_beam_courses: Int(u8, 0, 200) = 0 => { desc: "top N courses are bond-beam units (always grouted)" },
-        bond_beams: OptRaw => { def: "null", desc: "bond-beam courses anywhere in the wall (1 = bottom; always grouted): course numbers or [from, to] ranges, e.g. [4] (bond beam at a slab or ledger) or [[4, 5], 9]. Each run of adjacent bond-beam courses is a part bond_beam_<k> (k = 1 from the bottom) with anchor bond_beam_<k>_center; bond_beam is the highest. Adds to bond_beam_courses" },
+        bond_beams: OptRaw => { def: "null", desc: "bond-beam courses anywhere in the wall (1 = bottom; always grouted): course numbers or [from, to] ranges, e.g. [4] (bond beam at a slab or ledger) or [[4, 5], 9]. Each run of adjacent bond-beam courses is a part bond_beam_<k> (k = 1 from the bottom) with anchor bond_beam_<k>_center; bond_beam is the highest. Run x also accepts {\"course\":3,\"x\":[0,72]} for a partial or stepped beam (local distances from wall left); adds to bond_beam_courses" },
         grout: Enum(Grout) = Grout::Reinforced => { desc: "solid | reinforced (bond beams + the cut cell) | none" },
         grout_courses: OptRaw => { def: "null", desc: "courses grouted solid when the rest are not (partial grouting), as bond_beams, e.g. [[1, 3]] below grade with grout \"none\"" },
         face_shell: LenPos = 1.25 => { desc: "face shell thickness drawn in section" },
@@ -95,7 +98,7 @@ fn course_span(a: usize, b: usize) -> (f64, f64) {
 }
 
 fn actual_width(ctx: &mut Ctx, x: f64) -> Option<f64> {
-    for (nom, act) in [(6.0, 5.625), (8.0, 7.625), (10.0, 9.625), (12.0, 11.625)] {
+    for (nom, act) in [(6.0, 5.625), (8.0, 7.625), (10.0, 9.625), (12.0, 11.625), (16.0, 15.625)] {
         if x == nom || (x - act).abs() < 1e-3 {
             return Some(act);
         }
@@ -103,11 +106,17 @@ fn actual_width(ctx: &mut Ctx, x: f64) -> Option<f64> {
     ctx.p.fail(
         "width",
         format!(
-            "param 'width' must be a nominal 6, 8, 10 or 12 (actual 5.625, 7.625, 9.625, 11.625) (got {})",
+            "param 'width' must be a nominal 6, 8, 10, 12 or 16 (actual 5.625, 7.625, 9.625, 11.625, 15.625) (got {})",
             fmt_num(x)
         ),
     );
     None
+}
+
+#[derive(Clone)]
+struct BeamSpan {
+    course: usize,
+    x: [f64; 2],
 }
 
 struct Wall {
@@ -118,6 +127,7 @@ struct Wall {
     bb: Vec<bool>,
     grouted: Vec<bool>,
     info: String,
+    spans: Vec<BeamSpan>,
 }
 
 pub fn build(ctx: &mut Ctx) -> Option<Built> {
@@ -134,6 +144,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail("bond_beam_courses", format!("param 'bond_beam_courses' ({nbb}) cannot exceed 'courses' ({n})"));
         return None;
     }
+    if cp.form == Form::Pier && cp.face_shell * 3.0 >= w {
+        ctx.p.fail(
+            "face_shell",
+            format!("a square two-cell pier needs face_shell less than one third of its {} actual width", fmt_num(w)),
+        );
+        return None;
+    }
     if cp.face_shell * 2.0 >= w {
         ctx.p.fail(
             "face_shell",
@@ -141,9 +158,74 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         );
         return None;
     }
-    let mut bb = course_flags(ctx, "bond_beams", cp.bond_beams.as_ref(), n)?;
+    let mut spans = Vec::new();
+    let mut full = Vec::new();
+    if let Some(v) = cp.bond_beams.as_ref() {
+        let Some(items) = v.arr() else {
+            ctx.p.fail(
+                "bond_beams",
+                "bond_beams must be a list of courses, [from,to] ranges or {course,x:[start,end]} spans".into(),
+            );
+            return None;
+        };
+        for (i, v) in items.iter().enumerate() {
+            if !matches!(v, Value::Object(_)) {
+                full.push(v.clone());
+                continue;
+            }
+            let course = v
+                .get("course")
+                .and_then(Value::num)
+                .filter(|k| *k >= 1.0 && *k <= n as f64 && *k == crate::math::floor(*k));
+            let x = v
+                .get("x")
+                .and_then(Value::arr)
+                .filter(|x| x.len() == 2)
+                .and_then(|x| Some([crate::units::parse_length(&x[0])?, crate::units::parse_length(&x[1])?]));
+            match (course, x) {
+                (Some(k), Some(x))
+                    if cp.run == Run::X && x[0] >= 0.0 && x[1] > x[0] && x[1] <= cp.length.unwrap_or(0.0) =>
+                {
+                    spans.push(BeamSpan { course: k as usize, x })
+                }
+                _ => {
+                    ctx.p.fail(
+                        &format!("bond_beams/{i}"),
+                        format!(
+                            "partial beam needs run x, course 1..{n}, and x:[start,end] with 0 <= start < end <= length"
+                        ),
+                    );
+                    return None;
+                }
+            }
+        }
+    }
+    let mut bb = course_flags(ctx, "bond_beams", Some(&Value::Array(full)), n)?;
     for f in bb.iter_mut().skip(n - nbb) {
         *f = true;
+    }
+    if let Some(v) = cp.units.as_ref() {
+        let Value::Object(entries) = v else {
+            ctx.p.fail("units", "units must be an object keyed by one-based course, e.g. {\"1\":\"lintel\"}".into());
+            return None;
+        };
+        for e in entries {
+            let k = e.key.parse::<usize>().ok().filter(|&k| k >= 1 && k <= n);
+            if let (Some(k), Some("lintel" | "inverted_bond_beam")) = (k, e.value.str()) {
+                bb[k - 1] = true;
+            } else if k.is_some() && matches!(e.value.str(), Some("open_end" | "knockout" | "knock_out")) {
+                ctx.p.diags.add_fix(model::Level::Warning,"W_PARAM",Some(ctx.p.id),Some(&format!("{}/{}/units/{}",ctx.p.base,ctx.p.id,e.key)),
+                    format!("course {} of '{}': {} units are not modelled; the drawing uses the standard two-cell profile",e.key,ctx.p.id,e.value.str().unwrap_or("special")),
+                    format!("remove the unsupported selector and specify the special unit in a construction note: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"units\":{{\"{}\":null}}}}}}",ctx.p.id,e.key));
+            } else {
+                ctx.p.fail(&format!("units/{}",e.key), format!("units needs course 1..{n} and lintel or inverted_bond_beam; open-end and knock-out units are not modelled: remove this entry and describe the unit in a note"));
+                return None;
+            }
+        }
+    }
+    if cp.form == Form::Pier && cp.run != Run::Z {
+        ctx.p.fail("form", "form pier uses run z: remove run or set it to z".into());
+        return None;
     }
     let gc = course_flags(ctx, "grout_courses", cp.grout_courses.as_ref(), n)?;
     if cp.run == Run::Z {
@@ -167,8 +249,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let grouted: Vec<bool> = (0..n).map(|i| all || bb[i] || gc[i]).collect();
     let total_h = n as f64 * COURSE - JOINT + if cp.top_joint { JOINT } else { 0.0 };
-    let nom =
-        [(5.625, 6.0), (7.625, 8.0), (9.625, 10.0)].iter().find(|(a, _)| (w - a).abs() < 1e-3).map_or(12.0, |t| t.1);
+    let nom = [(5.625, 6.0), (7.625, 8.0), (9.625, 10.0), (15.625, 16.0)]
+        .iter()
+        .find(|(a, _)| (w - a).abs() < 1e-3)
+        .map_or(12.0, |t| t.1);
     let bb_runs = runs(&bb);
     let nbb_all = bb.iter().filter(|&&b| b).count();
     let top_only = bb_runs.len() == 1 && bb_runs[0].1 == n;
@@ -189,11 +273,99 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     if !all && gc.iter().any(|&g| g) {
         info.push_str(&format!(", grouted courses {}", runs_text(&runs(&gc))));
     }
-    let wall = Wall { w, fs: cp.face_shell, n, total_h, bb, grouted, info };
+    if cp.form == Form::Pier {
+        info.push_str(&format!(", square two-cell pier {} x {}", fmt_num(w), fmt_num(w)));
+    }
+    if !spans.is_empty() {
+        info.push_str(&format!(", {} partial bond beam spans", spans.len()));
+    }
+    let wall = Wall { w, fs: cp.face_shell, n, total_h, bb, grouted, info, spans };
     let mut built = match cp.run {
         Run::Z => run_z(&wall, cp.top_joint),
         Run::X => run_x(ctx, &cp, &wall)?,
     };
+    if cp.form == Form::Pier {
+        if let Some(z) = ctx.p.node.get("z").and_then(Value::arr).filter(|z| z.len() == 2)
+            && let Some((a, b)) = crate::units::parse_length(&z[0]).zip(crate::units::parse_length(&z[1]))
+            && ((b - a) - w).abs() > 1e-6
+        {
+            ctx.p.fail(
+                "z",
+                format!(
+                    "a square pier is {} deep: use a z centre number, or a z range of that actual depth",
+                    fmt_num(w)
+                ),
+            );
+            return None;
+        }
+        built.nat_z = Some(w);
+        for p in &mut built.prisms {
+            p.cmu_unit = false;
+        }
+        let mut pier = Vec::new();
+        for p in &built.prisms {
+            if p.material != "grout" {
+                pier.push(p.clone());
+                continue;
+            }
+            let cell = (w - 3.0 * cp.face_shell) / 2.0;
+            for z0 in [-w / 2.0 + cp.face_shell, cp.face_shell / 2.0] {
+                let mut q = p.clone();
+                q.zoff = z0 + cell / 2.0;
+                q.zhalf = cell / 2.0;
+                pier.push(q);
+            }
+        }
+        for k in 1..=n {
+            let (y0, y1) = course_span(k, k);
+            for z0 in [-w / 2.0, -cp.face_shell / 2.0, w / 2.0 - cp.face_shell] {
+                pier.push(Prism {
+                    part: format!("course_{k}"),
+                    material: "cmu".into(),
+                    loops: model::one_loop(model::rect_loop(cp.face_shell, y0, w - cp.face_shell, y1)),
+                    zoff: z0 + cp.face_shell / 2.0,
+                    zhalf: cp.face_shell / 2.0,
+                    ..Prism::default()
+                });
+            }
+        }
+        built.prisms = pier;
+    }
+    for k in 1..=n {
+        let Some(unit) = cp.units.as_ref().and_then(|v| v.get(&format!("{k}"))).and_then(Value::str) else { continue };
+        if !matches!(unit, "lintel" | "inverted_bond_beam") {
+            continue;
+        }
+        let (y0, y1) = course_span(k, k);
+        let (a, b) = if unit == "lintel" { (y0, y0 + cp.face_shell) } else { (y1 - cp.face_shell, y1) };
+        let mut bottom = Prism {
+            part: format!("course_{k}"),
+            material: "cmu".into(),
+            cmu_unit: cp.run == Run::Z && cp.form == Form::Wall,
+            course: k as u32,
+            ..Prism::default()
+        };
+        if cp.run == Run::X {
+            bottom.loops = model::one_loop(model::rect_loop(0.0, a, built.box_.x1, b));
+            bottom.zhalf = w / 2.0 - cp.face_shell;
+        } else {
+            bottom.loops = model::one_loop(model::rect_loop(cp.face_shell, a, w - cp.face_shell, b));
+        }
+        for p in built.prisms.iter_mut().filter(|p| p.material == "grout") {
+            if let Some(l) = p.loops.first_mut() {
+                let bx = geom::points_box(l);
+                if (bx.y0 - y0).abs() < 1e-6 && (bx.y1 - y1).abs() < 1e-6 {
+                    *l = model::rect_loop(
+                        bx.x0,
+                        if unit == "lintel" { b } else { y0 },
+                        bx.x1,
+                        if unit == "lintel" { y1 } else { a },
+                    );
+                }
+            }
+        }
+        built.prisms.push(bottom);
+    }
     let outline = model::rect_loop(0.0, 0.0, built.box_.x1, total_h);
     built.host = Some(HostInfo { outline, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set });
     Some(built)
@@ -207,31 +379,70 @@ pub fn is_bond_beam(node: &Value, k: usize) -> bool {
     if k + top > n && k <= n {
         return true;
     }
+    if node
+        .get("units")
+        .and_then(|v| v.get(&format!("{k}")))
+        .and_then(Value::str)
+        .is_some_and(|v| matches!(v, "lintel" | "inverted_bond_beam"))
+    {
+        return true;
+    }
     node.get("bond_beams").and_then(Value::arr).unwrap_or(&[]).iter().any(|e| match e.arr() {
         Some([a, b]) => int(a).zip(int(b)).is_some_and(|(a, b)| k >= a && k <= b),
         _ => int(e) == Some(k),
     })
 }
 
+pub fn solid_course(node: &Value, course: usize) -> bool {
+    node.get("grout").and_then(Value::str) == Some("solid")
+        || is_bond_beam(node, course)
+        || node.get("grout_courses").and_then(Value::arr).unwrap_or(&[]).iter().any(|v| match v.arr() {
+            Some([a, b]) => a.num().zip(b.num()).is_some_and(|(a, b)| course as f64 >= a && course as f64 <= b),
+            _ => v.num() == Some(course as f64),
+        })
+}
+
+pub fn beam_at(node: &Value, course: usize, x: f64) -> bool {
+    is_bond_beam(node, course)
+        || node.get("bond_beams").and_then(Value::arr).unwrap_or(&[]).iter().any(|e| {
+            e.get("course").and_then(Value::num) == Some(course as f64)
+                && e.get("x").and_then(Value::arr).is_some_and(|r| {
+                    r.len() == 2
+                        && crate::units::parse_length(&r[0])
+                            .zip(crate::units::parse_length(&r[1]))
+                            .is_some_and(|(a, b)| x >= a && x <= b)
+                })
+        })
+}
+
 fn bond_beam_zones(wall: &Wall, x0: f64, x1: f64, zones: &mut Vec<Zone>, anchors: &mut Vec<NamedAnchor>) -> V2 {
+    let mut beams: Vec<(f64, f64, f64, f64)> = runs(&wall.bb)
+        .into_iter()
+        .map(|(a, b)| {
+            let (y0, y1) = course_span(a, b);
+            (y0, y1, x0, x1)
+        })
+        .collect();
+    beams.extend(wall.spans.iter().map(|s| {
+        let (y0, y1) = course_span(s.course, s.course);
+        (y0, y1, s.x[0], s.x[1])
+    }));
+    crate::sort::stable(&mut beams, |a, b| a.0 < b.0 || (a.0 == b.0 && a.2 < b.2));
     let mut center = V2::init((x0 + x1) / 2.0, wall.total_h);
-    let rs = runs(&wall.bb);
-    for (k, &(a, b)) in rs.iter().enumerate() {
-        let (y0, y1) = course_span(a, b);
-        zones.push(zone_rect(&format!("bond_beam_{}", k + 1), x0, y0, x1, y1));
-        center = V2::init((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    for (k, &(y0, y1, a, b)) in beams.iter().enumerate() {
+        zones.push(zone_rect(&format!("bond_beam_{}", k + 1), a, y0, b, y1));
+        center = V2::init((a + b) / 2.0, (y0 + y1) / 2.0);
         anchors.push(NamedAnchor { name: format!("bond_beam_{}_center", k + 1), p: center });
     }
-    if let Some(&(a, b)) = rs.last() {
-        let (y0, y1) = course_span(a, b);
-        zones.push(zone_rect("bond_beam", x0, y0, x1, y1));
+    if let Some(&(y0, y1, a, b)) = beams.last() {
+        zones.push(zone_rect("bond_beam", a, y0, b, y1));
     }
     center
 }
 
 fn grout_zone(wall: &Wall, x0: f64, x1: f64) -> Option<Zone> {
     let rs = runs(&wall.grouted);
-    if rs.is_empty() {
+    if rs.is_empty() && wall.spans.is_empty() {
         return None;
     }
     let mut loops = Vec::new();
@@ -241,6 +452,12 @@ fn grout_zone(wall: &Wall, x0: f64, x1: f64) -> Option<Zone> {
         loops.push(model::rect_loop(x0, y0, x1, y1));
         bx.add_point(x0, y0);
         bx.add_point(x1, y1);
+    }
+    for span in &wall.spans {
+        let (y0, y1) = course_span(span.course, span.course);
+        loops.push(model::rect_loop(span.x[0], y0, span.x[1], y1));
+        bx.add_point(span.x[0], y0);
+        bx.add_point(span.x[1], y1);
     }
     Some(Zone { name: "grout".into(), loops, box_: bx })
 }
@@ -384,7 +601,12 @@ fn run_x(ctx: &mut Ctx, cp: &Params, wall: &Wall) -> Option<Built> {
                 ..Prism::default()
             });
         }
-        for &(a, b) in &runs(&wall.grouted) {
+        let grouted_runs = if cp.units.is_some() {
+            wall.grouted.iter().enumerate().filter(|(_, g)| **g).map(|(i, _)| (i + 1, i + 1)).collect()
+        } else {
+            runs(&wall.grouted)
+        };
+        for &(a, b) in &grouted_runs {
             let (y0, y1) = course_span(a, b);
             prisms.push(Prism {
                 part: "grout".into(),
@@ -395,6 +617,48 @@ fn run_x(ctx: &mut Ctx, cp: &Params, wall: &Wall) -> Option<Built> {
                 ..Prism::default()
             });
         }
+    }
+    let mut beams = wall.spans.clone();
+    for (k, &bb) in wall.bb.iter().enumerate() {
+        if bb {
+            beams.push(BeamSpan { course: k + 1, x: [0.0, len] });
+        }
+    }
+    let beams: Vec<BeamSpan> = beams
+        .iter()
+        .flat_map(|s| {
+            panels.iter().filter_map(|&(a, b)| {
+                let x = [s.x[0].max(a), s.x[1].min(b)];
+                (x[1] > x[0]).then_some(BeamSpan { course: s.course, x })
+            })
+        })
+        .collect();
+    for span in &beams {
+        let (y0, y1) = course_span(span.course, span.course);
+        if !wall.grouted[span.course - 1] {
+            prisms.push(Prism {
+                part: "grout".into(),
+                material: "grout".into(),
+                loops: model::one_loop(model::rect_loop(span.x[0], y0, span.x[1], y1)),
+                zhalf: half - fs,
+                face_on: true,
+                ..Prism::default()
+            });
+        }
+        let inset = 1.0_f64.min((span.x[1] - span.x[0]) / 4.0);
+        let line = model::rect_loop(span.x[0] + inset, y0 + 1.0, span.x[1] - inset, y1 - 1.0);
+        let mut line = line;
+        line.push(line[0]);
+        prisms.push(Prism {
+            part: "bond_beam".into(),
+            material: "cmu".into(),
+            kind: Kind::Ghost,
+            pen: Some(Pen::Hidden),
+            line_pts: line,
+            zoff: half + 0.001,
+            zhalf: 0.0001,
+            ..Prism::default()
+        });
     }
     if cp.top_joint {
         prisms.push(Prism {

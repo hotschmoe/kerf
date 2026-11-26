@@ -34,16 +34,17 @@ pub fn rebar_diameter(size: &str) -> Option<f64> {
 }
 
 param_enum! { pub enum Mode { AlongZ = "along_z", Path = "path" } }
-param_enum! { pub enum Plane { Xy = "xy", Xz = "xz" } }
+param_enum! { pub enum Plane { Xy = "xy", Xz = "xz", Yz = "yz" } }
 
 params! {
     pub struct Params {
         size: Str = "#4" => { desc: "#3 .375, #4 .5, #5 .625, #6 .75, #7 .875, #8 1.0 (diameter in)" },
         mode: Enum(Mode) = Mode::AlongZ => { desc: "along_z (continuous bar seen as a dot) or path (bar in the XY plane)" },
-        plane: Enum(Plane) = Plane::Xy => { desc: "path: xy = the bar lies in the section plane (points [x, y]); xz = the bar lies flat at height `y` (points [x, z]: corner and intersection bars, bars around an opening). A plan view draws an xz bar as its path, a section as a dot where it crosses the cut and a line where it runs behind it" },
+        plane: Enum(Plane) = Plane::Xy => { desc: "path: xy = the bar lies in the section plane (points [x, y]); yz = a transverse vertical bar at x (points [y, z]); xz = the bar lies flat at height `y` (points [x, z]: corner and intersection bars, bars around an opening). A plan view draws an xz bar as its path, a section as a dot where it crosses the cut and a line where it runs behind it" },
+        x: OptRaw => { def: "plane yz: 0", desc: "plane yz: x of the bar centreline, a length or a Ref (its x); points are [y, z] pairs" },
         y: OptRaw => { def: "plane xz: required", desc: "height of the bar's centreline, a length or a Ref (its y), e.g. {\"ref\": \"ftg@bottom_left\", \"offset\": [0, 3.25]}" },
         place: OptRaw => { desc: "cover-based placement (preferred): {in: \"comp[.part]\", face: bottom|top|left|right|center, cover: 3, count: 2, side_cover: cover, axis: x|y, station: in}. bottom/top/left/right: bars at clear `cover` from that face of the host's outline (cut to the part for comp.part; in a polygon, the outermost run of edges facing that way, e.g. the lowest bottom run = a thickened footing), spread evenly along it at `side_cover` from its ends (count 1 centers); a bar centre outside the zone is E_PLACE_OUTSIDE. center: bars centered in the zone on both axes (e.g. a single #4 in the middle of a stem wall); count > 1 spreads along axis x (default) or y at side_cover. station: ONE bar at that offset from the zone's left face (bottom face with axis y; for bottom/top/left/right faces it sets the along-face position), or at the x (y) of a Ref, e.g. \"ftg@vertex_7\" or {ref, offset}, which follows that member when the host is resized" },
-        points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs (plane xz: [x, z] pairs); bends get radius bend_radius, drawn as fillets" },
+        points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs (xz: literal [x,z]; yz: literal [y,z]); bends get radius bend_radius, drawn as fillets" },
         bend_radius: OptLenPos => { def: "3*d_b", desc: "inside bend radius for path bars" },
         spacing_note: Str = "" => { def: "null", desc: "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
         hook: OptRaw => { desc: "path: standard hooks on the bar ends, {\"start\": {...}, \"end\": {\"angle\": 90|135|180, \"toward\": \"up|down|left|right\"}}: the bend diameter and extension come from the bar size (ACI 318 Table 25.3.1: 6 db inside diameter #3-#8, 12 db extension at 90, 4 db >= 2 1/2 in. at 180; \"kind\": \"tie\" or angle 135 uses Table 25.3.2: 4 db diameter #3-#5, 6 db >= 3 in. extension), never hand-computed points. `toward` is the side the hook turns to as drawn (plane xz: as seen in plan); the end point of `points` stays the out-to-out corner of the bar (90) or its far reach (135, 180); `ext` overrides the extension. Example: {\"mode\":\"path\",\"points\":[[0,3],[30,3]],\"hook\":{\"end\":{\"angle\":90,\"toward\":\"up\"}}}" },
@@ -54,6 +55,10 @@ params! {
 
 pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let rp = ctx.p.parse::<Params>()?;
+    if rp.plane == Plane::Yz && ctx.angle.abs() > 1e-9 {
+        ctx.p.fail("rotate","plane yz fixes x and cannot rotate in XY; remove rotate/slope and give the transverse [y,z] path in points".to_string());
+        return None;
+    }
     let size = rp.size.as_str();
     let Some(d) = rebar_diameter(size) else {
         ctx.p.fail("size", format!("bar size '{size}' is not recognised. Use #3 (.375), #4 (.5), #5 (.625), #6 (.75), #7 (.875) or #8 (1.0)"));
@@ -63,7 +68,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     if let Some(tv) = rp.tie.as_ref() {
         return build_tie(ctx, &rp, tv, size, d);
     }
-    if rp.plane == Plane::Xz {
+    if rp.plane != Plane::Xy {
         return build_xz(ctx, &rp, size, d);
     }
     if rp.mode == Mode::AlongZ
@@ -182,6 +187,14 @@ fn xz_height(ctx: &mut Ctx, rp: &Params) -> Option<f64> {
 
 fn build_tie(ctx: &mut Ctx, rp: &Params, tv: &Value, size: &str, d: f64) -> Option<Built> {
     let r = d / 2.0;
+    if rp.plane == Plane::Yz {
+        ctx.p.fail(
+            "tie",
+            "a tie uses plane xy or xz; for a transverse vertical bar use plane yz with points [[y,z], ...] and hook"
+                .to_string(),
+        );
+        return None;
+    }
     for key in ["points", "place", "hook", "epoxy", "at", "rotate"] {
         if ctx.p.has(key) {
             ctx.p.fail(
@@ -299,19 +312,32 @@ const XZ_SLABS_MAX: usize = 400;
 fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
     let r = d / 2.0;
     if rp.place.is_some() {
-        ctx.p.fail("place", "plane \"xz\" bars are drawn from 'points' ([x, z] pairs) at height 'y'; 'place' is for bars along z (remove place, or remove plane)".to_string());
+        ctx.p.fail("place", "plane xz/yz bars use literal points in their named coordinate plane; place is for along_z bars: remove place or plane".to_string());
         return None;
     }
     if rp.epoxy.is_some() {
         ctx.p.fail("epoxy", "'epoxy' is for a bar in the section plane (plane \"xy\", the default): draw the adhesive dowel in a section through the member it is drilled into".to_string());
         return None;
     }
-    let y = xz_height(ctx, rp)?;
+    let yz = rp.plane == Plane::Yz;
+    let y = if yz {
+        match rp.x.as_ref() {
+            None => 0.0,
+            Some(x) => match units::parse_length(x) {
+                Some(x) => x,
+                None => {
+                    let path = format!("{}/{}/x", ctx.p.base, ctx.p.id);
+                    ctx.scene.point(x, ctx.p.id, &path)?.x
+                }
+            },
+        }
+    } else {
+        xz_height(ctx, rp)?
+    };
+    let plane = if yz { "yz" } else { "xz" };
+    let coords = if yz { "y, z" } else { "x, z" };
     let Some(arr) = rp.points.as_ref().and_then(Value::arr) else {
-        ctx.p.fail(
-            "points",
-            "plane \"xz\" needs 'points': [[x, z], ...], the bar's corners seen from above (model x and z)".to_string(),
-        );
+        ctx.p.fail("points", format!("plane \"{plane}\" needs 'points': [[{coords}], ...]"));
         return None;
     };
     let mut vs: Vec<V2> = Vec::new();
@@ -321,7 +347,13 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
             .filter(|a| a.len() == 2)
             .and_then(|a| Some(V2::init(units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
         let Some(v) = xz else {
-            ctx.p.fail(&format!("points/{i}"), format!("point {i} of a plane \"xz\" bar must be [x, z], two lengths (model x and z; the height is 'y'), got {}", model::kind_or_text(e)));
+            ctx.p.fail(
+                &format!("points/{i}"),
+                format!(
+                    "point {i} of a plane \"{plane}\" bar must be [{coords}], two lengths, got {}",
+                    model::kind_or_text(e)
+                ),
+            );
             return None;
         };
         if vs.last().is_none_or(|l: &V2| l.dist(v) > 1e-9) {
@@ -347,7 +379,17 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
     let mut prisms: Vec<Prism> = Vec::new();
     let mut box_ = Box::default();
     xz_legs(&center, y, d, &mut prisms, &mut box_);
-    let anchors = xz_anchors.iter().map(|a| NamedAnchor { name: a.name.clone(), p: V2::init(a.p.x, y) }).collect();
+    if yz {
+        let swap = Xf { a: 0.0, b: 1.0, c: 1.0, d: 0.0, tx: 0.0, ty: 0.0 };
+        for p in &mut prisms {
+            *p = p.transform(&swap);
+        }
+        box_ = super::common::box_of_prisms(&prisms);
+    }
+    let anchors = xz_anchors
+        .iter()
+        .map(|a| NamedAnchor { name: a.name.clone(), p: if yz { V2::init(y, a.p.x) } else { V2::init(a.p.x, y) } })
+        .collect();
     let plan_z = xz_anchors.into_iter().map(|a| NamedAnchor { name: a.name, p: V2::init(0.0, a.p.y) }).collect();
     let note =
         if rp.spacing_note.is_empty() { alloc::string::String::new() } else { format!(" ({})", rp.spacing_note) };
@@ -360,7 +402,14 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
         abs_z: true,
         points_mode: true,
         bar_d: d,
-        info: format!("rebar {size} xz path at y {} L={}{}{}", fmt_ft_in(y), fmt_ft_in(path_len(&vs)), hook_info, note),
+        info: format!(
+            "rebar {size} {plane} path at {} {} L={}{}{}",
+            if yz { "x" } else { "y" },
+            fmt_ft_in(y),
+            fmt_ft_in(path_len(&vs)),
+            hook_info,
+            note
+        ),
         ..Built::default()
     })
 }

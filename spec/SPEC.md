@@ -3110,3 +3110,83 @@ and the pieces to remove.
 | `W_HOLE_LIMIT` | warning | a bored hole in sawn lumber over the IRC size or edge limits; an I-joist hole in a flange |
 | `W_NOTCH_LIMIT` | warning | a notch in sawn lumber over the IRC depth or length limits |
 | `I_CMU_PLAN_UNITS` | info | a CMU wall cut in plan keeps its bare shells because the document draws its webs as `cmu` pieces (listed by `kerf check`) |
+
+## §35 (v0.2.0-beta.5: concrete, masonry and ops)
+
+### 35.1 Reinforcement across hosts (#36)
+
+`W_COVER` measures exposed concrete/masonry boundaries. A shared face is internal wherever another host continues
+across it at the bar's depth; it requires no cover, with or without a shared `pour`. Partial contacts split an edge:
+the uncovered remainder still requires cover. Straight legs measure transverse cover in their own direction;
+ends may continue into another host (as before), and bends measure to every exposed face. Every host entered by a path is checked, rather than only the host
+containing its longest leg's midpoint. Footprints use their actual section at that depth (round hosts use the circular
+chord), not their bounding box. CMU/grout surrogate pieces wholly inside a native CMU host defer to that host's cover.
+A CMU void edge backed by steel is a steel interface, not an exposed masonry face. Other void edges retain cover.
+The fix names an existing part override only when that override supplies the requirement. Negative clear cover means
+the bar surface crosses an exposed face: lowering required cover to zero cannot fix it; a path-bar fix moves the
+failing leg's authored points inward. Recheck the whole bar after any geometry change.
+
+Rebar `plane: "yz"` adds transverse vertical paths. `points` are literal `[y,z]` lengths; `x` is the constant x
+coordinate (default 0), a length or a Ref whose x is used. Example:
+`{"type":"rebar","size":"#4","mode":"path","plane":"yz","x":4,"points":[[2,-8],[24,-8]],"hook":{"end":{"angle":90,"toward":"up"}}}`.
+Hook directions use the authored coordinate plane: right/left change its first coordinate (y), up/down its second
+(z). The bar uses the same bounded leg approximation as xz bars for checks and its complete centerline for
+plan/section projections, a smooth transverse ribbon in iso and a swept circular mesh. XY rotate/slope is refused
+on a yz path; change the [y,z] points instead. `W_COVER` remains an XY check; z-face cover is not checked. `tie` still uses xy or xz;
+a yz tie request is `E_PARAM` directing the author to yz points and hooks. `epoxy` remains xy only.
+
+### 35.2 Masonry units and bond beams (#37)
+
+`cmu_wall.width` additionally accepts nominal 16 (or actual 15.625). `form: "pier"` is a square two-cell column unit:
+actual width by actual depth, run z, stack bond, with end and central webs in 3D. Its natural depth is the actual width;
+a numeric `z` moves its centre, and an explicit z range must have that depth. Example:
+`{"id":"pier","type":"cmu_wall","width":16,"form":"pier","courses":3,"grout":"solid"}`.
+This does not introduce a nominal 24-inch pier unit.
+
+`units` maps one-based course strings to `lintel` (solid CMU bottom under the core) or `inverted_bond_beam` (solid top).
+Those courses are grouted. Example: `"units":{"1":"lintel","3":"inverted_bond_beam"}`. An `open_end`, `knockout`
+or `knock_out` selector currently draws the standard two-cell profile with `W_PARAM`, naming the course and the exact
+update removing that selector; specify the unmodelled unit in a construction note. Other unknown unit names fail.
+
+`bond_beams` retains numbers and `[first,last]` course ranges and additionally accepts run-x spans:
+`"bond_beams":[{"course":3,"x":[0,72]},{"course":4,"x":[72,120]}]`.
+`x` is measured locally from the wall's left end, with `0 <= start < end <= length`. Full courses and partial spans
+add to `bond_beam_courses`. Beam courses/spans have inset dashed bands in elevation; partial spans grout their core
+continuously in plan and stop at their specified lengths and control joints. Zones `bond_beam_<k>` are ordered from
+the bottom (then left); the highest is also `bond_beam`, with corresponding centre anchors. The grout zone includes
+partial spans. Ordinary cells and head joints continue outside those spans.
+
+Native plan grout around vertical reinforcement with `grout: "reinforced"` counts as contact in `W_FLOATING`, for
+both bar and wall. A floating bar in an ungrouted CMU cell names the wall and course, with an update adding that course
+to `bond_beams` for horizontal reinforcement. Vertical reinforcement uses `grout: "reinforced"` or `"solid"`.
+Footprints remain physical pieces: open, ungrouted cells do not become reinforcement hosts by proximity. Shared
+piece faces are internal for cover, but a bar traversing empty cells still warns `W_BAR_OUTSIDE`; add a native CMU
+host and specify the reinforced cells/bond-beam courses rather than reducing the cover of individual webs.
+
+**Migration of s-40-05, s-40-06, s-40-07, s-40-08, s-40-11 and s-40-14.** These library details predate native plan
+units and draw CMU webs, grout and mortar as concrete footprints. `I_CMU_PLAN_UNITS` preserves their legacy plan and
+now lists overlapping surrogate CMU/grout/mortar pieces and exact removal ops. Apply those ops together, re-pointing
+or removing annotations/placement refs that target the old pieces in the same batch. Keep native walls and all real
+reinforcement; use `grout: "reinforced"` for vertical cells and `bond_beams` for horizontal courses. Remove obsolete
+hand-drawn joint line annotations after reviewing which ones the native joints replace. Recheck each view, remove
+stale acknowledgements with the printed ops, and inspect plan and cutaway iso (`cutaway:true, cut_z:0`).
+Do not remove a real grout bed or adjacent wall just because its material is grout or CMU: inspect the listed pieces.
+The source library is not rewritten by an engine upgrade.
+
+### 35.3 Ops and CLI contracts (#39)
+
+`{"op":"set","path":"scale","value":null}` removes document scale, exactly like `remove scale`.
+Other whole-object null sets fail with an instruction to use the explicit remove op; a missing `value` remains an error.
+Merge-patch updates retain null-as-key-removal semantics.
+
+Component removal reference safety is checked against the final batch. Removing before removing/re-pointing its
+referrers, or removing then re-adding the same ID, succeeds when the final document has no dangling reference to the
+removed ID. A final dangling reference is `E_REF_UNKNOWN`, naming its referrers and original removal op; nothing is
+written. Other operations retain their sequential order (an update still needs its target to exist at that op).
+`update views/<id>` accepts `annotations` as a whole-list replacement; annotation paths remain preferable for small
+edits. Citation sanitization still applies: an LLM cannot introduce a verified citation through the replacement.
+
+View `kind: "sheet"` is an alias for `kind: "schedule"`; it is not a `sheet` property on a view. Set paper size on
+`layouts[].sheet`. `kerf schema view` explicitly distinguishes the alias from that layout property.
+`anchor_bolt.plate` measures plate entry/exit along the rotated rod axis, so projection and nut/washer placement
+follow a horizontal or inclined rod as well as a vertical rod.
