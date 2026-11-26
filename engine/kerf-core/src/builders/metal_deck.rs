@@ -82,7 +82,9 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let table = PROFILES.iter().find(|p| p.0.iter().any(|n| *n == key));
     let custom = [dp.depth, dp.pitch, dp.rib_bottom, dp.rib_top];
     let (depth, pitch, rb, rt) = match (table, custom) {
-        (Some(&(_, d, p, b, t)), _) => (dp.depth.unwrap_or(d), dp.pitch.unwrap_or(p), dp.rib_bottom.unwrap_or(b), dp.rib_top.unwrap_or(t)),
+        (Some(&(_, d, p, b, t)), _) => {
+            (dp.depth.unwrap_or(d), dp.pitch.unwrap_or(p), dp.rib_bottom.unwrap_or(b), dp.rib_top.unwrap_or(t))
+        }
         (None, [Some(d), Some(p), Some(b), Some(t)]) => (d, p, b, t),
         _ => {
             ctx.p.fail("profile", format!("metal_deck profile \"{}\" is not in the table. Profiles: 1.5B, 1.5F, 1.5A, 3N, 2C, 3C, 1.5VLI, 9/16 (also B, F, A, N, 2VLI, 3VLI, 2W, 3W, 0.6C). For another deck keep the name and give all of \"depth\", \"pitch\", \"rib_bottom\" and \"rib_top\" (inches)", dp.profile));
@@ -90,7 +92,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         }
     };
     let Some(t) = gauge_thickness(u32::from(dp.gauge)) else {
-        ctx.p.fail("gauge", format!("gauge {} is not a deck gauge: use 16, 18, 20, 22 (roof and composite deck) or 24, 26, 28 (form deck)", dp.gauge));
+        ctx.p.fail(
+            "gauge",
+            format!(
+                "gauge {} is not a deck gauge: use 16, 18, 20, 22 (roof and composite deck) or 24, 26, 28 (form deck)",
+                dp.gauge
+            ),
+        );
         return None;
     };
     if rt < rb || rt >= pitch || depth <= 4.0 * t {
@@ -104,16 +112,31 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     if dp.topping.is_none() && (ctx.p.has("cover") || ctx.p.has("topping_material")) {
         let k = if ctx.p.has("cover") { "cover" } else { "topping_material" };
-        ctx.p.fail(k, format!("'{k}' needs \"topping\": the concrete thickness over the top of the flutes, e.g. \"topping\": 2.5"));
+        ctx.p.fail(
+            k,
+            format!(
+                "'{k}' needs \"topping\": the concrete thickness over the top of the flutes, e.g. \"topping\": 2.5"
+            ),
+        );
         return None;
     }
     let cov = parse_cover(ctx, "cover", Cover { bottom: 0.75, sides: 0.0, top: 0.75 })?;
     let mut until_note = String::new();
-    let l = length_or_until(ctx, "x", "a metal_deck needs its extent along x, e.g. \"length\": 36, or \"until\": \"other@anchor\"", &mut until_note)?;
+    let l = length_or_until(
+        ctx,
+        "x",
+        "a metal_deck needs its extent along x, e.g. \"length\": 36, or \"until\": \"other@anchor\"",
+        &mut until_note,
+    )?;
     if !ctx.p.ok {
         return None;
     }
-    let steel = |lp: Vec<Pt>| Prism { part: "deck".to_string(), material: "steel".to_string(), loops: model::one_loop(oriented_ccw(lp)), ..Prism::default() };
+    let steel = |lp: Vec<Pt>| Prism {
+        part: "deck".to_string(),
+        material: "steel".to_string(),
+        loops: model::one_loop(oriented_ccw(lp)),
+        ..Prism::default()
+    };
     let top = dp.topping.map(|c| depth + c);
     let mut prisms: Vec<Prism> = Vec::new();
     let mut anchors: Vec<NamedAnchor> = Vec::new();
@@ -127,7 +150,12 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         let (mut ribs, mut flats) = (Vec::new(), Vec::new());
         for k in 0..n {
             let c = first + k as f64 * pitch;
-            lower.extend([V2::init(c - rt / 2.0, h), V2::init(c - rb / 2.0, 0.0), V2::init(c + rb / 2.0, 0.0), V2::init(c + rt / 2.0, h)]);
+            lower.extend([
+                V2::init(c - rt / 2.0, h),
+                V2::init(c - rb / 2.0, 0.0),
+                V2::init(c + rb / 2.0, 0.0),
+                V2::init(c + rt / 2.0, h),
+            ]);
             if c > 1e-6 && c < l - 1e-6 {
                 ribs.push(c);
             }
@@ -150,7 +178,12 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             lp.extend([V2::init(l, y), V2::init(0.0, y)]);
             let lp = oriented_ccw(pts(lp));
             host = Some(HostInfo { outline: lp.clone(), cover: cov.cover, part_cover: cov.parts, cover_set: cov.set });
-            prisms.push(Prism { part: "topping".to_string(), material: dp.topping_material.clone(), loops: model::one_loop(lp), ..Prism::default() });
+            prisms.push(Prism {
+                part: "topping".to_string(),
+                material: dp.topping_material.clone(),
+                loops: model::one_loop(lp),
+                ..Prism::default()
+            });
         }
         for (k, x) in ribs.iter().enumerate() {
             add(format!("rib_{}", k + 1), *x, 0.0);
@@ -164,7 +197,12 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         if let Some(y) = top {
             let lp = model::rect_loop(0.0, t, l, y);
             host = Some(HostInfo { outline: lp.clone(), cover: cov.cover, part_cover: cov.parts, cover_set: cov.set });
-            prisms.push(Prism { part: "topping".to_string(), material: dp.topping_material.clone(), loops: model::one_loop(lp), ..Prism::default() });
+            prisms.push(Prism {
+                part: "topping".to_string(),
+                material: dp.topping_material.clone(),
+                loops: model::one_loop(lp),
+                ..Prism::default()
+            });
         }
     }
     add("deck_top".into(), l / 2.0, depth);
@@ -180,7 +218,15 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         anchors,
         box_: Box { x0: 0.0, y0: 0.0, x1: l, y1: depth },
         host,
-        info: format!("metal deck {} {} ga. ({} deep, ribs @ {}) flutes along {} L={}{until_note}{slab}", dp.profile.trim(), dp.gauge, fmt_ft_in(depth), fmt_ft_in(pitch), dp.run.tag(), fmt_ft_in(l)),
+        info: format!(
+            "metal deck {} {} ga. ({} deep, ribs @ {}) flutes along {} L={}{until_note}{slab}",
+            dp.profile.trim(),
+            dp.gauge,
+            fmt_ft_in(depth),
+            fmt_ft_in(pitch),
+            dp.run.tag(),
+            fmt_ft_in(l)
+        ),
         ..Built::default()
     })
 }

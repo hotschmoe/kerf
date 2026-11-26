@@ -8,15 +8,53 @@ use alloc::vec::Vec;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Dims {
-    W { d: f64, bf: f64, tw: f64, tf: f64, k: f64 },
-    Rect { h: f64, b: f64, t: f64 },
-    Round { od: f64, t: f64 },
-    Angle { vert: f64, horiz: f64, t: f64, r: f64 },
-    Channel { d: f64, bf: f64, tw: f64, tf: f64, r: f64 },
-    Plate { t: f64, w: f64 },
+    W {
+        d: f64,
+        bf: f64,
+        tw: f64,
+        tf: f64,
+        k: f64,
+    },
+    Rect {
+        h: f64,
+        b: f64,
+        t: f64,
+    },
+    Round {
+        od: f64,
+        t: f64,
+    },
+    Angle {
+        vert: f64,
+        horiz: f64,
+        t: f64,
+        r: f64,
+    },
+    Channel {
+        d: f64,
+        bf: f64,
+        tw: f64,
+        tf: f64,
+        r: f64,
+    },
+    Plate {
+        t: f64,
+        w: f64,
+    },
     /// Thin-wall C of uniform thickness, lipped (lip > 0: stud, joist) or not (track, channel).
-    Cee { d: f64, bf: f64, t: f64, lip: f64 },
-    Tee { d: f64, bf: f64, tw: f64, tf: f64, k: f64 },
+    Cee {
+        d: f64,
+        bf: f64,
+        t: f64,
+        lip: f64,
+    },
+    Tee {
+        d: f64,
+        bf: f64,
+        tw: f64,
+        tf: f64,
+        k: f64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -238,8 +276,17 @@ const CHANNELS: &[(&str, f64, f64, f64, f64)] = &[
 const HSS_DESIGN: f64 = 0.93;
 
 /// SSMA minimum base steel thickness (mils) and design thickness (in), AISI S201.
-const MILS: &[(u32, f64)] =
-    &[(18, 0.0188), (27, 0.0283), (30, 0.0312), (33, 0.0346), (43, 0.0451), (54, 0.0566), (68, 0.0713), (97, 0.1017), (118, 0.1242)];
+const MILS: &[(u32, f64)] = &[
+    (18, 0.0188),
+    (27, 0.0283),
+    (30, 0.0312),
+    (33, 0.0346),
+    (43, 0.0451),
+    (54, 0.0566),
+    (68, 0.0713),
+    (97, 0.1017),
+    (118, 0.1242),
+];
 
 fn stud_lip(flange: f64) -> f64 {
     match flange {
@@ -257,20 +304,28 @@ fn ssma(text: &str, up: &str) -> Option<Result<Shape, String>> {
     let pos = up.find(['S', 'T', 'U', 'F'])?;
     let (web, rest) = (up.get(..pos)?, up.get(pos + 1..)?);
     let (flange, mils) = rest.split_once('-')?;
-    if web.len() < 3 || web.len() > 4 || flange.len() != 3 || ![web, flange, mils].iter().all(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())) {
+    if web.len() < 3
+        || web.len() > 4
+        || flange.len() != 3
+        || ![web, flange, mils].iter().all(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+    {
         return None;
     }
     let kind = up.as_bytes()[pos];
     let (d, bf) = (web.parse::<f64>().ok()? / 100.0, flange.parse::<f64>().ok()? / 100.0);
     let m: u32 = mils.parse().ok()?;
     let Some(&(_, t)) = MILS.iter().find(|r| r.0 == m) else {
-        return Some(Err(format!("{text}: {m} mil is not an SSMA thickness. Thicknesses: 18, 27, 30, 33, 43, 54, 68, 97, 118 mil (25, 22, 20 drywall, 20 structural, 18, 16, 14, 12, 10 gauge)")));
+        return Some(Err(format!(
+            "{text}: {m} mil is not an SSMA thickness. Thicknesses: 18, 27, 30, 33, 43, 54, 68, 97, 118 mil (25, 22, 20 drywall, 20 structural, 18, 16, 14, 12, 10 gauge)"
+        )));
     };
     if kind == b'F' {
         return Some(Err(format!("{text}: furring (hat) channel is not in the shape set. {SSMA_FORMS}")));
     }
     if d < 1.0 || d > 16.0 || bf < 0.5 || bf > 4.0 || 2.0 * bf > 4.0 * d + 4.0 {
-        return Some(Err(format!("{text}: web {d} x flange {bf} inches is outside the cold-formed range (web 1.5 to 16, flange 0.5 to 3.5). {SSMA_FORMS}")));
+        return Some(Err(format!(
+            "{text}: web {d} x flange {bf} inches is outside the cold-formed range (web 1.5 to 16, flange 0.5 to 3.5). {SSMA_FORMS}"
+        )));
     }
     let (depth, lip) = match kind {
         b'S' => (d, stud_lip(bf)),
@@ -299,7 +354,9 @@ fn generic(text: &str, up: &str) -> Option<Result<Shape, String>> {
         }
         ("TUBE", &[od, t]) => {
             if 2.0 * t >= od {
-                return bad("two values read as a round tube, OD x wall, and this wall is not thinner than half the OD; a rectangular tube takes three: height x width x wall");
+                return bad(
+                    "two values read as a round tube, OD x wall, and this wall is not thinner than half the OD; a rectangular tube takes three: height x width x wall",
+                );
             }
             Shape { name, dims: Dims::Round { od, t }, t_min: t }
         }
@@ -437,13 +494,27 @@ pub fn lookup(text: &str) -> Result<Shape, String> {
             d.zip(w).map(|(d, w)| (d / 2.0, w / 2.0))
         };
         let want = lengths(&parts).filter(|v| v.len() == 2);
-        if let Some(row) = W.iter().find(|r| half(r).zip(want.as_ref()).is_some_and(|((d, w), v)| near(d, v[0]) && near(w, v[1]))) {
+        if let Some(row) =
+            W.iter().find(|r| half(r).zip(want.as_ref()).is_some_and(|((d, w), v)| near(d, v[0]) && near(w, v[1])))
+        {
             let &(_, d, bf, tw, tf, k) = row;
             let (hd, hw) = half(&row).unwrap_or((d / 2.0, 0.0));
-            return Ok(Shape { name: format!("WT{}x{}", crate::model::fmt_num(hd), crate::model::fmt_num(hw)), dims: Dims::Tee { d: d / 2.0, bf, tw, tf, k }, t_min: tw.min(tf) });
+            return Ok(Shape {
+                name: format!("WT{}x{}", crate::model::fmt_num(hd), crate::model::fmt_num(hw)),
+                dims: Dims::Tee { d: d / 2.0, bf, tw, tf, k },
+                t_min: tw.min(tf),
+            });
         }
-        let all: Vec<String> = W.iter().filter_map(|r| half(&r).map(|(d, w)| format!("WT{}x{}", crate::model::fmt_num(d), crate::model::fmt_num(w)))).collect();
-        return Err(format!("{text} is not half of a W in the table. WT sizes: {}. Any other tee: TEE<depth>x<flange width>x<stem thickness>x<flange thickness>", all.join(", ")));
+        let all: Vec<String> = W
+            .iter()
+            .filter_map(|r| {
+                half(&r).map(|(d, w)| format!("WT{}x{}", crate::model::fmt_num(d), crate::model::fmt_num(w)))
+            })
+            .collect();
+        return Err(format!(
+            "{text} is not half of a W in the table. WT sizes: {}. Any other tee: TEE<depth>x<flange width>x<stem thickness>x<flange thickness>",
+            all.join(", ")
+        ));
     }
     if let Some(rest) = up.strip_prefix("PIPE") {
         let (size, xs) = if let Some(z) = rest.strip_suffix("STD") {

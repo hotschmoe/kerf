@@ -84,7 +84,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     let screw_kind = matches!(bp.kind, BoltKind::LagScrew | BoltKind::WoodScrew);
     let slotted = matches!(bp.hole, Hole::ShortSlot | Hole::LongSlot);
     if bp.slot_length.is_some() && !slotted {
-        ctx.p.fail("slot_length", "slot_length needs a slotted hole: add \"hole\": \"long_slot\" (or \"short_slot\")".into());
+        ctx.p.fail(
+            "slot_length",
+            "slot_length needs a slotted hole: add \"hole\": \"long_slot\" (or \"short_slot\")".into(),
+        );
         return None;
     }
     if let Some(sl) = bp.slot_length
@@ -95,7 +98,14 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     if !screw_kind && (ctx.p.has("length") || ctx.p.has("thread")) {
         let k = if ctx.p.has("length") { "length" } else { "thread" };
-        ctx.p.fail(k, format!("'{k}' is for kind lag_screw or wood_screw; a {} is sized by \"grip\" (the plies it clamps{})", bp.kind.tag(), if bp.kind == BoltKind::HeadedStud { ": the stud's length" } else { "" }));
+        ctx.p.fail(
+            k,
+            format!(
+                "'{k}' is for kind lag_screw or wood_screw; a {} is sized by \"grip\" (the plies it clamps{})",
+                bp.kind.tag(),
+                if bp.kind == BoltKind::HeadedStud { ": the stud's length" } else { "" }
+            ),
+        );
         return None;
     }
     if screw_kind {
@@ -104,16 +114,41 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             return None;
         }
         let Some(len) = bp.length else {
-            ctx.p.fail("length", format!("a {} needs \"length\": its length under the head, e.g. \"length\": {}", bp.kind.tag(), if bp.kind == BoltKind::LagScrew { "6" } else { "3.5" }));
+            ctx.p.fail(
+                "length",
+                format!(
+                    "a {} needs \"length\": its length under the head, e.g. \"length\": {}",
+                    bp.kind.tag(),
+                    if bp.kind == BoltKind::LagScrew { "6" } else { "3.5" }
+                ),
+            );
             return None;
         };
-        let thread = bp.thread.unwrap_or(if bp.kind == BoltKind::LagScrew { (len / 2.0 + 0.5).min(6.0).min(len) } else { len * 2.0 / 3.0 });
+        let thread = bp.thread.unwrap_or(if bp.kind == BoltKind::LagScrew {
+            (len / 2.0 + 0.5).min(6.0).min(len)
+        } else {
+            len * 2.0 / 3.0
+        });
         if thread > len + 1e-9 {
-            ctx.p.fail("thread", format!("thread {} is longer than the screw ({}): give the threaded length up from the point", fmt_ft_in(thread), fmt_ft_in(len)));
+            ctx.p.fail(
+                "thread",
+                format!(
+                    "thread {} is longer than the screw ({}): give the threaded length up from the point",
+                    fmt_ft_in(thread),
+                    fmt_ft_in(len)
+                ),
+            );
             return None;
         }
         if len < 2.0 * d {
-            ctx.p.fail("length", format!("length {} is under 2 diameters of a {} screw: give the length under the head", fmt_ft_in(len), fmt_ft_in(d)));
+            ctx.p.fail(
+                "length",
+                format!(
+                    "length {} is under 2 diameters of a {} screw: give the length under the head",
+                    fmt_ft_in(len),
+                    fmt_ft_in(d)
+                ),
+            );
             return None;
         }
         return Some(screw(&bp, len, thread));
@@ -212,7 +247,14 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         anchors,
         box_: bx,
         nat_z: Some(if side { d } else { grip }),
-        info: format!("bolt {}\" dia. {}, grip {}, {}{row}{}", fmt_num(d), bp.grade, fmt_ft_in(grip), bp.orient.tag(), hole_text(&bp)),
+        info: format!(
+            "bolt {}\" dia. {}, grip {}, {}{row}{}",
+            fmt_num(d),
+            bp.grade,
+            fmt_ft_in(grip),
+            bp.orient.tag(),
+            hole_text(&bp)
+        ),
         ..Built::default()
     })
 }
@@ -322,7 +364,16 @@ pub fn hole_size(d: f64, hole: Hole) -> (f64, f64) {
             };
             (o, o)
         }
-        Hole::ShortSlot => (std, std + if d <= 0.5 + 1e-9 { 0.125 } else if d <= 1.0 + 1e-9 { 0.1875 } else { 0.25 }),
+        Hole::ShortSlot => (
+            std,
+            std + if d <= 0.5 + 1e-9 {
+                0.125
+            } else if d <= 1.0 + 1e-9 {
+                0.1875
+            } else {
+                0.25
+            },
+        ),
         Hole::LongSlot => (std, 2.5 * d),
     }
 }
@@ -337,7 +388,13 @@ fn hole_text(bp: &Params) -> String {
     match bp.hole {
         Hole::Standard => String::new(),
         Hole::Oversize => format!(", oversize hole {}", fmt_ft_in(w)),
-        Hole::ShortSlot | Hole::LongSlot => format!(", {} {} x {} along {}", bp.hole.tag().replace('_', " "), fmt_ft_in(w), fmt_ft_in(l), bp.slot_dir.tag()),
+        Hole::ShortSlot | Hole::LongSlot => format!(
+            ", {} {} x {} along {}",
+            bp.hole.tag().replace('_', " "),
+            fmt_ft_in(w),
+            fmt_ft_in(l),
+            bp.slot_dir.tag()
+        ),
     }
 }
 
@@ -364,7 +421,12 @@ fn hole_outline(bp: &Params, o: V2) -> Option<Prism> {
             Pt { x: o.x - r, y: o.y - a, b: 1.0 },
         ]
     };
-    Some(Prism { part: "hole".to_string(), kind: model::Kind::Ghost, pen: Some(crate::pen::Pen::Steel), ..steel("hole", model::one_loop(lp)) })
+    Some(Prism {
+        part: "hole".to_string(),
+        kind: model::Kind::Ghost,
+        pen: Some(crate::pen::Pen::Steel),
+        ..steel("hole", model::one_loop(lp))
+    })
 }
 
 fn thread_loop(x: f64, y0: f64, y1: f64, d: f64) -> Vec<Pt> {
@@ -407,13 +469,29 @@ fn screw(bp: &Params, len: f64, thread: f64) -> Built {
                     ..steel("shank", model::one_loop(model::rect_loop(o.x - d / 2.0, -plain, o.x + d / 2.0, 0.0)))
                 });
             }
-            prisms.push(Prism { zhalf: d / 2.0, zoff: zo, ..steel("thread", model::one_loop(thread_loop(o.x, -plain, -len, d))) });
+            prisms.push(Prism {
+                zhalf: d / 2.0,
+                zoff: zo,
+                ..steel("thread", model::one_loop(thread_loop(o.x, -plain, -len, d)))
+            });
             if wt > 0.0 {
-                prisms.push(Prism { zhalf: wr, zoff: zo, ..steel("washer", model::one_loop(model::rect_loop(o.x - wr, 0.0, o.x + wr, wt))) });
+                prisms.push(Prism {
+                    zhalf: wr,
+                    zoff: zo,
+                    ..steel("washer", model::one_loop(model::rect_loop(o.x - wr, 0.0, o.x + wr, wt)))
+                });
             }
-            prisms.push(Prism { zhalf: f / 2.0, zoff: zo, ..steel("head", model::one_loop(model::rect_loop(o.x - f / 2.0, wt, o.x + f / 2.0, wt + hh))) });
+            prisms.push(Prism {
+                zhalf: f / 2.0,
+                zoff: zo,
+                ..steel("head", model::one_loop(model::rect_loop(o.x - f / 2.0, wt, o.x + f / 2.0, wt + hh)))
+            });
         } else {
-            let place = |pr: Prism, z0: f64, z1: f64| Prism { zoff: (z0 + z1) / 2.0 + bp.grip / 2.0, zhalf: (z1 - z0) / 2.0, ..pr };
+            let place = |pr: Prism, z0: f64, z1: f64| Prism {
+                zoff: (z0 + z1) / 2.0 + bp.grip / 2.0,
+                zhalf: (z1 - z0) / 2.0,
+                ..pr
+            };
             if wt > 0.0 {
                 prisms.push(place(steel("washer", model::one_loop(model::circle_loop(o.x, o.y, wr))), 0.0, wt));
             }
@@ -432,14 +510,23 @@ fn screw(bp: &Params, len: f64, thread: f64) -> Built {
     }
     let bx = box_of_prisms(&prisms);
     let n = bp.count;
-    let row = if n > 1 { format!(", ({n}) @ {} along {}", fmt_ft_in(bp.spacing), bp.line.tag()) } else { String::new() };
+    let row =
+        if n > 1 { format!(", ({n}) @ {} along {}", fmt_ft_in(bp.spacing), bp.line.tag()) } else { String::new() };
     let grade = if default_grade(bp) { String::new() } else { format!(" {}", bp.grade) };
     Built {
         prisms,
         anchors,
         box_: bx,
         nat_z: Some(if side { d } else { bp.grip }),
-        info: format!("bolt {}{grade} {}\" dia. x {} (thread {}), {}{row}{}", bp.kind.tag(), fmt_num(d), fmt_ft_in(len), fmt_ft_in(thread), bp.orient.tag(), hole_text(bp)),
+        info: format!(
+            "bolt {}{grade} {}\" dia. x {} (thread {}), {}{row}{}",
+            bp.kind.tag(),
+            fmt_num(d),
+            fmt_ft_in(len),
+            fmt_ft_in(thread),
+            bp.orient.tag(),
+            hole_text(bp)
+        ),
         ..Built::default()
     }
 }

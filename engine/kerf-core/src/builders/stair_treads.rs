@@ -25,7 +25,12 @@ params! {
 }
 
 fn steel(part: &str, x0: f64, y0: f64, x1: f64, y1: f64) -> Prism {
-    Prism { part: part.to_string(), material: "steel".to_string(), loops: model::one_loop(model::rect_loop(x0, y0, x1, y1)), ..Prism::default() }
+    Prism {
+        part: part.to_string(),
+        material: "steel".to_string(),
+        loops: model::one_loop(model::rect_loop(x0, y0, x1, y1)),
+        ..Prism::default()
+    }
 }
 
 pub fn build(ctx: &mut Ctx) -> Option<Built> {
@@ -43,7 +48,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         match steel_shapes::lookup(&tp.carrier).map(|s| s.dims) {
             Ok(Dims::Angle { vert, t, .. }) => Some((vert, t)),
             Ok(_) => {
-                ctx.p.fail("carrier", format!("carrier \"{}\" is not an angle: give an angle such as \"L2x2x1/4\", or \"none\"", tp.carrier));
+                ctx.p.fail(
+                    "carrier",
+                    format!(
+                        "carrier \"{}\" is not an angle: give an angle such as \"L2x2x1/4\", or \"none\"",
+                        tp.carrier
+                    ),
+                );
                 return None;
             }
             Err(m) => {
@@ -58,9 +69,23 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     };
     if below >= rise || t >= depth / 2.0 || (tp.kind == Kind::Pan && depth != run) {
         let (k, m) = if tp.kind == Kind::Pan && depth != run {
-            ("depth", "a pan stair's tread depth is its run (riser to riser): remove \"depth\" or use kind grating / plate".to_string())
+            (
+                "depth",
+                "a pan stair's tread depth is its run (riser to riser): remove \"depth\" or use kind grating / plate"
+                    .to_string(),
+            )
         } else {
-            ("thickness", format!("a {} tread {} deep (thickness{}) does not fit a {} rise and {} depth", tp.kind.tag(), fmt_ft_in(below), if tp.kind == Kind::Pan { " + fill" } else { "" }, fmt_ft_in(rise), fmt_ft_in(depth)))
+            (
+                "thickness",
+                format!(
+                    "a {} tread {} deep (thickness{}) does not fit a {} rise and {} depth",
+                    tp.kind.tag(),
+                    fmt_ft_in(below),
+                    if tp.kind == Kind::Pan { " + fill" } else { "" },
+                    fmt_ft_in(rise),
+                    fmt_ft_in(depth)
+                ),
+            )
         };
         ctx.p.fail(k, m);
         return None;
@@ -96,7 +121,11 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
                 let bars = crate::num::to_int_clamped::<usize>(crate::math::floor((depth - nose) / 1.1875), 0, 200);
                 prisms.push(Prism {
                     lengthwise: true,
-                    face_lines: (1..=bars).map(|i| x0 + nose + i as f64 * 1.1875).filter(|x| *x < x0 + depth - 0.2).map(|x| [V2::init(x, y - t), V2::init(x, y)]).collect(),
+                    face_lines: (1..=bars)
+                        .map(|i| x0 + nose + i as f64 * 1.1875)
+                        .filter(|x| *x < x0 + depth - 0.2)
+                        .map(|x| [V2::init(x, y - t), V2::init(x, y)])
+                        .collect(),
                     ..steel("tread", x0 + nose, y - t, x0 + depth, y)
                 });
             }
@@ -106,12 +135,25 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             }
         }
         if let Some((leg, ta)) = angle {
-            let (c0, c1) = (x0 + 1.0_f64.min(depth / 6.0) + if tp.kind == Kind::Pan { t } else { 0.0 }, x0 + depth - 1.0_f64.min(depth / 6.0));
+            let (c0, c1) = (
+                x0 + 1.0_f64.min(depth / 6.0) + if tp.kind == Kind::Pan { t } else { 0.0 },
+                x0 + depth - 1.0_f64.min(depth / 6.0),
+            );
             let top = y - below;
             for side in [-1.0, 1.0] {
                 let zo = side * (tp.width / 2.0 - leg / 2.0);
-                prisms.push(Prism { zhalf: leg / 2.0, zoff: zo, lengthwise: true, ..steel("carrier", c0, top - ta, c1, top) });
-                prisms.push(Prism { zhalf: ta / 2.0, zoff: side * (tp.width / 2.0 - ta / 2.0), lengthwise: true, ..steel("carrier", c0, top - leg, c1, top - ta) });
+                prisms.push(Prism {
+                    zhalf: leg / 2.0,
+                    zoff: zo,
+                    lengthwise: true,
+                    ..steel("carrier", c0, top - ta, c1, top)
+                });
+                prisms.push(Prism {
+                    zhalf: ta / 2.0,
+                    zoff: side * (tp.width / 2.0 - ta / 2.0),
+                    lengthwise: true,
+                    ..steel("carrier", c0, top - leg, c1, top - ta)
+                });
             }
         }
         anchors.push(NamedAnchor { name: format!("nosing_{k}"), p: V2::init(x0, y) });
@@ -125,7 +167,15 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         anchors,
         box_: Box { x0: 0.0, y0: 0.0, x1: xt, y1: yt },
         nat_z: Some(tp.width),
-        info: format!("stair treads ({}) {} {} @ {} rise x {} run, {} wide, {carriers}", tp.treads, tp.kind.tag(), fmt_ft_in(t), fmt_ft_in(rise), fmt_ft_in(run), fmt_ft_in(tp.width)),
+        info: format!(
+            "stair treads ({}) {} {} @ {} rise x {} run, {} wide, {carriers}",
+            tp.treads,
+            tp.kind.tag(),
+            fmt_ft_in(t),
+            fmt_ft_in(rise),
+            fmt_ft_in(run),
+            fmt_ft_in(tp.width)
+        ),
         ..Built::default()
     })
 }

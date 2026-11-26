@@ -1,0 +1,123 @@
+{
+ "kerf": "0.1",
+ "id": "steel-joist-deck",
+ "title": "STEEL JOIST BEARING AT STEEL BEAM",
+ "meta": {
+  "jurisdiction": {
+   "code": "IBC",
+   "edition": 2021
+  }
+ },
+ "run": [
+  -24,
+  24
+ ],
+ "components": [
+  {
+   "id": "beam",
+   "type": "steel",
+   "shape": "W16x26",
+   "grade": "A992",
+   "at": {
+    "anchor": "top_flange",
+    "to": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "id": "joist",
+   "type": "steel_joist",
+   "designation": "18K4",
+   "length": 42,
+   "at": {
+    "anchor": "seat",
+    "to": "beam@top_flange",
+    "offset": [
+     -2,
+     0
+    ]
+   }
+  },
+  {
+   "id": "deck",
+   "type": "metal_deck",
+   "profile": "1.5B",
+   "gauge": 22,
+   "until": "joist@top_chord_end",
+   "at": {
+    "anchor": "bottom_left",
+    "to": "joist@top_chord_start"
+   }
+  },
+  {
+   "id": "seat_bolts",
+   "type": "bolt",
+   "diameter": 0.5,
+   "grade": "A307",
+   "grip": 0.595,
+   "hole": "long_slot",
+   "at": {
+    "to": "joist@seat",
+    "offset": [
+     2,
+     0.25
+    ]
+   }
+  }
+ ],
+ "views": [
+  {
+   "id": "A",
+   "kind": "section",
+   "number": "1",
+   "title": "STEEL JOIST BEARING AT STEEL BEAM",
+   "cut_z": 0,
+   "notes_side": "both",
+   "annotations": [
+    {
+     "id": "n_beam",
+     "type": "note",
+     "text": "W16X26 STEEL BEAM",
+     "target": "beam"
+    },
+    {
+     "id": "n_joist",
+     "type": "note",
+     "text": "18K4 STEEL JOIST @ 4'-0\" O.C., 2 1/2\" BEARING MIN.",
+     "target": "joist.seat",
+     "cite": [
+      {
+       "code": "IBC",
+       "edition": 2021,
+       "section": "2207.1",
+       "title": "Steel joists: general",
+       "status": "suggested"
+      }
+     ]
+    },
+    {
+     "id": "n_deck",
+     "type": "note",
+     "text": "1 1/2\" TYPE B STEEL ROOF DECK, 22 GA., 5/8\" DIA. PUDDLE WELDS 36/4",
+     "target": "deck"
+    },
+    {
+     "id": "n_bolt",
+     "type": "note",
+     "text": "1/2\" DIA. A307 BOLT IN LONG SLOTTED HOLE, FINGER TIGHT",
+     "target": "seat_bolts"
+    },
+    {
+     "id": "d_seat",
+     "type": "dim",
+     "from": "joist@seat",
+     "to": "joist@top_chord_start",
+     "dir": "v",
+     "offset": -6
+    }
+   ]
+  }
+ ]
+}

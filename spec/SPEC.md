@@ -2764,3 +2764,72 @@ face without a cut (the trim cut does it).
 |---|---|---|
 | `E_PARAM` | error | `verticals` out of the drawn truss, overlapping or on another profile; a panel birdmouth/notch; `along` on an edge face or a bent tie; run z `until` deeper than the member; `tags_side`; a line with under two points |
 | `W_NAIL_MEMBERS` | warning | also: two nailing members at an angle (not drawn) |
+
+## 31. v0.2.0-beta.4: steel vocabulary
+
+Typed components for the steel-side details (open-web joists, deck, cold-formed framing, aluminum covers, steel stairs,
+slip connections), so none of them needs `solid`. Every field is in `kerf schema <type>`; this section records the rules.
+
+### 31.1 `steel_joist`
+An open-web steel joist or joist girder from its SJI `designation` (free text: leading depth, then series). The series
+picks the proportions: K, KCS, CJ (seat 2 1/2 x 4, panel 24, rod webs); LH, DLH (seat 5 x 6, panel 48, angle webs); G, BG,
+VG (seat 7 1/2 x 6, panel 60, angle webs). Member sizes are the manufacturer's: the drawing is schematic but true to depth,
+seat depth and bearing. `depth`, `seat_depth`, `seat_length`, `panel`, `chord_leg`, `chord_thickness`, `web`, `web_size`
+override.
+
+- `orient: elevation` (default): local box (0,0)-(length, depth). Chords are double-angle bands, webs a Warren pattern
+  between panel points (bottom-chord points midway between the top-chord points, the first at max(panel / 2, 0.75 depth)
+  from a bearing end), the end web from the inner end of the seat. `seats` left | right | both | none: a bearing end has
+  an underslung seat (angle pair under the top chord, underside `seat_depth` below the top of the joist) and the bottom
+  chord stops at its first panel point unless `bottom_chord_extension` names that end; an end without a seat is a cut
+  end. Outlines only, never filled, as steel in elevation.
+- `orient: section`: the chord angle pairs cut end-on (solid), the web beyond; `section_at: bearing` draws the top chord
+  over the seat angles only.
+- Anchors: `seat` (default placement anchor, the bearing surface), `seat_left`, `seat_right`, `seat_left_inner`,
+  `seat_right_inner`, `top_chord`, `top_chord_bottom`, `bottom_chord_top`, `bottom_chord` (each with `_start`, `_end`),
+  `top_panel_k`, `bottom_panel_k`; section: chord faces and tips, `web_center`.
+- Not checked: bearing length (SJI minimums are in the `seat_length` description).
+
+### 31.2 `metal_deck`
+Fluted steel deck from a `profile` name (1.5B, 1.5F, 1.5A, 3N, 2C, 3C, 1.5VLI, 9/16 and their trade aliases) that sets
+depth, rib pitch, rib bottom flat and rib opening; any other name needs `depth`, `pitch`, `rib_bottom`, `rib_top`.
+`gauge` sets the sheet thickness.
+
+- `run: z` (default): cut across the flutes, the true profile as one solid sheet (ribs down, the left edge at the middle
+  of a top flat; `offset` shifts the pattern). `run: x`: seen along a flute as its top and bottom sheet lines.
+- `topping`: concrete above the top of the flutes, cast into them (part `topping`, a rebar host; default cover bottom
+  3/4, top 3/4, sides 0 because drawn ends are cuts).
+- Local box (0,0)-(length, depth) is the deck alone. Anchors `rib_k` (underside of each rib), `flat_k` (top of each top
+  flat), `deck_top`, `deck_bottom`, `topping_top`, `topping_top_left`, `topping_top_right`. Follows `slope`.
+- Welds, screws and side laps are notes.
+
+### 31.3 `bolt`: screws and holes
+- `kind: lag_screw | wood_screw`: head and washer at the placement point, shank `length` long (required) with sawtooth
+  threads over the last `thread` (default lag: min(length / 2 + 1/2, 6); wood screw: 2/3 length) and a point; no nut,
+  no `grip` stack. Embedded like a bolt. Anchors `thread_start`, `tip`. End-on: head on its washer. `length` under 2
+  diameters, `thread` over `length`, or either on another kind: `E_PARAM`.
+- `hole: standard | oversize | short_slot | long_slot`, sizes from AISC 360 Table J3.3; `slot_length` overrides the slot
+  length, `slot_dir` x | y turns it. End-on bolts draw the hole outline (part `hole`, never occluded, not in iso or the
+  mesh; a standard hole is hidden by the head); side-on the hole is text in the summary and the default note.
+
+### 31.4 `steel`: cold-formed, any-size shapes, aluminum, fill
+- SSMA designations `<web x100><S|T|U><flange x100>-<mils>`: S is a lipped C (lip 3/16, 3/8, 1/2, 5/8 for flanges
+  under 1.3, 1.5, 1.9 and above), T a track whose depth is the web size plus two thicknesses (the stud nests inside),
+  U a channel. Mils 18, 27, 30, 33, 43, 54, 68, 97, 118 draw at the design thickness. Square corners; web on the left,
+  flanges to the right. Anchors as a channel plus `lip_top`, `lip_bottom`.
+- Any-size shapes: `TUBE<h>x<b>x<wall>`, `TUBE<OD>x<wall>`, `CEE<d>x<flange>x<t>[x<lip>]`, `ANGLE<a>x<b>x<t>`,
+  `TEE<d>x<bf>x<stem t>x<flange t>`; `WT<d>x<wt>` is half of a listed W, flange up.
+- `material` (default steel): any style material with role steel or sheet_metal, i.e. `aluminum` for extrusions.
+- `fill`: a material filling an HSS, pipe or TUBE (concrete-filled bollard or column): part `fill`, hatched in section
+  and where a section view cuts along the member; `E_PARAM` on a shape with no inside.
+
+### 31.5 `stair_treads`
+The treads of a steel stair between two stringers: `kind` pan (riser and tread sheet plus concrete `fill`), grating
+(bearing-bar tread with a nosing bar) or plate (bent plate with a turned-down nosing); `treads`, `rise`, `tread`,
+`depth`, `thickness`, `width` (z extent), `carrier` (angle under each tread at both stringers, or "none"). Climbs right
+from anchor `foot`; anchors `nosing_k`, `tread_k_back`, `top`. Stringers are sloped `steel` two-point members; concrete
+and wood flights are the `stair` type.
+
+| code | level | rule |
+|---|---|---|
+| `E_PARAM` | error | an unreadable joist designation or sizes that do not fit; an unknown deck profile without its four dimensions; screw `length` / `thread` / `slot_length` misuse; an SSMA thickness that is not a standard mil; a shape whose walls do not fit; `fill` on a solid shape; a non-metal `material`; treads that do not fit their rise |

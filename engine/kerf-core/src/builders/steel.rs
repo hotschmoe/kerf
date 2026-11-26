@@ -19,7 +19,7 @@ params! {
     pub struct Params {
         shape: Str => { desc: "AISC designation from the embedded table: W8x18, WT6x13, HSS4x4x1/4 (rect, nominal wall), HSS4.000x0.250 (round), PIPE3STD / PIPE3XS, L4x3x3/8, C8x11.5, MC8x18.7, PL1/2x8 (plate thickness x width, any size). HSS and pipe walls draw at the design thickness 0.93 x nominal. Cold-formed studs and track by SSMA designation: 600S162-54 (lipped C stud or joist), 600T125-54 (track; 600T250-54 deep-leg deflection track), 150U050-54 (channel). Any-size thin-wall shapes (aluminum extrusions, light tube): TUBE2x6.5x0.042 (rectangular: height x width x wall), TUBE3x0.125 (round), CEE8x3x0.042 (C: depth x flange x thickness, optional x lip), ANGLE1.5x1.5x1/8, TEE3x3x1/4x1/4" },
         fill: Str = "" => { def: "none", desc: "HSS, pipe and TUBE: the material filling the inside, e.g. concrete or grout (pipe bollard, guard post, filled column). Section: the core takes that material's hatch; elevation/plan: the core between the inside wall faces, hatched where a section cuts through the member" },
-        material: Str = "steel" => { desc: "steel, or aluminum for extrusions (patio cover header, rafter, lattice tube, post): a cut aluminum section draws as its outline, not solid" },
+        material: Str = "steel" => { desc: "steel, or aluminum for extrusions (patio cover header, rafter, lattice tube, post): cut aluminum draws in the sheet-metal style: thin walls solid, thicker ones as an outline" },
         orient: Enum(Orient) = Orient::Section => { desc: "section: cut end-on, the member runs along z (true flange/web/wall thicknesses, solid steel fill when cut); elevation: seen from the side along its length (depth in-plane: the silhouette in the visible steel pen, a W's flanges as lines); plan: seen from above along its length (flange width in-plane). Elevation and plan never fill, even where the section plane passes through them, and get a break line where the crop cuts them off" },
         run: Enum(Run) = Run::X => { desc: "elevation/plan: in-plane direction of the length, x (beam) or y (column, post). Run y puts the cross-section's top (elevation) or left (plan) toward +x" },
         length: OptRaw => { def: "elevation/plan: required", desc: "member length (or `until`). Section: optional; the member is then that long along z, centered on the first section view's cut_z (default: spans the doc run)" },
@@ -347,11 +347,8 @@ fn cee_geo(d: f64, bf: f64, t: f64, lip: f64, outstand: Outstand) -> Geo {
         vec![p(0.0, 0.0), p(bf, 0.0), p(bf, t), p(t, t), p(t, d - t), p(bf, d - t), p(bf, d), p(0.0, d)]
     };
     let lipped = lip > t + 1e-9;
-    let mut elev = vec![
-        slab("web", 0.0, t, 0.0, d),
-        slab("top_flange", t, bf, d - t, d),
-        slab("bottom_flange", t, bf, 0.0, t),
-    ];
+    let mut elev =
+        vec![slab("web", 0.0, t, 0.0, d), slab("top_flange", t, bf, d - t, d), slab("bottom_flange", t, bf, 0.0, t)];
     let mut plan = vec![
         slab("top_flange", 0.0, bf, d - t, d),
         slab("web", 0.0, t, t, d - t),
@@ -431,7 +428,13 @@ fn tee_geo(d: f64, bf: f64, tw: f64, tf: f64, k: f64, fillets: bool) -> Geo {
             ("flange_tip_right", bf, d - tf),
         ],
         elev_levels: vec![("flange_top", d), ("flange_bottom", d - tf), ("stem_bottom", 0.0)],
-        plan_levels: vec![("flange_tip_left", 0.0), ("stem_left", xl), ("stem_center", bf / 2.0), ("stem_right", xr), ("flange_tip_right", bf)],
+        plan_levels: vec![
+            ("flange_tip_left", 0.0),
+            ("stem_left", xl),
+            ("stem_center", bf / 2.0),
+            ("stem_right", xr),
+            ("flange_tip_right", bf),
+        ],
     }
 }
 
@@ -516,7 +519,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         None
     } else {
         let Some(core) = core_loop(shape.dims, sp.fillets) else {
-            ctx.p.fail("fill", format!("'fill' needs a hollow shape (HSS, PIPE or TUBE); {} has no inside to fill: remove \"fill\"", shape.name));
+            ctx.p.fail(
+                "fill",
+                format!(
+                    "'fill' needs a hollow shape (HSS, PIPE or TUBE); {} has no inside to fill: remove \"fill\"",
+                    shape.name
+                ),
+            );
             return None;
         };
         if !material_ok(ctx, "fill", &sp.fill) {
@@ -589,7 +598,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     if let Some((_, t)) = core {
         let (a, b) = (at(0.0, t), at(len, across - t));
-        prisms.push(Prism { zhalf: depth / 2.0 - t, ..steel_prism(&sp.fill, "fill", model::rect_loop(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y))) });
+        prisms.push(Prism {
+            zhalf: depth / 2.0 - t,
+            ..steel_prism(&sp.fill, "fill", model::rect_loop(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)))
+        });
     }
     for &c in hidden.iter().filter(|_| sp.hidden_lines) {
         prisms.push(hidden_line(mat, at(0.0, c), at(len, c), depth / 2.0));

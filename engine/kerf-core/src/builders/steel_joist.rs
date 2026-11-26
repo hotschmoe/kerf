@@ -152,7 +152,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     }
     let (sd0, sl0, panel0, web0, sz) = defaults(class, jp.depth.unwrap_or(d0));
     let web_kind = jp.web.unwrap_or(web0);
-    let web = jp.web_size.unwrap_or(if web_kind == web0 { sz.web } else if web_kind == Web::Rod { 0.75 } else { 1.5 });
+    let web = jp.web_size.unwrap_or(if web_kind == web0 {
+        sz.web
+    } else if web_kind == Web::Rod {
+        0.75
+    } else {
+        1.5
+    });
     let g = Geo {
         d: jp.depth.unwrap_or(d0),
         sd: jp.seat_depth.unwrap_or(sd0),
@@ -164,7 +170,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         gap: if web_kind == Web::Rod { web } else { sz.gap },
     };
     if g.t >= g.leg / 2.0 {
-        ctx.p.fail("chord_thickness", format!("chord_thickness {} must be under half the chord leg {}", fmt_ft_in(g.t), fmt_ft_in(g.leg)));
+        ctx.p.fail(
+            "chord_thickness",
+            format!("chord_thickness {} must be under half the chord leg {}", fmt_ft_in(g.t), fmt_ft_in(g.leg)),
+        );
         return None;
     }
     if g.leg + g.t >= g.sd {
@@ -183,7 +192,13 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         Class::Girder => "joist girder",
         _ => "joist",
     };
-    let head = format!("steel {what} {} ({tag}, {} deep, seat {} x {})", jp.designation.trim(), fmt_ft_in(g.d), fmt_ft_in(g.sd), fmt_ft_in(g.sl));
+    let head = format!(
+        "steel {what} {} ({tag}, {} deep, seat {} x {})",
+        jp.designation.trim(),
+        fmt_ft_in(g.d),
+        fmt_ft_in(g.sd),
+        fmt_ft_in(g.sl)
+    );
     if jp.orient == Orient::Section {
         return section(ctx, &jp, &g, head);
     }
@@ -210,7 +225,10 @@ fn zones_of(prisms: &[Prism]) -> Vec<Zone> {
 
 fn section(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built> {
     if ctx.p.has("until") {
-        ctx.p.fail("until", "'until' only applies to orient elevation (a section joist runs along z: give 'length' or set 'z')".into());
+        ctx.p.fail(
+            "until",
+            "'until' only applies to orient elevation (a section joist runs along z: give 'length' or set 'z')".into(),
+        );
         return None;
     }
     let length = if ctx.p.has("length") {
@@ -261,7 +279,11 @@ fn section(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built> {
         zones,
         box_: Box { x0: 0.0, y0, x1: w, y1: d },
         nat_z: length,
-        info: format!("{head} section at {}{}", jp.section_at.tag(), length.map_or(String::new(), |l| format!(" L={}", fmt_ft_in(l)))),
+        info: format!(
+            "{head} section at {}{}",
+            jp.section_at.tag(),
+            length.map_or(String::new(), |l| format!(" L={}", fmt_ft_in(l)))
+        ),
         ..Built::default()
     })
 }
@@ -282,12 +304,21 @@ fn elevation(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built>
     let both = left && right;
     let mirror = right && !left;
     let seated = left || right;
-    let bce = |e: Ends, at_left: bool| matches!((e, at_left), (Ends::Both, _) | (Ends::Left, true) | (Ends::Right, false));
+    let bce =
+        |e: Ends, at_left: bool| matches!((e, at_left), (Ends::Both, _) | (Ends::Left, true) | (Ends::Right, false));
     let bce_a = bce(jp.bottom_chord_extension, !mirror);
     let bce_b = bce(jp.bottom_chord_extension, false);
     let a = if seated { (panel / 2.0).max(0.75 * d) } else { panel / 2.0 };
     if seated && l < sl + 1.0 {
-        ctx.p.fail("length", format!("length {} is shorter than the {} seat: draw at least the seat and the first panel (about {})", fmt_ft_in(l), fmt_ft_in(sl), fmt_ft_in(a + panel / 2.0)));
+        ctx.p.fail(
+            "length",
+            format!(
+                "length {} is shorter than the {} seat: draw at least the seat and the first panel (about {})",
+                fmt_ft_in(l),
+                fmt_ft_in(sl),
+                fmt_ft_in(a + panel / 2.0)
+            ),
+        );
         return None;
     }
     if both && l < 2.0 * a + panel / 2.0 {
@@ -320,7 +351,11 @@ fn elevation(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built>
             if x >= l - 1e-6 || k > 8192 {
                 break;
             }
-            if top { tops.push(x) } else { bots.push(x) }
+            if top {
+                tops.push(x)
+            } else {
+                bots.push(x)
+            }
             k += 1;
         }
     }
@@ -361,7 +396,8 @@ fn elevation(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built>
         let poly = [V2::init(p - hw, yt), V2::init(q - hw, yb), V2::init(q + hw, yb), V2::init(p + hw, yt)];
         let full = (q - p).abs() + 2.0 * hw;
         let poly = clip_x(&clip_x(&poly, l, true), 0.0, false);
-        let kept = poly.iter().map(|v| v.x).fold(f64::NEG_INFINITY, f64::max) - poly.iter().map(|v| v.x).fold(f64::INFINITY, f64::min);
+        let kept = poly.iter().map(|v| v.x).fold(f64::NEG_INFINITY, f64::max)
+            - poly.iter().map(|v| v.x).fold(f64::INFINITY, f64::min);
         if poly.len() < 3 || kept < 0.4 * full {
             continue;
         }
@@ -400,7 +436,11 @@ fn elevation(ctx: &mut Ctx, jp: &Params, g: &Geo, head: String) -> Option<Built>
         add(format!("bottom_panel_{}", k + 1), x, 0.0);
     }
     let zones = zones_of(&prisms);
-    let ext = if jp.bottom_chord_extension == Ends::None { String::new() } else { format!(", bottom chord extension {}", jp.bottom_chord_extension.tag()) };
+    let ext = if jp.bottom_chord_extension == Ends::None {
+        String::new()
+    } else {
+        format!(", bottom chord extension {}", jp.bottom_chord_extension.tag())
+    };
     Some(Built {
         prisms,
         anchors,
