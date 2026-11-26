@@ -6,3 +6,4 @@ DOC steel-stair-pan  6 components  1 view  0 errors  0 warnings  0 acknowledged
  end_plate     steel PL3/8x10 section                      x 3'-8 1/8"..3'-8 1/2" y 1'-5 3/4"..2'-3 3/4"
  lags          bolt lag_screw 0.5" dia. x 3" (thread 2"), side x 3'-7 5/8"..3'-11 1/8" y 1'-8 3/4"..1'-9 3/4"
 INFO I_UNVERIFIED_CITE: 1 citation(s) await designer verification (notes: A/n_tread). Citations print with a trailing * until verified.
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}

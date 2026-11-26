@@ -131,6 +131,7 @@
    "annotations": [
     {
      "id": "n_tread",
+     "column": "left",
      "type": "note",
      "text": "12 GA. STEEL PAN TREAD AND RISER W/ 1 1/2\" CONC. FILL",
      "target": "treads",
@@ -152,6 +153,7 @@
     },
     {
      "id": "n_car",
+     "column": "left",
      "type": "note",
      "text": "L2X2X1/4 CARRIER ANGLE, WELD TO STRINGER",
      "target": "treads.carrier"

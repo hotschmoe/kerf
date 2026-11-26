@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generates the golden set: for every reference detail and test document, the drawing IR, SVG (bare and sheet), DXF, PDF,
 # PNG (bare and sheet), mesh and the check summary of each view.
-#   tests/make_golden.sh [--out DIR] [--png]
+#   tests/make_golden.sh [--out DIR] [--png] [--only NAME]
 # Without --out it rewrites tests/golden. --png also renders review images (sheet SVG via chromium, DXF via ezdxf, PDF via
 # pdfium; needs tools/.venv). KERF overrides the binary (default target/release/kerf).
 set -euo pipefail
