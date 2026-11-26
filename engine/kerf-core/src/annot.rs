@@ -153,6 +153,7 @@ struct Gathered<'a> {
     dspecs: Vec<DimSpec<'a>>,
     lspecs: Vec<LabelSpec<'a>>,
     welds: Vec<(usize, Vec<Item>)>,
+    masks: Vec<[V2; 4]>,
     tables: Vec<table::Table<'a>>,
     listed: Vec<bool>,
 }
@@ -532,6 +533,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
         dspecs: Vec::new(),
         lspecs: Vec::new(),
         welds: Vec::new(),
+        masks: Vec::new(),
         tables: Vec::new(),
         listed: Vec::new(),
     };
@@ -592,6 +594,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
                 "line" => {
                     if let Some(ls) = line::read(env, an, id, &apath) {
                         let its = line::items(env, &ls);
+                        g.masks.extend(line::masks(env, &ls));
                         env.labels_box.add_box(items_box(env.font, &its));
                         g.welds.push((k, its));
                     }
@@ -635,7 +638,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
 }
 
 pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
-    let Gathered { notes, note_slot, per, meta, mut dspecs, lspecs, mut welds, tables, listed } = gather(env);
+    let Gathered { notes, note_slot, per, meta, mut dspecs, lspecs, mut welds, masks, tables, listed } = gather(env);
     dims::chain_dims(&mut dspecs, 0.25 * env.s);
     let style = env.notes_style();
     if style == NotesStyle::Leader && env.spec.notes_side == NotesSide::Above {
@@ -706,6 +709,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         env.ann_boxes.push(AnnBox { id: n.id.to_string(), kind: AnnKind::Note, bbox: bx, offset: 0.0 });
     }
     knockout::knock_hatch(base_items, &rd.knock);
+    knockout::knock_hatch(base_items, &masks);
     let mut result: Vec<Item> = Vec::new();
     for (k, its) in rd.per.into_iter().enumerate() {
         result.extend(its);

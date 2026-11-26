@@ -82,7 +82,8 @@ pub fn render_dim_labels<'a>(
         for it in its {
             match it {
                 Item::Text(t) => {
-                    knock.push(text_poly(env.font, t, 0.02 * env.s));
+                    let halo = if m.kind == MetaKind::Label { 0.04 } else { 0.02 };
+                    knock.push(text_poly(env.font, t, halo * env.s));
                     obstacles.push(Obstacle {
                         poly: text_poly(env.font, t, 0.0),
                         id: t.src.clone(),
