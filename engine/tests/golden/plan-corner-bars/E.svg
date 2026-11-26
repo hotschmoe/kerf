@@ -1,15 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="6.305in" height="5.692in" viewBox="0 0 605.286 546.4">
 <rect width="100%" height="100%" fill="#fff"/>
-<g id="S-DETL-BYND" inkscape:groupmode="layer" inkscape:label="S-DETL-BYND">
-<g data-src="dowel#0">
-<path d="M136 352L136 136" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
-<path d="M136 352L136 136" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
-</g>
-<g data-src="dowel#1">
-<path d="M136 352L136 136" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.945"/>
-</g>
-</g>
 <g id="S-DETL-CUT" inkscape:groupmode="layer" inkscape:label="S-DETL-CUT">
 <g data-src="ftg_x">
 <path d="M424 296L56 296L56 376L424 376" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.323"/>
@@ -19,6 +10,9 @@
 </g>
 </g>
 <g id="S-DETL-REBR" inkscape:groupmode="layer" inkscape:label="S-DETL-REBR">
+<g data-src="dowel#0">
+<path d="M136 352L136 136" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
+</g>
 <g data-src="ftg_bar">
 <path d="M162 348A2 2 0 0 1 158 348A2 2 0 0 1 162 348Z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.89"/>
 </g>

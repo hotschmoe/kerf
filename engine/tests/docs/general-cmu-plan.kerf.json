@@ -1,0 +1,87 @@
+{
+  "kerf": "0.1",
+  "id": "general-cmu-plan",
+  "title": "CMU CONTROL JOINT",
+  "run": [-32, 32],
+  "components": [
+    {
+      "id": "w1",
+      "type": "cmu_wall",
+      "at": {
+        "anchor": "bottom_center",
+        "to": [0, 0]
+      },
+      "z": [-31.8125, -0.1875],
+      "width": 8,
+      "courses": 4
+    },
+    {
+      "id": "w2",
+      "type": "cmu_wall",
+      "at": {
+        "anchor": "bottom_center",
+        "to": [0, 0]
+      },
+      "z": [0.1875, 31.8125],
+      "width": 8,
+      "courses": 4
+    },
+    {
+      "id": "wx",
+      "type": "cmu_wall",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "w2@bottom_right"
+      },
+      "z": [24.1875, 31.8125],
+      "width": 8,
+      "courses": 4,
+      "run": "x",
+      "length": 48
+    },
+    {
+      "id": "v1",
+      "type": "rebar",
+      "z": -4,
+      "size": "#5",
+      "mode": "path",
+      "points": [
+        [0, 1],
+        [0, 30]
+      ]
+    },
+    {
+      "id": "v2",
+      "type": "rebar",
+      "z": 4,
+      "size": "#5",
+      "mode": "path",
+      "points": [
+        [0, 1],
+        [0, 30]
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "P",
+      "kind": "plan",
+      "title": "CMU CONTROL JOINT AND CORNER",
+      "cut_y": 12,
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "8\" CMU WALL",
+          "target": "w1"
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "#5 VERT. IN GROUTED CELL, EA. SIDE OF JOINT",
+          "target": "v1"
+        }
+      ]
+    }
+  ]
+}

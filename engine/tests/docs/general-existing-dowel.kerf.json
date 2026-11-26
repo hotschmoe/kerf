@@ -1,0 +1,180 @@
+{
+  "kerf": "0.1",
+  "id": "general-existing-dowel",
+  "title": "NEW FOOTING TO EXISTING",
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "e_ftg",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_right",
+        "to": [0, 0]
+      },
+      "existing": true,
+      "shape": "footing",
+      "width": 16,
+      "height": 8
+    },
+    {
+      "id": "e_stem",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_right",
+        "to": "e_ftg@top_right"
+      },
+      "existing": true,
+      "shape": "rect",
+      "width": 8,
+      "height": 16
+    },
+    {
+      "id": "n_ftg",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "e_ftg@bottom_right"
+      },
+      "existing": false,
+      "shape": "footing",
+      "width": 20,
+      "height": 8
+    },
+    {
+      "id": "n_stem",
+      "type": "concrete",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "e_stem@bottom_right"
+      },
+      "existing": false,
+      "shape": "rect",
+      "cover": {
+        "bottom": 0,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "width": 8,
+      "height": 16
+    },
+    {
+      "id": "dowel_stem",
+      "type": "rebar",
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        {
+          "ref": "e_stem@top_right",
+          "offset": [0, -4]
+        },
+        {
+          "ref": "e_stem@top_right",
+          "offset": [6, -4]
+        }
+      ],
+      "epoxy": {
+        "embed": 6,
+        "in": "e_stem"
+      }
+    },
+    {
+      "id": "dowel_ftg",
+      "type": "rebar",
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        {
+          "ref": "e_ftg@middle_right",
+          "offset": [0, 0]
+        },
+        {
+          "ref": "e_ftg@middle_right",
+          "offset": [16, 0]
+        }
+      ],
+      "epoxy": {
+        "embed": 6,
+        "in": "e_ftg"
+      }
+    },
+    {
+      "id": "vert",
+      "type": "rebar",
+      "size": "#4",
+      "mode": "path",
+      "points": [
+        {
+          "ref": "n_stem@top_center",
+          "offset": [0, -2]
+        },
+        {
+          "ref": "n_ftg@bottom_left",
+          "offset": [4, 3.25]
+        }
+      ],
+      "hook": {
+        "end": {
+          "angle": 90,
+          "toward": "right"
+        }
+      }
+    },
+    {
+      "id": "tie",
+      "type": "rebar",
+      "size": "#3",
+      "tie": {
+        "cover": 1.5,
+        "in": "n_stem"
+      }
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "title": "NEW FOOTING TO EXISTING",
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "FOOTING AND STEM WALL",
+          "target": "e_ftg"
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "STEM WALL",
+          "target": "n_stem"
+        },
+        {
+          "id": "n3",
+          "type": "note",
+          "text": "#4 DOWELS @ 24\" O.C., DRILL AND EPOXY",
+          "target": "dowel_stem"
+        },
+        {
+          "id": "n4",
+          "type": "note",
+          "text": "#4 VERT. W/ STD. HOOK",
+          "target": "vert"
+        },
+        {
+          "id": "n5",
+          "type": "note",
+          "text": "#3 CLOSED TIES @ 12\" O.C.",
+          "target": "tie"
+        },
+        {
+          "id": "d1",
+          "type": "dim",
+          "from": "dowel_stem@embed_end",
+          "to": "dowel_stem@embed_face",
+          "dir": "h",
+          "offset": 8,
+          "text": "6\" MIN. EMBED."
+        }
+      ]
+    }
+  ]
+}

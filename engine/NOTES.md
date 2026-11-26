@@ -612,6 +612,14 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   once per document, not per view (they are not geometry conflicts between drawn members); a list in `carried`/`post`
   is one bounding box (an I-joist's flanges and web), so a hanger fits the widest flange. Model families give kind,
   mount and gauge only: no product dimensions are tabulated (the note carries the model).
+- beta.4 general vocabulary (SPEC 32; reference documents `tests/docs/general-*.kerf.json`). Not done or not checked:
+  a steel pipe or HSS `orient: elevation, run: y` cut by a plan view draws a filled square, not a ring (a bollard or
+  pipe column in plan); grout per cell in a CMU plan is inferred (grout courses, bond beams, a vertical bar in the
+  cell), there is no per-cell field, and partial `grout_courses` on a run z wall is not told apart cell by cell; the
+  cover of an xz bar or tie along z is not checked (as before); hooks and ties in iso views were not reviewed;
+  `stair` has no stringer hanger of its own (a `connector` on `w_stair.stringer` was not tried) and no guard or
+  handrail; hole and notch limits do not know the span, and do not cover engineered lumber; a free-standing lumber
+  diagram (one member, nothing bearing) is still `W_FLOATING` and is acknowledged.
 
 ## SPEC ISSUES
 - Sheet layouts (#7) follow the issue's design with these choices: `notes_side` (right|left|below|above) for where the
@@ -945,6 +953,28 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   - Leader fix checking runs only in single-view builds (`Env.verify_fixes`): checking in every layout trial cost 3x
     on s-80-01 (0.9 s -> 3.4 s) for diagnostics that are discarded. Up to 12 re-layouts per view within 1/4 of the
     work limit; a fix that cannot be checked in that budget keeps the old unchecked text.
+- beta.4 general vocabulary (SPEC 32), choices made: `existing` draws the cut outline in the thin pen with one sparse
+  ANSI31 hatch (2.5x) instead of a gray or dashed outline, because the pens have no gray and dashed already means
+  hidden; `(N)` is added only for an explicit `existing: false` in a document that has existing members, so ordinary
+  details never gain a prefix. A hooked bar's authored end point is the out-to-out corner (90) or the far reach of the
+  bend (135, 180), not the tangent point, so authoring to a cover line keeps the cover. Hook and tie geometry follows
+  ACI 318-19 Tables 25.3.1 and 25.3.2 (135 is always a tie hook). `epoxy` asks for the bar to END ON the host face plus
+  `embed`, so the embedment is a number in the document and a dimension between two anchors, never a hand-placed
+  point. Stairs: `waist` is square to the soffit from the inside corner of the steps; `foot` is the lower floor at the
+  first riser face; the top slab and toe are part of the concrete flight, the floors are not. Hole and notch limits
+  are the IRC prescriptive ones and apply to sawn lumber on its wide face only. `shape: round` is a footprint, so it
+  takes no `voids`; members cast into it are `embedded`. ICF walls, bollards, control joints, CMU corners and inverted
+  bond-beam lintels are recipes on existing types (cli-guide long form), not types. The reference documents live in
+  `tests/docs` with the other feature documents rather than `spec/details`, which is the short list of complete
+  sample details the web app ships and the wasm golden test names one by one.
+- CMU plan units (SPEC 32.7) are on by default, but the library's six CMU plan details (s-40-05 .. s-40-14) hand-drew
+  webs and cell grout as `concrete` footprints of material `cmu` / `grout`; drawn over the automatic units they
+  doubled every web. Chosen: a wall with a non-wall `cmu` body inside its core keeps the beta.3 drawing (bare shells)
+  and reports `I_CMU_PLAN_UNITS` with the pieces to remove, so no existing drawing changes silently and the fix is
+  one delete per piece. Remove the fallback once the library is migrated.
+- The bar-on-bar seam exemption (two coincident rebar strokes keep the rebar pen) changed the golden
+  `plan-corner-bars` views A and E: a dowel arrayed along z used to draw thin (a "seam" between its own instances) and
+  now draws as a bar.
 
 ### v0.2.0-beta.4 steel vocabulary (SPEC 31)
 Status: `steel_joist`, `metal_deck`, `stair_treads` are new types; `bolt` gained `lag_screw` / `wood_screw` and `hole`;

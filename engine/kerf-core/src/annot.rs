@@ -277,7 +277,7 @@ fn read_note<'a>(env: &mut Env<'a, '_>, an: &'a Value, id: &'a str, apath: &str)
         return None;
     }
     let target = an.get("target").map_or("", |x| x.str().unwrap_or(""));
-    let text = scene::where_occurs_text(env.scene, target, text0);
+    let text = scene::where_occurs_text(env.scene, target, &scene::existing_text(env.scene, target, text0));
     let cite_src = if an.get("cite").is_some() { an } else { shared.unwrap_or(an) };
     let cites: &[Value] = cite_src.get("cite").and_then(Value::arr).unwrap_or(&[]);
     let full = notes::note_text(env, &text, cites);

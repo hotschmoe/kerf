@@ -494,6 +494,26 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
     }
 }
 
+fn own_cells_diags(scene: &Scene, own: &[plan::OwnCells], view_id: &str, diags: &Diags) {
+    for o in own {
+        let (Some(wall), Some(piece)) = (scene.comps.get(o.wall as usize), scene.comps.get(o.piece as usize)) else {
+            continue;
+        };
+        let more = if o.count > 1 { format!(" and {} more", o.count - 1) } else { String::new() };
+        diags.add_fix(
+            Level::Info,
+            "I_CMU_PLAN_UNITS",
+            Some(&wall.id),
+            Some(&format!("views/{view_id}")),
+            format!(
+                "view {view_id}: wall '{}' keeps its two face shells in this plan because the document draws its webs itself ('{}'{more}: material cmu, inside the wall)",
+                wall.id, piece.id
+            ),
+            "remove those pieces and the grout pieces in the cells: a cmu_wall cut by a plan view draws its own units, webs, cells and head joints, and grouts the cells that hold a vertical bar (`kerf schema cmu_wall`)".to_string(),
+        );
+    }
+}
+
 fn nails_hidden_diags(hidden: &[crate::section::NailsHidden], spec: &ViewSpec, diags: &Diags) {
     let plan = spec.kind == Kind::Plan;
     let (key, plane) = if plan { ("cut_y", "cut_y") } else { ("cut_z", "cut plane") };
@@ -1004,6 +1024,7 @@ pub struct FlatView<'a> {
     pub scene: Option<Scene<'a>>,
     pub prisms: Vec<Prism>,
     pub spec: ViewSpec<'a>,
+    pub own_cells: Vec<plan::OwnCells>,
 }
 
 pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
@@ -1013,16 +1034,17 @@ pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
         Kind::Plan => {
             let cut = spec.cut_y.unwrap_or_else(|| plan::default_cut_y(&prisms));
             fs.cut_z = cut;
-            FlatView { prisms: plan::prisms(scene, &prisms, cut), scene: Some(plan::scene(scene)), spec: fs }
+            let (prisms, own_cells) = plan::prisms(scene, &prisms, cut);
+            FlatView { prisms, scene: Some(plan::scene(scene)), spec: fs, own_cells }
         }
         Kind::Elevation => {
             fs.cut_z = f64::INFINITY;
             let prisms = plan::footprints_in_section(plan::xz_bars_in_section(prisms, fs.cut_z), fs.cut_z);
-            FlatView { scene: None, prisms, spec: fs }
+            FlatView { scene: None, prisms, spec: fs, own_cells: Vec::new() }
         }
         _ => {
             let prisms = plan::footprints_in_section(plan::xz_bars_in_section(prisms, fs.cut_z), fs.cut_z);
-            FlatView { scene: None, prisms, spec: fs }
+            FlatView { scene: None, prisms, spec: fs, own_cells: Vec::new() }
         }
     }
 }
@@ -1069,6 +1091,7 @@ pub fn build_with<'a>(
 ) -> Option<Drawing<'a>> {
     let view_id = spec.id;
     let fv = flat_view(scene, spec);
+    own_cells_diags(scene, &fv.own_cells, view_id, diags);
     let scene = fv.scene.as_ref().unwrap_or(scene);
     let prisms = &fv.prisms;
     let work = Work::new(DEFAULT_WORK_LIMIT);

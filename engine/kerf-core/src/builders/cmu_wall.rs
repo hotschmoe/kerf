@@ -199,6 +199,20 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     Some(built)
 }
 
+/// Is course `k` (1 = bottom) a bond-beam course of this cmu_wall node? The plan view asks (SPEC 32.7).
+pub fn is_bond_beam(node: &Value, k: usize) -> bool {
+    let int = |v: &Value| v.num().map(|x| x as usize);
+    let n = node.get("courses").and_then(int).unwrap_or(0);
+    let top = node.get("bond_beam_courses").and_then(int).unwrap_or(0);
+    if k + top > n && k <= n {
+        return true;
+    }
+    node.get("bond_beams").and_then(Value::arr).unwrap_or(&[]).iter().any(|e| match e.arr() {
+        Some([a, b]) => int(a).zip(int(b)).is_some_and(|(a, b)| k >= a && k <= b),
+        _ => int(e) == Some(k),
+    })
+}
+
 fn bond_beam_zones(wall: &Wall, x0: f64, x1: f64, zones: &mut Vec<Zone>, anchors: &mut Vec<NamedAnchor>) -> V2 {
     let mut center = V2::init((x0 + x1) / 2.0, wall.total_h);
     let rs = runs(&wall.bb);

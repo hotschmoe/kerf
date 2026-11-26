@@ -21,7 +21,7 @@ const META_KEYS: [&str; 10] = [
 const REFERENCE_KEYS: [&str; 2] = ["path", "caption"];
 const CLASS_KEYS: [&str; 2] = ["uniformat", "masterformat"];
 const JURIS_KEYS: [&str; 2] = ["code", "edition"];
-const COMMON_KEYS: [&str; 15] = [
+const COMMON_KEYS: [&str; 16] = [
     "id",
     "type",
     "label",
@@ -37,6 +37,7 @@ const COMMON_KEYS: [&str; 15] = [
     "views",
     "shown",
     "acknowledge",
+    "existing",
 ];
 const REF_KEYS: [&str; 2] = ["ref", "offset"];
 const RECESS_KEYS: [&str; 3] = ["width", "depth", "from_edge"];

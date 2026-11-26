@@ -1,0 +1,173 @@
+{
+  "kerf": "0.1",
+  "id": "general-stairs",
+  "title": "STAIRS",
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "slab",
+      "type": "concrete",
+      "at": {
+        "anchor": "top_right",
+        "to": [0, 0]
+      },
+      "views": [
+        "A"
+      ],
+      "shape": "rect",
+      "cover": {
+        "bottom": 1.5,
+        "sides": 1.5,
+        "top": 1.5
+      },
+      "width": 36,
+      "height": 4
+    },
+    {
+      "id": "stair",
+      "type": "stair",
+      "at": {
+        "anchor": "foot",
+        "to": "slab@top_right"
+      },
+      "views": [
+        "A"
+      ],
+      "risers": 4,
+      "rise": 7,
+      "tread": 11,
+      "waist": 6,
+      "bars": "#4",
+      "nosing_bars": "#4"
+    },
+    {
+      "id": "w_slab",
+      "type": "concrete",
+      "at": {
+        "anchor": "top_left",
+        "to": [-12, 0]
+      },
+      "views": [
+        "B"
+      ],
+      "shape": "rect",
+      "width": 72,
+      "height": 4
+    },
+    {
+      "id": "w_stair",
+      "type": "stair",
+      "at": {
+        "anchor": "foot",
+        "to": [0, 0]
+      },
+      "views": [
+        "B"
+      ],
+      "kind": "wood",
+      "risers": 5,
+      "rise": 7.5,
+      "tread": 10,
+      "nosing": 1,
+      "treated": true
+    },
+    {
+      "id": "rim",
+      "type": "lumber",
+      "at": {
+        "anchor": "top_left",
+        "to": {
+          "ref": "w_stair@top",
+          "offset": [0.75, -0.75]
+        }
+      },
+      "views": [
+        "B"
+      ],
+      "size": "2x12"
+    },
+    {
+      "id": "subfloor",
+      "type": "panel",
+      "material": "plywood",
+      "at": {
+        "anchor": "top_left",
+        "to": {
+          "ref": "w_stair@top",
+          "offset": [0.75, 0]
+        }
+      },
+      "views": [
+        "B"
+      ],
+      "thickness": 0.75,
+      "length": 18
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "title": "CONCRETE STAIR ON GRADE",
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "#4 NOSING BAR, TYP.",
+          "target": "stair.nosing_bars"
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "#4 @ 12\" O.C.",
+          "target": "stair.main_bar"
+        },
+        {
+          "id": "n3",
+          "type": "note",
+          "text": "#4 @ 12\" O.C. CROSS BARS",
+          "target": "stair.cross_bars"
+        },
+        {
+          "id": "d1",
+          "type": "dim",
+          "from": "stair@throat_top",
+          "to": "stair@throat_bottom",
+          "dir": "aligned",
+          "text": "6\" MIN."
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "title": "WOOD STAIR STRINGER",
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "2X12 P.T. STRINGER",
+          "target": "w_stair.stringer"
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "2X TREAD",
+          "target": "w_stair.tread"
+        },
+        {
+          "id": "n3",
+          "type": "note",
+          "text": "2X12 RIM JOIST",
+          "target": "rim"
+        },
+        {
+          "id": "n4",
+          "type": "note",
+          "text": "3/4\" PLYWOOD SUBFLOOR",
+          "target": "subfloor"
+        }
+      ]
+    }
+  ]
+}

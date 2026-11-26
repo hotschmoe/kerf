@@ -99,11 +99,12 @@ pub enum Type {
     SteelJoist,
     MetalDeck,
     StairTreads,
+    Stair,
     Solid,
 }
 
 impl Type {
-    pub const ALL: [Type; 22] = [
+    pub const ALL: [Type; 23] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -125,6 +126,7 @@ impl Type {
         Type::SteelJoist,
         Type::MetalDeck,
         Type::StairTreads,
+        Type::Stair,
         Type::Solid,
     ];
 
@@ -152,6 +154,7 @@ impl Type {
             Type::MetalDeck => "metal_deck",
             Type::StairTreads => "stair_treads",
             Type::Solid => "solid",
+            Type::Stair => "stair",
         }
     }
 
@@ -419,7 +422,7 @@ pub fn hardware_line(h: &Hardware) -> String {
     format!("{}: {}, {w}\" wide, {g} ga, {}\" long", h.model, h.kind, crate::model::fmt_num(h.length))
 }
 
-const COMMON: [(&[&str], &str, &str); 14] = [
+const COMMON: [(&[&str], &str, &str); 15] = [
     (&["id"], "required", "unique slug [a-z][a-z0-9_]*; annotations and refs name it"),
     (&["type"], "required", "one of the catalog types"),
     (&["label"], "null", "short human label for summaries"),
@@ -466,6 +469,11 @@ const COMMON: [(&[&str], &str, &str); 14] = [
         "null",
         "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; it is counted on the summary's DOC line and listed with the reason in its ACKNOWLEDGED block (`kerf check --strict` shows it as a warning), and logged. Errors cannot be acknowledged; an entry that suppresses nothing is W_ACK_UNUSED (`kerf schema acknowledge`)",
     ),
+    (
+        &["existing"],
+        "null",
+        "true = existing construction (remodel, addition, tie-in): where the view cuts it the outline is in the thin pen with one sparse diagonal hatch instead of the material hatch (no solid fill), so new work reads as new; notes that target it start with (E) (not added when the text already says (E) or EXISTING). It is exempt from W_UNTREATED_CONTACT, W_FLOATING and W_NEAR_MISS, and a bar in an existing host from W_COVER, but new members still bear on and touch it. false on a new member adds (N) to its notes when the document also has existing members. A bar drilled and epoxied into it: rebar `epoxy` (`kerf schema rebar`). Example: {\"id\":\"e_ftg\",\"type\":\"concrete\",\"shape\":\"footing\",\"width\":16,\"height\":8,\"existing\":true}",
+    ),
 ];
 
 pub fn common() -> Vec<Row> {
@@ -474,7 +482,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 22] = [
+pub static ENTRIES: [Entry; 23] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -508,7 +516,7 @@ pub static ENTRIES: [Entry; 22] = [
         summary: "CMU wall: section (shells, grout, bond beams any course) or face-on (run x).",
         parts: "course_1..course_n (1 = bottom), bond_beam (the highest), bond_beam_1.. (each run of bond-beam courses from the bottom), grout",
         anchors: "9 box anchors + bond_beam_center, bond_beam_<k>_center, top_center, cell_center_top; cell_left, cell_center, cell_right (inside faces of the face shells and the cell middle at the wall bottom) and cell_left_top, cell_right_top: vertical path bars in the cell follow the wall width with {\"ref\": \"wall@cell_left\", \"offset\": [1.5, -12]}; run x: control_joint_<k>, control_joint_<k>_top",
-        draws: "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. A bond beam at a slab or ledger is one wall: {\"courses\": 7, \"bond_beams\": [4]}; solid grout below grade: {\"grout\": \"none\", \"grout_courses\": [[1, 3]]}. run x (fence and retaining wall elevations): {\"run\": \"x\", \"length\": 480, \"courses\": 9, \"bond_beam_courses\": 1, \"control_joints\": [240]} draws the face with bed and head joints (running bond) and 3/8\" control joints in an elevation view. 3D: 15.625\" units with 0.375\" head joints, running bond.",
+        draws: "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. A bond beam at a slab or ledger is one wall: {\"courses\": 7, \"bond_beams\": [4]}; solid grout below grade: {\"grout\": \"none\", \"grout_courses\": [[1, 3]]}. run x (fence and retaining wall elevations): {\"run\": \"x\", \"length\": 480, \"courses\": 9, \"bond_beam_courses\": 1, \"control_joints\": [240]} draws the face with bed and head joints (running bond) and 3/8\" control joints in an elevation view. Plan views: the course at cut_y draws as units (face shells and webs hatched, cells as rounded openings, head joints; run z in running bond); a cell is grouted where a grout course or bond beam crosses the cut or, with grout reinforced, where a vertical bar stands in it, so never draw webs or cell grout as separate pieces (a wall with such `cmu` pieces inside it keeps its bare shells: I_CMU_PLAN_UNITS). A control joint in plan is two walls 3/8 apart, a corner a run z wall and a run x wall. 3D: 15.625\" units with 0.375\" head joints, running bond.",
         example: "{\"id\":\"cmu\",\"type\":\"cmu_wall\",\"width\":8,\"courses\":3,\"bond_beam_courses\":1,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
         traits: Traits { takes_voids: true, ..Traits::NONE },
     },
@@ -524,8 +532,8 @@ pub static ENTRIES: [Entry; 22] = [
     Entry {
         ty: Type::Rebar,
         summary: "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
-        parts: "none",
-        anchors: "9 box anchors of the bar (center = bar center for along_z); path bars add start, end, bend_k (on the bar at the middle of the bend at interior point k+1) and seg_k_mid (middle of the straight part of leg k), all on the centreline: aim notes and dims at these, not the box anchors of a bent bar",
+        parts: "epoxy (the drilled hole of an adhesive dowel, with `epoxy`)",
+        anchors: "9 box anchors of the bar (center = bar center for along_z); path bars add start, end, bend_k (on the bar at the middle of the bend at interior point k+1) and seg_k_mid (middle of the straight part of leg k), all on the centreline: aim notes and dims at these, not the box anchors of a bent bar. `hook`: start_hook_end / end_hook_end (the tip), _hook_tangent (where the bend starts), _hook_bend (middle of the bend), _hook_center (bend centre). `tie`: tie_top_left, tie_top_right, tie_bottom_left, tie_bottom_right (centreline corners), tie_top, tie_bottom, tie_left, tie_right (side middles), tie_center, hook_1_end, hook_2_end, hook_corner. `epoxy`: embed_face (where the bar enters the host), embed_end (the embedded tip)",
         draws: "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu (in XY only: the cover of an xz bar along z is not checked). Plan views: bars along z and path bars below the cut draw as lines along their run, vertical legs and bars crossing the cut as dots, xz bars as their path. An xz corner bar: {\"id\":\"corner\",\"type\":\"rebar\",\"size\":\"#4\",\"plane\":\"xz\",\"y\":24,\"points\":[[4.5,-16],[4.5,-43.5],[32,-43.5]]}",
         example: "{\"id\":\"top_bar\",\"type\":\"rebar\",\"size\":\"#4\",\"at\":{\"anchor\":\"center\",\"to\":[6,-2.5]}}",
         traits: Traits { reinforcement: true, line_like: true, ..Traits::NONE },
@@ -682,6 +690,15 @@ pub static ENTRIES: [Entry; 22] = [
         draws: "The flight climbs to the right from foot (mirror: true climbs left): tread k has its top at k x rise and its nosing at (k - 1) x tread. Treads span between the stringers along z (width, centered on the cut), so a section through the flight cuts them: pan sheets and plates solid, the pan's concrete fill hatched, grating as its outline with the bearing bars; carrier angles are seen lengthwise against the far stringer. This type draws only the treads: each stringer is a sloped steel member (channel, plate or tube in elevation, {\"type\":\"steel\",\"shape\":\"C12x20.7\",\"orient\":\"elevation\",\"from\":{\"ref\":\"treads@nosing_1\",\"offset\":[-4,-9]},\"to\":{\"ref\":\"treads@top\",\"offset\":[2,-2]}} with plumb / level end cuts and its own z just outside width), and clip angles, base plates, anchors, lags and welds are their own components. Concrete or wood flights are type stair.",
         example: "{\"id\":\"treads\",\"type\":\"stair_treads\",\"kind\":\"pan\",\"treads\":4,\"rise\":7,\"tread\":11,\"at\":{\"anchor\":\"foot\",\"to\":[0,0]}}",
         traits: Traits { default_anchor: "foot", ..Traits::NONE },
+    },
+    Entry {
+        ty: Type::Stair,
+        summary: "Concrete stair on grade or cut wood stringer, from rise and tread.",
+        parts: "concrete: main_bar, cross_bars, nosing_bars (with `bars` / `nosing_bars`); zones toe, landing. wood: stringer, tread, riser",
+        anchors: "foot (the placement point: the lower floor at the face of the first riser; the 9 box anchors also work), nosing_1..nosing_n, tread_k_mid, top (the top nosing), soffit_mid, throat_top, throat_bottom (the waist / the stringer throat, for a dimension). concrete: riser_k_foot, landing_end_top, landing_end_bottom, landing_top_mid, soffit_top, soffit_bottom, toe_bottom_left, toe_bottom_right, toe_bottom_center, main_bar_mid, main_bar_bend, main_bar_top, nosing_bar_1. wood: seat_front, seat_back (the level seat cut on the lower floor), top_cut_top, top_cut_bottom, top_bearing (the plumb cut that bears on the header or hanger)",
+        draws: "Steel stringers are a sloped `steel` member, not this type. The flight climbs to the right from `foot` (mirror: true climbs left). Concrete: one cut outline (steps, top slab `landing` long, soffit parallel to the nosing line `waist` below the inside corners, toe under the first riser); rebar can `place`/`tie` in it, and `bars` draws the usual main bar and cross bars. Wood: the stringer seen lengthwise (grain), notched for each tread, level seat cut at the foot and plumb cut at the top riser; treads and risers are cut boards. The top floor (slab, header, hanger) and the lower slab are separate components: place the stair with \"at\": {\"anchor\": \"foot\", \"to\": \"slab@top_left\"} and bring the header to stair@top_cut_top. W_STAIR_GEOMETRY: rise over 7 3/4 or tread under 10; W_STAIR_THROAT: under 3 1/2 of stringer left below the notches.",
+        example: "{\"id\":\"stair\",\"type\":\"stair\",\"risers\":4,\"rise\":7,\"tread\":11,\"waist\":6,\"bars\":\"#4\",\"nosing_bars\":\"#4\"}",
+        traits: Traits::NONE,
     },
     Entry {
         ty: Type::Solid,
