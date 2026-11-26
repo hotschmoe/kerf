@@ -410,7 +410,7 @@ pub fn hardware_line(h: &Hardware) -> String {
     format!("{}: {}, {w}\" wide, {g} ga, {}\" long", h.model, h.kind, crate::model::fmt_num(h.length))
 }
 
-const COMMON: [(&[&str], &str, &str); 14] = [
+const COMMON: [(&[&str], &str, &str); 15] = [
     (&["id"], "required", "unique slug [a-z][a-z0-9_]*; annotations and refs name it"),
     (&["type"], "required", "one of the catalog types"),
     (&["label"], "null", "short human label for summaries"),
@@ -456,6 +456,11 @@ const COMMON: [(&[&str], &str, &str); 14] = [
         &["acknowledge"],
         "null",
         "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; it is counted on the summary's DOC line and listed with the reason in its ACKNOWLEDGED block (`kerf check --strict` shows it as a warning), and logged. Errors cannot be acknowledged; an entry that suppresses nothing is W_ACK_UNUSED (`kerf schema acknowledge`)",
+    ),
+    (
+        &["existing"],
+        "null",
+        "true = existing construction (remodel, addition, tie-in): where the view cuts it the outline is in the thin pen with one sparse diagonal hatch instead of the material hatch (no solid fill), so new work reads as new; notes that target it start with (E) (not added when the text already says (E) or EXISTING). It is exempt from W_UNTREATED_CONTACT, W_FLOATING and W_NEAR_MISS, and a bar in an existing host from W_COVER, but new members still bear on and touch it. false on a new member adds (N) to its notes when the document also has existing members. A bar drilled and epoxied into it: rebar `epoxy` (`kerf schema rebar`). Example: {\"id\":\"e_ftg\",\"type\":\"concrete\",\"shape\":\"footing\",\"width\":16,\"height\":8,\"existing\":true}",
     ),
 ];
 

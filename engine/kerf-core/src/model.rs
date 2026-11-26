@@ -220,6 +220,8 @@ pub struct Prism {
     /// Plan views: the floor of a shallow recess in a cut concrete member (a depressed slab), drawn hatched like the cut
     /// with its edge as a line (it never joins its own casting).
     pub recess: bool,
+    /// Existing construction (SPEC 32.1): cut outlines in the thin pen and one sparse diagonal hatch.
+    pub existing: bool,
 }
 
 impl Default for Prism {
@@ -263,6 +265,7 @@ impl Default for Prism {
             footprint: Vec::new(),
             fp_y: [0.0; 2],
             recess: false,
+            existing: false,
         }
     }
 }

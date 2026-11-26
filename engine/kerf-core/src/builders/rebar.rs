@@ -1,4 +1,5 @@
 use super::common::{Ctx, drop_duplicate_points, parse_point_list, path_len, world_box};
+use super::rebar_bends as bends;
 use crate::clip;
 use crate::geom::{self, Box, FLAT_TOL, Pt, V2, Xf};
 use crate::json::Value;
@@ -45,6 +46,9 @@ params! {
         points: OptRaw => { def: "path: required", desc: "polyline [x,y] or Refs (plane xz: [x, z] pairs); bends get radius bend_radius, drawn as fillets" },
         bend_radius: OptLenPos => { def: "3*d_b", desc: "inside bend radius for path bars" },
         spacing_note: Str = "" => { def: "null", desc: "e.g. \"#4 @ 16\\\" O.C.\" for summaries and notes" },
+        hook: OptRaw => { desc: "path: standard hooks on the bar ends, {\"start\": {...}, \"end\": {\"angle\": 90|135|180, \"toward\": \"up|down|left|right\"}}: the bend diameter and extension come from the bar size (ACI 318 Table 25.3.1: 6 db inside diameter #3-#8, 12 db extension at 90, 4 db >= 2 1/2 in. at 180; \"kind\": \"tie\" or angle 135 uses Table 25.3.2: 4 db diameter #3-#5, 6 db >= 3 in. extension), never hand-computed points. `toward` is the side the hook turns to as drawn (plane xz: as seen in plan); the end point of `points` stays the out-to-out corner of the bar (90) or its far reach (135, 180); `ext` overrides the extension. Example: {\"mode\":\"path\",\"points\":[[0,3],[30,3]],\"hook\":{\"end\":{\"angle\":90,\"toward\":\"up\"}}}" },
+        tie: OptRaw => { desc: "a closed tie, stirrup, crosstie or hoop placed in a member by cover (no `points`, `at` or `mode`): {in: \"comp[.part]\", cover: 1.5, shape: closed|u|crosstie|hoop, hook: 135|90, corner: top_left|top_right|bottom_left|bottom_right (closed: where the hooks lap), open: top|bottom|left|right (u), axis: x|y, station, toward (crosstie)}. Plane xy (default): the tie lies in the section (a beam or grade beam stirrup, a column cut across). Plane xz with `y`: a horizontal tie around a column, pedestal or pier (the host's z extent is its depth: give the column a `z`), drawn as the tie in plan and as a line with a dot at each cut leg in a section; `array` {axis: y} repeats it up the column. Bends and hook extensions are the ACI tie hooks for the bar size. Example: {\"type\":\"rebar\",\"size\":\"#3\",\"plane\":\"xz\",\"y\":20,\"tie\":{\"in\":\"pedestal\",\"cover\":1.5},\"array\":{\"axis\":\"y\",\"count\":3,\"spacing\":-8}}" },
+        epoxy: OptRaw => { desc: "path, plane xy: an adhesive dowel, {in: \"comp\", embed: 6, end: start|end, hole: d + 1/8}: the end of the bar that runs into `in` (an `existing` footing, stem, slab or wall, or new concrete) sits in a drilled hole drawn around it (part `epoxy`). End that leg ON the face it enters (a Ref with an offset along the face) and give `embed`: the engine sets the bar `embed` past the face; without `embed` the depth is measured from the points. Anchors embed_face and embed_end dimension it; W_EPOXY when the hole leaves under 1 in. of the host behind it. Example: {\"mode\":\"path\",\"points\":[{\"ref\":\"e_stem@top_right\",\"offset\":[0,-4]},{\"ref\":\"e_stem@top_right\",\"offset\":[24,-4]}],\"epoxy\":{\"in\":\"e_stem\",\"embed\":6}}" },
     }
 }
 
@@ -56,8 +60,17 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     };
     let r = d / 2.0;
+    if let Some(tv) = rp.tie.as_ref() {
+        return build_tie(ctx, &rp, tv, size, d);
+    }
     if rp.plane == Plane::Xz {
         return build_xz(ctx, &rp, size, d);
+    }
+    if rp.mode == Mode::AlongZ
+        && let Some(key) = ["hook", "epoxy"].into_iter().find(|k| ctx.p.has(k))
+    {
+        ctx.p.fail(key, format!("'{key}' is for a bar drawn along its length: add \"mode\": \"path\" and 'points' (a bar along z is a dot and shows no {key})"));
+        return None;
     }
     if rp.mode == Mode::AlongZ {
         let lp = model::circle_loop(0.0, 0.0, r);
@@ -93,92 +106,127 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     }
     let br = rp.bend_radius.unwrap_or(3.0 * d);
-    let vs: Vec<V2> = clean.iter().map(|q| q.v()).collect();
-    let center = pathgeom::fillet(&vs, br + r);
+    let mut vs: Vec<V2> = clean.iter().map(|q| q.v()).collect();
+    let epoxy = match rp.epoxy.as_ref() {
+        Some(ev) => Some(bends::epoxy(ctx, ev, &mut vs, d)?),
+        None => None,
+    };
+    let body = pathgeom::fillet(&vs, br + r);
+    let mut anchors = path_anchors(&vs, &body);
+    let (center, hook_info) = match rp.hook.as_ref() {
+        Some(hv) => {
+            let hooks = bends::parse_hooks(ctx, hv, false)?;
+            let h = bends::apply_hooks(ctx, &body, &hooks, bends::bar_number(size), d)?;
+            anchors.extend(h.anchors);
+            (h.center, h.info)
+        }
+        None => (body, alloc::string::String::new()),
+    };
     let rib = pathgeom::ribbon(&center, r, r);
-    let box_ = geom::loop_box(&rib);
-    let anchors = path_anchors(&vs, &center);
+    let mut box_ = geom::loop_box(&rib);
     let note =
         if rp.spacing_note.is_empty() { alloc::string::String::new() } else { format!(" ({})", rp.spacing_note) };
-    let prism = Prism {
+    let mut prisms = vec![bar_prism(rib, center, r)];
+    let mut epoxy_info = alloc::string::String::new();
+    if let Some(e) = epoxy {
+        box_.add_box(geom::loop_box(&e.hole));
+        prisms.push(Prism {
+            part: "epoxy".to_string(),
+            material: super::common::material_or(ctx, "grout", "generic").to_string(),
+            loops: model::one_loop(e.hole),
+            embedded: true,
+            zhalf: r + 0.0625,
+            ..Prism::default()
+        });
+        anchors.push(NamedAnchor { name: "embed_face".to_string(), p: e.face });
+        anchors.push(NamedAnchor { name: "embed_end".to_string(), p: e.tip });
+        epoxy_info = e.info;
+    }
+    Some(Built {
+        prisms,
+        anchors,
+        box_,
+        nat_z: Some(d),
+        points_mode: true,
+        bar_d: d,
+        info: format!("rebar {} path L={}{}{}{}", size, fmt_ft_in(path_len(&vs)), hook_info, epoxy_info, note),
+        ..Built::default()
+    })
+}
+
+fn bar_prism(rib: Vec<Pt>, center: Vec<Pt>, r: f64) -> Prism {
+    Prism {
         material: "rebar".to_string(),
         loops: model::one_loop(rib),
         embedded: true,
         centerline: center,
         sweep_r: r,
         ..Prism::default()
-    };
-    Some(Built {
-        prisms: vec![prism],
-        anchors,
-        box_,
-        nat_z: Some(d),
-        points_mode: true,
-        bar_d: d,
-        info: format!("rebar {} path L={}{}", size, fmt_ft_in(path_len(&vs)), note),
-        ..Built::default()
-    })
+    }
 }
 
-const XZ_STEPS_MAX: usize = 48;
-const XZ_POINTS_MAX: usize = 200;
-const XZ_SLABS_MAX: usize = 400;
-
-fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
-    let r = d / 2.0;
-    if rp.place.is_some() {
-        ctx.p.fail("place", "plane \"xz\" bars are drawn from 'points' ([x, z] pairs) at height 'y'; 'place' is for bars along z (remove place, or remove plane)".to_string());
-        return None;
-    }
+fn xz_height(ctx: &mut Ctx, rp: &Params) -> Option<f64> {
     let Some(yv) = rp.y.as_ref() else {
         ctx.p.fail("y", "plane \"xz\" needs 'y': the height of the bar's centreline (a length, or a Ref whose y is used, e.g. {\"ref\": \"ftg@bottom_left\", \"offset\": [0, 3.25]})".to_string());
         return None;
     };
-    let y = match units::parse_length(yv) {
-        Some(y) => y,
+    match units::parse_length(yv) {
+        Some(y) => Some(y),
         None => {
             let path = format!("{}/{}/y", ctx.p.base, ctx.p.id);
             let id = ctx.p.id.to_string();
-            ctx.scene.point(yv, &id, &path)?.y
+            Some(ctx.scene.point(yv, &id, &path)?.y)
         }
-    };
-    let Some(arr) = rp.points.as_ref().and_then(Value::arr) else {
-        ctx.p.fail(
-            "points",
-            "plane \"xz\" needs 'points': [[x, z], ...], the bar's corners seen from above (model x and z)".to_string(),
-        );
-        return None;
-    };
-    let mut vs: Vec<V2> = Vec::new();
-    for (i, e) in arr.iter().enumerate() {
-        let xz = e
-            .arr()
-            .filter(|a| a.len() == 2)
-            .and_then(|a| Some(V2::init(units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
-        let Some(v) = xz else {
-            ctx.p.fail(&format!("points/{i}"), format!("point {i} of a plane \"xz\" bar must be [x, z], two lengths (model x and z; the height is 'y'), got {}", model::kind_or_text(e)));
+    }
+}
+
+fn build_tie(ctx: &mut Ctx, rp: &Params, tv: &Value, size: &str, d: f64) -> Option<Built> {
+    let r = d / 2.0;
+    for key in ["points", "place", "hook", "epoxy", "at", "rotate"] {
+        if ctx.p.has(key) {
+            ctx.p.fail(key, format!("a 'tie' is placed and shaped by its host ('tie.in', 'tie.cover', 'tie.shape'): remove '{key}'"));
             return None;
-        };
-        if vs.last().is_none_or(|l: &V2| l.dist(v) > 1e-9) {
-            vs.push(v);
         }
     }
-    if vs.len() < 2 {
-        ctx.p.fail("points", format!("a path bar needs at least 2 distinct points (got {})", vs.len()));
-        return None;
+    let xz = rp.plane == Plane::Xz;
+    let y = if xz { xz_height(ctx, rp)? } else { 0.0 };
+    let t = bends::tie(ctx, tv, bends::bar_number(size), d, xz)?;
+    ctx.fixed.get_or_insert_with(|| "a tie is placed in its host".to_string());
+    let info = format!("rebar {size} {}{}", t.info, if xz { format!(" at y {}", fmt_ft_in(y)) } else { alloc::string::String::new() });
+    if !xz {
+        let mut box_ = Box::default();
+        let mut prisms = Vec::new();
+        for c in t.paths {
+            let rib = pathgeom::ribbon(&c, r, r);
+            box_.add_box(geom::loop_box(&rib));
+            prisms.push(bar_prism(rib, c, r));
+        }
+        return Some(Built { prisms, anchors: t.anchors, box_, nat_z: Some(d), points_mode: true, bar_d: d, info, ..Built::default() });
     }
-    let br = rp.bend_radius.unwrap_or(3.0 * d);
-    let center = pathgeom::fillet(&vs, br + r);
-    let flat = geom::flatten_polyline(&center, false, FLAT_TOL);
+    let mut prisms = Vec::new();
+    let mut box_ = Box::default();
+    for c in &t.paths {
+        let zc: Vec<Pt> = c.iter().map(|p| Pt { x: p.x, y: -p.y, b: -p.b }).collect();
+        xz_legs(&zc, y, d, &mut prisms, &mut box_);
+    }
+    let anchors = t.anchors.iter().map(|a| NamedAnchor { name: a.name.clone(), p: V2::init(a.p.x, y) }).collect();
+    let plan_z = t.anchors.into_iter().map(|a| NamedAnchor { name: a.name, p: V2::init(0.0, -a.p.y) }).collect();
+    Some(Built { prisms, anchors, plan_z, box_, nat_z: Some(d), abs_z: true, points_mode: true, bar_d: d, info, ..Built::default() })
+}
+
+/// The leg prisms of one centreline [x, z] at height y (SPEC 26.3); the first carries the whole path for drawing.
+fn xz_legs(center: &[Pt], y: f64, d: f64, prisms: &mut Vec<Prism>, box_: &mut Box) {
+    let r = d / 2.0;
+    let flat = geom::flatten_polyline(center, false, FLAT_TOL);
     let mut tol = d / 4.0;
-    let mut coarse = geom::flatten_polyline(&center, false, tol);
+    let mut coarse = geom::flatten_polyline(center, false, tol);
     while coarse.len() > XZ_POINTS_MAX && tol < 1e6 {
         tol *= 4.0;
-        coarse = geom::flatten_polyline(&center, false, tol);
+        coarse = geom::flatten_polyline(center, false, tol);
     }
     let total_dz: f64 = coarse.windows(2).map(|w| (w[1].y - w[0].y).abs()).sum();
     let step = d.max(total_dz / XZ_SLABS_MAX as f64);
-    let mut prisms: Vec<Prism> = Vec::new();
+    let first = prisms.len();
     let leg = |loops: Vec<Pt>, zc: f64, zh: f64| Prism {
         material: "rebar".to_string(),
         loops: model::one_loop(loops),
@@ -206,15 +254,70 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
             }
         }
     }
-    if let Some(first) = prisms.first_mut() {
-        first.path3 = flat.iter().map(|v| [v.x, y, v.y]).collect();
+    if let Some(p) = prisms.get_mut(first) {
+        p.path3 = flat.iter().map(|v| [v.x, y, v.y]).collect();
     }
-    let mut box_ = Box::default();
     for v in &flat {
         box_.add_point(v.x - r, y - r);
         box_.add_point(v.x + r, y + r);
     }
-    let xz_anchors = path_anchors(&vs, &center);
+}
+
+const XZ_STEPS_MAX: usize = 48;
+const XZ_POINTS_MAX: usize = 200;
+const XZ_SLABS_MAX: usize = 400;
+
+fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
+    let r = d / 2.0;
+    if rp.place.is_some() {
+        ctx.p.fail("place", "plane \"xz\" bars are drawn from 'points' ([x, z] pairs) at height 'y'; 'place' is for bars along z (remove place, or remove plane)".to_string());
+        return None;
+    }
+    if rp.epoxy.is_some() {
+        ctx.p.fail("epoxy", "'epoxy' is for a bar in the section plane (plane \"xy\", the default): draw the adhesive dowel in a section through the member it is drilled into".to_string());
+        return None;
+    }
+    let y = xz_height(ctx, rp)?;
+    let Some(arr) = rp.points.as_ref().and_then(Value::arr) else {
+        ctx.p.fail(
+            "points",
+            "plane \"xz\" needs 'points': [[x, z], ...], the bar's corners seen from above (model x and z)".to_string(),
+        );
+        return None;
+    };
+    let mut vs: Vec<V2> = Vec::new();
+    for (i, e) in arr.iter().enumerate() {
+        let xz = e
+            .arr()
+            .filter(|a| a.len() == 2)
+            .and_then(|a| Some(V2::init(units::parse_length(&a[0])?, units::parse_length(&a[1])?)));
+        let Some(v) = xz else {
+            ctx.p.fail(&format!("points/{i}"), format!("point {i} of a plane \"xz\" bar must be [x, z], two lengths (model x and z; the height is 'y'), got {}", model::kind_or_text(e)));
+            return None;
+        };
+        if vs.last().is_none_or(|l: &V2| l.dist(v) > 1e-9) {
+            vs.push(v);
+        }
+    }
+    if vs.len() < 2 {
+        ctx.p.fail("points", format!("a path bar needs at least 2 distinct points (got {})", vs.len()));
+        return None;
+    }
+    let br = rp.bend_radius.unwrap_or(3.0 * d);
+    let body = pathgeom::fillet(&vs, br + r);
+    let mut xz_anchors = path_anchors(&vs, &body);
+    let (center, hook_info) = match rp.hook.as_ref() {
+        Some(hv) => {
+            let hooks = bends::parse_hooks(ctx, hv, true)?;
+            let h = bends::apply_hooks(ctx, &body, &hooks, bends::bar_number(size), d)?;
+            xz_anchors.extend(h.anchors);
+            (h.center, h.info)
+        }
+        None => (body, alloc::string::String::new()),
+    };
+    let mut prisms: Vec<Prism> = Vec::new();
+    let mut box_ = Box::default();
+    xz_legs(&center, y, d, &mut prisms, &mut box_);
     let anchors = xz_anchors.iter().map(|a| NamedAnchor { name: a.name.clone(), p: V2::init(a.p.x, y) }).collect();
     let plan_z = xz_anchors.into_iter().map(|a| NamedAnchor { name: a.name, p: V2::init(0.0, a.p.y) }).collect();
     let note =
@@ -228,7 +331,7 @@ fn build_xz(ctx: &mut Ctx, rp: &Params, size: &str, d: f64) -> Option<Built> {
         abs_z: true,
         points_mode: true,
         bar_d: d,
-        info: format!("rebar {size} xz path at y {} L={}{}", fmt_ft_in(y), fmt_ft_in(path_len(&vs)), note),
+        info: format!("rebar {size} xz path at y {} L={}{}{}", fmt_ft_in(y), fmt_ft_in(path_len(&vs)), hook_info, note),
         ..Built::default()
     })
 }

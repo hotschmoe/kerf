@@ -20,6 +20,7 @@ pub mod membrane;
 pub mod nailing;
 pub mod panel;
 pub mod rebar;
+pub mod rebar_bends;
 pub mod sleeve;
 pub mod solid;
 pub mod steel;

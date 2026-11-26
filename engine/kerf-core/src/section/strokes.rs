@@ -85,8 +85,10 @@ pub fn dedupe(strokes: &[Stroke], style: &Style) -> Vec<Stroke> {
                 continue;
             }
             let w2 = style.pen_width_mm(strokes[s2.stroke].pen);
-            let same_base =
-                s1.stroke != s2.stroke && base_id(&strokes[s1.stroke].src) == base_id(&strokes[s2.stroke].src);
+            let bars = strokes[s1.stroke].pen == Pen::Rebar && strokes[s2.stroke].pen == Pen::Rebar;
+            let same_base = !bars
+                && s1.stroke != s2.stroke
+                && base_id(&strokes[s1.stroke].src) == base_id(&strokes[s2.stroke].src);
             let p_lo = s1.a.add(d1.scale(lo));
             let p_hi = s1.a.add(d1.scale(hi));
             let t2a = p_lo.sub(s2.a).dot(d2) / (l2 * l2);

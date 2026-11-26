@@ -13,6 +13,9 @@ use crate::pen::Pen;
 use crate::style::CutMark;
 use alloc::vec::Vec;
 
+/// SPEC 32.1: what replaces the material hatch of an existing member (pattern, scale, angle).
+const EXISTING_HATCH: (&str, f64, f64) = ("ANSI31", 2.5, 0.0);
+
 pub struct FillFault {
     pub host: alloc::string::String,
     pub hole: alloc::string::String,
@@ -101,7 +104,10 @@ impl Section<'_> {
             && p.role.is_metal()
             && !is_fill_mat
             && thick_model / self.spec.scale < 2.0 * cut_in;
-        let pen_out = if let Some(pp) = p.pen {
+        let existing = p.existing && p.role != crate::style::Role::Rebar;
+        let pen_out = if existing {
+            Pen::Beyond
+        } else if let Some(pp) = p.pen {
             self.pen_for(pp)
         } else if is_fill_mat {
             self.pen_for_role(p.role)
@@ -155,7 +161,7 @@ impl Section<'_> {
         if (want_hatch || (!path_bar && (is_fill_mat || is_thin) && p.kind == Kind::Body)) && !region.is_empty() {
             let groups = group_region(&region, region_exact.then_some(&p.loops[..]));
             for g in groups {
-                if is_fill_mat || is_thin {
+                if (is_fill_mat || is_thin) && !existing {
                     self.fills.push(FillItem {
                         layer: self.layer_for(pen_out),
                         src: src.clone(),
@@ -163,9 +169,14 @@ impl Section<'_> {
                     });
                 }
                 if want_hatch && !is_thin {
-                    for hs in hatches {
-                        let Some(pat) = style.pattern(&hs.pattern) else { continue };
-                        let res = hatch::generate(&g.flat, pat, self.spec.scale * hs.scale, hs.angle);
+                    let shown: Vec<(&str, f64, f64)> = if existing {
+                        alloc::vec![EXISTING_HATCH]
+                    } else {
+                        hatches.iter().map(|h| (h.pattern.as_str(), h.scale, h.angle)).collect()
+                    };
+                    for (name, scale, angle) in shown {
+                        let Some(pat) = style.pattern(name) else { continue };
+                        let res = hatch::generate(&g.flat, pat, self.spec.scale * scale, angle);
                         if res.truncated {
                             self.truncated_hatch = true;
                         }
@@ -173,9 +184,9 @@ impl Section<'_> {
                             layer: self.layer_for(Pen::Hatch),
                             pen: Pen::Hatch,
                             src: src.clone(),
-                            pattern: hs.pattern.clone(),
-                            scale: hs.scale,
-                            angle: hs.angle,
+                            pattern: name.into(),
+                            scale,
+                            angle,
                             loops: g.loops.clone(),
                             lines: res.lines,
                         });

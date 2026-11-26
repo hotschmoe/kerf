@@ -361,7 +361,7 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
         return;
     }
     for c in &s.comps {
-        if c.dashed || c.world.is_empty() {
+        if c.dashed || c.world.is_empty() || c.existing == Some(true) {
             continue;
         }
         let touching_in = |p: &&&Pf<'_>, any_instance: bool| {
@@ -643,7 +643,7 @@ fn untreated(s: &Drawn<'_, '_>, diags: &Diags) {
     let mut reported: Vec<[u32; 2]> = Vec::new();
     let gap = 1.0 / 32.0;
     for p in &s.items {
-        if p.prism.role != Role::Wood {
+        if p.prism.role != Role::Wood || p.comp.existing == Some(true) {
             continue;
         }
         for q in &s.items {
@@ -865,7 +865,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
         let mut outside: Vec<(V2, &str)> = Vec::new();
         let xz = bar.world.iter().any(|p| p.xz_bar);
         let mut worst: Vec<(u32, usize, f64, String, String)> = Vec::new();
-        for bp in &bar.world {
+        for bp in bar.world.iter().filter(|p| p.role == Role::Rebar) {
             let centre;
             let mut dir = V2::init(0.0, 0.0);
             let mut segs: Vec<[V2; 2]> = Vec::new();
@@ -916,6 +916,9 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                         }
                     }
                     found = true;
+                    if h.existing == Some(true) || bar.existing == Some(true) {
+                        break;
+                    }
                     let mut edges = host_edges(&host.outline, xf);
                     for v in h.voids.iter().filter(|v| v.z[0] < bp.z1 && v.z[1] > bp.z0) {
                         for l in &v.loops {
@@ -1204,7 +1207,8 @@ fn near_miss(s: &Drawn<'_, '_>, diags: &Diags) {
     };
     for (i, &ca) in boxes.iter().enumerate() {
         for &cb in &boxes[i + 1..] {
-            if ca.c.index == cb.c.index || hung(&ca.c.id, &cb.c.id) {
+            let both_existing = ca.c.existing == Some(true) && cb.c.existing == Some(true);
+            if ca.c.index == cb.c.index || both_existing || hung(&ca.c.id, &cb.c.id) {
                 continue;
             }
             let zlo = ca.z0.max(cb.z0);

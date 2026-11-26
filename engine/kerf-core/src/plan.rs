@@ -153,6 +153,7 @@ fn rect_prism(src: &Prism, x0: f64, x1: f64, z0: f64, z1: f64, d0: f64, d1: f64)
         role: src.role,
         blocking: src.blocking,
         dashed: src.dashed,
+        existing: src.existing,
         hw_dash: src.hw_dash,
         seam: src.seam,
         ..Prism::default()
@@ -175,6 +176,7 @@ fn bar_prism(src: &Prism, center: Vec<Pt>, r: f64, d0: f64, d1: f64) -> Prism {
         kind: src.kind,
         pen: src.pen,
         dashed: src.dashed,
+        existing: src.existing,
         ..Prism::default()
     }
 }
@@ -194,6 +196,7 @@ fn dot_prism(src: &Prism, c: V2, r: f64, cut_y: f64) -> Prism {
         sweep_r: r,
         kind: src.kind,
         dashed: src.dashed,
+        existing: src.existing,
         ..Prism::default()
     }
 }
@@ -343,6 +346,7 @@ fn footprint_prism(src: &Prism, lp: Vec<Pt>, z0: f64, z1: f64) -> Prism {
         pen: src.pen,
         role: src.role,
         dashed: src.dashed,
+        existing: src.existing,
         ..Prism::default()
     }
 }
