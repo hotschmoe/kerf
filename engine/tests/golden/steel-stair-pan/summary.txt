@@ -1,0 +1,8 @@
+DOC steel-stair-pan  6 components  1 view  0 errors  0 warnings  0 acknowledged
+ slab          concrete rect 7'-0" x 5"                    x -2'-0"..5'-0"   y -5"..0"
+ treads        stair treads (4) pan 1/8" @ 7" rise x 11" run, 3'-0" wide, carrier angles L2x2x1/4 x 0"..3'-8 1/8"   y 0"..2'-4"
+ stringer      steel C12x20.7 A36 elevation run x L=4'-7 9/16" from treads@nosing_1+[-6.5, -7] to treads@top+[0.105, -5] cuts: level start, plumb end x -1'-9"..3'-8 1/8" y 0"..2'-5 9/16"
+ header        lumber 4x12 upright run z                   x 3'-8 1/2"..4'-0" y 1'-4 3/4"..2'-4"
+ end_plate     steel PL3/8x10 section                      x 3'-8 1/8"..3'-8 1/2" y 1'-5 3/4"..2'-3 3/4"
+ lags          bolt lag_screw 0.5" dia. x 3" (thread 2"), side x 3'-7 5/8"..3'-11 1/8" y 1'-8 3/4"..1'-9 3/4"
+INFO I_UNVERIFIED_CITE: 1 citation(s) await designer verification (notes: A/n_tread). Citations print with a trailing * until verified.

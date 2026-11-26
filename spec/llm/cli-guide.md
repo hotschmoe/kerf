@@ -36,7 +36,6 @@ kerf apply truss-cmu.kerf.json ops.json --dry-run
 kerf check truss-cmu.kerf.json
 kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
 kerf schema note dim cite
-kerf guide --full
 ```
 - Always pass `--why "..."` with `-w`/`new`: one line for the designer, logged to `<file>.log.jsonl`.
 - A failed apply prints `ERROR <code> <path>: <message>  Fix: <fix>` for every error, then `nothing written` (exit 1).
@@ -63,8 +62,7 @@ W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFEREN
 - `"until": "<Ref>"` instead of `length` grows a member to another one's edge (no stale numbers).
 - Braces/webs: `"from":"tie@top_center","to":"chord@bottom_center"` (ends cut to the faces they meet). Rafter seat:
   `"cuts":[{"type":"birdmouth","on":"plate"}]`; plumb ends, notches: `kerf schema cuts`.
-- Steel: `steel` takes AISC shapes (`W8x18`, `HSS4x4x1/4`, `L4x3x3/8`, `PL1/2x8`), `orient`
-  section|elevation|plan; `bolt` groups; `weld` annotation = AWS symbol (`kerf schema steel bolt weld`).
+- Steel `orient`: section|elevation|plan (plate face-on: plan); `weld` annotation = AWS symbol (`kerf schema weld`).
 
 ## Roof pitch: change it in ONE place
 Trusses own the pitch; sheathing and roofing follow it and run to the truss end. Never type a literal length or pitch on them.
@@ -277,5 +275,24 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   another member lies against the face. Eave blocking (lumber run z) takes `"until":"truss@heel_block_top"` (ripped).
   An iso draws members `shown: "hidden"` (a 2D state) as solids. `{"type":"line","points":[...],"line":"dashed"}` draws a
   no-load zone, influence or limit line. Keyed views: `"tags_side":"right"` puts every tag on one side.
+- Steel vocabulary (SPEC 31). Open-web joist: `{"id":"joist","type":"steel_joist","designation":"18K4","length":48,
+  "at":{"anchor":"seat","to":"beam@top_flange","offset":[-2,0]}}` (the seat lands on the support; `seats`
+  left|right|both|none, `bottom_chord_extension`, `orient: section` + `section_at: bearing` for the end-on cut; LH and
+  joist girders by designation: `24LH06`, `32G8N8K`). Deck on it: `{"id":"deck","type":"metal_deck","profile":"1.5B",
+  "gauge":22,"until":"joist@top_chord_end","at":{"anchor":"bottom_left","to":"joist@top_chord_start"}}`; composite slab:
+  `"profile":"3C","topping":3.5` (rebar `place` in it), deck seen along its flutes: `"run":"x"`. Lag and wood screws are
+  bolts: `{"type":"bolt","kind":"lag_screw","diameter":0.5,"length":4,"rotate":90,"at":{"to":"ledger@middle_left"}}`
+  (head at the placement point, `rotate` points the shank, dimension the embedment to `lags@tip`; SDS: `kind
+  wood_screw` with the model in `grade`). Slip connection: `"hole":"long_slot"` (`slot_length`, `slot_dir`) on the bolt,
+  drawn around end-on bolts. Cold-formed framing: `"shape":"600S162-54"` (stud), `"600T125-54"` (track; bottom track
+  legs up: `"rotate":90,"at":{"anchor":"web_back","to":"slab@top_left","offset":[3.06,0]}`). Aluminum extrusions:
+  `{"type":"steel","shape":"TUBE6.5x2x0.042","material":"aluminum","orient":"elevation","length":36}`, C header
+  `"CEE8x3x0.062"`. Concrete-filled pipe: `{"type":"steel","shape":"PIPE6STD","fill":"concrete","orient":"elevation",
+  "run":"y","length":84}` cast into its footing with the footing's `"voids":["bollard"]`. Steel stair: `{"id":"treads",
+  "type":"stair_treads","kind":"pan","treads":4,"rise":7,"tread":11}` plus one sloped `steel` stringer `"from":
+  {"ref":"treads@nosing_1","offset":[-6.5,-7]},"to":{"ref":"treads@top","offset":[0,-5]}` with level / plumb `cuts` and
+  `z` outside `width`. A plate seen face-on (shear tab, gusset, stiffener) is `orient: plan` with its thickness as `z`;
+  a cope is `"cuts":[{"type":"notch","at":"top_left","w":3,"d":1.5}]`; an embed plate is a plate named in the concrete's
+  `voids` with `"kind":"headed_stud"` bolts behind it.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

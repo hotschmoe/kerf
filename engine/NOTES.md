@@ -946,6 +946,31 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
     on s-80-01 (0.9 s -> 3.4 s) for diagnostics that are discarded. Up to 12 re-layouts per view within 1/4 of the
     work limit; a fix that cannot be checked in that budget keeps the old unchecked text.
 
+### v0.2.0-beta.4 steel vocabulary (SPEC 31)
+Status: `steel_joist`, `metal_deck`, `stair_treads` are new types; `bolt` gained `lag_screw` / `wood_screw` and `hole`;
+`steel` gained SSMA and any-size shapes, WT, `material` and `fill`. Reference docs: `tests/docs/steel-joist-deck`,
+`steel-stair-pan`, `cfs-track-aluminum`. Interpretations chosen:
+  - Joist member sizes are not in an SJI designation, so the drawing is schematic: chord leg, thickness and web size
+    come from a series/depth rule (K 1 1/2 to 2 legs with rod webs, LH 3 to 3 1/2, G 4 to 5 with angle webs). Only
+    depth, seat depth, seat length and panel spacing are meant to be read off the drawing.
+  - A joist's bearing length is not checked (SJI minimums are in the `seat_length` text only).
+  - Deck profiles are nominal SDI dimensions; manufacturers differ by fractions of an inch. Side laps, embossments and
+    the 36/4 weld pattern are notes, not geometry.
+  - Slotted holes draw only around end-on bolts. A side-on bolt carries the hole in its summary and default note; the
+    ply it passes through is not notched.
+  - Lag screws take `length` instead of `grip`; W_BOLT_EDGE still reads the steel ply under the head. Pilot holes,
+    withdrawal and wood edge distances are not checked.
+  - SSMA sections draw with square corners at the design thickness; inside bend radii are omitted. Furring (F)
+    sections are refused.
+  - A track is drawn two thicknesses deeper than its nominal size so the stud nests; real track is about 1/8 over.
+  - `material: aluminum` renders in the sheet-metal style (thin walls solid); alloy and temper are note text.
+  - `fill` in an elevation member is a box between the inside wall faces (2.5D, as round members already are in iso);
+    a domed bollard top is a note.
+  - `stair_treads` is separate from the general `stair` type; rise and tread limits are in the field text, not checked
+    (`stair` owns W_STAIR_GEOMETRY).
+  - The short `kerf guide` is at 12,269 of 12,288 bytes with these three type lines; the Steel bullet and one sample
+    command were tightened to make room.
+
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the
   engine default (90 px per sheet inch, 3240 px for 36x24).

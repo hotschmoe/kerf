@@ -1,0 +1,8 @@
+DOC cfs-track-aluminum  7 components  1 view  0 errors  0 warnings  0 acknowledged
+ slab          concrete rect 3'-8" x 4"                    x -4"..3'-4"      y -4"..0"
+ track         steel 600T125-54 section                    x 0"..6 1/8"      y 0"..1 1/4"
+ stud          steel 600S162-54 elevation run y L=1'-2"    x 1/16"..6 1/16"  y 1/16"..1'-2 1/16"
+ post          aluminum TUBE3x3x0.125 elevation run y L=10" x 1'-6"..1'-9"    y 0"..10"
+ hdr           aluminum CEE8x3x0.062 section               x 1'-6"..1'-9"    y 10"..1'-6"
+ rafter        aluminum TUBE6.5x2x0.042 elevation run x L=1'-2" x 1'-2"..2'-4"    y 1'-6"..2'-0 1/2"
+ guard         steel PIPE4STD elevation run y L=1'-4" filled with concrete x 2'-8"..3'-0 1/2" y 0"..1'-4"

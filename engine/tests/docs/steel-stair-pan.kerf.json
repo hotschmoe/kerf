@@ -1,0 +1,190 @@
+{
+ "kerf": "0.1",
+ "id": "steel-stair-pan",
+ "title": "STEEL PAN STAIR AT WOOD LANDING",
+ "meta": {
+  "jurisdiction": {
+   "code": "IBC",
+   "edition": 2021
+  }
+ },
+ "run": [
+  -24,
+  24
+ ],
+ "components": [
+  {
+   "id": "slab",
+   "type": "concrete",
+   "shape": "rect",
+   "width": 84,
+   "height": 5,
+   "at": {
+    "anchor": "top_left",
+    "to": [
+     -24,
+     0
+    ]
+   }
+  },
+  {
+   "id": "treads",
+   "type": "stair_treads",
+   "kind": "pan",
+   "treads": 4,
+   "rise": 7,
+   "tread": 11,
+   "at": {
+    "anchor": "foot",
+    "to": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "id": "stringer",
+   "type": "steel",
+   "shape": "C12x20.7",
+   "grade": "A36",
+   "orient": "elevation",
+   "from": {
+    "ref": "treads@nosing_1",
+    "offset": [
+     -6.5,
+     -7
+    ]
+   },
+   "to": {
+    "ref": "treads@top",
+    "offset": [
+     0.105,
+     -5
+    ]
+   },
+   "z": [
+    -21,
+    -18.05
+   ],
+   "cuts": [
+    {
+     "type": "level",
+     "end": "start"
+    },
+    {
+     "type": "plumb",
+     "end": "end"
+    }
+   ]
+  },
+  {
+   "id": "header",
+   "type": "lumber",
+   "size": "4x12",
+   "at": {
+    "anchor": "top_left",
+    "to": "treads@top",
+    "offset": [
+     0.48,
+     0
+    ]
+   }
+  },
+  {
+   "id": "end_plate",
+   "type": "steel",
+   "shape": "PL3/8x10",
+   "rotate": 90,
+   "at": {
+    "anchor": "bottom_left",
+    "to": "header@bottom_left",
+    "offset": [
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "id": "lags",
+   "type": "bolt",
+   "kind": "lag_screw",
+   "diameter": 0.5,
+   "length": 3,
+   "rotate": 90,
+   "at": {
+    "to": "header@bottom_left",
+    "offset": [
+     -0.375,
+     4.5
+    ]
+   }
+  }
+ ],
+ "views": [
+  {
+   "id": "A",
+   "kind": "section",
+   "number": "1",
+   "title": "STEEL PAN STAIR AT WOOD LANDING",
+   "cut_z": 0,
+   "notes_side": "both",
+   "annotations": [
+    {
+     "id": "n_tread",
+     "type": "note",
+     "text": "12 GA. STEEL PAN TREAD AND RISER W/ 1 1/2\" CONC. FILL",
+     "target": "treads",
+     "cite": [
+      {
+       "code": "IBC",
+       "edition": 2021,
+       "section": "1011.5.2",
+       "title": "Riser height and tread depth",
+       "status": "suggested"
+      }
+     ]
+    },
+    {
+     "id": "n_str",
+     "type": "note",
+     "text": "C12X20.7 STRINGER EA. SIDE",
+     "target": "stringer"
+    },
+    {
+     "id": "n_car",
+     "type": "note",
+     "text": "L2X2X1/4 CARRIER ANGLE, WELD TO STRINGER",
+     "target": "treads.carrier"
+    },
+    {
+     "id": "n_pl",
+     "type": "note",
+     "text": "PL 3/8\" X 10\" END PLATE W/ 1/2\" DIA. X 3\" LAG SCREWS @ 16\" O.C.",
+     "target": "lags"
+    },
+    {
+     "id": "n_hdr",
+     "type": "note",
+     "text": "4X12 LANDING HEADER",
+     "target": "header"
+    },
+    {
+     "id": "d_rise",
+     "type": "dim",
+     "from": "treads@nosing_2",
+     "to": "treads@nosing_3",
+     "dir": "v",
+     "offset": -4
+    },
+    {
+     "id": "d_run",
+     "type": "dim",
+     "from": "treads@nosing_2",
+     "to": "treads@nosing_3",
+     "dir": "h",
+     "offset": 6
+    }
+   ]
+  }
+ ]
+}
