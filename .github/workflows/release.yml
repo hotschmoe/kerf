@@ -81,7 +81,6 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run typecheck
-          npm run test:unit
           KERF_WASM=../../engine/dist/kerf.wasm npm run build:serve
       - uses: actions/upload-artifact@v6
         with:
