@@ -2802,8 +2802,10 @@ A note that points at a member lands on it; from one side of the view the leader
 the section cuts (the stud between the note column and a tie on the stud's far face), while from the other side it
 reaches the same point across nothing. The walls are the cut bodies of `lumber`, `ijoist`, `steel`, `concrete` and
 `cmu_wall` components other than the note's target (not embedded, not dashed). For each note with a target, a
-horizontal line from its landing point to each side of the crop is measured inside the walls; with m = max(0.4 x text
-height in model inches, 1"), a side is *through* when it crosses at least m while the other side crosses less than m/4.
+horizontal line from its landing point to each side of the crop is measured inside the walls; with m = one and a half text
+heights (longer than an arrowhead; in model inches at the view's scale: 1 11/16" at 1" = 1'-0", 3 3/8" at 1/2" = 1'-0"), a side is *through* when it crosses
+at least m while the other side crosses less than m/4. A wall the landing point itself lies in (the member a face-on
+tie is mounted on) is not counted on either side.
 
 **Diagnostic.** A note laid out on its through side whose last leader segment runs at least m inside those walls is a
 `W_LEADER_HIT`: "the leader (or arrowhead) of note 'n' crosses the cut lumber 'stud' to reach 'tie' on its far side;
@@ -2834,8 +2836,7 @@ message, not once per pass.
 Per-view geometry check (§9). A `lumber` member seen end-on (run z) that is wider than deep in the view (a flat plate),
 not `blocking`, not dashed, is unsupported when all of these hold in a view that draws it: (a) no body of another
 component lies under its bottom face (probed 1/16" below, at nine points across the width; hidden members count);
-(b) a `lumber`, `truss` or `ijoist` body of another component lies on its top face; (c) another component touches
-exactly one of its two edges (it hangs off that member's face). A plate that has something under it in any view is
+(b) a `lumber`, `truss` or `ijoist` body of another component lies on its top face; (c) another component, not the one it carries, touches exactly one of its two edges (it hangs off that member's face). A plate that has something under it in any view is
 supported. The fix adds a 2x4 ledger under the plate against the member it touches when that member runs past the plate
 (`{"op":"add","path":"components","value":{"id":"<plate>_ledger","type":"lumber","size":"2x4","at":{"anchor":
 "top_left","to":"<plate>@bottom_left"}}}`), or sets the plate on top of that member when it ends there. Acknowledge

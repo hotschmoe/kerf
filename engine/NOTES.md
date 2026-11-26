@@ -432,6 +432,12 @@ On the current aarch64 Linux workspace, the blocking gate took 44 s and the back
   the end that reaches; `Diags::once` keeps one copy of a failed Ref; `validate::bearing::unsupported`
   (W_UNSUPPORTED); the summary prints `(draws nothing)`; `layout::sheet_keys` gives a view built alone the numbers of
   the first shared-notes layout naming it; `kerf schema ops` lists the layout paths.
+  47 MASS details (`--strict`, copies): 0 errors before and after; 1 warning before (the acknowledged W_COVER of
+  S-80.01), 11 after. New: 8 W_LEADER_HIT "crosses the cut ..." (S-10.03 A n_gyp, S-10.07 A n_step and n_run, S-30.01
+  D and F n_weep, S-40.02 B and C n_strap, S-80.01 C n_pour: notes with `column` or a view with one notes side, or a
+  change that would add another hit) and 2 W_UNSUPPORTED (S-70.03 a_plate, c_plate: the reported plates). 80 of the
+  set's views draw differently: the layout's note numbers on views exported alone (67), notes moved off a through
+  side, hatch cleared under lines and labels. One scale changed (S-10.10 iso I, 14 -> 14.5, from the wider numbers).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -516,6 +522,9 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   landing point; a leader that crosses a member on its way to a target that is not behind it is still the older
   W_LEADER_HIT (crossing an obstacle), and notes with `place` are reported, never moved. W_UNSUPPORTED does not look at
   fasteners: a flat plate held by a hanger or angle under it is supported, one held by nails through its edge warns.
+  The checked `column` fix of a through hit counts leader hits only: on a view with a fixed scale the moved note can
+  cost the view its fit (W_VIEW_FIT after the fix; `palmer-sd1-like` view C acknowledges the two hits for that reason).
+  Only the automatic change checks the fit.
 - Touch-up gaps (#30): nailing between members at an angle (a brace cut onto a tie) is warned, not drawn; W_LEADER_HIT
   fixes on dimension and label obstacles (dim `offset`, label move) are not checked by a re-layout (their stacking runs
   outside the router); a single-note fix that cannot clear a hit says so, but kerf does not compute a multi-note fix;
@@ -970,8 +979,10 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
     of the repair loop already work on that code. It is reported only (the router's cost and search do not see it):
     counting it in the search reshuffled layouts that were tuned by hand and spent the work budget. The side change is
     made outside the router, one note at a time, each checked by a whole repaired layout.
-  - "Other side is free" = that side crosses under a quarter of the minimum; walls are cut lumber, I-joist, steel,
-    concrete and CMU bodies of other components. The target's own body and fills never count. Plies of a built-up
+  - A leader is "through" at 1.5 text heights inside cut members (longer than an arrowhead: a tag whose arrow sits on
+    a 2x block does not warn); "other side is free" = that side crosses under a quarter of that. Walls are cut lumber,
+    I-joist, steel, concrete and CMU bodies of other components. The target's own body, a member the landing point
+    lies in (a face-on tie's own member) and fills never count. Plies of a built-up
     member that are separate components do count (a note on one ply reached across the others warns).
   - The automatic side never costs a scale step: `sided_pass` reruns the view without it when only that fits. The
     price is one more layout of the view in that case.

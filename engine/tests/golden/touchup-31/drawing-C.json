@@ -35,4 +35,5 @@
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:C","closed":false,"pts":[[203.3,-15.15],[250.5321,-15.15]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:C","s":"SCALE: 1\" = 1'-0\"","x":203.3,"y":-16.995,"h":1.125,"rot":0,"align":"left","valign":"baseline"}
 ],
-"diagnostics":[]}
+"diagnostics":[],
+"acknowledged":[{"code":"W_UNSUPPORTED","id":"c_plate","reason":"reference case for the check: the plate hangs off the stud face on purpose","path":"components/c_plate/at","message":"'c_plate' (x 17'-1 1/2\"..17'-7\", y 2'-0\"..2'-1 1/2\") carries 'c_joist' but nothing is drawn under it: it only touches 'c_stud' along its left edge, and a plate does not bear through its edge (in view C)","fix":"'c_stud' runs past it, so give it a ledger or block under it on that face: {\"op\":\"add\",\"path\":\"components\",\"value\":{\"id\":\"c_plate_ledger\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{\"anchor\":\"top_left\",\"to\":\"c_plate@bottom_left\"},\"views\":[\"C\"]}} (and its fasteners in a note); or draw what carries it under it (a stud, post, beam or ledger; a hanger or angle seat); acknowledge W_UNSUPPORTED if it hangs from 'c_joist'"}]}

@@ -161,6 +161,12 @@
       "views": [
         "C"
       ],
+      "acknowledge": [
+        {
+          "code": "W_UNSUPPORTED",
+          "reason": "reference case for the check: the plate hangs off the stud face on purpose"
+        }
+      ],
       "size": "2x6",
       "orient": "flat"
     },

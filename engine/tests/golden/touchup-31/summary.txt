@@ -1,4 +1,4 @@
-DOC touchup-31  12 components  3 views  0 errors  1 warning  0 acknowledged
+DOC touchup-31  12 components  3 views  0 errors  0 warnings  1 acknowledged
  a_stud        lumber 2x6 y wide run y L=2'-6"             x 0"..5 1/2"      y 0"..2'-6"
  a_pl1         lumber 2x6 flat run z                       x 0"..5 1/2"      y 2'-6"..2'-7 1/2"
  a_pl2         lumber 2x6 flat run z                       x 0"..5 1/2"      y 2'-7 1/2"..2'-9"
@@ -11,5 +11,6 @@ DOC touchup-31  12 components  3 views  0 errors  1 warning  0 acknowledged
  c_plate       lumber 2x6 flat run z                       x 17'-1 1/2"..17'-7" y 2'-0"..2'-1 1/2"
  c_joist       lumber 2x8 x wide run x L=2'-6"             x 17'-1 1/2"..19'-7 1/2" y 2'-1 1/2"..2'-8 3/4"
  c_clip        connector A35 framing angle, 1-7/16 legs 18 ga, angle c_joist to c_plate on the front face of c_joist x 17'-2"..17'-6 1/2" y 2'-1 1/2"..2'-2 15/16"
-WARN W_UNSUPPORTED c_plate: 'c_plate' (x 17'-1 1/2"..17'-7", y 2'-0"..2'-1 1/2") carries 'c_joist' but nothing is drawn under it: it only touches 'c_stud' along its left edge, and a plate does not bear through its edge (in view C) Fix: 'c_stud' runs past it, so give it a ledger or block under it on that face: {"op":"add","path":"components","value":{"id":"c_plate_ledger","type":"lumber","size":"2x4","at":{"anchor":"top_left","to":"c_plate@bottom_left"},"views":["C"]}} (and its fasteners in a note); or draw what carries it under it (a stud, post, beam or ledger; a hanger or angle seat); acknowledge W_UNSUPPORTED if it hangs from 'c_joist'
 INFO I_KEY_RENUMBERED S1: layout S1 numbers its shared DETAIL NOTES 1..3 without gaps, and its views export alone with the same numbers: key 2 prints as 1, key 5 prints as 2, key 7 prints as 3 Fix: nothing to do; to print the keys as written, give the notes consecutive keys starting at 1
+ACKNOWLEDGED  1 warning suppressed by `acknowledge` (kerf check --strict prints each in full)
+ W_UNSUPPORTED       x1   c_plate: "reference case for the check: the plate hangs off the stud face on purpose"

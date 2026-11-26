@@ -97,4 +97,5 @@
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:A","closed":false,"pts":[[3.3,-15.9],[44.1929,-15.9]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:A","s":"SCALE: 1\" = 1'-0\"","x":3.3,"y":-17.745,"h":1.125,"rot":0,"align":"left","valign":"baseline"}
 ],
-"diagnostics":[]}
+"diagnostics":[],
+"acknowledged":[]}

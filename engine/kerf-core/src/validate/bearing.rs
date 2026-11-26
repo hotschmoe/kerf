@@ -177,6 +177,9 @@ pub(super) fn unsupported(s: &Drawn<'_, '_>, seated: &[u32], diags: &Diags) {
             (None, Some(n)) => (n, "right"),
             _ => continue,
         };
+        if n.comp.index == load.comp.index {
+            continue;
+        }
         let (n, runs_past) = (n.comp, n.box_.y1 > b.y1 + TOUCH);
         let seat = if runs_past {
             let views = c.node.get("views").map_or(String::new(), |v| {

@@ -25,4 +25,5 @@
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","closed":false,"pts":[[91.3,-39.15],[126.0321,-39.15]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:B","s":"SCALE: 1\" = 1'-0\"","x":91.3,"y":-40.995,"h":1.125,"rot":0,"align":"left","valign":"baseline"}
 ],
-"diagnostics":[]}
+"diagnostics":[],
+"acknowledged":[]}

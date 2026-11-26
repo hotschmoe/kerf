@@ -355,6 +355,12 @@
           "type": "note",
           "text": "WEEP SCREED, 3 1/2\" NAILING FLANGE",
           "target": "screed",
+          "acknowledge": [
+            {
+              "code": "W_LEADER_HIT",
+              "reason": "notes stay in the right column at 3 in = 1 ft; the left column does not fit the sheet"
+            }
+          ],
           "at": {"ref": "screed@top_right", "offset": [0, -0.5]}
         },
         {
@@ -367,7 +373,13 @@
           "id": "n_sheath",
           "type": "note",
           "text": "7/16\" OSB SHEATHING",
-          "target": "sheathing"
+          "target": "sheathing",
+          "acknowledge": [
+            {
+              "code": "W_LEADER_HIT",
+              "reason": "notes stay in the right column at 3 in = 1 ft; the left column does not fit the sheet"
+            }
+          ]
         }
       ]
     },

@@ -65,7 +65,7 @@ pub struct NoteIn<'a> {
 
 /// A leader runs "through" a cut member when at least this much of it lies inside (model units; `h` is the text height).
 pub fn through_min(h: f64) -> f64 {
-    (0.4 * h).max(1.0)
+    1.5 * h
 }
 
 /// Length of segment a-b inside the region bounded by `loops`.
