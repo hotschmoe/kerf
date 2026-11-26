@@ -44,7 +44,11 @@ fn anchor(name: &str, p: V2) -> NamedAnchor {
 }
 
 fn zone(name: &str, x0: f64, y0: f64, x1: f64, y1: f64) -> Zone {
-    Zone { name: name.to_string(), loops: model::one_loop(model::rect_loop(x0, y0, x1, y1)), box_: Box { x0, y0, x1, y1 } }
+    Zone {
+        name: name.to_string(),
+        loops: model::one_loop(model::rect_loop(x0, y0, x1, y1)),
+        box_: Box { x0, y0, x1, y1 },
+    }
 }
 
 fn geometry_check(ctx: &Ctx, sp: &Params) {
@@ -170,7 +174,8 @@ fn concrete(ctx: &mut Ctx, sp: &Params) -> Option<Built> {
         anchors.push(anchor("toe_bottom_center", V2::init(tw / 2.0, -td)));
         zones.push(zone("toe", 0.0, -td, tw, 0.0));
     }
-    let mut prisms = vec![Prism { material: sp.material.clone(), loops: model::one_loop(outline.clone()), ..Prism::default() }];
+    let mut prisms =
+        vec![Prism { material: sp.material.clone(), loops: model::one_loop(outline.clone()), ..Prism::default() }];
     let mut info = format!(
         "stair concrete {} risers {} x {} treads, {} waist{}",
         sp.risers,
@@ -280,7 +285,18 @@ fn concrete(ctx: &mut Ctx, sp: &Params) -> Option<Built> {
 }
 
 fn wood(ctx: &mut Ctx, sp: &Params) -> Option<Built> {
-    for key in ["waist", "toe_width", "toe_depth", "landing", "landing_thickness", "bars", "nosing_bars", "bar_spacing", "cover", "material"] {
+    for key in [
+        "waist",
+        "toe_width",
+        "toe_depth",
+        "landing",
+        "landing_thickness",
+        "bars",
+        "nosing_bars",
+        "bar_spacing",
+        "cover",
+        "material",
+    ] {
         if ctx.p.has(key) {
             ctx.p.fail(key, format!("'{key}' belongs to a concrete stair: remove it (a wood stair takes size, stringers, tread_thickness, riser_thickness, nosing, treated)"));
             return None;
@@ -295,9 +311,13 @@ fn wood(ctx: &mut Ctx, sp: &Params) -> Option<Built> {
         return None;
     }
     let n = f64::from(sp.risers);
-    let (rise, tread, nose, tt, rt) = (sp.rise, sp.tread, sp.nosing.max(0.0), sp.tread_thickness, sp.riser_thickness.max(0.0));
+    let (rise, tread, nose, tt, rt) =
+        (sp.rise, sp.tread, sp.nosing.max(0.0), sp.tread_thickness, sp.riser_thickness.max(0.0));
     if tt >= rise {
-        ctx.p.fail("tread_thickness", format!("tread_thickness {} must be less than the rise {}", fmt_num(tt), fmt_num(rise)));
+        ctx.p.fail(
+            "tread_thickness",
+            format!("tread_thickness {} must be less than the rise {}", fmt_num(tt), fmt_num(rise)),
+        );
         return None;
     }
     let theta = math::atan2(rise, tread);
@@ -317,7 +337,15 @@ fn wood(ctx: &mut Ctx, sp: &Params) -> Option<Built> {
         );
     }
     if throat <= 0.25 {
-        ctx.p.fail("size", format!("a {} stringer is cut through by a {} x {} step: use a deeper size", sp.size, fmt_ft_in(rise), fmt_ft_in(tread)));
+        ctx.p.fail(
+            "size",
+            format!(
+                "a {} stringer is cut through by a {} x {} step: use a deeper size",
+                sp.size,
+                fmt_ft_in(rise),
+                fmt_ft_in(tread)
+            ),
+        );
         return None;
     }
     let edge = |x: f64| slope * (x - rt) + rise - tt;

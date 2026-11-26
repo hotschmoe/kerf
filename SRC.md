@@ -286,7 +286,7 @@ Break lines apply to cut members and to lengthwise steel running beyond the crop
 
 ## engine/kerf-core/src/section/cut.rs
 
-When subtracting an embedded hole would remove more area than the hole itself, the boolean is treated as failed and the hole is skipped so the part retains its fill. Otherwise an emptied fill means the hole covers the whole cut. Hatch grain follows the longest loop edge.
+When subtracting an embedded hole would remove more area than the hole itself, the boolean is treated as failed and the hole is skipped so the part retains its fill. Otherwise an emptied fill means the hole covers the whole cut. Hatch grain follows the longest loop edge. SPEC 32.1: a cut member marked `existing` takes the thin pen and one sparse ANSI31 hatch in place of its material hatch and fill; the pens have no gray, so this is the black-and-white convention for existing work.
 
 ## engine/kerf-core/src/section/hardware.rs
 
@@ -306,7 +306,7 @@ Visible and hidden path portions are split at occluder outlines. Closed-loop pie
 
 ## engine/kerf-core/src/section/strokes.rs
 
-Coincident collinear spans keep the heavier pen, except members of one component keep a thin copy. Open strokes chain only when both pen and source match; returning to the start closes a loop.
+Coincident collinear spans keep the heavier pen, except members of one component keep a thin copy. Open strokes chain only when both pen and source match; returning to the start closes a loop. Coincident segments of two instances of one component normally become a thin seam; two rebar strokes are exempt, because stacked ties and repeated dowels seen along their array axis are bars, not seams.
 
 ## engine/kerf-core/src/builders/anchor_bolt.rs
 
@@ -322,7 +322,7 @@ SPEC 5 defines masonry walls. Course ranges are one-based from the bottom; adjac
 
 ## engine/kerf-core/src/builders/concrete.rs
 
-SPEC 28.7 defines plan footprints as x/z outlines with y thickness. Angled edges use thin z slabs for checks, while the exact outline carried on the first slab is used by section, plan, elevation, iso and 3D drawing.
+SPEC 28.7 defines plan footprints as x/z outlines with y thickness. Angled edges use thin z slabs for checks, while the exact outline carried on the first slab is used by section, plan, elevation, iso and 3D drawing. SPEC 32.5: `shape: round` is a footprint whose outline is a four-point bulge circle, so plan, section, iso and mesh reuse the footprint path; like every footprint it takes no voids, and it centres on the section cut in z unless `z` is a number.
 
 ## engine/kerf-core/src/builders/connector.rs
 
@@ -376,9 +376,17 @@ SPEC 26.4 defines sleeve parameters and geometry.
 
 SPEC 5 defines solid parameters and geometry.
 
+## engine/kerf-core/src/builders/stair.rs
+
+SPEC 32.3 defines stairs. The flight climbs right from `foot`, the lower floor at the face of the first riser. A concrete flight is one outline (steps, top slab, soffit, toe); the waist is measured square to the soffit from the inside corners of the steps, and the outline is the rebar host. A wood flight is a notched stringer drawn lengthwise (`along_grain` on its prism) with cut tread and riser boards; the throat is what the notches leave square to the bottom edge. Steel stringers are sloped `steel` members and are not built here.
+
 ## engine/kerf-core/src/builders/rebar.rs
 
-SPEC 5, 25.1 and 26.3 define reinforcing bars. Flat x/z bars use axis legs, approximating diagonal runs with short stair-step slabs for checks, iso and mesh; the first slab carries the complete centerline used by section, plan and elevation. Path-bar anchors lie on that centerline: bends use the point nearest the corner and segment anchors use the middle of the straight run. Station references follow the referenced member when its host is resized. Placement uses a host's outline or its box if it has no outline, clipped to the part box when a part is selected.
+SPEC 5, 25.1 and 26.3 define reinforcing bars. Flat x/z bars use axis legs, approximating diagonal runs with short stair-step slabs for checks, iso and mesh; the first slab carries the complete centerline used by section, plan and elevation. Path-bar anchors lie on that centerline: bends use the point nearest the corner and segment anchors use the middle of the straight run. Station references follow the referenced member when its host is resized. Placement uses a host's outline or its box if it has no outline, clipped to the part box when a part is selected. SPEC 32.1 and 32.2 add `hook`, `tie` and `epoxy`; their geometry is in `rebar_bends.rs`, and a tie or hooked bar is an ordinary path bar once its centerline is built, so cover, plan and mesh code is shared.
+
+## engine/kerf-core/src/builders/rebar_bends.rs
+
+SPEC 32.1 and 32.2 define standard hooks, ties, hoops and adhesive dowels. Bend diameters and extensions come from ACI 318-19 Tables 25.3.1 and 25.3.2 by bar number, never from the document. A hook keeps the authored end point as the out-to-out corner (90) or the far reach of the bend (135, 180), so a bar drawn to a cover line keeps its cover. Ties are sized from the host box (or part box) less the cover and are built as one closed centerline whose two hook tails lap at a corner. An adhesive dowel finds the end leg that points into its host, extends it by `embed` past the face, and adds the drilled hole as part `epoxy`; the hole is exempt from overlap with its host.
 
 ## engine/kerf-core/src/builders/steel.rs
 
@@ -466,7 +474,7 @@ SPEC 11 defines the flat-shaded prism mesh and explicit feature edges. Holes are
 
 ## engine/kerf-core/src/plan.rs
 
-SPEC 26.3 and 28.7 define plan views. Plan coordinates are `(x, -z)`, with model y as depth toward the viewer, so the section engine can draw plan strips at `cut_y`. Adjacent strips merge when their top surfaces do not make a visible break. Loose fill is omitted in plan. Bent x/z bars retain their exact centerline for plan and section/elevation views; angled footprints retain their exact outline. Plan references use per-instance and per-part plan boxes, with named anchors projected at the instance's center z.
+SPEC 26.3 and 28.7 define plan views. Plan coordinates are `(x, -z)`, with model y as depth toward the viewer, so the section engine can draw plan strips at `cut_y`. Adjacent strips merge when their top surfaces do not make a visible break. Loose fill is omitted in plan. Bent x/z bars retain their exact centerline for plan and section/elevation views; angled footprints retain their exact outline. Plan references use per-instance and per-part plan boxes, with named anchors projected at the instance's center z. SPEC 32.7: a `cmu_wall` cut by the plan is redrawn as units by `cmu_units`, which pairs the two cut face shells of each instance, takes head joints from the face-on joint lines (run x) or running bond by course parity (run z), and replaces the shells with unit outlines with rounded cell openings. The wall's prisms below the cut are hidden, because their edges coincide with the unit edges and would turn them into thin seams. A cell is grouted where a grout prism crosses the cut or, with reinforced grouting, where a vertical bar stands in it. A wall whose core holds another component's `cmu` body (webs drawn by hand before 32.7) is left as bare shells and reported as `I_CMU_PLAN_UNITS` through `FlatView::own_cells`.
 
 ## engine/kerf-core/src/hwcheck.rs
 
@@ -486,7 +494,7 @@ SPEC 27.1 requires a member with a minimum-bearing trait, such as an I-joist, to
 
 ## engine/kerf-core/src/cuts.rs
 
-SPEC 27.3 defines lumber and steel cuts. In the lengthwise builder frame, u follows the member and v points left across it; end cuts and notches modify the local profile before placement so every view, mesh and check sees it. A notch `by` another member is subtracted after placement and is not a placement dependency; `from`, `to`, birdmouth `on`, trim `to` and bevel `line` references are dependencies. A birdmouth without `at` uses the low outer top corner of its bearing member. The overlap fix for an overly deep heel reduces the heel by the overlap height, limited by the bearing depth.
+SPEC 27.3 defines lumber and steel cuts. In the lengthwise builder frame, u follows the member and v points left across it; end cuts and notches modify the local profile before placement so every view, mesh and check sees it. A notch `by` another member is subtracted after placement and is not a placement dependency; `from`, `to`, birdmouth `on`, trim `to` and bevel `line` references are dependencies. A birdmouth without `at` uses the low outer top corner of its bearing member. The overlap fix for an overly deep heel reduces the heel by the overlap height, limited by the bearing depth. SPEC 32.4 adds `hole`: holes are subtracted as flattened rings and then restored to exact two-arc circles, so exports draw true circles. Hole and notch limits (IRC R502.8.1, R602.6) apply only to sawn lumber seen on its wide face; engineered lumber and steel are left to the manufacturer or engineer, and the span is unknown, so position along the span is never checked.
 
 ## engine/kerf-core/src/voids.rs
 

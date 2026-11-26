@@ -184,7 +184,12 @@ fn build_tie(ctx: &mut Ctx, rp: &Params, tv: &Value, size: &str, d: f64) -> Opti
     let r = d / 2.0;
     for key in ["points", "place", "hook", "epoxy", "at", "rotate"] {
         if ctx.p.has(key) {
-            ctx.p.fail(key, format!("a 'tie' is placed and shaped by its host ('tie.in', 'tie.cover', 'tie.shape'): remove '{key}'"));
+            ctx.p.fail(
+                key,
+                format!(
+                    "a 'tie' is placed and shaped by its host ('tie.in', 'tie.cover', 'tie.shape'): remove '{key}'"
+                ),
+            );
             return None;
         }
     }
@@ -192,7 +197,11 @@ fn build_tie(ctx: &mut Ctx, rp: &Params, tv: &Value, size: &str, d: f64) -> Opti
     let y = if xz { xz_height(ctx, rp)? } else { 0.0 };
     let t = bends::tie(ctx, tv, bends::bar_number(size), d, xz)?;
     ctx.fixed.get_or_insert_with(|| "a tie is placed in its host".to_string());
-    let info = format!("rebar {size} {}{}", t.info, if xz { format!(" at y {}", fmt_ft_in(y)) } else { alloc::string::String::new() });
+    let info = format!(
+        "rebar {size} {}{}",
+        t.info,
+        if xz { format!(" at y {}", fmt_ft_in(y)) } else { alloc::string::String::new() }
+    );
     if !xz {
         let mut box_ = Box::default();
         let mut prisms = Vec::new();
@@ -201,7 +210,16 @@ fn build_tie(ctx: &mut Ctx, rp: &Params, tv: &Value, size: &str, d: f64) -> Opti
             box_.add_box(geom::loop_box(&rib));
             prisms.push(bar_prism(rib, c, r));
         }
-        return Some(Built { prisms, anchors: t.anchors, box_, nat_z: Some(d), points_mode: true, bar_d: d, info, ..Built::default() });
+        return Some(Built {
+            prisms,
+            anchors: t.anchors,
+            box_,
+            nat_z: Some(d),
+            points_mode: true,
+            bar_d: d,
+            info,
+            ..Built::default()
+        });
     }
     let mut prisms = Vec::new();
     let mut box_ = Box::default();
@@ -211,7 +229,18 @@ fn build_tie(ctx: &mut Ctx, rp: &Params, tv: &Value, size: &str, d: f64) -> Opti
     }
     let anchors = t.anchors.iter().map(|a| NamedAnchor { name: a.name.clone(), p: V2::init(a.p.x, y) }).collect();
     let plan_z = t.anchors.into_iter().map(|a| NamedAnchor { name: a.name, p: V2::init(0.0, -a.p.y) }).collect();
-    Some(Built { prisms, anchors, plan_z, box_, nat_z: Some(d), abs_z: true, points_mode: true, bar_d: d, info, ..Built::default() })
+    Some(Built {
+        prisms,
+        anchors,
+        plan_z,
+        box_,
+        nat_z: Some(d),
+        abs_z: true,
+        points_mode: true,
+        bar_d: d,
+        info,
+        ..Built::default()
+    })
 }
 
 /// The leg prisms of one centreline [x, z] at height y (SPEC 26.3); the first carries the whole path for drawing.

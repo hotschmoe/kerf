@@ -703,7 +703,11 @@ fn check_limits(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &Buil
                     id,
                     h.k,
                     "W_HOLE_LIMIT",
-                    format!("'{id}' cuts[{}]: the {} hole cuts into an I-joist flange; flanges are never cut or bored (holes go in the web, per the manufacturer's hole chart)", h.k, fmt_ft_in(h.d)),
+                    format!(
+                        "'{id}' cuts[{}]: the {} hole cuts into an I-joist flange; flanges are never cut or bored (holes go in the web, per the manufacturer's hole chart)",
+                        h.k,
+                        fmt_ft_in(h.d)
+                    ),
                     "make the hole smaller or move it to mid-depth so it stays in the web".to_string(),
                 );
             }
@@ -721,15 +725,24 @@ fn check_limits(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &Buil
     for h in &plan.holes {
         let r = h.d / 2.0;
         let edge = (h.c.y - r).min(dd - h.c.y - r);
-        let (max_d, min_edge, rule) =
-            if run_y { (0.4 * dd, 0.625, "IRC R602.6: 40% of the stud depth in a bearing wall, 5/8\" from the edge") } else { (dd / 3.0, 2.0, "IRC R502.8.1: D/3, 2\" from the top and bottom") };
+        let (max_d, min_edge, rule) = if run_y {
+            (0.4 * dd, 0.625, "IRC R602.6: 40% of the stud depth in a bearing wall, 5/8\" from the edge")
+        } else {
+            (dd / 3.0, 2.0, "IRC R502.8.1: D/3, 2\" from the top and bottom")
+        };
         if h.d > max_d + 1e-6 {
             limit(
                 scene,
                 id,
                 h.k,
                 "W_HOLE_LIMIT",
-                format!("'{id}' cuts[{}]: a {} hole in a {} deep member is over the {} limit ({rule})", h.k, fmt_ft_in(h.d), fmt_ft_in(dd), fmt_ft_in(sixteenth_floor(max_d))),
+                format!(
+                    "'{id}' cuts[{}]: a {} hole in a {} deep member is over the {} limit ({rule})",
+                    h.k,
+                    fmt_ft_in(h.d),
+                    fmt_ft_in(dd),
+                    fmt_ft_in(sixteenth_floor(max_d))
+                ),
                 format!("use \"d\": {} or less, {ack}", model::fmt_num(sixteenth_floor(max_d))),
             );
         } else if edge < min_edge - 1e-6 {
@@ -738,7 +751,13 @@ fn check_limits(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &Buil
                 id,
                 h.k,
                 "W_HOLE_LIMIT",
-                format!("'{id}' cuts[{}]: the {} hole is {} from the member's edge; keep {} ({rule})", h.k, fmt_ft_in(h.d), fmt_ft_in(edge), fmt_ft_in(min_edge)),
+                format!(
+                    "'{id}' cuts[{}]: the {} hole is {} from the member's edge; keep {} ({rule})",
+                    h.k,
+                    fmt_ft_in(h.d),
+                    fmt_ft_in(edge),
+                    fmt_ft_in(min_edge)
+                ),
                 format!("move it toward mid-depth (omit \"y\" to centre it), {ack}"),
             );
         }
@@ -760,7 +779,11 @@ fn check_limits(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &Buil
                     id,
                     h.k,
                     "W_HOLE_LIMIT",
-                    format!("'{id}' cuts[{}]: the {} hole is closer than 2\" to another hole or notch (IRC R502.8.1)", h.k, fmt_ft_in(h.d)),
+                    format!(
+                        "'{id}' cuts[{}]: the {} hole is closer than 2\" to another hole or notch (IRC R502.8.1)",
+                        h.k,
+                        fmt_ft_in(h.d)
+                    ),
                     format!("space holes and notches 2\" apart, {ack}"),
                 );
             }
@@ -770,7 +793,10 @@ fn check_limits(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &Buil
         let (max_d, what) = match (run_y, n.corner) {
             (true, _) => (0.25 * dd, "25% of the stud depth in a bearing wall (IRC R602.6; 40% nonbearing)"),
             (false, Some(_)) => (dd / 4.0, "D/4 at the end of a joist or rafter (IRC R502.8.1)"),
-            (false, None) => (dd / 6.0, "D/6 away from the ends (IRC R502.8.1; notch length D/3, none in the middle third of the span)"),
+            (false, None) => (
+                dd / 6.0,
+                "D/6 away from the ends (IRC R502.8.1; notch length D/3, none in the middle third of the span)",
+            ),
         };
         let long = !run_y && n.corner.is_none() && n.w > dd / 3.0 + 1e-6;
         if n.d > max_d + 1e-6 || long {
@@ -779,8 +805,22 @@ fn check_limits(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &Buil
                 id,
                 n.k,
                 "W_NOTCH_LIMIT",
-                format!("'{id}' cuts[{}]: a {} long x {} deep notch in a {} deep member is over {what}", n.k, fmt_ft_in(n.w), fmt_ft_in(n.d), fmt_ft_in(dd)),
-                format!("keep \"d\" to {}{}, {ack}", model::fmt_num(sixteenth_floor(max_d)), if long { format!(" and \"w\" to {}", model::fmt_num(sixteenth_floor(dd / 3.0))) } else { String::new() }),
+                format!(
+                    "'{id}' cuts[{}]: a {} long x {} deep notch in a {} deep member is over {what}",
+                    n.k,
+                    fmt_ft_in(n.w),
+                    fmt_ft_in(n.d),
+                    fmt_ft_in(dd)
+                ),
+                format!(
+                    "keep \"d\" to {}{}, {ack}",
+                    model::fmt_num(sixteenth_floor(max_d)),
+                    if long {
+                        format!(" and \"w\" to {}", model::fmt_num(sixteenth_floor(dd / 3.0)))
+                    } else {
+                        String::new()
+                    }
+                ),
             );
         }
     }

@@ -417,9 +417,16 @@ fn round_rect(b: Box, ccw: bool) -> Vec<Pt> {
     pts
 }
 
+/// A cut wall whose webs the document draws itself as `cmu` pieces of other components (SPEC 32.7).
+pub struct OwnCells {
+    pub wall: u32,
+    pub piece: u32,
+    pub count: usize,
+}
+
 /// A CMU wall the plan cuts shows its units: face shells, cross webs, cells and head joints (SPEC 32.7).
 /// Returns which world prisms it drew.
-fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>) -> Vec<bool> {
+fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>, own: &mut Vec<OwnCells>) -> Vec<bool> {
     let mut done = alloc::vec![false; world.len()];
     let wall = |p: &Prism| scene.comps.get(p.comp as usize).filter(|c| c.ty.ty == crate::catalog::Type::CmuWall);
     let same = |a: &Prism, b: &Prism| a.comp == b.comp && a.instance == b.instance;
@@ -445,6 +452,27 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>) -
         let shell = ta[1] - ta[0];
         let (t0, t1) = (ta[0].min(tb[0]), ta[1].max(tb[1]));
         if t1 - t0 < 2.0 * shell + 1.0 {
+            continue;
+        }
+        let in_core = |q: &&Prism| {
+            let qb = q.loops.first().map(|l| geom::points_box(l)).filter(cuts);
+            qb.is_some_and(|qb| {
+                let (s, t) = if p.face_on { ([qb.x0, qb.x1], [q.z0, q.z1]) } else { ([q.z0, q.z1], [qb.x0, qb.x1]) };
+                q.kind == Kind::Body
+                    && q.material == "cmu"
+                    && wall(q).is_none()
+                    && s[1] > run[0] + EPS
+                    && s[0] < run[1] - EPS
+                    && t[1] > t0 + shell + EPS
+                    && t[0] < t1 - shell - EPS
+            })
+        };
+        let mut pieces: Vec<u32> = world.iter().filter(in_core).map(|q| q.comp).collect();
+        pieces.dedup();
+        if let Some(&piece) = pieces.first() {
+            if !own.iter().any(|o| o.wall == p.comp) {
+                own.push(OwnCells { wall: p.comp, piece, count: pieces.len() });
+            }
             continue;
         }
         let base = world
@@ -532,7 +560,8 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>) -
                     let (s, t) = if p.face_on { (v.x, v.y) } else { (v.y, v.x) };
                     s > c[0] && s < c[1] && t > cell_t[0] && t < cell_t[1]
                 });
-                let grouted = if by_bars && !(p.face_on && solid_grout.is_some()) { has_bar } else { solid_grout.is_some() };
+                let grouted =
+                    if by_bars && !(p.face_on && solid_grout.is_some()) { has_bar } else { solid_grout.is_some() };
                 if grouted {
                     let mut g = rect_prism(solid_grout.unwrap_or(p), 0.0, 1.0, 0.0, 1.0, b.y0, b.y1);
                     g.part = String::from("grout");
@@ -557,9 +586,10 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>) -
     done
 }
 
-pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
+pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> (Vec<Prism>, Vec<OwnCells>) {
     let mut out = Vec::new();
-    let drawn = cmu_units(scene, world, cut_y, &mut out);
+    let mut own = Vec::new();
+    let drawn = cmu_units(scene, world, cut_y, &mut out, &mut own);
     for (i, p) in world.iter().enumerate() {
         if p.role == Role::Soil || drawn[i] {
             continue;
@@ -621,7 +651,7 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
             }
         }
     }
-    out
+    (out, own)
 }
 
 fn merge_all(strips: Vec<Strip>) -> Vec<Strip> {

@@ -2764,3 +2764,171 @@ face without a cut (the trim cut does it).
 |---|---|---|
 | `E_PARAM` | error | `verticals` out of the drawn truss, overlapping or on another profile; a panel birdmouth/notch; `along` on an edge face or a bent tie; run z `until` deeper than the member; `tags_side`; a line with under two points |
 | `W_NAIL_MEMBERS` | warning | also: two nailing members at an angle (not drawn) |
+
+## 32. v0.2.0-beta.4: general vocabulary
+
+Vocabulary for detail families the library needed and beta.3 could not draw without faking: existing construction,
+standard hooks and ties, stairs, bored holes, round concrete, and CMU cut in plan. Each is a field or shape on an
+existing type except `stair`. Reference documents: `engine/tests/docs/general-*.kerf.json`.
+
+### 32.1 Existing construction
+
+Common field `existing` (every component type): `true` | `false` | absent.
+
+- `true`: where a view cuts the member its outline is drawn in the thin pen and its region takes one sparse diagonal
+  hatch (ANSI31 at 2.5 times the spacing) in place of the material hatch, with no solid fill. Beyond and elevation
+  lines are unchanged. The pens have no gray; thin line plus open hatch is what reads as "not new" in black and white.
+- Notes that target the member start with `(E) ` unless the text already contains `(E)` or `EXISTING`. `false` adds
+  `(N) ` the same way, only when the document has at least one `existing: true` component.
+- Checks: an existing member is exempt from `W_UNTREATED_CONTACT`, `W_FLOATING` and `W_NEAR_MISS`; a bar whose host
+  is existing is exempt from `W_COVER`. New members still bear on, touch and overlap it as any other member
+  (`W_OVERLAP` holds).
+- A value that is not a boolean is `E_PARAM`.
+
+**Adhesive dowel.** Rebar `epoxy` (path bars in plane xy): `{in, embed, end, hole}`. `in` is the host component the bar
+is drilled into (existing or new concrete or masonry). `end` (`start` | `end`) names the embedded end; by default it is
+the end whose leg runs into the host. With `embed`, that end point is authored ON the host face and the
+engine extends the bar `embed` past it along the leg; without it the embedment is what the points give. The hole
+(default bar diameter + 1/8) is drawn around the embedded length as part `epoxy`. Anchors `embed_face` and `embed_end`
+carry the embedment dimension. `W_EPOXY`: the hole leaves under 1 in. of the host behind it; the fix names the embed
+that does. An unknown `in` is `E_REF_UNKNOWN`; `embed` not positive, no end leg that points into a face of the host, or a bar that ends on the face with no `embed` is `E_PARAM`.
+
+```json
+{"id":"dowel","type":"rebar","size":"#4","mode":"path",
+ "points":[{"ref":"e_stem@top_right","offset":[0,-4]},{"ref":"e_stem@top_right","offset":[24,-4]}],
+ "epoxy":{"in":"e_stem","embed":6}}
+```
+
+### 32.2 Hooks, ties and hoops
+
+**Standard hooks.** Rebar `hook` (path bars): `{"start": H, "end": H}`, `H = {angle, toward, kind, ext}`.
+`angle` 90 | 135 | 180. `toward` up | down | left | right is the side the hook turns to as drawn (plane xz: as seen in
+plan) and must be square to the leg. Geometry is from the bar size (ACI 318-19): Table 25.3.1 for 90 and 180 (inside
+bend diameter 6 d_b for #3 to #8; extension 12 d_b at 90, the larger of 4 d_b and 2 1/2 in. at 180); Table 25.3.2 for
+`kind: "tie"` and for 135 (inside diameter 4 d_b for #3 to #5, 6 d_b above; extension the larger of 6 d_b and 3 in.).
+`ext` overrides the extension. The authored end point is the out-to-out corner of the bar for a 90 hook and the far
+reach of the bend for 135 and 180, so a bar authored to a cover line keeps that cover. Anchors per hooked end:
+`<end>_hook_end`, `_hook_tangent`, `_hook_bend`, `_hook_center`. The summary prints the bend diameter and extension.
+A leg shorter than the bend, or `toward` along the leg, is `E_PARAM`.
+
+**Ties.** Rebar `tie` replaces `points`, `at` and `mode`: `{in, cover, shape, hook, corner, open, axis, station,
+toward}`. `in` is the host (`comp` or `comp.part`); the tie's outside face sits `cover` clear inside the host's box
+(the part box for a part).
+
+| shape | drawn |
+|---|---|
+| `closed` (default) | rectangle with corner bends and two tie hooks (`hook` 135 default, or 90) lapping at `corner` (default `top_left`) |
+| `u` | three sides, open to `open` (top default), a hook on each leg end (`hook` 135, 90 or 180) |
+| `crosstie` | one leg across the member on `axis` at `station`, a 135 hook on one end and 90 on the other, turned `toward` |
+| `hoop` | a circle (round hosts: diameter less twice the cover) |
+
+Plane xy (default): the tie lies in the section plane. Plane xz with `y`: the tie lies flat at that height around a
+column, pedestal or pier (the host's z extent is its depth); a plan view draws the tie, a section a line with a dot
+at each leg the cut crosses; `array` on axis y repeats it. Coincident array instances keep the rebar pen (they are
+not a seam between two pieces of one member). Anchors: `tie_top_left` .. `tie_bottom_right`, `tie_top`, `tie_bottom`,
+`tie_left`, `tie_right`, `tie_center`, `hook_1_end`, `hook_2_end`, `hook_corner`. A tie that does not fit the host at
+that cover with its bends is `E_PARAM` and says the host size.
+
+A document whose rebar has no host anywhere (a hook or bend diagram for a schedule) is not `W_FLOATING`.
+
+### 32.3 Stairs
+
+Component type `stair`: one flight from `risers`, `rise` and `tread`, climbing to the right from anchor `foot` (the
+lower floor at the face of the first riser); `mirror` climbs left. The top nosing is `risers x rise` above `foot` and
+`(risers - 1) x tread` along.
+
+`kind: "concrete"` (default) is a flight cast on grade, one cut outline: the steps (`nosing` rakes each riser back at
+its foot), a top slab `landing` long and `landing_thickness` thick, a soffit parallel to the nosing line `waist` below
+the inside corners of the steps (measured square to the soffit), and a base toe `toe_width` by `toe_depth` under the
+first riser (`toe_width: 0`: none). `bars` (a bar size) draws the main bar (down into the toe, along the soffit at
+`cover.bottom`, bent level into the landing; part `main_bar`) and cross bars at `bar_spacing` (part `cross_bars`);
+`nosing_bars` one bar at each nosing (part `nosing_bars`). Zones `toe` and `landing`; rebar `place` and `tie` work in
+the outline.
+
+`kind: "wood"` is a cut stringer seen lengthwise (`size`, sawn nominal, default 2x12; `stringers` across `width`),
+notched for each tread, with a level seat cut on the lower floor and a plumb cut at the top riser, plus cut tread
+(`tread_thickness`, overhang `nosing`) and riser boards (`riser_thickness`, 0 = open). `treated` makes all three
+preservative treated. Parts `stringer`, `tread`, `riser`.
+
+The upper floor (slab, header, hanger) and the lower slab are separate components. Anchors: `foot`, `nosing_k`,
+`tread_k_mid`, `top`, `soffit_mid`, `throat_top`, `throat_bottom`; concrete adds `riser_k_foot`, `landing_end_top`,
+`landing_end_bottom`, `landing_top_mid`, `soffit_top`, `soffit_bottom`, `toe_bottom_left|right|center`,
+`main_bar_mid`, `main_bar_bend`, `main_bar_top`, `nosing_bar_1`; wood adds `seat_front`, `seat_back`,
+`top_cut_top`, `top_cut_bottom`, `top_bearing`.
+
+`W_STAIR_GEOMETRY`: rise over 7 3/4 in. or tread under 10 in. (IRC R311.7.5; IBC 1011.5.2 is 7 and 11, stated in the
+message). `W_STAIR_THROAT`: under 3 1/2 in. of a wood stringer left below the notches; a stringer cut through is
+`E_PARAM`. Steel stringers are a sloped `steel` member (§31), not this type.
+
+```json
+{"id":"stair","type":"stair","risers":4,"rise":7,"tread":11,"waist":6,"bars":"#4","nosing_bars":"#4",
+ "at":{"anchor":"foot","to":"slab@top_right"}}
+```
+
+### 32.4 Bored holes and notch limits
+
+`cuts` (§27.3) takes `{"type": "hole", "d", "x", "y"}`: a round hole of diameter `d` bored through the member, its
+centre `x` from the start end and `y` from the bottom face (default mid-depth). Lumber run x/y, I-joists (the web) and
+steel in elevation or plan. The hole is cut from the profile, so every view, the mesh and the checks see it; it
+stays an exact circle in the drawing. A hole not wholly inside the member is `E_PARAM`.
+
+Anchors for limit dimensions, k = 1.. in list order: `hole_k_center`, `hole_k_top`, `hole_k_bottom`, `hole_k_start`,
+`hole_k_end`; for rectangle notches `notch_k_start`, `notch_k_end` (on the face) and `notch_k_inner_start`,
+`notch_k_inner_end`.
+
+Sawn lumber seen on its wide face is checked; engineered lumber and steel are not (manufacturer or engineer).
+
+| code | member | rule |
+|---|---|---|
+| `W_HOLE_LIMIT` | run x (joist, rafter, beam; IRC R502.8.1) | diameter over D/3; under 2 in. from the top or bottom edge, another hole, or a notch |
+| `W_HOLE_LIMIT` | run y (stud; IRC R602.6) | diameter over 40% of the depth; under 5/8 in. from an edge |
+| `W_HOLE_LIMIT` | I-joist | the hole touches a flange |
+| `W_NOTCH_LIMIT` | run x | deeper than D/6 or longer than D/3; at an end corner deeper than D/4 |
+| `W_NOTCH_LIMIT` | run y | deeper than 25% of the depth |
+
+Each fix gives the largest size or nearest position that passes. The span is not known to the engine, so "not in the
+middle third of the span" stays a note.
+
+### 32.5 Round concrete
+
+Concrete `shape: "round"` with `diameter` and `height`: a vertical cylinder (drilled pier, caisson, sonotube pier,
+bollard or pole footing, round column). The placement point is the axis at the top (`top_center`); in z it centres on
+the section cut unless `z` is a number. A plan view draws the circle; a section draws the chord the cut plane makes
+(the full diameter through the axis). It is built as a footprint (§26), so it takes no `voids`: a member cast into it
+is `embedded: true`, and the `W_OVERLAP` fix says so. `points` or `width` with `round` is `E_PARAM`. Hoops are rebar
+`tie` with `shape: "hoop"` (§32.2); verticals are path bars at their own `z`.
+
+```json
+{"id":"pier","type":"concrete","shape":"round","diameter":24,"height":60,"at":{"to":[0,0]}}
+```
+
+### 32.6 Insulated concrete walls (recipe)
+
+No type. An ICF or insulated wall is a `concrete` rect core with an `insulation` (rigid) leaf placed on each face by
+anchor; bars are placed in the core. It checks clean and reads correctly in section and plan.
+
+### 32.7 CMU walls cut in plan
+
+A `cmu_wall` cut by a plan view draws the course at `cut_y` as units: each unit an outline with its face shells and
+webs hatched and its cells as rounded openings, head joints between units (run z: running bond, alternate courses
+offset half a unit; run x: the joints of the face-on wall). A cell is drawn grouted where a grout course or bond beam
+crosses the cut and, with `grout: "reinforced"`, where a vertical bar stands in the cell; `grout: "solid"` grouts
+every cell. A cut through a bond-beam course draws the continuous grouted strip. Courses below the cut are not drawn
+under the cut course. A control joint is two walls with a 3/8 in. gap in z; a corner is a run z wall meeting a run x
+wall.
+
+Documents written before this section drew the webs as separate pieces. A wall that has a body of material `cmu`
+from another, non-wall component inside its core (between the face shells, crossing the cut) keeps the earlier
+drawing, its two bare face shells, so those documents draw as they did; `I_CMU_PLAN_UNITS` names the wall, the view
+and the pieces to remove.
+
+### 32.8 Diagnostics added
+
+| code | level | rule |
+|---|---|---|
+| `W_EPOXY` | warning | an adhesive dowel's hole leaves under 1 in. of its host behind it |
+| `W_STAIR_GEOMETRY` | warning | rise over 7 3/4 in. or tread under 10 in. |
+| `W_STAIR_THROAT` | warning | under 3 1/2 in. of a wood stringer below the notches |
+| `W_HOLE_LIMIT` | warning | a bored hole in sawn lumber over the IRC size or edge limits; an I-joist hole in a flange |
+| `W_NOTCH_LIMIT` | warning | a notch in sawn lumber over the IRC depth or length limits |
+| `I_CMU_PLAN_UNITS` | info | a CMU wall cut in plan keeps its bare shells because the document draws its webs as `cmu` pieces (listed by `kerf check`) |

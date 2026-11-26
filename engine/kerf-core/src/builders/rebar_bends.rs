@@ -83,11 +83,14 @@ fn parse_hook_end(ctx: &mut Ctx, key: &str, v: &Value, xz: bool) -> Option<HookE
         return None;
     }
     let angle = match v.get("angle").and_then(Value::num) {
-        Some(a) if a == 90.0 => 90,
-        Some(a) if a == 135.0 => 135,
-        Some(a) if a == 180.0 => 180,
+        Some(90.0) => 90,
+        Some(135.0) => 135,
+        Some(180.0) => 180,
         _ => {
-            ctx.p.fail(&format!("{key}/angle"), format!("{key}.angle must be 90, 135 or 180 (degrees of the standard hook), e.g. {HOOK_EXAMPLE}"));
+            ctx.p.fail(
+                &format!("{key}/angle"),
+                format!("{key}.angle must be 90, 135 or 180 (degrees of the standard hook), e.g. {HOOK_EXAMPLE}"),
+            );
             return None;
         }
     };
@@ -158,7 +161,15 @@ fn hook_arc(t0: V2, u: V2, side: V2, rc: f64, angle: u32, ext: f64) -> Arc3 {
     }
 }
 
-fn hook_one(ctx: &mut Ctx, body: &mut Vec<Pt>, h: HookEnd, which: &str, no: u32, d: f64, anchors: &mut Vec<NamedAnchor>) -> Option<String> {
+fn hook_one(
+    ctx: &mut Ctx,
+    body: &mut Vec<Pt>,
+    h: HookEnd,
+    which: &str,
+    no: u32,
+    d: f64,
+    anchors: &mut Vec<NamedAnchor>,
+) -> Option<String> {
     let n = body.len();
     let (p, prev) = (body[n - 1].v(), body[n - 2].v());
     let u = p.sub(prev).norm();
@@ -166,7 +177,10 @@ fn hook_one(ctx: &mut Ctx, body: &mut Vec<Pt>, h: HookEnd, which: &str, no: u32,
     if across.abs() < 0.2 {
         ctx.p.fail(
             &format!("hook/{which}/toward"),
-            format!("hook.{which}.toward points along the bar there; the hook turns to a side of the bar: use {}", if u.x.abs() > u.y.abs() { "\"up\" or \"down\"" } else { "\"left\" or \"right\"" }),
+            format!(
+                "hook.{which}.toward points along the bar there; the hook turns to a side of the bar: use {}",
+                if u.x.abs() > u.y.abs() { "\"up\" or \"down\"" } else { "\"left\" or \"right\"" }
+            ),
         );
         return None;
     }
@@ -236,7 +250,10 @@ struct TieZone {
 
 fn tie_zone(ctx: &mut Ctx, tv: &Value, xz: bool) -> Option<TieZone> {
     let Some(in_s) = tv.get("in").and_then(Value::str) else {
-        ctx.p.fail("tie/in", format!("tie needs \"in\": \"<component>[.<part>]\", the member it is placed in, e.g. {TIE_EXAMPLE}"));
+        ctx.p.fail(
+            "tie/in",
+            format!("tie needs \"in\": \"<component>[.<part>]\", the member it is placed in, e.g. {TIE_EXAMPLE}"),
+        );
         return None;
     };
     let (host_id, part) = match in_s.split_once('.') {
@@ -247,8 +264,15 @@ fn tie_zone(ctx: &mut Ctx, tv: &Value, xz: bool) -> Option<TieZone> {
     let path = format!("{}/{}/tie/in", ctx.p.base, ctx.p.id);
     let Some(host) = scene.find(host_id) else {
         let ids = scene.comp_ids();
-        let hint = model::nearest(host_id, &ids).map_or(format!(" Known ids: {}", join_ids(&ids)), |n| format!(" Did you mean '{n}'?"));
-        scene.diags.add(Level::Error, "E_REF_UNKNOWN", Some(ctx.p.id), Some(&path), format!("tie.in: no component '{host_id}'.{hint}"));
+        let hint = model::nearest(host_id, &ids)
+            .map_or(format!(" Known ids: {}", join_ids(&ids)), |n| format!(" Did you mean '{n}'?"));
+        scene.diags.add(
+            Level::Error,
+            "E_REF_UNKNOWN",
+            Some(ctx.p.id),
+            Some(&path),
+            format!("tie.in: no component '{host_id}'.{hint}"),
+        );
         ctx.p.ok = false;
         return None;
     };
@@ -262,7 +286,16 @@ fn tie_zone(ctx: &mut Ctx, tv: &Value, xz: bool) -> Option<TieZone> {
             Some(b) => b,
             None => {
                 let parts = scene.part_names(host);
-                scene.diags.add(Level::Error, "E_REF_UNKNOWN", Some(ctx.p.id), Some(&path), format!("tie.in: component '{host_id}' has no part '{pt}'. Parts: {}", if parts.is_empty() { "(none)".to_string() } else { join_ids(&parts) }));
+                scene.diags.add(
+                    Level::Error,
+                    "E_REF_UNKNOWN",
+                    Some(ctx.p.id),
+                    Some(&path),
+                    format!(
+                        "tie.in: component '{host_id}' has no part '{pt}'. Parts: {}",
+                        if parts.is_empty() { "(none)".to_string() } else { join_ids(&parts) }
+                    ),
+                );
                 ctx.p.ok = false;
                 return None;
             }
@@ -297,7 +330,12 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
     let cover = ctx.p.field_len("tie", tv, "cover", 1.5)?;
     let shape = ctx.p.field_choice("tie", tv, "shape", &["closed", "u", "crosstie", "hoop"])?;
     let r = d / 2.0;
-    let b = Box { x0: zone.bx.x0 + cover + r, y0: zone.bx.y0 + cover + r, x1: zone.bx.x1 - cover - r, y1: zone.bx.y1 - cover - r };
+    let b = Box {
+        x0: zone.bx.x0 + cover + r,
+        y0: zone.bx.y0 + cover + r,
+        x1: zone.bx.x1 - cover - r,
+        y1: zone.bx.y1 - cover - r,
+    };
     let (dia, _) = hook_dims(no, d, 135, true);
     let rc = dia / 2.0 + r;
     let (w, h) = (b.x1 - b.x0, b.y1 - b.y0);
@@ -320,11 +358,18 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
     let hook_angle = match tv.get("hook").filter(|x| !x.is_null()) {
         None => 135,
         Some(x) => match x.num() {
-            Some(a) if a == 90.0 => 90,
-            Some(a) if a == 135.0 => 135,
+            Some(90.0) => 90,
+            Some(135.0) => 135,
             Some(a) if a == 180.0 && shape == "u" => 180,
             _ => {
-                ctx.p.fail("tie/hook", format!("tie.hook must be 135 (seismic hook, the default) or 90{}, got {}", if shape == "u" { " or 180" } else { "" }, model::kind_or_text(x)));
+                ctx.p.fail(
+                    "tie/hook",
+                    format!(
+                        "tie.hook must be 135 (seismic hook, the default) or 90{}, got {}",
+                        if shape == "u" { " or 180" } else { "" },
+                        model::kind_or_text(x)
+                    ),
+                );
                 return None;
             }
         },
@@ -343,8 +388,8 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
         NamedAnchor { name: "tie_bottom".into(), p: V2::init((b.x0 + b.x1) / 2.0, b.y0) },
     ];
     let mut paths: Vec<Vec<Pt>> = Vec::new();
-    let info;
-    match shape {
+
+    let info = match shape {
         "closed" => {
             let cname = tv.get("corner").and_then(Value::str).unwrap_or("top_left");
             let Some((sx, sy)) = corner_dirs(cname) else {
@@ -363,7 +408,7 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
             anchors.push(NamedAnchor { name: "hook_corner".into(), p: h1.centre });
             paths.push(h1.pts.to_vec());
             paths.push(h2.pts.to_vec());
-            info = format!("closed tie {out_w} x {out_h} out to out, {hook_angle} hooks at {cname}");
+            format!("closed tie {out_w} x {out_h} out to out, {hook_angle} hooks at {cname}")
         }
         "u" => {
             let open = tv.get("open").and_then(Value::str).unwrap_or("top");
@@ -393,7 +438,7 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
             anchors.push(NamedAnchor { name: "hook_1_end".into(), p: a_st.pts[2].v() });
             anchors.push(NamedAnchor { name: "hook_2_end".into(), p: a_end.pts[2].v() });
             paths.push(pathgeom::reverse_open(&rev));
-            info = format!("U stirrup {out_w} x {out_h} out to out, open {open}, {hook_angle} hooks");
+            format!("U stirrup {out_w} x {out_h} out to out, open {open}, {hook_angle} hooks")
         }
         "crosstie" => {
             let axis = ctx.p.field_choice("tie", tv, "axis", &["x", "y"])?;
@@ -420,7 +465,11 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
                     return None;
                 }
             };
-            let (p0, p1) = if along_x { (V2::init(b.x0, st), V2::init(b.x1, st)) } else { (V2::init(st, b.y0), V2::init(st, b.y1)) };
+            let (p0, p1) = if along_x {
+                (V2::init(b.x0, st), V2::init(b.x1, st))
+            } else {
+                (V2::init(st, b.y0), V2::init(st, b.y1))
+            };
             let u = p1.sub(p0).norm();
             let (_, e135) = hook_dims(no, d, 135, true);
             let (_, e90) = hook_dims(no, d, 90, true);
@@ -432,7 +481,7 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
             anchors.push(NamedAnchor { name: "hook_2_end".into(), p: a1.pts[2].v() });
             anchors.push(NamedAnchor { name: "tie_center".into(), p: p0.mid(p1) });
             paths.push(path);
-            info = format!("crosstie {} out to out along {axis}, 135 and 90 hooks", fmt_ft_in(p0.dist(p1) + d));
+            format!("crosstie {} out to out along {axis}, 135 and 90 hooks", fmt_ft_in(p0.dist(p1) + d))
         }
         _ => {
             let c = V2::init((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0);
@@ -440,13 +489,19 @@ pub fn tie(ctx: &mut Ctx, tv: &Value, no: u32, d: f64, xz: bool) -> Option<Tie> 
             let (e, wst) = (V2::init(c.x + rr, c.y), V2::init(c.x - rr, c.y));
             paths.push(vec![Pt::at(e, 1.0), Pt::at(wst, 0.0)]);
             paths.push(vec![Pt::at(wst, 1.0), Pt::at(e, 0.0)]);
-            anchors.truncate(0);
-            for (name, p) in [("tie_left", wst), ("tie_right", e), ("tie_top", V2::init(c.x, c.y + rr)), ("tie_bottom", V2::init(c.x, c.y - rr)), ("tie_center", c)] {
+            anchors.clear();
+            for (name, p) in [
+                ("tie_left", wst),
+                ("tie_right", e),
+                ("tie_top", V2::init(c.x, c.y + rr)),
+                ("tie_bottom", V2::init(c.x, c.y - rr)),
+                ("tie_center", c),
+            ] {
                 anchors.push(NamedAnchor { name: name.into(), p });
             }
-            info = format!("hoop {} dia out to out", fmt_ft_in(2.0 * rr + d));
+            format!("hoop {} dia out to out", fmt_ft_in(2.0 * rr + d))
         }
-    }
+    };
     Some(Tie { paths, anchors, info: format!("{info} in '{}' at {} cover", zone.name, fmt_num(cover)) })
 }
 
@@ -465,7 +520,10 @@ pub fn epoxy(ctx: &mut Ctx, ev: &Value, vs: &mut [V2], d: f64) -> Option<Epoxy> 
         return None;
     }
     let Some(host_id) = ev.get("in").and_then(Value::str) else {
-        ctx.p.fail("epoxy/in", format!("epoxy needs \"in\": the concrete or masonry member the bar is drilled into, e.g. {EPOXY_EXAMPLE}"));
+        ctx.p.fail(
+            "epoxy/in",
+            format!("epoxy needs \"in\": the concrete or masonry member the bar is drilled into, e.g. {EPOXY_EXAMPLE}"),
+        );
         return None;
     };
     let embed = match ev.get("embed").filter(|e| !e.is_null()) {
@@ -473,7 +531,13 @@ pub fn epoxy(ctx: &mut Ctx, ev: &Value, vs: &mut [V2], d: f64) -> Option<Epoxy> 
         Some(e) => match units::parse_length(e).filter(|x| *x > 0.0) {
             Some(x) => Some(x),
             None => {
-                ctx.p.fail("epoxy/embed", format!("epoxy.embed must be a positive length (the depth of the bar in the drilled hole), got {}", model::kind_or_text(e)));
+                ctx.p.fail(
+                    "epoxy/embed",
+                    format!(
+                        "epoxy.embed must be a positive length (the depth of the bar in the drilled hole), got {}",
+                        model::kind_or_text(e)
+                    ),
+                );
                 return None;
             }
         },
@@ -483,8 +547,15 @@ pub fn epoxy(ctx: &mut Ctx, ev: &Value, vs: &mut [V2], d: f64) -> Option<Epoxy> 
     let path = format!("{}/{}/epoxy/in", ctx.p.base, ctx.p.id);
     let Some(host) = scene.find(host_id) else {
         let ids = scene.comp_ids();
-        let hint = model::nearest(host_id, &ids).map_or(format!(" Known ids: {}", join_ids(&ids)), |n| format!(" Did you mean '{n}'?"));
-        scene.diags.add(Level::Error, "E_REF_UNKNOWN", Some(ctx.p.id), Some(&path), format!("epoxy.in: no component '{host_id}'.{hint}"));
+        let hint = model::nearest(host_id, &ids)
+            .map_or(format!(" Known ids: {}", join_ids(&ids)), |n| format!(" Did you mean '{n}'?"));
+        scene.diags.add(
+            Level::Error,
+            "E_REF_UNKNOWN",
+            Some(ctx.p.id),
+            Some(&path),
+            format!("epoxy.in: no component '{host_id}'.{hint}"),
+        );
         ctx.p.ok = false;
         return None;
     };
@@ -583,9 +654,15 @@ pub fn epoxy(ctx: &mut Ctx, ev: &Value, vs: &mut [V2], d: f64) -> Option<Epoxy> 
     let ul = tip.sub(face).norm();
     let nl = ul.perp().scale(hole_d / 2.0);
     let far = tip.add(ul.scale(0.125));
-    let mut hole = vec![Pt::at(face.sub(nl), 0.0), Pt::at(far.sub(nl), 0.0), Pt::at(far.add(nl), 0.0), Pt::at(face.add(nl), 0.0)];
+    let mut hole =
+        vec![Pt::at(face.sub(nl), 0.0), Pt::at(far.sub(nl), 0.0), Pt::at(far.add(nl), 0.0), Pt::at(face.add(nl), 0.0)];
     if geom::signed_area(&hole) < 0.0 {
         hole.reverse();
     }
-    Some(Epoxy { hole, face, tip, info: format!(", epoxied {} into '{host_id}' ({} dia hole)", fmt_ft_in(emb), fmt_ft_in(hole_d)) })
+    Some(Epoxy {
+        hole,
+        face,
+        tip,
+        info: format!(", epoxied {} into '{host_id}' ({} dia hole)", fmt_ft_in(emb), fmt_ft_in(hole_d)),
+    })
 }

@@ -277,5 +277,40 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   another member lies against the face. Eave blocking (lumber run z) takes `"until":"truss@heel_block_top"` (ripped).
   An iso draws members `shown: "hidden"` (a 2D state) as solids. `{"type":"line","points":[...],"line":"dashed"}` draws a
   no-load zone, influence or limit line. Keyed views: `"tags_side":"right"` puts every tag on one side.
+- General vocabulary (SPEC 32). Existing construction: `"existing": true` on any component draws it cut in the thin
+  pen with a sparse diagonal hatch, prefixes its notes `(E)` (`"existing": false` adds `(N)` when the document has
+  existing members) and exempts it from W_UNTREATED_CONTACT, W_FLOATING, W_NEAR_MISS and bar cover. A dowel drilled
+  into it: end the bar ON the face and give the embedment, `{"type":"rebar","size":"#4","mode":"path","points":
+  [{"ref":"e_stem@top_right","offset":[0,-4]},{"ref":"e_stem@top_right","offset":[24,-4]}],"epoxy":{"in":"e_stem",
+  "embed":6}}`; dimension `dowel@embed_end` to `dowel@embed_face`.
+- Hooks and ties are never hand-computed points. A standard hook on a path bar end: `"hook":{"end":{"angle":90,
+  "toward":"right"}}` (90, 135, 180; `start` too; bend diameter and extension from the bar size, ACI 318-19 25.3; the
+  end point stays the out-to-out corner). A closed tie, U stirrup, crosstie or hoop by cover: `{"type":"rebar","size":
+  "#3","tie":{"in":"grade_beam","cover":1.5}}` (`shape` closed|u|crosstie|hoop). Around a column, pedestal or pier add
+  `"plane":"xz","y":<height>` and `"array":{"axis":"y","count":5,"spacing":-12}`: a section shows a line with a dot at
+  each cut leg, a plan the tie. A bar schedule figure (hooks with no host) checks clean.
+- Stairs: `{"type":"stair","risers":4,"rise":7,"tread":11,"waist":6,"bars":"#4","nosing_bars":"#4","at":{"anchor":
+  "foot","to":"slab@top_right"}}` is a concrete flight on grade (steps, waist, base toe, top slab, main bar, cross and
+  nosing bars); `"kind":"wood"` is a cut stringer with treads and risers (`size`, `treated`, `nosing`; bring the header
+  to `stair@top_cut_top`). Dimension the waist or throat from `stair@throat_top` to `stair@throat_bottom` (`"dir":
+  "aligned"`). A steel stringer is a sloped `steel` member, not this type.
+- Bored holes and notches in framing seen lengthwise are `cuts`: `{"type":"lumber","size":"2x10","run":"x","length":96,
+  "cuts":[{"type":"hole","d":3,"x":30},{"type":"notch","at":"top","x":60,"w":3,"d":1.5}]}` (`y` moves a hole off
+  mid-depth; I-joist webs and steel webs too). Limit dimensions use `joist@hole_1_top` / `hole_1_bottom` and
+  `joist@notch_1_start` / `notch_1_end` with `"text":"D/3 MAX."`; sawn lumber gets W_HOLE_LIMIT / W_NOTCH_LIMIT (IRC
+  R502.8.1 joists, R602.6 studs) with the size that passes.
+- Round concrete (drilled pier, caisson, sonotube, bollard or pole footing, round column): `{"type":"concrete","shape":
+  "round","diameter":24,"height":60,"at":{"to":[0,0]}}` (placed by the axis at the top), a circle in plan. Hoops:
+  `{"type":"rebar","size":"#3","plane":"xz","y":{"ref":"pier@top_center","offset":[0,-3]},"tie":{"in":"pier","cover":3,
+  "shape":"hoop"},"array":{"axis":"y","count":5,"spacing":-12}}`. A post or pipe cast into it is `"embedded": true`
+  (a round takes no `voids`): a bollard is the round footing plus `{"type":"steel","shape":"PIPE6STD","orient":
+  "elevation","run":"y","length":84,"embedded":true}`.
+- Recipes with no new type. ICF wall: a `concrete` rect core with an `insulation` leaf on each face (`{"type":
+  "insulation","width":2.5,"height":48,"at":{"anchor":"bottom_right","to":"core@bottom_left"}}`), bars in the core as
+  usual. CMU in plan: a `cmu_wall` cut by a plan view draws its units, face shells, cells and head joints; a cell is
+  grouted where a grout course crosses the cut or (reinforced grouting) where a vertical bar stands in it (never draw
+  webs or cell grout as `cmu` / grout pieces: a wall with such pieces keeps its bare shells, `I_CMU_PLAN_UNITS`). A control
+  joint is two walls 3/8 apart in z, a corner is a run z wall and a run x wall, corner bars are `plane: xz` bars with
+  hooks. An inverted bond-beam lintel is `"bond_beams": [1]` on the wall over the opening.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

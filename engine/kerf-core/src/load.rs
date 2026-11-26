@@ -280,6 +280,7 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
                     | "I_ANNOT_MOVED"
                     | "I_KEY_RENUMBERED"
                     | "I_LAYOUT_SHEET"
+                    | "I_CMU_PLAN_UNITS"
             )
         {
             continue;
