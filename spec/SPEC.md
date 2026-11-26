@@ -2821,7 +2821,8 @@ depth, rib pitch, rib bottom flat and rib opening; any other name needs `depth`,
   `TEE<d>x<bf>x<stem t>x<flange t>`; `WT<d>x<wt>` is half of a listed W, flange up.
 - `material` (default steel): any style material with role steel or sheet_metal, i.e. `aluminum` for extrusions.
 - `fill`: a material filling an HSS, pipe or TUBE (concrete-filled bollard or column): part `fill`, hatched in section
-  and where a section view cuts along the member; `E_PARAM` on a shape with no inside.
+  and where a section view cuts along the member; `E_PARAM` on a shape with no inside. A vertical round PIPE, HSS or
+  TUBE cut by a plan view draws its steel ring at the design wall thickness and its optional fill as a circular core.
 
 ### 31.5 `stair_treads`
 The treads of a steel stair between two stringers: `kind` pan (riser and tread sheet plus concrete `fill`), grating
@@ -2833,6 +2834,7 @@ and wood flights are the `stair` type.
 | code | level | rule |
 |---|---|---|
 | `E_PARAM` | error | an unreadable joist designation or sizes that do not fit; an unknown deck profile without its four dimensions; screw `length` / `thread` / `slot_length` misuse; an SSMA thickness that is not a standard mil; a shape whose walls do not fit; `fill` on a solid shape; a non-metal `material`; treads that do not fit their rise |
+
 ## 32. v0.2.0-beta.4: general vocabulary
 
 Vocabulary for detail families the library needed and beta.3 could not draw without faking: existing construction,
@@ -2859,7 +2861,7 @@ the end whose leg runs into the host. With `embed`, that end point is authored O
 engine extends the bar `embed` past it along the leg; without it the embedment is what the points give. The hole
 (default bar diameter + 1/8) is drawn around the embedded length as part `epoxy`. Anchors `embed_face` and `embed_end`
 carry the embedment dimension. `W_EPOXY`: the hole leaves under 1 in. of the host behind it; the fix names the embed
-that does. An unknown `in` is `E_REF_UNKNOWN`; `embed` not positive, no end leg that points into a face of the host, or a bar that ends on the face with no `embed` is `E_PARAM`.
+that leaves 1 in. (host thickness along the bar minus 1 in.); if no positive embedment can do so, use a thicker part. An unknown `in` is `E_REF_UNKNOWN`; `embed` not positive, no end leg that points into a face of the host, or a bar that ends on the face with no `embed` is `E_PARAM`.
 
 ```json
 {"id":"dowel","type":"rebar","size":"#4","mode":"path",

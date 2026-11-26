@@ -594,6 +594,9 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> (Vec<Prism>, Vec<Ow
         if p.role == Role::Soil || drawn[i] {
             continue;
         }
+        if round_steel_plan(scene, p, cut_y, &mut out) {
+            continue;
+        }
         if p.xz_bar {
             xz_bar_plan(p, cut_y, &mut out);
             continue;
@@ -652,6 +655,51 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> (Vec<Prism>, Vec<Ow
         }
     }
     (out, own)
+}
+
+fn round_steel_plan(scene: &Scene, p: &Prism, cut_y: f64, out: &mut Vec<Prism>) -> bool {
+    use crate::builders::steel_shapes::{self, Dims};
+    let Some(c) = scene.comps.get(p.comp as usize) else { return false };
+    if c.ty.ty != crate::catalog::Type::Steel || !matches!(p.part.as_str(), "tube" | "fill" | "hidden") {
+        return false;
+    }
+    let Some(shape) = c.node.get("shape").and_then(crate::json::Value::str) else { return false };
+    let Ok(shape) = steel_shapes::lookup(shape) else { return false };
+    let Dims::Round { od, t } = shape.dims else { return false };
+    let Some(xf) = c.xfs.get(p.instance as usize) else { return false };
+    let run_y = c.node.get("run").and_then(crate::json::Value::str) == Some("y");
+    let axis = xf.apply(if run_y { V2::init(0.0, 1.0) } else { V2::init(1.0, 0.0) }).sub(xf.apply(V2::init(0.0, 0.0)));
+    if axis.x.abs() > EPS {
+        return false;
+    }
+    if p.part == "hidden" {
+        return true;
+    }
+    let flat = clip::from_region(&p.loops, FLAT_TOL);
+    let bx = clip::loops_box(&flat);
+    if bx.y0 >= cut_y - EPS {
+        return true;
+    }
+    let center = plan_pt(bx.center().x, (p.z0 + p.z1) / 2.0);
+    let r = if p.part == "fill" { od / 2.0 - t } else { od / 2.0 };
+    let mut q = rect_prism(p, bx.x0, bx.x1, p.z0, p.z1, bx.y0, bx.y1);
+    q.loops = model::one_loop(model::circle_loop(center.x, center.y, r));
+    if p.part == "tube" {
+        q.loops.push(geom::reverse_loop(&model::circle_loop(center.x, center.y, r - t)));
+    }
+    let ss = strips(&flat, cut_y);
+    if ss.len() != 1 || (ss[0].x0 - bx.x0).abs() > EPS || (ss[0].x1 - bx.x1).abs() > EPS {
+        let mask: Vec<Vec<V2>> = ss
+            .iter()
+            .map(|s| model::rect_loop(s.x0, center.y - r, s.x1, center.y + r).into_iter().map(Pt::v).collect())
+            .collect();
+        q.loops = clip::boolean(&clip::from_region(&q.loops, FLAT_TOL), &mask, clip::Op::Intersect)
+            .into_iter()
+            .map(|l| l.into_iter().map(|v| Pt::at(v, 0.0)).collect())
+            .collect();
+    }
+    out.push(q);
+    true
 }
 
 fn merge_all(strips: Vec<Strip>) -> Vec<Strip> {

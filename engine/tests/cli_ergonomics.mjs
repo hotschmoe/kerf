@@ -2571,5 +2571,40 @@ section('#30. beta.3 touch-up drawing gaps');
 
 }
 
+section('beta.4 integration: round steel plans and actionable epoxy depth');
+{
+  const inside = (pt, loops) => loops.reduce((hit, loop) => loop.reduce((c, a, k) => {
+    const b = loop[(k + 1) % loop.length];
+    return (a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < a[0] + (pt[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1]) ? !c : c;
+  }, hit), false);
+  for (const shape of ['PIPE6STD', 'HSS6.000x0.250', 'TUBE6x0.125']) {
+    for (const fill of ['', 'concrete']) {
+      write('round-b4.kerf.json', { kerf: '0.1', id: 'round_b4', title: 'ROUND COLUMN', components: [
+        { id: 'col', type: 'steel', shape, fill, orient: 'elevation', run: 'y', length: 48,
+          array: { axis: 'x', count: 2, spacing: 12 }, at: { to: [10, 2] }, z: 5 },
+      ], views: [{ id: 'P', kind: 'plan', cut_y: 20 }] });
+      const r = kerf(['drawing', 'round-b4.kerf.json', '--view', 'P']);
+      const regions = r.code === 0 ? JSON.parse(r.out).items.filter((it) => it.t === 'region' && it.src === 'col') : [];
+      check(`${shape}, fill ${fill || 'none'}: both plan instances have hollow steel rings and the requested core`, [0, 1].every((instance) => {
+        const rings = regions.filter((it) => it.instance === instance && it.part === 'tube');
+        const core = regions.filter((it) => it.instance === instance && it.part === 'fill');
+        const center = [10 + (shape === 'PIPE6STD' ? 6.625 : 6) / 2 + instance * 12, -5];
+        return rings.length === 1 && rings[0].cut && rings[0].loops.length === 2 && !inside(center, rings[0].loops) &&
+          (fill ? core.length === 1 && core[0].cut && inside(center, core[0].loops) : core.length === 0);
+      }), r.err || regions.map((it) => [it.part, it.instance, it.cut, it.loops.length]));
+    }
+  }
+  const doc = (embed) => ({ kerf: '0.1', id: 'epoxy_b4', title: 'EPOXY DOWEL', components: [
+    { id: 'host', type: 'concrete', shape: 'rect', width: 8, height: 12, existing: true },
+    { id: 'bar', type: 'rebar', size: '#4', mode: 'path', points: [[8, 6], [20, 6]], epoxy: { in: 'host', embed } },
+  ], views: [{ id: 'A', kind: 'section' }] });
+  write('epoxy-b4.kerf.json', doc(7.5));
+  let r = kerf(['check', 'epoxy-b4.kerf.json']);
+  check('epoxy warning offers the embedment that leaves one inch', /^WARN W_EPOXY /m.test(r.out) && /lower epoxy.embed to 7" or less/.test(r.out), r.out + r.err);
+  write('epoxy-b4.kerf.json', doc(7));
+  r = kerf(['check', 'epoxy-b4.kerf.json']);
+  check('applying the suggested embedment clears W_EPOXY at the one-inch boundary', r.code === 0 && !/W_EPOXY/.test(r.out), r.out + r.err);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

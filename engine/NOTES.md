@@ -6,6 +6,21 @@ nothing else. Rust 1.96 stable, edition 2024. It replaced the Zig engine on 2026
 Drawing IR on every view, the CLI ergonomics and the `kerf serve` smoke tests were identical; the Zig tree is in git
 history). `README.md` is the short version of this file, `PERF.md` has the numbers.
 
+## v0.2.0-beta.4 integration
+
+Steel merged before general, preserving all 23 catalog types with `Solid` last, every builder/schema topic, both
+long-guide appendices and SPEC 31/32; SPEC 30 remains reserved for issue #31 on master. The four conflicted files
+were `builders.rs`, `catalog.rs`, `spec/SPEC.md` and `spec/llm/cli-guide.md`; SRC and these notes merged automatically.
+The workspace version and lockfile are beta.4. The short guide keeps every rule and every type entry with tighter prose.
+Vertical round PIPE/HSS/TUBE members now draw rings and circular optional cores in plan. W_EPOXY's fix uses the same
+1 in. back thickness as its trigger and documents; a host no thicker than 1 in. offers no false embedment fix. Steel's
+schema now documents hole cuts, and both stair types direct authors to the other type. CLI integration exercises
+round members with/without concrete fill and the epoxy warning's fix at its boundary. Validation results follow below.
+
+The linked worktree Git directory was read-only in this session. Integration history is prepared in
+`.archive/integration.git` (branch beta4); the shared beta4 ref and linked index await writable metadata. Master was
+not merged or modified. No files were deleted, no push or installation was performed.
+
 ## Layout
 - `kerf-core`: `#![no_std]` + `alloc`, the whole engine. Public: `api` (the SPEC 13 dispatcher, `api::call(name, input)`),
   `json`, `canon`, `model`, `ops`, `schema`, `units`; every other module is private, so the compiler finds dead code.
@@ -613,8 +628,7 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   is one bounding box (an I-joist's flanges and web), so a hanger fits the widest flange. Model families give kind,
   mount and gauge only: no product dimensions are tabulated (the note carries the model).
 - beta.4 general vocabulary (SPEC 32; reference documents `tests/docs/general-*.kerf.json`). Not done or not checked:
-  a steel pipe or HSS `orient: elevation, run: y` cut by a plan view draws a filled square, not a ring (a bollard or
-  pipe column in plan); grout per cell in a CMU plan is inferred (grout courses, bond beams, a vertical bar in the
+  grout per cell in a CMU plan is inferred (grout courses, bond beams, a vertical bar in the
   cell), there is no per-cell field, and partial `grout_courses` on a run z wall is not told apart cell by cell; the
   cover of an xz bar or tie along z is not checked (as before); hooks and ties in iso views were not reviewed;
   `stair` has no stringer hanger of its own (a `connector` on `w_stair.stringer` was not tried) and no guard or
@@ -998,8 +1012,7 @@ Status: `steel_joist`, `metal_deck`, `stair_treads` are new types; `bolt` gained
     a domed bollard top is a note.
   - `stair_treads` is separate from the general `stair` type; rise and tread limits are in the field text, not checked
     (`stair` owns W_STAIR_GEOMETRY).
-  - The short `kerf guide` is at 12,269 of 12,288 bytes with these three type lines; the Steel bullet and one sample
-    command were tightened to make room.
+  - The branch short guide was 12,269 of 12,288 bytes; see the beta.4 integration status for the combined guide.
 
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the

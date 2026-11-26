@@ -1,9 +1,7 @@
 # Kerf CLI: guide for agents (Claude Code, Grok, ...)
 
-You build construction details with the `kerf` command-line engine. A detail is one JSON file
-(`<id>.kerf.json`) in the current folder. The designer reviews it in
-`kerf serve` and verifies citations. You describe construction
-with typed components; the engine places, draws, lays out notes and checks.
+Build each construction detail as `<id>.kerf.json` in the current folder using typed components.
+The engine places, draws, lays out notes and checks. The designer reviews in `kerf serve` and verifies citations.
 
 ## Shell rules (the sandbox rejects compound commands)
 - ONE kerf command per call. Do NOT chain with `&&`, `;` or `|`, do NOT use heredocs (`<<EOF`) or `echo '...' | kerf`.
@@ -29,7 +27,7 @@ kerf new truss-cmu.kerf.json --ops ops.json --title "PREFAB TRUSS BEARING AT CMU
 ```sh
 kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png
 ```
-5. Refine with small ops (a new ops file each time; keep ids stable):
+5. Refine with small ops (new ops file each time; stable ids):
 ```sh
 kerf apply truss-cmu.kerf.json ops.json -w --why "Add HETA20 anchors at 16 in o.c."
 kerf apply truss-cmu.kerf.json ops.json --dry-run
@@ -45,7 +43,7 @@ kerf schema note dim cite
   `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]`. The summary counts and lists them (`kerf check --strict`
   prints each). Wood on CMU wants `"barrier":"sill_seal"`. No fake geometry.
 - Scenarios: one view each, one origin; scenario members get `"views":["B"]`, shared none; one sheet: `kerf schema layout`.
-- Unknown keys warn (`W_UNKNOWN_KEY` names the right one). `kerf schema <topic>` before guessing a field name.
+- Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one). Consult `kerf schema <topic>` before guessing.
 
 ## Diagnostics you will meet (each prints its own fix)
 W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
@@ -299,7 +297,7 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   existing members) and exempts it from W_UNTREATED_CONTACT, W_FLOATING, W_NEAR_MISS and bar cover. A dowel drilled
   into it: end the bar ON the face and give the embedment, `{"type":"rebar","size":"#4","mode":"path","points":
   [{"ref":"e_stem@top_right","offset":[0,-4]},{"ref":"e_stem@top_right","offset":[24,-4]}],"epoxy":{"in":"e_stem",
-  "embed":6}}`; dimension `dowel@embed_end` to `dowel@embed_face`.
+  "embed":6}}`; dimension `dowel@embed_end` to `dowel@embed_face`. W_EPOXY: under 1 in. left behind the hole.
 - Hooks and ties are never hand-computed points. A standard hook on a path bar end: `"hook":{"end":{"angle":90,
   "toward":"right"}}` (90, 135, 180; `start` too; bend diameter and extension from the bar size, ACI 318-19 25.3; the
   end point stays the out-to-out corner). A closed tie, U stirrup, crosstie or hoop by cover: `{"type":"rebar","size":
@@ -310,7 +308,7 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   "foot","to":"slab@top_right"}}` is a concrete flight on grade (steps, waist, base toe, top slab, main bar, cross and
   nosing bars); `"kind":"wood"` is a cut stringer with treads and risers (`size`, `treated`, `nosing`; bring the header
   to `stair@top_cut_top`). Dimension the waist or throat from `stair@throat_top` to `stair@throat_bottom` (`"dir":
-  "aligned"`). A steel stringer is a sloped `steel` member, not this type.
+  "aligned"`). Steel flights use `stair_treads` (pan, grating or plate treads) plus sloped `steel` stringers.
 - Bored holes and notches in framing seen lengthwise are `cuts`: `{"type":"lumber","size":"2x10","run":"x","length":96,
   "cuts":[{"type":"hole","d":3,"x":30},{"type":"notch","at":"top","x":60,"w":3,"d":1.5}]}` (`y` moves a hole off
   mid-depth; I-joist webs and steel webs too). Limit dimensions use `joist@hole_1_top` / `hole_1_bottom` and

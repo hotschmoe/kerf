@@ -645,7 +645,11 @@ pub fn epoxy(ctx: &mut Ctx, ev: &Value, vs: &mut [V2], d: f64) -> Option<Epoxy> 
             Some(ctx.p.id),
             Some(&format!("{}/{}/epoxy/embed", ctx.p.base, ctx.p.id)),
             format!("the {} deep hole of '{}' leaves {} of '{host_id}' behind it ({} thick along the bar): a drilled hole needs sound concrete past its end", fmt_ft_in(emb), ctx.p.id, fmt_ft_in((t_out - t_end).max(0.0)), fmt_ft_in(t_out - t_in)),
-            format!("lower epoxy.embed to {} or less, or drill into a thicker part of '{host_id}'", fmt_ft_in((t_out - t_in - 1.5).max(1.0))),
+            if t_out - t_in > 1.0 {
+                format!("lower epoxy.embed to {} or less to leave 1 in. behind the hole, or drill into a thicker part of '{host_id}'", fmt_ft_in(t_out - t_in - 1.0))
+            } else {
+                format!("drill into a thicker part of '{host_id}': no positive embedment leaves 1 in. behind the hole here")
+            },
         );
     }
     let (face_w, tip_w) = (a.add(u.scale(t_in)), a.add(u.scale(t_end)));
