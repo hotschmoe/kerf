@@ -345,3 +345,23 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   lists the `layouts` paths: `{"op":"update","path":"layouts/S1","value":{"columns":3}}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.
+
+### beta.5 concrete, masonry and ops
+- Shared concrete/masonry faces require no bar cover, even across different pours. Keep external-face cover;
+  a negative exposed-face clearance needs a geometry change, never cover 0. Recheck every host the bar enters.
+- Transverse vertical bars: `plane:"yz", x:4, points:[[2,-8],[24,-8]]` (pairs are [y,z]); `hook` works in that plane.
+  `tie` still uses xy/xz, `epoxy` xy. Cover checks remain XY only.
+- CMU 16 is actual 15.625; `form:"pier"` makes the square two-cell unit with that natural depth.
+  `units:{"1":"lintel","3":"inverted_bond_beam"}` adds solid bottoms/tops and grout. Open-end/knock-out units
+  warn W_PARAM and use the standard profile; put the special unit in a note after applying the printed removal op.
+- Partial/stepped run-x beams: `bond_beams:[{course:3,x:[0,72]},{course:4,x:[72,120]}]`, x local from the wall left.
+  Beam spans draw dashed elevation bands and continuous plan grout; `bond_beam_<k>` / `bond_beam` expose their zones.
+- Legacy CMU plan footprints (s-40-05/-06/-07/-08/-11/-14): `I_CMU_PLAN_UNITS` lists surrogate CMU/grout/mortar and
+  removal ops. Apply as one batch and re-point their refs in that batch. Keep bars; set native `grout:"reinforced"`
+  for vertical cells and `bond_beams` for horizontal courses; remove obsolete joint line annotations after review.
+  Open cells are not grout hosts. Inspect the native plan and `cutaway:true,cut_z:0` iso after migration.
+- `set scale` with `value:null` removes document scale. Removal safety uses the final batch: remove referrers later
+  or re-add the same component ID in that batch. A dangling final reference fails atomically.
+  `update views/A {annotations:[...]}` replaces all A annotations; prefer annotation paths for small edits.
+- `kind:"sheet"` aliases `kind:"schedule"`; a view has no `sheet` field. Paper size belongs to `layouts[].sheet`.
+  `anchor_bolt` `plate` follows a rotated rod axis, including horizontal ledger rods, with automatic projection.

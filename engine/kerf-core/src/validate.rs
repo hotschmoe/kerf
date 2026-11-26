@@ -360,6 +360,42 @@ fn overlap_fix(p: &Pf<'_>, q: &Pf<'_>) -> String {
     )
 }
 
+fn cmu_reinforcement_contact(wall: &Comp<'_>, bar: &Comp<'_>, p: &Prism) -> Option<(usize, bool)> {
+    if wall.ty.ty != crate::catalog::Type::CmuWall || !bar.ty.traits.reinforcement {
+        return None;
+    }
+    let c = p.loops.first().map(|l| geom::points_box(l).center())?;
+    let vertical = bar.world.iter().any(|q| {
+        q.centerline.windows(2).any(|w| (w[0].y - w[1].y).abs() > (w[0].x - w[1].x).abs() + 1e-6)
+            || q.path3
+                .windows(2)
+                .any(|w| (w[0][1] - w[1][1]).abs() > (w[0][0] - w[1][0]).abs() + (w[0][2] - w[1][2]).abs() + 1e-6)
+    });
+    for (xf, z) in wall.xfs.iter().zip(&wall.zs) {
+        if p.z0 > z[1] || p.z1 < z[0] {
+            continue;
+        }
+        let v = c.sub(V2::init(xf.tx, xf.ty));
+        let v = V2::init((xf.d * v.x - xf.c * v.y) / xf.det(), (-xf.b * v.x + xf.a * v.y) / xf.det());
+        if !wall.built.box_.contains(v) {
+            continue;
+        }
+        let course = crate::num::to_int_clamped::<usize>(math::floor(v.y / 8.0) + 1.0, 1, 200);
+        let grout = wall.node.get("grout").and_then(Value::str).unwrap_or("reinforced");
+        let courses = wall.node.get("grout_courses").and_then(Value::arr).unwrap_or(&[]);
+        let listed = courses.iter().any(|v| match v.arr() {
+            Some([a, b]) => a.num().zip(b.num()).is_some_and(|(a, b)| course as f64 >= a && course as f64 <= b),
+            _ => v.num() == Some(course as f64),
+        });
+        let grouted = grout == "solid"
+            || (grout == "reinforced" && vertical)
+            || listed
+            || crate::builders::cmu_wall::beam_at(wall.node, course, v.x);
+        return Some((course, grouted));
+    }
+    None
+}
+
 const JOINT_GAP: f64 = 1.0;
 
 fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
@@ -377,14 +413,21 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
             continue;
         }
         let touching_in = |p: &&&Pf<'_>, any_instance: bool| {
-            s.items.iter().chain(&s.hidden).any(|q| {
-                let reach = if p.prism.role.is_masonry() && q.prism.role.is_masonry() { JOINT_GAP - 1e-9 } else { gap };
-                let other = q.comp.index != c.index || (any_instance && q.prism.instance != p.prism.instance);
-                other
-                    && z_gap(p.prism, q.prism) <= gap
-                    && p.box_.expand(reach).overlaps(q.box_, 0.0)
-                    && region_dist(&p.flat, &q.flat, reach) <= reach
-            })
+            let reinforced = s.comps.iter().any(|other| {
+                cmu_reinforcement_contact(other, c, p.prism).is_some_and(|(_, g)| g)
+                    || (c.ty.ty == crate::catalog::Type::CmuWall
+                        && other.world.iter().any(|bp| cmu_reinforcement_contact(c, other, bp).is_some_and(|(_, g)| g)))
+            });
+            reinforced
+                || s.items.iter().chain(&s.hidden).any(|q| {
+                    let reach =
+                        if p.prism.role.is_masonry() && q.prism.role.is_masonry() { JOINT_GAP - 1e-9 } else { gap };
+                    let other = q.comp.index != c.index || (any_instance && q.prism.instance != p.prism.instance);
+                    other
+                        && z_gap(p.prism, q.prism) <= gap
+                        && p.box_.expand(reach).overlaps(q.box_, 0.0)
+                        && region_dist(&p.flat, &q.flat, reach) <= reach
+                })
         };
         let touching = |p: &&&Pf<'_>| touching_in(p, false);
         let mine: Vec<&&Pf<'_>> = s.items.iter().filter(|p| p.comp.index == c.index).collect();
@@ -422,6 +465,18 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
             }
         }
         if !touches {
+            if let Some((wall, course)) = s.comps.iter().find_map(|h| {
+                c.world.iter().find_map(|p| cmu_reinforcement_contact(h, c, p).filter(|(_, g)| !g).map(|(k, _)| (h, k)))
+            }) {
+                let mut beams = wall.node.get("bond_beams").and_then(Value::arr).unwrap_or(&[]).to_vec();
+                beams.push(Value::Number(course as f64));
+                let mut bytes = Vec::new();
+                crate::json::write_compact(&mut bytes, &Value::Array(beams));
+                diags.add_fix(Level::Warning,"W_FLOATING",Some(&c.id),None,
+                    format!("bar '{}' lies in an ungrouted cell of '{}' at course {course}; reinforcement needs grout around it",c.id,wall.id),
+                    format!("if this course carries horizontal reinforcement, grout it as a bond beam: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"bond_beams\":{}}}}}; vertical reinforcement uses grout reinforced or solid",wall.id,String::from_utf8_lossy(&bytes)));
+                continue;
+            }
             let (msg, fix) = match face_host(s, c, &mine) {
                 Some((host, face, gap)) => (
                     format!(
@@ -699,6 +754,7 @@ struct Edge {
     a: V2,
     b: V2,
     class: usize,
+    outward: V2,
 }
 
 fn host_edges(outline: &[Pt], xf: &Xf) -> Vec<Edge> {
@@ -721,7 +777,7 @@ fn host_edges(outline: &[Pt], xf: &Xf) -> Vec<Edge> {
         } else {
             2
         };
-        out.push(Edge { a: p, b: q, class });
+        out.push(Edge { a: p, b: q, class, outward: nrm });
     }
     out
 }
@@ -743,7 +799,102 @@ fn void_edges(l: &[V2]) -> Vec<Edge> {
         } else {
             2
         };
-        out.push(Edge { a: p, b: q, class });
+        out.push(Edge { a: p, b: q, class, outward: V2::init(-d.y / len, d.x / len) });
+    }
+    out
+}
+
+fn host_section(h: &Comp<'_>, xf: &Xf, instance: usize, z: f64) -> Vec<Vec<V2>> {
+    let Some(host) = h.built.host.as_ref() else { return Vec::new() };
+    if h.node.get("shape").and_then(Value::str) == Some("round")
+        && let (Some(d), Some(hz)) = (h.node.get("diameter").and_then(units::parse_length), h.zs.get(instance))
+    {
+        let r = d / 2.0;
+        let dz = z - (hz[0] + hz[1]) / 2.0;
+        if dz.abs() > r {
+            return Vec::new();
+        }
+        let dx = math::sqrt((r * r - dz * dz).max(0.0));
+        let bx = world_box(xf, h.built.box_);
+        let x = bx.center().x;
+        return clip::from_region(&[model::rect_loop(x - dx, bx.y0, x + dx, bx.y1)], FLAT_TOL);
+    }
+    if h.node.get("shape").and_then(Value::str).is_some_and(|s| matches!(s, "footprint" | "round")) {
+        if let Some(p) = h.world.iter().find(|p| p.instance as usize == instance && p.footprint.len() >= 3) {
+            let xs = crate::pathclip::scan(core::slice::from_ref(&p.footprint), z, false);
+            return xs
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|x| model::rect_loop(x[0], p.fp_y[0], x[1], p.fp_y[1]).into_iter().map(|v| v.v()).collect())
+                .collect();
+        }
+        let mut region = Vec::new();
+        for p in h.world.iter().filter(|p| p.instance as usize == instance && z >= p.z0 - 1e-6 && z <= p.z1 + 1e-6) {
+            let flat = clip::from_region(&p.loops, FLAT_TOL);
+            region = if region.is_empty() { flat } else { clip::boolean(&region, &flat, Op::Unite) };
+        }
+        return region;
+    }
+    clip::from_region(&[xf.apply_loop(&host.outline)], FLAT_TOL)
+}
+
+fn segment_in_region(a: V2, b: V2, region: &[Vec<V2>]) -> Vec<[V2; 2]> {
+    let mut ts = alloc::vec![0.0, 1.0];
+    for l in region {
+        for (i, &p) in l.iter().enumerate() {
+            let mut ta = [0.0; 2];
+            let mut tb = [0.0; 2];
+            let n = geom::seg_seg(a, b, p, l[(i + 1) % l.len()], &mut ta, &mut tb);
+            ts.extend_from_slice(&ta[..n]);
+        }
+    }
+    crate::sort::stable(&mut ts, |a, b| a < b);
+    ts.windows(2)
+        .filter(|w| w[1] - w[0] > 1e-9 && geom::locate(a.lerp(b, (w[0] + w[1]) / 2.0), region, 1e-6) != Loc::Outside)
+        .map(|w| [a.lerp(b, w[0]), a.lerp(b, w[1])])
+        .collect()
+}
+
+fn exposed_edges(s: &Drawn<'_, '_>, h: &Comp<'_>, bp: &Prism, edges: Vec<Edge>) -> Vec<Edge> {
+    let z = (bp.z0 + bp.z1) / 2.0;
+    let mut others = Vec::new();
+    for c in s.comps.iter().filter(|c| c.index != h.index && c.built.host.is_some()) {
+        for (i, (xf, hz)) in c.xfs.iter().zip(&c.zs).enumerate() {
+            if z >= hz[0] - 1e-6 && z <= hz[1] + 1e-6 {
+                let mut region = host_section(c, xf, i, z);
+                for v in c.voids.iter().filter(|v| z > v.z[0] && z < v.z[1]) {
+                    region = clip::boolean(&region, &v.loops, Op::Diff);
+                }
+                others.push(region);
+            }
+        }
+    }
+    if others.is_empty() {
+        return edges;
+    }
+    let mut out = Vec::new();
+    for e in edges {
+        let mut ts = alloc::vec![0.0, 1.0];
+        for region in &others {
+            for l in region {
+                for (i, &a) in l.iter().enumerate() {
+                    let mut ta = [0.0; 2];
+                    let mut tb = [0.0; 2];
+                    let n = geom::seg_seg(e.a, e.b, a, l[(i + 1) % l.len()], &mut ta, &mut tb);
+                    ts.extend_from_slice(&ta[..n]);
+                }
+            }
+        }
+        crate::sort::stable(&mut ts, |a, b| a < b);
+        let normal = e.outward.scale(1e-5);
+        for w in ts.windows(2).filter(|w| w[1] - w[0] > 1e-9) {
+            let m = e.a.lerp(e.b, (w[0] + w[1]) / 2.0);
+            let covered = others.iter().any(|r| geom::locate(m.add(normal), r, 1e-7) == Loc::Inside);
+            if !covered {
+                out.push(Edge { a: e.a.lerp(e.b, w[0]), b: e.a.lerp(e.b, w[1]), class: e.class, outward: e.outward });
+            }
+        }
     }
     out
 }
@@ -785,6 +936,49 @@ fn cover_op(host_id: &str, h: &HostInfo, part: Option<&str>, face: usize, value:
     }
     let parts = if parts.is_empty() { String::new() } else { format!(", \"parts\": {{{}}}", parts.join(", ")) };
     format!("{{\"op\": \"update\", \"path\": \"components/{host_id}\", \"value\": {{\"cover\": {{{base}{parts}}}}}}}")
+}
+
+fn move_bar_op(bar: &Comp<'_>, delta: V2, leg: Option<usize>) -> Option<String> {
+    let points = bar.node.get("points")?.arr()?;
+    if bar.node.get("plane").and_then(Value::str).is_some_and(|p| p != "xy") {
+        return None;
+    }
+    let xf = bar.xfs.first()?;
+    let local = V2::init((xf.d * delta.x - xf.c * delta.y) / xf.det(), (-xf.b * delta.x + xf.a * delta.y) / xf.det());
+    let mut out = points.to_vec();
+    for (i, p) in out.iter_mut().enumerate() {
+        if leg.is_some_and(|k| i + 1 != k && i != k) {
+            continue;
+        }
+        if let Some(a) = p.arr().filter(|a| a.len() >= 2) {
+            let (x, y) = units::parse_length(&a[0]).zip(units::parse_length(&a[1]))?;
+            let mut a = a.to_vec();
+            a[0] = Value::Number(x + local.x);
+            a[1] = Value::Number(y + local.y);
+            *p = Value::Array(a);
+        } else {
+            let v = if matches!(p, Value::String(_)) {
+                Value::Object(alloc::vec![crate::json::Member { key: "ref".into(), value: p.clone() }])
+            } else {
+                p.clone()
+            };
+            let old = v.get("offset").and_then(Value::arr);
+            let x = old.and_then(|a| a.first()).and_then(units::parse_length).unwrap_or(0.0);
+            let y = old.and_then(|a| a.get(1)).and_then(units::parse_length).unwrap_or(0.0);
+            let patch = Value::Object(alloc::vec![crate::json::Member {
+                key: "offset".into(),
+                value: Value::Array(alloc::vec![Value::Number(x + delta.x), Value::Number(y + delta.y)])
+            }]);
+            *p = crate::json::merge_patch(&v, &patch);
+        }
+    }
+    let mut bytes = Vec::new();
+    crate::json::write_compact(&mut bytes, &Value::Array(out));
+    Some(format!(
+        "{{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"points\":{}}}}}",
+        bar.id,
+        String::from_utf8_lossy(&bytes)
+    ))
 }
 
 struct Piece {
@@ -878,11 +1072,9 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
         let xz = bar.world.iter().any(|p| p.xz_bar);
         let mut worst: Vec<(u32, usize, f64, String, String)> = Vec::new();
         for bp in bar.world.iter().filter(|p| p.role == Role::Rebar) {
-            let centre;
-            let mut dir = V2::init(0.0, 0.0);
             let mut segs: Vec<[V2; 2]> = Vec::new();
             let mut pieces: Vec<Piece> = Vec::new();
-            if bp.centerline.len() >= 2 {
+            let centre = if bp.centerline.len() >= 2 {
                 pieces = bar_pieces(&bp.centerline);
                 let flat = geom::flatten_polyline(&bp.centerline, false, FLAT_TOL);
                 segs = flat.windows(2).map(|s| [s[0], s[1]]).collect();
@@ -896,12 +1088,11 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     }
                 }
                 let Some(ls) = segs.get(longest) else { continue };
-                centre = ls[0].mid(ls[1]);
-                dir = ls[1].sub(ls[0]).norm();
+                ls[0].mid(ls[1])
             } else {
                 let Some(l0) = bp.loops.first() else { continue };
-                centre = geom::loop_box(l0).center();
-            }
+                geom::loop_box(l0).center()
+            };
             let mut hosted = false;
             for h in &s.comps {
                 let Some(host) = h.built.host.as_ref() else { continue };
@@ -915,47 +1106,88 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     if bp.z1 < hz[0] - 1e-6 || bp.z0 > hz[1] + 1e-6 {
                         continue;
                     }
-                    let wl = xf.apply_loop(&host.outline);
-                    let fl = geom::flatten_loop(&wl, FLAT_TOL);
-                    let Some(&f0) = fl.first() else { continue };
-                    if !geom::point_in_loop_eo(centre, &fl) && geom::dist_point_seg(centre, f0, f0) > 0.0 {
-                        let onb = fl
-                            .iter()
-                            .enumerate()
-                            .any(|(i, &p)| geom::dist_point_seg(centre, p, fl[(i + 1) % fl.len()]) < 1e-6);
-                        if !onb {
-                            continue;
-                        }
+                    let region = host_section(h, xf, hi, (bp.z0 + bp.z1) / 2.0);
+                    if h.ty.ty != crate::catalog::Type::CmuWall
+                        && h.world.first().is_some_and(|p| matches!(p.material.as_str(), "cmu" | "grout" | "mortar"))
+                        && s.comps.iter().any(|wall| {
+                            wall.ty.ty == crate::catalog::Type::CmuWall
+                                && wall.xfs.iter().zip(&wall.zs).enumerate().any(|(i, (wxf, wz))| {
+                                    let z = (bp.z0 + bp.z1) / 2.0;
+                                    let wr = host_section(wall, wxf, i, z);
+                                    z >= wz[0]
+                                        && z <= wz[1]
+                                        && region.iter().flatten().all(|&v| geom::locate(v, &wr, 1e-6) != Loc::Outside)
+                                })
+                        })
+                    {
+                        continue;
                     }
+                    let centre = if geom::locate(centre, &region, 1e-6) != Loc::Outside {
+                        centre
+                    } else {
+                        let Some(clipped) =
+                            segs.iter().find_map(|sg| segment_in_region(sg[0], sg[1], &region).first().copied())
+                        else {
+                            continue;
+                        };
+                        clipped[0].mid(clipped[1])
+                    };
                     found = true;
                     if h.existing == Some(true) || bar.existing == Some(true) {
                         break;
                     }
-                    let mut edges = host_edges(&host.outline, xf);
+                    let mut edges =
+                        if h.node.get("shape").and_then(Value::str).is_some_and(|s| matches!(s, "footprint" | "round"))
+                        {
+                            region
+                                .iter()
+                                .flat_map(|l| {
+                                    let pts: Vec<Pt> = l.iter().map(|&p| Pt::at(p, 0.0)).collect();
+                                    host_edges(&pts, &Xf::IDENTITY)
+                                })
+                                .collect()
+                        } else {
+                            host_edges(&host.outline, xf)
+                        };
                     for v in h.voids.iter().filter(|v| v.z[0] < bp.z1 && v.z[1] > bp.z0) {
                         for l in &v.loops {
-                            edges.extend(void_edges(l));
+                            let ve = void_edges(l);
+                            let ve = ve.into_iter().filter(|e| {
+                                if h.ty.ty != crate::catalog::Type::CmuWall {
+                                    return true;
+                                }
+                                let m = e.a.mid(e.b).add(e.outward.scale(1e-5));
+                                !s.items.iter().any(|p| {
+                                    p.prism.role == Role::Steel
+                                        && z_gap(p.prism, bp) < 1e-6
+                                        && geom::locate(m, &p.flat, 1e-6) != Loc::Outside
+                                })
+                            });
+                            edges.extend(ve);
                         }
                     }
+                    let edges = exposed_edges(s, h, bp, edges);
                     let zw: Vec<ZoneBox<'_>> =
                         h.built.zones.iter().map(|z| ZoneBox { name: &z.name, box_: world_box(xf, z.box_) }).collect();
                     let (req, part) = cover_for(host, &zw, centre);
                     let mut min_clear = [f64::INFINITY; 3];
                     let mut min_piece = [0usize; 3];
+                    let mut min_normal = [V2::init(0.0, 0.0); 3];
                     for e in &edges {
                         let dist;
                         if !segs.is_empty() {
-                            let ed = e.b.sub(e.a).norm();
-                            if dir.dot(ed.perp()).abs() > 0.7 {
-                                continue;
-                            }
                             let mut d = f64::INFINITY;
                             let mut best_key = f64::INFINITY;
                             let mut best_pi = 0;
                             for (pi, pc) in pieces.iter().enumerate() {
                                 let mut pd = f64::INFINITY;
-                                for s in &pc.segs {
-                                    pd = pd.min(seg_dist(s[0], s[1], e.a, e.b));
+                                for sg in &pc.segs {
+                                    if !pc.is_bend && sg[1].sub(sg[0]).norm().dot(e.outward).abs() > 0.7 {
+                                        continue;
+                                    }
+                                    for sg in segment_in_region(sg[0], sg[1], &region) {
+                                        pd = pd.min(seg_dist(sg[0], sg[1], e.a, e.b));
+                                    }
                                 }
                                 let key = pd + if pc.is_bend { 1e-4 } else { 0.0 };
                                 if key < best_key - 1e-12 {
@@ -974,6 +1206,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                         let clear = dist - r;
                         if clear < min_clear[e.class] {
                             min_clear[e.class] = clear;
+                            min_normal[e.class] = e.outward;
                         }
                     }
                     let reqs = [req.bottom, req.top, req.sides];
@@ -982,6 +1215,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                     for k in 0..3 {
                         if min_clear[k] < reqs[k] - 1e-3 {
                             let actual = (math::floor(min_clear[k].max(0.0) * 16.0 + 1e-6) / 16.0).max(0.0);
+                            let part = part.filter(|p| host.part_cover.iter().any(|pc| pc.part == *p));
                             let knob = match part {
                                 Some(p) => format!("cover.parts.{p}.{}", names[k]),
                                 None => format!("cover.{}", names[k]),
@@ -993,6 +1227,15 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                                 model::num_text(actual),
                                 cover_op(&h.id, host, part, k, actual)
                             );
+                            if min_clear[k] < 0.0 {
+                                let delta = min_normal[k].scale(-(reqs[k] - min_clear[k] + 1.0 / 64.0));
+                                fix = format!(
+                                    "the bar surface crosses an exposed face; setting cover to 0 cannot fix it. Move the failing leg inward by at least {}{}",
+                                    fmt_ft_in(reqs[k] - min_clear[k]),
+                                    move_bar_op(bar, delta, pieces.get(min_piece[k]).map(|p| p.leg))
+                                        .map_or_else(String::new, |op| format!(": {op}"))
+                                );
+                            }
                             if !host.cover_set && req.bottom + req.top + 2.0 * r > depth + 1e-6 {
                                 fix.push_str(&format!(
                                     "; '{}' uses the default cover (bottom {}, top {}, sides {}), which no bar fits in its {} depth: give it its own \"cover\" (slab on grade with mid-depth bars, e.g. {{\"bottom\": 1.5, \"top\": 1.5}})",
@@ -1044,7 +1287,6 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                 }
                 if found {
                     hosted = true;
-                    break;
                 }
             }
             if pieces.is_empty() {
@@ -1064,13 +1306,16 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
 
 fn in_host(s: &Drawn<'_, '_>, bp: &Prism, p: V2) -> bool {
     s.comps.iter().any(|h| {
-        let Some(host) = h.built.host.as_ref() else { return false };
+        if h.built.host.is_none() {
+            return false;
+        }
         h.xfs.iter().zip(&h.zs).any(|(xf, hz)| {
             if bp.z1 < hz[0] - 1e-6 || bp.z0 > hz[1] + 1e-6 {
                 return false;
             }
-            let fl = geom::flatten_loop(&xf.apply_loop(&host.outline), FLAT_TOL);
-            geom::locate(p, core::slice::from_ref(&fl), 1e-6) != Loc::Outside || geom::point_in_loop_eo(p, &fl)
+            let instance = h.xfs.iter().position(|q| core::ptr::eq(q, xf)).unwrap_or(0);
+            let region = host_section(h, xf, instance, (bp.z0 + bp.z1) / 2.0);
+            geom::locate(p, &region, 1e-6) != Loc::Outside
         })
     })
 }

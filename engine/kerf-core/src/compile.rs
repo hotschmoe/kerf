@@ -90,8 +90,10 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
             out.push(s.split('.').next().unwrap_or(s));
         }
     }
-    if let Some(y) = node.get("y") {
-        add_ref_dep(y, out);
+    for key in ["x", "y"] {
+        if let Some(v) = node.get(key) {
+            add_ref_dep(v, out);
+        }
     }
     crate::cuts::collect_deps(node, out, add_ref_dep);
     if node.get("type").and_then(Value::str) == Some("connector") {
