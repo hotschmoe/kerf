@@ -14,6 +14,9 @@ pub enum Dims {
     Angle { vert: f64, horiz: f64, t: f64, r: f64 },
     Channel { d: f64, bf: f64, tw: f64, tf: f64, r: f64 },
     Plate { t: f64, w: f64 },
+    /// Thin-wall C of uniform thickness, lipped (lip > 0: stud, joist) or not (track, channel).
+    Cee { d: f64, bf: f64, t: f64, lip: f64 },
+    Tee { d: f64, bf: f64, tw: f64, tf: f64, k: f64 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -80,6 +83,7 @@ const W: &[(&str, f64, f64, f64, f64, f64)] = &[
     ("W16x40", 16.0, 7.00, 0.305, 0.505, 0.907),
     ("W16x45", 16.1, 7.04, 0.345, 0.565, 0.967),
     ("W16x50", 16.3, 7.07, 0.380, 0.630, 1.03),
+    ("W16x57", 16.4, 7.12, 0.430, 0.715, 1.12),
     ("W18x35", 17.7, 6.00, 0.300, 0.425, 0.827),
     ("W18x40", 17.9, 6.02, 0.315, 0.525, 0.927),
     ("W18x46", 18.1, 6.06, 0.360, 0.605, 1.01),
@@ -233,6 +237,95 @@ const CHANNELS: &[(&str, f64, f64, f64, f64)] = &[
 
 const HSS_DESIGN: f64 = 0.93;
 
+/// SSMA minimum base steel thickness (mils) and design thickness (in), AISI S201.
+const MILS: &[(u32, f64)] =
+    &[(18, 0.0188), (27, 0.0283), (30, 0.0312), (33, 0.0346), (43, 0.0451), (54, 0.0566), (68, 0.0713), (97, 0.1017), (118, 0.1242)];
+
+fn stud_lip(flange: f64) -> f64 {
+    match flange {
+        f if f < 1.3 => 0.1875,
+        f if f < 1.5 => 0.375,
+        f if f < 1.9 => 0.5,
+        _ => 0.625,
+    }
+}
+
+const SSMA_FORMS: &str = "Cold-formed (SSMA): <web depth x100><S|T|U><flange x100>-<mils>, e.g. 600S162-54 (6 stud, 1 5/8 flange, 54 mil), 362S162-33, 600T125-54 (track: T, depth inside the legs), 600T250-54 (deep-leg deflection track), 150U050-54 (cold-rolled channel); mils 18, 27, 30, 33, 43, 54, 68, 97, 118";
+
+/// `600S162-54`: None when the text is not of that form at all.
+fn ssma(text: &str, up: &str) -> Option<Result<Shape, String>> {
+    let pos = up.find(['S', 'T', 'U', 'F'])?;
+    let (web, rest) = (up.get(..pos)?, up.get(pos + 1..)?);
+    let (flange, mils) = rest.split_once('-')?;
+    if web.len() < 3 || web.len() > 4 || flange.len() != 3 || ![web, flange, mils].iter().all(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())) {
+        return None;
+    }
+    let kind = up.as_bytes()[pos];
+    let (d, bf) = (web.parse::<f64>().ok()? / 100.0, flange.parse::<f64>().ok()? / 100.0);
+    let m: u32 = mils.parse().ok()?;
+    let Some(&(_, t)) = MILS.iter().find(|r| r.0 == m) else {
+        return Some(Err(format!("{text}: {m} mil is not an SSMA thickness. Thicknesses: 18, 27, 30, 33, 43, 54, 68, 97, 118 mil (25, 22, 20 drywall, 20 structural, 18, 16, 14, 12, 10 gauge)")));
+    };
+    if kind == b'F' {
+        return Some(Err(format!("{text}: furring (hat) channel is not in the shape set. {SSMA_FORMS}")));
+    }
+    if d < 1.0 || d > 16.0 || bf < 0.5 || bf > 4.0 || 2.0 * bf > 4.0 * d + 4.0 {
+        return Some(Err(format!("{text}: web {d} x flange {bf} inches is outside the cold-formed range (web 1.5 to 16, flange 0.5 to 3.5). {SSMA_FORMS}")));
+    }
+    let (depth, lip) = match kind {
+        b'S' => (d, stud_lip(bf)),
+        b'T' => (d + 2.0 * t, 0.0),
+        _ => (d, 0.0),
+    };
+    Some(Ok(Shape { name: up.into(), dims: Dims::Cee { d: depth, bf, t, lip }, t_min: t }))
+}
+
+/// Any-size thin-wall shapes: TUBE, CEE, ANGLE, TEE.
+fn generic(text: &str, up: &str) -> Option<Result<Shape, String>> {
+    let forms = "Any-size shapes: TUBE<height>x<width>x<wall> (rectangular), TUBE<OD>x<wall> (round), CEE<depth>x<flange>x<thickness> or CEE<depth>x<flange>x<thickness>x<lip>, ANGLE<vertical leg>x<horizontal leg>x<thickness>, TEE<depth>x<flange width>x<stem thickness>x<flange thickness>, e.g. TUBE2x6.5x0.042, CEE8x3x0.042, ANGLE1.5x1.5x1/8";
+    let (kind, rest) = ["TUBE", "CEE", "ANGLE", "TEE"].iter().find_map(|k| up.strip_prefix(k).map(|r| (*k, r)))?;
+    let Some(v) = lengths(&split_x(rest)) else {
+        return Some(Err(format!("{kind} designation \"{text}\" is malformed. {forms}")));
+    };
+    let bad = |why: &str| Some(Err(format!("\"{text}\": {why}. {forms}")));
+    let nm = |v: &[f64]| v.iter().map(|x| crate::model::fmt_num(*x)).collect::<Vec<_>>().join("x");
+    let name = format!("{kind}{}", nm(&v));
+    Some(Ok(match (kind, v.as_slice()) {
+        ("TUBE", &[h, b, t]) => {
+            if 2.0 * t >= h.min(b) {
+                return bad("the wall is not thinner than half the tube");
+            }
+            Shape { name, dims: Dims::Rect { h, b, t }, t_min: t }
+        }
+        ("TUBE", &[od, t]) => {
+            if 2.0 * t >= od {
+                return bad("two values read as a round tube, OD x wall, and this wall is not thinner than half the OD; a rectangular tube takes three: height x width x wall");
+            }
+            Shape { name, dims: Dims::Round { od, t }, t_min: t }
+        }
+        ("CEE", &[d, bf, t]) | ("CEE", &[d, bf, t, _]) => {
+            let lip = v.get(3).copied().unwrap_or(0.0);
+            if 2.0 * t >= d.min(bf) || 2.0 * lip + 2.0 * t >= d {
+                return bad("thickness and lips do not fit in the depth and flange");
+            }
+            Shape { name, dims: Dims::Cee { d, bf, t, lip }, t_min: t }
+        }
+        ("ANGLE", &[a, b, t]) => {
+            if t >= a.min(b) {
+                return bad("the thickness is not less than the legs");
+            }
+            Shape { name, dims: Dims::Angle { vert: a, horiz: b, t, r: t.min(0.25) }, t_min: t }
+        }
+        ("TEE", &[d, bf, tw, tf]) => {
+            if tw >= bf || tf >= d {
+                return bad("stem and flange thickness do not fit");
+            }
+            Shape { name, dims: Dims::Tee { d, bf, tw, tf, k: tf }, t_min: tw.min(tf) }
+        }
+        _ => return Some(Err(format!("{kind} designation \"{text}\" has the wrong number of dimensions. {forms}"))),
+    }))
+}
+
 pub fn frac_text(x: f64) -> String {
     let Some(n) = num::to_int::<i64>(math::round(x * 16.0)) else { return crate::model::fmt_num(x) };
     if (x * 16.0 - n as f64).abs() > 1e-6 {
@@ -316,7 +409,7 @@ pub fn catalog_text() -> String {
     }
     let ch: Vec<&str> = CHANNELS.iter().map(|c| c.0).collect();
     format!(
-        "W: {}. HSS rect/square (nominal wall): {}. HSS round (OD x nominal wall): {}. PIPE<size>STD|XS, size {}. Angles: {}. Channels: {}. Plates: PL<t>x<w>, any size, e.g. PL1/2x8, PL3/4x10.",
+        "W: {}. WT<d>x<wt>: half of a listed W (WT6x13 from W12x26, WT8x28.5 from W16x57), flange up. HSS rect/square (nominal wall): {}. HSS round (OD x nominal wall): {}. PIPE<size>STD|XS, size {}. Angles: {}. Channels: {}. Plates: PL<t>x<w>, any size, e.g. PL1/2x8, PL3/4x10. {SSMA_FORMS}. Any-size thin-wall shapes (aluminum extrusions with material aluminum, light steel): TUBE<h>x<b>x<wall> (rectangular tube: rafter, post, lattice tube), TUBE<OD>x<wall> (round), CEE<depth>x<flange>x<t>[x<lip>] (C header, track), ANGLE<leg>x<leg>x<t>, TEE<depth>x<flange>x<stem t>x<flange t>.",
         w.join(" "),
         join_names(&hss),
         join_names(&round),
@@ -329,7 +422,29 @@ pub fn catalog_text() -> String {
 pub fn lookup(text: &str) -> Result<Shape, String> {
     let s: String = text.chars().filter(|c| *c != ' ').collect();
     let up = s.to_ascii_uppercase();
-    let forms = "Forms: W8x18, HSS4x4x1/4 (rect: height x width x nominal wall), HSS4.000x0.250 (round: OD x nominal wall), PIPE3STD / PIPE3XS, L4x3x3/8 (long leg x short leg x thickness), C8x11.5, MC8x18.7, PL1/2x8 (thickness x width)";
+    let forms = "Forms: W8x18, WT6x13, HSS4x4x1/4 (rect: height x width x nominal wall), HSS4.000x0.250 (round: OD x nominal wall), PIPE3STD / PIPE3XS, L4x3x3/8 (long leg x short leg x thickness), C8x11.5, MC8x18.7, PL1/2x8 (thickness x width), 600S162-54 / 600T125-54 (cold-formed stud / track), TUBE2x6.5x0.042, CEE8x3x0.042, ANGLE1.5x1.5x1/8, TEE3x3x1/4x1/4 (any-size thin-wall shapes)";
+    if let Some(r) = generic(text, &up) {
+        return r;
+    }
+    if let Some(r) = ssma(text, &up) {
+        return r;
+    }
+    if let Some(rest) = up.strip_prefix("WT") {
+        let parts = split_x(rest);
+        let half = |row: &&(&str, f64, f64, f64, f64, f64)| {
+            let mut it = row.0.trim_start_matches('W').split('x');
+            let (d, w) = (it.next().and_then(|s| s.parse::<f64>().ok()), it.next().and_then(|s| s.parse::<f64>().ok()));
+            d.zip(w).map(|(d, w)| (d / 2.0, w / 2.0))
+        };
+        let want = lengths(&parts).filter(|v| v.len() == 2);
+        if let Some(row) = W.iter().find(|r| half(r).zip(want.as_ref()).is_some_and(|((d, w), v)| near(d, v[0]) && near(w, v[1]))) {
+            let &(_, d, bf, tw, tf, k) = row;
+            let (hd, hw) = half(&row).unwrap_or((d / 2.0, 0.0));
+            return Ok(Shape { name: format!("WT{}x{}", crate::model::fmt_num(hd), crate::model::fmt_num(hw)), dims: Dims::Tee { d: d / 2.0, bf, tw, tf, k }, t_min: tw.min(tf) });
+        }
+        let all: Vec<String> = W.iter().filter_map(|r| half(&r).map(|(d, w)| format!("WT{}x{}", crate::model::fmt_num(d), crate::model::fmt_num(w)))).collect();
+        return Err(format!("{text} is not half of a W in the table. WT sizes: {}. Any other tee: TEE<depth>x<flange width>x<stem thickness>x<flange thickness>", all.join(", ")));
+    }
     if let Some(rest) = up.strip_prefix("PIPE") {
         let (size, xs) = if let Some(z) = rest.strip_suffix("STD") {
             (z, false)

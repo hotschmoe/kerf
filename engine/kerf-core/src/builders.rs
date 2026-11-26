@@ -23,6 +23,7 @@ pub mod panel;
 pub mod rebar;
 pub mod sleeve;
 pub mod solid;
+pub mod stair_treads;
 pub mod steel;
 pub mod steel_joist;
 pub mod steel_shapes;
@@ -54,6 +55,7 @@ pub fn build(ty: Type, ctx: &mut Ctx) -> Option<Built> {
         Type::Nailing => nailing::build(ctx),
         Type::SteelJoist => steel_joist::build(ctx),
         Type::MetalDeck => metal_deck::build(ctx),
+        Type::StairTreads => stair_treads::build(ctx),
     }
 }
 
@@ -80,6 +82,7 @@ pub fn params_rows(ty: Type) -> Vec<Row> {
         Type::Nailing => nailing::Params::rows(),
         Type::SteelJoist => steel_joist::Params::rows(),
         Type::MetalDeck => metal_deck::Params::rows(),
+        Type::StairTreads => stair_treads::Params::rows(),
     }
 }
 
@@ -106,5 +109,6 @@ pub fn params_has_key(ty: Type, key: &str) -> bool {
         Type::Nailing => nailing::Params::has_key(key),
         Type::SteelJoist => steel_joist::Params::has_key(key),
         Type::MetalDeck => metal_deck::Params::has_key(key),
+        Type::StairTreads => stair_treads::Params::has_key(key),
     }
 }
