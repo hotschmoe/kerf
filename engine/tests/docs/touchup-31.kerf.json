@@ -225,6 +225,10 @@
       "id": "B",
       "kind": "section",
       "title": "LINE OVER EARTH HATCH",
+      "crop": {
+        "x": [62, 158],
+        "y": [-28, 6]
+      },
       "notes_style": "keyed",
       "annotations": [
         {
@@ -256,7 +260,7 @@
           "text": "NO-LOAD ZONE",
           "at": {
             "ref": "b_ftg@bottom_right",
-            "offset": [30, -8]
+            "offset": [26, -4]
           }
         },
         {
