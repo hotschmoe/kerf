@@ -382,10 +382,180 @@ pub fn footprints_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
     out
 }
 
+const CMU_JOINT: f64 = 0.375;
+const CMU_WEB: f64 = 1.25;
+const CMU_CELL_R: f64 = 0.75;
+
+fn plain_rect(p: &Prism) -> Option<Box> {
+    let l = p.loops.first().filter(|l| p.loops.len() == 1 && l.len() == 4 && l.iter().all(|q| q.b == 0.0))?;
+    let b = geom::points_box(l);
+    let flat: Vec<V2> = l.iter().map(|q| q.v()).collect();
+    ((geom::signed_area_v(&flat).abs() - b.width() * b.height()).abs() < 1e-6).then_some(b)
+}
+
+fn round_rect(b: Box, ccw: bool) -> Vec<Pt> {
+    let r = CMU_CELL_R.min(b.width() / 3.0).min(b.height() / 3.0);
+    let k = math::tan(core::f64::consts::PI / 8.0);
+    let mut pts = alloc::vec![
+        Pt { x: b.x0 + r, y: b.y0, b: 0.0 },
+        Pt { x: b.x1 - r, y: b.y0, b: k },
+        Pt { x: b.x1, y: b.y0 + r, b: 0.0 },
+        Pt { x: b.x1, y: b.y1 - r, b: k },
+        Pt { x: b.x1 - r, y: b.y1, b: 0.0 },
+        Pt { x: b.x0 + r, y: b.y1, b: k },
+        Pt { x: b.x0, y: b.y1 - r, b: 0.0 },
+        Pt { x: b.x0, y: b.y0 + r, b: k },
+    ];
+    if !ccw {
+        let n = pts.len();
+        let bulges: Vec<f64> = pts.iter().map(|p| p.b).collect();
+        pts.reverse();
+        for (i, p) in pts.iter_mut().enumerate() {
+            p.b = -bulges[(2 * n - 2 - i) % n];
+        }
+    }
+    pts
+}
+
+/// A CMU wall the plan cuts shows its units: face shells, cross webs, cells and head joints (SPEC 32.7).
+/// Returns which world prisms it drew.
+fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>) -> Vec<bool> {
+    let mut done = alloc::vec![false; world.len()];
+    let wall = |p: &Prism| scene.comps.get(p.comp as usize).filter(|c| c.ty.ty == crate::catalog::Type::CmuWall);
+    let same = |a: &Prism, b: &Prism| a.comp == b.comp && a.instance == b.instance;
+    let cuts = |b: &Box| b.y0 < cut_y - EPS && b.y1 > cut_y + EPS;
+    for i in 0..world.len() {
+        let p = &world[i];
+        let Some(comp) = wall(p).filter(|_| !done[i] && p.kind == Kind::Body && p.material == "cmu") else {
+            continue;
+        };
+        let Some(b) = plain_rect(p).filter(cuts) else { continue };
+        let along = |q: &Prism, qb: &Box| if q.face_on { [qb.x0, qb.x1] } else { [q.z0, q.z1] };
+        let across = |q: &Prism, qb: &Box| if q.face_on { [q.z0, q.z1] } else { [qb.x0, qb.x1] };
+        let run = along(p, &b);
+        let pair = (i + 1..world.len()).find_map(|j| {
+            let q = &world[j];
+            let ok = !done[j] && same(p, q) && q.kind == Kind::Body && q.material == "cmu" && q.face_on == p.face_on;
+            let qb = plain_rect(q).filter(|qb| ok && cuts(qb))?;
+            let r = along(q, &qb);
+            ((r[0] - run[0]).abs() < 1e-6 && (r[1] - run[1]).abs() < 1e-6).then_some((j, qb))
+        });
+        let Some((j, qb)) = pair else { continue };
+        let (ta, tb) = (across(p, &b), across(&world[j], &qb));
+        let shell = ta[1] - ta[0];
+        let (t0, t1) = (ta[0].min(tb[0]), ta[1].max(tb[1]));
+        if t1 - t0 < 2.0 * shell + 1.0 {
+            continue;
+        }
+        let base = world
+            .iter()
+            .filter(|q| same(p, q) && q.material == "cmu")
+            .filter_map(|q| q.loops.first().map(|l| geom::points_box(l).y0))
+            .fold(f64::INFINITY, f64::min);
+        let course = crate::num::to_int_clamped::<usize>(math::floor((cut_y - base) / 8.0), 0, 10_000);
+        if crate::builders::cmu_wall::is_bond_beam(comp.node, course + 1) {
+            continue;
+        }
+        let mut joints: Vec<f64> = if p.face_on {
+            p.face_lines
+                .iter()
+                .filter(|s| (s[0].x - s[1].x).abs() < 1e-9 && s[0].y.min(s[1].y) < cut_y && s[0].y.max(s[1].y) > cut_y)
+                .map(|s| s[0].x)
+                .collect()
+        } else {
+            let first = run[0] + if course % 2 == 1 { 8.0 } else { 16.0 } - CMU_JOINT / 2.0;
+            (0..2000).map(|k| first + 16.0 * f64::from(k)).take_while(|s| *s < run[1] - 1e-6).collect()
+        };
+        sort::stable(&mut joints, |a, b| a < b);
+        joints.retain(|s| *s > run[0] + CMU_JOINT && *s < run[1] - CMU_JOINT);
+        let solid_grout = world.iter().find(|q| {
+            same(p, q)
+                && q.kind == Kind::Body
+                && q.part == "grout"
+                && q.loops.first().is_some_and(|l| cuts(&geom::points_box(l)))
+        });
+        let by_bars = comp.node.get("grout").and_then(|v| v.str()).is_none_or(|g| g == "reinforced");
+        let bars: Vec<V2> = if by_bars {
+            world
+                .iter()
+                .filter(|q| q.role == Role::Rebar && !q.xz_bar && q.z1 - q.z0 < 2.0 && !q.loops.is_empty())
+                .flat_map(|q| {
+                    let flat = clip::from_region(&q.loops, FLAT_TOL);
+                    let z = (q.z0 + q.z1) / 2.0;
+                    let xs = pathclip::scan(&flat, cut_y, false);
+                    xs.as_chunks::<2>().0.iter().map(|c| V2::init((c[0] + c[1]) / 2.0, z)).collect::<Vec<_>>()
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let to_plan = |s: [f64; 2], t: [f64; 2]| -> Box {
+            if p.face_on {
+                Box { x0: s[0], y0: -t[1], x1: s[1], y1: -t[0] }
+            } else {
+                Box { x0: t[0], y0: -s[1], x1: t[1], y1: -s[0] }
+            }
+        };
+        let mut edges: Vec<f64> = alloc::vec![run[0]];
+        for s in &joints {
+            edges.push(s - CMU_JOINT / 2.0);
+            edges.push(s + CMU_JOINT / 2.0);
+        }
+        edges.push(run[1]);
+        let cell_t = [t0 + shell, t1 - shell];
+        for u in edges.as_chunks::<2>().0 {
+            let len = u[1] - u[0];
+            if len < 1e-6 {
+                continue;
+            }
+            let cells: Vec<[f64; 2]> = if len >= 12.0 {
+                let cl = (len - 3.0 * CMU_WEB) / 2.0;
+                alloc::vec![[u[0] + CMU_WEB, u[0] + CMU_WEB + cl], [u[1] - CMU_WEB - cl, u[1] - CMU_WEB]]
+            } else if len >= 4.0 {
+                alloc::vec![[u[0] + CMU_WEB, u[1] - CMU_WEB]]
+            } else {
+                Vec::new()
+            };
+            let mut unit = rect_prism(p, 0.0, 1.0, 0.0, 1.0, b.y0, b.y1);
+            let ob = to_plan(*u, [t0, t1]);
+            unit.loops = alloc::vec![model::rect_loop(ob.x0, ob.y0, ob.x1, ob.y1)];
+            for c in &cells {
+                let cb = to_plan(*c, cell_t);
+                unit.loops.push(round_rect(cb, false));
+                let has_bar = bars.iter().any(|v| {
+                    let (s, t) = if p.face_on { (v.x, v.y) } else { (v.y, v.x) };
+                    s > c[0] && s < c[1] && t > cell_t[0] && t < cell_t[1]
+                });
+                let grouted = if by_bars && !(p.face_on && solid_grout.is_some()) { has_bar } else { solid_grout.is_some() };
+                if grouted {
+                    let mut g = rect_prism(solid_grout.unwrap_or(p), 0.0, 1.0, 0.0, 1.0, b.y0, b.y1);
+                    g.part = String::from("grout");
+                    g.material = String::from("grout");
+                    g.role = Role::Grout;
+                    g.loops = alloc::vec![round_rect(cb, true)];
+                    out.push(g);
+                }
+            }
+            out.push(unit);
+        }
+        for (k, q) in world.iter().enumerate() {
+            let Some(qb) = q.loops.first().map(|l| geom::points_box(l)).filter(|_| same(p, q)) else { continue };
+            let r = along(q, &qb);
+            let under = r[0] < run[1] - EPS && r[1] > run[0] + EPS;
+            let hidden = qb.y1 <= cut_y + EPS || (cuts(&qb) && (q.part == "grout" || q.kind == Kind::Ghost));
+            if k == i || k == j || (under && hidden) {
+                done[k] = true;
+            }
+        }
+    }
+    done
+}
+
 pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> Vec<Prism> {
     let mut out = Vec::new();
-    for p in world {
-        if p.role == Role::Soil {
+    let drawn = cmu_units(scene, world, cut_y, &mut out);
+    for (i, p) in world.iter().enumerate() {
+        if p.role == Role::Soil || drawn[i] {
             continue;
         }
         if p.xz_bar {
