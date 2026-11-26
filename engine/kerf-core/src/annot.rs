@@ -695,14 +695,13 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         let Some(b) = &best else { break };
         let Some((i, side)) = notes::through_free(env, &prep, &sided, &b.r, &tried) else { break };
         tried.push(i);
-        let other = |l: &route::Layout| l.hits.iter().filter(|h| h.kind != route::HitKind::Through).count();
         let mut trial = sided.clone();
         trial[i].column = Some(side);
         let t = repair::solve(env, &trial, &prep, &dl, &per, &meta);
         if t.as_ref().is_some_and(|t| {
             !t.r.budget_exhausted
                 && t.r.hits.len() < b.r.hits.len()
-                && other(&t.r) <= other(&b.r)
+                && t.r.hits.iter().all(|h| b.r.hits.iter().any(|g| (g.note, g.kind, g.other) == (h.note, h.kind, h.other)))
         }) {
             env.sided = true;
             sided = trial;

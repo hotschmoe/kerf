@@ -56,4 +56,4 @@
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","closed":false,"pts":[[8.4,-21.95],[50.9,-21.95]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:P","s":"SCALE: 3/4\" = 1'-0\"","x":8.4,"y":-24.41,"h":1.5,"rot":0,"align":"left","valign":"baseline"}
 ],
-"diagnostics":[]}
+"diagnostics":[{"level":"warning","code":"W_LEADER_HIT","id":"n3","path":"views/P/annotations/n3","message":"view P: the leader (or arrowhead) of note 'n3' crosses the cut lumber 'stud_lo2' and lumber 'post_lo' to reach 'stud_lo' on its far side; from the left column the leader reaches that point without crossing a cut member","fix":"set note 'n3' \"column\": \"left\" (checked with the whole view laid out again: the view then has no leader hits)"}]}

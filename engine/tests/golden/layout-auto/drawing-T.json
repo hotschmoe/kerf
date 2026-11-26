@@ -4,7 +4,7 @@
 "items":[
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"notes_list","s":"DETAIL NOTES","x":0,"y":0.5719,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"notes_list","closed":false,"pts":[[0,0.525],[2.4018,0.525]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"g1","s":"1.","x":0,"y":0.375,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"g1","s":"6.","x":0,"y":0.375,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"g1","s":"ALL LUMBER DF-L NO. 2 MIN.","x":0.2768,"y":0.375,"h":0.0938,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:T","closed":true,"pts":[[0,-0.3375,1],[0.625,-0.3375,1]]},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"title:T","closed":false,"pts":[[0,-0.3375],[0.625,-0.3375]]},

@@ -1711,7 +1711,7 @@ AcDbText
 40
 1.125
 1
-3
+5
 7
 KERF
 72
@@ -2275,7 +2275,7 @@ AcDbText
 40
 1.125
 1
-3.
+4.
 7
 KERF
 100
@@ -2303,7 +2303,7 @@ AcDbText
 40
 1.125
 1
-CONC. FTG. PER PLAN
+8" CONC. STEM WALL
 7
 KERF
 100
@@ -2331,7 +2331,7 @@ AcDbText
 40
 1.125
 1
-4.
+5.
 7
 KERF
 100
@@ -2359,7 +2359,7 @@ AcDbText
 40
 1.125
 1
-8" CONC. STEM WALL
+CONC. FTG. PER PLAN
 7
 KERF
 100

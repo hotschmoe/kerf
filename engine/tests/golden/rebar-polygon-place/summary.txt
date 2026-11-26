@@ -1,4 +1,4 @@
-DOC rebar-polygon-place  10 components  1 view  0 errors  0 warnings  0 acknowledged
+DOC rebar-polygon-place  10 components  1 view  0 errors  1 warning  0 acknowledged
  slab          concrete polygon                            x 0"..6'-4"       y -1'-0"..4"
  ftg_bars      rebar (2) #4 along z @ bottom face          x 5'-3"..6'-1"    y -9"..-8 1/2"
  slab_bar      rebar (1) #4 along z @ bottom face          x 2'-5 3/4"..2'-6 1/4" y 1 1/2"..2"
@@ -9,3 +9,4 @@ DOC rebar-polygon-place  10 components  1 view  0 errors  0 warnings  0 acknowle
  vert          rebar #5 path L=2'-4 1/8"                   x 8'-8 3/4"..8'-9 3/8" y 2"..2'-6 1/8"
  dowel         rebar #5 path L=3'-1 5/8"                   x 8'-0"..8'-7 1/4" y -9"..1'-10"
  bb_bar        rebar (1) #5 along z @ top face             x 8'-7 11/16"..8'-8 5/16" y 2'-5"..2'-5 5/8"
+WARN W_LEADER_HIT n_hook: view A: the leader (or arrowhead) of note 'n_hook' crosses the cut concrete 'footing' to reach 'corner' on its far side; from the left column the leader reaches that point without crossing a cut member Fix: set note 'n_hook' "column": "left"

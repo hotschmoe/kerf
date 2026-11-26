@@ -1,4 +1,4 @@
-DOC palmer-sd1-like  18 components  5 views  0 errors  0 warnings  0 acknowledged
+DOC palmer-sd1-like  18 components  5 views  0 errors  2 warnings  0 acknowledged
  ftg           concrete footing 2'-0" x 1'-0"              x 0"..2'-0"       y 0"..1'-0"
  stem          concrete rect 8" x 2'-6"                    x 8"..1'-4"       y 1'-0"..3'-6"
  ftg_bars      rebar (2) #4 along z @ bottom face          x 3"..1'-9"       y 3"..3 1/2"
@@ -17,3 +17,5 @@ DOC palmer-sd1-like  18 components  5 views  0 errors  0 warnings  0 acknowledge
  slab2         concrete rect 1'-4" x 4"                    x 12'-4 1/2"..13'-8 1/2" y -4"..0"
  ctl_joint     joint control 1/4" wide x 1" deep           x 13'-0 3/8"..13'-0 5/8" y -1"..0"
  edge_radius   joint tooled_edge 1/2" wide x 4" deep       x 8'-4"..8'-4 1/2" y -1/2"..0"
+WARN W_LEADER_HIT n_screed: view C: the leader (or arrowhead) of note 'n_screed' crosses the cut lumber 'stud' to reach 'screed' on its far side; from the left column the leader reaches that point without crossing a cut member Fix: set note 'n_screed' "column": "left" (checked with the whole view laid out again: the view then has 1 leader hit instead of 2)
+WARN W_LEADER_HIT n_sheath: view C: the leader (or arrowhead) of note 'n_sheath' crosses the cut lumber 'stud' to reach 'sheathing' on its far side; from the left column the leader reaches that point without crossing a cut member Fix: set note 'n_sheath' "column": "left" (checked with the whole view laid out again: the view then has 1 leader hit instead of 2)

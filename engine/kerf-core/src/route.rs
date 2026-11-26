@@ -208,6 +208,13 @@ pub struct Layout {
     pub budget_exhausted: bool,
 }
 
+impl Layout {
+    /// The hits the search and the repair loop work on: a `Through` hit is reported, never searched (SPEC 30.3).
+    pub fn solid_hits(&self) -> usize {
+        self.hits.iter().filter(|h| h.kind != HitKind::Through).count()
+    }
+}
+
 const W_CROSS: f64 = 1000.0;
 const W_NEAR_BASE: f64 = 100.0;
 const W_NEAR: f64 = 200.0;
@@ -986,7 +993,7 @@ pub fn route(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]]) -> La
     let plain = route_with(p, notes, obst, soft, false);
     let tally = |l: &Layout| {
         let m = l.hits.iter().filter(|h| h.kind == HitKind::Member).count();
-        (l.hits.len() - m, m)
+        (l.solid_hits() - m, m)
     };
     let (other, crossed) = tally(&plain);
     if crossed == 0 || p.work.is_some_and(Work::spent) {

@@ -85,9 +85,9 @@
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","s":"EDGE","x":-81.2857,"y":-12.65,"h":3,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_ftg","closed":false,"pts":[[-16.72,-8.75],[-12.72,-8.75],[60.25,-8.75]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_ftg","loops":[[[63.25,-8.75],[60.25,-7.75],[60.25,-9.75]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_corner","s":"#4 CORNER BAR","x":134,"y":-0.0157,"h":3,"rot":0,"align":"left","valign":"baseline"},
-{"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_corner","closed":false,"pts":[[132.72,1.4843],[128.72,1.4843],[75.2343,1.4843]]},
-{"t":"fill","layer":"S-ANNO-NOTE","src":"n_corner","loops":[[[72.2343,1.4843],[75.2343,0.4843],[75.2343,2.4843]]]},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_corner","s":"#4 CORNER BAR","x":-55,"y":-0.0157,"h":3,"rot":0,"align":"left","valign":"baseline"},
+{"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_corner","closed":false,"pts":[[-16.72,1.4843],[-12.72,1.4843],[69.2343,1.4843]]},
+{"t":"fill","layer":"S-ANNO-NOTE","src":"n_corner","loops":[[[72.2343,1.4843],[69.2343,2.4843],[69.2343,0.4843]]]},
 {"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_hook","s":"HOOK","x":134,"y":-5.45,"h":3,"rot":0,"align":"left","valign":"baseline"},
 {"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_hook","closed":false,"pts":[[132.72,-3.95],[128.72,-3.95],[71.4905,-8.5116]]},
 {"t":"fill","layer":"S-ANNO-NOTE","src":"n_hook","loops":[[[68.5,-8.75],[71.57,-9.5085],[71.4111,-7.5148]]]},
@@ -123,4 +123,4 @@
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:A","closed":false,"pts":[[18.8,-44.4],[192.1333,-44.4]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:A","s":"SCALE: 3/8\" = 1'-0\"","x":18.8,"y":-49.32,"h":3,"rot":0,"align":"left","valign":"baseline"}
 ],
-"diagnostics":[]}
+"diagnostics":[{"level":"warning","code":"W_LEADER_HIT","id":"n_hook","path":"views/A/annotations/n_hook","message":"view A: the leader (or arrowhead) of note 'n_hook' crosses the cut concrete 'footing' to reach 'corner' on its far side; from the left column the leader reaches that point without crossing a cut member","fix":"set note 'n_hook' \"column\": \"left\""}]}

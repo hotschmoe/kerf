@@ -1,4 +1,4 @@
-DOC elevation-stud-strap  17 components  2 views  0 errors  0 warnings  0 acknowledged
+DOC elevation-stud-strap  17 components  2 views  0 errors  1 warning  0 acknowledged
  stud_lo       lumber 2x6 y narrow run y L=3'-4" [x2 x @ 1'-4"] "stud below" x 0"..1'-5 1/2"   y -3'-4"..0"
  stud_lo2      lumber 2x6 y narrow run y L=3'-4" [x2 x @ 1'-4"] "stud below" x 4'-0"..5'-5 1/2" y -3'-4"..0"
  post_lo       lumber 2x6 y narrow run y L=3'-4" [x2 x @ 1 1/2"] "post below" x 2'-6"..2'-9"    y -3'-4"..0"
@@ -16,3 +16,4 @@ DOC elevation-stud-strap  17 components  2 views  0 errors  0 warnings  0 acknow
  strap         connector CMST14 coil strap 14 ga x 3" lay face "strap holdown" x 2'-6"..2'-9"    y -2'-0"..3'-5 1/8"
  blk_alt       lumber 2x6 x wide run x L=1'-2 1/2" "alt. solid blocking" x 2'-5"..3'-7 1/2" y 3"..8 1/2"
  hd_behind     lumber 2x4 x wide run x L=1'-2 1/2" "blocking behind" x 1 1/2"..1'-4"   y -1'-8"..-1'-4 1/2"
+WARN W_LEADER_HIT n3: view P: the leader (or arrowhead) of note 'n3' crosses the cut lumber 'stud_lo2' and lumber 'post_lo' to reach 'stud_lo' on its far side; from the left column the leader reaches that point without crossing a cut member Fix: set note 'n3' "column": "left" (checked with the whole view laid out again: the view then has no leader hits)

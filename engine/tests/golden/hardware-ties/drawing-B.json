@@ -46,4 +46,4 @@
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:B","closed":false,"pts":[[35.4166,-27.1],[70.7737,-27.1]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"anno","src":"title:B","s":"SCALE: 1 1/2\" = 1'-0\"","x":35.4166,"y":-28.33,"h":0.75,"rot":0,"align":"left","valign":"baseline"}
 ],
-"diagnostics":[]}
+"diagnostics":[{"level":"warning","code":"W_LEADER_HIT","id":"n1","path":"views/B/annotations/n1","message":"view B: the leader (or arrowhead) of note 'n1' crosses the cut lumber 'stud' and lumber 'ledger' to reach 'lssu' on its far side; from the left column the leader reaches that point without crossing a cut member","fix":"set note 'n1' \"column\": \"left\" (checked with the whole view laid out again: the view then has no leader hits); the view then needs a smaller scale, which is why the layout did not move the note itself"}]}

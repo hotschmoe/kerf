@@ -262,13 +262,13 @@ pub fn solve<'a>(
     for pass in 0..MAX_REPAIR_PASSES {
         let rd = render_dim_labels(env, dl, per, meta, &dpush, &dslide, &lpush);
         let r = notes::route_notes(env, prep, notes, rd.ext, &rd.obstacles, &rd.soft, pass > 0);
-        let better = best.as_ref().is_none_or(|b| r.hits.len() < b.r.hits.len());
+        let better = best.as_ref().is_none_or(|b| r.solid_hits() < b.r.solid_hits());
         if better {
             stale = 0;
         } else {
             stale += 1;
         }
-        let stop = r.hits.is_empty() || stale >= 2;
+        let stop = r.solid_hits() == 0 || stale >= 2;
         let mut changed = false;
         let snap = better.then(|| (dpush.clone(), lpush.clone(), dnote.clone(), lnote.clone()));
         if !stop {
