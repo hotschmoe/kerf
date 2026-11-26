@@ -440,6 +440,8 @@ struct SecPass {
 #[derive(Clone, Copy, Default)]
 pub struct ViewOpts<'a> {
     pub keys: Option<&'a [(String, u32)]>,
+    /// `keys` are a layout's numbers used on the view's own sheet: the view still draws its own DETAIL NOTES list.
+    pub own_list: bool,
     pub in_layout: bool,
     pub fit: Option<(f64, f64)>,
     pub iso_factor: Option<f64>,
@@ -465,6 +467,7 @@ struct SectionInputs<'a> {
     keys: Option<&'a [(String, u32)]>,
     in_layout: bool,
     plain_sides: bool,
+    own_list: bool,
 }
 
 fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
@@ -694,7 +697,7 @@ fn sided_pass(inp: SectionInputs, spec: &ViewSpec, area: (f64, f64)) -> SecPass 
 }
 
 fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout, plain_sides } = inp;
+    let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout, plain_sides, own_list } = inp;
     let scale = spec.scale;
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
@@ -707,6 +710,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     env.verify_fixes = !in_layout;
     env.auto_side = !plain_sides;
     env.shared_keys = keys;
+    env.own_list = own_list;
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let ann = annot::annotate(&mut env, &mut base_items);
     let unverified = env.unverified;
@@ -744,13 +748,14 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
 }
 
 fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, .. } = inp;
+    let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, own_list, .. } = inp;
     let mut sec = Section::new(scene, spec, &[]);
     let origin = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
     let mut env = Env::new(st, font, scene, spec, 1.0, origin, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.verify_fixes = !in_layout;
     env.shared_keys = keys;
+    env.own_list = own_list;
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let mut all = annot::annotate(&mut env, &mut []);
     let unverified = env.unverified;
@@ -1020,6 +1025,7 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
         keys: None,
         in_layout: false,
         plain_sides: false,
+        own_list: false,
     };
     let r = resolve_section(inp, &fv.spec);
     Resolved { crop: r.crop, scale: r.scale }
@@ -1093,6 +1099,12 @@ pub fn build_with<'a>(
     opts: ViewOpts,
 ) -> Option<Drawing<'a>> {
     let view_id = spec.id;
+    let sheet_keys =
+        if opts.in_layout || opts.keys.is_some() { None } else { crate::layout::sheet_keys(doc, st, view_id) };
+    let opts = match &sheet_keys {
+        Some(k) => ViewOpts { keys: Some(k), own_list: true, ..opts },
+        None => opts,
+    };
     let fv = flat_view(scene, spec);
     let scene = fv.scene.as_ref().unwrap_or(scene);
     let prisms = &fv.prisms;
@@ -1120,6 +1132,7 @@ pub fn build_with<'a>(
                 keys: opts.keys,
                 in_layout: opts.in_layout,
                 plain_sides: false,
+                own_list: opts.own_list,
             },
             spec,
         );
@@ -1145,6 +1158,7 @@ pub fn build_with<'a>(
                 keys: opts.keys,
                 in_layout: opts.in_layout,
                 plain_sides: false,
+                own_list: opts.own_list,
             },
             &fv.spec,
         );
@@ -1183,6 +1197,7 @@ pub fn build_with<'a>(
             env.work = Some(&work);
             env.verify_fixes = !opts.in_layout;
             env.shared_keys = opts.keys;
+            env.own_list = opts.own_list;
             env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
             let ann = annot::annotate(&mut env, &mut res.items);
             let un = env.unverified;

@@ -54,6 +54,7 @@ pub struct Env<'a, 's> {
     pub ann_boxes: Vec<AnnBox>,
     pub work: Option<&'a route::Work>,
     pub shared_keys: Option<&'a [(String, u32)]>,
+    pub own_list: bool,
     pub keyed_out: Vec<KeyedEntry>,
     pub doc_views: &'a [Value],
     pub verify_fixes: bool,
@@ -91,6 +92,7 @@ impl<'a, 's> Env<'a, 's> {
             ann_boxes: Vec::new(),
             work: None,
             shared_keys: None,
+            own_list: false,
             keyed_out: Vec::new(),
             doc_views: &[],
             verify_fixes: true,
@@ -767,7 +769,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         table::translate(&mut its, d);
         drawn.push((t.k, its));
     }
-    if !numbers.is_empty() && env.shared_keys.is_some() {
+    if !numbers.is_empty() && env.shared_keys.is_some() && !env.own_list {
         let entries = notes::list_entries(env, &notes, &numbers);
         env.keyed_out = entries
             .iter()
