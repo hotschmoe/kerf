@@ -17,12 +17,14 @@ pub mod insulation;
 pub mod joint;
 pub mod lumber;
 pub mod membrane;
+pub mod metal_deck;
 pub mod nailing;
 pub mod panel;
 pub mod rebar;
 pub mod sleeve;
 pub mod solid;
 pub mod steel;
+pub mod steel_joist;
 pub mod steel_shapes;
 pub mod tie;
 pub mod truss;
@@ -50,6 +52,8 @@ pub fn build(ty: Type, ctx: &mut Ctx) -> Option<Built> {
         Type::Steel => steel::build(ctx),
         Type::Bolt => bolt::build(ctx),
         Type::Nailing => nailing::build(ctx),
+        Type::SteelJoist => steel_joist::build(ctx),
+        Type::MetalDeck => metal_deck::build(ctx),
     }
 }
 
@@ -74,6 +78,8 @@ pub fn params_rows(ty: Type) -> Vec<Row> {
         Type::Steel => steel::Params::rows(),
         Type::Bolt => bolt::Params::rows(),
         Type::Nailing => nailing::Params::rows(),
+        Type::SteelJoist => steel_joist::Params::rows(),
+        Type::MetalDeck => metal_deck::Params::rows(),
     }
 }
 
@@ -98,5 +104,7 @@ pub fn params_has_key(ty: Type, key: &str) -> bool {
         Type::Steel => steel::Params::has_key(key),
         Type::Bolt => bolt::Params::has_key(key),
         Type::Nailing => nailing::Params::has_key(key),
+        Type::SteelJoist => steel_joist::Params::has_key(key),
+        Type::MetalDeck => metal_deck::Params::has_key(key),
     }
 }

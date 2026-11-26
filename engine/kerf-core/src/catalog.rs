@@ -96,11 +96,13 @@ pub enum Type {
     Steel,
     Bolt,
     Nailing,
+    SteelJoist,
+    MetalDeck,
     Solid,
 }
 
 impl Type {
-    pub const ALL: [Type; 19] = [
+    pub const ALL: [Type; 21] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -119,6 +121,8 @@ impl Type {
         Type::Steel,
         Type::Bolt,
         Type::Nailing,
+        Type::SteelJoist,
+        Type::MetalDeck,
         Type::Solid,
     ];
 
@@ -142,6 +146,8 @@ impl Type {
             Type::Steel => "steel",
             Type::Bolt => "bolt",
             Type::Nailing => "nailing",
+            Type::SteelJoist => "steel_joist",
+            Type::MetalDeck => "metal_deck",
             Type::Solid => "solid",
         }
     }
@@ -465,7 +471,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 19] = [
+pub static ENTRIES: [Entry; 21] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -645,6 +651,24 @@ pub static ENTRIES: [Entry; 19] = [
         anchors: "the 9 box anchors of the fasteners' extent",
         draws: "Section, plan, elevation: a nail lying in the drawing plane is its shank with a head bar (toenails angled), one seen end-on is a dot (screws: a circle with a cross); in iso a dot on the face the heads are on. Placement comes from `members` (the first holds the heads): face finds the joint face of the first two and lays `rows` x `count` (or @ `spacing`) on it; edge rows run at `edge_distance` inside each panel edge and keep only nails with framing behind; field rows follow the intermediate framing. Own members never hide the nails, cut or not (end nails and toenails inside a cut block draw); a section draws the nails at or behind its cut that no other cut solid covers, and a row seen end-on where it crosses the cut. Several sheets side by side: list them all first in `members`. A note targeting it without `text` prints its text form. Checks: W_NAIL_MEMBERS (members do not touch), W_NAIL_EDGE (edge distance, edges without framing), W_NAIL_SPACING, W_NAIL_LENGTH (points out the far face, under 6D into the stack past the first member), W_NAIL_HIDDEN (a view draws none of them; in iso it names the face turned away or the piece covering the heads).",
         example: "{\"id\":\"splice_nails\",\"type\":\"nailing\",\"members\":[\"upper_plate\",\"lower_plate\"],\"size\":\"16d\",\"count\":8,\"rows\":2,\"through\":true}",
+        traits: Traits::NONE,
+    },
+    Entry {
+        ty: Type::SteelJoist,
+        summary: "Open-web steel joist or joist girder (SJI K, LH, DLH, G), side-on or end-on.",
+        parts: "top_chord, bottom_chord, web, seat",
+        anchors: "9 box anchors + seat (the default placement anchor: the bearing surface at the bearing end, top of top chord minus seat_depth; section: on the joist centerline). Elevation: seat_left, seat_right (the bearing level at each end), seat_left_inner, seat_right_inner (inner end of each seat); top_chord (top of the joist: deck, nailers and bridging land here), top_chord_bottom, bottom_chord_top, bottom_chord (underside), each also as <name>_start and <name>_end (the bottom chord's are its real ends: it stops short of a bearing end unless extended); top_panel_1..n and bottom_panel_1..n (panel points, numbered from the left, on the top of the top chord and the underside of the bottom chord: bridging, concentrated loads, added webs). Section: top_chord, top_chord_bottom, top_chord_tip_left/right (underside of the horizontal legs at their tips), bottom_chord, bottom_chord_top, bottom_chord_tip_left/right, web_center",
+        draws: "Local box: elevation (0,0)-(length, depth), bottom-left at the underside of the bottom chord under the left end; section (0,0)-(2 x chord_leg + gap, depth). Elevation: outlines only, never filled (as steel in elevation): each chord is a band chord_leg deep with the line of its horizontal legs, webs run panel point to panel point (Warren), the first from the inner end of the seat down to the first bottom-chord panel point; a seat is the pair of seat angles under the top chord, seat_length long, its underside seat_depth below the top of the joist; a cut end gets a break line where the crop cuts it. Section: the chord angle pairs cut (solid steel), the web seen beyond between them; section_at bearing draws the top chord over the seat angles only. Natural z thickness in elevation = the chord width; a section spans the doc run unless length. Place a bearing end with {\"anchor\":\"seat\",\"to\":\"plate@face_top\"}; put deck or a nailer on \"joist@top_chord_start\"; slope the whole joist with slope. Bearing plates, anchors, welds, stabilizer plates, bridging angles and nailers are their own components (steel, anchor_bolt, weld, lumber). Not checked: bearing length (SJI minimums are in seat_length's notes).",
+        example: "{\"id\":\"joist\",\"type\":\"steel_joist\",\"designation\":\"18K4\",\"length\":48,\"at\":{\"anchor\":\"seat\",\"to\":[0,0]}}",
+        traits: Traits { default_anchor: "seat", ..Traits::NONE },
+    },
+    Entry {
+        ty: Type::MetalDeck,
+        summary: "Steel roof or floor deck, fluted (1.5B, 3N, composite, form), optional topping.",
+        parts: "deck (the sheet), topping (with topping)",
+        anchors: "9 box anchors of the deck alone (0,0)-(length, depth): bottom_left is the underside of the ribs at the left edge, top_left the top of the flutes + deck_top, deck_bottom (mid-length); run z: rib_1..n (center of each rib's bottom flat, on the underside: where it bears, puddle welds and screws), flat_1..n (center of each top flat, on top: fasteners of insulation or a nailer); with topping: topping_top, topping_top_left, topping_top_right (top of slab)",
+        draws: "Local origin: underside of the ribs at the left edge; the deck grows +x and up. Run z: the sheet cut across its flutes, true to the profile's depth, pitch and rib widths (trapezoidal ribs, bottom flats down), solid steel; a topping fills the flutes to the top of slab with its material's hatch. Run x: the top and bottom sheet lines over the length, the topping from the bottom of the flutes up with the top-of-flute line inside it. Spans the doc run along z. Put it on its support with {\"anchor\":\"bottom_left\",\"to\":\"joist@top_chord_start\"} (or \"beam@top_flange_start\"); slope it with slope \"@<member>\" or rise:run. Attachment (5/8 puddle welds 36/4, #12 TEKS, side-lap screws) and the deck's finish are notes targeting it; bars or mesh in the topping are rebar components hosted in it; pour stops, closures and edge angles are flashing or steel.",
+        example: "{\"id\":\"deck\",\"type\":\"metal_deck\",\"profile\":\"1.5B\",\"gauge\":22,\"length\":36,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
         traits: Traits::NONE,
     },
     Entry {
