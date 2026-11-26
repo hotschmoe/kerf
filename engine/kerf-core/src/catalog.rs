@@ -97,10 +97,11 @@ pub enum Type {
     Bolt,
     Nailing,
     Solid,
+    Stair,
 }
 
 impl Type {
-    pub const ALL: [Type; 19] = [
+    pub const ALL: [Type; 20] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -120,6 +121,7 @@ impl Type {
         Type::Bolt,
         Type::Nailing,
         Type::Solid,
+        Type::Stair,
     ];
 
     pub fn name(self) -> &'static str {
@@ -143,6 +145,7 @@ impl Type {
             Type::Bolt => "bolt",
             Type::Nailing => "nailing",
             Type::Solid => "solid",
+            Type::Stair => "stair",
         }
     }
 
@@ -470,7 +473,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 19] = [
+pub static ENTRIES: [Entry; 20] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -660,6 +663,15 @@ pub static ENTRIES: [Entry; 19] = [
         draws: "Use only when no typed component fits.",
         example: "{\"id\":\"angle\",\"type\":\"solid\",\"material\":\"steel\",\"profile\":{\"rect\":[3,0.25]}}",
         traits: Traits { escape_hatch: true, ..Traits::NONE },
+    },
+    Entry {
+        ty: Type::Stair,
+        summary: "A flight of stairs from rise and tread: concrete on grade (steps, waist, base toe, top slab, bars) or a cut wood stringer with treads and risers. Steel stringers: a sloped `steel` member.",
+        parts: "concrete: main_bar, cross_bars, nosing_bars (with `bars` / `nosing_bars`); zones toe, landing. wood: stringer, tread, riser",
+        anchors: "foot (the placement point: the lower floor at the face of the first riser; the 9 box anchors also work), nosing_1..nosing_n, tread_k_mid, top (the top nosing), soffit_mid, throat_top, throat_bottom (the waist / the stringer throat, for a dimension). concrete: riser_k_foot, landing_end_top, landing_end_bottom, landing_top_mid, soffit_top, soffit_bottom, toe_bottom_left, toe_bottom_right, toe_bottom_center, main_bar_mid, main_bar_bend, main_bar_top, nosing_bar_1. wood: seat_front, seat_back (the level seat cut on the lower floor), top_cut_top, top_cut_bottom, top_bearing (the plumb cut that bears on the header or hanger)",
+        draws: "The flight climbs to the right from `foot` (mirror: true climbs left). Concrete: one cut outline (steps, top slab `landing` long, soffit parallel to the nosing line `waist` below the inside corners, toe under the first riser); rebar can `place`/`tie` in it, and `bars` draws the usual main bar and cross bars. Wood: the stringer seen lengthwise (grain), notched for each tread, level seat cut at the foot and plumb cut at the top riser; treads and risers are cut boards. The top floor (slab, header, hanger) and the lower slab are separate components: place the stair with \"at\": {\"anchor\": \"foot\", \"to\": \"slab@top_left\"} and bring the header to stair@top_cut_top. W_STAIR_GEOMETRY: rise over 7 3/4 or tread under 10; W_STAIR_THROAT: under 3 1/2 of stringer left below the notches.",
+        example: "{\"id\":\"stair\",\"type\":\"stair\",\"risers\":4,\"rise\":7,\"tread\":11,\"waist\":6,\"bars\":\"#4\",\"nosing_bars\":\"#4\"}",
+        traits: Traits::NONE,
     },
 ];
 

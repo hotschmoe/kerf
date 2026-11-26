@@ -222,6 +222,8 @@ pub struct Prism {
     pub recess: bool,
     /// Existing construction (SPEC 32.1): cut outlines in the thin pen and one sparse diagonal hatch.
     pub existing: bool,
+    /// Wood seen along its grain in a type without the `lengthwise_grain` trait (a stair stringer): grain, no hatch.
+    pub along_grain: bool,
 }
 
 impl Default for Prism {
@@ -266,6 +268,7 @@ impl Default for Prism {
             fp_y: [0.0; 2],
             recess: false,
             existing: false,
+            along_grain: false,
         }
     }
 }

@@ -23,6 +23,7 @@ pub mod rebar;
 pub mod rebar_bends;
 pub mod sleeve;
 pub mod solid;
+pub mod stair;
 pub mod steel;
 pub mod steel_shapes;
 pub mod tie;
@@ -51,6 +52,7 @@ pub fn build(ty: Type, ctx: &mut Ctx) -> Option<Built> {
         Type::Steel => steel::build(ctx),
         Type::Bolt => bolt::build(ctx),
         Type::Nailing => nailing::build(ctx),
+        Type::Stair => stair::build(ctx),
     }
 }
 
@@ -75,6 +77,7 @@ pub fn params_rows(ty: Type) -> Vec<Row> {
         Type::Steel => steel::Params::rows(),
         Type::Bolt => bolt::Params::rows(),
         Type::Nailing => nailing::Params::rows(),
+        Type::Stair => stair::Params::rows(),
     }
 }
 
@@ -99,5 +102,6 @@ pub fn params_has_key(ty: Type, key: &str) -> bool {
         Type::Steel => steel::Params::has_key(key),
         Type::Bolt => bolt::Params::has_key(key),
         Type::Nailing => nailing::Params::has_key(key),
+        Type::Stair => stair::Params::has_key(key),
     }
 }
