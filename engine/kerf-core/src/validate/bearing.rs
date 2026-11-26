@@ -1,4 +1,6 @@
 use super::{Drawn, Pf, axis_aligned, z_gap};
+use crate::catalog::Type;
+use crate::geom::{self, V2};
 use crate::model::{Diags, Kind, Level, fmt_num};
 use crate::style::Role;
 use crate::units::fmt_ft_in;
@@ -116,5 +118,111 @@ pub(super) fn check(s: &Drawn<'_, '_>, diags: &Diags) {
                 reported = true;
             }
         }
+    }
+}
+
+const PROBE: f64 = 1.0 / 16.0;
+const PROBES: usize = 9;
+
+fn inside(q: &Pf<'_>, p: V2) -> bool {
+    q.box_.expand(1e-6).contains(p) && geom::locate_even_odd(p, &q.flat, 0.0) != geom::Loc::Outside
+}
+
+fn beside(p: &Pf<'_>, q: &Pf<'_>) -> bool {
+    q.comp.index != p.comp.index
+        && q.prism.kind != Kind::Ghost
+        && q.prism.z1.min(p.prism.z1) - q.prism.z0.max(p.prism.z0) > 1e-6
+}
+
+fn along(p: &Pf<'_>, q: &Pf<'_>, y: f64) -> bool {
+    let b = p.box_;
+    (0..PROBES).any(|k| inside(q, V2::init(b.x0 + b.width() * (k as f64 + 0.5) / PROBES as f64, y)))
+}
+
+fn flat_plates<'s, 'p, 'a>(s: &'s Drawn<'p, 'a>) -> impl Iterator<Item = &'s &'p Pf<'a>> {
+    s.items.iter().filter(|p| {
+        p.comp.ty.ty == Type::Lumber
+            && !p.comp.dashed
+            && axis_aligned(p.comp)
+            && p.prism.kind == Kind::Body
+            && !p.prism.quads.is_empty()
+            && !p.prism.blocking
+            && !p.prism.embedded
+            && p.box_.height() < p.box_.width()
+    })
+}
+
+/// The flat plates of this drawn set with something under them: a plate seated in one view is seated (SPEC 30.6).
+pub(super) fn seated(s: &Drawn<'_, '_>) -> Vec<u32> {
+    flat_plates(s)
+        .filter(|p| s.items.iter().chain(&s.hidden).any(|q| beside(p, q) && along(p, q, p.box_.y0 - PROBE)))
+        .map(|p| p.comp.index)
+        .collect()
+}
+
+/// A flat plate cut end-on that hangs off the face of one member, carries a wood member and has nothing under it.
+pub(super) fn unsupported(s: &Drawn<'_, '_>, seated: &[u32], diags: &Diags) {
+    let mut told: Vec<u32> = Vec::new();
+    for p in flat_plates(s) {
+        let (c, b) = (p.comp, p.box_);
+        if seated.contains(&c.index) || told.contains(&c.index) {
+            continue;
+        }
+        let wood = |q: &Pf<'_>| {
+            (matches!(q.comp.ty.ty, Type::Lumber | Type::Truss | Type::Ijoist)
+                || (q.comp.ty.ty == Type::Stair && q.prism.role == Role::Wood))
+                && !q.prism.dashed
+        };
+        let Some(load) = s.items.iter().find(|q| beside(p, q) && wood(q) && along(p, q, b.y1 + PROBE)) else {
+            continue;
+        };
+        let mid = (b.y0 + b.y1) / 2.0;
+        let at_edge = |x: f64| s.items.iter().find(|q| beside(p, q) && inside(q, V2::init(x, mid)));
+        let (n, edge) = match (at_edge(b.x0 - PROBE), at_edge(b.x1 + PROBE)) {
+            (Some(n), None) => (n, "left"),
+            (None, Some(n)) => (n, "right"),
+            _ => continue,
+        };
+        if n.comp.index == load.comp.index {
+            continue;
+        }
+        let (n, runs_past) = (n.comp, n.box_.y1 > b.y1 + TOUCH);
+        let seat = if runs_past {
+            let views = c.node.get("views").map_or(String::new(), |v| {
+                let mut buf = Vec::new();
+                crate::json::write_compact(&mut buf, v);
+                format!(",\"views\":{}", String::from_utf8_lossy(&buf))
+            });
+            format!(
+                "'{}' runs past it, so give it a ledger or block under it on that face: {{\"op\":\"add\",\"path\":\"components\",\"value\":{{\"id\":\"{}_ledger\",\"type\":\"lumber\",\"size\":\"2x4\",\"at\":{{\"anchor\":\"top_{edge}\",\"to\":\"{}@bottom_{edge}\"}}{views}}}}} (and its fasteners in a note); or draw",
+                n.id, c.id, c.id
+            )
+        } else {
+            format!(
+                "set it on top of '{}': {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"at\":{{\"anchor\":\"bottom_{edge}\",\"to\":\"{}@top_{edge}\"}}}}}}; or draw",
+                n.id, c.id, n.id
+            )
+        };
+        told.push(c.index);
+        diags.add_fix(
+            Level::Warning,
+            "W_UNSUPPORTED",
+            Some(&c.id),
+            Some(&format!("components/{}/at", c.id)),
+            format!(
+                "'{}' (x {}..{}, y {}..{}) carries '{}' but nothing is drawn under it: it only touches '{}' along its {edge} edge, and a plate does not bear through its edge",
+                c.id,
+                fmt_ft_in(b.x0),
+                fmt_ft_in(b.x1),
+                fmt_ft_in(b.y0),
+                fmt_ft_in(b.y1),
+                load.comp.id,
+                n.id
+            ),
+            format!(
+                "{seat} what carries it under it (a stud, post, beam or ledger; a hanger or angle seat); acknowledge W_UNSUPPORTED if it hangs from '{}'",
+                load.comp.id
+            ),
+        );
     }
 }

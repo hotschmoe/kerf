@@ -1,4 +1,4 @@
-{"kerf_drawing":"0.1","doc":"masonry-footprints","view":"P","kind":"plan","scale":24,"bounds":[-58.8214,-54.6,83.85,50],
+{"kerf_drawing":"0.1","doc":"masonry-footprints","view":"P","kind":"plan","scale":24,"bounds":[-6,-54.6,98.8214,50],
 "pens":{"cut":{"width_mm":0.5,"dash_mm":null},"profile":{"width_mm":0.35,"dash_mm":null},"beyond":{"width_mm":0.25,"dash_mm":null},"hidden":{"width_mm":0.18,"dash_mm":[2,1]},"hatch":{"width_mm":0.09,"dash_mm":null},"rebar":{"width_mm":0.5,"dash_mm":null},"steel":{"width_mm":0.35,"dash_mm":null},"membrane":{"width_mm":0.35,"dash_mm":null},"vapor":{"width_mm":0.35,"dash_mm":[1.5,0.75]},"anno":{"width_mm":0.18,"dash_mm":null},"dim":{"width_mm":0.13,"dash_mm":null},"break":{"width_mm":0.25,"dash_mm":null},"title":{"width_mm":0.5,"dash_mm":null},"frame":{"width_mm":0.7,"dash_mm":null}},
 "layers":[{"name":"S-DETL-PATT","lineweight_mm":0.09},{"name":"S-DETL-BYND","lineweight_mm":0.25},{"name":"S-DETL-CUT","lineweight_mm":0.5},{"name":"S-ANNO-NOTE","lineweight_mm":0.18},{"name":"S-ANNO-TTLB","lineweight_mm":0.5}],
 "items":[
@@ -10,9 +10,9 @@
 {"t":"region","src":"f_ftg","part":null,"instance":0,"cut":false,"loops":[[[0,-20],[5,-20],[5,10],[11,10],[11,24],[19,24],[19,7],[40,28],[40,44],[24,44],[0,20]]]},
 {"t":"region","src":"f_stem","part":null,"instance":0,"cut":true,"loops":[[[5,-20],[11,-20],[11,10],[5,10]]]},
 {"t":"region","src":"f_edge","part":null,"instance":0,"cut":true,"loops":[[[11,-24],[19,-24],[19,24],[11,24]]]},
-{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_f","s":"45 DEG. FOOTING RETURN","x":-58.8214,"y":21.076,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
-{"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_f","closed":false,"pts":[[-14.04,22.201],[-11.04,22.201],[16.8293,22.201]]},
-{"t":"fill","layer":"S-ANNO-NOTE","src":"n_f","loops":[[[19.0793,22.201],[16.8293,22.951],[16.8293,21.451]]]},
+{"t":"text","layer":"S-ANNO-NOTE","pen":"anno","src":"n_f","s":"45 DEG. FOOTING RETURN","x":55,"y":21.076,"h":2.25,"rot":0,"align":"left","valign":"baseline"},
+{"t":"path","layer":"S-ANNO-NOTE","pen":"anno","src":"n_f","closed":false,"pts":[[54.04,22.201],[51.04,22.201],[21.3293,22.201]]},
+{"t":"fill","layer":"S-ANNO-NOTE","src":"n_f","loops":[[[19.0793,22.201],[21.3293,21.451],[21.3293,22.951]]]},
 {"t":"path","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","closed":true,"pts":[[-6,-47.1,1],[9,-47.1,1]]},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","s":"3","x":1.5,"y":-47.1,"h":3.75,"rot":0,"align":"center","valign":"middle"},
 {"t":"text","layer":"S-ANNO-TTLB","pen":"title","src":"title:P","s":"PLAN - ANGLED FOOTING","x":12.6,"y":-46.62,"h":3.75,"rot":0,"align":"left","valign":"baseline"},

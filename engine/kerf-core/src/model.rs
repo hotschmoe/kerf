@@ -43,6 +43,39 @@ pub struct Diag {
     pub fix: Option<String>,
 }
 
+pub struct Once<'a>(&'a Diags);
+
+impl Once<'_> {
+    pub fn add(&self, level: Level, code: &'static str, id: Option<&str>, path: Option<&str>, message: String) {
+        self.push(Diag { level, code, id: id.map(String::from), path: path.map(String::from), message, fix: None });
+    }
+
+    pub fn add_fix(
+        &self,
+        level: Level,
+        code: &'static str,
+        id: Option<&str>,
+        path: Option<&str>,
+        message: String,
+        fix: String,
+    ) {
+        self.push(Diag {
+            level,
+            code,
+            id: id.map(String::from),
+            path: path.map(String::from),
+            message,
+            fix: Some(fix),
+        });
+    }
+
+    fn push(&self, d: Diag) {
+        if !self.0.list.borrow().contains(&d) {
+            self.0.push(d);
+        }
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct Diags {
     list: RefCell<Vec<Diag>>,
@@ -78,6 +111,11 @@ impl Diags {
 
     pub fn push(&self, d: Diag) {
         self.list.borrow_mut().push(d);
+    }
+
+    /// A sink that keeps one copy of identical findings: a Ref is resolved again on every pass of a view build.
+    pub fn once(&self) -> Once<'_> {
+        Once(self)
     }
 
     pub fn extend(&self, ds: impl IntoIterator<Item = Diag>) {

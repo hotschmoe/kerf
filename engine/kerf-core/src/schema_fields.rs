@@ -195,14 +195,14 @@ pub static VIEW: Object = Object {
             name: "notes_side",
             ty: "right|left|both|above",
             def: "both",
-            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point. keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
+            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point, or to the other side when its leader would run through a cut member and the view still fits (W_LEADER_HIT with the `column` to set when it cannot). keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
             ..Field::NONE
         },
         Field {
             name: "tags_side",
             ty: "right|left|both",
             def: "both",
-            desc: "keyed views: which side the number tags go (both = each tag to the side nearer its landing point); a note's `column` still wins",
+            desc: "keyed views: which side the number tags go (both = each tag to the side nearer its landing point, or the other side when its leader would run through a cut member); a note's `column` still wins",
             ..Field::NONE
         },
         Field {
@@ -599,7 +599,7 @@ pub static OPS: Object = Object {
             ..Field::NONE
         },
     ],
-    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label | weld | table\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields (not `annotations`: use the annotation paths)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  remove components/<id> | views/<view> | views/<view>/annotations/<id>\n          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)\n  set    doc                              value = the whole document (first build)\n  set    components/<id>                  replace the whole component\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
+    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label | weld | table | line | ref\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields (not `annotations`: use the annotation paths)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  add    layouts                          value = a layout object (`kerf schema layout`; unique id)\n  update layouts/<id>                     merge patch of layout fields (`views`, `sheet`, `notes`, ...: arrays whole)\n  remove components/<id> | views/<view> | views/<view>/annotations/<id> | layouts/<id>\n          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)\n  set    doc                              value = the whole document (first build)\n  set    components/<id> | layouts/<id>    replace the whole component or layout\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
     example: "[{\"op\":\"add\",\"path\":\"components\",\"value\":{\"id\":\"sill\",\"type\":\"lumber\",\"size\":\"2x6\",\"orient\":\"flat\",\"treated\":true}},{\"op\":\"update\",\"path\":\"views/A/annotations/n_sill\",\"value\":{\"text\":\"2X6 PT SILL PLATE W/ SEALER\"}},{\"op\":\"remove\",\"path\":\"components/old\"}]",
 };
 
@@ -809,7 +809,7 @@ pub static LAYOUT: Object = Object {
             name: "notes",
             ty: "shared|per_view",
             def: "shared",
-            desc: "shared: one DETAIL NOTES list for the keyed notes of every view and the notes of schedule views, numbered 1..N without gaps over the layout (same `key` = one entry; write its text and cite once, a note with only the key takes them from any view; an unkeyed note with the same text and cite as an earlier one joins it); per_view: each keyed view keeps its own list",
+            desc: "shared: one DETAIL NOTES list for the keyed notes of every view and the notes of schedule views, numbered 1..N without gaps over the layout (same `key` = one entry; write its text and cite once, a note with only the key takes them from any view; an unkeyed note with the same text and cite as an earlier one joins it), and each of its views exported alone (`--view`) prints its own list with those same numbers (the first shared layout that names the view); per_view: each keyed view keeps its own list and its written keys",
             ..Field::NONE
         },
         Field {
@@ -898,7 +898,7 @@ pub static REF: Object = Object {
 pub static LINE: Object = Object {
     name: "line",
     brief: "dashed boundary line: no-load zone, limit",
-    summary: "A line through model points (annotation of type line), dashed by default: the boundary of a no-load zone, a 1:1 influence line, a limit or property line, anything drawn that is not a component. Placed exactly (not moved by the note layout); a note or label names it.",
+    summary: "A line through model points (annotation of type line), dashed by default: the boundary of a no-load zone, a 1:1 influence line, a limit or property line, anything drawn that is not a component. Placed exactly (not moved by the note layout); a note or label names it. Material hatch is cleared under the line and under a label, so both read over earth and gravel.",
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"line\"", required: true, desc: "annotation type", ..Field::NONE },
@@ -917,6 +917,13 @@ pub static LINE: Object = Object {
             ..Field::NONE
         },
         Field {
+            name: "weight",
+            ty: "light|heavy",
+            def: "light",
+            desc: "heavy: a 0.35 mm line (dashed: the vapor pen, solid: the profile pen) on the same layer, for a line that must read over earth or gravel hatch",
+            ..Field::NONE
+        },
+        Field {
             name: "closed",
             ty: "bool",
             def: "false",
@@ -924,7 +931,7 @@ pub static LINE: Object = Object {
             ..Field::NONE
         },
     ],
-    example: "{\"id\":\"l_zone\",\"type\":\"line\",\"points\":[\"ftg@top_right\",{\"ref\":\"ftg@top_right\",\"offset\":[48,24]}]}",
+    example: "{\"id\":\"l_zone\",\"type\":\"line\",\"weight\":\"heavy\",\"points\":[\"ftg@top_right\",{\"ref\":\"ftg@top_right\",\"offset\":[48,24]}]}",
     ..Object::NONE
 };
 

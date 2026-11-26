@@ -145,6 +145,8 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     each_set(&sets, &ids, diags, cover);
     each_set(&sets, &ids, diags, near_miss);
     each_set(&sets, &ids, diags, bearing::check);
+    let seated: Vec<u32> = sets.iter().flat_map(bearing::seated).collect();
+    each_set(&sets, &ids, diags, |s, d| bearing::unsupported(s, &seated, d));
     let crop = explicit_crop(doc);
     each_set(&sets, &ids, diags, |s, d| short_slope(s, crop, d));
     each_set(&sets, &ids, diags, |s, d| crate::steelcheck::drawn(&s.comps, d));

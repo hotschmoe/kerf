@@ -109,6 +109,15 @@ fn cuts_op(id: &str, node: &Value, k: usize, entry: Option<Value>) -> String {
     op_text(id, obj1("cuts", Value::Array(list)))
 }
 
+fn with_end(cut: &Value, end: &str) -> Value {
+    let mut members: Vec<Member> = match cut {
+        Value::Object(m) => m.iter().filter(|m| m.key != "end").cloned().collect(),
+        _ => Vec::new(),
+    };
+    members.push(Member { key: "end".into(), value: json::string(end) });
+    Value::Object(members)
+}
+
 fn sixteenth_floor(x: f64) -> f64 {
     math::floor(x * 16.0 + 1e-9) / 16.0
 }
@@ -1486,27 +1495,52 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
             Some(l) if l.u_at(0.0).is_some() && l.u_at(f.h).is_some() => lines[i] = l,
             _ => {
                 let what = ["start", "end"][i];
+                let other = ["end", "start"][i];
+                let reaches = |l: Line| l.u_at(0.0).is_some() && l.u_at(f.h).is_some();
                 let (msg, fix) = match e {
-                    End::Trim(tg) => (
-                        format!(
-                            "the {what} of '{id}' does not meet '{}': its {} line misses it (the end is left square)",
-                            tg.comp,
-                            if plan.two && plan.vref != f.h / 2.0 { "aligned" } else { "center" }
-                        ),
-                        match k {
-                            Some(k) => format!(
-                                "move '{id}' so its {what} reaches '{}', or drop the cut: {}",
+                    End::Trim(tg) => {
+                        let swap = trim_line(scene, plan, 1 - i, tg, &inv).is_some_and(reaches);
+                        (
+                            format!(
+                                "the {what} of '{id}' does not meet '{}': its {} line misses it (the end is left square){}",
                                 tg.comp,
-                                cuts_op(id, node, *k, None)
+                                if plan.two && plan.vref != f.h / 2.0 { "aligned" } else { "center" },
+                                if swap {
+                                    format!(
+                                        "; its {other} is the end that reaches '{}' (start and end follow the member's run from its frame origin, the bottom of a run y sheet or the left of a run x one, not the anchor that places it)",
+                                        tg.comp
+                                    )
+                                } else {
+                                    String::new()
+                                }
                             ),
-                            None => format!(
-                                "point {} at an anchor on the face of '{}' that '{id}' meets (e.g. \"{}@bottom_center\")",
-                                ["from", "to"][i],
-                                tg.comp,
-                                tg.comp
-                            ),
-                        },
-                    ),
+                            match k {
+                                Some(k) if swap && plan.ends[1 - i].1.is_none() => format!(
+                                    "trim the {other} instead: {}",
+                                    cuts_op(
+                                        id,
+                                        node,
+                                        *k,
+                                        node.get("cuts")
+                                            .and_then(Value::arr)
+                                            .and_then(|l| l.get(*k))
+                                            .map(|c| with_end(c, other))
+                                    )
+                                ),
+                                Some(k) => format!(
+                                    "move '{id}' so its {what} reaches '{}', or drop the cut: {}",
+                                    tg.comp,
+                                    cuts_op(id, node, *k, None)
+                                ),
+                                None => format!(
+                                    "point {} at an anchor on the face of '{}' that '{id}' meets (e.g. \"{}@bottom_center\")",
+                                    ["from", "to"][i],
+                                    tg.comp,
+                                    tg.comp
+                                ),
+                            },
+                        )
+                    }
                     _ => (
                         format!(
                             "the {what} cut of '{id}' ({}) runs along the member and cannot close it (the end is left square)",

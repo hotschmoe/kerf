@@ -1,28 +1,28 @@
 # Kerf CLI: guide for agents (Claude Code, Grok, ...)
 
-Build each construction detail as `<id>.kerf.json` in the current folder using typed components.
-The engine places, draws, lays out notes and checks. The designer reviews in `kerf serve` and verifies citations.
+Build typed construction details as `<id>.kerf.json` in the current folder.
+The engine places, draws, lays out notes and checks; the designer reviews in `kerf serve` and verifies citations.
 
-## Shell rules (the sandbox rejects compound commands)
+## Shell rules (sandbox rejects compound commands)
 - ONE kerf command per call. Do NOT chain with `&&`, `;` or `|`, do NOT use heredocs (`<<EOF`) or `echo '...' | kerf`.
-- Create JSON files with your file-writing tool (Write), then point kerf at the file (inline JSON breaks on PowerShell).
+- Write JSON files with your file-writing tool, then pass the file to kerf (inline JSON breaks on PowerShell).
   Never hand-edit a `.kerf.json`.
 
 ## Workflow
-1. Ambiguity: ask ONE short question only if the answer changes the structural system or the load path (CMU vs
+1. Ask ONE short question only if the answer changes the structural system or load path (CMU vs
    stud wall, truss vs rafter, embedded anchor vs plate, what bears on what). Otherwise build with conventional
    choices and report your assumptions AND the main alternative reading. "Give me a footing detail" alone is
    ambiguous: ask which (wall, pad or slab-edge footing).
-2. Write `ops.json` with the Write tool. First build = one op `{"op":"set","path":"doc","value":{...whole document...}}`
+2. Write `ops.json`. First build = one op `{"op":"set","path":"doc","value":{...whole document...}}`
    (a single op object or `{"ops":[...],"why":"..."}` is accepted too). Put the designer's asks in `meta.requested`, one short
    phrase each, in their words: `"meta":{"requested":["cmu wall","bond beam","H2.5A ties","#5 rebar","vapor retarder"]}`.
 3. Create and apply in one command (nothing is written if an op fails):
 ```sh
 kerf new truss-cmu.kerf.json --ops ops.json --title "PREFAB TRUSS BEARING AT CMU WALL" --why "Build initial detail"
 ```
-4. Read the summary (every component with resolved x/y extents), the `COVERAGE` block and the diagnostics. Fix every ERROR;
+4. Read the summary (components with resolved x/y extents), `COVERAGE` and diagnostics. Fix every ERROR;
    fix or justify every WARN. Every `meta.requested` item must read `ok` (build the `MISSING` ones, or drop an item only if the
-   designer dropped it): do not finish before full coverage, a clean check is not a finished detail. Covered = a
+   designer dropped it). Finish only at full coverage and after visual review. Covered = a
    component (id/type/label/model) or note/dim/weld/table/view title holds all its words (EA.=EACH). Then LOOK at it:
 ```sh
 kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png
@@ -46,7 +46,7 @@ kerf schema note dim cite
 - Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one). Consult `kerf schema <topic>` before guessing.
 
 ## Diagnostics you will meet (each prints its own fix)
-W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
+W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP / W_UNSUPPORTED (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
 W_SHORT_SLOPE, W_LEADER_HIT / W_VIEW_FIT (layout), W_NOTE_STYLE / W_ABBREV (note text), W_UNKNOWN_KEY,
 W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, I_* (info).
 
@@ -89,7 +89,7 @@ axis; `offset` > 0 above (h) / right of (v) the points, < 0 below / left.
 Schedules: `table` annotations (`kerf schema table`) in a `"kind":"schedule"` view, not solids/labels.
 Plans/elevations: view `kind` `plan` (cut at `cut_y`; plan [x,y] = model [x,-z]) or `elevation` (no cut), same members in
 their real orientation; never a faked section. Beam in a wall: draw the elevation unless asked otherwise.
-Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
+Review the PNG: correct proportions and gaps, leaders on the right element, no overlaps.
 
 <!-- FULL -->
 ## Long-form notes (kerf guide --full)
@@ -327,5 +327,21 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   webs or cell grout as `cmu` / grout pieces: a wall with such pieces keeps its bare shells, `I_CMU_PLAN_UNITS`). A control
   joint is two walls 3/8 apart in z, a corner is a run z wall and a run x wall, corner bars are `plane: xz` bars with
   hooks. An inverted bond-beam lintel is `"bond_beams": [1]` on the wall over the opening.
+
+- Beta.4 touch-up (SPEC 30). A member tie with no `side` bends onto the side no other member lies against (a birdmouthed
+  rafter's tie lands inside the wall, not in the sheathing); `"side":"left"|"right"` forces it, and `W_OVERLAP` names the
+  member its leg ends up inside with the op that frees it: `{"model":"H2.5A","members":["rafter","plate"]}`. Connectors and
+  nailing are placed after every member that is ready, so they see members listed after them. A `line` annotation clears
+  the hatch under itself and `"weight":"heavy"` draws it at 0.35 mm: `{"id":"l_zone","type":"line","weight":"heavy",
+  "points":["ftg@top_right",{"ref":"ftg@top_right","offset":[48,24]}]}`; a `label` clears a wider halo. A note whose
+  leader would run through a cut member to reach a target on its far side goes to the other side by itself (when no
+  `column`/`place` fixes it and the view still fits its scale); otherwise `W_LEADER_HIT` "crosses the cut ..." prints
+  `"column":"right"` (or left) for that note. `W_CUT_MISS` on a `trim` names the end that does reach the member and
+  prints the op (`start`/`end` follow the member's run, not the anchor that places it). `W_UNSUPPORTED`: a flat plate
+  (lumber run z, `orient: flat`) that touches one member along an edge, carries a wood member and has nothing under it;
+  the fix adds a ledger under it or sets it on its support (acknowledge it if the plate hangs from the member above). A
+  view named by a layout with shared notes prints that layout's note numbers when exported alone (`--view B`), so a tag
+  reads the same on both sheets; `I_KEY_RENUMBERED` lists the keys that print under another number. `kerf schema ops`
+  lists the `layouts` paths: `{"op":"update","path":"layouts/S1","value":{"columns":3}}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

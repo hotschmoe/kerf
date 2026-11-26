@@ -54,9 +54,13 @@ pub struct Env<'a, 's> {
     pub ann_boxes: Vec<AnnBox>,
     pub work: Option<&'a route::Work>,
     pub shared_keys: Option<&'a [(String, u32)]>,
+    pub own_list: bool,
     pub keyed_out: Vec<KeyedEntry>,
     pub doc_views: &'a [Value],
     pub verify_fixes: bool,
+    /// Try a note on the other side when its leader runs through a cut member (SPEC 30.3); `sided`: one was moved.
+    pub auto_side: bool,
+    pub sided: bool,
 }
 
 impl<'a, 's> Env<'a, 's> {
@@ -88,9 +92,12 @@ impl<'a, 's> Env<'a, 's> {
             ann_boxes: Vec::new(),
             work: None,
             shared_keys: None,
+            own_list: false,
             keyed_out: Vec::new(),
             doc_views: &[],
             verify_fixes: true,
+            auto_side: true,
+            sided: false,
         }
     }
 
@@ -153,6 +160,7 @@ struct Gathered<'a> {
     dspecs: Vec<DimSpec<'a>>,
     lspecs: Vec<LabelSpec<'a>>,
     welds: Vec<(usize, Vec<Item>)>,
+    masks: Vec<[V2; 4]>,
     tables: Vec<table::Table<'a>>,
     listed: Vec<bool>,
 }
@@ -532,6 +540,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
         dspecs: Vec::new(),
         lspecs: Vec::new(),
         welds: Vec::new(),
+        masks: Vec::new(),
         tables: Vec::new(),
         listed: Vec::new(),
     };
@@ -592,6 +601,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
                 "line" => {
                     if let Some(ls) = line::read(env, an, id, &apath) {
                         let its = line::items(env, &ls);
+                        g.masks.extend(line::masks(env, &ls));
                         env.labels_box.add_box(items_box(env.font, &its));
                         g.welds.push((k, its));
                     }
@@ -635,7 +645,7 @@ fn gather<'a>(env: &mut Env<'a, '_>) -> Gathered<'a> {
 }
 
 pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item> {
-    let Gathered { notes, note_slot, per, meta, mut dspecs, lspecs, mut welds, tables, listed } = gather(env);
+    let Gathered { notes, note_slot, per, meta, mut dspecs, lspecs, mut welds, masks, tables, listed } = gather(env);
     dims::chain_dims(&mut dspecs, 0.25 * env.s);
     let style = env.notes_style();
     if style == NotesStyle::Leader && env.spec.notes_side == NotesSide::Above {
@@ -676,8 +686,32 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs };
     let mut prep = notes::prep_notes(env, routed, &routed_numbers);
     notes::member_obstacles(env, routed, &mut prep);
+    notes::through_members(env, routed, &mut prep);
 
-    let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
+    let mut best = repair::solve(env, routed, &prep, &dl, &per, &meta);
+    let mut sided: Vec<NoteIn<'a>> = routed.to_vec();
+    let mut tried: Vec<usize> = Vec::new();
+    while env.auto_side && tried.len() < notes::AUTO_SIDE_TRIES {
+        let Some(b) = &best else { break };
+        let Some((i, side)) = notes::through_free(env, &prep, &sided, &b.r, &tried) else { break };
+        tried.push(i);
+        let mut trial = sided.clone();
+        trial[i].column = Some(side);
+        let t = repair::solve(env, &trial, &prep, &dl, &per, &meta);
+        if t.as_ref().is_some_and(|t| {
+            !t.r.budget_exhausted
+                && t.r.hits.len() < b.r.hits.len()
+                && t.r
+                    .hits
+                    .iter()
+                    .all(|h| b.r.hits.iter().any(|g| (g.note, g.kind, g.other) == (h.note, h.kind, h.other)))
+        }) {
+            env.sided = true;
+            sided = trial;
+            best = t;
+        }
+    }
+    let routed: &[NoteIn<'a>] = &sided;
     let Some(fin) = best else { return Vec::new() };
     repair::report_moves(env, routed, &dl, &fin);
     repair::report_overlaps(env, routed, &prep, &dl, &fin);
@@ -706,6 +740,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         env.ann_boxes.push(AnnBox { id: n.id.to_string(), kind: AnnKind::Note, bbox: bx, offset: 0.0 });
     }
     knockout::knock_hatch(base_items, &rd.knock);
+    knockout::knock_hatch(base_items, &masks);
     let mut result: Vec<Item> = Vec::new();
     for (k, its) in rd.per.into_iter().enumerate() {
         result.extend(its);
@@ -736,7 +771,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         table::translate(&mut its, d);
         drawn.push((t.k, its));
     }
-    if !numbers.is_empty() && env.shared_keys.is_some() {
+    if !numbers.is_empty() && env.shared_keys.is_some() && !env.own_list {
         let entries = notes::list_entries(env, &notes, &numbers);
         env.keyed_out = entries
             .iter()

@@ -22,7 +22,7 @@
     {"id": "A", "kind": "section", "title": "REBAR PLACED IN POLYGONS AND CMU CELLS", "annotations": [
       {"id": "n_ftg", "type": "note", "text": "(2) #4 CONT. IN THICKENED EDGE", "target": "ftg_bars"},
       {"id": "n_corner", "type": "note", "text": "#4 CORNER BAR", "at": "corner@bend_1"},
-      {"id": "n_hook", "type": "note", "text": "HOOK", "at": "corner@seg_3_mid"},
+      {"id": "n_hook", "type": "note", "text": "HOOK", "at": "corner@seg_3_mid", "acknowledge": [{"code": "W_LEADER_HIT", "reason": "the hook is inside the footing; from the left its leader crowds the footing bar note"}]},
       {"id": "n_dowel", "type": "note", "text": "#5 DOWEL, LAP W/ VERT.", "at": "dowel@seg_2_mid"},
       {"id": "n_vert", "type": "note", "text": "#5 VERT. IN GROUTED CELL", "at": "vert@seg_1_mid"},
       {"id": "d_edge", "type": "dim", "from": "slab@vertex_3", "to": "slab@vertex_4", "offset": -6},
