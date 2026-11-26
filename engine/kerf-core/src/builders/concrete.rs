@@ -11,17 +11,18 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec;
 
-param_enum! { pub enum Shape { Rect = "rect", Footing = "footing", Polygon = "polygon", SlabEdge = "slab_edge", Footprint = "footprint" } }
+param_enum! { pub enum Shape { Rect = "rect", Footing = "footing", Polygon = "polygon", SlabEdge = "slab_edge", Footprint = "footprint", Round = "round" } }
 param_enum! { pub enum Exterior { Left = "left", Right = "right" } }
 
 params! {
     pub struct Params {
-        shape: Enum(Shape) => { desc: "rect | footing | polygon | slab_edge | footprint (a plan outline [x, z] with a thickness in y: L and T footings, notched slabs, block-outs with 45-degree ends, angled walls)" },
+        shape: Enum(Shape) => { desc: "rect | footing | polygon | slab_edge | footprint (a plan outline [x, z] with a thickness in y: L and T footings, notched slabs, block-outs with 45-degree ends, angled walls) | round (a vertical cylinder: drilled pier, caisson, sonotube pier, bollard or pole footing, round column; `diameter` and `height`)" },
         material: Str = "concrete" => { desc: "any style material" },
         cover: OptRaw => { def: "{bottom:3, sides:3, top:1.5}", desc: "REQUIRED clear cover for bars in this host (W_COVER); cover.parts.<part> overrides per part zone, e.g. {\"parts\":{\"slab\":{\"bottom\":0.75}}}. The default suits footings and walls cast against earth (every shape, polygons included); give a slab its own, e.g. a 4\" slab on grade with a mid-depth bar: {\"bottom\":1.5,\"top\":1.5}" },
         width: OptLenPos => { hint: "rect/footing need width and height", also: &["height"], def: "rect/footing: required", desc: "box size; footprint: height is the thickness in y" },
         height: OptLenPos => { hint: "rect/footing need width and height", row: false, desc: "box size" },
         points: OptRaw => { def: "polygon, footprint: required", desc: "polygon: polyline [x,y(,bulge)] relative to the placement point, or absolute Refs. footprint: the plan outline as [x, z(, bulge)] pairs (model x and z; x relative to the placement point)" },
+        diameter: OptLenPos => { def: "round: required", desc: "round: the diameter. A circle in plan, a diameter x height rectangle in a section through its axis (a chord's width off axis); the placement point is the axis at the top (anchor top_center), z centres on the section cut unless `z` is a number. Bars: verticals by `points`, hoops with rebar `tie`: {\"in\": id, \"shape\": \"hoop\"}" },
         top: OptRaw => { def: "footprint: 0", desc: "footprint: y of the top surface, a length (relative to the placement point) or a Ref (its y); the footprint spans top - height .. top" },
         exterior: Enum(Exterior) = Exterior::Left => { desc: "slab_edge: which side is the exterior edge (right mirrors)" },
         slab_thickness: LenPos = 4.0 => { desc: "slab_edge" },
@@ -51,7 +52,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
     match cp.shape {
         sh @ (Shape::Rect | Shape::Footing) => rect_or_footing(ctx, &cp, sh, material, cov),
         Shape::Polygon => polygon(ctx, &cp, material, cov),
-        Shape::Footprint => footprint(ctx, &cp, material, cov),
+        Shape::Footprint | Shape::Round => footprint(ctx, &cp, material, cov),
         _ => slab_edge(ctx, &cp, material, cov),
     }
 }
@@ -132,10 +133,26 @@ fn footprint(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Op
         ctx.p.fail("rotate", "a footprint is drawn in plan ([x, z] points) and rotate/slope tilt the section plane: give the angled outline in 'points' instead".into());
         return None;
     }
+    let round = cp.shape == Shape::Round;
     let Some(h) = cp.height else {
-        ctx.p.missing("height", "footprint needs 'height', its thickness in y below 'top'");
+        ctx.p.missing(
+            "height",
+            if round {
+                "round needs 'diameter' and 'height' (its length in y below the placement point), e.g. \"diameter\": 24, \"height\": 48"
+            } else {
+                "footprint needs 'height', its thickness in y below 'top'"
+            },
+        );
         return None;
     };
+    if round {
+        for key in ["points", "width"] {
+            if ctx.p.has(key) {
+                ctx.p.fail(key, format!("a round shape is set by 'diameter' and 'height': remove '{key}'"));
+                return None;
+            }
+        }
+    }
     let top = match &cp.top {
         None => 0.0,
         Some(v) => match units::parse_length(v) {
@@ -148,14 +165,26 @@ fn footprint(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Op
         },
     };
     let example = "e.g. \"points\": [[0, 0], [48, 0], [48, -12], [12, -12], [12, -48], [0, -48]] (an L)";
-    let Some(arr) = cp.points.as_ref().and_then(|v| v.arr()) else {
-        ctx.p.fail(
-            "points",
-            format!("shape footprint needs 'points': the plan outline as [x, z] pairs (model x and z), {example}"),
-        );
-        return None;
-    };
     let mut lp: vec::Vec<Pt> = vec::Vec::new();
+    if round {
+        let Some(d) = cp.diameter else {
+            ctx.p.missing("diameter", "round needs 'diameter', e.g. \"diameter\": 24");
+            return None;
+        };
+        let (r, b) = (d / 2.0, math::tan(core::f64::consts::PI / 8.0));
+        lp = vec![Pt { x: r, y: 0.0, b }, Pt { x: 0.0, y: r, b }, Pt { x: -r, y: 0.0, b }, Pt { x: 0.0, y: -r, b }];
+    }
+    let arr = match cp.points.as_ref().and_then(|v| v.arr()) {
+        Some(arr) => arr,
+        None if round => &[],
+        None => {
+            ctx.p.fail(
+                "points",
+                format!("shape footprint needs 'points': the plan outline as [x, z] pairs (model x and z), {example}"),
+            );
+            return None;
+        }
+    };
     for (i, e) in arr.iter().enumerate() {
         let xz = e.arr().filter(|a| a.len() == 2 || a.len() == 3).and_then(|a| {
             let b = match a.get(2) {
@@ -254,7 +283,7 @@ fn footprint(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Op
     let box_ = geom::Box { x0: bx.x0, y0, x1: bx.x1, y1 };
     let mut anchors = vec::Vec::new();
     let mut plan_z = vec::Vec::new();
-    for (k, v) in clean.iter().enumerate() {
+    for (k, v) in clean.iter().enumerate().filter(|_| !round) {
         let w = clean[(k + 1) % clean.len()];
         let mid = geom::seg_point(v.v(), w.v(), v.b, 0.5);
         for (name, p) in [(format!("vertex_{}", k + 1), v.v()), (format!("edge_{}_mid", k + 1), mid)] {
@@ -269,16 +298,20 @@ fn footprint(ctx: &mut Ctx, cp: &Params, material: &str, cov: ParsedCover) -> Op
         plan_z,
         box_,
         nat_z: Some(total_dz),
-        nat_zc: Some(zc),
+        nat_zc: (!round).then_some(zc),
         points_mode: true,
         host: Some(HostInfo { outline, cover: cov.cover, part_cover: cov.parts, cover_set: cov.set }),
-        info: format!(
-            "concrete footprint {} points, {} thick, z {}..{}",
-            clean.len(),
-            fmt_ft_in(h),
-            fmt_ft_in(zmin),
-            fmt_ft_in(zmax)
-        ),
+        info: if round {
+            format!("concrete round {} dia. x {}", fmt_ft_in(total_dz), fmt_ft_in(h))
+        } else {
+            format!(
+                "concrete footprint {} points, {} thick, z {}..{}",
+                clean.len(),
+                fmt_ft_in(h),
+                fmt_ft_in(zmin),
+                fmt_ft_in(zmax)
+            )
+        },
         ..Built::default()
     })
 }
