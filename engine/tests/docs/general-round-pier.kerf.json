@@ -1,0 +1,140 @@
+{
+  "kerf": "0.1",
+  "id": "general-round-pier",
+  "title": "DRILLED PIER",
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "pier",
+      "type": "concrete",
+      "at": {
+        "to": [0, 0]
+      },
+      "shape": "round",
+      "cover": {
+        "bottom": 3,
+        "sides": 3,
+        "top": 2
+      },
+      "height": 60,
+      "diameter": 24
+    },
+    {
+      "id": "v_back",
+      "type": "rebar",
+      "z": -8.2,
+      "size": "#5",
+      "mode": "path",
+      "points": [
+        [0, -2],
+        [0, -57]
+      ]
+    },
+    {
+      "id": "v_left",
+      "type": "rebar",
+      "z": 0,
+      "size": "#5",
+      "mode": "path",
+      "points": [
+        [-8.2, -2],
+        [-8.2, -57]
+      ]
+    },
+    {
+      "id": "v_right",
+      "type": "rebar",
+      "z": 0,
+      "size": "#5",
+      "mode": "path",
+      "points": [
+        [8.2, -2],
+        [8.2, -57]
+      ]
+    },
+    {
+      "id": "v_front",
+      "type": "rebar",
+      "z": 8.2,
+      "size": "#5",
+      "mode": "path",
+      "points": [
+        [0, -2],
+        [0, -57]
+      ]
+    },
+    {
+      "id": "hoops",
+      "type": "rebar",
+      "array": {
+        "axis": "y",
+        "count": 5,
+        "spacing": -12
+      },
+      "size": "#3",
+      "plane": "xz",
+      "y": {
+        "ref": "pier@top_center",
+        "offset": [0, -3]
+      },
+      "tie": {
+        "cover": 3,
+        "in": "pier",
+        "shape": "hoop"
+      }
+    },
+    {
+      "id": "post",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_center",
+        "to": "pier@top_center"
+      },
+      "size": "6x6",
+      "run": "y",
+      "length": 24,
+      "treated": true
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "title": "DRILLED PIER",
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "#3 HOOPS @ 12\" O.C.",
+          "target": "hoops"
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "(4) #5 VERT.",
+          "target": "v_left"
+        },
+        {
+          "id": "n3",
+          "type": "note",
+          "text": "6X6 P.T. POST",
+          "target": "post"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "kind": "plan",
+      "title": "PIER",
+      "cut_y": -6,
+      "annotations": [
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "24\" DIA. CONC. PIER",
+          "target": "pier"
+        }
+      ]
+    }
+  ]
+}

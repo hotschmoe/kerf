@@ -85,6 +85,14 @@ pub fn collect_deps<'a>(node: &'a Value, out: &mut Vec<&'a str>) {
     if let Some(st) = node.get("place").and_then(|pl| pl.get("station")) {
         add_ref_dep(st, out);
     }
+    for key in ["tie", "epoxy"] {
+        if let Some(s) = node.get(key).and_then(|t| t.get("in")).and_then(Value::str) {
+            out.push(s.split('.').next().unwrap_or(s));
+        }
+    }
+    if let Some(y) = node.get("y") {
+        add_ref_dep(y, out);
+    }
     crate::cuts::collect_deps(node, out, add_ref_dep);
     if node.get("type").and_then(Value::str) == Some("connector") {
         for m in node.get("members").and_then(Value::arr).unwrap_or(&[]) {
@@ -359,7 +367,7 @@ fn read_components<'a>(scene: &mut Scene<'a>, items: &'a [Value]) {
 }
 
 /// Stage 4: dependencies between components (`at.to`, `until`, `points` refs, `slope: "@id"`, `place.in`, `place.station`) and a topological order
-/// of placement (Kahn, ties by document order). A cycle is reported (E_CYCLE) and its members are marked failed.
+/// of placement (Kahn, ties by document order; hardware and nailing after every member that is ready, SPEC 30.1). A cycle is reported (E_CYCLE) and its members are marked failed.
 fn placement_order(scene: &mut Scene) -> Vec<usize> {
     let diags = scene.diags;
     let n = scene.comps.len();
@@ -388,7 +396,10 @@ fn placement_order(scene: &mut Scene) -> Vec<usize> {
     let mut done = vec![false; n];
     let mut order: Vec<usize> = Vec::with_capacity(n);
     while order.len() < n {
-        let picked = (0..n).find(|&i| !done[i] && deps[i].iter().all(|&d| done[d]));
+        let ready = |i: usize| !done[i] && deps[i].iter().all(|&d| done[d]);
+        let late =
+            |i: usize| scene.comps[i].ty.traits.hardware || scene.comps[i].ty.ty == crate::catalog::Type::Nailing;
+        let picked = (0..n).find(|&i| ready(i) && !late(i)).or_else(|| (0..n).find(|&i| ready(i)));
         if let Some(p) = picked {
             done[p] = true;
             order.push(p);
@@ -785,6 +796,7 @@ fn world_prisms(
     inst: &Instances,
     emb_override: Option<bool>,
     dashed: bool,
+    existing: bool,
 ) -> Vec<Prism> {
     let mut world = Vec::with_capacity(inst.xfs.len() * built.prisms.len());
     for (ii, (xf, z)) in inst.xfs.iter().zip(&inst.zs).enumerate() {
@@ -810,6 +822,7 @@ fn world_prisms(
             if let Some(e) = emb_override {
                 q.embedded = e;
             }
+            q.existing = existing;
             if dashed {
                 q.kind = model::Kind::Ghost;
                 q.pen = Some(crate::pen::Pen::Hidden);
@@ -850,6 +863,10 @@ fn place_component(scene: &mut Scene, idx: usize) {
     let mirror = p.boolean("mirror", false);
     let visible = p.boolean("visible", true);
     let shown = p.choice("shown", Some("solid"), &["solid", "hidden", "where_occurs", "dashed"]);
+    if !p.ok {
+        return;
+    }
+    let existing = p.has("existing").then(|| p.boolean("existing", false));
     if !p.ok {
         return;
     }
@@ -912,7 +929,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
         return;
     }
     let Some(inst) = instance_transforms(scene, &id, &built, base_xf, angle, zbase, &arr) else { return };
-    let world = world_prisms(scene.style, index, &built, &inst, emb_override, dashed);
+    let world = world_prisms(scene.style, index, &built, &inst, emb_override, dashed, existing == Some(true));
     let pitch_angle = if ty.traits.has_pitch { built.pitch } else { 0.0 };
     let shift = base_xf.apply(V2::init(0.0, 0.0)).sub(at.to);
     let anchor_shift = (built.points_mode && at.explicit && at.anchor != "origin" && shift.len() > 1e-6)
@@ -929,6 +946,7 @@ fn place_component(scene: &mut Scene, idx: usize) {
     comp.visible = visible;
     comp.dashed = dashed;
     comp.where_occurs = where_occurs;
+    comp.existing = existing;
     comp.arr_count = arr.count;
     comp.state = State::Ok;
 }

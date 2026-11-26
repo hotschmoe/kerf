@@ -96,11 +96,15 @@ pub enum Type {
     Steel,
     Bolt,
     Nailing,
+    SteelJoist,
+    MetalDeck,
+    StairTreads,
+    Stair,
     Solid,
 }
 
 impl Type {
-    pub const ALL: [Type; 19] = [
+    pub const ALL: [Type; 23] = [
         Type::Lumber,
         Type::Panel,
         Type::CmuWall,
@@ -119,6 +123,10 @@ impl Type {
         Type::Steel,
         Type::Bolt,
         Type::Nailing,
+        Type::SteelJoist,
+        Type::MetalDeck,
+        Type::StairTreads,
+        Type::Stair,
         Type::Solid,
     ];
 
@@ -142,7 +150,11 @@ impl Type {
             Type::Steel => "steel",
             Type::Bolt => "bolt",
             Type::Nailing => "nailing",
+            Type::SteelJoist => "steel_joist",
+            Type::MetalDeck => "metal_deck",
+            Type::StairTreads => "stair_treads",
             Type::Solid => "solid",
+            Type::Stair => "stair",
         }
     }
 
@@ -410,7 +422,7 @@ pub fn hardware_line(h: &Hardware) -> String {
     format!("{}: {}, {w}\" wide, {g} ga, {}\" long", h.model, h.kind, crate::model::fmt_num(h.length))
 }
 
-const COMMON: [(&[&str], &str, &str); 14] = [
+const COMMON: [(&[&str], &str, &str); 15] = [
     (&["id"], "required", "unique slug [a-z][a-z0-9_]*; annotations and refs name it"),
     (&["type"], "required", "one of the catalog types"),
     (&["label"], "null", "short human label for summaries"),
@@ -457,6 +469,11 @@ const COMMON: [(&[&str], &str, &str); 14] = [
         "null",
         "[{code, reason}]: suppress that warning (e.g. W_UNTREATED_CONTACT) for this component; it is counted on the summary's DOC line and listed with the reason in its ACKNOWLEDGED block (`kerf check --strict` shows it as a warning), and logged. Errors cannot be acknowledged; an entry that suppresses nothing is W_ACK_UNUSED (`kerf schema acknowledge`)",
     ),
+    (
+        &["existing"],
+        "null",
+        "true = existing construction (remodel, addition, tie-in): where the view cuts it the outline is in the thin pen with one sparse diagonal hatch instead of the material hatch (no solid fill), so new work reads as new; notes that target it start with (E) (not added when the text already says (E) or EXISTING). It is exempt from W_UNTREATED_CONTACT, W_FLOATING and W_NEAR_MISS, and a bar in an existing host from W_COVER, but new members still bear on and touch it. false on a new member adds (N) to its notes when the document also has existing members. A bar drilled and epoxied into it: rebar `epoxy` (`kerf schema rebar`). Example: {\"id\":\"e_ftg\",\"type\":\"concrete\",\"shape\":\"footing\",\"width\":16,\"height\":8,\"existing\":true}",
+    ),
 ];
 
 pub fn common() -> Vec<Row> {
@@ -465,7 +482,7 @@ pub fn common() -> Vec<Row> {
 
 pub const BOX_ANCHORS: &str = "top_left top_center top_right middle_left center middle_right bottom_left bottom_center bottom_right (of the profile box; rotate with the member)";
 
-pub static ENTRIES: [Entry; 19] = [
+pub static ENTRIES: [Entry; 23] = [
     Entry {
         ty: Type::Lumber,
         summary: "Sawn or engineered wood member (stud, plate, joist, beam, blocking, post). Standard view for a beam in a wall (flush beam, header): an ELEVATION along the wall, i.e. the beam seen lengthwise (run x, face wide) with the top and bottom plates interrupted where they butt it and king/jack studs (run y) at its ends. Draw the end-on section (run z, beam cut) only when the designer asks for it; either way, say in your report which reading you drew.",
@@ -499,7 +516,7 @@ pub static ENTRIES: [Entry; 19] = [
         summary: "CMU wall: section (shells, grout, bond beams any course) or face-on (run x).",
         parts: "course_1..course_n (1 = bottom), bond_beam (the highest), bond_beam_1.. (each run of bond-beam courses from the bottom), grout",
         anchors: "9 box anchors + bond_beam_center, bond_beam_<k>_center, top_center, cell_center_top; cell_left, cell_center, cell_right (inside faces of the face shells and the cell middle at the wall bottom) and cell_left_top, cell_right_top: vertical path bars in the cell follow the wall width with {\"ref\": \"wall@cell_left\", \"offset\": [1.5, -12]}; run x: control_joint_<k>, control_joint_<k>_top",
-        draws: "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. A bond beam at a slab or ledger is one wall: {\"courses\": 7, \"bond_beams\": [4]}; solid grout below grade: {\"grout\": \"none\", \"grout_courses\": [[1, 3]]}. run x (fence and retaining wall elevations): {\"run\": \"x\", \"length\": 480, \"courses\": 9, \"bond_beam_courses\": 1, \"control_joints\": [240]} draws the face with bed and head joints (running bond) and 3/8\" control joints in an elevation view. 3D: 15.625\" units with 0.375\" head joints, running bond.",
+        draws: "Box height = courses*8 - 0.375 (+0.375 with top_joint); the lowest course sits on the box bottom. Per course: two face shells (cut, cmu hatch), grouted cell (grout hatch) or an empty cell with the cross web as a beyond line, mortar joints as cut lines. A bond beam at a slab or ledger is one wall: {\"courses\": 7, \"bond_beams\": [4]}; solid grout below grade: {\"grout\": \"none\", \"grout_courses\": [[1, 3]]}. run x (fence and retaining wall elevations): {\"run\": \"x\", \"length\": 480, \"courses\": 9, \"bond_beam_courses\": 1, \"control_joints\": [240]} draws the face with bed and head joints (running bond) and 3/8\" control joints in an elevation view. Plan views: the course at cut_y draws as units (face shells and webs hatched, cells as rounded openings, head joints; run z in running bond); a cell is grouted where a grout course or bond beam crosses the cut or, with grout reinforced, where a vertical bar stands in it, so never draw webs or cell grout as separate pieces (a wall with such `cmu` pieces inside it keeps its bare shells: I_CMU_PLAN_UNITS). A control joint in plan is two walls 3/8 apart, a corner a run z wall and a run x wall. 3D: 15.625\" units with 0.375\" head joints, running bond.",
         example: "{\"id\":\"cmu\",\"type\":\"cmu_wall\",\"width\":8,\"courses\":3,\"bond_beam_courses\":1,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
         traits: Traits { takes_voids: true, ..Traits::NONE },
     },
@@ -515,8 +532,8 @@ pub static ENTRIES: [Entry; 19] = [
     Entry {
         ty: Type::Rebar,
         summary: "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
-        parts: "none",
-        anchors: "9 box anchors of the bar (center = bar center for along_z); path bars add start, end, bend_k (on the bar at the middle of the bend at interior point k+1) and seg_k_mid (middle of the straight part of leg k), all on the centreline: aim notes and dims at these, not the box anchors of a bent bar",
+        parts: "epoxy (the drilled hole of an adhesive dowel, with `epoxy`)",
+        anchors: "9 box anchors of the bar (center = bar center for along_z); path bars add start, end, bend_k (on the bar at the middle of the bend at interior point k+1) and seg_k_mid (middle of the straight part of leg k), all on the centreline: aim notes and dims at these, not the box anchors of a bent bar. `hook`: start_hook_end / end_hook_end (the tip), _hook_tangent (where the bend starts), _hook_bend (middle of the bend), _hook_center (bend centre). `tie`: tie_top_left, tie_top_right, tie_bottom_left, tie_bottom_right (centreline corners), tie_top, tie_bottom, tie_left, tie_right (side middles), tie_center, hook_1_end, hook_2_end, hook_corner. `epoxy`: embed_face (where the bar enters the host), embed_end (the embedded tip)",
         draws: "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu (in XY only: the cover of an xz bar along z is not checked). Plan views: bars along z and path bars below the cut draw as lines along their run, vertical legs and bars crossing the cut as dots, xz bars as their path. An xz corner bar: {\"id\":\"corner\",\"type\":\"rebar\",\"size\":\"#4\",\"plane\":\"xz\",\"y\":24,\"points\":[[4.5,-16],[4.5,-43.5],[32,-43.5]]}",
         example: "{\"id\":\"top_bar\",\"type\":\"rebar\",\"size\":\"#4\",\"at\":{\"anchor\":\"center\",\"to\":[6,-2.5]}}",
         traits: Traits { reinforcement: true, line_like: true, ..Traits::NONE },
@@ -622,19 +639,19 @@ pub static ENTRIES: [Entry; 19] = [
     },
     Entry {
         ty: Type::Steel,
-        summary: "AISC steel: W, HSS (rect, square, round), pipe, angle, channel (C, MC), plate. Drawn true to the tabulated dimensions in section (end-on), elevation (side) or plan (top).",
-        parts: "section: one piece (HSS and pipe: two `wall` halves); elevation/plan: top_flange, web, bottom_flange (W, channel), wall / tube (HSS, pipe), vertical_leg, horizontal_leg (angle), plate; hidden (dashed hidden lines, with hidden_lines)",
-        anchors: "9 box anchors + per shape. Section: W top_flange, bottom_flange (face centers), web_center, web_left, web_right (web faces), top_flange_tip_left/right (underside of the top flange at its tips), bottom_flange_tip_left/right (top of the bottom flange at its tips), web_left_top/web_right_top (underside of the top flange at the toe of the root fillet, k - tf from the web face: the corner of a nailer tight in the flange pocket), web_left_bottom/web_right_bottom (the same on the bottom flange); HSS/pipe inner_top, inner_bottom, inner_left, inner_right (inside wall faces); angle heel (outside corner), heel_inside, toe_vertical, toe_horizontal, vertical_leg_face, horizontal_leg_top; channel web_back, web_face, top_flange, bottom_flange, top_flange_tip, bottom_flange_tip; plate edge_left, edge_right, face_top, face_bottom. Elevation/plan: the levels across the member (W top_flange, top_flange_bottom, web_center, bottom_flange_top, bottom_flange; HSS/pipe inner_top, center_line, inner_bottom; plan W flange_tip_left, web_left, web_center, web_right, flange_tip_right ...) at mid-length, each also as <name>_start and <name>_end at the member ends",
-        draws: "Local box: section (0,0)-(width, depth) of the cross-section, bottom-left at the flange tip / heel / outside corner. Section: cut => solid steel fill, beyond => outline (pen steel); W with k-fillets, HSS with corner radii. Elevation/plan: outlines only, never filled: the silhouette in the visible steel pen (a W in elevation also shows its flanges as lines), hidden faces omitted unless `hidden_lines`, a break line where the crop cuts the member off; the member is a stack of slabs at their true z, so iso/3D and occlusion are right. Natural z thickness in elevation/plan = the cross-section dimension along z; section spans the doc run unless `length`. Pipe and round HSS seen lengthwise are boxes in 3D (2.5D: use orient section with `z` for a round member in 3D).",
+        summary: "Steel/aluminum: W, WT, HSS, pipe, L, C, PL, CFS stud/track, any-size tube/C/tee. Drawn true to the tabulated dimensions in section (end-on), elevation (side) or plan (top).",
+        parts: "section: one piece (HSS and pipe: two `wall` halves); elevation/plan: top_flange, web, bottom_flange (W, channel), wall / tube (HSS, pipe), vertical_leg, horizontal_leg (angle), plate, web / top_flange / bottom_flange / lip (cold-formed and CEE), flange / stem (WT, TEE); fill (the core of a filled HSS, pipe or TUBE); hidden (dashed hidden lines, with hidden_lines)",
+        anchors: "9 box anchors + per shape. Section: W top_flange, bottom_flange (face centers), web_center, web_left, web_right (web faces), top_flange_tip_left/right (underside of the top flange at its tips), bottom_flange_tip_left/right (top of the bottom flange at its tips), web_left_top/web_right_top (underside of the top flange at the toe of the root fillet, k - tf from the web face: the corner of a nailer tight in the flange pocket), web_left_bottom/web_right_bottom (the same on the bottom flange); HSS/pipe inner_top, inner_bottom, inner_left, inner_right (inside wall faces); angle heel (outside corner), heel_inside, toe_vertical, toe_horizontal, vertical_leg_face, horizontal_leg_top; channel web_back, web_face, top_flange, bottom_flange, top_flange_tip, bottom_flange_tip; plate edge_left, edge_right, face_top, face_bottom; cold-formed stud / track / CEE as the channel plus lip_top, lip_bottom (web on the left, flanges and lips to the right; rotate 90 with anchor web_back on the slab for a bottom track with its legs up, -90 for a top track); WT / TEE (flange up) flange_top, stem_bottom, stem_left, stem_right, flange_tip_left, flange_tip_right. Elevation/plan: the levels across the member (W top_flange, top_flange_bottom, web_center, bottom_flange_top, bottom_flange; HSS/pipe inner_top, center_line, inner_bottom; plan W flange_tip_left, web_left, web_center, web_right, flange_tip_right ...) at mid-length, each also as <name>_start and <name>_end at the member ends",
+        draws: "Local box: section (0,0)-(width, depth) of the cross-section, bottom-left at the flange tip / heel / outside corner. Section: cut => solid steel fill, beyond => outline (pen steel); W with k-fillets, HSS with corner radii. Elevation/plan: outlines only, never filled: the silhouette in the visible steel pen (a W in elevation also shows its flanges as lines), hidden faces omitted unless `hidden_lines`, a break line where the crop cuts the member off; the member is a stack of slabs at their true z, so iso/3D and occlusion are right. Natural z thickness in elevation/plan = the cross-section dimension along z; section spans the doc run unless `length`. Pipe and round HSS seen lengthwise are boxes in 3D (2.5D: use orient section with `z` for a round member in 3D). Cold-formed sections (600S162-54 stud, 600T125-54 track) and any-size thin-wall shapes draw at their true thickness with square corners (thin cut steel is thickened to stay visible at small scales); a track's depth is the stud depth plus two thicknesses so the stud nests inside. `material`: aluminum draws cut sections in the sheet-metal style (thin walls solid, thicker ones as an outline). `fill`: concrete fills an HSS, pipe or TUBE (bollard, guard post): hatched core in section and where a section view cuts along the member; cast the post into its footing with the footing's `voids`.",
         example: "{\"id\":\"beam\",\"type\":\"steel\",\"shape\":\"W8x18\",\"orient\":\"elevation\",\"length\":96,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
         traits: Traits { shape_table: true, ..Traits::NONE },
     },
     Entry {
         ty: Type::Bolt,
-        summary: "Bolt group (heavy hex, nut, washer) through steel plies, side or end-on; studs.",
-        parts: "shank, head, washer, nut (one set per bolt); studs: weld, shank, washer and nut (weld_stud) or head (headed_stud)",
-        anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing); studs: head_bearing = weld_face (the welded end, local origin), nut_bearing (top of the grip)",
-        draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
+        summary: "Bolts, studs, lag/wood screws, side or end-on; slotted holes.",
+        parts: "shank, head, washer, nut (one set per bolt); studs: weld, shank, washer and nut (weld_stud) or head (headed_stud); lag_screw / wood_screw: head, washer, shank, thread; hole (end-on outline of an oversize or slotted hole)",
+        anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing); studs: head_bearing = weld_face (the welded end, local origin), nut_bearing (top of the grip); screws: thread_start (where the threads begin), tip (the point: dimension the embedment from the wood face to it)",
+        draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Screws (kind lag_screw, wood_screw): hex washer head and cut washer on the side plate or wood face, shank `length` long from under the head with sawtooth threads over the last `thread` and a point, no nut; the shank runs into the wood member like a bolt through its plies (embedded: no W_OVERLAP), so place the head on the outer face and give `length`, not grip. End-on they are a hex head on a washer. Holes: `hole` oversize, short_slot or long_slot (AISC 360 Table J3.3 sizes, or `slot_length`) draws the hole outline around each end-on bolt, the slot along `slot_dir`; side-on the hole is named in the summary and the note only. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
         example: "{\"id\":\"cap_bolts\",\"type\":\"bolt\",\"diameter\":0.75,\"grip\":0.875,\"count\":2,\"spacing\":3.5,\"at\":{\"to\":[0,0]}}",
         traits: Traits { default_anchor: "head_bearing", ..Traits::NONE },
     },
@@ -645,6 +662,42 @@ pub static ENTRIES: [Entry; 19] = [
         anchors: "the 9 box anchors of the fasteners' extent",
         draws: "Section, plan, elevation: a nail lying in the drawing plane is its shank with a head bar (toenails angled), one seen end-on is a dot (screws: a circle with a cross); in iso a dot on the face the heads are on. Placement comes from `members` (the first holds the heads): face finds the joint face of the first two and lays `rows` x `count` (or @ `spacing`) on it; edge rows run at `edge_distance` inside each panel edge and keep only nails with framing behind; field rows follow the intermediate framing. Own members never hide the nails, cut or not (end nails and toenails inside a cut block draw); a section draws the nails at or behind its cut that no other cut solid covers, and a row seen end-on where it crosses the cut. Several sheets side by side: list them all first in `members`. A note targeting it without `text` prints its text form. Checks: W_NAIL_MEMBERS (members do not touch), W_NAIL_EDGE (edge distance, edges without framing), W_NAIL_SPACING, W_NAIL_LENGTH (points out the far face, under 6D into the stack past the first member), W_NAIL_HIDDEN (a view draws none of them; in iso it names the face turned away or the piece covering the heads).",
         example: "{\"id\":\"splice_nails\",\"type\":\"nailing\",\"members\":[\"upper_plate\",\"lower_plate\"],\"size\":\"16d\",\"count\":8,\"rows\":2,\"through\":true}",
+        traits: Traits::NONE,
+    },
+    Entry {
+        ty: Type::SteelJoist,
+        summary: "Open-web steel joist/girder (K, LH, G), side or end-on.",
+        parts: "top_chord, bottom_chord, web, seat",
+        anchors: "9 box anchors + seat (the default placement anchor: the bearing surface at the bearing end, top of top chord minus seat_depth; section: on the joist centerline). Elevation: seat_left, seat_right (the bearing level at each end), seat_left_inner, seat_right_inner (inner end of each seat); top_chord (top of the joist: deck, nailers and bridging land here), top_chord_bottom, bottom_chord_top, bottom_chord (underside), each also as <name>_start and <name>_end (the bottom chord's are its real ends: it stops short of a bearing end unless extended); top_panel_1..n and bottom_panel_1..n (panel points, numbered from the left, on the top of the top chord and the underside of the bottom chord: bridging, concentrated loads, added webs). Section: top_chord, top_chord_bottom, top_chord_tip_left/right (underside of the horizontal legs at their tips), bottom_chord, bottom_chord_top, bottom_chord_tip_left/right, web_center",
+        draws: "Local box: elevation (0,0)-(length, depth), bottom-left at the underside of the bottom chord under the left end; section (0,0)-(2 x chord_leg + gap, depth). Elevation: outlines only, never filled (as steel in elevation): each chord is a band chord_leg deep with the line of its horizontal legs, webs run panel point to panel point (Warren), the first from the inner end of the seat down to the first bottom-chord panel point; a seat is the pair of seat angles under the top chord, seat_length long, its underside seat_depth below the top of the joist; a cut end gets a break line where the crop cuts it. Section: the chord angle pairs cut (solid steel), the web seen beyond between them; section_at bearing draws the top chord over the seat angles only. Natural z thickness in elevation = the chord width; a section spans the doc run unless length. Place a bearing end with {\"anchor\":\"seat\",\"to\":\"plate@face_top\"}; put deck or a nailer on \"joist@top_chord_start\"; slope the whole joist with slope. Bearing plates, anchors, welds, stabilizer plates, bridging angles and nailers are their own components (steel, anchor_bolt, weld, lumber). Not checked: bearing length (SJI minimums are in seat_length's notes).",
+        example: "{\"id\":\"joist\",\"type\":\"steel_joist\",\"designation\":\"18K4\",\"length\":48,\"at\":{\"anchor\":\"seat\",\"to\":[0,0]}}",
+        traits: Traits { default_anchor: "seat", ..Traits::NONE },
+    },
+    Entry {
+        ty: Type::MetalDeck,
+        summary: "Steel deck (1.5B, 3N, composite, form), optional topping.",
+        parts: "deck (the sheet), topping (with topping)",
+        anchors: "9 box anchors of the deck alone (0,0)-(length, depth): bottom_left is the underside of the ribs at the left edge, top_left the top of the flutes + deck_top, deck_bottom (mid-length); run z: rib_1..n (center of each rib's bottom flat, on the underside: where it bears, puddle welds and screws), flat_1..n (center of each top flat, on top: fasteners of insulation or a nailer); with topping: topping_top, topping_top_left, topping_top_right (top of slab)",
+        draws: "Local origin: underside of the ribs at the left edge; the deck grows +x and up. Run z: the sheet cut across its flutes, true to the profile's depth, pitch and rib widths (trapezoidal ribs, bottom flats down), solid steel; a topping fills the flutes to the top of slab with its material's hatch. Run x: the top and bottom sheet lines over the length, the topping from the bottom of the flutes up with the top-of-flute line inside it. Spans the doc run along z. Put it on its support with {\"anchor\":\"bottom_left\",\"to\":\"joist@top_chord_start\"} (or \"beam@top_flange_start\"); slope it with slope \"@<member>\" or rise:run. Attachment (5/8 puddle welds 36/4, #12 TEKS, side-lap screws) and the deck's finish are notes targeting it; bars or mesh in the topping are rebar components hosted in it; pour stops, closures and edge angles are flashing or steel.",
+        example: "{\"id\":\"deck\",\"type\":\"metal_deck\",\"profile\":\"1.5B\",\"gauge\":22,\"length\":36,\"at\":{\"anchor\":\"bottom_left\",\"to\":[0,0]}}",
+        traits: Traits::NONE,
+    },
+    Entry {
+        ty: Type::StairTreads,
+        summary: "Steel stair treads: pan, grating or plate.",
+        parts: "tread, riser and fill (pan), nosing (grating, plate), carrier",
+        anchors: "9 box anchors + foot (the default placement anchor: floor level at the face of the first riser), nosing_1..n (top front edge of each tread: the nosing line), tread_1_back..tread_n_back (top back edge), top (top back edge of the last tread: the landing or floor level)",
+        draws: "The flight climbs to the right from foot (mirror: true climbs left): tread k has its top at k x rise and its nosing at (k - 1) x tread. Treads span between the stringers along z (width, centered on the cut), so a section through the flight cuts them: pan sheets and plates solid, the pan's concrete fill hatched, grating as its outline with the bearing bars; carrier angles are seen lengthwise against the far stringer. This type draws only the treads: each stringer is a sloped steel member (channel, plate or tube in elevation, {\"type\":\"steel\",\"shape\":\"C12x20.7\",\"orient\":\"elevation\",\"from\":{\"ref\":\"treads@nosing_1\",\"offset\":[-4,-9]},\"to\":{\"ref\":\"treads@top\",\"offset\":[2,-2]}} with plumb / level end cuts and its own z just outside width), and clip angles, base plates, anchors, lags and welds are their own components. Concrete or wood flights use `stair` (steps and waist or cut stringer); `stair_treads` supplies steel treads only.",
+        example: "{\"id\":\"treads\",\"type\":\"stair_treads\",\"kind\":\"pan\",\"treads\":4,\"rise\":7,\"tread\":11,\"at\":{\"anchor\":\"foot\",\"to\":[0,0]}}",
+        traits: Traits { default_anchor: "foot", ..Traits::NONE },
+    },
+    Entry {
+        ty: Type::Stair,
+        summary: "Concrete stair on grade or cut wood stringer, from rise and tread.",
+        parts: "concrete: main_bar, cross_bars, nosing_bars (with `bars` / `nosing_bars`); zones toe, landing. wood: stringer, tread, riser",
+        anchors: "foot (the placement point: the lower floor at the face of the first riser; the 9 box anchors also work), nosing_1..nosing_n, tread_k_mid, top (the top nosing), soffit_mid, throat_top, throat_bottom (the waist / the stringer throat, for a dimension). concrete: riser_k_foot, landing_end_top, landing_end_bottom, landing_top_mid, soffit_top, soffit_bottom, toe_bottom_left, toe_bottom_right, toe_bottom_center, main_bar_mid, main_bar_bend, main_bar_top, nosing_bar_1. wood: seat_front, seat_back (the level seat cut on the lower floor), top_cut_top, top_cut_bottom, top_bearing (the plumb cut that bears on the header or hanger)",
+        draws: "Steel flights use `stair_treads` for pan, grating or plate treads plus sloped `steel` stringers. The flight climbs to the right from `foot` (mirror: true climbs left). Concrete: one cut outline (steps, top slab `landing` long, soffit parallel to the nosing line `waist` below the inside corners, toe under the first riser); rebar can `place`/`tie` in it, and `bars` draws the usual main bar and cross bars. Wood: the stringer seen lengthwise (grain), notched for each tread, level seat cut at the foot and plumb cut at the top riser; treads and risers are cut boards. The top floor (slab, header, hanger) and the lower slab are separate components: place the stair with \"at\": {\"anchor\": \"foot\", \"to\": \"slab@top_left\"} and bring the header to stair@top_cut_top. W_STAIR_GEOMETRY: rise over 7 3/4 or tread under 10; W_STAIR_THROAT: under 3 1/2 of stringer left below the notches.",
+        example: "{\"id\":\"stair\",\"type\":\"stair\",\"risers\":4,\"rise\":7,\"tread\":11,\"waist\":6,\"bars\":\"#4\",\"nosing_bars\":\"#4\"}",
         traits: Traits::NONE,
     },
     Entry {

@@ -1,0 +1,6 @@
+DOC general-cmu-plan  5 components  1 view  0 errors  0 warnings  0 acknowledged
+ w1            cmu_wall 8" x 4 courses                     x -3 13/16"..3 13/16" y 0"..2'-7 5/8"
+ w2            cmu_wall 8" x 4 courses                     x -3 13/16"..3 13/16" y 0"..2'-7 5/8"
+ wx            cmu_wall 8" x 4 courses run x L=4'-0"       x 3 13/16"..4'-3 13/16" y 0"..2'-7 5/8"
+ v1            rebar #5 path L=2'-5"                       x -5/16"..5/16"   y 1"..2'-6"
+ v2            rebar #5 path L=2'-5"                       x -5/16"..5/16"   y 1"..2'-6"

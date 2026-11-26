@@ -8,4 +8,4 @@ DOC layout-sheet  8 components  4 views  0 errors  0 warnings  0 acknowledged
  p_stem        concrete rect 4'-0" x 8"                    x 0"..4'-0"       y 0"..8"
  p_bolt        solid steel (escape hatch)                  x 1'-11 11/16"..2'-0 5/16" y 3 11/16"..4 5/16"
 INFO I_SOLID_USED p_bolt: p_bolt uses the `solid` escape hatch (material steel); a reviewer should confirm no typed component fits.
-INFO I_KEY_RENUMBERED S1: layout S1 numbers its shared DETAIL NOTES 1..6 without gaps: key 7 prints as 6 Fix: nothing to do; to print the keys as written, give the notes consecutive keys starting at 1
+INFO I_KEY_RENUMBERED S1: layout S1 numbers its shared DETAIL NOTES 1..6 without gaps, and its views export alone with the same numbers: key 7 prints as 6 Fix: nothing to do; to print the keys as written, give the notes consecutive keys starting at 1

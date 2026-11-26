@@ -1,0 +1,8 @@
+DOC general-round-pier  7 components  2 views  0 errors  0 warnings  0 acknowledged
+ pier          concrete round 2'-0" dia. x 5'-0"           x -1'-0"..1'-0"   y -5'-0"..0"
+ v_back        rebar #5 path L=4'-7"                       x -5/16"..5/16"   y -4'-9"..-2"
+ v_left        rebar #5 path L=4'-7"                       x -8 1/2"..-7 7/8" y -4'-9"..-2"
+ v_right       rebar #5 path L=4'-7"                       x 7 7/8"..8 1/2"  y -4'-9"..-2"
+ v_front       rebar #5 path L=4'-7"                       x -5/16"..5/16"   y -4'-9"..-2"
+ hoops         rebar #3 hoop 1'-6" dia out to out in 'pier' at 3 cover at y -3" [x5 y @ -1'-0"] x -9"..9"         y -4'-3 3/16"..-2 13/16"
+ post          lumber 6x6 y PT wide run y L=2'-0"          x -2 3/4"..2 3/4" y 0"..2'-0"

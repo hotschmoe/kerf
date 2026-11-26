@@ -433,11 +433,15 @@ struct SecPass {
     fit: FitInfo,
     unverified: bool,
     keyed: Vec<KeyedEntry>,
+    /// The layout moved a note to the other column to keep its leader out of a cut member (SPEC 30.3).
+    sided: bool,
 }
 
 #[derive(Clone, Copy, Default)]
 pub struct ViewOpts<'a> {
     pub keys: Option<&'a [(String, u32)]>,
+    /// `keys` are a layout's numbers used on the view's own sheet: the view still draws its own DETAIL NOTES list.
+    pub own_list: bool,
     pub in_layout: bool,
     pub fit: Option<(f64, f64)>,
     pub iso_factor: Option<f64>,
@@ -462,6 +466,8 @@ struct SectionInputs<'a> {
     work: &'a Work,
     keys: Option<&'a [(String, u32)]>,
     in_layout: bool,
+    plain_sides: bool,
+    own_list: bool,
 }
 
 fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
@@ -491,6 +497,26 @@ fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
             )
         };
         diags.add_fix(Level::Warning, "W_CUT_FILL", Some(host), Some(&format!("views/{view_id}")), msg, fix);
+    }
+}
+
+fn own_cells_diags(scene: &Scene, own: &[plan::OwnCells], view_id: &str, diags: &Diags) {
+    for o in own {
+        let (Some(wall), Some(piece)) = (scene.comps.get(o.wall as usize), scene.comps.get(o.piece as usize)) else {
+            continue;
+        };
+        let more = if o.count > 1 { format!(" and {} more", o.count - 1) } else { String::new() };
+        diags.add_fix(
+            Level::Info,
+            "I_CMU_PLAN_UNITS",
+            Some(&wall.id),
+            Some(&format!("views/{view_id}")),
+            format!(
+                "view {view_id}: wall '{}' keeps its two face shells in this plan because the document draws its webs itself ('{}'{more}: material cmu, inside the wall)",
+                wall.id, piece.id
+            ),
+            "remove those pieces and the grout pieces in the cells: a cmu_wall cut by a plan view draws its own units, webs, cells and head joints, and grouts the cells that hold a vertical bar (`kerf schema cmu_wall`)".to_string(),
+        );
     }
 }
 
@@ -671,8 +697,33 @@ pub fn view_title(st: &Style, spec: &ViewSpec) -> String {
     out.trim_matches(|c: char| c == ' ' || c == '-').to_string()
 }
 
+/// The pass with the automatic note sides (SPEC 30.3), or without them when only that one fits `area` at this scale.
+fn sided_pass(inp: SectionInputs, spec: &ViewSpec, area: (f64, f64)) -> SecPass {
+    let fits = |p: &SecPass| {
+        (p.bounds.x1 - p.bounds.x0) / spec.scale <= area.0 + 1e-6
+            && (p.bounds.y1 - p.bounds.y0) / spec.scale <= area.1 + 1e-6
+    };
+    let td = Diags::new();
+    let pass = section_pass(SectionInputs { diags: &td, ..inp }, spec);
+    if pass.sided && !fits(&pass) {
+        let plain_diags = Diags::new();
+        let plain = section_pass(SectionInputs { diags: &plain_diags, plain_sides: true, ..inp }, spec);
+        if fits(&plain) {
+            inp.diags.extend(plain_diags.take().into_iter().map(|mut d| {
+                if d.code == "W_LEADER_HIT" && d.message.contains("crosses the cut") {
+                    d.fix = d.fix.map(|f| f + "; the view then needs a smaller scale, which is why the layout did not move the note itself");
+                }
+                d
+            }));
+            return plain;
+        }
+    }
+    inp.diags.extend(td.take());
+    pass
+}
+
 fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout } = inp;
+    let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout, plain_sides, own_list } = inp;
     let scale = spec.scale;
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
@@ -683,10 +734,13 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.verify_fixes = !in_layout;
+    env.auto_side = !plain_sides;
     env.shared_keys = keys;
+    env.own_list = own_list;
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let ann = annot::annotate(&mut env, &mut base_items);
     let unverified = env.unverified;
+    let sided = env.sided;
     let mut all: Vec<Item> = base_items;
     all.extend(regions);
     all.extend(ann);
@@ -716,17 +770,18 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut bounds = annot::items_box(font, &all);
     bounds.add_box(spec.crop);
     let keyed = core::mem::take(&mut env.keyed_out);
-    SecPass { items: all, bounds, detail, fit, unverified, keyed }
+    SecPass { items: all, bounds, detail, fit, unverified, keyed, sided }
 }
 
 fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, .. } = inp;
+    let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, own_list, .. } = inp;
     let mut sec = Section::new(scene, spec, &[]);
     let origin = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
     let mut env = Env::new(st, font, scene, spec, 1.0, origin, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.verify_fixes = !in_layout;
     env.shared_keys = keys;
+    env.own_list = own_list;
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let mut all = annot::annotate(&mut env, &mut []);
     let unverified = env.unverified;
@@ -752,7 +807,7 @@ fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut bounds = annot::items_box(font, &all);
     bounds.add_box(detail);
     let keyed = core::mem::take(&mut env.keyed_out);
-    SecPass { items: all, bounds, detail, fit, unverified, keyed }
+    SecPass { items: all, bounds, detail, fit, unverified, keyed, sided: false }
 }
 
 pub fn auto_crop(prisms: &[Prism], cut_z: f64) -> Box {
@@ -937,7 +992,7 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
         rs.crop = if spec.members.none { ref_crop(inp, spec) } else { auto_crop(prisms, spec.cut_z) };
     }
     if spec.has_scale {
-        let pass = section_pass(inp, &rs);
+        let pass = sided_pass(inp, &rs, fit_area(st));
         return SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass };
     }
     let (aw, ah) = fit_area(st);
@@ -950,7 +1005,7 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
         }
         rs.scale = sc;
         let td = Diags::new();
-        let pass = section_pass(SectionInputs { diags: &td, ..inp }, &rs);
+        let pass = sided_pass(SectionInputs { diags: &td, ..inp }, &rs, (aw, ah));
         last_diags = td.take();
         let pw = (pass.bounds.x1 - pass.bounds.x0) / sc;
         let ph = (pass.bounds.y1 - pass.bounds.y0) / sc;
@@ -964,7 +1019,7 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
     if let Some(r) = last {
         r
     } else {
-        let pass = section_pass(inp, &rs);
+        let pass = sided_pass(inp, &rs, fit_area(st));
         SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass }
     }
 }
@@ -995,6 +1050,8 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
         work: &work,
         keys: None,
         in_layout: false,
+        plain_sides: false,
+        own_list: false,
     };
     let r = resolve_section(inp, &fv.spec);
     Resolved { crop: r.crop, scale: r.scale }
@@ -1004,6 +1061,7 @@ pub struct FlatView<'a> {
     pub scene: Option<Scene<'a>>,
     pub prisms: Vec<Prism>,
     pub spec: ViewSpec<'a>,
+    pub own_cells: Vec<plan::OwnCells>,
 }
 
 pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
@@ -1013,16 +1071,17 @@ pub fn flat_view<'a>(scene: &Scene<'a>, spec: &ViewSpec<'a>) -> FlatView<'a> {
         Kind::Plan => {
             let cut = spec.cut_y.unwrap_or_else(|| plan::default_cut_y(&prisms));
             fs.cut_z = cut;
-            FlatView { prisms: plan::prisms(scene, &prisms, cut), scene: Some(plan::scene(scene)), spec: fs }
+            let (prisms, own_cells) = plan::prisms(scene, &prisms, cut);
+            FlatView { prisms, scene: Some(plan::scene(scene)), spec: fs, own_cells }
         }
         Kind::Elevation => {
             fs.cut_z = f64::INFINITY;
             let prisms = plan::footprints_in_section(plan::xz_bars_in_section(prisms, fs.cut_z), fs.cut_z);
-            FlatView { scene: None, prisms, spec: fs }
+            FlatView { scene: None, prisms, spec: fs, own_cells: Vec::new() }
         }
         _ => {
             let prisms = plan::footprints_in_section(plan::xz_bars_in_section(prisms, fs.cut_z), fs.cut_z);
-            FlatView { scene: None, prisms, spec: fs }
+            FlatView { scene: None, prisms, spec: fs, own_cells: Vec::new() }
         }
     }
 }
@@ -1068,7 +1127,14 @@ pub fn build_with<'a>(
     opts: ViewOpts,
 ) -> Option<Drawing<'a>> {
     let view_id = spec.id;
+    let sheet_keys =
+        if opts.in_layout || opts.keys.is_some() { None } else { crate::layout::sheet_keys(doc, st, view_id) };
+    let opts = match &sheet_keys {
+        Some(k) => ViewOpts { keys: Some(k), own_list: true, ..opts },
+        None => opts,
+    };
     let fv = flat_view(scene, spec);
+    own_cells_diags(scene, &fv.own_cells, view_id, diags);
     let scene = fv.scene.as_ref().unwrap_or(scene);
     let prisms = &fv.prisms;
     let work = Work::new(DEFAULT_WORK_LIMIT);
@@ -1094,6 +1160,8 @@ pub fn build_with<'a>(
                 work: &work,
                 keys: opts.keys,
                 in_layout: opts.in_layout,
+                plain_sides: false,
+                own_list: opts.own_list,
             },
             spec,
         );
@@ -1118,6 +1186,8 @@ pub fn build_with<'a>(
                 work: &work,
                 keys: opts.keys,
                 in_layout: opts.in_layout,
+                plain_sides: false,
+                own_list: opts.own_list,
             },
             &fv.spec,
         );
@@ -1156,6 +1226,7 @@ pub fn build_with<'a>(
             env.work = Some(&work);
             env.verify_fixes = !opts.in_layout;
             env.shared_keys = opts.keys;
+            env.own_list = opts.own_list;
             env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
             let ann = annot::annotate(&mut env, &mut res.items);
             let un = env.unverified;

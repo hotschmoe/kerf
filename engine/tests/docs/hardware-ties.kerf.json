@@ -25,7 +25,7 @@
       {"id": "n1", "type": "note", "text": "SIMPSON H2.5A @ EA. RAFTER", "target": "h25"},
       {"id": "n2", "type": "note", "text": "SIMPSON RSP4 @ EA. STUD", "target": "rsp"}]},
     {"id": "B", "kind": "section", "title": "SLOPED HANGER AND A35 AT LEDGER", "cut_z": 0, "annotations": [
-      {"id": "n1", "type": "note", "text": "SIMPSON LSSU28 SLOPED HANGER", "target": "lssu"},
+      {"id": "n1", "type": "note", "text": "SIMPSON LSSU28 SLOPED HANGER", "target": "lssu", "column": "left"},
       {"id": "n2", "type": "note", "text": "SIMPSON A35 @ EA. STUD", "target": "a35"}]},
     {"id": "C", "kind": "section", "title": "HOLDOWN AT STEM", "cut_z": 0, "annotations": [
       {"id": "n1", "type": "note", "text": "HDU5 HOLDOWN", "target": "hd"}]},

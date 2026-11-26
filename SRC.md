@@ -238,7 +238,7 @@ SPEC 18 requires hatch lines to be cut under notes, dimension text and labels.
 
 ## engine/kerf-core/src/annot/line.rs
 
-Boundary lines follow SPEC 29.2 and remain at their authored positions.
+Boundary lines follow SPEC 29.2 and remain at their authored positions. SPEC 30.2: each segment also yields a mask quad that knocks material hatch out from under the line; `weight: heavy` swaps the pen, not the layer.
 
 ## engine/kerf-core/src/annot/title.rs
 
@@ -250,11 +250,11 @@ Weld symbols use AWS A2.4 basics, appear in section views, and stay at their exp
 
 ## engine/kerf-core/src/annot.rs
 
-SPEC 6, 16, 20, 23, 24, 25.2, 26.2, 27.4 and 28.2 govern annotations. Layout effort can be shared across a view's passes and trials. Shared-layout keyed notes use layout-assigned numbers and leave list entries for the layout to draw. A keyed note without text first looks for the same key in its view, then in the document's views, inheriting citations if it has none; a note on nailing can derive text from its target. Leader-hit fix verification is disabled for discarded layout trials. Annotations are emitted in view order, and hatching is knocked out under text.
+SPEC 6, 16, 20, 23, 24, 25.2, 26.2, 27.4 and 28.2 govern annotations. Layout effort can be shared across a view's passes and trials. Shared-layout keyed notes use layout-assigned numbers and leave list entries for the layout to draw. A keyed note without text first looks for the same key in its view, then in the document's views, inheriting citations if it has none; a note on nailing can derive text from its target. Leader-hit fix verification is disabled for discarded layout trials. Annotations are emitted in view order, and hatching is knocked out under text. SPEC 30.3: after the first repaired layout, notes whose leader runs through a cut member are tried on the other side one at a time, each trial a full repair, and a trial is kept only if it lowers the hit count without adding hits of other kinds; a view built alone uses the numbers of the shared-notes layout that names it but still draws its own list (`own_list`).
 
 ## engine/kerf-core/src/annot/notes.rs
 
-SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. Fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Citation sections containing digits retain case because paragraph letters are significant.
+SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. Fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Citation sections containing digits retain case because paragraph letters are significant. The through-side of a note (SPEC 30.3) is measured on a horizontal reach from its first landing candidate to each crop edge through the cut bodies of other components; the router only reports it.
 
 ## engine/kerf-core/src/annot/table.rs
 
@@ -266,7 +266,7 @@ SPEC 12 and DESIGN 5 define sheet framing. Sheet geometry is built in paper inch
 
 ## engine/kerf-core/src/layout.rs
 
-SPEC 26.2 and 28.2 define layouts and fit checks. Layout coordinates are paper inches multiplied by the first view's scale, so items from other scales, including text heights, use the ratio of scales. Explicit or document view scales are retained; iso views without their own scale use the common scale divided by `iso_ratio`. `sheet: auto` with a common scale chooses the smallest standard sheet reaching 1 inch to 1 foot, or the best achievable scale if none does. Layout note numbering merges explicit keys across views, merges unkeyed notes with matching text and citations, and numbers the resulting entries consecutively in layout order. Row titles align at the bottom, rows center across their width, and columns stack from the top.
+SPEC 26.2 and 28.2 define layouts and fit checks. Layout coordinates are paper inches multiplied by the first view's scale, so items from other scales, including text heights, use the ratio of scales. Explicit or document view scales are retained; iso views without their own scale use the common scale divided by `iso_ratio`. `sheet: auto` with a common scale chooses the smallest standard sheet reaching 1 inch to 1 foot, or the best achievable scale if none does. Layout note numbering merges explicit keys across views, merges unkeyed notes with matching text and citations, and numbers the resulting entries consecutively in layout order. Row titles align at the bottom, rows center across their width, and columns stack from the top. `sheet_keys` (SPEC 30.8) recomputes a layout's shared numbering without building any view, so a single-view build can print the same numbers.
 
 ## engine/kerf-core/src/view.rs
 
@@ -286,7 +286,7 @@ Break lines apply to cut members and to lengthwise steel running beyond the crop
 
 ## engine/kerf-core/src/section/cut.rs
 
-When subtracting an embedded hole would remove more area than the hole itself, the boolean is treated as failed and the hole is skipped so the part retains its fill. Otherwise an emptied fill means the hole covers the whole cut. Hatch grain follows the longest loop edge.
+When subtracting an embedded hole would remove more area than the hole itself, the boolean is treated as failed and the hole is skipped so the part retains its fill. Otherwise an emptied fill means the hole covers the whole cut. Hatch grain follows the longest loop edge. SPEC 32.1: a cut member marked `existing` takes the thin pen and one sparse ANSI31 hatch in place of its material hatch and fill; the pens have no gray, so this is the black-and-white convention for existing work.
 
 ## engine/kerf-core/src/section/hardware.rs
 
@@ -306,7 +306,7 @@ Visible and hidden path portions are split at occluder outlines. Closed-loop pie
 
 ## engine/kerf-core/src/section/strokes.rs
 
-Coincident collinear spans keep the heavier pen, except members of one component keep a thin copy. Open strokes chain only when both pen and source match; returning to the start closes a loop.
+Coincident collinear spans keep the heavier pen, except members of one component keep a thin copy. Open strokes chain only when both pen and source match; returning to the start closes a loop. Coincident segments of two instances of one component normally become a thin seam; two rebar strokes are exempt, because stacked ties and repeated dowels seen along their array axis are bars, not seams.
 
 ## engine/kerf-core/src/builders/anchor_bolt.rs
 
@@ -314,7 +314,7 @@ SPEC 5 defines anchor bolts. A plate washer size uses `width x width x thickness
 
 ## engine/kerf-core/src/builders/bolt.rs
 
-Structural bolts use a heavy hex head and nut with across-flats width `1.5d + 1/8`, head height `0.625d`, nut height `d`, an F436 washer of outside diameter `2d` and thickness `5/32`, and thread stick-out `0.5d`. The head bears at the local origin and the grip runs down or toward negative z. Weld and shear studs point up from the local origin.
+Structural bolts use a heavy hex head and nut with across-flats width `1.5d + 1/8`, head height `0.625d`, nut height `d`, an F436 washer of outside diameter `2d` and thickness `5/32`, and thread stick-out `0.5d`. The head bears at the local origin and the grip runs down or toward negative z. Weld and shear studs point up from the local origin. Lag and wood screws return early from `build` through `screw`: they share the group layout and the `shank` + centerline convention the bolt checks read, but have no grip stack, so `length` replaces `grip`. A slotted or oversize hole is a `Kind::Ghost` outline with the steel pen: sections draw it over everything, iso and the mesh skip it, and it never takes part in overlap or contact checks. Hole sizes are AISC 360 Table J3.3.
 
 ## engine/kerf-core/src/builders/cmu_wall.rs
 
@@ -322,7 +322,7 @@ SPEC 5 defines masonry walls. Course ranges are one-based from the bottom; adjac
 
 ## engine/kerf-core/src/builders/concrete.rs
 
-SPEC 28.7 defines plan footprints as x/z outlines with y thickness. Angled edges use thin z slabs for checks, while the exact outline carried on the first slab is used by section, plan, elevation, iso and 3D drawing.
+SPEC 28.7 defines plan footprints as x/z outlines with y thickness. Angled edges use thin z slabs for checks, while the exact outline carried on the first slab is used by section, plan, elevation, iso and 3D drawing. SPEC 32.5: `shape: round` is a footprint whose outline is a four-point bulge circle, so plan, section, iso and mesh reuse the footprint path; like every footprint it takes no voids, and it centres on the section cut in z unless `z` is a number.
 
 ## engine/kerf-core/src/builders/connector.rs
 
@@ -376,17 +376,25 @@ SPEC 26.4 defines sleeve parameters and geometry.
 
 SPEC 5 defines solid parameters and geometry.
 
+## engine/kerf-core/src/builders/stair.rs
+
+SPEC 32.3 defines stairs. The flight climbs right from `foot`, the lower floor at the face of the first riser. A concrete flight is one outline (steps, top slab, soffit, toe); the waist is measured square to the soffit from the inside corners of the steps, and the outline is the rebar host. A wood flight is a notched stringer drawn lengthwise (`along_grain` on its prism) with cut tread and riser boards; the throat is what the notches leave square to the bottom edge. Steel stringers are sloped `steel` members and are not built here.
+
 ## engine/kerf-core/src/builders/rebar.rs
 
-SPEC 5, 25.1 and 26.3 define reinforcing bars. Flat x/z bars use axis legs, approximating diagonal runs with short stair-step slabs for checks, iso and mesh; the first slab carries the complete centerline used by section, plan and elevation. Path-bar anchors lie on that centerline: bends use the point nearest the corner and segment anchors use the middle of the straight run. Station references follow the referenced member when its host is resized. Placement uses a host's outline or its box if it has no outline, clipped to the part box when a part is selected.
+SPEC 5, 25.1 and 26.3 define reinforcing bars. Flat x/z bars use axis legs, approximating diagonal runs with short stair-step slabs for checks, iso and mesh; the first slab carries the complete centerline used by section, plan and elevation. Path-bar anchors lie on that centerline: bends use the point nearest the corner and segment anchors use the middle of the straight run. Station references follow the referenced member when its host is resized. Placement uses a host's outline or its box if it has no outline, clipped to the part box when a part is selected. SPEC 32.1 and 32.2 add `hook`, `tie` and `epoxy`; their geometry is in `rebar_bends.rs`, and a tie or hooked bar is an ordinary path bar once its centerline is built, so cover, plan and mesh code is shared.
+
+## engine/kerf-core/src/builders/rebar_bends.rs
+
+SPEC 32.1 and 32.2 define standard hooks, ties, hoops and adhesive dowels. Bend diameters and extensions come from ACI 318-19 Tables 25.3.1 and 25.3.2 by bar number, never from the document. A hook keeps the authored end point as the out-to-out corner (90) or the far reach of the bend (135, 180), so a bar drawn to a cover line keeps its cover. Ties are sized from the host box (or part box) less the cover and are built as one closed centerline whose two hook tails lap at a corner. An adhesive dowel finds the end leg that points into its host, extends it by `embed` past the face, and adds the drilled hole as part `epoxy`; the hole is exempt from overlap with its host.
 
 ## engine/kerf-core/src/builders/steel.rs
 
-The AISC subset in `steel_shapes` supplies dimensions. Cross-sections use u across and v up; section maps these to x/y, elevation uses length/v, and plan uses length/u. Lengthwise members are built as slabs at their true z positions, so iso and 3D retain their shape even though section draws them as elevations. Closed section profiles are split into simple loops for the mesh.
+The AISC subset in `steel_shapes` supplies dimensions. Cross-sections use u across and v up; section maps these to x/y, elevation uses length/v, and plan uses length/u. Lengthwise members are built as slabs at their true z positions, so iso and 3D retain their shape even though section draws them as elevations. Closed section profiles are split into simple loops for the mesh. Cold-formed and any-size shapes reuse the channel conventions (web on the left, flanges right) so anchors and elevation slabs match rolled channels. `fill` adds one ordinary body prism inside the walls: it is the only prism of a lengthwise steel member that hatches when a section cuts along it, which is what makes a filled pipe read as cut. `material` accepts any style material whose role is steel or sheet_metal.
 
 ## engine/kerf-core/src/builders/steel_shapes.rs
 
-The table is a subset of AISC Shapes Database v16. Rolled shapes use tabulated decimal dimensions; HSS and pipe walls use design thickness 0.93 times nominal per AISC 360 B4.2. Angle and channel root fillets are approximated by size. Weld and fit checks use the thinnest element of a wide flange or channel. Table tuples use W designation/depth/flange width/web thickness/flange thickness/design k; rectangular HSS height/width/nominal walls; round HSS diameter/nominal walls; pipe designation/diameter/STD wall/XS wall; angles long leg/short leg/thicknesses; and channels designation/depth/flange width/web thickness/average flange thickness.
+The table is a subset of AISC Shapes Database v16. Rolled shapes use tabulated decimal dimensions; HSS and pipe walls use design thickness 0.93 times nominal per AISC 360 B4.2. Angle and channel root fillets are approximated by size. Weld and fit checks use the thinnest element of a wide flange or channel. Table tuples use W designation/depth/flange width/web thickness/flange thickness/design k; rectangular HSS height/width/nominal walls; round HSS diameter/nominal walls; pipe designation/diameter/STD wall/XS wall; angles long leg/short leg/thicknesses; and channels designation/depth/flange width/web thickness/average flange thickness. Lookup order matters: the any-size prefixes (TUBE, CEE, ANGLE, TEE) and the SSMA pattern are tried before the AISC tables because `TEE`/`TUBE` would otherwise fall into the generic "not recognised" message, and an SSMA name starts with digits like no AISC name. A track (`T`) is drawn two thicknesses deeper than its nominal web so a stud of the same size nests inside without overlap. WT shapes are derived by halving a W row, so the W table stays the single source.
 
 ## engine/kerf-core/src/builders/nailing.rs
 
@@ -394,7 +402,7 @@ SPEC 27.4 defines nail and screw placement. Member-instance boxes are compared i
 
 ## engine/kerf-core/src/builders/tie.rs
 
-SPEC 28.4 defines ties and angles placed from two members. The joint is located on their profiles; ties wrap it and angles occupy its inside corner. The selected face determines face-on versus edge-on hardware, and plates are built in world coordinates. Notches are applied before finding the joint so the tie lands on the meeting faces. `W_TIE_LEG` reports a leg extending past its member onto non-framing and suggests shortening it, transferring the remaining length to the other leg when there is room.
+SPEC 28.4 defines ties and angles placed from two members. The joint is located on their profiles; ties wrap it and angles occupy its inside corner. The selected face determines face-on versus edge-on hardware, and plates are built in world coordinates. Notches are applied before finding the joint so the tie lands on the meeting faces. `W_TIE_LEG` reports a leg extending past its member onto non-framing and suggests shortening it, transferring the remaining length to the other leg when there is room. SPEC 30.1: the bent leg takes the side no other component lies against, which relies on connectors being placed after the members that are ready; a leg left inside a member is `W_OVERLAP`.
 
 ## engine/kerf-core/src/builders.rs
 
@@ -426,7 +434,7 @@ Text stroke polylines use the item's anchor, with rotation in degrees counterclo
 
 ## engine/kerf-core/src/drawview.rs
 
-SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2 and 28.6 govern view construction and fit diagnostics. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet.
+SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2 and 28.6 govern view construction and fit diagnostics. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet. SPEC 30.3: `sided_pass` builds a view with the automatic note sides and falls back to a pass without them when only that one fits the frame at the scale being tried, so a side change never costs a scale step.
 
 ## engine/kerf-core/src/hatch.rs
 
@@ -466,7 +474,9 @@ SPEC 11 defines the flat-shaded prism mesh and explicit feature edges. Holes are
 
 ## engine/kerf-core/src/plan.rs
 
-SPEC 26.3 and 28.7 define plan views. Plan coordinates are `(x, -z)`, with model y as depth toward the viewer, so the section engine can draw plan strips at `cut_y`. Adjacent strips merge when their top surfaces do not make a visible break. Loose fill is omitted in plan. Bent x/z bars retain their exact centerline for plan and section/elevation views; angled footprints retain their exact outline. Plan references use per-instance and per-part plan boxes, with named anchors projected at the instance's center z.
+SPEC 26.3 and 28.7 define plan views. Plan coordinates are `(x, -z)`, with model y as depth toward the viewer, so the section engine can draw plan strips at `cut_y`. Adjacent strips merge when their top surfaces do not make a visible break. Loose fill is omitted in plan. Bent x/z bars retain their exact centerline for plan and section/elevation views; angled footprints retain their exact outline. Plan references use per-instance and per-part plan boxes, with named anchors projected at the instance's center z. SPEC 32.7: a `cmu_wall` cut by the plan is redrawn as units by `cmu_units`, which pairs the two cut face shells of each instance, takes head joints from the face-on joint lines (run x) or running bond by course parity (run z), and replaces the shells with unit outlines with rounded cell openings. The wall's prisms below the cut are hidden, because their edges coincide with the unit edges and would turn them into thin seams. A cell is grouted where a grout prism crosses the cut or, with reinforced grouting, where a vertical bar stands in it. A wall whose core holds another component's `cmu` body (webs drawn by hand before 32.7) is left as bare shells and reported as `I_CMU_PLAN_UNITS` through `FlatView::own_cells`.
+
+Vertical round steel uses the shape table's outside diameter and design wall thickness to replace its box proxy with a ring in plan; its optional fill becomes the inner circle. The instance transform determines whether the member is vertical, and cuts still clip its plan footprint. Side and iso representations retain the existing 2.5D slabs.
 
 ## engine/kerf-core/src/hwcheck.rs
 
@@ -482,12 +492,32 @@ Geometry checks run once per distinct set of components drawn by the document's 
 
 ## engine/kerf-core/src/validate/bearing.rs
 
-SPEC 27.1 requires a member with a minimum-bearing trait, such as an I-joist, to meet that bearing at each end and intermediate support.
+SPEC 27.1 requires a member with a minimum-bearing trait, such as an I-joist, to meet that bearing at each end and intermediate support. SPEC 30.6: `unsupported` is deliberately narrow (flat end-on plate, one edge against a member, wood on top, nothing under it in any drawn set) because plates drawn without their floor and beams cut away from their post are common and correct.
 
 ## engine/kerf-core/src/cuts.rs
 
-SPEC 27.3 defines lumber and steel cuts. In the lengthwise builder frame, u follows the member and v points left across it; end cuts and notches modify the local profile before placement so every view, mesh and check sees it. A notch `by` another member is subtracted after placement and is not a placement dependency; `from`, `to`, birdmouth `on`, trim `to` and bevel `line` references are dependencies. A birdmouth without `at` uses the low outer top corner of its bearing member. The overlap fix for an overly deep heel reduces the heel by the overlap height, limited by the bearing depth.
+SPEC 27.3 defines lumber and steel cuts. In the lengthwise builder frame, u follows the member and v points left across it; end cuts and notches modify the local profile before placement so every view, mesh and check sees it. A notch `by` another member is subtracted after placement and is not a placement dependency; `from`, `to`, birdmouth `on`, trim `to` and bevel `line` references are dependencies. A birdmouth without `at` uses the low outer top corner of its bearing member. The overlap fix for an overly deep heel reduces the heel by the overlap height, limited by the bearing depth. SPEC 32.4 adds `hole`: holes are subtracted as flattened rings and then restored to exact two-arc circles, so exports draw true circles. Hole and notch limits (IRC R502.8.1, R602.6) apply only to sawn lumber seen on its wide face; engineered lumber and steel are left to the manufacturer or engineer, and the span is unknown, so position along the span is never checked.
 
 ## engine/kerf-core/src/voids.rs
 
 SPEC 26.4 defines subtracted solids. Hosts are cut after placement and split into z slabs where a void is shorter than the host, so views, mesh and checks share the same holes. A missing void z range means the whole host. Component cutters use outer body silhouettes with holes filled, preventing concrete from entering a tube. Exact host loops remain only while each cutter is a single exact loop wholly inside as a new hole. Fills are clipped per view against solid silhouettes at the cut plane, excluding `fill.except` components. Touching slabs of the same component, instance and part identify cap seams for visibility and feature-edge suppression.
+
+## engine/kerf-core/src/builders/steel_joist.rs
+
+The drawing is schematic by design: SJI designations fix depth, seat depth and load, not member sizes, so chord and web sizes come from a small series/depth rule and can be overridden. All elevation prisms are `lengthwise` (outline only) and each chord is two slabs per angle at its true z, so iso shows the double-angle chords. Webs follow one chain of alternating top and bottom panel points; a web clipped by a cut end is dropped when less than 40% of it remains, to avoid slivers at the break line. The end web starts half a web width inside the seat so a bearing plate longer than the seat still reports an honest overlap. Bearing length is not checked: the I-joist bearing check is tied to that type.
+
+## engine/kerf-core/src/builders/metal_deck.rs
+
+Run z builds the lower face of the profile as one polyline and offsets it by the sheet thickness with mitred corners, then clips to the drawn length, so the sheet is one closed loop of uniform thickness. The topping polygon reuses the upper face, so concrete and sheet share an edge exactly. The local box is the deck without its topping, which keeps `top_left` at the top of the flutes for insulation and nailers. Cover sides default to 0 because the drawn ends of a deck are cuts, not slab edges.
+
+## engine/kerf-core/src/builders/stair_treads.rs
+
+Only the treads are a type: stringers stay plain sloped `steel` members so this file and the `stair` type (concrete and wood flights) do not overlap. Treads are bodies spanning `width` along z; carrier angles are two lengthwise slabs per stringer side at the edges of that width, so a section through the flight shows them beyond and iso shows them at both stringers.
+
+## engine/kerf-core/src/compile.rs
+
+SPEC 30.1: placement is dependency order with ties broken by document order, except that connectors and nailing wait until no other component is ready. Builders that look at their neighbours (a tie choosing its side, nailing, the hardware checks) only see components already placed, so this is what lets them see members listed after them.
+
+## beta.4 integration of SPEC 30–32
+
+Leader-through-member checks include the cut body prisms of steel joists, metal deck and its topping, steel stair treads and concrete/wood stairs. Embedded reinforcement and beyond geometry keep the SPEC 30 exclusions. The unsupported flat-plate check counts wood stair bodies as carried wood; support detection already accepts bodies of every type. Existing members obstruct leaders and support plates normally, and CMU plans supply their sliced unit geometry.

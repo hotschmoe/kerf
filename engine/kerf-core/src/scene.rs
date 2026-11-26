@@ -43,6 +43,8 @@ pub struct Comp<'a> {
     pub dashed: bool,
     /// `shown: "where_occurs"` (or the old `"dashed"`): notes that target it end in (WHERE OCCURS).
     pub where_occurs: bool,
+    /// `existing` (SPEC 32.1): Some(true) is existing construction, Some(false) is written new work.
+    pub existing: Option<bool>,
     pub arr_count: usize,
     pub place_pt: V2,
     pub angle: f64,
@@ -73,6 +75,7 @@ impl<'a> Comp<'a> {
             visible: true,
             dashed: false,
             where_occurs: false,
+            existing: None,
             arr_count: 1,
             place_pt: V2::init(0.0, 0.0),
             angle: 0.0,
@@ -153,6 +156,26 @@ pub fn where_occurs_text(scene: &Scene<'_>, target: &str, text: &str) -> String 
         return text.to_string();
     }
     format!("{} (WHERE OCCURS)", text.trim_end_matches(' '))
+}
+
+/// SPEC 32.1: a note on an existing member starts with (E); on a member written `"existing": false` with (N) when the
+/// document also has existing members.
+pub fn existing_text(scene: &Scene<'_>, target: &str, text: &str) -> String {
+    let id = target.split(['.', '#']).next().unwrap_or("");
+    let Some(c) = scene.find(id) else { return text.to_string() };
+    let up = text.to_ascii_uppercase();
+    let tag = match c.existing {
+        Some(true) if !up.contains("(E)") && !up.contains("EXISTING") => "(E)",
+        Some(false)
+            if !up.contains("(N)")
+                && !up.starts_with("NEW ")
+                && scene.comps.iter().any(|o| o.existing == Some(true)) =>
+        {
+            "(N)"
+        }
+        _ => return text.to_string(),
+    };
+    format!("{tag} {}", text.trim_start_matches(' '))
 }
 
 pub struct Scene<'a> {
@@ -257,7 +280,7 @@ impl<'a> Scene<'a> {
     }
 
     pub fn resolve_ref_str(&self, r#ref: &str, from_id: &str, path: &str) -> Option<V2> {
-        let d = self.diags;
+        let d = self.diags.once();
         let Ok(r) = parse_ref(r#ref) else {
             d.add_fix(
                 Level::Error,

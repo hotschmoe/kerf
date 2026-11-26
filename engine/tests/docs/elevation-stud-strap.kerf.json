@@ -420,7 +420,8 @@
           "id": "n3",
           "type": "note",
           "text": "2X6 STUDS @ 16\" O.C.",
-          "target": "stud_lo"
+          "target": "stud_lo",
+          "column": "left"
         },
         {
           "id": "d1",

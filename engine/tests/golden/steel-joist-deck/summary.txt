@@ -1,0 +1,6 @@
+DOC steel-joist-deck  4 components  1 view  0 errors  0 warnings  0 acknowledged
+ beam          steel W16x26 A992 section                   x -2 3/4"..2 3/4" y -1'-3 11/16"..0"
+ joist         steel joist 18K4 (K, 1'-6" deep, seat 2 1/2" x 4") elevation L=3'-6", seats left x -2"..3'-4"      y -1'-3 1/2"..2 1/2"
+ deck          metal deck 1.5B 22 ga. (1 1/2" deep, ribs @ 6") flutes along z L=3'-6" (until joist@top_chord_end) x -2"..3'-4"      y 2 1/2"..4"
+ seat_bolts    bolt 0.5" dia. A307, grip 5/8", side, long slot 9/16" x 1 1/4" along x x -1/2"..1/2"     y -1 1/4"..9/16"
+INFO I_UNVERIFIED_CITE: 1 citation(s) await designer verification (notes: A/n_joist). Citations print with a trailing * until verified.

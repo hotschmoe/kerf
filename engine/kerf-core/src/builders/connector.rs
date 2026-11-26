@@ -30,7 +30,7 @@ params! {
         points: OptRaw => { def: "required for a strap without on", desc: "polyline [x,y] or Refs of the bearing face (lay edge) or centerline (lay face)" },
         on: OptStr => { def: "null", desc: "\"<member>.face_left|face_right|face_top|face_bottom|face_front|face_back\": the strap lies flush on that face in 3D (outside it, gauge thick, no z arithmetic, no `side`): points snap onto the face (default: the whole face along the member), width centered on the member (left/right/top/bottom) or in-plane (front/back)" },
         lay: Enum(Lay) = Lay::Edge => { desc: "edge: seen edge-on, gauge in-plane growing to `side`, width along Z; face: seen face-on, `width` in-plane centered on the polyline, gauge along Z (with `on` the face sets it)" },
-        side: Enum(Side) = Side::Left => { desc: "lay edge: left of the polyline direction (left of a left-to-right line = up) or right (with `on` the face sets it)" },
+        side: Enum(Side) = Side::Left => { desc: "lay edge: left of the polyline direction (left of a left-to-right line = up) or right (with `on` the face sets it). Tie with members, bent onto the other member's side: which side its leg lies on; left out, the side no other member lies against (W_OVERLAP when the leg still ends up inside a member)" },
         gauge: OptNum => { def: "18 (or the model's)", desc: "10 .1345, 11 .1196, 12 .1046, 14 .0747, 16 .0598, 18 .0478, 20 .0359" },
         width: OptLenPos => { def: "1.25 (straps); hanger: the carried member; cap/base: the post; holdown 2.5", desc: "strap: extent along Z (lay edge) or in-plane (lay face); hanger: inside seat width; holdown: body width along the face" },
         fasteners: Str = "" => { def: "null", desc: "text for notes, e.g. \"(10) 10d EA. END\"" },

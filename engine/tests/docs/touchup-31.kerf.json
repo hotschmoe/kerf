@@ -1,0 +1,305 @@
+{
+  "kerf": "0.2",
+  "id": "touchup-31",
+  "meta": {
+    "requested": [],
+    "title": "Issue 31 touch-up"
+  },
+  "components": [
+    {
+      "id": "a_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [0, 0]
+      },
+      "views": [
+        "A"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 30
+    },
+    {
+      "id": "a_pl1",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "a_stud@top_left"
+      },
+      "views": [
+        "A"
+      ],
+      "size": "2x6",
+      "orient": "flat"
+    },
+    {
+      "id": "a_pl2",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "a_pl1@top_left"
+      },
+      "views": [
+        "A"
+      ],
+      "size": "2x6",
+      "orient": "flat"
+    },
+    {
+      "id": "a_blk",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "a_pl2@top_left"
+      },
+      "z": [-11.25, 11.25],
+      "views": [
+        "A"
+      ],
+      "size": "2x4",
+      "orient": "upright",
+      "blocking": true
+    },
+    {
+      "id": "a_tie",
+      "type": "connector",
+      "views": [
+        "A"
+      ],
+      "model": "H2.5A",
+      "members": [
+        "a_raft#0",
+        "a_pl2"
+      ]
+    },
+    {
+      "id": "a_raft",
+      "type": "lumber",
+      "slope": "4:12",
+      "z": -12,
+      "array": {
+        "axis": "z",
+        "count": 2,
+        "spacing": 24
+      },
+      "views": [
+        "A"
+      ],
+      "size": "2x8",
+      "run": "x",
+      "length": 48,
+      "cuts": [
+        {
+          "on": "a_pl2",
+          "seat": 5,
+          "tail": 10,
+          "type": "birdmouth"
+        },
+        {
+          "end": "start",
+          "type": "plumb"
+        }
+      ]
+    },
+    {
+      "id": "b_ftg",
+      "type": "concrete",
+      "at": {
+        "anchor": "top_center",
+        "to": [100, 0]
+      },
+      "views": [
+        "B"
+      ],
+      "shape": "rect",
+      "width": 24,
+      "height": 12
+    },
+    {
+      "id": "b_soil",
+      "type": "fill",
+      "material": "earth",
+      "views": [
+        "B"
+      ],
+      "points": [
+        [88, 0],
+        [160, 0],
+        [160, -30],
+        [60, -30],
+        [60, -12],
+        [88, -12]
+      ]
+    },
+    {
+      "id": "c_stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": [200, 0]
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x6",
+      "run": "y",
+      "face": "wide",
+      "length": 48
+    },
+    {
+      "id": "c_plate",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "c_stud@bottom_right",
+          "offset": [0, 24]
+        }
+      },
+      "views": [
+        "C"
+      ],
+      "acknowledge": [
+        {
+          "code": "W_UNSUPPORTED",
+          "reason": "reference case for the check: the plate hangs off the stud face on purpose"
+        }
+      ],
+      "size": "2x6",
+      "orient": "flat"
+    },
+    {
+      "id": "c_joist",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "c_plate@top_left"
+      },
+      "views": [
+        "C"
+      ],
+      "size": "2x8",
+      "run": "x",
+      "face": "wide",
+      "length": 30
+    },
+    {
+      "id": "c_clip",
+      "type": "connector",
+      "views": [
+        "C"
+      ],
+      "model": "A35",
+      "members": [
+        "c_joist",
+        "c_plate"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "section",
+      "title": "TIE SIDE AT A BIRDMOUTH",
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "n_tie",
+          "type": "note",
+          "text": "H2.5A TIE EA. RAFTER",
+          "target": "a_tie",
+          "key": 2
+        },
+        {
+          "id": "n_blk",
+          "type": "note",
+          "text": "2X4 BLOCKING BETWEEN RAFTERS",
+          "target": "a_blk",
+          "key": 5
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "kind": "section",
+      "title": "LINE OVER EARTH HATCH",
+      "crop": {
+        "x": [62, 158],
+        "y": [-28, 6]
+      },
+      "notes_style": "keyed",
+      "annotations": [
+        {
+          "id": "l_zone",
+          "type": "line",
+          "points": [
+            "b_ftg@bottom_right",
+            {
+              "ref": "b_ftg@bottom_right",
+              "offset": [36, -18]
+            }
+          ],
+          "weight": "heavy"
+        },
+        {
+          "id": "l_lim",
+          "type": "line",
+          "points": [
+            "b_ftg@bottom_left",
+            {
+              "ref": "b_ftg@bottom_left",
+              "offset": [-24, -12]
+            }
+          ]
+        },
+        {
+          "id": "t_zone",
+          "type": "label",
+          "text": "NO-LOAD ZONE",
+          "at": {
+            "ref": "b_ftg@bottom_right",
+            "offset": [26, -4]
+          }
+        },
+        {
+          "id": "n_ftg",
+          "type": "note",
+          "text": "CONT. FOOTING PER PLAN",
+          "target": "b_ftg",
+          "key": 7
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "kind": "section",
+      "title": "LEADER SIDE AND PLATE BEARING",
+      "annotations": [
+        {
+          "id": "n_clip",
+          "type": "note",
+          "text": "A35 CLIP",
+          "target": "c_clip"
+        },
+        {
+          "id": "n_plate",
+          "type": "note",
+          "text": "2X6 FLAT PLATE",
+          "target": "c_plate"
+        }
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "id": "S1",
+      "views": [
+        "A",
+        "B"
+      ],
+      "columns": 1
+    }
+  ]
+}

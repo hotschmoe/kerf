@@ -1,0 +1,116 @@
+{
+  "kerf": "0.1",
+  "id": "general-holes",
+  "title": "HOLES AND NOTCHES",
+  "run": [-24, 24],
+  "components": [
+    {
+      "id": "plate",
+      "type": "lumber",
+      "at": {
+        "anchor": "top_left",
+        "to": [0, 0]
+      },
+      "size": "2x4",
+      "run": "x",
+      "face": "narrow",
+      "length": 126
+    },
+    {
+      "id": "joist",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": "plate@top_left"
+      },
+      "size": "2x10",
+      "run": "x",
+      "length": 96,
+      "cuts": [
+        {
+          "d": 3,
+          "type": "hole",
+          "x": 30
+        },
+        {
+          "d": 2,
+          "type": "hole",
+          "x": 42
+        },
+        {
+          "at": "top",
+          "d": 1.5,
+          "type": "notch",
+          "w": 3,
+          "x": 60
+        }
+      ]
+    },
+    {
+      "id": "stud",
+      "type": "lumber",
+      "at": {
+        "anchor": "bottom_left",
+        "to": {
+          "ref": "plate@top_left",
+          "offset": [120, 0]
+        }
+      },
+      "size": "2x6",
+      "run": "y",
+      "length": 48,
+      "cuts": [
+        {
+          "d": 2,
+          "type": "hole",
+          "x": 24
+        },
+        {
+          "at": "top",
+          "d": 1.375,
+          "type": "notch",
+          "w": 3,
+          "x": 36
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "A",
+      "kind": "elevation",
+      "title": "HOLES AND NOTCHES IN FRAMING",
+      "annotations": [
+        {
+          "id": "d1",
+          "type": "dim",
+          "from": "joist@hole_1_top",
+          "to": "joist@hole_1_bottom",
+          "dir": "v",
+          "text": "D/3 MAX."
+        },
+        {
+          "id": "d2",
+          "type": "dim",
+          "from": "joist@notch_1_start",
+          "to": "joist@notch_1_end",
+          "dir": "h",
+          "offset": 3,
+          "text": "D/3 MAX."
+        },
+        {
+          "id": "n1",
+          "type": "note",
+          "text": "2X10 JOIST",
+          "target": "joist"
+        },
+        {
+          "id": "n2",
+          "type": "note",
+          "text": "2X6 STUD",
+          "target": "stud"
+        }
+      ]
+    }
+  ]
+}

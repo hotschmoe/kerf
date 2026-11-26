@@ -6,6 +6,83 @@ nothing else. Rust 1.96 stable, edition 2024. It replaced the Zig engine on 2026
 Drawing IR on every view, the CLI ergonomics and the `kerf serve` smoke tests were identical; the Zig tree is in git
 history). `README.md` is the short version of this file, `PERF.md` has the numbers.
 
+## beta.4 merge of master issue #31 (SPEC 30–32)
+
+The working-tree conflicts in SRC, these notes, SPEC and the CLI guide retain both sides in full. SPEC now orders
+issue #31 (30), steel (31), general (32); both long-guide additions remain. Earlier integration entries below record
+the state before this master merge. No Git index or refs were written; staging and the merge commit belong to the
+orchestrator. No file was deleted. Previous regenerated golden bytes and review artifacts are in
+`.archive/merge31-review/`.
+
+Semantic integration: the through-member leader check also recognizes cut bodies of `steel_joist`, `metal_deck`,
+`stair_treads` and `stair`. Embedded bars and beyond geometry retain their exclusions. W_UNSUPPORTED also recognizes
+wood stair bodies as carried wood; support detection already accepts the new types. Existing construction still
+blocks leaders and supports new members, round concrete supplies its actual sliced profile, and CMU plan checks use
+the automatic unit geometry. Connector/nailing placement remains dependency ordered after other ready components.
+These interpretations are recorded beside SPEC 30.3/30.6 and in SRC. CLI reproductions for wood stair loading and
+leaders through stairs, deck topping, existing round concrete and CMU plan units are in the review archive.
+
+Short-guide prose was tightened without dropping a diagnostic code or authoring rule: `kerf guide` is 12,111 bytes
+(limit 12,288), with all 23 one-line type entries. Release build, Clippy all targets with warnings denied, and
+rustfmt pass on Rust 1.99.1. CLI and serve E2E pass; ergonomics passes 655 checks, including every reference/test
+document at zero errors and zero unacknowledged warnings. Wasm build passes (without wasm-opt), with 70/70 native
+goldens byte-identical; raw/gzip-9/Brotli-11 sizes: 1,774,496 / 690,051 / 555,704 bytes.
+
+The full native comparison initially found only the new `cfs-track-aluminum` drawing diagnostics and summary:
+four W_LEADER_HIT findings where its forced right notes crossed the filled guard post. Changing `notes_side` to
+left keeps the scale and geometry and clears all warnings. Inspected native before/after PNGs plus DXF/PDF PNGs;
+the notes now reach their targets without crossing the cut guard. Regenerated only this document's A.svg,
+A-sheet.svg, A.dxf, A.pdf, A.raster.png, A-sheet.raster.png and drawing-A.json. Mesh and summary bytes are unchanged.
+All other goldens were preserved. The final full native comparison passes all 978 outputs, including DXF/PDF audits.
+
+Real-library regression reuses the existing 90-document copy at
+`/home/hotschmoe/github/mass-details/work/codex/regress-integ/beta4-wtag9as2/`. Both installed beta.3 and this build
+ran `check --strict` on every file with the copied workspace style and refs. Errors: 0 -> 0; strict warnings
+(including acknowledged): 15 -> 36; acknowledged: 14 -> 14; unacknowledged: 1 -> 22. Strict exit 0: 81 -> 70 files;
+exit 1: 9 -> 20. Thirteen files gain 21 WARN lines: W_LEADER_HIT 18, W_UNSUPPORTED 2, W_OVERLAP 1 (a blocked tie).
+The exact new lines for every file and totals are in
+`/home/hotschmoe/github/mass-details/work/codex/beta4-regression.txt`; fresh stdout/stderr are kept in the review
+archive. No library document or other MASS-repo file was written.
+
+## v0.2.0-beta.4 integration
+
+Steel merged before general, preserving all 23 catalog types with `Solid` last, every builder/schema topic, both
+long-guide appendices and SPEC 31/32; SPEC 30 remains reserved for issue #31 on master. The four conflicted files
+were `builders.rs`, `catalog.rs`, `spec/SPEC.md` and `spec/llm/cli-guide.md`; SRC and these notes merged automatically.
+The workspace version and lockfile are beta.4. The short guide keeps every rule and every type entry with tighter prose.
+Vertical round PIPE/HSS/TUBE members now draw rings and circular optional cores in plan. W_EPOXY's fix uses the same
+1 in. back thickness as its trigger and documents; a host no thicker than 1 in. offers no false embedment fix. Steel's
+schema now documents hole cuts, and both stair types direct authors to the other type. CLI integration exercises
+round members with/without concrete fill and the epoxy warning's fix at its boundary. Validation results follow below.
+
+The linked worktree Git directory was read-only in this session. Integration history is prepared in
+`.archive/integration.git` (branch beta4); the shared beta4 ref and linked index await writable metadata. Master was
+not merged or modified. No files were deleted, no push or installation was performed.
+
+Validation on x86_64 Linux / Rust 1.99.1: release build, Clippy all targets with warnings denied, and rustfmt pass.
+The full native golden comparison passed 955 outputs including DXF/PDF audits; no golden was regenerated. CLI and
+serve E2E pass; ergonomics passes 654 checks (including the six round-shape/fill combinations and both epoxy checks).
+The short guide is 12,245 bytes (limit 12,288), with 23 type entries. Wasm built without wasm-opt and matched all 70
+native goldens; raw/gzip-9/Brotli-11 sizes via `tools/size_report.sh`: 1,752,801 / 680,049 / 548,191 bytes.
+
+Regression: real copies of 90 MASS documents, the workspace style and refs (zero symlinks) are in
+`/home/hotschmoe/github/mass-details/work/codex/regress-integ/beta4-wtag9as2/`. Both binaries ran `check --strict`
+on every file. All errors, warnings and exit codes agree. Only six files gain diagnostics, all informational
+I_CMU_PLAN_UNITS (15 total): s-40-05 (b_wall/B, c_wall/C, d_wall/D), s-40-06 (a_wall1/A, a_wall2/A, b_wall1/B,
+b_wall2/B, c_wall/C, d_wall/D), s-40-07 (ac_wall/A, af_wall/A), s-40-08 (b_wall/B), s-40-11 (b1_wall/B, b2_wall/B),
+s-40-14 (wall/A). Complete original lines and unified diffs are in that directory's `diagnostic-differences.txt`;
+beta3/ and beta4/ retain stdout, stderr, versions and exit codes for every file. These are the documented fallback
+messages for legacy hand-drawn CMU webs; no MASS source file was edited.
+
+Visual review: exported and inspected all ten new reference views (eight documents), the two pre-existing
+steel-beam-cap-plate views, and an empty/concrete-filled pipe-plan reproduction. Rings and circular cores look correct.
+Findings left for reference/layout cleanup: `general-cmu-plan/P` extends above the sheet frame and is clipped at the
+page top despite a clean check; `cfs-track-aluminum/A` routes the stud callout across the unrelated filled pipe.
+The steel stair's stringer top projects above the upper tread/landing level; it is worth an engineer's review of
+that authored connection geometry. PNGs are saved in `.archive/beta4-review/`; the existing goldens were preserved.
+The generated release build stamp is explicitly set to the implementation commit `f7a9c02`, because the linked
+worktree metadata still points at the old base; the package version is 0.2.0-beta.4.
+
 ## Layout
 - `kerf-core`: `#![no_std]` + `alloc`, the whole engine. Public: `api` (the SPEC 13 dispatcher, `api::call(name, input)`),
   `json`, `canon`, `model`, `ops`, `schema`, `units`; every other module is private, so the compiler finds dead code.
@@ -421,6 +498,23 @@ On the current aarch64 Linux workspace, the blocking gate took 44 s and the back
   (S-50.05 CS straps 1/8" off the beam x2, S-50.08 ST6224 1" off the 3x header x5, S-70.02 ceiling 1 1/2" below the
   trusses x2 views, S-70.03 roof sheathing 13/16" and 1/2" above the top chord) and 11 W_TIE_LEG (S-10.01 H2.5A on the
   sill into the stem/slab x5, S-40.03 x4 onto CMU / ICF, S-70.03 x2 into the open); all checked on the drawings, all true.
+- beta.4 issue #31 (SPEC 30): `compile::placement_order` picks connectors and nailing only when no other component is
+  ready, so `tie::against_face`, nailing and the hardware checks see members listed after them; a member tie without
+  `side` takes the side no component lies against (three probes along the leg) and warns W_OVERLAP when its leg is
+  still inside one. `annot::line::masks` + `knockout::knock_hatch` clear hatch under `line` annotations; `weight:
+  heavy` reuses the vapor / profile pens on the hidden / beyond layers; label halo 0.04". `notes::through_members`
+  finds, per note, the side whose leader runs through cut members; `route` reports `HitKind::Through` (W_LEADER_HIT)
+  and `annot::annotate` tries up to four such notes on the other side, keeping a change only when the repaired layout
+  has fewer hits; `drawview::sided_pass` drops the changes when they would cost the view its scale. W_CUT_MISS names
+  the end that reaches; `Diags::once` keeps one copy of a failed Ref; `validate::bearing::unsupported`
+  (W_UNSUPPORTED); the summary prints `(draws nothing)`; `layout::sheet_keys` gives a view built alone the numbers of
+  the first shared-notes layout naming it; `kerf schema ops` lists the layout paths.
+  47 MASS details (`--strict`, copies): 0 errors before and after; 1 warning before (the acknowledged W_COVER of
+  S-80.01), 11 after. New: 8 W_LEADER_HIT "crosses the cut ..." (S-10.03 A n_gyp, S-10.07 A n_step and n_run, S-30.01
+  D and F n_weep, S-40.02 B and C n_strap, S-80.01 C n_pour: notes with `column` or a view with one notes side, or a
+  change that would add another hit) and 2 W_UNSUPPORTED (S-70.03 a_plate, c_plate: the reported plates). 80 of the
+  set's views draw differently: the layout's note numbers on views exported alone (67), notes moved off a through
+  side, hatch cleared under lines and labels. One scale changed (S-10.10 iso I, 14 -> 14.5, from the wider numbers).
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -501,6 +595,13 @@ unavailable, tree kill by job object, `.gitattributes` forcing LF (CRLF in embed
 over-long command lines. CI runs the Windows gates against the shipped build on real Windows runners.
 
 ## Known gaps
+- Issue #31: a leader through a cut member is found for the last leader segment against a horizontal reach from the
+  landing point; a leader that crosses a member on its way to a target that is not behind it is still the older
+  W_LEADER_HIT (crossing an obstacle), and notes with `place` are reported, never moved. W_UNSUPPORTED does not look at
+  fasteners: a flat plate held by a hanger or angle under it is supported, one held by nails through its edge warns.
+  The checked `column` fix of a through hit counts leader hits only: on a view with a fixed scale the moved note can
+  cost the view its fit (W_VIEW_FIT after the fix; `palmer-sd1-like` view C acknowledges the two hits for that reason).
+  Only the automatic change checks the fit.
 - Touch-up gaps (#30): nailing between members at an angle (a brace cut onto a tie) is warned, not drawn; W_LEADER_HIT
   fixes on dimension and label obstacles (dim `offset`, label move) are not checked by a re-layout (their stacking runs
   outside the router); a single-note fix that cannot clear a hit says so, but kerf does not compute a multi-note fix;
@@ -612,8 +713,19 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   once per document, not per view (they are not geometry conflicts between drawn members); a list in `carried`/`post`
   is one bounding box (an I-joist's flanges and web), so a hanger fits the widest flange. Model families give kind,
   mount and gauge only: no product dimensions are tabulated (the note carries the model).
+- beta.4 general vocabulary (SPEC 32; reference documents `tests/docs/general-*.kerf.json`). Not done or not checked:
+  grout per cell in a CMU plan is inferred (grout courses, bond beams, a vertical bar in the
+  cell), there is no per-cell field, and partial `grout_courses` on a run z wall is not told apart cell by cell; the
+  cover of an xz bar or tie along z is not checked (as before); hooks and ties in iso views were not reviewed;
+  `stair` has no stringer hanger of its own (a `connector` on `w_stair.stringer` was not tried) and no guard or
+  handrail; hole and notch limits do not know the span, and do not cover engineered lumber; a free-standing lumber
+  diagram (one member, nothing bearing) is still `W_FLOATING` and is acknowledged.
 
 ## SPEC ISSUES
+- Integrating SPEC 30 with 31/32: the original through-member type list omitted steel joists, deck and stairs, and
+  the unsupported-plate load list omitted wood stairs. Include their cut body prisms in leader obstruction and wood
+  stair bodies in the plate's carried wood, because replacing equivalent legacy typed geometry should retain the
+  diagnostics. SPEC 30.3/30.6 now record the extension; existing member and embedded/beyond exclusions still apply.
 - Sheet layouts (#7) follow the issue's design with these choices: `notes_side` (right|left|below|above) for where the
   shared list goes; a layout `sheet` size (`"17x11"`), because four scenarios and a list do not fit a letter sheet at a
   useful scale (s-00-01 needs 17x11 at 1/2"; on letter even 1/4" overflows); nested lists in `views` for insets (a
@@ -945,6 +1057,77 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   - Leader fix checking runs only in single-view builds (`Env.verify_fixes`): checking in every layout trial cost 3x
     on s-80-01 (0.9 s -> 3.4 s) for diagnostics that are discarded. Up to 12 re-layouts per view within 1/4 of the
     work limit; a fix that cannot be checked in that budget keeps the old unchecked text.
+- beta.4 general vocabulary (SPEC 32), choices made: `existing` draws the cut outline in the thin pen with one sparse
+  ANSI31 hatch (2.5x) instead of a gray or dashed outline, because the pens have no gray and dashed already means
+  hidden; `(N)` is added only for an explicit `existing: false` in a document that has existing members, so ordinary
+  details never gain a prefix. A hooked bar's authored end point is the out-to-out corner (90) or the far reach of the
+  bend (135, 180), not the tangent point, so authoring to a cover line keeps the cover. Hook and tie geometry follows
+  ACI 318-19 Tables 25.3.1 and 25.3.2 (135 is always a tie hook). `epoxy` asks for the bar to END ON the host face plus
+  `embed`, so the embedment is a number in the document and a dimension between two anchors, never a hand-placed
+  point. Stairs: `waist` is square to the soffit from the inside corner of the steps; `foot` is the lower floor at the
+  first riser face; the top slab and toe are part of the concrete flight, the floors are not. Hole and notch limits
+  are the IRC prescriptive ones and apply to sawn lumber on its wide face only. `shape: round` is a footprint, so it
+  takes no `voids`; members cast into it are `embedded`. ICF walls, bollards, control joints, CMU corners and inverted
+  bond-beam lintels are recipes on existing types (cli-guide long form), not types. The reference documents live in
+  `tests/docs` with the other feature documents rather than `spec/details`, which is the short list of complete
+  sample details the web app ships and the wasm golden test names one by one.
+- CMU plan units (SPEC 32.7) are on by default, but the library's six CMU plan details (s-40-05 .. s-40-14) hand-drew
+  webs and cell grout as `concrete` footprints of material `cmu` / `grout`; drawn over the automatic units they
+  doubled every web. Chosen: a wall with a non-wall `cmu` body inside its core keeps the beta.3 drawing (bare shells)
+  and reports `I_CMU_PLAN_UNITS` with the pieces to remove, so no existing drawing changes silently and the fix is
+  one delete per piece. Remove the fallback once the library is migrated.
+- The bar-on-bar seam exemption (two coincident rebar strokes keep the rebar pen) changed the golden
+  `plan-corner-bars` views A and E: a dowel arrayed along z used to draw thin (a "seam" between its own instances) and
+  now draws as a bar.
+
+### v0.2.0-beta.4 steel vocabulary (SPEC 31)
+Status: `steel_joist`, `metal_deck`, `stair_treads` are new types; `bolt` gained `lag_screw` / `wood_screw` and `hole`;
+`steel` gained SSMA and any-size shapes, WT, `material` and `fill`. Reference docs: `tests/docs/steel-joist-deck`,
+`steel-stair-pan`, `cfs-track-aluminum`. Interpretations chosen:
+  - Joist member sizes are not in an SJI designation, so the drawing is schematic: chord leg, thickness and web size
+    come from a series/depth rule (K 1 1/2 to 2 legs with rod webs, LH 3 to 3 1/2, G 4 to 5 with angle webs). Only
+    depth, seat depth, seat length and panel spacing are meant to be read off the drawing.
+  - A joist's bearing length is not checked (SJI minimums are in the `seat_length` text only).
+  - Deck profiles are nominal SDI dimensions; manufacturers differ by fractions of an inch. Side laps, embossments and
+    the 36/4 weld pattern are notes, not geometry.
+  - Slotted holes draw only around end-on bolts. A side-on bolt carries the hole in its summary and default note; the
+    ply it passes through is not notched.
+  - Lag screws take `length` instead of `grip`; W_BOLT_EDGE still reads the steel ply under the head. Pilot holes,
+    withdrawal and wood edge distances are not checked.
+  - SSMA sections draw with square corners at the design thickness; inside bend radii are omitted. Furring (F)
+    sections are refused.
+  - A track is drawn two thicknesses deeper than its nominal size so the stud nests; real track is about 1/8 over.
+  - `material: aluminum` renders in the sheet-metal style (thin walls solid); alloy and temper are note text.
+  - `fill` in an elevation member is a box between the inside wall faces (2.5D, as round members already are in iso);
+    a domed bollard top is a note.
+  - `stair_treads` is separate from the general `stair` type; rise and tread limits are in the field text, not checked
+    (`stair` owns W_STAIR_GEOMETRY).
+  - The branch short guide was 12,269 of 12,288 bytes; see the beta.4 integration status for the combined guide.
+
+- beta.4 issue #31 (SPEC 30), interpretations chosen:
+  - Tie side needs the blocking member to exist when the tie is built, so connectors and nailing now build last among
+    the ready components (document order otherwise unchanged). No drawing of the 47 MASS details or the goldens moved
+    from the reorder alone.
+  - `weight: heavy` adds no pen and no layer: pens are a fixed enum that every exporter maps, so heavy reuses the
+    0.35 mm pens (vapor dashed 1.5/0.75, profile solid) and keeps the light line's layer.
+  - A leader through a cut member is a W_LEADER_HIT, not a new code: acknowledgements, the fix check and the hit counts
+    of the repair loop already work on that code. It is reported only (the router's cost and search do not see it):
+    counting it in the search reshuffled layouts that were tuned by hand and spent the work budget. The side change is
+    made outside the router, one note at a time, each checked by a whole repaired layout.
+  - A leader is "through" at 1.5 text heights inside cut members (longer than an arrowhead: a tag whose arrow sits on
+    a 2x block does not warn); "other side is free" = that side crosses under a quarter of that. Walls are cut lumber,
+    I-joist, steel, concrete and CMU bodies of other components. The target's own body, a member the landing point
+    lies in (a face-on tie's own member) and fills never count. Plies of a built-up
+    member that are separate components do count (a note on one ply reached across the others warns).
+  - The automatic side never costs a scale step: `sided_pass` reruns the view without it when only that fits. The
+    price is one more layout of the view in that case.
+  - W_UNSUPPORTED is narrow: flat plate, end-on, one edge against a member, wood on top, nothing under in any view.
+    A sole plate drawn without its floor (plan and iso views of wall framing do this) and cut beams with their post
+    out of the section are common and correct, and the first wider version flagged four of them in the MASS set.
+  - Per-view export takes the layout's numbers (the sheet the designer issues is the layout; the view sheet is the
+    preview of it). A view's own list can then start above 1. `notes: "per_view"` on the layout keeps written keys.
+  - One finding per failed Ref is done at the sink (`Diags::once`, Ref resolution only): the passes of one view share
+    a `Diags`, and other diagnostics are already built once or deduplicated by their callers.
 
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the

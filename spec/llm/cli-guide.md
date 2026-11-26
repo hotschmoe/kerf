@@ -1,42 +1,39 @@
 # Kerf CLI: guide for agents (Claude Code, Grok, ...)
 
-You build construction details with the `kerf` command-line engine. A detail is one JSON file
-(`<id>.kerf.json`) in the current folder. The designer reviews it in
-`kerf serve` and verifies citations. You describe construction
-with typed components; the engine places, draws, lays out notes and checks.
+Build typed construction details as `<id>.kerf.json` in the current folder.
+The engine places, draws, lays out notes and checks; the designer reviews in `kerf serve` and verifies citations.
 
-## Shell rules (the sandbox rejects compound commands)
+## Shell rules (sandbox rejects compound commands)
 - ONE kerf command per call. Do NOT chain with `&&`, `;` or `|`, do NOT use heredocs (`<<EOF`) or `echo '...' | kerf`.
-- Create JSON files with your file-writing tool (Write), then point kerf at the file (inline JSON breaks on PowerShell).
+- Write JSON files with your file-writing tool, then pass the file to kerf (inline JSON breaks on PowerShell).
   Never hand-edit a `.kerf.json`.
 
 ## Workflow
-1. Ambiguity: ask ONE short question only if the answer changes the structural system or the load path (CMU vs
+1. Ask ONE short question only if the answer changes the structural system or load path (CMU vs
    stud wall, truss vs rafter, embedded anchor vs plate, what bears on what). Otherwise build with conventional
    choices and report your assumptions AND the main alternative reading. "Give me a footing detail" alone is
    ambiguous: ask which (wall, pad or slab-edge footing).
-2. Write `ops.json` with the Write tool. First build = one op `{"op":"set","path":"doc","value":{...whole document...}}`
+2. Write `ops.json`. First build = one op `{"op":"set","path":"doc","value":{...whole document...}}`
    (a single op object or `{"ops":[...],"why":"..."}` is accepted too). Put the designer's asks in `meta.requested`, one short
    phrase each, in their words: `"meta":{"requested":["cmu wall","bond beam","H2.5A ties","#5 rebar","vapor retarder"]}`.
 3. Create and apply in one command (nothing is written if an op fails):
 ```sh
 kerf new truss-cmu.kerf.json --ops ops.json --title "PREFAB TRUSS BEARING AT CMU WALL" --why "Build initial detail"
 ```
-4. Read the summary (every component with resolved x/y extents), the `COVERAGE` block and the diagnostics. Fix every ERROR;
+4. Read the summary (components with resolved x/y extents), `COVERAGE` and diagnostics. Fix every ERROR;
    fix or justify every WARN. Every `meta.requested` item must read `ok` (build the `MISSING` ones, or drop an item only if the
-   designer dropped it): do not finish before full coverage, a clean check is not a finished detail. Covered = a
+   designer dropped it). Finish only at full coverage and after visual review. Covered = a
    component (id/type/label/model) or note/dim/weld/table/view title holds all its words (EA.=EACH). Then LOOK at it:
 ```sh
 kerf export truss-cmu.kerf.json --view A --format png -o truss-cmu-A.png
 ```
-5. Refine with small ops (a new ops file each time; keep ids stable):
+5. Refine with small ops (new ops file each time; stable ids):
 ```sh
 kerf apply truss-cmu.kerf.json ops.json -w --why "Add HETA20 anchors at 16 in o.c."
 kerf apply truss-cmu.kerf.json ops.json --dry-run
 kerf check truss-cmu.kerf.json
 kerf export truss-cmu.kerf.json --view A --format pdf --sheet -o truss-cmu-A.pdf
 kerf schema note dim cite
-kerf guide --full
 ```
 - Always pass `--why "..."` with `-w`/`new`: one line for the designer, logged to `<file>.log.jsonl`.
 - A failed apply prints `ERROR <code> <path>: <message>  Fix: <fix>` for every error, then `nothing written` (exit 1).
@@ -46,10 +43,10 @@ kerf guide --full
   `"acknowledge":[{"code":"W_UNTREATED_CONTACT","reason":"..."}]`. The summary counts and lists them (`kerf check --strict`
   prints each). Wood on CMU wants `"barrier":"sill_seal"`. No fake geometry.
 - Scenarios: one view each, one origin; scenario members get `"views":["B"]`, shared none; one sheet: `kerf schema layout`.
-- Unknown keys warn (`W_UNKNOWN_KEY` names the right one). `kerf schema <topic>` before guessing a field name.
+- Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one). Consult `kerf schema <topic>` before guessing.
 
 ## Diagnostics you will meet (each prints its own fix)
-W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
+W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP / W_UNSUPPORTED (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
 W_SHORT_SLOPE, W_LEADER_HIT / W_VIEW_FIT (layout), W_NOTE_STYLE / W_ABBREV (note text), W_UNKNOWN_KEY,
 W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, I_* (info).
 
@@ -63,8 +60,7 @@ W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFEREN
 - `"until": "<Ref>"` instead of `length` grows a member to another one's edge (no stale numbers).
 - Braces/webs: `"from":"tie@top_center","to":"chord@bottom_center"` (ends cut to the faces they meet). Rafter seat:
   `"cuts":[{"type":"birdmouth","on":"plate"}]`; plumb ends, notches: `kerf schema cuts`.
-- Steel: `steel` takes AISC shapes (`W8x18`, `HSS4x4x1/4`, `L4x3x3/8`, `PL1/2x8`), `orient`
-  section|elevation|plan; `bolt` groups; `weld` annotation = AWS symbol (`kerf schema steel bolt weld`).
+- Steel `orient`: section|elevation|plan (plate face-on: plan); `weld` annotation = AWS symbol (`kerf schema weld`).
 
 ## Roof pitch: change it in ONE place
 Trusses own the pitch; sheathing and roofing follow it and run to the truss end. Never type a literal length or pitch on them.
@@ -93,7 +89,7 @@ axis; `offset` > 0 above (h) / right of (v) the points, < 0 below / left.
 Schedules: `table` annotations (`kerf schema table`) in a `"kind":"schedule"` view, not solids/labels.
 Plans/elevations: view `kind` `plan` (cut at `cut_y`; plan [x,y] = model [x,-z]) or `elevation` (no cut), same members in
 their real orientation; never a faked section. Beam in a wall: draw the elevation unless asked otherwise.
-Keep going until the PNG reads as the detail an engineer expects: proportions, gaps, leaders on the right element, no overlaps.
+Review the PNG: correct proportions and gaps, leaders on the right element, no overlaps.
 
 <!-- FULL -->
 ## Long-form notes (kerf guide --full)
@@ -277,5 +273,75 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   another member lies against the face. Eave blocking (lumber run z) takes `"until":"truss@heel_block_top"` (ripped).
   An iso draws members `shown: "hidden"` (a 2D state) as solids. `{"type":"line","points":[...],"line":"dashed"}` draws a
   no-load zone, influence or limit line. Keyed views: `"tags_side":"right"` puts every tag on one side.
+- Steel vocabulary (SPEC 31). Open-web joist: `{"id":"joist","type":"steel_joist","designation":"18K4","length":48,
+  "at":{"anchor":"seat","to":"beam@top_flange","offset":[-2,0]}}` (the seat lands on the support; `seats`
+  left|right|both|none, `bottom_chord_extension`, `orient: section` + `section_at: bearing` for the end-on cut; LH and
+  joist girders by designation: `24LH06`, `32G8N8K`). Deck on it: `{"id":"deck","type":"metal_deck","profile":"1.5B",
+  "gauge":22,"until":"joist@top_chord_end","at":{"anchor":"bottom_left","to":"joist@top_chord_start"}}`; composite slab:
+  `"profile":"3C","topping":3.5` (rebar `place` in it), deck seen along its flutes: `"run":"x"`. Lag and wood screws are
+  bolts: `{"type":"bolt","kind":"lag_screw","diameter":0.5,"length":4,"rotate":90,"at":{"to":"ledger@middle_left"}}`
+  (head at the placement point, `rotate` points the shank, dimension the embedment to `lags@tip`; SDS: `kind
+  wood_screw` with the model in `grade`). Slip connection: `"hole":"long_slot"` (`slot_length`, `slot_dir`) on the bolt,
+  drawn around end-on bolts. Cold-formed framing: `"shape":"600S162-54"` (stud), `"600T125-54"` (track; bottom track
+  legs up: `"rotate":90,"at":{"anchor":"web_back","to":"slab@top_left","offset":[3.06,0]}`). Aluminum extrusions:
+  `{"type":"steel","shape":"TUBE6.5x2x0.042","material":"aluminum","orient":"elevation","length":36}`, C header
+  `"CEE8x3x0.062"`. Concrete-filled pipe: `{"type":"steel","shape":"PIPE6STD","fill":"concrete","orient":"elevation",
+  "run":"y","length":84}` cast into its footing with the footing's `"voids":["bollard"]`. Steel stair: `{"id":"treads",
+  "type":"stair_treads","kind":"pan","treads":4,"rise":7,"tread":11}` plus one sloped `steel` stringer `"from":
+  {"ref":"treads@nosing_1","offset":[-6.5,-7]},"to":{"ref":"treads@top","offset":[0,-5]}` with level / plumb `cuts` and
+  `z` outside `width`. A plate seen face-on (shear tab, gusset, stiffener) is `orient: plan` with its thickness as `z`;
+  a cope is `"cuts":[{"type":"notch","at":"top_left","w":3,"d":1.5}]`; an embed plate is a plate named in the concrete's
+  `voids` with `"kind":"headed_stud"` bolts behind it.
+- General vocabulary (SPEC 32). Existing construction: `"existing": true` on any component draws it cut in the thin
+  pen with a sparse diagonal hatch, prefixes its notes `(E)` (`"existing": false` adds `(N)` when the document has
+  existing members) and exempts it from W_UNTREATED_CONTACT, W_FLOATING, W_NEAR_MISS and bar cover. A dowel drilled
+  into it: end the bar ON the face and give the embedment, `{"type":"rebar","size":"#4","mode":"path","points":
+  [{"ref":"e_stem@top_right","offset":[0,-4]},{"ref":"e_stem@top_right","offset":[24,-4]}],"epoxy":{"in":"e_stem",
+  "embed":6}}`; dimension `dowel@embed_end` to `dowel@embed_face`. W_EPOXY: under 1 in. left behind the hole.
+- Hooks and ties are never hand-computed points. A standard hook on a path bar end: `"hook":{"end":{"angle":90,
+  "toward":"right"}}` (90, 135, 180; `start` too; bend diameter and extension from the bar size, ACI 318-19 25.3; the
+  end point stays the out-to-out corner). A closed tie, U stirrup, crosstie or hoop by cover: `{"type":"rebar","size":
+  "#3","tie":{"in":"grade_beam","cover":1.5}}` (`shape` closed|u|crosstie|hoop). Around a column, pedestal or pier add
+  `"plane":"xz","y":<height>` and `"array":{"axis":"y","count":5,"spacing":-12}`: a section shows a line with a dot at
+  each cut leg, a plan the tie. A bar schedule figure (hooks with no host) checks clean.
+- Stairs: `{"type":"stair","risers":4,"rise":7,"tread":11,"waist":6,"bars":"#4","nosing_bars":"#4","at":{"anchor":
+  "foot","to":"slab@top_right"}}` is a concrete flight on grade (steps, waist, base toe, top slab, main bar, cross and
+  nosing bars); `"kind":"wood"` is a cut stringer with treads and risers (`size`, `treated`, `nosing`; bring the header
+  to `stair@top_cut_top`). Dimension the waist or throat from `stair@throat_top` to `stair@throat_bottom` (`"dir":
+  "aligned"`). Steel flights use `stair_treads` (pan, grating or plate treads) plus sloped `steel` stringers.
+- Bored holes and notches in framing seen lengthwise are `cuts`: `{"type":"lumber","size":"2x10","run":"x","length":96,
+  "cuts":[{"type":"hole","d":3,"x":30},{"type":"notch","at":"top","x":60,"w":3,"d":1.5}]}` (`y` moves a hole off
+  mid-depth; I-joist webs and steel webs too). Limit dimensions use `joist@hole_1_top` / `hole_1_bottom` and
+  `joist@notch_1_start` / `notch_1_end` with `"text":"D/3 MAX."`; sawn lumber gets W_HOLE_LIMIT / W_NOTCH_LIMIT (IRC
+  R502.8.1 joists, R602.6 studs) with the size that passes.
+- Round concrete (drilled pier, caisson, sonotube, bollard or pole footing, round column): `{"type":"concrete","shape":
+  "round","diameter":24,"height":60,"at":{"to":[0,0]}}` (placed by the axis at the top), a circle in plan. Hoops:
+  `{"type":"rebar","size":"#3","plane":"xz","y":{"ref":"pier@top_center","offset":[0,-3]},"tie":{"in":"pier","cover":3,
+  "shape":"hoop"},"array":{"axis":"y","count":5,"spacing":-12}}`. A post or pipe cast into it is `"embedded": true`
+  (a round takes no `voids`): a bollard is the round footing plus `{"type":"steel","shape":"PIPE6STD","orient":
+  "elevation","run":"y","length":84,"embedded":true}`.
+- Recipes with no new type. ICF wall: a `concrete` rect core with an `insulation` leaf on each face (`{"type":
+  "insulation","width":2.5,"height":48,"at":{"anchor":"bottom_right","to":"core@bottom_left"}}`), bars in the core as
+  usual. CMU in plan: a `cmu_wall` cut by a plan view draws its units, face shells, cells and head joints; a cell is
+  grouted where a grout course crosses the cut or (reinforced grouting) where a vertical bar stands in it (never draw
+  webs or cell grout as `cmu` / grout pieces: a wall with such pieces keeps its bare shells, `I_CMU_PLAN_UNITS`). A control
+  joint is two walls 3/8 apart in z, a corner is a run z wall and a run x wall, corner bars are `plane: xz` bars with
+  hooks. An inverted bond-beam lintel is `"bond_beams": [1]` on the wall over the opening.
+
+- Beta.4 touch-up (SPEC 30). A member tie with no `side` bends onto the side no other member lies against (a birdmouthed
+  rafter's tie lands inside the wall, not in the sheathing); `"side":"left"|"right"` forces it, and `W_OVERLAP` names the
+  member its leg ends up inside with the op that frees it: `{"model":"H2.5A","members":["rafter","plate"]}`. Connectors and
+  nailing are placed after every member that is ready, so they see members listed after them. A `line` annotation clears
+  the hatch under itself and `"weight":"heavy"` draws it at 0.35 mm: `{"id":"l_zone","type":"line","weight":"heavy",
+  "points":["ftg@top_right",{"ref":"ftg@top_right","offset":[48,24]}]}`; a `label` clears a wider halo. A note whose
+  leader would run through a cut member to reach a target on its far side goes to the other side by itself (when no
+  `column`/`place` fixes it and the view still fits its scale); otherwise `W_LEADER_HIT` "crosses the cut ..." prints
+  `"column":"right"` (or left) for that note. `W_CUT_MISS` on a `trim` names the end that does reach the member and
+  prints the op (`start`/`end` follow the member's run, not the anchor that places it). `W_UNSUPPORTED`: a flat plate
+  (lumber run z, `orient: flat`) that touches one member along an edge, carries a wood member and has nothing under it;
+  the fix adds a ledger under it or sets it on its support (acknowledge it if the plate hangs from the member above). A
+  view named by a layout with shared notes prints that layout's note numbers when exported alone (`--view B`), so a tag
+  reads the same on both sheets; `I_KEY_RENUMBERED` lists the keys that print under another number. `kerf schema ops`
+  lists the `layouts` paths: `{"op":"update","path":"layouts/S1","value":{"columns":3}}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

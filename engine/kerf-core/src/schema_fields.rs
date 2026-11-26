@@ -195,14 +195,14 @@ pub static VIEW: Object = Object {
             name: "notes_side",
             ty: "right|left|both|above",
             def: "both",
-            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point. keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
+            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point, or to the other side when its leader would run through a cut member and the view still fits (W_LEADER_HIT with the `column` to set when it cannot). keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
             ..Field::NONE
         },
         Field {
             name: "tags_side",
             ty: "right|left|both",
             def: "both",
-            desc: "keyed views: which side the number tags go (both = each tag to the side nearer its landing point); a note's `column` still wins",
+            desc: "keyed views: which side the number tags go (both = each tag to the side nearer its landing point, or the other side when its leader would run through a cut member); a note's `column` still wins",
             ..Field::NONE
         },
         Field {
@@ -599,7 +599,7 @@ pub static OPS: Object = Object {
             ..Field::NONE
         },
     ],
-    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label | weld | table\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields (not `annotations`: use the annotation paths)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  remove components/<id> | views/<view> | views/<view>/annotations/<id>\n          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)\n  set    doc                              value = the whole document (first build)\n  set    components/<id>                  replace the whole component\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
+    notes: "Paths:\n  add    components                       value = a component object (unique id)\n  add    views                            value = a view object\n  add    views/<view>/annotations         value = a note | dim | label | weld | table | line | ref\n  update components/<id>                  value = JSON merge patch: given keys replace (arrays and objects whole), null deletes a key; `id` cannot change\n  update views/<view>                     merge patch of view fields (not `annotations`: use the annotation paths)\n  update views/<view>/annotations/<id>    merge patch (changing `text` or `cite` resets citations to suggested)\n  update meta                             merge patch\n  add    layouts                          value = a layout object (`kerf schema layout`; unique id)\n  update layouts/<id>                     merge patch of layout fields (`views`, `sheet`, `notes`, ...: arrays whole)\n  remove components/<id> | views/<view> | views/<view>/annotations/<id> | layouts/<id>\n          (a component still referenced by an `at`, `until`, `slope`, note target or dim is refused: the error names the referrers)\n  set    doc                              value = the whole document (first build)\n  set    components/<id> | layouts/<id>    replace the whole component or layout\nInput forms: `kerf apply <doc> ops.json`, `... -` (stdin), or `--ops '<json>'`; the ops may be an array, a single op object, or {\"ops\":[...],\"why\":\"...\"} (the why is used when --why is absent). Add `-w --why \"...\"` to write and log.",
     example: "[{\"op\":\"add\",\"path\":\"components\",\"value\":{\"id\":\"sill\",\"type\":\"lumber\",\"size\":\"2x6\",\"orient\":\"flat\",\"treated\":true}},{\"op\":\"update\",\"path\":\"views/A/annotations/n_sill\",\"value\":{\"text\":\"2X6 PT SILL PLATE W/ SEALER\"}},{\"op\":\"remove\",\"path\":\"components/old\"}]",
 };
 
@@ -655,14 +655,14 @@ pub static ARRAY: Object = Object {
 
 pub static CUTS: Object = Object {
     name: "cuts",
-    brief: "lumber/steel end cuts, birdmouth, notches; from/to members",
+    brief: "lumber/steel end cuts, birdmouth, notches, bored holes; from/to members",
     summary: "`cuts` on lumber (run x/y), steel (orient elevation/plan) and edge-on panels (end cuts only): a list of cuts applied to the member's profile, so section, plan, elevation, iso, the mesh and every check see the cut member. The member's frame: u along its length (start = the `at` end or `from`, end = the far end or `to`), v across (bottom face = v 0, top = the depth; for a two-point member top is the face left of from->to). End cuts pass through the end of the member's center line (its aligned line for from/to) and extend or shorten the member to close it.",
     fields: &[
         Field {
             name: "type",
-            ty: "square|plumb|level|bevel|trim|birdmouth|notch",
+            ty: "square|plumb|level|bevel|trim|birdmouth|notch|hole",
             required: true,
-            desc: "square/plumb/level: end cut perpendicular / vertical / horizontal; bevel: `angle` (degrees from square, CCW) or `line` [p, q] (cut along the line through two points); trim: the end runs to the face of member `to` it meets (shortened or extended); birdmouth: seat cut on a bearing member; notch: rectangle or a member's outline taken out",
+            desc: "square/plumb/level: end cut perpendicular / vertical / horizontal; bevel: `angle` (degrees from square, CCW) or `line` [p, q] (cut along the line through two points); trim: the end runs to the face of member `to` it meets (shortened or extended); birdmouth: seat cut on a bearing member; notch: rectangle or a member's outline taken out; hole: a round hole bored through the member (lumber, I-joist web, steel web), seen as a circle",
             ..Field::NONE
         },
         Field {
@@ -730,17 +730,24 @@ pub static CUTS: Object = Object {
             ..Field::NONE
         },
         Field { name: "w", ty: "length", def: "", desc: "notch: length along the member", ..Field::NONE },
-        Field { name: "d", ty: "length", def: "", desc: "notch: depth into the member", ..Field::NONE },
+        Field { name: "d", ty: "length", def: "", desc: "notch: depth into the member; hole: diameter", ..Field::NONE },
         Field {
             name: "x",
             ty: "length",
             def: "",
-            desc: "notch at top/bottom: distance from the start end",
+            desc: "notch at top/bottom: distance from the start end; hole: distance from the start end to its centre",
+            ..Field::NONE
+        },
+        Field {
+            name: "y",
+            ty: "length",
+            def: "mid-depth",
+            desc: "hole: distance from the bottom face (v = 0) to its centre",
             ..Field::NONE
         },
     ],
-    notes: "Two-point members: lumber and steel take `from` and `to` (points: Refs, {ref, offset} or [x, y]) instead of at/length/until/rotate/slope; `align` center|top|bottom picks the line that runs between them. An end at a Ref to a member is trimmed to the face of that member it meets (an explicit cut for that end replaces it), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both with no computed angle or length, and follows them when they move.\nAnchors: seat_outer, seat_inner, heel_bottom (birdmouth), start_top, start_bottom, end_top, end_bottom (the cut corners); the 9 box anchors stay those of the uncut member.\nDiagnostics: W_BIRDMOUTH_DEPTH (the seat cuts more than 1/3 of the depth; fix: the seat that keeps 2/3), W_CUT_MISS (a seat off its bearing member, a trim whose line misses its member, a notch that removes nothing; each fix is an op), W_OVERLAP of a birdmouth member below its plate prints the heel that lifts it clear; E_PARAM for a cut that does not fit (seat through the member, notch deeper than the member, end cuts that cross).",
-    example: "[{\"type\":\"birdmouth\",\"on\":\"top_plate\",\"tail\":12},{\"type\":\"plumb\",\"end\":\"both\"},{\"type\":\"notch\",\"by\":\"ledger\"}]",
+    notes: "Two-point members: lumber and steel take `from` and `to` (points: Refs, {ref, offset} or [x, y]) instead of at/length/until/rotate/slope; `align` center|top|bottom picks the line that runs between them. An end at a Ref to a member is trimmed to the face of that member it meets (an explicit cut for that end replaces it), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both with no computed angle or length, and follows them when they move.\nAnchors: seat_outer, seat_inner, heel_bottom (birdmouth), start_top, start_bottom, end_top, end_bottom (the cut corners); hole_k_center, hole_k_top, hole_k_bottom, hole_k_start, hole_k_end (k = 1.. over the holes in list order); notch_k_start, notch_k_end (on the face), notch_k_inner_start, notch_k_inner_end (the inside corners; k = 1.. over the rectangle notches), for the limit dimensions (\"from\": \"joist@hole_1_top\", \"to\": \"joist@hole_1_bottom\", \"text\": \"D/3 MAX.\"); the 9 box anchors stay those of the uncut member.\nHoles and notches in sawn lumber are checked against the IRC: W_HOLE_LIMIT (run x joists, rafters, beams, R502.8.1: diameter over D/3, under 2 in. from the top or bottom edge or from another hole or notch; run y studs, R602.6: over 40% of the depth, under 5/8 in. from the edge; an I-joist hole that touches a flange) and W_NOTCH_LIMIT (run x: deeper than D/6 or longer than D/3, D/4 at an end corner; run y studs: deeper than 25%). The span is unknown, so \"not in the middle third\" is a note you write. Engineered lumber and steel are not checked (manufacturer / engineer).\nDiagnostics: W_BIRDMOUTH_DEPTH (the seat cuts more than 1/3 of the depth; fix: the seat that keeps 2/3), W_CUT_MISS (a seat off its bearing member, a trim whose line misses its member, a notch that removes nothing; each fix is an op), W_OVERLAP of a birdmouth member below its plate prints the heel that lifts it clear; E_PARAM for a cut that does not fit (seat through the member, notch deeper than the member, end cuts that cross).",
+    example: "[{\"type\":\"birdmouth\",\"on\":\"top_plate\",\"tail\":12},{\"type\":\"plumb\",\"end\":\"both\"},{\"type\":\"notch\",\"by\":\"ledger\"},{\"type\":\"hole\",\"d\":2,\"x\":30}]",
 };
 
 pub static ACK: Object = Object {
@@ -802,7 +809,7 @@ pub static LAYOUT: Object = Object {
             name: "notes",
             ty: "shared|per_view",
             def: "shared",
-            desc: "shared: one DETAIL NOTES list for the keyed notes of every view and the notes of schedule views, numbered 1..N without gaps over the layout (same `key` = one entry; write its text and cite once, a note with only the key takes them from any view; an unkeyed note with the same text and cite as an earlier one joins it); per_view: each keyed view keeps its own list",
+            desc: "shared: one DETAIL NOTES list for the keyed notes of every view and the notes of schedule views, numbered 1..N without gaps over the layout (same `key` = one entry; write its text and cite once, a note with only the key takes them from any view; an unkeyed note with the same text and cite as an earlier one joins it), and each of its views exported alone (`--view`) prints its own list with those same numbers (the first shared layout that names the view); per_view: each keyed view keeps its own list and its written keys",
             ..Field::NONE
         },
         Field {
@@ -891,7 +898,7 @@ pub static REF: Object = Object {
 pub static LINE: Object = Object {
     name: "line",
     brief: "dashed boundary line: no-load zone, limit",
-    summary: "A line through model points (annotation of type line), dashed by default: the boundary of a no-load zone, a 1:1 influence line, a limit or property line, anything drawn that is not a component. Placed exactly (not moved by the note layout); a note or label names it.",
+    summary: "A line through model points (annotation of type line), dashed by default: the boundary of a no-load zone, a 1:1 influence line, a limit or property line, anything drawn that is not a component. Placed exactly (not moved by the note layout); a note or label names it. Material hatch is cleared under the line and under a label, so both read over earth and gravel.",
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"line\"", required: true, desc: "annotation type", ..Field::NONE },
@@ -910,6 +917,13 @@ pub static LINE: Object = Object {
             ..Field::NONE
         },
         Field {
+            name: "weight",
+            ty: "light|heavy",
+            def: "light",
+            desc: "heavy: a 0.35 mm line (dashed: the vapor pen, solid: the profile pen) on the same layer, for a line that must read over earth or gravel hatch",
+            ..Field::NONE
+        },
+        Field {
             name: "closed",
             ty: "bool",
             def: "false",
@@ -917,7 +931,7 @@ pub static LINE: Object = Object {
             ..Field::NONE
         },
     ],
-    example: "{\"id\":\"l_zone\",\"type\":\"line\",\"points\":[\"ftg@top_right\",{\"ref\":\"ftg@top_right\",\"offset\":[48,24]}]}",
+    example: "{\"id\":\"l_zone\",\"type\":\"line\",\"weight\":\"heavy\",\"points\":[\"ftg@top_right\",{\"ref\":\"ftg@top_right\",\"offset\":[48,24]}]}",
     ..Object::NONE
 };
 
@@ -936,7 +950,7 @@ pub fn find_object(name: &str) -> Option<&'static Object> {
     match name {
         "op" => Some(&OPS),
         "ack" => Some(&ACK),
-        "cut" | "from" | "birdmouth" | "notch" => Some(&CUTS),
+        "cut" | "from" | "birdmouth" | "notch" | "hole" => Some(&CUTS),
         _ => None,
     }
 }

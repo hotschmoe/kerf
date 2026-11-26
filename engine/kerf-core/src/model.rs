@@ -43,6 +43,39 @@ pub struct Diag {
     pub fix: Option<String>,
 }
 
+pub struct Once<'a>(&'a Diags);
+
+impl Once<'_> {
+    pub fn add(&self, level: Level, code: &'static str, id: Option<&str>, path: Option<&str>, message: String) {
+        self.push(Diag { level, code, id: id.map(String::from), path: path.map(String::from), message, fix: None });
+    }
+
+    pub fn add_fix(
+        &self,
+        level: Level,
+        code: &'static str,
+        id: Option<&str>,
+        path: Option<&str>,
+        message: String,
+        fix: String,
+    ) {
+        self.push(Diag {
+            level,
+            code,
+            id: id.map(String::from),
+            path: path.map(String::from),
+            message,
+            fix: Some(fix),
+        });
+    }
+
+    fn push(&self, d: Diag) {
+        if !self.0.list.borrow().contains(&d) {
+            self.0.push(d);
+        }
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct Diags {
     list: RefCell<Vec<Diag>>,
@@ -78,6 +111,11 @@ impl Diags {
 
     pub fn push(&self, d: Diag) {
         self.list.borrow_mut().push(d);
+    }
+
+    /// A sink that keeps one copy of identical findings: a Ref is resolved again on every pass of a view build.
+    pub fn once(&self) -> Once<'_> {
+        Once(self)
     }
 
     pub fn extend(&self, ds: impl IntoIterator<Item = Diag>) {
@@ -220,6 +258,10 @@ pub struct Prism {
     /// Plan views: the floor of a shallow recess in a cut concrete member (a depressed slab), drawn hatched like the cut
     /// with its edge as a line (it never joins its own casting).
     pub recess: bool,
+    /// Existing construction (SPEC 32.1): cut outlines in the thin pen and one sparse diagonal hatch.
+    pub existing: bool,
+    /// Wood seen along its grain in a type without the `lengthwise_grain` trait (a stair stringer): grain, no hatch.
+    pub along_grain: bool,
 }
 
 impl Default for Prism {
@@ -263,6 +305,8 @@ impl Default for Prism {
             footprint: Vec::new(),
             fp_y: [0.0; 2],
             recess: false,
+            existing: false,
+            along_grain: false,
         }
     }
 }

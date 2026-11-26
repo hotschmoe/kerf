@@ -14,8 +14,8 @@ use alloc::vec::Vec;
 
 const FLAT_TOL: f64 = geom::FLAT_TOL;
 const SEAT_TOL: f64 = 1.0 / 32.0;
-const TYPES: [&str; 7] = ["square", "plumb", "level", "bevel", "trim", "birdmouth", "notch"];
-const CUTS_FIX: &str = "\"cuts\": [{\"type\": \"birdmouth\", \"on\": \"top_plate\", \"tail\": 12}, {\"type\": \"plumb\", \"end\": \"start\"}, {\"type\": \"trim\", \"end\": \"end\", \"to\": \"ridge\"}, {\"type\": \"notch\", \"at\": \"top_right\", \"w\": 3.5, \"d\": 1.5}, {\"type\": \"notch\", \"by\": \"top_plate\"}] (`kerf schema cuts`)";
+const TYPES: [&str; 8] = ["square", "plumb", "level", "bevel", "trim", "birdmouth", "notch", "hole"];
+const CUTS_FIX: &str = "\"cuts\": [{\"type\": \"birdmouth\", \"on\": \"top_plate\", \"tail\": 12}, {\"type\": \"plumb\", \"end\": \"start\"}, {\"type\": \"trim\", \"end\": \"end\", \"to\": \"ridge\"}, {\"type\": \"notch\", \"at\": \"top_right\", \"w\": 3.5, \"d\": 1.5}, {\"type\": \"notch\", \"by\": \"top_plate\"}, {\"type\": \"hole\", \"d\": 2, \"x\": 30}] (`kerf schema cuts`)";
 const PLACE_KEYS: [&str; 6] = ["at", "length", "until", "rotate", "slope", "mirror"];
 
 #[derive(Clone, Copy)]
@@ -107,6 +107,15 @@ fn cuts_op(id: &str, node: &Value, k: usize, entry: Option<Value>) -> String {
         .filter_map(|(i, e)| if i == k { entry.clone() } else { Some(e.clone()) })
         .collect();
     op_text(id, obj1("cuts", Value::Array(list)))
+}
+
+fn with_end(cut: &Value, end: &str) -> Value {
+    let mut members: Vec<Member> = match cut {
+        Value::Object(m) => m.iter().filter(|m| m.key != "end").cloned().collect(),
+        _ => Vec::new(),
+    };
+    members.push(Member { key: "end".into(), value: json::string(end) });
+    Value::Object(members)
 }
 
 fn sixteenth_floor(x: f64) -> f64 {
@@ -339,10 +348,17 @@ impl End {
 }
 
 struct Notch {
+    k: usize,
     top: bool,
     corner: Option<bool>,
     x: f64,
     w: f64,
+    d: f64,
+}
+
+struct Hole {
+    k: usize,
+    c: V2,
     d: f64,
 }
 
@@ -362,6 +378,7 @@ pub struct Plan {
     angle: f64,
     ends: [(End, Option<usize>); 2],
     notches: Vec<Notch>,
+    holes: Vec<Hole>,
     bird: Option<Bird>,
     two: bool,
 }
@@ -526,7 +543,8 @@ pub fn prepare(
             }
         }
     }
-    let mut plan = Plan { frame, vref, angle, ends, notches: Vec::new(), bird: None, two: two.is_some() };
+    let mut plan =
+        Plan { frame, vref, angle, ends, notches: Vec::new(), holes: Vec::new(), bird: None, two: two.is_some() };
     let list: &[Value] = match cv {
         None => &[],
         Some(v) => match v.arr() {
@@ -559,6 +577,35 @@ pub fn prepare(
             built.anchors.push(NamedAnchor { name: name.into(), p: frame.local(p) });
         }
     }
+    for (i, h) in plan.holes.iter().enumerate() {
+        let r = h.d / 2.0;
+        for (name, p) in [
+            ("center", h.c),
+            ("top", h.c.add(V2::init(0.0, r))),
+            ("bottom", h.c.add(V2::init(0.0, -r))),
+            ("start", h.c.add(V2::init(-r, 0.0))),
+            ("end", h.c.add(V2::init(r, 0.0))),
+        ] {
+            built.anchors.push(NamedAnchor { name: format!("hole_{}_{name}", i + 1), p: frame.local(p) });
+        }
+    }
+    for (i, n) in plan.notches.iter().enumerate() {
+        let (u0, u1) = match n.corner {
+            Some(true) => (0.0, n.w),
+            Some(false) => (frame.len - n.w, frame.len),
+            None => (n.x, n.x + n.w),
+        };
+        let (face, inner) = if n.top { (frame.h, frame.h - n.d) } else { (0.0, n.d) };
+        for (name, p) in [
+            ("start", V2::init(u0, face)),
+            ("end", V2::init(u1, face)),
+            ("inner_start", V2::init(u0, inner)),
+            ("inner_end", V2::init(u1, inner)),
+        ] {
+            built.anchors.push(NamedAnchor { name: format!("notch_{}_{name}", i + 1), p: frame.local(p) });
+        }
+    }
+    check_limits(scene, id, node, &plan, built, run_y);
     let intrinsic = |e: &End| matches!(e, End::Square | End::Plumb | End::Level | End::Angle(_));
     if intrinsic(&plan.ends[0].0) && intrinsic(&plan.ends[1].0) {
         let lines = [end_line(&plan, 0, None, up, xw), end_line(&plan, 1, None, up, xw)];
@@ -587,11 +634,205 @@ pub fn prepare(
     if n_notch > 0 {
         parts.push(format!("{n_notch} notch{}", if n_notch == 1 { "" } else { "es" }));
     }
+    for h in &plan.holes {
+        parts.push(format!("{} hole at {}", fmt_ft_in(h.d), fmt_ft_in(h.c.x)));
+    }
     if !parts.is_empty() {
         info.push_str(&format!(" cuts: {}", parts.join(", ")));
     }
     built.info.push_str(&info);
     Some(Some(plan))
+}
+
+const HOLE_FIX: &str = "{\"type\": \"hole\", \"d\": 2, \"x\": 24} (x: from the start end to the hole centre; y: from the bottom face, default mid-depth)";
+
+fn read_hole(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &mut Plan) -> Result<(), ()> {
+    let f = plan.frame;
+    let need = |key: &str, what: &str| -> Result<f64, ()> {
+        match len_field(scene, id, path, e, key, true)? {
+            Some(x) => Ok(x),
+            None => {
+                err(
+                    scene,
+                    id,
+                    &format!("{path}/{key}"),
+                    format!("'{id}' cuts[{k}] (hole): {key} is required ({what})"),
+                    HOLE_FIX,
+                );
+                Err(())
+            }
+        }
+    };
+    let d = need("d", "the hole diameter")?;
+    let x = need("x", "distance along the member from its start end to the hole centre")?;
+    let y = len_field(scene, id, path, e, "y", true)?.unwrap_or(f.h / 2.0);
+    let r = d / 2.0;
+    if x - r < 1e-6 || x + r > f.len - 1e-6 || y - r < 1e-6 || y + r > f.h - 1e-6 {
+        err(
+            scene,
+            id,
+            path,
+            format!(
+                "'{id}' cuts[{k}] (hole): a {} hole at x {}, y {} is not inside the member ({} long, {} deep): a hole keeps wood all around it",
+                fmt_ft_in(d),
+                fmt_ft_in(x),
+                fmt_ft_in(y),
+                fmt_ft_in(f.len),
+                fmt_ft_in(f.h)
+            ),
+            "move the hole inside the member or make it smaller; an opening in an edge is {\"type\": \"notch\", \"at\": \"top\", \"x\": 24, \"w\": 3.5, \"d\": 1.5}",
+        );
+        return Err(());
+    }
+    plan.holes.push(Hole { k, c: V2::init(x, y), d });
+    Ok(())
+}
+
+fn limit(scene: &Scene, id: &str, k: usize, code: &'static str, msg: String, fix: String) {
+    scene.diags.add_fix(Level::Warning, code, Some(id), Some(&format!("components/{id}/cuts/{k}")), msg, fix);
+}
+
+// IRC R502.8.1 / R802.7.1 (joists, rafters, beams) and R602.6 (studs), sawn lumber; I-joist flanges are never cut.
+fn check_limits(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &Built, run_y: bool) {
+    let f = plan.frame;
+    let ty = node.get("type").and_then(Value::str).unwrap_or("");
+    if ty == "ijoist" {
+        let to_frame = f.frame_xf();
+        for h in &plan.holes {
+            let r = h.d / 2.0;
+            let hit = built.prisms.iter().filter(|p| p.part.ends_with("flange")).any(|p| {
+                p.loops.first().is_some_and(|l| {
+                    let b = geom::loop_box(&l.iter().map(|q| Pt::at(to_frame.apply(q.v()), 0.0)).collect::<Vec<_>>());
+                    h.c.y + r > b.y0 + 1e-6 && h.c.y - r < b.y1 - 1e-6
+                })
+            });
+            if hit {
+                limit(
+                    scene,
+                    id,
+                    h.k,
+                    "W_HOLE_LIMIT",
+                    format!(
+                        "'{id}' cuts[{}]: the {} hole cuts into an I-joist flange; flanges are never cut or bored (holes go in the web, per the manufacturer's hole chart)",
+                        h.k,
+                        fmt_ft_in(h.d)
+                    ),
+                    "make the hole smaller or move it to mid-depth so it stays in the web".to_string(),
+                );
+            }
+        }
+        return;
+    }
+    let sawn = ty == "lumber"
+        && matches!(node.get("product").and_then(Value::str), None | Some("sawn"))
+        && node.get("face").and_then(Value::str) != Some("narrow");
+    if !sawn {
+        return;
+    }
+    let dd = f.h;
+    let ack = "or acknowledge it on the member where the engineer has checked the cut section";
+    for h in &plan.holes {
+        let r = h.d / 2.0;
+        let edge = (h.c.y - r).min(dd - h.c.y - r);
+        let (max_d, min_edge, rule) = if run_y {
+            (0.4 * dd, 0.625, "IRC R602.6: 40% of the stud depth in a bearing wall, 5/8\" from the edge")
+        } else {
+            (dd / 3.0, 2.0, "IRC R502.8.1: D/3, 2\" from the top and bottom")
+        };
+        if h.d > max_d + 1e-6 {
+            limit(
+                scene,
+                id,
+                h.k,
+                "W_HOLE_LIMIT",
+                format!(
+                    "'{id}' cuts[{}]: a {} hole in a {} deep member is over the {} limit ({rule})",
+                    h.k,
+                    fmt_ft_in(h.d),
+                    fmt_ft_in(dd),
+                    fmt_ft_in(sixteenth_floor(max_d))
+                ),
+                format!("use \"d\": {} or less, {ack}", model::fmt_num(sixteenth_floor(max_d))),
+            );
+        } else if edge < min_edge - 1e-6 {
+            limit(
+                scene,
+                id,
+                h.k,
+                "W_HOLE_LIMIT",
+                format!(
+                    "'{id}' cuts[{}]: the {} hole is {} from the member's edge; keep {} ({rule})",
+                    h.k,
+                    fmt_ft_in(h.d),
+                    fmt_ft_in(edge),
+                    fmt_ft_in(min_edge)
+                ),
+                format!("move it toward mid-depth (omit \"y\" to centre it), {ack}"),
+            );
+        }
+        if !run_y {
+            let near_hole = plan.holes.iter().any(|o| o.k != h.k && o.c.dist(h.c) - r - o.d / 2.0 < 2.0 - 1e-6);
+            let near_notch = plan.notches.iter().any(|n| {
+                let (u0, u1) = match n.corner {
+                    Some(true) => (0.0, n.w),
+                    Some(false) => (f.len - n.w, f.len),
+                    None => (n.x, n.x + n.w),
+                };
+                let (v0, v1) = if n.top { (dd - n.d, dd) } else { (0.0, n.d) };
+                let q = V2::init(h.c.x.clamp(u0, u1), h.c.y.clamp(v0, v1));
+                q.dist(h.c) - r < 2.0 - 1e-6
+            });
+            if near_hole || near_notch {
+                limit(
+                    scene,
+                    id,
+                    h.k,
+                    "W_HOLE_LIMIT",
+                    format!(
+                        "'{id}' cuts[{}]: the {} hole is closer than 2\" to another hole or notch (IRC R502.8.1)",
+                        h.k,
+                        fmt_ft_in(h.d)
+                    ),
+                    format!("space holes and notches 2\" apart, {ack}"),
+                );
+            }
+        }
+    }
+    for n in &plan.notches {
+        let (max_d, what) = match (run_y, n.corner) {
+            (true, _) => (0.25 * dd, "25% of the stud depth in a bearing wall (IRC R602.6; 40% nonbearing)"),
+            (false, Some(_)) => (dd / 4.0, "D/4 at the end of a joist or rafter (IRC R502.8.1)"),
+            (false, None) => (
+                dd / 6.0,
+                "D/6 away from the ends (IRC R502.8.1; notch length D/3, none in the middle third of the span)",
+            ),
+        };
+        let long = !run_y && n.corner.is_none() && n.w > dd / 3.0 + 1e-6;
+        if n.d > max_d + 1e-6 || long {
+            limit(
+                scene,
+                id,
+                n.k,
+                "W_NOTCH_LIMIT",
+                format!(
+                    "'{id}' cuts[{}]: a {} long x {} deep notch in a {} deep member is over {what}",
+                    n.k,
+                    fmt_ft_in(n.w),
+                    fmt_ft_in(n.d),
+                    fmt_ft_in(dd)
+                ),
+                format!(
+                    "keep \"d\" to {}{}, {ack}",
+                    model::fmt_num(sixteenth_floor(max_d)),
+                    if long {
+                        format!(" and \"w\" to {}", model::fmt_num(sixteenth_floor(dd / 3.0)))
+                    } else {
+                        String::new()
+                    }
+                ),
+            );
+        }
+    }
 }
 
 fn notch_count_by(list: &[Value]) -> usize {
@@ -604,6 +845,7 @@ fn allowed(ty: &str) -> &'static [&'static str] {
         "bevel" => &["type", "end", "angle", "line"],
         "trim" => &["type", "end", "to"],
         "birdmouth" => &["type", "on", "seat", "heel", "tail"],
+        "hole" => &["type", "d", "x", "y"],
         _ => &["type", "by", "at", "w", "d", "x"],
     }
 }
@@ -641,7 +883,7 @@ fn read_cut(
         );
         return Err(());
     };
-    if matches!(ty, "birdmouth" | "notch") && node.get("type").and_then(Value::str) == Some("panel") {
+    if matches!(ty, "birdmouth" | "notch" | "hole") && node.get("type").and_then(Value::str) == Some("panel") {
         err(
             scene,
             id,
@@ -665,6 +907,7 @@ fn read_cut(
     match ty {
         "birdmouth" => read_birdmouth(scene, id, node, path, k, e, plan, up, xw),
         "notch" => read_notch(scene, id, path, k, e, plan),
+        "hole" => read_hole(scene, id, path, k, e, plan),
         _ => {
             let end = e.get("end").and_then(Value::str);
             let which: &[usize] = match end {
@@ -1105,7 +1348,7 @@ fn read_notch(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &m
         );
         return Err(());
     }
-    plan.notches.push(Notch { top, corner, x, w, d });
+    plan.notches.push(Notch { k, top, corner, x, w, d });
     Ok(())
 }
 
@@ -1252,27 +1495,52 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
             Some(l) if l.u_at(0.0).is_some() && l.u_at(f.h).is_some() => lines[i] = l,
             _ => {
                 let what = ["start", "end"][i];
+                let other = ["end", "start"][i];
+                let reaches = |l: Line| l.u_at(0.0).is_some() && l.u_at(f.h).is_some();
                 let (msg, fix) = match e {
-                    End::Trim(tg) => (
-                        format!(
-                            "the {what} of '{id}' does not meet '{}': its {} line misses it (the end is left square)",
-                            tg.comp,
-                            if plan.two && plan.vref != f.h / 2.0 { "aligned" } else { "center" }
-                        ),
-                        match k {
-                            Some(k) => format!(
-                                "move '{id}' so its {what} reaches '{}', or drop the cut: {}",
+                    End::Trim(tg) => {
+                        let swap = trim_line(scene, plan, 1 - i, tg, &inv).is_some_and(reaches);
+                        (
+                            format!(
+                                "the {what} of '{id}' does not meet '{}': its {} line misses it (the end is left square){}",
                                 tg.comp,
-                                cuts_op(id, node, *k, None)
+                                if plan.two && plan.vref != f.h / 2.0 { "aligned" } else { "center" },
+                                if swap {
+                                    format!(
+                                        "; its {other} is the end that reaches '{}' (start and end follow the member's run from its frame origin, the bottom of a run y sheet or the left of a run x one, not the anchor that places it)",
+                                        tg.comp
+                                    )
+                                } else {
+                                    String::new()
+                                }
                             ),
-                            None => format!(
-                                "point {} at an anchor on the face of '{}' that '{id}' meets (e.g. \"{}@bottom_center\")",
-                                ["from", "to"][i],
-                                tg.comp,
-                                tg.comp
-                            ),
-                        },
-                    ),
+                            match k {
+                                Some(k) if swap && plan.ends[1 - i].1.is_none() => format!(
+                                    "trim the {other} instead: {}",
+                                    cuts_op(
+                                        id,
+                                        node,
+                                        *k,
+                                        node.get("cuts")
+                                            .and_then(Value::arr)
+                                            .and_then(|l| l.get(*k))
+                                            .map(|c| with_end(c, other))
+                                    )
+                                ),
+                                Some(k) => format!(
+                                    "move '{id}' so its {what} reaches '{}', or drop the cut: {}",
+                                    tg.comp,
+                                    cuts_op(id, node, *k, None)
+                                ),
+                                None => format!(
+                                    "point {} at an anchor on the face of '{}' that '{id}' meets (e.g. \"{}@bottom_center\")",
+                                    ["from", "to"][i],
+                                    tg.comp,
+                                    tg.comp
+                                ),
+                            },
+                        )
+                    }
                     _ => (
                         format!(
                             "the {what} cut of '{id}' ({}) runs along the member and cannot close it (the end is left square)",
@@ -1357,6 +1625,11 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
         clip::orient_ccw(&mut tri);
         notch_polys.push(tri);
     }
+    for h in &plan.holes {
+        let mut ring = geom::flatten_loop(&model::circle_loop(h.c.x, h.c.y, h.d / 2.0), FLAT_TOL);
+        clip::orient_ccw(&mut ring);
+        notch_polys.push(ring);
+    }
     for np in &notch_polys {
         region = clip::boolean(&region, core::slice::from_ref(np), Op::Diff);
     }
@@ -1385,6 +1658,9 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
             let mut r = q.clone();
             r.ply_lines = q.ply_lines.iter().flat_map(|s| clip_segment(s[0], s[1], &g.flat)).collect();
             r.loops = g.loops;
+            for h in &plan.holes {
+                exact_circle(&mut r.loops, f.local(h.c), h.d / 2.0);
+            }
             out.push(r);
         }
     }
@@ -1396,6 +1672,18 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
         check_seat(scene, id, plan, b, on, xf);
     }
     true
+}
+
+/// A loop that is the flattened hole becomes the exact two-arc circle again, keeping its winding.
+fn exact_circle(loops: &mut [Vec<Pt>], c: V2, r: f64) {
+    for l in loops.iter_mut() {
+        if l.len() < 6 || l.iter().any(|p| p.b != 0.0 || (p.v().dist(c) - r).abs() > 1e-6) {
+            continue;
+        }
+        let pts: Vec<V2> = l.iter().map(|p| p.v()).collect();
+        let b = if geom::signed_area_v(&pts) > 0.0 { 1.0 } else { -1.0 };
+        *l = vec![Pt { x: c.x + r, y: c.y, b }, Pt { x: c.x - r, y: c.y, b }];
+    }
 }
 
 fn check_seat(scene: &Scene, id: &str, plan: &Plan, b: &Bird, on: &str, xf: &Xf) {

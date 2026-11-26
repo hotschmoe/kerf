@@ -1,4 +1,4 @@
-DOC palmer-sd1-like  18 components  5 views  0 errors  0 warnings  0 acknowledged
+DOC palmer-sd1-like  18 components  5 views  0 errors  0 warnings  2 acknowledged
  ftg           concrete footing 2'-0" x 1'-0"              x 0"..2'-0"       y 0"..1'-0"
  stem          concrete rect 8" x 2'-6"                    x 8"..1'-4"       y 1'-0"..3'-6"
  ftg_bars      rebar (2) #4 along z @ bottom face          x 3"..1'-9"       y 3"..3 1/2"
@@ -17,3 +17,5 @@ DOC palmer-sd1-like  18 components  5 views  0 errors  0 warnings  0 acknowledge
  slab2         concrete rect 1'-4" x 4"                    x 12'-4 1/2"..13'-8 1/2" y -4"..0"
  ctl_joint     joint control 1/4" wide x 1" deep           x 13'-0 3/8"..13'-0 5/8" y -1"..0"
  edge_radius   joint tooled_edge 1/2" wide x 4" deep       x 8'-4"..8'-4 1/2" y -1/2"..0"
+ACKNOWLEDGED  2 warnings suppressed by `acknowledge` (kerf check --strict prints each in full)
+ W_LEADER_HIT        x2   C/n_screed, C/n_sheath: "notes stay in the right column at 3 in = 1 ft; the left column does not fit the sheet"

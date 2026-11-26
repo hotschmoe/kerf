@@ -1,0 +1,166 @@
+{
+ "kerf": "0.1",
+ "id": "cfs-track-aluminum",
+ "title": "COLD-FORMED STUD AT TRACK AND ALUMINUM HEADER",
+ "meta": {
+  "jurisdiction": {
+   "code": "IBC",
+   "edition": 2021
+  }
+ },
+ "run": [
+  -24,
+  24
+ ],
+ "components": [
+  {
+   "id": "slab",
+   "type": "concrete",
+   "shape": "rect",
+   "width": 44,
+   "height": 4,
+   "at": {
+    "anchor": "top_left",
+    "to": [
+     -4,
+     0
+    ]
+   }
+  },
+  {
+   "id": "track",
+   "type": "steel",
+   "shape": "600T125-54",
+   "rotate": 90,
+   "at": {
+    "anchor": "web_back",
+    "to": [
+     3.0566,
+     0
+    ]
+   }
+  },
+  {
+   "id": "stud",
+   "type": "steel",
+   "shape": "600S162-54",
+   "orient": "elevation",
+   "run": "y",
+   "length": 14,
+   "at": {
+    "anchor": "bottom_left",
+    "to": [
+     0.0566,
+     0.0566
+    ]
+   }
+  },
+  {
+   "id": "post",
+   "type": "steel",
+   "shape": "TUBE3x3x0.125",
+   "material": "aluminum",
+   "orient": "elevation",
+   "run": "y",
+   "length": 10,
+   "at": {
+    "anchor": "bottom_left",
+    "to": [
+     18,
+     0
+    ]
+   }
+  },
+  {
+   "id": "hdr",
+   "type": "steel",
+   "shape": "CEE8x3x0.062",
+   "material": "aluminum",
+   "at": {
+    "anchor": "bottom_left",
+    "to": "post@top_left"
+   }
+  },
+  {
+   "id": "rafter",
+   "type": "steel",
+   "shape": "TUBE6.5x2x0.042",
+   "material": "aluminum",
+   "orient": "elevation",
+   "length": 14,
+   "at": {
+    "anchor": "bottom_left",
+    "to": "hdr@top_left",
+    "offset": [
+     -4,
+     0
+    ]
+   }
+  },
+  {
+   "id": "guard",
+   "type": "steel",
+   "shape": "PIPE4STD",
+   "fill": "concrete",
+   "orient": "elevation",
+   "run": "y",
+   "length": 16,
+   "at": {
+    "anchor": "bottom_left",
+    "to": [
+     32,
+     0
+    ]
+   }
+  }
+ ],
+ "views": [
+  {
+   "id": "A",
+   "kind": "section",
+   "number": "1",
+   "title": "COLD-FORMED STUD AT TRACK AND ALUMINUM HEADER",
+   "cut_z": 0,
+   "notes_side": "left",
+   "annotations": [
+    {
+     "id": "n_stud",
+     "type": "note",
+     "text": "600S162-54 STUDS @ 16\" O.C.",
+     "target": "stud"
+    },
+    {
+     "id": "n_track",
+     "type": "note",
+     "text": "600T125-54 TRACK W/ 0.145\" DIA. P.A.F. @ 16\" O.C.",
+     "target": "track"
+    },
+    {
+     "id": "n_post",
+     "type": "note",
+     "text": "3\" SQ. X 0.125\" ALUM. POST",
+     "target": "post"
+    },
+    {
+     "id": "n_hdr",
+     "type": "note",
+     "text": "3\" X 8\" X 0.062\" ALUM. C HEADER",
+     "target": "hdr"
+    },
+    {
+     "id": "n_raft",
+     "type": "note",
+     "text": "2\" X 6 1/2\" X 0.042\" ALUM. RAFTER @ 24\" O.C.",
+     "target": "rafter"
+    },
+    {
+     "id": "n_guard",
+     "type": "note",
+     "text": "4\" DIA. STD. PIPE GUARD POST, CONC. FILLED",
+     "target": "guard"
+    }
+   ],
+   "scale": "1 1/2\"=1'-0\""
+  }
+ ]
+}

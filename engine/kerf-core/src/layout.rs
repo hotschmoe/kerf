@@ -142,6 +142,24 @@ pub fn names_view(doc: &Value, vid: &str) -> bool {
     })
 }
 
+/// The numbers view `vid`'s keyed notes print with on the first shared-notes layout that names it (SPEC 30.8).
+pub fn sheet_keys(doc: &Value, st: &Style, vid: &str) -> Option<Vec<(String, u32)>> {
+    let all = doc.get("views").and_then(Value::arr)?;
+    let quiet = Diags::new();
+    for (li, node) in doc.get("layouts")?.arr()?.iter().enumerate() {
+        let Some(lay) = parse(doc, node, li, &quiet).filter(|l| l.shared) else { continue };
+        let views = lay.views();
+        let Some(k) = views.iter().position(|v| *v == vid) else { continue };
+        let mut specs = Vec::new();
+        for v in &views {
+            let i = all.iter().position(|x| x.get("id").and_then(Value::str) == Some(*v))?;
+            specs.push(view_spec(doc, &all[i], i, &quiet)?);
+        }
+        return shared_keys(&lay, &specs, st, &quiet).into_iter().nth(k);
+    }
+    None
+}
+
 fn find_layout<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
     doc.get("layouts")?.arr()?.iter().find(|l| l.get("id").and_then(Value::str) == Some(id))
 }
@@ -600,7 +618,7 @@ fn shared_keys<'a>(lay: &Layout, specs: &[ViewSpec<'a>], st: &Style, diags: &Dia
             Some(lid),
             Some(&format!("layouts/{lid}")),
             format!(
-                "layout {lid} numbers its shared DETAIL NOTES 1..{} without gaps: {}",
+                "layout {lid} numbers its shared DETAIL NOTES 1..{} without gaps, and its views export alone with the same numbers: {}",
                 groups.len(),
                 moved.join(", ")
             ),
@@ -753,7 +771,7 @@ fn build_view<'a>(
     iso_factor: Option<f64>,
 ) -> Option<Built<'a>> {
     let vd = Diags::new();
-    let opts = ViewOpts { keys, in_layout: true, fit: Some(c.share), iso_factor };
+    let opts = ViewOpts { keys, own_list: false, in_layout: true, fit: Some(c.share), iso_factor };
     let d = drawview::build_with(c.doc, c.st, c.scene, spec, &vd, opts)?;
     Some(Built { d, diags: vd.into_vec() })
 }

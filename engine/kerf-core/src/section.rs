@@ -269,7 +269,7 @@ impl<'s> Section<'s> {
         if !p.quads.is_empty() || p.loops.is_empty() || p.loops[0].len() < 3 {
             return false;
         }
-        self.scene.comps.get(p.comp as usize).is_some_and(|c| c.ty.traits.lengthwise_grain)
+        p.along_grain || self.scene.comps.get(p.comp as usize).is_some_and(|c| c.ty.traits.lengthwise_grain)
     }
 
     pub fn region_items(&mut self) -> Vec<Item> {
