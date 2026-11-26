@@ -18,6 +18,7 @@ param_enum! { pub enum Align { Center = "center", Top = "top", Bottom = "bottom"
 params! {
     pub struct Params {
         shape: Str => { desc: "AISC designation from the embedded table: W8x18, WT6x13, HSS4x4x1/4 (rect, nominal wall), HSS4.000x0.250 (round), PIPE3STD / PIPE3XS, L4x3x3/8, C8x11.5, MC8x18.7, PL1/2x8 (plate thickness x width, any size). HSS and pipe walls draw at the design thickness 0.93 x nominal. Cold-formed studs and track by SSMA designation: 600S162-54 (lipped C stud or joist), 600T125-54 (track; 600T250-54 deep-leg deflection track), 150U050-54 (channel). Any-size thin-wall shapes (aluminum extrusions, light tube): TUBE2x6.5x0.042 (rectangular: height x width x wall), TUBE3x0.125 (round), CEE8x3x0.042 (C: depth x flange x thickness, optional x lip), ANGLE1.5x1.5x1/8, TEE3x3x1/4x1/4" },
+        fill: Str = "" => { def: "none", desc: "HSS, pipe and TUBE: the material filling the inside, e.g. concrete or grout (pipe bollard, guard post, filled column). Section: the core takes that material's hatch; elevation/plan: the core between the inside wall faces, hatched where a section cuts through the member" },
         material: Str = "steel" => { desc: "steel, or aluminum for extrusions (patio cover header, rafter, lattice tube, post): a cut aluminum section draws as its outline, not solid" },
         orient: Enum(Orient) = Orient::Section => { desc: "section: cut end-on, the member runs along z (true flange/web/wall thicknesses, solid steel fill when cut); elevation: seen from the side along its length (depth in-plane: the silhouette in the visible steel pen, a W's flanges as lines); plan: seen from above along its length (flange width in-plane). Elevation and plan never fill, even where the section plane passes through them, and get a break line where the crop cuts them off" },
         run: Enum(Run) = Run::X => { desc: "elevation/plan: in-plane direction of the length, x (beam) or y (column, post). Run y puts the cross-section's top (elevation) or left (plan) toward +x" },
@@ -434,6 +435,33 @@ fn tee_geo(d: f64, bf: f64, tw: f64, tf: f64, k: f64, fillets: bool) -> Geo {
     }
 }
 
+/// Inside outline of a hollow shape and its wall thickness: what `fill` fills.
+fn core_loop(dims: Dims, fillets: bool) -> Option<(Vec<Pt>, f64)> {
+    match dims {
+        Dims::Round { od, t } => Some((vec![pb(od / 2.0, od - t, 1.0), pb(od / 2.0, t, 1.0)], t)),
+        Dims::Rect { h, b, t } => {
+            let r = if fillets { t.min(0.45 * (b.min(h) - 2.0 * t)) } else { 0.0 };
+            if r <= 1e-9 {
+                return Some((model::rect_loop(t, t, b - t, h - t), t));
+            }
+            Some((
+                vec![
+                    p(t + r, t),
+                    pb(b - t - r, t, Q),
+                    p(b - t, t + r),
+                    pb(b - t, h - t - r, Q),
+                    p(b - t - r, h - t),
+                    pb(t + r, h - t, Q),
+                    p(t, h - t - r),
+                    pb(t, t + r, Q),
+                ],
+                t,
+            ))
+        }
+        _ => None,
+    }
+}
+
 fn geometry(shape: &Shape, sp: &Params) -> Geo {
     match shape.dims {
         Dims::W { d, bf, tw, tf, k } => w_geo(d, bf, tw, tf, k, sp.fillets),
@@ -484,6 +512,19 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         return None;
     }
     let mat = sp.material.as_str();
+    let core = if sp.fill.is_empty() {
+        None
+    } else {
+        let Some(core) = core_loop(shape.dims, sp.fillets) else {
+            ctx.p.fail("fill", format!("'fill' needs a hollow shape (HSS, PIPE or TUBE); {} has no inside to fill: remove \"fill\"", shape.name));
+            return None;
+        };
+        if !material_ok(ctx, "fill", &sp.fill) {
+            return None;
+        }
+        Some(core)
+    };
+    let fill_txt = if sp.fill.is_empty() { String::new() } else { format!(" filled with {}", sp.fill) };
     let geo = geometry(&shape, &sp);
     let grade = if sp.grade.is_empty() { String::new() } else { format!(" {}", sp.grade) };
     if sp.orient == Orient::Section {
@@ -496,7 +537,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         } else {
             None
         };
-        let prisms = geo.pieces.iter().map(|(part, lp)| steel_prism(mat, part, lp.clone())).collect();
+        let mut prisms: Vec<Prism> = geo.pieces.iter().map(|(part, lp)| steel_prism(mat, part, lp.clone())).collect();
+        if let Some((lp, _)) = &core {
+            prisms.push(steel_prism(&sp.fill, "fill", lp.clone()));
+        }
         let anchors =
             geo.anchors.iter().map(|&(n, u, v)| NamedAnchor { name: n.to_string(), p: V2::init(u, v) }).collect();
         let len_txt = length.map_or(String::new(), |l| format!(" L={}", fmt_ft_in(l)));
@@ -505,7 +549,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             anchors,
             box_: Box { x0: 0.0, y0: 0.0, x1: geo.w, y1: geo.h },
             nat_z: length,
-            info: format!("{mat} {}{grade} section{len_txt}", shape.name),
+            info: format!("{mat} {}{grade} section{len_txt}{fill_txt}", shape.name),
             ..Built::default()
         });
     }
@@ -543,6 +587,10 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
             ..steel_prism(mat, sl.part, model::rect_loop(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y)))
         });
     }
+    if let Some((_, t)) = core {
+        let (a, b) = (at(0.0, t), at(len, across - t));
+        prisms.push(Prism { zhalf: depth / 2.0 - t, ..steel_prism(&sp.fill, "fill", model::rect_loop(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y))) });
+    }
     for &c in hidden.iter().filter(|_| sp.hidden_lines) {
         prisms.push(hidden_line(mat, at(0.0, c), at(len, c), depth / 2.0));
     }
@@ -559,7 +607,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         box_: Box { x0: 0.0, y0: 0.0, x1: far.x, y1: far.y },
         nat_z: Some(depth),
         info: format!(
-            "{mat} {}{grade} {} run {} L={}{until_note}",
+            "{mat} {}{grade} {} run {} L={}{until_note}{fill_txt}",
             shape.name,
             sp.orient.tag(),
             sp.run.tag(),
