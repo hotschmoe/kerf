@@ -1,0 +1,9 @@
+DOC general-existing-dowel  8 components  1 view  0 errors  0 warnings  0 acknowledged
+ e_ftg         concrete footing 1'-4" x 8"                 x -1'-4"..0"      y 0"..8"
+ e_stem        concrete rect 8" x 1'-4"                    x -8"..0"         y 8"..2'-0"
+ n_ftg         concrete footing 1'-8" x 8"                 x 0"..1'-8"       y 0"..8"
+ n_stem        concrete rect 8" x 1'-4"                    x 0"..8"          y 8"..2'-0"
+ dowel_stem    rebar #4 path L=1'-0", epoxied 6" into 'e_stem' (5/8" dia hole) x -6 1/8"..6"     y 1'-7 11/16"..1'-8 5/16"
+ dowel_ftg     rebar #4 path L=1'-10", epoxied 6" into 'e_ftg' (5/8" dia hole) x -6 1/8"..1'-4"  y 3 11/16"..4 5/16"
+ vert          rebar #4 path L=1'-6 3/4", std 90 hook at end (bend dia 3", ext 6") x 3 3/4"..11 3/4" y 3"..1'-10"
+ tie           rebar #3 closed tie 5" x 1'-1" out to out, 135 hooks at top_left in 'n_stem' at 1.5 cover x 1 1/2"..6 1/2"  y 9 1/2"..1'-10 1/2"
