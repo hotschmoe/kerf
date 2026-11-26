@@ -22,7 +22,7 @@ params! {
         material: Str = "steel" => { desc: "steel, or aluminum for extrusions (patio cover header, rafter, lattice tube, post): cut aluminum draws in the sheet-metal style: thin walls solid, thicker ones as an outline" },
         orient: Enum(Orient) = Orient::Section => { desc: "section: cut end-on, the member runs along z (true flange/web/wall thicknesses, solid steel fill when cut); elevation: seen from the side along its length (depth in-plane: the silhouette in the visible steel pen, a W's flanges as lines); plan: seen from above along its length (flange width in-plane). Lengthwise views never fill, even where the section plane passes through them, and get a break line where the crop cuts them off; a vertical round member cut by a plan view draws its true ring" },
         run: Enum(Run) = Run::X => { desc: "elevation/plan: in-plane direction of the length, x (beam) or y (column, post). Run y puts the cross-section's top (elevation) or left (plan) toward +x" },
-        length: OptRaw => { def: "elevation/plan: required", desc: "member length (or `until`). Section: optional; the member is then that long along z, centered on the first section view's cut_z (default: spans the doc run)" },
+        length: OptRaw => { def: "elevation/plan: required", desc: "member length (or `until`). Section: optional; the member is then that long along z, centered on the first document section/elevation's cut_z only when included there, else z=0 (no length: spans the doc run)" },
         until: OptRaw => { desc: "elevation/plan alternative to length: a Ref; the member grows from its placement anchor along its run until its far end reaches the Ref (as lumber `until`)" },
         long_leg: Enum(LongLeg) = LongLeg::Vertical => { desc: "angles: which leg is vertical in the cross-section: vertical (LLV) or horizontal (LLH). The vertical leg is on the left (heel bottom-left); mirror: true puts it on the right" },
         outstand: Enum(Outstand) = Outstand::Back => { desc: "elevation of angles and channels: the horizontal leg / the flanges point back (away from the viewer, -z: you see the vertical leg or web face-on) or front (+z)" },
@@ -32,7 +32,7 @@ params! {
         from: OptRaw => { desc: "elevation/plan: two-point member (kicker, brace): start point (Ref or [x, y]); with `to` it sets length and angle, ends at a Ref are trimmed to that member's face (as lumber `from`)" },
         to: OptRaw => { desc: "elevation/plan: two-point member end point (see `from`)" },
         align: OptEnum(Align) => { def: "center", desc: "two-point member: center, top or bottom line runs from `from` to `to`" },
-        cuts: OptRaw => { desc: "elevation/plan: end cuts and notches (copes) as lumber `cuts`: square|plumb|level|bevel|trim ends, notch at a corner (cope) or by a member; {\"type\":\"hole\",\"d\":3,\"x\":30} bores a round web hole (optional y moves it off mid-depth; no steel hole limits checked). `kerf schema cuts`" },
+        cuts: OptRaw => { desc: "elevation/plan: end cuts and notches (copes) as lumber `cuts`: square|plumb|level|bevel|trim ends, notch at a corner (cope) or by a member; {\"type\":\"hole\",\"d\":3,\"x\":30} cuts a round web hole or edge-opening weld-access hole (optional y moves it off mid-depth; no steel hole limits checked). `kerf schema cuts`" },
     }
 }
 

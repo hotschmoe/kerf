@@ -825,7 +825,61 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
         env.ann_boxes.push(AnnBox { id: id.to_string(), kind: AnnKind::Table, bbox: *bx, offset: 0.0 });
         result.extend(its);
     }
+    weld_text_overlaps(env, &result);
     result
+}
+
+fn weld_text_overlaps(env: &Env, items: &[Item]) {
+    let text: Vec<_> = items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Text(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    for an in env.spec.annotations.iter().filter(|a| str_member(a, "type") == Some("weld")) {
+        let Some(id) = str_member(an, "id") else { continue };
+        let mut hits = Vec::new();
+        for t in text.iter().filter(|t| t.src == id) {
+            let poly = text::text_poly(env.font, t, 0.0);
+            for other in text.iter().filter(|t| t.src != id) {
+                if dims::polys_overlap(&poly, &text::text_poly(env.font, other, 0.0))
+                    && !hits.contains(&other.src.as_str())
+                {
+                    hits.push(other.src.as_str());
+                }
+            }
+        }
+        if hits.is_empty() {
+            continue;
+        }
+        let vid = env.spec.id;
+        let off = an
+            .get("offset")
+            .and_then(Value::arr)
+            .filter(|a| a.len() == 2)
+            .and_then(|a| Some(V2::init(crate::units::parse_length(&a[0])?, crate::units::parse_length(&a[1])?)))
+            .unwrap_or(V2::init(0.5 * env.s, 0.5 * env.s));
+        let step = env.style.text_height_in * env.s * 2.0;
+        let mut shift = step;
+        for _ in 0..128 {
+            let clear = text.iter().filter(|t| t.src == id).all(|t| {
+                let mut moved = (*t).clone();
+                moved.y += shift;
+                let poly = text::text_poly(env.font, &moved, 0.0);
+                text.iter()
+                    .filter(|t| t.src != id)
+                    .all(|other| !dims::polys_overlap(&poly, &text::text_poly(env.font, other, 0.0)))
+            });
+            if clear {
+                break;
+            }
+            shift += step;
+        }
+        env.diags.add_fix(Level::Warning, "W_LABEL_OVERLAP", Some(id), Some(&format!("views/{vid}/annotations/{id}")),
+            format!("view {vid}: weld '{id}' text overprints {}", hits.iter().map(|h| format!("'{h}'")).collect::<Vec<_>>().join(", ")),
+            format!("move the weld reference line and tail, then inspect the view: {{\"op\":\"update\",\"path\":\"views/{vid}/annotations/{id}\",\"value\":{{\"offset\":[{},{}]}}}}", model::fmt_num(off.x), model::fmt_num(off.y + shift)));
+    }
 }
 
 fn table_overlaps(

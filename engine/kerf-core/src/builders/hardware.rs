@@ -37,7 +37,8 @@ impl Member {
 }
 
 pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
-    let (id, inst) = match name.split_once('#') {
+    let (head, part) = name.split_once('.').map_or((name, None), |(a, b)| (a, Some(b)));
+    let (id, inst) = match head.split_once('#') {
         Some((a, b)) => {
             match b.parse::<usize>() {
                 Ok(k) => (a, k),
@@ -47,7 +48,7 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
                 }
             }
         }
-        None => (name, 0),
+        None => (head, 0),
     };
     let scene: &Scene = ctx.scene;
     let Some(c) = scene.find(id) else {
@@ -72,11 +73,38 @@ pub fn member(ctx: &mut Ctx, key: &str, name: &str) -> Option<Member> {
         );
         return None;
     }
+    if let Some(pn) = part
+        && !c.world.iter().any(|p| p.part == pn)
+    {
+        ctx.p.fail_code(
+            "E_REF_UNKNOWN",
+            key,
+            format!("'{key}': '{id}' has no part '{pn}'; parts: {}", scene.part_names(c).join(", ")),
+        );
+        return None;
+    }
+    let stringer = c.ty.ty == crate::catalog::Type::Stair
+        && c.node.get("kind").and_then(Value::str) == Some("wood")
+        && part.is_none_or(|p| p == "stringer");
+    let selected = if stringer {
+        let cut = scene.default_z.unwrap_or((scene.run[0] + scene.run[1]) / 2.0);
+        c.world.iter().filter(|p| p.instance as usize == inst && p.part == "stringer").min_by(|a, b| {
+            let dist = |p: &Prism| ((p.z0 + p.z1) / 2.0 - cut).abs();
+            dist(a).total_cmp(&dist(b))
+        })
+    } else {
+        None
+    };
     let mut bx = Box::default();
     let (mut z0, mut z1) = (f64::INFINITY, f64::NEG_INFINITY);
     let mut flat = Vec::new();
     let mut chord = Vec::new();
-    for p in c.world.iter().filter(|p| p.instance as usize == inst && p.kind == model::Kind::Body) {
+    for p in c.world.iter().filter(|p| {
+        p.instance as usize == inst
+            && p.kind == model::Kind::Body
+            && part.is_none_or(|pn| p.part == pn)
+            && (!stringer || selected.is_some_and(|q| core::ptr::eq(*p, q)))
+    }) {
         let f = clip::from_region(&p.loops, FLAT_TOL);
         bx.add_box(clip::loops_box(&f));
         if c.ty.name() == "truss" && p.part == "bottom_chord" {

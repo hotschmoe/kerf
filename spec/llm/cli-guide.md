@@ -45,10 +45,10 @@ kerf schema note dim cite
 - Scenarios: one view each, one origin; scenario members get `"views":["B"]`, shared none; one sheet: `kerf schema layout`.
 - Unknown keys warn (`W_UNKNOWN_KEY` suggests the right one). Consult `kerf schema <topic>` before guessing.
 
-## Diagnostics you will meet (each prints its own fix)
+## Diagnostics (each prints its fix)
 W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP / W_UNSUPPORTED (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
 W_SHORT_SLOPE, W_LEADER_HIT / W_VIEW_FIT (layout), W_NOTE_STYLE / W_ABBREV (note text), W_UNKNOWN_KEY,
-W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, I_* (info).
+W_REQUESTED_MISSING, W_CROP_STALE (drop `crop`/`scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, W_SCREW_PENETRATION, I_* (info).
 
 ## Placement (relative, never computed coordinates)
 - `"at": {"anchor": "bottom_left", "to": "bond_beam@top_left", "offset": [0, 0]}`: the member's own anchor lands on the Ref.
@@ -318,7 +318,7 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   "round","diameter":24,"height":60,"at":{"to":[0,0]}}` (placed by the axis at the top), a circle in plan. Hoops:
   `{"type":"rebar","size":"#3","plane":"xz","y":{"ref":"pier@top_center","offset":[0,-3]},"tie":{"in":"pier","cover":3,
   "shape":"hoop"},"array":{"axis":"y","count":5,"spacing":-12}}`. A post or pipe cast into it is `"embedded": true`
-  (a round takes no `voids`): a bollard is the round footing plus `{"type":"steel","shape":"PIPE6STD","orient":
+  (or subtract rectangular-profile `voids`): a bollard is the round footing plus `{"type":"steel","shape":"PIPE6STD","orient":
   "elevation","run":"y","length":84,"embedded":true}`.
 - Recipes with no new type. ICF wall: a `concrete` rect core with an `insulation` leaf on each face (`{"type":
   "insulation","width":2.5,"height":48,"at":{"anchor":"bottom_right","to":"core@bottom_left"}}`), bars in the core as
@@ -345,3 +345,23 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   lists the `layouts` paths: `{"op":"update","path":"layouts/S1","value":{"columns":3}}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.
+
+Round-2 authoring fixes (beta.5):
+- `stair.cover` accepts `{bottom,top,sides,parts}`. Wood `carried:"stair.stringer"` (or the whole stair)
+  fits one physical stringer nearest the connector's section depth, using its local end profile. Use
+  `stair@top_cut_top`, `stair@top_cut_bottom`, `stair@top_bearing` for placement. Even counts stay evenly spaced:
+  choose a cut through the physical stringer. Nailing part references expand physical members.
+- Round piers accept `voids:["post"]` and rectangular XY cutters with z ranges. Curved/sloped XY cutters error;
+  use rectangular voids or embedded geometry. Square embedded posts stay square. Cover ignores metal-component
+  void interfaces but still checks exterior faces and open shape voids.
+- Steel `cuts` holes may open at edges: `{"type":"hole","d":1.5,"x":0.75}`. Wood holes must stay inside.
+  A cut PL plate plan keeps bolt heads visible instead of filling the plate black.
+- Metal screws: `{"type":"bolt","kind":"self_drilling_screw","diameter":0.212,"length":1.25}`; threads/head/point,
+  no nut, no AISC bolt checks. Select/design per manufacturer/AISI. Lag/wood screws also skip AISC bolt checks.
+  `W_SCREW_PENETRATION`: the tip stops before wood on its axis; apply its length op or place the head at
+  `joist@top_flange_bottom_start` (actual flange underside). `top_chord_bottom_start` is the angle-band bottom.
+- Weld text collisions emit `W_LABEL_OVERLAP` with an offset op. Inspect after applying it.
+- A triangular bevel may meet another cut at one face. Implicit trim reaching over two member depths past an
+  endpoint warns `W_CUT_MISS` and stays square: keep the square-end op or review an explicit trim.
+- The first document section/elevation sets natural z only for members it includes; other scenarios use zero model datum.
+  Later cuts do not move geometry: set explicit `z` for noncentral datums or shared geometry.

@@ -9,13 +9,13 @@ use alloc::vec::Vec;
 
 param_enum! { pub enum Orient { Side = "side", End = "end" } }
 param_enum! { pub enum Line { X = "x", Y = "y", Z = "z" } }
-param_enum! { pub enum BoltKind { Bolt = "bolt", WeldStud = "weld_stud", HeadedStud = "headed_stud", LagScrew = "lag_screw", WoodScrew = "wood_screw" } }
+param_enum! { pub enum BoltKind { Bolt = "bolt", WeldStud = "weld_stud", HeadedStud = "headed_stud", LagScrew = "lag_screw", WoodScrew = "wood_screw", SelfDrillingScrew = "self_drilling_screw" } }
 param_enum! { pub enum Hole { Standard = "standard", Oversize = "oversize", ShortSlot = "short_slot", LongSlot = "long_slot" } }
 param_enum! { pub enum SlotDir { X = "x", Y = "y" } }
 
 params! {
     pub struct Params {
-        kind: Enum(BoltKind) = BoltKind::Bolt => { desc: "bolt: head, grip, washer and nut; lag_screw: hex head and washer on the placement point, plain shank then threads and a point, `length` long, no nut (steel plate or wood side member to wood); wood_screw: structural wood screw with a hex washer head (SDS, SDWS, #14: put the model in grade), threads and point, no nut (built-up LVL plies, ledgers); weld_stud: threaded stud welded at the placement point (no head), grip UP through the plies, washer and nut on top (wood nailers on steel); headed_stud: shear stud welded at the placement point, `grip` = its length after welding, head 1.6d x 0.5d (embed plates, composite decks). Studs are side only: rotate the component to point them" },
+        kind: Enum(BoltKind) = BoltKind::Bolt => { desc: "bolt: head, grip, washer and nut; lag_screw: hex head and washer on the placement point, plain shank then threads and a point, `length` long, no nut (steel plate or wood side member to wood); self_drilling_screw: metal sheet screw (threads and point, no nut, no AISC bolt edge/spacing or wood penetration check; product design by manufacturer/AISI); wood_screw: structural wood screw with a hex washer head (SDS, SDWS, #14: put the model in grade), threads and point, no nut (built-up LVL plies, ledgers); weld_stud: threaded stud welded at the placement point (no head), grip UP through the plies, washer and nut on top (wood nailers on steel); headed_stud: shear stud welded at the placement point, `grip` = its length after welding, head 1.6d x 0.5d (embed plates, composite decks). Studs are side only: rotate the component to point them" },
         diameter: LenPos = 0.75 => { desc: "bolt diameter: 0.5, 0.625, 0.75 (typical), 0.875, 1" },
         grade: Str = "A325" => { desc: "free text for notes and the summary: A307, A325, A490, F1554 ..." },
         grip: LenPos = 1.0 => { desc: "thickness of the plies clamped between head and nut (sum of plate and flange thicknesses); the head bears at the placement point" },
@@ -24,8 +24,8 @@ params! {
         spacing: LenPos = 3.0 => { desc: "center-to-center spacing along `line` (AISC minimum 2 2/3 d, 3d preferred; W_BOLT_SPACING)" },
         line: Enum(Line) = Line::X => { desc: "direction of the row from bolt 1: x or z for side bolts, x or y for end bolts" },
         washer: Bool = true => { desc: "draw the hardened washer under the nut" },
-        length: OptLenPos => { def: "screws: required", desc: "lag_screw / wood_screw: length under the head, into the wood. The point lands at anchor tip; penetration into the main member = length - grip" },
-        thread: OptLenPos => { def: "lag: length/2 + 1/2 (6 max); wood_screw: 2/3 length", desc: "lag_screw / wood_screw: threaded length up from the point; the rest is plain shank (keep the threads out of the side member)" },
+        length: OptLenPos => { def: "screws: required", desc: "lag_screw / wood_screw / self_drilling_screw: length under the head. The point lands at anchor tip; penetration into the main member = length - grip" },
+        thread: OptLenPos => { def: "lag: length/2 + 1/2 (6 max); wood_screw: 2/3 length", desc: "lag_screw / wood_screw / self_drilling_screw: threaded length up from the point; the rest is plain shank (keep the threads out of the side member)" },
         hole: Enum(Hole) = Hole::Standard => { desc: "hole in the ply under the head (AISC 360 Table J3.3): standard (d + 1/16), oversize, short_slot or long_slot (slip connections at joist seats, ledger angles, deflection clips). End-on bolts draw the oversize hole or slot outline around the bolt (a standard hole is hidden by the head); side-on bolts carry it in the summary and notes only" },
         slot_length: OptLenPos => { def: "table: short d + 5/16, long 2.5 d", desc: "overall length of a slot when the detail gives it (e.g. 1.5 or 2.5), with hole short_slot or long_slot" },
         slot_dir: Enum(SlotDir) = SlotDir::X => { desc: "end-on bolts: direction of the slot's long axis in the drawing, x (horizontal slot) or y (vertical slot)" },
@@ -81,7 +81,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail("line", "line z runs along the axis of an end bolt: use line x or y".into());
         return None;
     }
-    let screw_kind = matches!(bp.kind, BoltKind::LagScrew | BoltKind::WoodScrew);
+    let screw_kind = matches!(bp.kind, BoltKind::LagScrew | BoltKind::WoodScrew | BoltKind::SelfDrillingScrew);
     let slotted = matches!(bp.hole, Hole::ShortSlot | Hole::LongSlot);
     if bp.slot_length.is_some() && !slotted {
         ctx.p.fail(
@@ -101,7 +101,7 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         ctx.p.fail(
             k,
             format!(
-                "'{k}' is for kind lag_screw or wood_screw; a {} is sized by \"grip\" (the plies it clamps{})",
+                "'{k}' is for kind lag_screw, wood_screw or self_drilling_screw; a {} is sized by \"grip\" (the plies it clamps{})",
                 bp.kind.tag(),
                 if bp.kind == BoltKind::HeadedStud { ": the stud's length" } else { "" }
             ),

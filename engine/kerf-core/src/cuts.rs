@@ -667,7 +667,10 @@ fn read_hole(scene: &Scene, id: &str, path: &str, k: usize, e: &Value, plan: &mu
     let x = need("x", "distance along the member from its start end to the hole centre")?;
     let y = len_field(scene, id, path, e, "y", true)?.unwrap_or(f.h / 2.0);
     let r = d / 2.0;
-    if x - r < 1e-6 || x + r > f.len - 1e-6 || y - r < 1e-6 || y + r > f.h - 1e-6 {
+    let steel = scene.find(id).is_some_and(|c| c.ty.ty == Type::Steel);
+    if (!steel && (x - r < 1e-6 || x + r > f.len - 1e-6 || y - r < 1e-6 || y + r > f.h - 1e-6))
+        || (steel && (x + r <= 0.0 || x - r >= f.len || y + r <= 0.0 || y - r >= f.h))
+    {
         err(
             scene,
             id,
@@ -1492,6 +1495,23 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
             _ => end_line(plan, i, Some((scene, &inv)), up, xw),
         };
         match resolved {
+            Some(l)
+                if k.is_none()
+                    && matches!(e, End::Trim(_))
+                    && [l.u_at(0.0), l.u_at(f.h)]
+                        .into_iter()
+                        .flatten()
+                        .any(|u| if i == 0 { u < -2.0 * f.h } else { u > f.len + 2.0 * f.h }) =>
+            {
+                let end = ["start", "end"][i];
+                let mut cuts = node.get("cuts").and_then(Value::arr).unwrap_or(&[]).to_vec();
+                cuts.push(json::obj([("type", Value::String("square".into())), ("end", Value::String(end.into()))]));
+                let mut encoded = Vec::new();
+                json::write_compact(&mut encoded, &Value::Array(cuts));
+                scene.diags.add_fix(Level::Warning, "W_CUT_MISS", Some(id), Some(&path),
+                    format!("automatic {end} trim of '{id}' would extend more than two member depths beyond its endpoint; the end is left square"),
+                    format!("set an explicit trim after reviewing the contact, or keep a square end: {{\"op\":\"update\",\"path\":\"components/{id}\",\"value\":{{\"cuts\":{}}}}}", String::from_utf8_lossy(&encoded)));
+            }
             Some(l) if l.u_at(0.0).is_some() && l.u_at(f.h).is_some() => lines[i] = l,
             _ => {
                 let what = ["start", "end"][i];
@@ -1580,7 +1600,7 @@ pub fn apply(scene: &Scene, id: &str, node: &Value, plan: &Plan, built: &mut Bui
         );
         return false;
     }
-    if s0 > e0 - 1e-3 || sh > eh - 1e-3 {
+    if s0 > e0 + 1e-6 || sh > eh + 1e-6 || (e0 - s0 + eh - sh) * f.h / 2.0 <= 1e-6 {
         err(
             scene,
             id,

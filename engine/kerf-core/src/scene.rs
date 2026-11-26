@@ -184,6 +184,7 @@ pub struct Scene<'a> {
     pub diags: &'a Diags,
     pub run: [f64; 2],
     pub default_z: Option<f64>,
+    pub depth_view: Option<&'a Value>,
     pub instances_total: usize,
     /// Which components each view draws (SPEC 25.4), schedule views left out.
     pub views: Vec<crate::view::Members<'a>>,
@@ -191,7 +192,16 @@ pub struct Scene<'a> {
 
 impl<'a> Scene<'a> {
     pub fn new(style: &'a Style, diags: &'a Diags, run: [f64; 2]) -> Scene<'a> {
-        Scene { style, comps: Vec::new(), diags, run, default_z: None, instances_total: 0, views: Vec::new() }
+        Scene {
+            style,
+            comps: Vec::new(),
+            diags,
+            run,
+            default_z: None,
+            depth_view: None,
+            instances_total: 0,
+            views: Vec::new(),
+        }
     }
 
     /// Some view draws both components (always, in a document without views): a search for a neighbour to name in

@@ -154,7 +154,7 @@ pub static VIEW: Object = Object {
             name: "cut_z",
             ty: "length",
             def: "0",
-            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn: to show members without cutting them use kind \"elevation\". Also the default z of in-plane members and anchor bolts (an elevation's cut_z only sets that; a plan ignores it)",
+            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn: to show members without cutting them use kind \"elevation\". Also the default z of included in-plane members and anchor bolts: the first document section/elevation sets depth only for members it includes; other scenarios use the zero model datum (an elevation's cut_z only sets that; a plan ignores it)",
             ..Field::NONE
         },
         Field {
@@ -395,7 +395,7 @@ pub static LABEL: Object = Object {
 pub static WELD: Object = Object {
     name: "weld",
     brief: "AWS weld symbol at a joint",
-    summary: "AWS weld symbol (annotation of type weld): arrow to the joint, reference line, fillet / CJP / PJP symbol with its size (below the line = arrow side, above = other side), all-around circle, field-weld flag, tail text. Placed exactly where you put it (not moved by the note layout). Section views only.",
+    summary: "AWS weld symbol (annotation of type weld): arrow to the joint, reference line, fillet / CJP / PJP symbol with its size (below the line = arrow side, above = other side), all-around circle, field-weld flag, tail text. Placed exactly where you put it (not moved by note layout); text overprints warn W_LABEL_OVERLAP with an offset op. Section views only.",
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"weld\"", required: true, desc: "annotation type", ..Field::NONE },

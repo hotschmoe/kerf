@@ -6,6 +6,70 @@ nothing else. Rust 1.96 stable, edition 2024. It replaced the Zig engine on 2026
 Drawing IR on every view, the CLI ergonomics and the `kerf serve` smoke tests were identical; the Zig tree is in git
 history). `README.md` is the short version of this file, `PERF.md` has the numbers.
 
+
+## v0.2.0-beta.5 round-2 authoring fixes (b5-round2)
+
+Working-tree edits only; the orchestrator owns staging, commits, versioning and merging. No Git metadata was written,
+no binary was installed, and the MASS source library was not changed. The 138 document/style/refs copies and all
+repros, PNGs, logs and exact per-file regression differences are under
+`/home/hotschmoe/github/mass-details/work/codex/b5-round2/`. Refs are real copies, not symlinks.
+
+Implemented: public concrete `stair.cover`; hardware part parsing and one-stringer/local-end hanger sizing; equal
+spacing for even stringer counts; rectangular-profile voids through round concrete (including footprint holes in
+section/plan/iso/mesh); shape-aware square embedded wood plans; cover exemption for cast-in metal component voids
+(sleeves remain exposed); edge-opening steel access holes; readable cut PL plate plans; typed
+`bolt.kind:self_drilling_screw`, with AISC edge/spacing checks limited to through bolts; real joist horizontal flange
+underside anchors; `W_SCREW_PENETRATION` for side screws that stop before wood; excessive automatic trim left square
+with `W_CUT_MISS`; weld text overprints reported as `W_LABEL_OVERLAP`; positive-area triangular bevels; first-cut depth
+inheritance limited to the first section/elevation's included members, with unrelated scenarios at the zero datum.
+When the first section has no explicit cut_z, the previous run-center fallback remains. Plan bar-dot targets retain
+their original primary landing while excluding the thin-member fallback that could point at the host center.
+
+Authoring examples: `"carried":"stair.stringer"`; `"cover":{"bottom":3,"top":1.5,"sides":1.5}`;
+`"voids":["post"]`; `"cuts":[{"type":"hole","d":1.5,"x":0.75}]` on steel;
+`{"type":"bolt","kind":"self_drilling_screw","diameter":0.212,"length":1.25}`;
+`"at":{"to":"joist@top_flange_bottom_start"}` for screw heads under the horizontal chord flange.
+Weld and trim diagnostics provide exact update ops. Explicit z remains necessary for noncentral/shared geometry.
+
+Visual review: before/after native sheets of the flange-bolt plan, stair hanger, pier/post plan, triangular bevel,
+trim and screw repros; the stair S1 layout; and a deliberately overlapping weld tail. The flange plan now exposes all
+four bolt heads; embedded wood is a square with end-grain X, not a circle; pier voids remove the hatch inside the post; vertical pipe voids keep a circular XZ envelope;
+implicit trim no longer grows through masonry. A colliding weld tail warns. The S-80.24 depth probe removes the
+D post's explicit z and confirms its center changes from the unrelated A cut (25.5) to zero; the actual z bounds
+change from [22.5,28.5] to [-3,3]. Real CLI probes also apply the proposed
+screw length ops and confirm both zero-entry findings clear. No new blocking test or reference document was added.
+No golden was regenerated; the final native/wasm compatibility checks retain the reference bytes.
+
+Validation: release build, Clippy all targets with warnings denied, rustfmt, CLI E2E, serve E2E and ergonomics
+(655/655) pass. Native golden comparison passes 978 outputs including DXF/PDF audits; wasm build passes without
+wasm-opt and wasm golden comparison is 70/70 byte-identical. Use the shared Python tooling on PATH:
+`PATH=/home/hotschmoe/github/kerf/tools/.venv/bin:$PATH`. The initial unqualified Python run lacked its audit packages;
+the final gate uses the requested PATH and passes. Short guide: 12,110 bytes (beta.4 12,111). Wasm via
+`tools/size_report.sh`: 1,794,984 raw / 697,954 gzip-9 / 561,428 Brotli-11 bytes. A clean release rebuild takes about
+65 s on this host; queued duplicate build timings include lock wait.
+
+Final library regression: all 138 originals have zero errors before and after; 134 checks are byte-identical.
+Only s-40-04 and s-80-01 lose their false metal-interface W_COVER and gain W_ACK_UNUSED for their now-obsolete
+acknowledgements. S-80-15 gains a true zero-entry screw finding; S-80-22 gains the excessive implicit-trim finding.
+Strict WARN lines 36 -> 38, acknowledged 15 -> 13, unacknowledged 21 -> 25. Strict exit 0: 118 -> 116.
+Every exact line and exit-code difference plus class explanations is in `regression.txt`.
+
+Limitations: curved/sloping XY cutters on a round host return E_PARAM with a removal op; use rectangular voids or
+embedded geometry. Side screw detection is geometric zero entry, not a product/design-capacity or end-on check.
+Weld diagnostics compare rendered text, not every leader/symbol stroke against model geometry; offset fixes need
+visual review after re-layout. The steel side-face/flange access-hole vocabulary, solid ROUND steel bars, and round
+pier elevation facet cleanup remain unimplemented. Connector-only Z-face joints/PGT/holdown geometry, nailing rows,
+CMU/pour-joint cover and standalone sheet fitting remain with their assigned agents.
+
+
+
+Changed paths for the round-2 handoff (25 files): `SRC.md`, `engine/NOTES.md`, `spec/SPEC.md`,
+`spec/llm/cli-guide.md`; under `engine/kerf-core/src/`: `annot.rs`, `annot/notes.rs`, `builders/bolt.rs`,
+`builders/concrete.rs`, `builders/hardware.rs`, `builders/stair.rs`, `builders/steel.rs`, `builders/steel_joist.rs`,
+`catalog.rs`, `compile.rs`, `cuts.rs`, `iso.rs`, `mesh.rs`, `model.rs`, `plan.rs`, `scene.rs`, `schema_fields.rs`,
+`section/cut.rs`, `steelcheck.rs`, `validate.rs`, `voids.rs`. A misplaced temporary SRC draft was moved into
+`.archive/b5-round2/SRC-draft.md`; no existing repository file was removed.
+
 ## beta.4 merge of master issue #31 (SPEC 30–32)
 
 The working-tree conflicts in SRC, these notes, SPEC and the CLI guide retain both sides in full. SPEC now orders

@@ -88,7 +88,13 @@ impl Section<'_> {
         let path_bar = is_path_bar(p);
         let style = self.style;
         let mat = style.material(&p.material);
-        let is_fill_mat = mat.is_some_and(|m| m.fill);
+        let is_fill_mat = mat.is_some_and(|m| m.fill)
+            && !(self.spec.kind == crate::view::Kind::Plan
+                && !p.embedded
+                && self.scene.comps.get(p.comp as usize).is_some_and(|c| {
+                    c.ty.ty == crate::catalog::Type::Steel
+                        && c.node.get("shape").and_then(crate::json::Value::str).is_some_and(|s| s.starts_with("PL"))
+                }));
         let fully_inside =
             bx.x0 >= crop.x0 - 1e-9 && bx.x1 <= crop.x1 + 1e-9 && bx.y0 >= crop.y0 - 1e-9 && bx.y1 <= crop.y1 + 1e-9;
         let cut_in = style.pen_width_mm(Pen::Cut) / 25.4;

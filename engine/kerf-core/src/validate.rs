@@ -335,9 +335,9 @@ fn overlap_fix(p: &Pf<'_>, q: &Pf<'_>) -> String {
         (true, true) if p.prism.role == Role::Grout && q.prism.role != Role::Grout => (q.comp, p.comp),
         _ => return PLAIN.to_string(),
     };
-    if host.world.iter().any(|w| w.fp_proxy) {
+    if host.world.iter().any(|w| w.fp_proxy) && host.node.get("shape").and_then(Value::str) != Some("round") {
         return format!(
-            "if '{}' is cast into '{}' (a round or angled footprint takes no voids), mark it embedded: {{\"op\": \"update\", \"path\": \"components/{}\", \"value\": {{\"embedded\": true}}}}; else {PLAIN}",
+            "if '{}' is cast into '{}' (an angled footprint takes no voids), mark it embedded: {{\"op\": \"update\", \"path\": \"components/{}\", \"value\": {{\"embedded\": true}}}}; else {PLAIN}",
             inner.id, host.id, inner.id
         );
     }
@@ -932,7 +932,7 @@ fn cover(s: &Drawn<'_, '_>, diags: &Diags) {
                         break;
                     }
                     let mut edges = host_edges(&host.outline, xf);
-                    for v in h.voids.iter().filter(|v| v.z[0] < bp.z1 && v.z[1] > bp.z0) {
+                    for v in h.voids.iter().filter(|v| v.cover_face && v.z[0] < bp.z1 && v.z[1] > bp.z0) {
                         for l in &v.loops {
                             edges.extend(void_edges(l));
                         }

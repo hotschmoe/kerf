@@ -576,14 +576,16 @@ fn footprint_iso(c: &Comp, p: &Prism, spec: &ViewSpec, crop: Option<Box>, out: &
         return;
     }
     let keep = vec![V2::init(x0, -big), V2::init(x1, -big), V2::init(x1, z1), V2::init(x0, z1)];
-    let region = clip::boolean(core::slice::from_ref(&p.footprint), core::slice::from_ref(&keep), clip::Op::Intersect);
-    for outer in region.into_iter().filter(|l| geom::signed_area_v(l) > 0.0) {
+    let mut footprint = vec![p.footprint.clone()];
+    footprint.extend(p.fp_holes.iter().cloned());
+    let region = clip::boolean(&footprint, core::slice::from_ref(&keep), clip::Op::Intersect);
+    for group in crate::section::group_region(&region, None) {
         out.push(IsoPrism {
             src: src_of(c, p.instance),
             instance: p.instance,
             comp: c.index,
             part: p.part.clone(),
-            loops: vec![outer],
+            loops: group.flat,
             z0: y0,
             z1: y1,
             cap_cut: false,

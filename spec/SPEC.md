@@ -3110,3 +3110,53 @@ and the pieces to remove.
 | `W_HOLE_LIMIT` | warning | a bored hole in sawn lumber over the IRC size or edge limits; an I-joist hole in a flange |
 | `W_NOTCH_LIMIT` | warning | a notch in sawn lumber over the IRC depth or length limits |
 | `I_CMU_PLAN_UNITS` | info | a CMU wall cut in plan keeps its bare shells because the document draws its webs as `cmu` pieces (listed by `kerf check`) |
+
+## 36 (v0.2.0-beta.5: round-2 authoring fixes)
+
+### 36.1 Stairs and member references
+
+Concrete `stair.cover` is public (`bottom`, `top`, `sides`, `parts`), using the concrete-host parser.
+Wood stringers stay equally spaced across `width`; even counts no longer move a stringer to the center cut.
+Hardware member names accept `id#instance.part`, including `stair.stringer`. On wood stairs, both `carried:"stair"`
+and `carried:"stair.stringer"` select one physical stringer nearest the connector's default section depth. The hanger fits its actual thickness and local end profile, including the sloped soffit; model-depth checks
+use that local profile. `nailing.members` expands the part into physical stringers.
+`stair.stringer@<box-anchor>` addresses the stringer profile; `top_cut_top`, `top_cut_bottom`, `top_bearing`,
+`seat_front` and `seat_back` remain anchors on the stair component.
+
+### 36.2 Round and embedded concrete
+
+Round concrete accepts `voids` and sleeve subtraction for rectangular XY cutter profiles with finite or through
+z ranges. The cylinder is partitioned at cutter y boundaries; each XZ footprint retains its holes in plan, section,
+iso and mesh. Vertical round steel posts retain circular XZ void envelopes. Curved/sloping XY cutters return `E_PARAM` at the void entry with a removal op and guidance to use
+rectangular voids or embedded geometry. Angled non-round footprints retain §28.7's restriction.
+Square embedded wood posts keep square plan profiles; reinforcement retains circular cut dots.
+Metal component voids are cast-in interfaces, excluded from `W_COVER`; shape voids and nonmetal component voids
+remain exposed boundaries. Exterior host-cover checks remain active.
+
+### 36.3 Steel, fasteners and annotations
+
+Steel `cuts` holes can meet or cross an edge (weld-access holes/open copes); the cutter must intersect the stock
+rectangle. Wood retains its wholly-inside hole restriction. A plan cut through a nonembedded `steel` plate
+(`shape:"PL..."`) draws its outline rather than a solid black face, keeping embedded bolt groups readable.
+`bolt.kind:"self_drilling_screw"` draws a screw with `diameter`, `length`, `thread`, head and point, without a nut.
+AISC bolt edge/spacing checks apply only to `kind:"bolt"`; screws and welded studs skip them. Metal screw selection
+and AISI/product design remain author responsibilities.
+`steel_joist` adds `top_flange_bottom` and (elevation) `top_flange_bottom_start/end`: the actual horizontal chord
+flange underside. `top_chord_bottom` still denotes the bottom of the vertical angle leg band.
+`W_SCREW_PENETRATION` identifies side wood/lag screws whose axis reaches wood within 6D beyond the tip but whose tip
+does not enter. The fix gives a length op providing 6D entry or directs the head to the actual flange underside;
+product suitability remains a design check. End-on screw penetration is not checked.
+Fixed weld text now receives `W_LABEL_OVERLAP` against actual rendered text polygons after note layout (notes,
+keyed tags/lists, dimensions, labels, tables and other welds). Its offset op clears current text; inspect the
+re-laid-out view. Weld symbols remain fixed. Plan reinforcement leaders choose actual visible bar regions rather
+than the center between bars.
+
+### 36.4 Cuts and scenario depth
+
+End cuts may meet at one face when the triangular area remains positive; crossed or zero-area cuts are `E_PARAM`.
+An implicit two-point trim extending a corner more than two member depths beyond its endpoint stays square and
+reports `W_CUT_MISS` with the square-end op. An explicit trim opts into extension after author review.
+The first document section/elevation sets natural depth only for members it includes (`views`, `only`, `omit`).
+Other scenarios use the zero model datum. This limits legacy first-cut inheritance to its own scenario; later cut planes
+do not reposition geometry. Use explicit `z` for later scenarios that need a noncentral datum.
+Shared members still have one depth; use explicit `z` when several cuts must share physical geometry.

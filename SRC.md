@@ -521,3 +521,23 @@ SPEC 30.1: placement is dependency order with ties broken by document order, exc
 ## beta.4 integration of SPEC 30–32
 
 Leader-through-member checks include the cut body prisms of steel joists, metal deck and its topping, steel stair treads and concrete/wood stairs. Embedded reinforcement and beyond geometry keep the SPEC 30 exclusions. The unsupported flat-plate check counts wood stair bodies as carried wood; support detection already accepts bodies of every type. Existing members obstruct leaders and support plates normally, and CMU plans supply their sliced unit geometry.
+
+## beta.5 round-2 geometry
+
+`compile::place_component` uses the first document section/elevation depth only for members it includes; other scenarios use zero model datum, before any builder
+resolves member references. A shared member remains one solid; explicit z is the contract across several cuts.
+`hardware::member` parses parts and chooses a single stair stringer nearest that depth; hanger end sampling already
+supplies the real vertical depth and sloped seat. Even-count stair arrays now preserve physical spacing.
+
+`voids::split_round` partitions the vertical cylinder at orthogonal cutter y boundaries and subtracts rectangles in
+XZ. Each piece stores the outside footprint plus `fp_holes`; plan, section, iso and mesh preserve those holes.
+Vertical PIPE/round-HSS/TUBE component cutters carry their circular XZ envelope separately from the XY prism, so
+round-pier subtraction keeps a circular hole rather than its elevation bounding box.
+The thin XY proxies remain available to geometry checks. Curved/sloping XY cutters error rather than render an
+uncut cylinder. `Cutter::cover_face` excludes metal component interfaces from exposed-face cover measurements.
+
+`steelcheck::screw_penetration` measures side screw axes against drawn wood profiles at their real z. It reports
+zero entry only; it is not a screw design/capacity check. AISC checks are reserved for through bolts.
+`annot::weld_text_overlaps` compares rendered text polygons after final layout and suggests a clear current offset;
+the fix is advisory because changing extents can move automatic columns. Plan plate fill is suppressed for PL
+members, preserving filled steel sections and embedded fastener marks.

@@ -414,7 +414,9 @@ pub fn build(scene: &Scene<'_>, include_fills: bool) -> Vec<Part> {
             }
             if pr.fp_proxy {
                 if pr.footprint.len() >= 3 {
-                    extrude(&mut part, core::slice::from_ref(&pr.footprint), pr.fp_y[0], pr.fp_y[1], 20.0, [&[], &[]]);
+                    let mut region = alloc::vec![pr.footprint.clone()];
+                    region.extend(pr.fp_holes.iter().cloned());
+                    extrude(&mut part, &region, pr.fp_y[0], pr.fp_y[1], 20.0, [&[], &[]]);
                     part.swap_yz(0, 0, 0);
                     parts.push(part);
                 }
