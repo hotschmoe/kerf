@@ -49,7 +49,7 @@ kerf guide --full
 - Unknown keys warn (`W_UNKNOWN_KEY` names the right one). `kerf schema <topic>` before guessing a field name.
 
 ## Diagnostics you will meet (each prints its own fix)
-W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
+W_NEAR_MISS (use `until`), W_FLOATING / W_OVERLAP / W_UNSUPPORTED (mis-placed), W_COVER, W_UNTREATED_CONTACT (`treated` or `barrier`),
 W_SHORT_SLOPE, W_LEADER_HIT / W_VIEW_FIT (layout), W_NOTE_STYLE / W_ABBREV (note text), W_UNKNOWN_KEY,
 W_REQUESTED_MISSING, W_CROP_STALE (drop `crop` and `scale` to re-fit), W_REFERENCE_FILE, W_ACK_UNUSED, I_* (info).
 
@@ -277,5 +277,20 @@ Keep going until the PNG reads as the detail an engineer expects: proportions, g
   another member lies against the face. Eave blocking (lumber run z) takes `"until":"truss@heel_block_top"` (ripped).
   An iso draws members `shown: "hidden"` (a 2D state) as solids. `{"type":"line","points":[...],"line":"dashed"}` draws a
   no-load zone, influence or limit line. Keyed views: `"tags_side":"right"` puts every tag on one side.
+- Beta.4 touch-up (SPEC 30). A member tie with no `side` bends onto the side no other member lies against (a birdmouthed
+  rafter's tie lands inside the wall, not in the sheathing); `"side":"left"|"right"` forces it, and `W_OVERLAP` names the
+  member its leg ends up inside with the op that frees it: `{"model":"H2.5A","members":["rafter","plate"]}`. Connectors and
+  nailing are placed after every member that is ready, so they see members listed after them. A `line` annotation clears
+  the hatch under itself and `"weight":"heavy"` draws it at 0.35 mm: `{"id":"l_zone","type":"line","weight":"heavy",
+  "points":["ftg@top_right",{"ref":"ftg@top_right","offset":[48,24]}]}`; a `label` clears a wider halo. A note whose
+  leader would run through a cut member to reach a target on its far side goes to the other side by itself (when no
+  `column`/`place` fixes it and the view still fits its scale); otherwise `W_LEADER_HIT` "crosses the cut ..." prints
+  `"column":"right"` (or left) for that note. `W_CUT_MISS` on a `trim` names the end that does reach the member and
+  prints the op (`start`/`end` follow the member's run, not the anchor that places it). `W_UNSUPPORTED`: a flat plate
+  (lumber run z, `orient: flat`) that touches one member along an edge, carries a wood member and has nothing under it;
+  the fix adds a ledger under it or sets it on its support (acknowledge it if the plate hangs from the member above). A
+  view named by a layout with shared notes prints that layout's note numbers when exported alone (`--view B`), so a tag
+  reads the same on both sheets; `I_KEY_RENUMBERED` lists the keys that print under another number. `kerf schema ops`
+  lists the `layouts` paths: `{"op":"update","path":"layouts/S1","value":{"columns":3}}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.

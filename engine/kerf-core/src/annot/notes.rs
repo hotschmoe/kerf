@@ -651,7 +651,7 @@ pub struct NotePrep {
     pub members: Vec<route::Obst>,
     pub member_names: Vec<String>,
     pub groups: Vec<usize>,
-    /// Per note (SPEC 30.1): the column whose leader would run through a cut member, those members' loops and their name.
+    /// Per note (SPEC 30.3): the column whose leader would run through a cut member, those members' loops and their name.
     pub avoid: Vec<Option<route::Side>>,
     pub through: Vec<Vec<Vec<V2>>>,
     pub through_names: Vec<String>,
@@ -711,7 +711,7 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
     }
 }
 
-/// How many notes per view the layout tries on the other side to keep a leader out of a cut member (SPEC 30.1).
+/// How many notes per view the layout tries on the other side to keep a leader out of a cut member (SPEC 30.3).
 pub const AUTO_SIDE_TRIES: usize = 4;
 
 /// The first note, not tried yet and free to change sides, whose leader runs through a cut member; with the other side.

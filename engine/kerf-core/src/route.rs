@@ -57,7 +57,7 @@ pub struct NoteIn<'a> {
     pub column: Option<Side>,
     /// The member the note points at (`Obst::group` of its `Member` obstacles; `usize::MAX` for none).
     pub group: usize,
-    /// The column whose leader runs through a cut member to reach the landing while the other column's would not (SPEC 30.1).
+    /// The column whose leader runs through a cut member to reach the landing while the other column's would not (SPEC 30.3).
     pub avoid: Option<Side>,
     /// The loops of the cut members in the way on the `avoid` side.
     pub through: &'a [Vec<V2>],

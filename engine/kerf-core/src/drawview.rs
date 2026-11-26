@@ -433,7 +433,7 @@ struct SecPass {
     fit: FitInfo,
     unverified: bool,
     keyed: Vec<KeyedEntry>,
-    /// The layout moved a note to the other column to keep its leader out of a cut member (SPEC 30.1).
+    /// The layout moved a note to the other column to keep its leader out of a cut member (SPEC 30.3).
     sided: bool,
 }
 
@@ -677,7 +677,7 @@ pub fn view_title(st: &Style, spec: &ViewSpec) -> String {
     out.trim_matches(|c: char| c == ' ' || c == '-').to_string()
 }
 
-/// The pass with the automatic note sides (SPEC 30.1), or without them when only that one fits `area` at this scale.
+/// The pass with the automatic note sides (SPEC 30.3), or without them when only that one fits `area` at this scale.
 fn sided_pass(inp: SectionInputs, spec: &ViewSpec, area: (f64, f64)) -> SecPass {
     let fits = |p: &SecPass| {
         (p.bounds.x1 - p.bounds.x0) / spec.scale <= area.0 + 1e-6 && (p.bounds.y1 - p.bounds.y0) / spec.scale <= area.1 + 1e-6

@@ -421,6 +421,17 @@ On the current aarch64 Linux workspace, the blocking gate took 44 s and the back
   (S-50.05 CS straps 1/8" off the beam x2, S-50.08 ST6224 1" off the 3x header x5, S-70.02 ceiling 1 1/2" below the
   trusses x2 views, S-70.03 roof sheathing 13/16" and 1/2" above the top chord) and 11 W_TIE_LEG (S-10.01 H2.5A on the
   sill into the stem/slab x5, S-40.03 x4 onto CMU / ICF, S-70.03 x2 into the open); all checked on the drawings, all true.
+- beta.4 issue #31 (SPEC 30): `compile::placement_order` picks connectors and nailing only when no other component is
+  ready, so `tie::against_face`, nailing and the hardware checks see members listed after them; a member tie without
+  `side` takes the side no component lies against (three probes along the leg) and warns W_OVERLAP when its leg is
+  still inside one. `annot::line::masks` + `knockout::knock_hatch` clear hatch under `line` annotations; `weight:
+  heavy` reuses the vapor / profile pens on the hidden / beyond layers; label halo 0.04". `notes::through_members`
+  finds, per note, the side whose leader runs through cut members; `route` reports `HitKind::Through` (W_LEADER_HIT)
+  and `annot::annotate` tries up to four such notes on the other side, keeping a change only when the repaired layout
+  has fewer hits; `drawview::sided_pass` drops the changes when they would cost the view its scale. W_CUT_MISS names
+  the end that reaches; `Diags::once` keeps one copy of a failed Ref; `validate::bearing::unsupported`
+  (W_UNSUPPORTED); the summary prints `(draws nothing)`; `layout::sheet_keys` gives a view built alone the numbers of
+  the first shared-notes layout naming it; `kerf schema ops` lists the layout paths.
 
 ## kerf serve (spec/SERVE.md)
 - The first stdout line is `kerf serve: http://127.0.0.1:<port>/?token=<32 hex>  (dir <abs>)` (scripts parse it; `--port 0`
@@ -501,6 +512,10 @@ unavailable, tree kill by job object, `.gitattributes` forcing LF (CRLF in embed
 over-long command lines. CI runs the Windows gates against the shipped build on real Windows runners.
 
 ## Known gaps
+- Issue #31: a leader through a cut member is found for the last leader segment against a horizontal reach from the
+  landing point; a leader that crosses a member on its way to a target that is not behind it is still the older
+  W_LEADER_HIT (crossing an obstacle), and notes with `place` are reported, never moved. W_UNSUPPORTED does not look at
+  fasteners: a flat plate held by a hanger or angle under it is supported, one held by nails through its edge warns.
 - Touch-up gaps (#30): nailing between members at an angle (a brace cut onto a tie) is warned, not drawn; W_LEADER_HIT
   fixes on dimension and label obstacles (dim `offset`, label move) are not checked by a re-layout (their stacking runs
   outside the router); a single-note fix that cannot clear a hit says so, but kerf does not compute a multi-note fix;
@@ -945,6 +960,28 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   - Leader fix checking runs only in single-view builds (`Env.verify_fixes`): checking in every layout trial cost 3x
     on s-80-01 (0.9 s -> 3.4 s) for diagnostics that are discarded. Up to 12 re-layouts per view within 1/4 of the
     work limit; a fix that cannot be checked in that budget keeps the old unchecked text.
+- beta.4 issue #31 (SPEC 30), interpretations chosen:
+  - Tie side needs the blocking member to exist when the tie is built, so connectors and nailing now build last among
+    the ready components (document order otherwise unchanged). No drawing of the 47 MASS details or the goldens moved
+    from the reorder alone.
+  - `weight: heavy` adds no pen and no layer: pens are a fixed enum that every exporter maps, so heavy reuses the
+    0.35 mm pens (vapor dashed 1.5/0.75, profile solid) and keeps the light line's layer.
+  - A leader through a cut member is a W_LEADER_HIT, not a new code: acknowledgements, the fix check and the hit counts
+    of the repair loop already work on that code. It is reported only (the router's cost and search do not see it):
+    counting it in the search reshuffled layouts that were tuned by hand and spent the work budget. The side change is
+    made outside the router, one note at a time, each checked by a whole repaired layout.
+  - "Other side is free" = that side crosses under a quarter of the minimum; walls are cut lumber, I-joist, steel,
+    concrete and CMU bodies of other components. The target's own body and fills never count. Plies of a built-up
+    member that are separate components do count (a note on one ply reached across the others warns).
+  - The automatic side never costs a scale step: `sided_pass` reruns the view without it when only that fits. The
+    price is one more layout of the view in that case.
+  - W_UNSUPPORTED is narrow: flat plate, end-on, one edge against a member, wood on top, nothing under in any view.
+    A sole plate drawn without its floor (plan and iso views of wall framing do this) and cut beams with their post
+    out of the section are common and correct, and the first wider version flagged four of them in the MASS set.
+  - Per-view export takes the layout's numbers (the sheet the designer issues is the layout; the view sheet is the
+    preview of it). A view's own list can then start above 1. `notes: "per_view"` on the layout keeps written keys.
+  - One finding per failed Ref is done at the sink (`Diags::once`, Ref resolution only): the passes of one view share
+    a `Diags`, and other diagnostics are already built once or deduplicated by their callers.
 
 ## REQUESTS
 - apps/web (#22): `workspace.ts` exports PNG with `px: 1600` explicitly; dropping it lets large layout sheets use the

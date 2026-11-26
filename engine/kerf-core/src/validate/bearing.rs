@@ -152,7 +152,7 @@ fn flat_plates<'s, 'p, 'a>(s: &'s Drawn<'p, 'a>) -> impl Iterator<Item = &'s &'p
     })
 }
 
-/// The flat plates of this drawn set with something under them: a plate seated in one view is seated (SPEC 30.4).
+/// The flat plates of this drawn set with something under them: a plate seated in one view is seated (SPEC 30.6).
 pub(super) fn seated(s: &Drawn<'_, '_>) -> Vec<u32> {
     flat_plates(s)
         .filter(|p| s.items.iter().chain(&s.hidden).any(|q| beside(p, q) && along(p, q, p.box_.y0 - PROBE)))

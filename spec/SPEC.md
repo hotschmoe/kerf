@@ -2764,3 +2764,106 @@ face without a cut (the trim cut does it).
 |---|---|---|
 | `E_PARAM` | error | `verticals` out of the drawn truss, overlapping or on another profile; a panel birdmouth/notch; `along` on an edge face or a bent tie; run z `until` deeper than the member; `tags_side`; a line with under two points |
 | `W_NAIL_MEMBERS` | warning | also: two nailing members at an angle (not drawn) |
+
+## 30. v0.2.0-beta.4: issue #31
+
+From the beta.3 touch-up of the 47 MASS details (issue #31): nine places where the drawing was wrong with no diagnostic,
+or the diagnostic did not say enough to fix it.
+
+### 30.1 Member ties: side and placement order
+**Placement order.** Components are placed in dependency order, ties by document order (§5), with one more rule:
+`connector` and `nailing` components are placed after every other component that is ready. A tie, hanger or nailing therefore sees the members that touch its own members even when
+they are listed after it (wall sheathing listed after the tie of the rafter it stands against).
+
+**Side.** A tie placed from two `members` (§27.2) on a z face (`face` front or back) whose one leg bends onto the
+other member has two sides of the joint to lie on. With `side` (`left` | `right`) that side is used. Without it the tie
+takes the side it took before (the side where the wide member covers the narrow one, else left) unless another
+component drawn with the tie lies against that face there and the other side is free: then it takes the other side. A
+side is blocked when a point of the leg (at 15%, 50% or 85% of its length, a quarter of the gauge inside the face) lies
+inside a body of another component that shares a view with the tie.
+
+**`W_OVERLAP` (tie).** When the leg still lies on a blocked side (`side` forces it, or both sides are blocked) the tie
+warns on `components/<id>/side`, naming the face, the leg's box and the member it is inside. The fix is the op that
+sets `side` to the free side, or `face` to the other z face when both sides are blocked.
+
+`{"id":"tie","type":"connector","model":"H2.5A","members":["rafter","plate"]}`
+
+### 30.2 Line annotations over hatch
+A `line` annotation (§29.2) clears the material hatch under itself: every segment knocks the hatch lines out of a band
+0.04" (paper) each side of it and past its ends, in every exporter (the knockout edits the drawing IR). `weight`
+(`light` default | `heavy`): heavy draws the line with a 0.35 mm pen, `line: dashed` with the vapor pen and `line:
+solid` with the profile pen, on the layer the light line has (hidden / beyond), so CAD layer filters do not change.
+Another value is `E_PARAM`. A `label` clears hatch 0.04" (paper) around its text (a note or dimension text: 0.02").
+
+`{"id":"l_zone","type":"line","weight":"heavy","points":["ftg@top_right",{"ref":"ftg@top_right","offset":[48,24]}]}`
+
+### 30.3 Leaders through cut members
+A note that points at a member lands on it; from one side of the view the leader may have to cross another member that
+the section cuts (the stud between the note column and a tie on the stud's far face), while from the other side it
+reaches the same point across nothing. The walls are the cut bodies of `lumber`, `ijoist`, `steel`, `concrete` and
+`cmu_wall` components other than the note's target (not embedded, not dashed). For each note with a target, a
+horizontal line from its landing point to each side of the crop is measured inside the walls; with m = max(0.4 x text
+height in model inches, 1"), a side is *through* when it crosses at least m while the other side crosses less than m/4.
+
+**Diagnostic.** A note laid out on its through side whose last leader segment runs at least m inside those walls is a
+`W_LEADER_HIT`: "the leader (or arrowhead) of note 'n' crosses the cut lumber 'stud' to reach 'tie' on its far side;
+from the right column the leader reaches that point without crossing a cut member". The fix is `"column"` set to the
+other side, checked like every other W_LEADER_HIT fix (§29.1); with `place` on the note it says to move the text. It is
+the same code as the other leader hits, so acknowledgements and the fix check count it with them.
+
+**Automatic side.** Where the view chooses sides (`notes_side` both, or `tags_side` both in a keyed view) and the note
+has neither `column` nor `place`, the layout tries the note on the other side (at most four notes per view, in note
+order) and keeps the change when the whole view laid out again has fewer leader hits in total and no more hits of the
+other kinds. The change never costs a scale step: if the view with the changed sides no longer fits the scale (given or
+automatic) at which the view without them fits, the view is drawn without them and the warning stays.
+
+`{"id":"n_tie","type":"note","target":"tie","text":"H2.5A TIE","column":"right"}`
+
+### 30.4 `W_CUT_MISS` names the end that reaches
+A `trim` cut whose end does not reach its member says so; when the member's other end does reach it, the message adds
+"its start (end) is the end that reaches 'x'", and, when that end has no cut of its own, the fix is the `update` op with
+the cut moved to it. `start` and `end` follow the member's run from its frame origin (the bottom of a run y sheet, the
+left of a run x one), not the anchor that places it.
+
+### 30.5 One finding per failed Ref
+A view is laid out several times (scale trials, layouts). A Ref that does not resolve (`E_REF_UNKNOWN`,
+`E_ANCHOR_UNKNOWN` and the other errors of Ref resolution) is reported once per document for the same owner, path and
+message, not once per pass.
+
+### 30.6 `W_UNSUPPORTED`
+Per-view geometry check (§9). A `lumber` member seen end-on (run z) that is wider than deep in the view (a flat plate),
+not `blocking`, not dashed, is unsupported when all of these hold in a view that draws it: (a) no body of another
+component lies under its bottom face (probed 1/16" below, at nine points across the width; hidden members count);
+(b) a `lumber`, `truss` or `ijoist` body of another component lies on its top face; (c) another component touches
+exactly one of its two edges (it hangs off that member's face). A plate that has something under it in any view is
+supported. The fix adds a 2x4 ledger under the plate against the member it touches when that member runs past the plate
+(`{"op":"add","path":"components","value":{"id":"<plate>_ledger","type":"lumber","size":"2x4","at":{"anchor":
+"top_left","to":"<plate>@bottom_left"}}}`), or sets the plate on top of that member when it ends there. Acknowledge
+it when the plate hangs from the member above it.
+
+Narrow on purpose: a plate with nothing beside it (a sole plate drawn without its floor, plates in an iso or plan
+view), an upright member (a ledger, a flush beam cut by the section) and members seen lengthwise are not checked.
+
+### 30.7 Summary of a component that draws nothing
+A component with no geometry (a `nailing` that laid out 0 fasteners) prints `(draws nothing)` in the summary in place
+of its extents.
+
+### 30.8 Note numbers of a view exported alone
+A layout with `notes: "shared"` numbers its DETAIL NOTES 1..N without gaps (§26.2). A view that such a layout names
+prints those same numbers when it is built alone (`kerf export --view`, `kerf drawing --view`): its tags and its own
+DETAIL NOTES list use the layout's numbers, so a tag reads the same on the view sheet and on the layout sheet. The list
+of the view then may start above 1 and have gaps. The layout is the first in `layouts[]` with shared notes that names
+the view; a view in no such layout keeps its written `key`s (unkeyed notes: the free numbers from 1).
+`I_KEY_RENUMBERED` (on the layout) still lists the written keys that print under another number.
+
+### 30.9 `kerf schema ops`
+The path table lists the layout paths `kerf apply` takes: `add layouts`, `update | set | remove layouts/<id>`.
+
+`{"op":"update","path":"layouts/S1","value":{"columns":3}}`
+
+| code | level | rule |
+|---|---|---|
+| `W_OVERLAP` (tie) | warning | the bent leg of a member tie lies inside another member that is against that face (§30.1) |
+| `W_LEADER_HIT` (through) | warning | a leader crosses a cut member to reach its target while the other side is free (§30.3) |
+| `W_UNSUPPORTED` | warning | a flat plate that hangs off a member's face carries a wood member and has nothing under it (§30.6) |
+| `E_PARAM` | error | `weight` of a `line` annotation other than `light` or `heavy` |

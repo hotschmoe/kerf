@@ -105,7 +105,7 @@ pub fn items(env: &Env, l: &LineSpec) -> Vec<Item> {
     alloc::vec![it]
 }
 
-/// Hatch is cut this far (paper inches) each side of a line annotation (SPEC 30.1).
+/// Hatch is cut this far (paper inches) each side of a line annotation (SPEC 30.2).
 const HALO_IN: f64 = 0.04;
 
 pub fn masks(env: &Env, l: &LineSpec) -> Vec<[V2; 4]> {

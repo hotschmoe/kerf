@@ -58,7 +58,7 @@ pub struct Env<'a, 's> {
     pub keyed_out: Vec<KeyedEntry>,
     pub doc_views: &'a [Value],
     pub verify_fixes: bool,
-    /// Try a note on the other side when its leader runs through a cut member (SPEC 30.1); `sided`: one was moved.
+    /// Try a note on the other side when its leader runs through a cut member (SPEC 30.3); `sided`: one was moved.
     pub auto_side: bool,
     pub sided: bool,
 }

@@ -142,7 +142,7 @@ pub fn names_view(doc: &Value, vid: &str) -> bool {
     })
 }
 
-/// The numbers view `vid`'s keyed notes print with on the first shared-notes layout that names it (SPEC 30.5).
+/// The numbers view `vid`'s keyed notes print with on the first shared-notes layout that names it (SPEC 30.8).
 pub fn sheet_keys(doc: &Value, st: &Style, vid: &str) -> Option<Vec<(String, u32)>> {
     let all = doc.get("views").and_then(Value::arr)?;
     let quiet = Diags::new();
