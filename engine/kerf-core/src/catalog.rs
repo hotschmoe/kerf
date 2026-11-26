@@ -522,9 +522,9 @@ pub static ENTRIES: [Entry; 20] = [
     },
     Entry {
         ty: Type::Rebar,
-        summary: "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path).",
-        parts: "none",
-        anchors: "9 box anchors of the bar (center = bar center for along_z); path bars add start, end, bend_k (on the bar at the middle of the bend at interior point k+1) and seg_k_mid (middle of the straight part of leg k), all on the centreline: aim notes and dims at these, not the box anchors of a bent bar",
+        summary: "Reinforcing bar: a dot in section (along_z) or a line in the XY plane (path), with standard hooks, closed ties and hoops, and adhesive dowels.",
+        parts: "epoxy (the drilled hole of an adhesive dowel, with `epoxy`)",
+        anchors: "9 box anchors of the bar (center = bar center for along_z); path bars add start, end, bend_k (on the bar at the middle of the bend at interior point k+1) and seg_k_mid (middle of the straight part of leg k), all on the centreline: aim notes and dims at these, not the box anchors of a bent bar. `hook`: start_hook_end / end_hook_end (the tip), _hook_tangent (where the bend starts), _hook_bend (middle of the bend), _hook_center (bend centre). `tie`: tie_top_left, tie_top_right, tie_bottom_left, tie_bottom_right (centreline corners), tie_top, tie_bottom, tie_left, tie_right (side middles), tie_center, hook_1_end, hook_2_end, hook_corner. `epoxy`: embed_face (where the bar enters the host), embed_end (the embedded tip)",
         draws: "Default embedded:true. Cut dots draw solid; path bars draw as two parallel lines (bar outline) in pen rebar, filled solid when cut. 3D: swept circle. Natural z thickness = bar diameter. W_COVER is checked against the host concrete/cmu (in XY only: the cover of an xz bar along z is not checked). Plan views: bars along z and path bars below the cut draw as lines along their run, vertical legs and bars crossing the cut as dots, xz bars as their path. An xz corner bar: {\"id\":\"corner\",\"type\":\"rebar\",\"size\":\"#4\",\"plane\":\"xz\",\"y\":24,\"points\":[[4.5,-16],[4.5,-43.5],[32,-43.5]]}",
         example: "{\"id\":\"top_bar\",\"type\":\"rebar\",\"size\":\"#4\",\"at\":{\"anchor\":\"center\",\"to\":[6,-2.5]}}",
         traits: Traits { reinforcement: true, line_like: true, ..Traits::NONE },

@@ -454,6 +454,12 @@ fn cmu_units(scene: &Scene, world: &[Prism], cut_y: f64, out: &mut Vec<Prism>) -
             .fold(f64::INFINITY, f64::min);
         let course = crate::num::to_int_clamped::<usize>(math::floor((cut_y - base) / 8.0), 0, 10_000);
         if crate::builders::cmu_wall::is_bond_beam(comp.node, course + 1) {
+            for (k, q) in world.iter().enumerate() {
+                let below = q.loops.first().is_some_and(|l| geom::points_box(l).y1 <= cut_y + EPS);
+                if same(p, q) && below {
+                    done[k] = true;
+                }
+            }
             continue;
         }
         let mut joints: Vec<f64> = if p.face_on {

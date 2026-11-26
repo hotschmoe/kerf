@@ -333,6 +333,12 @@ fn overlap_fix(p: &Pf<'_>, q: &Pf<'_>) -> String {
         (true, true) if p.prism.role == Role::Grout && q.prism.role != Role::Grout => (q.comp, p.comp),
         _ => return PLAIN.to_string(),
     };
+    if host.world.iter().any(|w| w.fp_proxy) {
+        return format!(
+            "if '{}' is cast into '{}' (a round or angled footprint takes no voids), mark it embedded: {{\"op\": \"update\", \"path\": \"components/{}\", \"value\": {{\"embedded\": true}}}}; else {PLAIN}",
+            inner.id, host.id, inner.id
+        );
+    }
     if inner.ty.traits.passes_through {
         return format!(
             "if '{}' passes through '{}', cut its hole: {{\"op\": \"update\", \"path\": \"components/{}\", \"value\": {{\"through\": \"{}\"}}}}; else {PLAIN}",
@@ -360,8 +366,12 @@ fn floating(s: &Drawn<'_, '_>, diags: &Diags) {
     if n_comps < 2 {
         return;
     }
+    let bar_diagram = !s.comps.iter().any(|c| c.built.host.is_some());
     for c in &s.comps {
         if c.dashed || c.world.is_empty() || c.existing == Some(true) {
+            continue;
+        }
+        if bar_diagram && c.ty.ty == crate::catalog::Type::Rebar {
             continue;
         }
         let touching_in = |p: &&&Pf<'_>, any_instance: bool| {
