@@ -173,6 +173,24 @@ fn fmt_num(n: f64) -> String {
     json::number_string(math::round(n * 10.0) / 10.0)
 }
 
+fn sheet_fix(st: &Style, spec: &ViewSpec, width: f64, height: f64) -> String {
+    let w = math::ceil(width + 2.0 * (st.margin_in + FRAME_CLEAR_IN));
+    let h = math::ceil(height + 2.0 * (st.margin_in + FRAME_CLEAR_IN) + st.title_block_h_in);
+    if w <= 60.0 && h <= 60.0 {
+        format!(
+            "enlarge the single-view sheet: {{\"op\":\"update\",\"path\":\"views/{}\",\"value\":{{\"sheet\":[{},{}]}}}}; ",
+            spec.id,
+            fmt_num(w.max(5.0)),
+            fmt_num(h.max(5.0))
+        )
+    } else {
+        format!(
+            "content exceeds the 60-inch sheet limit; split the tables/notes into another view with {{\"op\":\"add\",\"path\":\"views\",\"value\":{{\"id\":\"{}_CONT\",\"kind\":\"schedule\",\"title\":\"CONTINUED\",\"annotations\":[]}}}}, then move excess annotations there; ",
+            spec.id
+        )
+    }
+}
+
 fn dim_offset_fix(fit: &FitInfo, big: &Culprit, need: f64, nfix: &mut usize, fixes: &mut String) {
     for b in &fit.ann {
         if b.kind == AnnKind::Dim && b.id == big.id {
@@ -230,7 +248,7 @@ fn view_fit(
         fixed(oh / 2.0, 2),
         fixed(oh / 2.0, 2)
     );
-    let mut fixes = String::new();
+    let mut fixes = sheet_fix(st, spec, pw, ph);
     let mut nfix = 0usize;
     if let Some((m, f)) = culprits {
         msg.push_str(&m);
@@ -378,7 +396,7 @@ fn view_fit(
     diags.add_fix(Level::Warning, "W_VIEW_FIT", Some(view_id), Some(&format!("views/{view_id}")), msg, fixes);
 }
 
-fn schedule_fit(spec: &ViewSpec, need: (f64, f64), area: (f64, f64), fit: &FitInfo, diags: &Diags) {
+fn schedule_fit(st: &Style, spec: &ViewSpec, need: (f64, f64), area: (f64, f64), fit: &FitInfo, diags: &Diags) {
     let view_id = spec.id;
     let ((pw, ph), (aw, ah)) = (need, area);
     let mut parts: Vec<String> = Vec::new();
@@ -422,7 +440,7 @@ fn schedule_fit(spec: &ViewSpec, need: (f64, f64), area: (f64, f64), fit: &FitIn
             fixed(ah, 2),
             parts.join("; ")
         ),
-        fixes.join("; "),
+        sheet_fix(st, spec, pw, ph) + &fixes.join("; "),
     );
 }
 
@@ -445,12 +463,18 @@ pub struct ViewOpts<'a> {
     pub in_layout: bool,
     pub fit: Option<(f64, f64)>,
     pub iso_factor: Option<f64>,
+    pub trial: bool,
 }
 
 fn title_wrap(items: Box, crop: Box, sc: f64) -> f64 {
     let mut b = items;
     b.add_box(crop);
     (b.width() - 0.775 * sc).max(3.0 * sc)
+}
+
+fn sheet_title_wrap(items: Box, crop: Box, sc: f64, width: f64) -> f64 {
+    let left = if items.is_empty() { crop.x0 } else { items.x0.min(crop.x0) };
+    ((width - 0.775) * sc - (crop.x0 - left)).max(0.5 * sc)
 }
 
 const GLYPH_INFO: &str = "some characters are not in the plotter font and were replaced by '?' (dashes, quotes, x-sign and fractions are folded automatically)";
@@ -468,6 +492,7 @@ struct SectionInputs<'a> {
     in_layout: bool,
     plain_sides: bool,
     own_list: bool,
+    area: (f64, f64),
 }
 
 fn fill_fault_diags(faults: &[FillFault], view_id: &str, diags: &Diags) {
@@ -705,7 +730,7 @@ fn sided_pass(inp: SectionInputs, spec: &ViewSpec, area: (f64, f64)) -> SecPass 
     };
     let td = Diags::new();
     let pass = section_pass(SectionInputs { diags: &td, ..inp }, spec);
-    if pass.sided && !fits(&pass) {
+    if inp.in_layout && pass.sided && !fits(&pass) {
         let plain_diags = Diags::new();
         let plain = section_pass(SectionInputs { diags: &plain_diags, plain_sides: true, ..inp }, spec);
         if fits(&plain) {
@@ -723,7 +748,7 @@ fn sided_pass(inp: SectionInputs, spec: &ViewSpec, area: (f64, f64)) -> SecPass 
 }
 
 fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout, plain_sides, own_list } = inp;
+    let SectionInputs { st, scene, prisms, font, doc, diags, work, keys, in_layout, plain_sides, own_list, area } = inp;
     let scale = spec.scale;
     let mut sec = Section::new(scene, spec, prisms);
     sec.build();
@@ -734,9 +759,11 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.verify_fixes = !in_layout;
+    env.list_height = Some((area.1 - 1.0).max(0.5));
     env.auto_side = !plain_sides;
     env.shared_keys = keys;
     env.own_list = own_list;
+    env.doc = Some(doc);
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let ann = annot::annotate(&mut env, &mut base_items);
     let unverified = env.unverified;
@@ -757,7 +784,11 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
         scale_text: &scale_text,
         sheet: meta_string(doc, "sheet"),
         unverified,
-        wrap_w: if in_layout { title_wrap(ab, spec.crop, scale) } else { 0.0 },
+        wrap_w: if in_layout {
+            title_wrap(ab, spec.crop, scale)
+        } else {
+            sheet_title_wrap(ab, spec.crop, scale, area.0)
+        },
     };
     let mut detail = annot::items_box(font, &all);
     detail.add_box(spec.crop);
@@ -774,14 +805,16 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
 }
 
 fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
-    let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, own_list, .. } = inp;
+    let SectionInputs { st, scene, font, doc, diags, work, keys, in_layout, own_list, area, .. } = inp;
     let mut sec = Section::new(scene, spec, &[]);
     let origin = Box { x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0 };
     let mut env = Env::new(st, font, scene, spec, 1.0, origin, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.verify_fixes = !in_layout;
+    env.list_height = Some((area.1 - 1.0).max(0.5));
     env.shared_keys = keys;
     env.own_list = own_list;
+    env.doc = Some(doc);
     env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
     let mut all = annot::annotate(&mut env, &mut []);
     let unverified = env.unverified;
@@ -796,7 +829,7 @@ fn schedule_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
         scale_text: &scale_text,
         sheet: meta_string(doc, "sheet"),
         unverified,
-        wrap_w: if in_layout { title_wrap(detail, detail, 1.0) } else { 0.0 },
+        wrap_w: if in_layout { title_wrap(detail, detail, 1.0) } else { (area.0 - 0.775).max(0.5) },
     };
     let title_from = all.len();
     annot::title_items(&mut env, &info, detail, &mut all);
@@ -986,16 +1019,16 @@ fn ref_crop(inp: SectionInputs, spec: &ViewSpec) -> Box {
 }
 
 fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
-    let SectionInputs { st, prisms, diags, .. } = inp;
+    let SectionInputs { prisms, diags, .. } = inp;
     let mut rs = spec.clone();
     if !spec.has_crop {
         rs.crop = if spec.members.none { ref_crop(inp, spec) } else { auto_crop(prisms, spec.cut_z) };
     }
     if spec.has_scale {
-        let pass = sided_pass(inp, &rs, fit_area(st));
+        let pass = sided_pass(inp, &rs, inp.area);
         return SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass };
     }
-    let (aw, ah) = fit_area(st);
+    let (aw, ah) = inp.area;
     let mut last: Option<SecResolved> = None;
     let mut last_diags: Vec<Diag> = Vec::new();
     for (k, &sc) in STANDARD_SCALES.iter().enumerate() {
@@ -1005,7 +1038,8 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
         }
         rs.scale = sc;
         let td = Diags::new();
-        let pass = sided_pass(SectionInputs { diags: &td, ..inp }, &rs, (aw, ah));
+        let trial_work = Work::new(DEFAULT_WORK_LIMIT);
+        let pass = sided_pass(SectionInputs { diags: &td, work: &trial_work, ..inp }, &rs, (aw, ah));
         last_diags = td.take();
         let pw = (pass.bounds.x1 - pass.bounds.x0) / sc;
         let ph = (pass.bounds.y1 - pass.bounds.y0) / sc;
@@ -1019,7 +1053,7 @@ fn resolve_section(inp: SectionInputs, spec: &ViewSpec) -> SecResolved {
     if let Some(r) = last {
         r
     } else {
-        let pass = sided_pass(inp, &rs, fit_area(st));
+        let pass = sided_pass(inp, &rs, inp.area);
         SecResolved { scale: rs.scale, crop: rs.crop, scale_text: rs.scale_text.to_string(), pass }
     }
 }
@@ -1035,26 +1069,7 @@ pub fn resolve_spec(doc: &Value, st: &Style, scene: &Scene, spec: &ViewSpec) -> 
     if !spec.kind.is_flat() || (spec.has_crop && spec.has_scale) {
         return same;
     }
-    let fv = flat_view(scene, spec);
-    let font = font::embedded();
-    let d = Diags::new();
-    let work = Work::new(DEFAULT_WORK_LIMIT);
-    let scene = fv.scene.as_ref().unwrap_or(scene);
-    let inp = SectionInputs {
-        st,
-        scene,
-        prisms: &fv.prisms,
-        font,
-        doc,
-        diags: &d,
-        work: &work,
-        keys: None,
-        in_layout: false,
-        plain_sides: false,
-        own_list: false,
-    };
-    let r = resolve_section(inp, &fv.spec);
-    Resolved { crop: r.crop, scale: r.scale }
+    build_from_scene(doc, st, scene, spec, &Diags::new()).map_or(same, |d| Resolved { crop: d.crop, scale: d.scale })
 }
 
 pub struct FlatView<'a> {
@@ -1115,7 +1130,65 @@ pub fn build_from_scene<'a>(
     spec: &ViewSpec,
     diags: &Diags,
 ) -> Option<Drawing<'a>> {
-    build_with(doc, st, scene, spec, diags, ViewOpts::default())
+    let sheets = match spec.sheet {
+        Some(size) => alloc::vec![size],
+        None => {
+            let first = (st.sheet_w_in, st.sheet_h_in);
+            let mut sizes = alloc::vec![first];
+            sizes.extend(
+                crate::layout::SHEETS
+                    .iter()
+                    .filter(|&&(w, h, _)| w >= first.0 && h >= first.1 && (w, h) != first)
+                    .map(|&(w, h, _)| (w, h)),
+            );
+            sizes
+        }
+    };
+    let mut picked = None;
+    for (w, h) in sheets {
+        let area = fit_area_of(st, w, h);
+        let td = Diags::new();
+        let opts = ViewOpts { fit: Some(area), trial: true, ..ViewOpts::default() };
+        let d = build_with(doc, st, scene, spec, &td, opts)?;
+        let fits = (d.bounds[2] - d.bounds[0]) / d.scale <= area.0 + 1e-6
+            && (d.bounds[3] - d.bounds[1]) / d.scale <= area.1 + 1e-6;
+        let reached = spec.has_scale || !spec.kind.is_flat() || d.scale <= 12.0;
+        let better = picked.as_ref().is_none_or(|(_, _, _, old_fit, old_scale): &(f64, f64, ViewOpts, bool, f64)| {
+            !fits && !old_fit || fits && (!old_fit || d.scale < *old_scale)
+        });
+        if better {
+            picked = Some((w, h, opts, fits, d.scale));
+        }
+        if fits && reached {
+            break;
+        }
+    }
+    let (w, h, opts, _, _) = picked?;
+    let mut d = build_with(doc, st, scene, spec, diags, ViewOpts { trial: false, ..opts })?;
+    d.sheet_size = Some((w, h));
+    if (w, h) != (st.sheet_w_in, st.sheet_h_in) {
+        diags.add_fix(
+            Level::Info,
+            "I_VIEW_SHEET",
+            Some(spec.id),
+            Some(&format!("views/{}/sheet", spec.id)),
+            format!(
+                "single-view sheet {}: {} x {} paper inches at {}; fitted with the notes, tables and wrapped title",
+                spec.id,
+                fmt_num(w),
+                fmt_num(h),
+                d.scale_label
+            ),
+            format!(
+                "keep this paper size: {{\"op\":\"update\",\"path\":\"views/{}\",\"value\":{{\"sheet\":[{},{}]}}}}",
+                spec.id,
+                fmt_num(w),
+                fmt_num(h)
+            ),
+        );
+        d.diagnostics = diags.to_vec();
+    }
+    Some(d)
 }
 
 pub fn build_with<'a>(
@@ -1162,6 +1235,7 @@ pub fn build_with<'a>(
                 in_layout: opts.in_layout,
                 plain_sides: false,
                 own_list: opts.own_list,
+                area: opts.fit.unwrap_or_else(|| fit_area(st)),
             },
             spec,
         );
@@ -1188,6 +1262,7 @@ pub fn build_with<'a>(
                 in_layout: opts.in_layout,
                 plain_sides: false,
                 own_list: opts.own_list,
+                area: opts.fit.unwrap_or_else(|| fit_area(st)),
             },
             &fv.spec,
         );
@@ -1225,8 +1300,11 @@ pub fn build_with<'a>(
             let mut env = Env::new(st, font, scene, spec, scale, res.crop, &tdiags, Landing::Iso(&iso));
             env.work = Some(&work);
             env.verify_fixes = !opts.in_layout;
+            let area = opts.fit.unwrap_or_else(|| fit_area(st));
+            env.list_height = Some((area.1 - 1.0).max(0.5));
             env.shared_keys = opts.keys;
             env.own_list = opts.own_list;
+            env.doc = Some(doc);
             env.doc_views = doc.get("views").and_then(Value::arr).unwrap_or(&[]);
             let ann = annot::annotate(&mut env, &mut res.items);
             let un = env.unverified;
@@ -1246,7 +1324,11 @@ pub fn build_with<'a>(
                 scale_text: &label,
                 sheet: meta_string(doc, "sheet"),
                 unverified: un,
-                wrap_w: if opts.in_layout { title_wrap(ab, res.crop, scale) } else { 0.0 },
+                wrap_w: if opts.in_layout {
+                    title_wrap(ab, res.crop, scale)
+                } else {
+                    sheet_title_wrap(ab, res.crop, scale, area.0)
+                },
             };
             let mut det = annot::items_box(font, &all);
             det.add_box(res.crop);
@@ -1287,8 +1369,8 @@ pub fn build_with<'a>(
     {
         let pw = (bounds.x1 - bounds.x0) / scale;
         let ph = (bounds.y1 - bounds.y0) / scale;
-        let (aw, ah) = fit_area(st);
-        let checked = !opts.in_layout && !crate::layout::names_view(doc, view_id);
+        let (aw, ah) = opts.fit.unwrap_or_else(|| fit_area(st));
+        let checked = !opts.in_layout && !opts.trial;
         if checked && (pw > aw + 1e-6 || ph > ah + 1e-6) {
             let culprits = if spec.kind.is_flat() && !spec.has_crop {
                 crop_culprits(scene, prisms, &fv.spec, crop_out)
@@ -1296,7 +1378,7 @@ pub fn build_with<'a>(
                 None
             };
             if spec.kind == Kind::Schedule {
-                schedule_fit(spec, (pw, ph), (aw, ah), &fit, diags);
+                schedule_fit(st, spec, (pw, ph), (aw, ah), &fit, diags);
             } else {
                 let frame = Frame { scale_text: &scale_text, scale, crop: crop_out, bounds, aw, ah };
                 view_fit(st, spec, &frame, &fit, culprits, diags);

@@ -61,6 +61,8 @@ pub struct Env<'a, 's> {
     /// Try a note on the other side when its leader runs through a cut member (SPEC 30.3); `sided`: one was moved.
     pub auto_side: bool,
     pub sided: bool,
+    pub list_height: Option<f64>,
+    pub doc: Option<&'a Value>,
 }
 
 impl<'a, 's> Env<'a, 's> {
@@ -98,6 +100,8 @@ impl<'a, 's> Env<'a, 's> {
             verify_fixes: true,
             auto_side: true,
             sided: false,
+            list_height: None,
+            doc: None,
         }
     }
 
@@ -212,6 +216,9 @@ fn at_owner<'v>(env: &Env, atv: &'v Value, target: &'v str) -> Option<(u32, u32,
 }
 
 fn at_drawn(env: &Env, atv: &Value, target: &str, p: V2) -> V2 {
+    if atv.arr().is_some() {
+        return p;
+    }
     match &env.landing {
         Landing::Section(_) => p,
         Landing::Iso(iso) => iso.project_on(at_owner(env, atv, target), p),
@@ -499,11 +506,10 @@ fn read_label<'a>(
         );
         return None;
     };
-    let mut p = env.scene.point(atv, id, &format!("{apath}/at"))?;
+    let p = env.scene.point(atv, id, &format!("{apath}/at"))?;
     let mut off = V2::init(0.0, 0.0);
     if let Some(ov) = non_null(an, "offset") {
         off = model::offset_pair_or_diag(env.diags, Some(id), &format!("{apath}/offset"), "label offset", ov)?;
-        p = p.add(off);
     }
     let align = match non_null(an, "align").map(|v| v.str()) {
         None | Some(Some("center")) => crate::drawing::Align::Center,
@@ -524,7 +530,21 @@ fn read_label<'a>(
             return None;
         }
     };
-    let base = Some(at_drawn(env, atv, "", p));
+    let p = match &env.landing {
+        Landing::Iso(iso) if atv.arr().is_none() => {
+            let z = model::length_or_diag(
+                env.diags,
+                Some(id),
+                &format!("{apath}/z"),
+                an.get("z"),
+                "label z",
+                env.spec.cut_z,
+            )?;
+            iso.project_station(at_owner(env, atv, ""), p, z)
+        }
+        _ => p,
+    };
+    let base = Some(p.add(off));
     let pin = read_pin(env, an, id, apath);
     Some((LabelSpec { k, id, text, align, base, off, pin }, off))
 }
@@ -648,7 +668,7 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     let Gathered { notes, note_slot, per, meta, mut dspecs, lspecs, mut welds, masks, tables, listed } = gather(env);
     dims::chain_dims(&mut dspecs, 0.25 * env.s);
     let style = env.notes_style();
-    if style == NotesStyle::Leader && env.spec.notes_side == NotesSide::Above {
+    if style == NotesStyle::Leader && matches!(env.spec.notes_side, NotesSide::Above | NotesSide::Below) {
         let vid = env.spec.id;
         env.diags.add_fix(
             Level::Warning,
@@ -683,7 +703,25 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
             }
         }
     }
-    let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs };
+    let members: Vec<dims::MemberArea> = base_items
+        .iter()
+        .filter_map(|it| {
+            let loops = match it {
+                Item::Fill(f) => &f.loops,
+                Item::Hatch(h) => &h.loops,
+                _ => return None,
+            };
+            let comp = env.scene.find(it.src())?;
+            if comp.world.iter().all(|p| p.role == crate::style::Role::Soil) {
+                return None;
+            }
+            Some(dims::MemberArea {
+                id: it.src().to_string(),
+                loops: loops.iter().map(|l| crate::geom::flatten_loop(l, 0.01)).collect(),
+            })
+        })
+        .collect();
+    let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs, members: &members };
     let mut prep = notes::prep_notes(env, routed, &routed_numbers);
     notes::member_obstacles(env, routed, &mut prep);
     notes::through_members(env, routed, &mut prep);

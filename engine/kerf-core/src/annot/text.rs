@@ -22,6 +22,7 @@ pub fn ascii_fold_flag<'s>(s: &'s str, unknown: Option<&mut bool>) -> Cow<'s, st
         match ch as u32 {
             0x2010..=0x2015 | 0x2212 => out.push('-'),
             0xD7 => out.push('X'),
+            0xB0 => out.push(ch),
             0x201C | 0x201D | 0x201E | 0x2033 => out.push('"'),
             0x2018 | 0x2019 | 0x201A | 0x2032 => out.push('\''),
             0xA0 | 0x2009 | 0x200A | 0x202F | 0x2002 | 0x2003 => out.push(' '),

@@ -81,8 +81,8 @@ Cite the 2021 IRC unless `meta.jurisdiction` says otherwise, only sections you a
 the designer verifies. Never present a design as engineered: capacities, spacing, nailing are the mfr.'s / EOR's.
 
 ## Views and annotations
-`crop`/`scale` are optional (auto-fit: non-fill components + 6 in, largest standard scale that fits); set them only
-to frame on purpose (`W_VIEW_FIT` checks). The layout places notes and clears leader collisions (note `column` forces
+`crop`/`scale` auto-fit (non-fill members + 6 in); view `sheet` auto-grows or takes e.g. "22x17".
+`W_VIEW_FIT` checks notes, tables and title too; pin crop/scale to frame on purpose. The layout places notes and clears leader collisions (note `column` forces
 a side); a dim or label it moves prints I_ANNOT_MOVED (`"pin":true` keeps it). Keyed: `"notes_style":"keyed"` (tags +
 DETAIL NOTES list at `notes_side`; tags one side: `tags_side`; same `key` = one entry). Dim `dir` default: dominant
 axis; `offset` > 0 above (h) / right of (v) the points, < 0 below / left.
@@ -127,8 +127,8 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   that holds the views at the layout's numeric `scale`, or with `common` at 1"=1'-0" (`I_LAYOUT_SHEET` says which).
   Doc-level `"scale"` sets one scale for every view. Point at another detail with a `ref` annotation
   (`{"type":"ref","detail":"3","sheet":"S-50.01","at":"beam@top_right","text":"SIM."}`); a view holding only refs is a
-  "see other detail" scenario and draws no model. A view a layout names is fit-checked only in the layout: `W_VIEW_FIT`
-  on `layouts/S1` lists every view's size and the fix that fits (larger `sheet`, other `arrange`, list `notes_side`).
+  "see other detail" scenario and draws no model. Standalone sheets fit independently, even for views in layouts. `W_VIEW_FIT` on `layouts/S1` lists every view's size
+  and fixes (larger `sheet`, other `arrange`, list `notes_side`). Check uses the layout scale for its leader diagnostics.
 - Write `meta.requested` in the designer's words, not in note spelling: coverage reads the house abbreviations both ways
   (`each`=`EA.`, `continuous`=`CONT.`, `clear`=`CLR.`, `face`=`FA.`, `on center`=`O.C.`), ignores case, hyphens, a plural
   s and `-ing`/`-ed` endings (`END NAILED` = `END NAIL`, `BRACING` = `BRACE`; not `BLOCKING`/`BLOCK`, `TOPPING`/`TOP`,
@@ -345,3 +345,20 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   lists the `layouts` paths: `{"op":"update","path":"layouts/S1","value":{"columns":3}}`.
 - Full spec: https://github.com/hotschmoe/kerf/blob/master/spec/SPEC.md.
   The reference details in `spec/details/` are complete documents to copy from.
+
+
+## beta.5: sheets and annotations
+
+- View `sheet` defaults to `"auto"`: start at the style's page, grow through 17x11, 22x17, 24x18, 36x24, aiming for
+  1"=1'-0" or larger before accepting a smaller scale. Explicit scale and paper-sized schedules keep their size.
+  Override with `{"op":"update","path":"views/A","value":{"sheet":"22x17"}}` (or `[22,17]`, 5..60 inches each).
+  The frame and title block reserve 1/8" clearance. `I_VIEW_SHEET` reports a larger page; `W_VIEW_FIT` reports remaining
+  overflow, including views also named in layouts. The layout keeps its own sheet and scale.
+- Keyed/list `notes_side` accepts `below`; left/right lists may extend below the drawing before splitting into columns.
+  Captions wrap to their available width. Long dimension text prefers the centered outward position with a short stem;
+  keep MIN./CLR. text when needed. Remaining overlaps and leader hits still warn. A dimension offset fix is offered
+  only after rebuilding all annotations at the same scale; its ops include `pin:true` and pin an automatic view scale to prevent another repair/scale change.
+- `°` prints as the degree glyph in every exporter. Iso labels with a Ref use the view's `cut_z` station by default,
+  clamped to the drawn member's z span; set label `z` for another station. Example:
+  `{"id":"l_open","type":"label","text":"OPENING","at":{"ref":"lintel@center","offset":[0,-16]},"z":0}`.
+  Literal label `at:[x,y]` and top-level label `offset:[dx,dy]` use view coordinates (the latter after projection).

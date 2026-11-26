@@ -3110,3 +3110,47 @@ and the pieces to remove.
 | `W_HOLE_LIMIT` | warning | a bored hole in sawn lumber over the IRC size or edge limits; an I-joist hole in a flange |
 | `W_NOTCH_LIMIT` | warning | a notch in sawn lumber over the IRC depth or length limits |
 | `I_CMU_PLAN_UNITS` | info | a CMU wall cut in plan keeps its bare shells because the document draws its webs as `cmu` pieces (listed by `kerf check`) |
+
+
+## §33 (v0.2.0-beta.5: sheets and annotation fit)
+
+**Single-view sheets.** A view accepts `sheet`: `"auto"` (default), `"WxH"`, or `[width,height]` in paper inches,
+5..60 each. Auto starts with the style's sheet and tries larger standard sheets in order: 17x11, 22x17, 24x18,
+36x24 (never smaller than the style sheet). At each size, section/plan/elevation views without a scale try every
+standard scale largest first with the complete notes, dimensions, tables and wrapped title. Auto selects the first
+fitting page with scale at least 1"=1'-0"; if none reaches that target, the smallest page achieving the largest
+fitting scale wins. Explicit view/document scales and schedule tables retain their size and grow the page instead.
+An NTS iso fits independently as before. A standalone fit retains safe automatic note-side changes and tries
+another scale/page rather than reverting them merely to squeeze the view into a smaller page. No fitting standard
+page: keep the largest page and warn `W_VIEW_FIT`.
+`I_VIEW_SHEET` names a page larger than the style's sheet, its size and scale, with the update op that pins its size.
+The selected size applies to all single-view `--sheet` exports; layouts retain their own sheet and scale.
+
+Every standalone sheet is checked, including a view named in a layout. `W_VIEW_FIT` names the view, needed and
+available paper size, overflow and contributing annotations; a larger-paper fix is an `update views/<id>` op.
+The usable area is inside the frame and above the title block with 1/8" clearance at each edge. When checking a
+document, annotation/leader diagnostics of layout views come from the chosen layout scale, not a separate standalone
+scale. Layout build diagnostics also enter the document check. A view in several layouts is checked in each.
+
+**Lists and captions.** Keyed/list `notes_side` additionally accepts `"below"`: left-aligned with drawing extents,
+its top one gutter below them. Leader views with above/below warn `W_PARAM` and use both columns. Side lists may be
+taller than the geometry: their one-column height budget is usable page/cell height minus one paper inch for the
+caption; only taller lists with more than eight lines split into two columns. Above/below lists retain balanced
+two-column splitting. Captions wrap in standalone views as well as layouts, within the available paper/cell width.
+
+**Dimension text and fixes.** Text longer than its measured span may use a centered outward position with a short
+stem even outside a chain. Variant/offset selection includes collisions between outside text and drawn member lines
+so moving text off one annotation does not silently put it on a member. Text remains full paper height. A numeric
+dimension-offset `W_LEADER_HIT` fix is offered only after rebuilding the complete view at its current scale and
+finding no leader hits or annotation overlaps; its exact update op includes `pin:true` and pins an automatic view
+scale. Otherwise the diagnostic retains a note-placement or view-wide remedy; it does not claim an unchecked translated dimension box is a fix.
+Leader diagnostics state their drawing scale. Each automatic scale trial has a fresh routing work budget.
+Unresolved dense routing remains `W_LEADER_HIT`.
+
+**Degree and iso labels.** Text folding preserves U+00B0, already supported by the plotter font. All exporters draw
+the degree glyph (R2000 DXF TEXT uses its ASCII %%d control code). In an iso, a label's Ref uses model z at the
+view's `cut_z` (default 0), clamped to the drawn member's extrusion span; optional label `z` selects a different station. An offset inside its Ref is still model XY.
+A literal label `at:[x,y]` is already in view coordinates; top-level label `offset:[dx,dy]` is added after projection.
+For example `{"id":"l_open","type":"label","text":"OPENING","at":{"ref":"lintel@center","offset":[0,-16]},"z":0}`
+places the label at the opening's station instead of the nearest extrusion end. Existing note landings retain their
+visible-face selection.

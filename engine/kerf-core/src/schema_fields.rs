@@ -193,9 +193,9 @@ pub static VIEW: Object = Object {
         },
         Field {
             name: "notes_side",
-            ty: "right|left|both|above",
+            ty: "right|left|both|above|below",
             def: "both",
-            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point, or to the other side when its leader would run through a cut member and the view still fits (W_LEADER_HIT with the `column` to set when it cannot). keyed/list: where the DETAIL NOTES list goes (both = above); the number tags follow `tags_side`",
+            desc: "leader notes: which side the note column goes; both = each note goes to the side nearer its landing point, or to the other side when its leader would run through a cut member and the view still fits (W_LEADER_HIT with the `column` to set when it cannot). keyed/list: where the DETAIL NOTES list goes (both = above; below is accepted); the number tags follow `tags_side`",
             ..Field::NONE
         },
         Field {
@@ -240,6 +240,13 @@ pub static VIEW: Object = Object {
             ..Field::NONE
         },
         VIEW_ACK_FIELD,
+        Field {
+            name: "sheet",
+            ty: "auto|WxH|[width,height]",
+            def: "auto",
+            desc: "single-view sheet size in paper inches (5..60 each). Auto grows from the style sheet through 17x11, 22x17, 24x18 and 36x24, aiming for at least 1 inch = 1 foot before shrinking further. Fixed scale and schedule tables keep their size. I_VIEW_SHEET reports a larger page. Does not change layout sheets; W_VIEW_FIT if content still exceeds the frame or title block",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"A\",\"kind\":\"section\",\"number\":\"1\",\"title\":\"WALL AT SILL\",\"scale\":\"1\\\"=1'-0\\\"\",\"cut_z\":0,\"crop\":{\"x\":[-12,18],\"y\":[-8,30]},\"notes_side\":\"both\",\"annotations\":[]}",
     ..Object::NONE
@@ -371,7 +378,13 @@ pub static LABEL: Object = Object {
             desc: "\"comp@anchor\", {\"ref\":...,\"offset\":[dx,dy]} or [x, y]. The text block is centered vertically on it",
             ..Field::NONE
         },
-        Field { name: "offset", ty: "[dx, dy]", def: "[0, 0]", desc: "model inches added to `at`", ..Field::NONE },
+        Field {
+            name: "offset",
+            ty: "[dx, dy]",
+            def: "[0, 0]",
+            desc: "view-coordinate inches added after projecting `at`; in section these are model inches",
+            ..Field::NONE
+        },
         Field {
             name: "pin",
             ty: "bool",
@@ -387,6 +400,13 @@ pub static LABEL: Object = Object {
             ..Field::NONE
         },
         ACK_FIELD,
+        Field {
+            name: "z",
+            ty: "length",
+            def: "view cut_z",
+            desc: "iso label Ref's station along model z, clamped to the visible extrusion's span; literal at [x,y] is already in view coordinates",
+            ..Field::NONE
+        },
     ],
     example: "{\"id\":\"l_ext\",\"type\":\"label\",\"text\":\"EXTERIOR\",\"at\":\"sill@top_left\",\"offset\":[-6,6]}",
     ..Object::NONE
@@ -846,7 +866,7 @@ pub static LAYOUT: Object = Object {
     ],
     notes: concat!(
         "Ops: {\"op\":\"add\",\"path\":\"layouts\",\"value\":{...}}, {\"op\":\"update\",\"path\":\"layouts/S1\",\"value\":{...}}, {\"op\":\"remove\",\"path\":\"layouts/S1\"}; the document default scale: {\"op\":\"set\",\"path\":\"scale\",\"value\":\"3/4\\\"=1'-0\\\"\"}.\n",
-        "A layout is always drawn as one sheet; single-view export (`--view`) is unchanged. `kerf check` builds every layout: W_VIEW_FIT (path layouts/<id>) when the sheet cannot hold it, with each view's size and the fixes that fit (scale, arrangement, list side); I_KEY_RENUMBERED when the shared numbers differ from the notes' keys; W_PARAM names the field (text or cite) in which two notes under one number differ. A view a layout names is fit-checked only as part of it (no letter-sheet W_VIEW_FIT of its own)."
+        "A layout is always drawn as one sheet; single-view export (`--view`) independently fits its own view sheet. `kerf check` builds every layout: W_VIEW_FIT (path layouts/<id>) when the sheet cannot hold it, with each view's size and the fixes that fit (scale, arrangement, list side); I_KEY_RENUMBERED when the shared numbers differ from the notes' keys; W_PARAM names the field (text or cite) in which two notes under one number differ. A view a layout names also gets its own W_VIEW_FIT when its standalone sheet cannot fit; its leader and annotation diagnostics in check come from the layout scale."
     ),
     example: "{\"id\":\"S1\",\"views\":[\"A\",\"B\",\"C\",\"D\"],\"arrange\":\"grid\",\"columns\":2,\"notes\":\"shared\",\"scale\":\"common\"}",
 };

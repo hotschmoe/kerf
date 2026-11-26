@@ -28,6 +28,7 @@ pub struct DimLab<'d, 'a> {
     pub dspecs: &'d [DimSpec<'a>],
     pub lspecs: &'d [LabelSpec<'a>],
     pub base_segs: &'d [[V2; 2]],
+    pub members: &'d [super::dims::MemberArea],
 }
 
 pub fn render_dim_labels<'a>(
@@ -64,7 +65,18 @@ pub fn render_dim_labels<'a>(
         }
     }
     let mut dim_blockers: Vec<Vec<String>> = (0..dl.dspecs.len()).map(|_| Vec::new()).collect();
-    stack_dims(env, dl.dspecs, dpush, dslide, dl.base_segs, &label_polys, &mut ditems, &mut eff, &mut dim_blockers);
+    stack_dims(
+        env,
+        dl.dspecs,
+        dpush,
+        dslide,
+        dl.base_segs,
+        dl.members,
+        &label_polys,
+        &mut ditems,
+        &mut eff,
+        &mut dim_blockers,
+    );
     for (i, d) in dl.dspecs.iter().enumerate() {
         if let Some(slot) = per.get_mut(d.k) {
             *slot = core::mem::take(&mut ditems[i]);
@@ -435,6 +447,38 @@ pub fn report_overlaps(env: &Env, notes: &[NoteIn], prep: &NotePrep, dl: &DimLab
     let obs = &rd.obstacles;
     let pinned_dim = |o: &Obstacle| o.kind == route::ObstKind::Dim && dl.dspecs.get(o.owner).is_some_and(|d| d.pin);
     let mut reported = 0usize;
+    for o in obs.iter().filter(|o| o.kind == route::ObstKind::Dim) {
+        let Some(d) = dl.dspecs.get(o.owner) else { continue };
+        let tw = env.font.width(&o.text, env.style.text_height_in * env.s);
+        if tw + 2.0 * env.style.dim_text_gap_in * env.s <= d.span() - env.style.tick_len_in * env.s {
+            continue;
+        }
+        let hits: Vec<&str> = dl
+            .members
+            .iter()
+            .filter(|m| super::dims::member_hits(core::slice::from_ref(*m), &o.poly) > 0)
+            .map(|m| m.id.as_str())
+            .collect();
+        if hits.is_empty() {
+            continue;
+        }
+        reported += 1;
+        if reported > 8 {
+            continue;
+        }
+        let outward = d.axis().scale(d.sgn());
+        let edge = dl
+            .members
+            .iter()
+            .flat_map(|m| m.loops.iter().flatten())
+            .map(|p| p.dot(outward))
+            .fold(f64::NEG_INFINITY, f64::max);
+        let near = o.poly.iter().map(|p| p.dot(outward)).fold(f64::INFINITY, f64::min);
+        let delta = math::ceil((edge - near + h).max(h) * 4.0) / 4.0;
+        env.diags.add_fix(Level::Warning, "W_LABEL_OVERLAP", Some(&o.id), Some(&format!("views/{vid}/annotations/{}", o.id)),
+            format!("view {vid}: outside text '{}' of short dimension '{}' overprints member(s) {}; no clear text position was found at this offset", o.text, o.id, hits.join(", ")),
+            format!("move the dimension beyond the members: {{\"op\":\"update\",\"path\":\"views/{vid}/annotations/{}\",\"value\":{{\"offset\":{}}}}}; check the whole view again for leader clearance", o.id, num2(o.off + d.sgn() * delta)));
+    }
     for (i, a) in obs.iter().enumerate() {
         for b in &obs[i + 1..] {
             let a_label = a.kind == route::ObstKind::Label;

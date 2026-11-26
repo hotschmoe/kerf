@@ -47,6 +47,7 @@ pub enum NotesSide {
     Left,
     Both,
     Above,
+    Below,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -79,6 +80,7 @@ pub struct ViewSpec<'a> {
     pub notes_title: Option<&'a str>,
     pub annotations: &'a [Value],
     pub members: Members<'a>,
+    pub sheet: Option<(f64, f64)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -387,13 +389,14 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
             "left" => notes_side = NotesSide::Left,
             "both" => {}
             "above" => notes_side = NotesSide::Above,
+            "below" => notes_side = NotesSide::Below,
             _ => {
                 diags.add(
                     Level::Error,
                     "E_PARAM",
                     Some(id),
                     Some(&format!("{base}/notes_side")),
-                    format!("notes_side must be right, left, both or above (got \"{s}\")"),
+                    format!("notes_side must be right, left, both, above or below (got \"{s}\")"),
                 );
                 ok = false;
             }
@@ -470,6 +473,22 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         diags.add_fix(Level::Error, "E_LIMIT", Some(id), Some(&format!("{base}/annotations")), msg, "keep the most important notes, or move part of the detail to a second view (a new entry in views[] with its own crop)".to_string());
         return None;
     }
+    let sheet = match node.get("sheet").filter(|v| !v.is_null() && v.str() != Some("auto")) {
+        None => None,
+        Some(v) => match crate::layout::sheet_size(v) {
+            Some(size) => Some(size),
+            None => {
+                diags.add(
+                    Level::Error,
+                    "E_PARAM",
+                    Some(id),
+                    Some(&format!("{base}/sheet")),
+                    "sheet must be auto, WxH (e.g. 22x17), or [width, height], each 5..60 paper inches".to_string(),
+                );
+                return None;
+            }
+        },
+    };
     Some(ViewSpec {
         id,
         kind,
@@ -495,5 +514,6 @@ pub fn parse<'a>(node: &'a Value, index: usize, diags: &Diags) -> Option<ViewSpe
         notes_title,
         annotations: anns,
         members: Members::of(node),
+        sheet,
     })
 }

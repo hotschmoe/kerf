@@ -1184,3 +1184,67 @@ Status: `steel_joist`, `metal_deck`, `stair_treads` are new types; `bolt` gained
   footprint machinery as L/T footings; once concrete takes a plan outline, `steel` `PL` could take one too.
 - #28 -> #20 (pair checks per view set): `W_UNTREATED_CONTACT` is one of the all-pairs checks; its contact rule changed
   here (SPEC 28.8), its view membership is #20's.
+
+
+## v0.2.0-beta.5 — sheets and annotation fit (#33/#34, b5-sheets)
+
+Working-tree changes only; Git metadata is read-only. No commit, install, source-library write, file deletion,
+new blocking test. SPEC additions are confined to the new §33.
+
+Single-view builds now honor view `sheet` (`auto`, WxH or [w,h], 5..60 paper inches), grow through the standard
+pages when needed, and aim for scale factor <=12 before accepting a smaller standard scale. Explicit scales and
+paper-sized tables keep their size. Side lists may be taller than the geometry; `notes_side:below` is accepted for
+keyed/list views. Standalone captions wrap, and the fit includes notes, tables, captions and frame/title-block
+clearance even when a layout also names the view. A larger chosen page reports I_VIEW_SHEET; overflow reports
+W_VIEW_FIT with an exact sheet update op. Layout check now includes its actual view diagnostics; standalone
+annotation warnings of layout views no longer substitute for the layout-scale results.
+
+Short dimensions try a centered outward text position with a short stem and consider filled member regions,
+excluding soil. Chains keep their previous free-end preference. Residual short-text/member collisions warn
+W_LABEL_OVERLAP. Numeric W_LEADER_HIT dimension fixes require rebuilding the whole view at its current scale with
+no remaining leader or annotation hits, include pin:true, and pin an automatic view scale. Other dense routes may
+still need manual placement; bounded routing does not promise every dense view will be clean. Each scale trial
+has a fresh routing budget. Safe automatic side changes are retained during standalone sheet growth.
+
+Degree signs survive text folding. Iso label Refs use the view's cut_z (or label z) clamped to the drawn extrusion;
+literal label at and top-level label offset use view coordinates. The OPENING repro now lands under the opening.
+
+Review artifacts and independent real copies of the 131 top-level source documents, style and refs are in
+`/home/hotschmoe/github/mass-details/work/codex/b5-sheets/` (all refs copied, no symlinks). Repros include the explicit
+3-inch sheet, keyed extra note, below list, forced Letter overflow, long caption, schedule, short dimension,
+degree, iso label and original dense-note sets. Before/after single-view and S1 PNGs were rendered and inspected;
+degree PDF and DXF were audited and rendered as well. Manual CLI checks repeat drawings for byte determinism and
+require every selected page either to fit with the reserved clearance or report W_VIEW_FIT.
+
+Existing ergonomics scenarios that require Letter now request sheet:11x8.5; the dense routing scenario pins its
+original clean 3/4-inch scale; the obsolete two-column requirement for a side list was removed while retaining
+the list's positional check. No assertion or blocking test was added. Only the steel-stair-pan reference changed:
+n_tread and n_car now use the left column to avoid the cut header/end plate. Its eight changed golden files were
+regenerated with tests/make_golden.sh --only steel-stair-pan; mesh bytes are unchanged. The script gained --only
+so this did not rewrite other goldens. Original bytes are preserved in
+.archive/b5-sheets/steel-stair-pan-golden-beta4/.
+
+Release build, Clippy all targets with warnings denied, rustfmt, CLI E2E and serve E2E pass; ergonomics passes
+655 checks. The short guide is 12,170 bytes (limit 12,288; beta.4 was 12,111), with schema fields sheet/below/label z
+and the extended instructions in guide --full. Wasm builds without wasm-opt: 1,785,896 raw / 694,819 gzip-9 /
+559,769 Brotli-11 bytes. Wasm matches the current native CLI byte for byte on 135 comparisons (70 existing paths plus drawing/SVG/DXF/PDF/PNG
+for all 13 repro variants). Stored snapshots deliberately remain unchanged outside steel-stair-pan: native
+check_golden reports 222/978 output differences and wasm_golden 12/70. Differences are sheet/scale/caption/text
+placement and diagnostic changes; no native export, check, DXF audit or PDF-vector audit failed. The regenerated
+stair reference agrees in the full native comparison. Detailed gate exit codes, timings and difference classes
+are in /home/hotschmoe/github/mass-details/work/codex/b5-sheets/validation.txt.
+
+Regression: check --strict on all 131 originals has 0 errors before and after. Strict warnings (acknowledged
+included) 36 -> 39; W_LEADER_HIT 18 -> 21 (seven added, four removed occurrences by code/owner); all other classes
+unchanged. Strict exit 0: 111 -> 108; exit 1: 20 -> 23. Seven added findings are true layout-scale text/leader or
+member collisions, inspected in the warning-review PNGs. Four removed findings (s-10-03 A n_gyp, s-10-16 A n_ab,
+s-30-01 D/F n_weep) were standalone-scale findings absent at the document's layout scale. The report includes every
+per-file unified difference, new/removed warning lines, and explanations of INFO changes (I_VIEW_SHEET and actual
+layout-scale movement reports). Exact results: /home/hotschmoe/github/mass-details/work/codex/b5-sheets/regression.txt.
+Three documents changed externally during the run; their copies were refreshed and both binaries rechecked them.
+The final paired inputs are identified by regression-inputs.sha256; initial copies and reports were preserved.
+
+Known limits: dense routes can still warn and may need manual placement; numeric dimension-offset fixes are
+conservatively withheld when they cannot be verified (including plan fixes, whose scene uses projected coordinates).
+Implicit plan-context extents, an explicit continuation-intent field, and target-free notes in leader-mode views
+were not changed by this sheet/annotation-fit implementation.

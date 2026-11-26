@@ -408,6 +408,23 @@ struct DimPlaced {
     items: Vec<Item>,
 }
 
+pub struct MemberArea {
+    pub id: String,
+    pub loops: Vec<Vec<V2>>,
+}
+
+pub fn member_hits(members: &[MemberArea], poly: &[V2; 4]) -> usize {
+    members
+        .iter()
+        .filter(|m| {
+            poly.iter().any(|&p| m.loops.iter().fold(false, |inside, l| inside ^ geom::point_in_loop_eo(p, l)))
+                || m.loops
+                    .iter()
+                    .any(|l| l.iter().enumerate().any(|(k, &p)| poly_hits_seg(poly, p, l[(k + 1) % l.len()])))
+        })
+        .count()
+}
+
 fn conflicts_of(sh: &DimShape, placed: &[(usize, DimShape)], labels: &[(&str, [V2; 4])], tol: f64) -> usize {
     let mut c: usize = placed.iter().map(|(_, o)| dim_conflicts(sh, o, tol)).sum();
     for (_, lp) in labels {
@@ -428,6 +445,7 @@ pub fn stack_dims(
     pushes: &[f64],
     slides: &[f64],
     base_segs: &[[V2; 2]],
+    members: &[MemberArea],
     labels: &[(&str, [V2; 4])],
     items: &mut [Vec<Item>],
     eff: &mut [f64],
@@ -473,7 +491,7 @@ pub fn stack_dims(
                 let mut kbest: Option<DimPlaced> = None;
                 let mut kbest_rank = (usize::MAX, usize::MAX, usize::MAX);
                 let chained = d.shared[0] || d.shared[1];
-                for v in (0..DIM_VARIANTS).filter(|&v| v != CENTRED_OUT || chained) {
+                for v in 0..DIM_VARIANTS {
                     let mut its = Vec::new();
                     let sh = dim_build(env, d, off, v, slide, &mut its);
                     let sib: usize = picks.iter().map(|(_, p)| dim_conflicts(&sh, &p.shape, tol)).sum();
@@ -484,12 +502,12 @@ pub fn stack_dims(
                     let avoided = v != CENTRED_OUT && (slide > 0.0) == at_far && slide != 0.0;
                     let pen = match (sh.fits, v) {
                         (true, _) => 0,
-                        (false, CENTRED_OUT) => 1,
+                        (false, CENTRED_OUT) => usize::from(chained),
                         _ if at_shared => 2,
                         _ => 0,
                     } + if !sh.fits && avoided { 3 } else { 0 };
-                    let bh = if sh.fits { 0 } else { base_hits(base_segs, &sh.text) };
-                    let rank = (c, pen, bh);
+                    let bh = if sh.fits { 0 } else { base_hits(base_segs, &sh.text) + member_hits(members, &sh.text) };
+                    let rank = (c + bh, pen, usize::from(!sh.fits && !chained && v != CENTRED_OUT));
                     let fits = sh.fits;
                     if rank < kbest_rank {
                         kbest_rank = rank;

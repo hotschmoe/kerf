@@ -218,7 +218,7 @@ Polygon booleans split boundaries at shared crossings, merge nearby vertices wit
 
 ## engine/kerf-core/src/annot/dims.rs
 
-Dimensions follow SPEC 6.5, 20, 25.2 and 28.3. Non-overlapping adjacent spans on the same side can form a chain, drawn on its outermost authored line and placed and moved as a unit. Text that does not fit is placed outside instead of being reduced or omitted, preferring a chain's free end. Variants select ends, raised positions with leaders, and the side away from the object. Stacking places shorter spans first and moves conflicts outward in 0.25 paper-inch steps; pinned dimensions and chains containing them stay at their authored offset. Repair can also slide text or push a dimension, and blockers are retained for diagnostics.
+Dimensions follow SPEC 6.5, 20, 25.2, 28.3 and 33. Short text variants also consider filled/hatch member regions (excluding soil) and prefer a centered outward position with a short stem; no clear variant leaves a W_LABEL_OVERLAP finding. Non-overlapping adjacent spans on the same side can form a chain, drawn on its outermost authored line and placed and moved as a unit. Text that does not fit is placed outside instead of being reduced or omitted, preferring a chain's free end. Variants select ends, raised positions with leaders, and the side away from the object. Stacking places shorter spans first and moves conflicts outward in 0.25 paper-inch steps; pinned dimensions and chains containing them stay at their authored offset. Repair can also slide text or push a dimension, and blockers are retained for diagnostics.
 
 ## engine/kerf-core/src/annot/repair.rs
 
@@ -226,7 +226,7 @@ SPEC 20 and 25.2 govern bounded repair. Text first slides along a dimension line
 
 ## engine/kerf-core/src/annot/text.rs
 
-SPEC 16 and 25.3 define glyph folding and case handling: significant tokens retain case. Wrapping keeps the pieces of a dimension or spacing together when they fit. Character-count wrapping splits an overlong word; paper-width wrapping leaves it whole for the caller to diagnose as overflow.
+SPEC 16, 25.3 and 33 define glyph folding and case handling; U+00B0 survives normalization for the existing degree glyph: significant tokens retain case. Wrapping keeps the pieces of a dimension or spacing together when they fit. Character-count wrapping splits an overlong word; paper-width wrapping leaves it whole for the caller to diagnose as overflow.
 
 ## engine/kerf-core/src/annot/callout.rs
 
@@ -242,7 +242,7 @@ Boundary lines follow SPEC 29.2 and remain at their authored positions. SPEC 30.
 
 ## engine/kerf-core/src/annot/title.rs
 
-View title bubbles and scale lines follow SPEC 6.4 and 6.5; layout title wrapping leaves overlong words intact.
+View title bubbles and scale lines follow SPEC 6.4, 6.5 and 33; standalone and layout captions wrap to available width, leaving overlong words intact for the fit diagnostic.
 
 ## engine/kerf-core/src/annot/weld.rs
 
@@ -254,7 +254,7 @@ SPEC 6, 16, 20, 23, 24, 25.2, 26.2, 27.4 and 28.2 govern annotations. Layout eff
 
 ## engine/kerf-core/src/annot/notes.rs
 
-SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. Fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Citation sections containing digits retain case because paragraph letters are significant. The through-side of a note (SPEC 30.3) is measured on a horizontal reach from its first landing candidate to each crop edge through the cut bodies of other components; the router only reports it.
+SPEC 6.3, 24, 25.2, 26.2, 27.4 and 28.8 govern note routing. When a target's landing lies on an embedded bar or fastener, candidates can be taken from the target region minus those members, clear of edges by half a text height. Short drawn fasteners and end-on bar dots are obstacles to other leaders; long members and shapes that do not fill their boxes are excluded. An explicit landing is not nudged; a section landing is valid anywhere inside the crop, while an iso landing must be on a visible face or near a drawn line. Key tags use `tags_side`; `notes_side` places the list. SPEC 33: numeric dimension offset proposals rebuild the complete view with that dimension pinned; they require no remaining leader hits or annotation overlaps, and pin an automatic view scale with the repair. Other fix proposals reroute the entire view because clearing one leader can create another hit; verification is limited to 12 attempts and one quarter of the default routing work budget. Keyed numbers use explicit keys, then the lowest available numbers in note order; shared keys use the layout's assignments. Circle and hex tags share a size set by the widest number, with the hexagon's inscribed circle containing the number. Lists split only between entries, minimizing the taller column and preferring a longer first column on ties. Side lists get the page/cell height minus one paper inch for the caption, rather than the geometry height; below lists top-align under the drawing. Citation sections containing digits retain case because paragraph letters are significant. The through-side of a note (SPEC 30.3) is measured on a horizontal reach from its first landing candidate to each crop edge through the cut bodies of other components; the router only reports it.
 
 ## engine/kerf-core/src/annot/table.rs
 
@@ -418,6 +418,8 @@ SPEC 12 defines SVG export: 96 user units per paper inch, black ink and stroke-f
 
 ## engine/kerf-core/src/dxf.rs
 
+SPEC 33: R2000 TEXT degree signs use the ASCII `%%d` control code, avoiding UTF-8 decoded as the legacy DXF code page ([Autodesk reference](https://help.autodesk.com/cloudhelp/2024/ENU/AutoCAD-Core/files/GUID-968CBC1D-BA99-4519-ABDD-88419EB2BF92.htm)).
+
 SPEC 12 defines DXF export as ASCII AutoCAD R2000 (AC1015), modelspace in model inches with `$INSUNITS = 1`. LWPOLYLINE retains bulges, HATCH embeds patterns, and the KERF text style points to `romans.shx`. Handles are sequential from a fixed seed, with no timestamps; coordinates use deterministic decimals rounded to 1e-6.
 
 ## engine/kerf-core/src/drawing.rs
@@ -434,7 +436,7 @@ Text stroke polylines use the item's anchor, with rotation in degrees counterclo
 
 ## engine/kerf-core/src/drawview.rs
 
-SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2 and 28.6 govern view construction and fit diagnostics. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet. SPEC 30.3: `sided_pass` builds a view with the automatic note sides and falls back to a pass without them when only that one fits the frame at the scale being tried, so a side change never costs a scale step.
+SPEC 18, 19, 25.1, 26.1, 26.2, 26.3, 28.2, 28.6 and 33 govern view construction and fit diagnostics. Standalone builds fit complete annotations on each candidate sheet, aiming at factor <=12 before accepting smaller scales, and honor a per-view sheet override. Explicit scales and paper-sized tables trigger sheet growth. Trials are isolated from returned diagnostics; only the selected sheet is rebuilt for reporting. Each scale trial resets its routing work budget so earlier rejected candidates cannot exhaust later ones. Named layout views still receive standalone sheet-fit warnings, while document annotation findings come from the chosen layout cells. Auto crop uses visible non-fill geometry plus six inches; fills are clipped to it. Auto scale tries standard scales largest first and skips candidates whose crop alone cannot fit; explicit crop and scale are respected. Crop-group diagnostics prefer the group named by most annotations, then the largest, splitting groups separated by more than two feet. The title sits below the lowest annotation. Fit diagnostics suggest a scale change only for overflow over 15% of the frame. For NTS views the internal fit factor grows until annotations and title fit: geometry shrinks but annotations retain paper size. Layout views share keyed notes and are fit-checked as cells rather than against the full sheet. SPEC 30.3: `sided_pass` builds a view with the automatic note sides and falls back to a pass without them when only that one fits the frame at the scale being tried, so a layout side change never costs a scale step. Standalone fits keep the safe side change and try another scale/page instead (SPEC 33).
 
 ## engine/kerf-core/src/hatch.rs
 
@@ -466,7 +468,7 @@ SPEC 19, 21, 25.3, 25.4, 25.6 and 26.3 govern document linting. Unknown view-mem
 
 ## engine/kerf-core/src/iso.rs
 
-SPEC 8.2, 26.4, 27.2, 27.4, 28.6 and 28.7 define iso projection and visibility. For camera quadrant `(sx, sz)`, projection is `u = (sz*x - sx*z)*cos30`, `v = y - (sx*x + sz*z)*sin30`, with depth `sx*x + y + sz*z`; larger depth is nearer. Tessellated faces are indexed on a grid; candidate indices are deduplicated in ascending order. Edges hidden by other members of framing hardware draw dashed, but hardware remains a note target. Touching slabs from a void omit their shared cap edges. Component-relative annotation points project from the nearest end of the drawn extent, while points without a drawn component use the cut plane. Cutaway hatching is limited to front-facing caps.
+SPEC 8.2, 26.4, 27.2, 27.4, 28.6 and 28.7 define iso projection and visibility. For camera quadrant `(sx, sz)`, projection is `u = (sz*x - sx*z)*cos30`, `v = y - (sx*x + sz*z)*sin30`, with depth `sx*x + y + sz*z`; larger depth is nearer. Tessellated faces are indexed on a grid; candidate indices are deduplicated in ascending order. Edges hidden by other members of framing hardware draw dashed, but hardware remains a note target. Touching slabs from a void omit their shared cap edges. Component-relative note points project from the nearest end of the drawn extent. SPEC 33: label Refs instead use cut_z or label z, clamped to the drawn span; literal at and top-level label offset use view coordinates. Cutaway hatching is limited to front-facing caps.
 
 ## engine/kerf-core/src/mesh.rs
 

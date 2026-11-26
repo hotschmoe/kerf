@@ -209,6 +209,28 @@ impl Iso {
         proj(self.sx, self.sz, [p.x, p.y, z.unwrap_or(self.cut_z)])
     }
 
+    pub fn project_station(&self, owner: Option<(u32, u32, Option<&str>)>, p: V2, station: f64) -> V2 {
+        let mut lo = f64::INFINITY;
+        let mut hi = f64::NEG_INFINITY;
+        if let Some((comp, inst, part)) = owner {
+            for ip in &self.prisms {
+                if ip.comp == comp && ip.instance == inst && part.is_none_or(|pn| ip.part == pn) {
+                    if ip.axis_y {
+                        for q in ip.loops.iter().flatten() {
+                            lo = lo.min(q.y);
+                            hi = hi.max(q.y);
+                        }
+                    } else {
+                        lo = lo.min(ip.z0);
+                        hi = hi.max(ip.z1);
+                    }
+                }
+            }
+        }
+        let z = if lo <= hi { station.clamp(lo, hi) } else { station };
+        proj(self.sx, self.sz, [p.x, p.y, z])
+    }
+
     fn cell_range(&self, b: Box) -> [usize; 4] {
         let gn = self.gn;
         let cl =
