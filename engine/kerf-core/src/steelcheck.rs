@@ -21,9 +21,13 @@ fn len_of(node: &Value, key: &str, default: f64) -> f64 {
     node.get(key).and_then(units::parse_length).unwrap_or(default)
 }
 
+fn hanging_fastener(c: &Comp) -> bool {
+    matches!(c.node.get("kind").and_then(Value::str), Some("threaded_rod" | "eye_screw"))
+}
+
 pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     weld_sizes(scene, doc, diags);
-    for b in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Bolt) {
+    for b in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Bolt && !hanging_fastener(c)) {
         let d = len_of(b.node, "diameter", 0.75);
         let count = b.node.get("count").and_then(Value::num).unwrap_or(1.0);
         let spacing = len_of(b.node, "spacing", 3.0);
@@ -48,7 +52,7 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
 }
 
 pub fn drawn(comps: &[&Comp<'_>], diags: &Diags) {
-    for b in comps.iter().filter(|c| c.ty.ty == Type::Bolt) {
+    for b in comps.iter().filter(|c| c.ty.ty == Type::Bolt && !hanging_fastener(c)) {
         edge_distance(comps, b, len_of(b.node, "diameter", 0.75), diags);
     }
     anchors(comps, diags);

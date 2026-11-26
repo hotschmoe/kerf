@@ -3190,3 +3190,89 @@ View `kind: "sheet"` is an alias for `kind: "schedule"`; it is not a `sheet` pro
 `layouts[].sheet`. `kerf schema view` explicitly distinguishes the alias from that layout property.
 `anchor_bolt.plate` measures plate entry/exit along the rotated rod axis, so projection and nut/washer placement
 follow a horizontal or inclined rod as well as a vertical rod.
+
+## 34 (v0.2.0-beta.5: connectors and fasteners)
+
+### 34.1 Member references and joint paths
+Connector member fields accept `id`, `id#k`, `id.part`, `id#k.part` and their existing lists. Only solid bodies
+of the named part participate in placement; an unknown part is E_PARAM listing available parts. Dependency order
+continues to use the component id. A connector may name two distinct parts of one component only where the
+builder can distinguish them; member ties currently reject two references to the same component instance.
+
+A tie whose selected left/right (or top/bottom) faces are separated along the joint by more than its strap width
+emits `W_TIE_PATH`: the schematic otherwise wraps the entire offset between those faces. Its exact update op
+selects front/side left at the crossing (back/right for the other locations). This identifies geometry that cannot
+stand in for a short twist strap. `MTS12` now has a 12-inch schematic strap length.
+
+`connector.gap` is a nonnegative length for member ties (a separated angle requires explicit points): the allowed gap or intervening layer thickness between two mounting
+members. Without it, placement still searches within 1/2 inch. A gap over 1/32 inch draws a straight front/back
+face bridge, with the lower leg on the lower member and upper leg on the upper member, rather than probing
+inside the empty joint. Coplanar mounting faces give a straight plate; unequal z faces bend one leg onto the wide member's side at the crossing. The tie bridge supports `along` for coplanar faces,
+`legs`, width and gauge; it rejects side-face placement. For an exact model with default legs, the gap is
+subtracted from catalog length before dividing it between the two legs. Explicit legs exceeding the developed
+catalog length emit W_TIE_PATH with a shorter-leg or longer-model op. An unspecified gap emits `W_CONNECTOR_GAP` with the
+actual gap and an exact `gap` update op. Explicit gap confirms the intended separation. DTC/STC/HTC remain W_CONNECTOR_GAP even with explicit gap:
+their deflection slots and movement allowances are not modeled. Their exact fix preserves existing acknowledgements
+and records the schematic limitation after manufacturer movement/fastening are specified in the note.
+
+### 34.2 Hangers and tension ties
+Default hanger height uses an exact table model's height when available. Otherwise it uses 85% of carried depth;
+for a truss this is its bottom chord at the hanging end, including end-on trusses, rather than its full depth.
+A named family-only truss hanger with no explicit height emits `W_HANGER_SIZE` asking for the manufacturer height
+and supplying the current schematic height as an exact update op. Explicit height remains authoritative.
+`HUS26` has a 5 7/16-inch height and `LU24` has a 3 1/8-inch height, matching the supplied authoring repros;
+other existing table heights are retained. Bracing and size checks remain active.
+
+A sloping carried member draws a sloping seat. `W_HANGER_SLOPE` warns for a non-LSS model that has no modeled
+slope/skew adjustment and offers a slope-adjustable model op; manufacturer model and dimensions must be confirmed.
+Plan skew is outside the current framing placement model. When hanger placement fails because a carried member
+runs into its support, its fix preserves cuts at the other end. If the proposed trim is already present, the
+message explains that the centerline trim missed, and supplies an explicit vertical bevel line at the support
+face instead of repeating that trim. Apply remains atomic on the original failure.
+
+DTT-family `connector` holdowns use a horizontal x-axis `bolt` in `rod` and a joist in `post`. `face` is front/back
+(default toward the bolt). `height` is horizontal body length (default 6 15/16), `width` its vertical dimension
+(default 3 1/4), and `seat` its vertical seat thickness (default gauge). The seat is at the bolt nut bearing;
+the back follows the joist face and screws enter the wood. DTT rejects seat_height: the bolt sets the seat. `W_CONNECTOR_ORIENT` identifies unsupported bolt
+orientations (no surrogate geometry) or a body extending off the joist, with exact corrective ops. This wood
+connection does not demand foundation embedment; ordinary uplift holdowns retain their foundation check.
+
+Anchor-bolt `plate` association scans the plate in the bolt's rotated frame. Default projection and nut/washer
+bearing are measured along the actual rod axis, including horizontal ledger rods.
+
+### 34.3 Continuous wraps
+`connector.on` accepts its existing single face string or a three-face array:
+`["post.face_front","beam.face_top","post.face_back"]` (also back/top/front). This is one connector and one
+summary item, with constant strap width across both legs and the top. Front/back faces must align with the beam,
+and the full width must fit at the shared x station. Optional points must have equal x and zero bulges; their
+lowest y sets both lower ends. Without points the first member's face center supplies x and each post bottom
+supplies its lower end. The beam top supplies the upper bend. Other wrap sequences are E_PARAM, never silently
+flattened to a 2D strap. Wraps reject explicit at/z/rotate/slope/mirror/lay/side placement.
+
+### 34.4 Nailing through stacks and explicit rows
+Face nailing intersects successive backing layers and requires a continuous stack, including intermediary panels.
+Receivers at the same driving depth (e.g. rim and blocking) are alternatives; nails are placed over each backing
+footprint. Any listed receiver touching the head member may start a path. Placement and length checks use that shared footprint; a row
+cannot center on the sole plate while missing its listed rim. A listed receiving group missed by every drawn nail also emits W_NAIL_MEMBERS.
+A stack with no common path emits W_NAIL_MEMBERS
+and draws no face nails for that joint. Its exact members op limits the connection to the first two only if
+that is the intended joint; otherwise correct the member geometry or references.
+
+`nailing.row_offsets` optionally supplies one positive increasing distance per row, measured from the lower
+edge across the shared footprint in the first member's local frame. For example `rows:2,row_offsets:[1.5,7.75]`
+places two rows at those distances rather than at thirds. It is face-only; cardinality and ordering errors are
+E_PARAM. An offset outside a joint's width warns W_NAIL_MEMBERS and draws nothing for that joint, with the op
+removing row_offsets to restore automatic placement. Existing edge-distance checks use actual outer offsets.
+If end clearances collapse several requested nails to the same position, W_NAIL_SPACING reports the requested
+and distinct counts instead of silently dropping duplicate fasteners; its count op explicitly accepts the
+available quantity. The default remains evenly spaced rows; `along` selects the direction they run.
+
+### 34.5 Rods and screw eyes
+The existing `bolt.kind` vocabulary appends `threaded_rod` and `eye_screw`. Both use orient side (rotate to point
+them), diameter, count/spacing/line, and required positive length. Rods reject grip and thread (they are fully threaded and sized by length). A threaded rod starts at the placement point
+and runs downward by length, with blunt ends, full schematic threads and no head or nut. Optional `coupler`
+is the sleeve length downward from the top, no greater than rod length (schematic outside diameter 1.75d).
+Anchors include start, end and tip (head_bearing aliases start for the shared bolt placement default); parts are shank and coupler. It has no concrete-anchor spacing/embedment
+semantics. `eye_screw` is a single wood screw with its shoulder at the placement point, length down into wood,
+and a schematic ring (outside diameter 6d, inside diameter 4d) above the shoulder; anchor eye is its center.
+Screw length/thread rules still apply. Existing wood_screw and lag_screw remain the plain single-screw forms.

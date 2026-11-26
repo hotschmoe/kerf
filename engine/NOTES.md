@@ -801,6 +801,9 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   cover in their own direction. Nominal-16 square piers use the inherited shell/web thickness and two cells, rather
   than introducing a vendor-specific 24-inch unit. Reinforced vertical-cell contact follows native plan inference;
   open-end/knock-out selectors warn instead of silently claiming special geometry. SPEC §35 records these choices.
+
+- beta.5 hardware: same-depth nailing receivers are alternatives, deeper layers are a continuous stack; this interpretation preserves rim/blocking connections and fixes through-sheathing rows (§34).
+- beta.5 hardware: plan-skew hangers need actual 3D member frames. This worktree warns fixed models on sloped seats and leaves unsupported plan placement to the framing work; arbitrary slot/wrap geometry is not inferred.
 - Integrating SPEC 30 with 31/32: the original through-member type list omitted steel joists, deck and stairs, and
   the unsupported-plate load list omitted wood stairs. Include their cut body prisms in leader obstruction and wood
   stair bodies in the plate's carried wood, because replacing equivalent legacy typed geometry should retain the
@@ -1263,3 +1266,57 @@ Status: `steel_joist`, `metal_deck`, `stair_treads` are new types; `bolt` gained
   footprint machinery as L/T footings; once concrete takes a plan outline, `steel` `PL` could take one too.
 - #28 -> #20 (pair checks per view set): `W_UNTREATED_CONTACT` is one of the all-pairs checks; its contact rule changed
   here (SPEC 28.8), its view membership is #20's.
+
+
+## v0.2.0-beta.5 hardware worktree (#35; connector parts of #38/#40)
+
+Implemented member-part connector lookup, common-footprint face nailing through layered receivers, alternative
+same-depth backing, explicit row_offsets, and diagnostics for missed receiving groups and collapsed requested
+fastener counts. Member ties now flag remote side-face wraps. Exact-model gap ties debit the gap from the developed
+length and retain W_TIE_LEG against their actual mounting faces. DTC/STC/HTC gap bridges retain W_CONNECTOR_GAP
+for missing slot geometry until acknowledged after the manufacturer movement/fastening note is supplied.
+
+Hangers use catalog heights (HUS26 5 7/16, LU24 3 1/8), or the bottom chord for generic truss fallback; named
+families without an exact height warn. Fixed models on sloped seats warn. A repeated ineffective trim gets a
+world-space bevel-line fix preserving the other end cuts. DTT-family connectors use a horizontal x bolt's nut
+bearing and front/back joist mounting, without a foundation check; unsupported orientations warn and draw no
+surrogate. Three-face on arrays make one constant-width front/top/back wrap. Rotated anchor plate association
+works in the rod's frame. Bolt kinds append threaded_rod (optional coupler) and eye_screw, without concrete-anchor
+spacing semantics. SPEC 34, catalog, schema and full guide describe the fields; the short guide remains 12,111
+bytes, unchanged. See SRC for the non-obvious placement choices.
+
+Validation on x86_64 / engine-pinned Rust 1.99.1: release build, Clippy all targets with -D warnings, fmt --check,
+all 994 native golden outputs including DXF/PDF audits, CLI E2E, serve E2E, ergonomics (656 checks), wasm build and
+70/70 standard wasm golden comparisons pass. A separate real-wasm review matches 26 new hardware/nailing/S1
+exports byte for byte with native. Final wasm without wasm-opt: 1,813,475 raw / 705,646 gzip-9 / 567,251 Brotli-11.
+The last release build took 71 s; final wasm build 30 s on the shared runner. No new blocking test was registered.
+An earlier combined long-running gate controller exited 143 before its heavy checks completed; every affected
+gate was rerun successfully as a standalone command, with final results recorded separately.
+
+One new small reference, tests/docs/connector-fasteners.kerf.json (12 components, A/I/S1), and its goldens. Only the
+existing nailing golden intentionally changed: B now fastens the listed blocking as well as the rim (12 -> 15
+nails), so its B drawing/exports and summary changed; all other views and mesh are unchanged. make_golden.sh now
+accepts repeatable --only NAME for selective regeneration. Old nailing goldens and intermediate review artifacts
+were moved/preserved under .archive/b5-hardware/; no file was deleted.
+
+Regression: all 138 MASS files, workspace style and real refs copied to
+/home/hotschmoe/github/mass-details/work/codex/b5-hardware/ (manifest.json records hashes). Beta.4 and this build both
+ran check --strict over the copies. Errors 0 -> 0; 14 per-file outputs differ. Nine new warning lines: W_HANGER_SIZE
+2 (THA413 heights unverified), W_HANGER_SLOPE 2 (fixed models at sloping I-joists), W_TIE_PATH 1 (four-inch remote-face
+wrap), W_NAIL_SPACING 4 (two crowded three-nail rows and two requested screw pairs collapsing to one). No previous
+diagnostic was removed. Strict exit 0: 118 -> 114; exit 1: 20 -> 24. Warnings including acknowledgements: 36 -> 45.
+Every difference and the explanation for each class is in regression.txt; baseline/current retain every result.
+No MASS source/style/ref was edited. The version bump, index and commits remain the orchestrator's work.
+
+Visual review: inspected before/after real-detail tie, hanger, rim nailing, horizontal DTT, gap clip, corrected trim
+and rod/screw PNGs, plus real S1 layouts and the new A/I/S1 reference. Actual emitted tie, gap and missed-trim fix
+ops were applied to independent copies. Tie and trim clear their errors/warnings; gap acknowledgement leaves zero
+unacknowledged warnings (strict intentionally still lists recorded reasons). Rod migration uses start/head_bearing
+instead of top_of_concrete and places the rod at the actual screw head; the copied s-70-18 loses its false ACI pair
+warning without introducing a floating rod. Source sheets with explicit scale still show pre-existing clipped
+notes/title in some views; those layout defects are outside this worktree.
+
+Remaining: plan-skew / true 3D hanger placement, arbitrary wrap sequences and DTT orientations, and actual
+manufacturer slot geometry. #35 C08's prescriptive end-nail spacing policy, C09's sloped-member plumb-face nailing,
+and C10's side-view truss top-chord nail-stack intersection are not implemented here; their existing warnings
+remain. Full per-item authoring fragments and limitations are in the review directory's handoff.txt.

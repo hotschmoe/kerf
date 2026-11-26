@@ -365,3 +365,31 @@ Review the PNG: correct proportions and gaps, leaders on the right element, no o
   `update views/A {annotations:[...]}` replaces all A annotations; prefer annotation paths for small edits.
 - `kind:"sheet"` aliases `kind:"schedule"`; a view has no `sheet` field. Paper size belongs to `layouts[].sheet`.
   `anchor_bolt` `plate` follows a rotated rod axis, including horizontal ledger rods, with automatic projection.
+
+## beta.5 connectors and fasteners (SPEC §34)
+- Connector members accept `id.part` / `id#k.part`, including `truss.bottom_chord`.
+- A member tie across an intentional gap or intervening layer uses `gap` (actual clear thickness),
+  `face:"front"` or `"back"`. An unspecified gap warns `W_CONNECTOR_GAP` with the confirming op.
+  DTC/STC/HTC retain W_CONNECTOR_GAP for missing slot geometry even with explicit gap; specify manufacturer
+  movement/fastening in the note, then use its acknowledgement op.
+- `W_TIE_PATH` flags a left/right tie wrapping the distance between offset member ends. Apply its
+  front/back face fix and choose side left/right at the crossing; it is not a 27-inch twist strap.
+- Hangers use exact catalog heights when available, otherwise 85% of the carried depth; for trusses
+  that fallback uses the bottom chord; named models without catalog heights warn until `height` is explicit. `W_HANGER_SLOPE` warns
+  about a fixed hanger model on a sloped seat. A failed existing trim gets a bevel-line fix retaining
+  cuts at the other end. Skew in plan is not supported by the current member placement model.
+- A DTT tension tie uses `post:"joist",rod:"bolt"`, a horizontal x-axis `bolt` (normally rotate 90),
+  and joist face front/back. Its `height` is horizontal body length, `width` is vertical body width.
+  The seat follows the bolt nut bearing. No foundation embedment is required for this wood connection.
+- A single continuous wrap is `on:["post.face_front","beam.face_top","post.face_back"]` (or back/top/front).
+  All faces must align. Optional `points` have a common x station; their lowest y sets both lower ends.
+  Omit points to use the post face center and bottoms. Strap width stays constant across the top.
+- Face nailing uses the common footprint through successive backing layers; rim/blocking at the same depth
+  are alternative receivers.
+  A stack without a common continuous path warns and draws no nails. `rows:2,row_offsets:[1.5,7.75]`
+  sets row positions from the lower edge across the common footprint in the first member's frame;
+  omit row_offsets for evenly spaced rows. Set `along` to select the row axis.
+- Threaded hanging rod: `{"type":"bolt","kind":"threaded_rod","diameter":0.375,"length":18,"coupler":1.5}`.
+  The placement point is the rod top; it extends down, has no head/nut or concrete-anchor semantics.
+  Single screw: kind wood_screw or lag_screw with length. Single screw-eye: kind eye_screw with
+  diameter and length (under the eye shoulder), optionally rotate. Rods and eyes use orient side.
