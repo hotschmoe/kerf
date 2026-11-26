@@ -21,6 +21,30 @@ The linked worktree Git directory was read-only in this session. Integration his
 `.archive/integration.git` (branch beta4); the shared beta4 ref and linked index await writable metadata. Master was
 not merged or modified. No files were deleted, no push or installation was performed.
 
+Validation on x86_64 Linux / Rust 1.99.1: release build, Clippy all targets with warnings denied, and rustfmt pass.
+The full native golden comparison passed 955 outputs including DXF/PDF audits; no golden was regenerated. CLI and
+serve E2E pass; ergonomics passes 654 checks (including the six round-shape/fill combinations and both epoxy checks).
+The short guide is 12,245 bytes (limit 12,288), with 23 type entries. Wasm built without wasm-opt and matched all 70
+native goldens; raw/gzip-9/Brotli-11 sizes via `tools/size_report.sh`: 1,752,801 / 680,049 / 548,191 bytes.
+
+Regression: real copies of 90 MASS documents, the workspace style and refs (zero symlinks) are in
+`/home/hotschmoe/github/mass-details/work/codex/regress-integ/beta4-wtag9as2/`. Both binaries ran `check --strict`
+on every file. All errors, warnings and exit codes agree. Only six files gain diagnostics, all informational
+I_CMU_PLAN_UNITS (15 total): s-40-05 (b_wall/B, c_wall/C, d_wall/D), s-40-06 (a_wall1/A, a_wall2/A, b_wall1/B,
+b_wall2/B, c_wall/C, d_wall/D), s-40-07 (ac_wall/A, af_wall/A), s-40-08 (b_wall/B), s-40-11 (b1_wall/B, b2_wall/B),
+s-40-14 (wall/A). Complete original lines and unified diffs are in that directory's `diagnostic-differences.txt`;
+beta3/ and beta4/ retain stdout, stderr, versions and exit codes for every file. These are the documented fallback
+messages for legacy hand-drawn CMU webs; no MASS source file was edited.
+
+Visual review: exported and inspected all ten new reference views (eight documents), the two pre-existing
+steel-beam-cap-plate views, and an empty/concrete-filled pipe-plan reproduction. Rings and circular cores look correct.
+Findings left for reference/layout cleanup: `general-cmu-plan/P` extends above the sheet frame and is clipped at the
+page top despite a clean check; `cfs-track-aluminum/A` routes the stud callout across the unrelated filled pipe.
+The steel stair's stringer top projects above the upper tread/landing level; it is worth an engineer's review of
+that authored connection geometry. PNGs are saved in `.archive/beta4-review/`; the existing goldens were preserved.
+The generated release build stamp is explicitly set to the implementation commit `f7a9c02`, because the linked
+worktree metadata still points at the old base; the package version is 0.2.0-beta.4.
+
 ## Layout
 - `kerf-core`: `#![no_std]` + `alloc`, the whole engine. Public: `api` (the SPEC 13 dispatcher, `api::call(name, input)`),
   `json`, `canon`, `model`, `ops`, `schema`, `units`; every other module is private, so the compiler finds dead code.

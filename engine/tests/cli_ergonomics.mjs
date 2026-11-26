@@ -2573,10 +2573,16 @@ section('#30. beta.3 touch-up drawing gaps');
 
 section('beta.4 integration: round steel plans and actionable epoxy depth');
 {
-  const inside = (pt, loops) => loops.reduce((hit, loop) => loop.reduce((c, a, k) => {
-    const b = loop[(k + 1) % loop.length];
-    return (a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < a[0] + (pt[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1]) ? !c : c;
-  }, hit), false);
+  const inside = (pt, loops) => loops.reduce((hit, loop) => {
+    if (loop.length === 2 && loop.every((p) => Math.abs(p[2]) === 1)) {
+      const cx = (loop[0][0] + loop[1][0]) / 2, cy = (loop[0][1] + loop[1][1]) / 2;
+      return Math.hypot(pt[0] - cx, pt[1] - cy) < Math.hypot(loop[0][0] - cx, loop[0][1] - cy) ? !hit : hit;
+    }
+    return loop.reduce((c, a, k) => {
+      const b = loop[(k + 1) % loop.length];
+      return (a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < a[0] + (pt[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1]) ? !c : c;
+    }, hit);
+  }, false);
   for (const shape of ['PIPE6STD', 'HSS6.000x0.250', 'TUBE6x0.125']) {
     for (const fill of ['', 'concrete']) {
       write('round-b4.kerf.json', { kerf: '0.1', id: 'round_b4', title: 'ROUND COLUMN', components: [
@@ -2584,7 +2590,7 @@ section('beta.4 integration: round steel plans and actionable epoxy depth');
           array: { axis: 'x', count: 2, spacing: 12 }, at: { to: [10, 2] }, z: 5 },
       ], views: [{ id: 'P', kind: 'plan', cut_y: 20 }] });
       const r = kerf(['drawing', 'round-b4.kerf.json', '--view', 'P']);
-      const regions = r.code === 0 ? JSON.parse(r.out).items.filter((it) => it.t === 'region' && it.src === 'col') : [];
+      const regions = r.code === 0 ? JSON.parse(r.out).items.filter((it) => it.t === 'region' && it.src.startsWith('col#')) : [];
       check(`${shape}, fill ${fill || 'none'}: both plan instances have hollow steel rings and the requested core`, [0, 1].every((instance) => {
         const rings = regions.filter((it) => it.instance === instance && it.part === 'tube');
         const core = regions.filter((it) => it.instance === instance && it.part === 'fill');
