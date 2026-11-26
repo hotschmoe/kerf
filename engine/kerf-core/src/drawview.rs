@@ -688,7 +688,12 @@ fn sided_pass(inp: SectionInputs, spec: &ViewSpec, area: (f64, f64)) -> SecPass 
         let plain_diags = Diags::new();
         let plain = section_pass(SectionInputs { diags: &plain_diags, plain_sides: true, ..inp }, spec);
         if fits(&plain) {
-            inp.diags.extend(plain_diags.take());
+            inp.diags.extend(plain_diags.take().into_iter().map(|mut d| {
+                if d.code == "W_LEADER_HIT" && d.message.contains("crosses the cut") {
+                    d.fix = d.fix.map(|f| f + "; the view then needs a smaller scale, which is why the layout did not move the note itself");
+                }
+                d
+            }));
             return plain;
         }
     }

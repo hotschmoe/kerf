@@ -769,7 +769,8 @@ pub fn through_members(env: &mut Env, notes: &[NoteIn], prep: &mut NotePrep) {
             let mut total = 0.0;
             let mut crossed = Vec::new();
             for (w, (comp, f, bx)) in walls.iter().enumerate() {
-                if Some(*comp) == target || l.y < bx.y0 || l.y > bx.y1 {
+                let under = bx.contains(l) && geom::locate_even_odd(l, f, 0.0) == geom::Loc::Inside;
+                if Some(*comp) == target || l.y < bx.y0 || l.y > bx.y1 || under {
                     continue;
                 }
                 let len = route::seg_inside_len(l, V2::init(x, l.y), f);

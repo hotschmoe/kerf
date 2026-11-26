@@ -2775,12 +2775,12 @@ or the diagnostic did not say enough to fix it.
 `connector` and `nailing` components are placed after every other component that is ready. A tie, hanger or nailing therefore sees the members that touch its own members even when
 they are listed after it (wall sheathing listed after the tie of the rafter it stands against).
 
-**Side.** A tie placed from two `members` (§27.2) on a z face (`face` front or back) whose one leg bends onto the
-other member has two sides of the joint to lie on. With `side` (`left` | `right`) that side is used. Without it the tie
-takes the side it took before (the side where the wide member covers the narrow one, else left) unless another
-component drawn with the tie lies against that face there and the other side is free: then it takes the other side. A
-side is blocked when a point of the leg (at 15%, 50% or 85% of its length, a quarter of the gauge inside the face) lies
-inside a body of another component that shares a view with the tie.
+**Side.** A tie placed from two `members` (§27.2) on a z face (`face` front or back) lies on one side of the joint or
+the other. With `side` (`left` | `right`) that side is used. Without it the tie takes the side it took before (the
+side where the wide member covers the narrow one, else left) unless another component drawn with the tie lies against
+that z face there (blocking between the rafters, on the plate) and the other side is free: then it takes the other
+side. A side is blocked when a point of the leg (mid-width, at 15%, 50% or 85% of its length, 1/4" in front of the
+face) lies inside a body of another component that shares a view with the tie.
 
 **`W_OVERLAP` (tie).** When the leg still lies on a blocked side (`side` forces it, or both sides are blocked) the tie
 warns on `components/<id>/side`, naming the face, the leg's box and the member it is inside. The fix is the op that
