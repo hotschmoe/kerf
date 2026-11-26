@@ -57,6 +57,9 @@ pub struct Env<'a, 's> {
     pub keyed_out: Vec<KeyedEntry>,
     pub doc_views: &'a [Value],
     pub verify_fixes: bool,
+    /// Try a note on the other side when its leader runs through a cut member (SPEC 30.1); `sided`: one was moved.
+    pub auto_side: bool,
+    pub sided: bool,
 }
 
 impl<'a, 's> Env<'a, 's> {
@@ -91,6 +94,8 @@ impl<'a, 's> Env<'a, 's> {
             keyed_out: Vec::new(),
             doc_views: &[],
             verify_fixes: true,
+            auto_side: true,
+            sided: false,
         }
     }
 
@@ -679,8 +684,30 @@ pub fn annotate<'a>(env: &mut Env<'a, '_>, base_items: &mut [Item]) -> Vec<Item>
     let dl = DimLab { dspecs: &dspecs, lspecs: &lspecs, base_segs: &base_segs };
     let mut prep = notes::prep_notes(env, routed, &routed_numbers);
     notes::member_obstacles(env, routed, &mut prep);
+    notes::through_members(env, routed, &mut prep);
 
-    let best = repair::solve(env, routed, &prep, &dl, &per, &meta);
+    let mut best = repair::solve(env, routed, &prep, &dl, &per, &meta);
+    let mut sided: Vec<NoteIn<'a>> = routed.to_vec();
+    let mut tried: Vec<usize> = Vec::new();
+    while env.auto_side && tried.len() < notes::AUTO_SIDE_TRIES {
+        let Some(b) = &best else { break };
+        let Some((i, side)) = notes::through_free(env, &prep, &sided, &b.r, &tried) else { break };
+        tried.push(i);
+        let other = |l: &route::Layout| l.hits.iter().filter(|h| h.kind != route::HitKind::Through).count();
+        let mut trial = sided.clone();
+        trial[i].column = Some(side);
+        let t = repair::solve(env, &trial, &prep, &dl, &per, &meta);
+        if t.as_ref().is_some_and(|t| {
+            !t.r.budget_exhausted
+                && t.r.hits.len() < b.r.hits.len()
+                && other(&t.r) <= other(&b.r)
+        }) {
+            env.sided = true;
+            sided = trial;
+            best = t;
+        }
+    }
+    let routed: &[NoteIn<'a>] = &sided;
     let Some(fin) = best else { return Vec::new() };
     repair::report_moves(env, routed, &dl, &fin);
     repair::report_overlaps(env, routed, &prep, &dl, &fin);

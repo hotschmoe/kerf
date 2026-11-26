@@ -470,6 +470,34 @@ pub fn report_hits(
                 rule = "a leader that crosses another note's member reads as pointing at it";
                 note_cands(ht.note, ht.fix_at, ht.fix_place, r, &mut cands);
             }
+            route::HitKind::Through => {
+                let Some(m) = prep.through_names.get(ht.note) else { continue };
+                let left = r.left.get(ht.note).copied().unwrap_or(false);
+                what = format!("the cut {m} to reach '{}' on its far side", me.member);
+                rule = if left {
+                    "from the right column the leader reaches that point without crossing a cut member"
+                } else {
+                    "from the left column the leader reaches that point without crossing a cut member"
+                };
+                let other = if left { route::Side::Right } else { route::Side::Left };
+                if me.place.is_none() {
+                    cands.push((ht.note, NoteFix::Column(other)));
+                    fix = ver.first(&cands);
+                    if fix.is_none() {
+                        fix = Some(format!(
+                            "set note '{}' \"column\": \"{}\"",
+                            me.id,
+                            if left { "right" } else { "left" }
+                        ));
+                    }
+                } else {
+                    fix = Some(format!(
+                        "move the text of note '{}' to the {} of its target (\"place\"), or remove \"place\" so the layout picks the free side",
+                        me.id,
+                        if left { "right" } else { "left" }
+                    ));
+                }
+            }
             route::HitKind::Leader => {
                 let Some(o) = notes.get(ht.other) else { continue };
                 what = format!("the leader of note '{}'", o.id);
@@ -623,6 +651,10 @@ pub struct NotePrep {
     pub members: Vec<route::Obst>,
     pub member_names: Vec<String>,
     pub groups: Vec<usize>,
+    /// Per note (SPEC 30.1): the column whose leader would run through a cut member, those members' loops and their name.
+    pub avoid: Vec<Option<route::Side>>,
+    pub through: Vec<Vec<Vec<V2>>>,
+    pub through_names: Vec<String>,
 }
 
 pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
@@ -673,6 +705,102 @@ pub fn prep_notes(env: &Env, notes: &[NoteIn], numbers: &[u32]) -> NotePrep {
         members: Vec::new(),
         member_names: Vec::new(),
         groups: alloc::vec![usize::MAX; notes.len()],
+        avoid: alloc::vec![None; notes.len()],
+        through: alloc::vec![Vec::new(); notes.len()],
+        through_names: alloc::vec![String::new(); notes.len()],
+    }
+}
+
+/// How many notes per view the layout tries on the other side to keep a leader out of a cut member (SPEC 30.1).
+pub const AUTO_SIDE_TRIES: usize = 4;
+
+/// The first note, not tried yet and free to change sides, whose leader runs through a cut member; with the other side.
+pub fn through_free(
+    env: &Env,
+    prep: &NotePrep,
+    notes: &[NoteIn],
+    r: &route::Layout,
+    tried: &[usize],
+) -> Option<(usize, route::Side)> {
+    let both = if prep.keyed {
+        env.spec.tags_side == NotesSide::Both
+    } else {
+        matches!(env.spec.notes_side, NotesSide::Both | NotesSide::Above)
+    };
+    if !both {
+        return None;
+    }
+    r.hits.iter().filter(|h| h.kind == route::HitKind::Through).find_map(|h| {
+        let n = notes.get(h.note)?;
+        let left = *r.left.get(h.note)?;
+        (n.column.is_none() && n.place.is_none() && !tried.contains(&h.note))
+            .then_some((h.note, if left { route::Side::Right } else { route::Side::Left }))
+    })
+}
+
+pub fn through_members(env: &mut Env, notes: &[NoteIn], prep: &mut NotePrep) {
+    let scene = env.scene;
+    let crop = env.crop;
+    let Landing::Section(sec) = &mut env.landing else { return };
+    if notes.iter().all(|n| n.member.is_empty()) {
+        return;
+    }
+    let prisms = Rc::clone(&sec.prisms);
+    let mut walls: Vec<(u32, crate::section::Flat, Box)> = Vec::new();
+    for (k, p) in prisms.iter().enumerate() {
+        if sec.cls[k] != Class::Cut || p.kind != Kind::Body || p.embedded || p.dashed {
+            continue;
+        }
+        let framing = scene
+            .comps
+            .get(p.comp as usize)
+            .is_some_and(|c| matches!(c.ty.ty, Type::Lumber | Type::Ijoist | Type::Steel | Type::Concrete | Type::CmuWall));
+        if framing {
+            let f = sec.flat_of(k);
+            let bx = clip::loops_box(&f);
+            walls.push((p.comp, f, bx));
+        }
+    }
+    let min = route::through_min(prep.g.h);
+    for (i, n) in notes.iter().enumerate() {
+        let (Some(&l), false) = (n.cands.first(), n.member.is_empty()) else { continue };
+        let target = scene.find(crate::compile::host_id(n.member)).map(|c| c.index);
+        let ray = |x: f64| -> (f64, Vec<usize>) {
+            let mut total = 0.0;
+            let mut crossed = Vec::new();
+            for (w, (comp, f, bx)) in walls.iter().enumerate() {
+                if Some(*comp) == target || l.y < bx.y0 || l.y > bx.y1 {
+                    continue;
+                }
+                let len = route::seg_inside_len(l, V2::init(x, l.y), f);
+                if len > 1e-6 {
+                    total += len;
+                    crossed.push(w);
+                }
+            }
+            (total, crossed)
+        };
+        let (ll, lw) = ray(crop.x0.min(l.x) - 1.0);
+        let (rl, rw) = ray(crop.x1.max(l.x) + 1.0);
+        let (side, ws) = if ll >= min && rl < 0.25 * min {
+            (route::Side::Left, lw)
+        } else if rl >= min && ll < 0.25 * min {
+            (route::Side::Right, rw)
+        } else {
+            continue;
+        };
+        prep.avoid[i] = Some(side);
+        prep.through[i] = ws.iter().flat_map(|&w| walls[w].1.iter().cloned()).collect();
+        let mut names: Vec<String> = Vec::new();
+        for &w in &ws {
+            if let Some(c) = scene.comps.get(walls[w].0 as usize) {
+                let nm = format!("{} '{}'", c.ty.name(), c.id);
+                if !names.contains(&nm) {
+                    names.push(nm);
+                }
+            }
+        }
+        prep.through_names[i] = names.join(" and ");
     }
 }
 
@@ -763,7 +891,8 @@ fn route_with(
         .iter()
         .zip(&prep.sizes)
         .zip(&prep.groups)
-        .map(|((n, &(w, hgt)), &group)| route::NoteIn {
+        .enumerate()
+        .map(|(i, ((n, &(w, hgt)), &group))| route::NoteIn {
             w,
             hgt,
             cands: &n.cands,
@@ -771,6 +900,8 @@ fn route_with(
             place: n.place,
             column: n.column,
             group,
+            avoid: prep.avoid.get(i).copied().flatten(),
+            through: prep.through.get(i).map_or(&[], Vec::as_slice),
         })
         .collect();
     let side = match (prep.keyed, env.spec.tags_side, env.spec.notes_side) {

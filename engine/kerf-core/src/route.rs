@@ -57,6 +57,47 @@ pub struct NoteIn<'a> {
     pub column: Option<Side>,
     /// The member the note points at (`Obst::group` of its `Member` obstacles; `usize::MAX` for none).
     pub group: usize,
+    /// The column whose leader runs through a cut member to reach the landing while the other column's would not (SPEC 30.1).
+    pub avoid: Option<Side>,
+    /// The loops of the cut members in the way on the `avoid` side.
+    pub through: &'a [Vec<V2>],
+}
+
+/// A leader runs "through" a cut member when at least this much of it lies inside (model units; `h` is the text height).
+pub fn through_min(h: f64) -> f64 {
+    (0.4 * h).max(1.0)
+}
+
+/// Length of segment a-b inside the region bounded by `loops`.
+pub fn seg_inside_len(a: V2, b: V2, loops: &[Vec<V2>]) -> f64 {
+    let d = b.sub(a);
+    let len = d.len();
+    if len < 1e-12 {
+        return 0.0;
+    }
+    let mut ts: Vec<f64> = vec![0.0, 1.0];
+    for lp in loops {
+        for (i, &p) in lp.iter().enumerate() {
+            let e = lp[(i + 1) % lp.len()].sub(p);
+            let den = d.cross(e);
+            if den.abs() < 1e-12 {
+                continue;
+            }
+            let t = p.sub(a).cross(e) / den;
+            let u = p.sub(a).cross(d) / den;
+            if t > 0.0 && t < 1.0 && (-1e-9..=1.0 + 1e-9).contains(&u) {
+                ts.push(t);
+            }
+        }
+    }
+    sort::stable(&mut ts, |x, y| x < y);
+    let mut inside = 0.0;
+    for w in ts.windows(2) {
+        if w[1] - w[0] > 1e-12 && geom::locate(a.lerp(b, (w[0] + w[1]) * 0.5), loops, 0.0) == geom::Loc::Inside {
+            inside += (w[1] - w[0]) * len;
+        }
+    }
+    inside
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,6 +176,8 @@ pub enum HitKind {
     Dim,
     Label,
     Member,
+    /// The leader runs through a cut member that the other column would not cross (`NoteIn::avoid`); `other` is unused.
+    Through,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -468,6 +511,21 @@ impl Ctx<'_> {
         }
         self.work.add(1);
         if poly_box_dist(a, &o.poly) > 1e-9 { 0.0 } else { W_CROSS }
+    }
+
+    fn through(&self, i: usize) -> bool {
+        let nt = &self.notes[i];
+        let on = match nt.avoid {
+            Some(Side::Left) => self.left[i],
+            Some(Side::Right) => !self.left[i],
+            _ => false,
+        };
+        if !on {
+            return false;
+        }
+        self.work.add(1);
+        let l = &self.leaders[i];
+        seg_inside_len(l[1], l[2], nt.through) >= through_min(self.p.geo.h)
     }
 
     fn soft_pen(&self, l: &[V2; 3], lb: &BB) -> f64 {
@@ -1051,6 +1109,9 @@ fn route_with(p: Params, notes: &[NoteIn], obst: &[Obst], soft: &[[V2; 2]], memb
                 ObstKind::Label if c.near(d).is_some() => hits.push(mk(i, HitKind::Label, j, d)),
                 _ => {}
             }
+        }
+        if c.through(i) {
+            hits.push(mk(i, HitKind::Through, usize::MAX, 0.0));
         }
     }
     for (hi, ht) in hits.iter_mut().enumerate() {
