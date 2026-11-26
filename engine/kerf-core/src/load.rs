@@ -256,6 +256,10 @@ pub fn summary_with(l: &Loaded, diags: &[Diag]) -> String {
         }
         pad_to(&mut out, &desc, 44);
         let b = comp_box(c);
+        if b.is_empty() {
+            out.push_str("(draws nothing)\n");
+            continue;
+        }
         let mut xr = String::from("x ");
         units::append_ft_in(&mut xr, b.x0);
         xr.push_str("..");
