@@ -227,15 +227,9 @@ fn let_in(scene: &Scene, m: &mut Member, other: &Member) -> bool {
     true
 }
 
-fn against_face<'s>(scene: &'s Scene, views: Option<&Value>, a: &Member, b: &Member, p: V2, z: f64) -> Option<&'s str> {
-    let names = |v: &Value| -> Vec<String> {
-        v.arr().map_or(Vec::new(), |l| l.iter().filter_map(Value::str).map(String::from).collect())
-    };
-    let mine = views.filter(|v| !v.is_null()).map(names);
-    let shares = |c: &crate::scene::Comp| match (&mine, c.node.get("views").filter(|v| !v.is_null()).map(names)) {
-        (Some(m), Some(t)) => m.iter().any(|v| t.contains(v)),
-        _ => true,
-    };
+fn against_face<'s>(scene: &'s Scene, tie: &str, a: &Member, b: &Member, p: V2, z: f64) -> Option<&'s str> {
+    let me = scene.find(tie);
+    let shares = |c: &crate::scene::Comp| me.is_none_or(|m| scene.together(m, c));
     let own = |ci: u32, inst: u32| a.parts.contains(&(ci, inst)) || b.parts.contains(&(ci, inst));
     scene
         .comps
@@ -426,6 +420,7 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
     let along = cp.along.unwrap_or(0.0);
     let mut kit = Kit::new();
     let mut on_legs: Vec<Leg> = Vec::new();
+    let mut blocked_warn: Option<model::Diag> = None;
     let part = kind.tag();
     let nails_on = |l: f64, n0: f64, n1: f64| -> Vec<V2> {
         [1.0 / 3.0, 2.0 / 3.0].iter().map(|k| j.world(l, n0 + (n1 - n0) * k)).collect()
@@ -522,10 +517,12 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
                 let fw = if dir < 0.0 { sw.0 } else { sw.1 };
                 (fw, if dir < 0.0 { fw.max(sn.0) } else { fw.min(sn.1) })
             };
-            let views = ctx.p.raw("views");
+            let tie_id = ctx.p.id;
             let blocked = |dir: f64| {
                 let (_, start) = start_of(dir);
-                against_face(scene, views, &a, &b, j.world(start - dir * w / 2.0, (n0 + n1) / 2.0), zf + s * 0.25)
+                [0.5, 0.15, 0.85].iter().find_map(|k| {
+                    against_face(scene, tie_id, &a, &b, j.world(start - dir * w / 2.0, n0 + (n1 - n0) * k), zf + s * 0.25)
+                })
             };
             let dir = if ctx.p.has("side") {
                 if cp.side == Side::Left { -1.0 } else { 1.0 }
@@ -536,6 +533,35 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
             };
             let (fw, start) = start_of(dir);
             let lc = start - dir * w / 2.0;
+            if let Some(other) = blocked(dir) {
+                let (c0, c1) = (j.world(start.min(start - dir * w), n0), j.world(start.max(start - dir * w), n1));
+                let fix = if blocked(-dir).is_none() {
+                    format!(
+                        "the other side of the joint is free: {{\"op\":\"update\",\"path\":\"components/{tie_id}\",\"value\":{{\"side\":\"{}\"}}}} (or remove 'side': the automatic side avoids a covered face)",
+                        if dir < 0.0 { "right" } else { "left" }
+                    )
+                } else {
+                    format!(
+                        "both sides of the joint are covered on that face: put the tie on the other z face ({{\"op\":\"update\",\"path\":\"components/{tie_id}\",\"value\":{{\"face\":\"{}\"}}}}) or move '{other}' clear of it",
+                        if s > 0.0 { "back" } else { "front" }
+                    )
+                };
+                blocked_warn = Some(super::hardware::warn(
+                    ctx,
+                    "W_OVERLAP",
+                    "side",
+                    format!(
+                        "tie '{tie_id}': its leg on the {} face of '{}' (x {}..{}, y {}..{}) lies inside '{other}', which is against that face: the plate cannot be nailed there",
+                        face.tag(),
+                        n_m.id,
+                        fmt_ft_in(c0.x),
+                        fmt_ft_in(c1.x),
+                        fmt_ft_in(c0.y),
+                        fmt_ft_in(c1.y)
+                    ),
+                    fix,
+                ));
+            }
             on_legs.push(Leg { low: n_low, l: lc, len: ln, z: zf - s * 0.01 });
             on_legs.push(Leg { low: !n_low, l: fw - dir * 0.05, len: lw, z: zf + s * w / 2.0 });
             kit.poly(part, rect(start, start - dir * w, n0, n1), zp, nails_on(lc, n0, n1));
@@ -552,7 +578,8 @@ pub fn build(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind, gauge_i: u3
         }
         format!("{} face of {}", face.tag(), n_m.id)
     };
-    let warns = long_legs(ctx, &j, p, q, &on_legs, if j.first_low { [0, 1] } else { [1, 0] }, [lp, lq]);
+    let mut warns = long_legs(ctx, &j, p, q, &on_legs, if j.first_low { [0, 1] } else { [1, 0] }, [lp, lq]);
+    warns.extend(blocked_warn);
     let desc = mi.desc();
     let info = format!(
         "connector {}{}{gauge_i} ga, {} {} to {} on the {where_txt}",

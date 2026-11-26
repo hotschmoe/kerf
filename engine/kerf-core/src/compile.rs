@@ -359,7 +359,7 @@ fn read_components<'a>(scene: &mut Scene<'a>, items: &'a [Value]) {
 }
 
 /// Stage 4: dependencies between components (`at.to`, `until`, `points` refs, `slope: "@id"`, `place.in`, `place.station`) and a topological order
-/// of placement (Kahn, ties by document order). A cycle is reported (E_CYCLE) and its members are marked failed.
+/// of placement (Kahn, ties by document order; hardware and nailing after every member that is ready, SPEC 30.1). A cycle is reported (E_CYCLE) and its members are marked failed.
 fn placement_order(scene: &mut Scene) -> Vec<usize> {
     let diags = scene.diags;
     let n = scene.comps.len();
@@ -388,7 +388,9 @@ fn placement_order(scene: &mut Scene) -> Vec<usize> {
     let mut done = vec![false; n];
     let mut order: Vec<usize> = Vec::with_capacity(n);
     while order.len() < n {
-        let picked = (0..n).find(|&i| !done[i] && deps[i].iter().all(|&d| done[d]));
+        let ready = |i: usize| !done[i] && deps[i].iter().all(|&d| done[d]);
+        let late = |i: usize| scene.comps[i].ty.traits.hardware || scene.comps[i].ty.ty == crate::catalog::Type::Nailing;
+        let picked = (0..n).find(|&i| ready(i) && !late(i)).or_else(|| (0..n).find(|&i| ready(i)));
         if let Some(p) = picked {
             done[p] = true;
             order.push(p);
