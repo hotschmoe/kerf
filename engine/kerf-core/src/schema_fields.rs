@@ -127,7 +127,7 @@ pub static VIEW: Object = Object {
             name: "kind",
             ty: "section|plan|elevation|iso|schedule",
             def: "section",
-            desc: "section = 2D cut at cut_z looking toward -Z; plan = looking down at the cut plane cut_y (members it crosses are cut and hatched, members below draw as outlines; vertical bars are dots, bars in the XZ plane paths; plan point [x, y] = model (x, -z)); elevation = looking toward -Z with nothing cut (nearer members hide farther ones, members the crop cuts get break lines); iso = hidden-line 3D. One model gives all of them: keep members in their real orientation; schedule = tables, notes and labels only (no components, no crop or scale, paper inches from [0, 0], caption SCALE: NTS; kind \"sheet\" is an alias for kind \"schedule\"; a view has no sheet field: use layouts[].sheet)",
+            desc: "section = 2D cut at cut_z looking toward -Z; plan = looking down at the cut plane cut_y (members it crosses are cut and hatched, members below draw as outlines; vertical bars are dots, bars in the XZ plane paths; plan point [x, y] = model (x, -z)); elevation = looking toward -Z with nothing cut (nearer members hide farther ones, members the crop cuts get break lines); iso = hidden-line 3D. One model gives all of them: keep members in their real orientation; schedule = tables, notes and labels only (no components, no crop or scale, paper inches from [0, 0], caption SCALE: NTS; kind \"sheet\" is an alias for kind \"schedule\"; view sheet sizes standalone exports; layouts[].sheet sizes layouts)",
             ..Field::NONE
         },
         Field {
@@ -154,7 +154,7 @@ pub static VIEW: Object = Object {
             name: "cut_z",
             ty: "length",
             def: "0",
-            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn: to show members without cutting them use kind \"elevation\". Also the default z of in-plane members and anchor bolts (an elevation's cut_z only sets that; a plan ignores it)",
+            desc: "section: z of the cut plane (the viewer is at +z looking -z); members whose z range contains it are cut (hatched/marked), members behind it (z1 <= cut_z) draw as beyond outlines, members wholly in front of it (z0 >= cut_z) are not drawn: to show members without cutting them use kind \"elevation\". Also the default z of included in-plane members and anchor bolts: the first document section/elevation sets depth only for members it includes; other scenarios use the zero model datum (an elevation's cut_z only sets that; a plan ignores it)",
             ..Field::NONE
         },
         Field {
@@ -415,7 +415,7 @@ pub static LABEL: Object = Object {
 pub static WELD: Object = Object {
     name: "weld",
     brief: "AWS weld symbol at a joint",
-    summary: "AWS weld symbol (annotation of type weld): arrow to the joint, reference line, fillet / CJP / PJP symbol with its size (below the line = arrow side, above = other side), all-around circle, field-weld flag, tail text. Placed exactly where you put it (not moved by the note layout). Section views only.",
+    summary: "AWS weld symbol (annotation of type weld): arrow to the joint, reference line, fillet / CJP / PJP symbol with its size (below the line = arrow side, above = other side), all-around circle, field-weld flag, tail text. Placed exactly where you put it (not moved by note layout); text overprints warn W_LABEL_OVERLAP with an offset op. Section views only.",
     fields: &[
         Field { name: "id", ty: "string", required: true, desc: "unique within the view", ..Field::NONE },
         Field { name: "type", ty: "\"weld\"", required: true, desc: "annotation type", ..Field::NONE },
@@ -755,7 +755,7 @@ pub static CUTS: Object = Object {
             name: "x",
             ty: "length",
             def: "",
-            desc: "notch at top/bottom: distance from the start end; hole: distance from the start end to its centre",
+            desc: "notch at top/bottom: distance from the start end; hole: distance from the start end to its centre; steel holes may cross an edge but must intersect stock; wood holes stay wholly inside",
             ..Field::NONE
         },
         Field {
@@ -766,7 +766,7 @@ pub static CUTS: Object = Object {
             ..Field::NONE
         },
     ],
-    notes: "Two-point members: lumber and steel take `from` and `to` (points: Refs, {ref, offset} or [x, y]) instead of at/length/until/rotate/slope; `align` center|top|bottom picks the line that runs between them. An end at a Ref to a member is trimmed to the face of that member it meets (an explicit cut for that end replaces it), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both with no computed angle or length, and follows them when they move.\nAnchors: seat_outer, seat_inner, heel_bottom (birdmouth), start_top, start_bottom, end_top, end_bottom (the cut corners); hole_k_center, hole_k_top, hole_k_bottom, hole_k_start, hole_k_end (k = 1.. over the holes in list order); notch_k_start, notch_k_end (on the face), notch_k_inner_start, notch_k_inner_end (the inside corners; k = 1.. over the rectangle notches), for the limit dimensions (\"from\": \"joist@hole_1_top\", \"to\": \"joist@hole_1_bottom\", \"text\": \"D/3 MAX.\"); the 9 box anchors stay those of the uncut member.\nHoles and notches in sawn lumber are checked against the IRC: W_HOLE_LIMIT (run x joists, rafters, beams, R502.8.1: diameter over D/3, under 2 in. from the top or bottom edge or from another hole or notch; run y studs, R602.6: over 40% of the depth, under 5/8 in. from the edge; an I-joist hole that touches a flange) and W_NOTCH_LIMIT (run x: deeper than D/6 or longer than D/3, D/4 at an end corner; run y studs: deeper than 25%). The span is unknown, so \"not in the middle third\" is a note you write. Engineered lumber and steel are not checked (manufacturer / engineer).\nDiagnostics: W_BIRDMOUTH_DEPTH (the seat cuts more than 1/3 of the depth; fix: the seat that keeps 2/3), W_CUT_MISS (a seat off its bearing member, a trim whose line misses its member, a notch that removes nothing; each fix is an op), W_OVERLAP of a birdmouth member below its plate prints the heel that lifts it clear; E_PARAM for a cut that does not fit (seat through the member, notch deeper than the member, end cuts that cross).",
+    notes: "Two-point members: lumber and steel take `from` and `to` (points: Refs, {ref, offset} or [x, y]) instead of at/length/until/rotate/slope; `align` center|top|bottom picks the line that runs between them. An end at a Ref to a member is trimmed to the face of that member it meets (an explicit cut for that end replaces it), so a brace from \"tie@top_center\" to \"chord@bottom_center\" bears flat on both with no computed angle or length, and follows them when they move.\nAnchors: seat_outer, seat_inner, heel_bottom (birdmouth), start_top, start_bottom, end_top, end_bottom (the cut corners); hole_k_center, hole_k_top, hole_k_bottom, hole_k_start, hole_k_end (k = 1.. over the holes in list order); notch_k_start, notch_k_end (on the face), notch_k_inner_start, notch_k_inner_end (the inside corners; k = 1.. over the rectangle notches), for the limit dimensions (\"from\": \"joist@hole_1_top\", \"to\": \"joist@hole_1_bottom\", \"text\": \"D/3 MAX.\"); the 9 box anchors stay those of the uncut member.\nHoles and notches in sawn lumber are checked against the IRC: W_HOLE_LIMIT (run x joists, rafters, beams, R502.8.1: diameter over D/3, under 2 in. from the top or bottom edge or from another hole or notch; run y studs, R602.6: over 40% of the depth, under 5/8 in. from the edge; an I-joist hole that touches a flange) and W_NOTCH_LIMIT (run x: deeper than D/6 or longer than D/3, D/4 at an end corner; run y studs: deeper than 25%). The span is unknown, so \"not in the middle third\" is a note you write. Engineered lumber and steel are not checked (manufacturer / engineer).\nDiagnostics: W_BIRDMOUTH_DEPTH (the seat cuts more than 1/3 of the depth; fix: the seat that keeps 2/3), W_CUT_MISS (a seat off its bearing member, a trim whose line misses its member or implicitly extends over two depths past its endpoint (left square), a notch that removes nothing; each fix is an op), W_OVERLAP of a birdmouth member below its plate prints the heel that lifts it clear; E_PARAM for a cut that does not fit (seat through the member, notch deeper than the member, crossed/zero-area end cuts; positive-area triangular bevels are allowed).",
     example: "[{\"type\":\"birdmouth\",\"on\":\"top_plate\",\"tail\":12},{\"type\":\"plumb\",\"end\":\"both\"},{\"type\":\"notch\",\"by\":\"ledger\"},{\"type\":\"hole\",\"d\":2,\"x\":30}]",
 };
 

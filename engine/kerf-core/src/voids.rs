@@ -22,6 +22,8 @@ pub struct Cutter {
     pub exact: Option<Vec<Pt>>,
     pub bx: Box,
     pub z: [f64; 2],
+    pub cover_face: bool,
+    pub footprint: Option<Vec<V2>>,
 }
 
 struct Void {
@@ -46,7 +48,8 @@ pub fn apply(scene: &mut Scene) {
     crate::sort::stable(&mut hosts, |a, b| a < b);
     hosts.dedup();
     let mut worlds: Vec<(usize, Vec<Prism>)> = Vec::new();
-    for v in voids.iter().filter(|v| scene.comps[v.host].world.iter().any(|p| p.fp_proxy)) {
+    let round = |h: usize| scene.comps[h].node.get("shape").and_then(Value::str) == Some("round");
+    for v in voids.iter().filter(|v| !round(v.host) && scene.comps[v.host].world.iter().any(|p| p.fp_proxy)) {
         let host = &scene.comps[v.host].id;
         err(
             scene,
@@ -60,10 +63,14 @@ pub fn apply(scene: &mut Scene) {
             Some("draw the opening in the footprint's own points, or split the footprint where the opening is".into()),
         );
     }
-    hosts.retain(|&h| !scene.comps[h].world.iter().any(|p| p.fp_proxy));
+    hosts.retain(|&h| round(h) || !scene.comps[h].world.iter().any(|p| p.fp_proxy));
     voids.retain(|v| hosts.contains(&v.host));
     for &h in &hosts {
         let mine: Vec<usize> = (0..voids.len()).filter(|&i| voids[i].host == h).collect();
+        if round(h) {
+            worlds.push((h, split_round(scene, h, &mut voids, &mine)));
+            continue;
+        }
         let mut out: Vec<Prism> = Vec::new();
         for p in &scene.comps[h].world {
             out.extend(split(p, &mut voids, &mine));
@@ -86,6 +93,102 @@ pub fn apply(scene: &mut Scene) {
             c.built.info.push_str(&format!(" minus {}", names.join(", ")));
         }
     }
+}
+
+fn split_round(scene: &Scene, h: usize, voids: &mut [Void], mine: &[usize]) -> Vec<Prism> {
+    let c = &scene.comps[h];
+    let mut out = Vec::new();
+    for p in c.world.iter().filter(|p| !p.footprint.is_empty()) {
+        let mut ys = p.fp_y.to_vec();
+        let mut cutters = Vec::new();
+        for &vi in mine {
+            for cutter in &voids[vi].cutters {
+                let orthogonal = cutter.loops.iter().all(|lp| {
+                    lp.iter().enumerate().all(|(i, a)| {
+                        let b = lp[(i + 1) % lp.len()];
+                        (a.x - b.x).abs() < EPS || (a.y - b.y).abs() < EPS
+                    })
+                });
+                if !orthogonal {
+                    err(
+                        scene,
+                        "E_PARAM",
+                        &c.id,
+                        &voids[vi].path,
+                        format!(
+                            "round host '{}': {} has a curved or sloped XY boundary; round voids require rectangular XY profiles",
+                            c.id, voids[vi].name
+                        ),
+                        Some(format!(
+                            "use rectangular void shapes with z ranges, or keep the member embedded: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"voids\":null}}}}",
+                            c.id
+                        )),
+                    );
+                    continue;
+                }
+                ys.extend(cutter.loops.iter().flatten().map(|v| v.y).filter(|y| *y > p.fp_y[0] && *y < p.fp_y[1]));
+                cutters.push((vi, cutter.clone()));
+            }
+        }
+        crate::sort::stable(&mut ys, |a, b| a < b);
+        ys.dedup_by(|a, b| (*a - *b).abs() < EPS);
+        for yw in ys.windows(2) {
+            let mut region = vec![p.footprint.clone()];
+            for (vi, cutter) in &cutters {
+                let xs = crate::pathclip::scan(&cutter.loops, (yw[0] + yw[1]) / 2.0, false);
+                let profiles = match &cutter.footprint {
+                    Some(fp) if !xs.is_empty() => vec![fp.clone()],
+                    Some(_) => Vec::new(),
+                    None => xs
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|x| {
+                            vec![
+                                V2::init(x[0], cutter.z[0]),
+                                V2::init(x[1], cutter.z[0]),
+                                V2::init(x[1], cutter.z[1]),
+                                V2::init(x[0], cutter.z[1]),
+                            ]
+                        })
+                        .collect(),
+                };
+                for profile in profiles {
+                    let next = clip::boolean(&region, &[profile], Op::Diff);
+                    if clip::total_area(&region) - clip::total_area(&next) > EPS {
+                        voids[*vi].removed = true;
+                    }
+                    region = next;
+                }
+            }
+            for group in group_region(&region, None) {
+                let mut zs: Vec<f64> = group.flat.iter().flatten().map(|v| v.y).collect();
+                crate::sort::stable(&mut zs, |a, b| a < b);
+                zs.dedup_by(|a, b| (*a - *b).abs() < EPS);
+                let mut first = true;
+                for zw in zs.windows(2) {
+                    let xs = crate::pathclip::scan(&group.flat, (zw[0] + zw[1]) / 2.0, false);
+                    for x in xs.as_chunks::<2>().0 {
+                        let mut q = p.clone();
+                        q.loops = model::one_loop(model::rect_loop(x[0], yw[0], x[1], yw[1]));
+                        q.z0 = zw[0];
+                        q.z1 = zw[1];
+                        q.seam = [zw[0] > zs[0] + EPS, zw[1] < zs[zs.len() - 1] - EPS];
+                        q.footprint.clear();
+                        q.fp_holes.clear();
+                        if first {
+                            q.footprint = group.flat[0].clone();
+                            q.fp_holes = group.flat.iter().skip(1).cloned().collect();
+                            q.fp_y = [yw[0], yw[1]];
+                            first = false;
+                        }
+                        out.push(q);
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 fn err(scene: &Scene, code: &'static str, id: &str, path: &str, msg: String, fix: Option<String>) {
@@ -436,9 +539,36 @@ fn envelope(c: &Comp, part: Option<&str>) -> Vec<Cutter> {
             continue;
         }
         let exact = (ps.len() == 1).then(|| ccw(&ps[0].loops[0]));
-        out.push(Cutter { bx: clip::loops_box(&u), loops: u, exact, z });
+        let footprint = vertical_round_footprint(c, k, &u, z);
+        out.push(Cutter {
+            bx: clip::loops_box(&u),
+            loops: u,
+            exact,
+            z,
+            cover_face: c.ty.ty == crate::catalog::Type::Sleeve || !ps.iter().any(|p| p.role.is_metal()),
+            footprint,
+        });
     }
     out
+}
+
+fn vertical_round_footprint(c: &Comp, k: u32, loops: &[Vec<V2>], z: [f64; 2]) -> Option<Vec<V2>> {
+    if c.ty.ty != crate::catalog::Type::Steel
+        || c.node.get("run").and_then(Value::str) != Some("y")
+        || c.node.get("orient").and_then(Value::str) == Some("section")
+        || c.xfs.get(k as usize)?.apply_dir(V2::init(0.0, 1.0)).x.abs() > EPS
+    {
+        return None;
+    }
+    let shape = crate::builders::steel_shapes::lookup(c.node.get("shape")?.str()?).ok()?;
+    let crate::builders::steel_shapes::Dims::Round { od, .. } = shape.dims else { return None };
+    let b = clip::loops_box(loops);
+    if (b.width() - od).abs() > 1e-6 || (z[1] - z[0] - od).abs() > 1e-6 {
+        return None;
+    }
+    let mut circle = geom::flatten_loop(&model::circle_loop(b.center().x, (z[0] + z[1]) / 2.0, od / 2.0), FLAT_TOL);
+    clip::orient_ccw(&mut circle);
+    Some(circle)
 }
 
 fn ccw(lp: &[Pt]) -> Vec<Pt> {
@@ -528,7 +658,14 @@ fn shape_void(scene: &Scene, hi: usize, k: usize, e: &Value, path: &str) -> Opti
         return bad("the shape has no area".into());
     }
     let loops = vec![flat];
-    Some(vec![Cutter { bx: clip::loops_box(&loops), loops, exact: Some(ccw(&exact)), z }])
+    Some(vec![Cutter {
+        bx: clip::loops_box(&loops),
+        loops,
+        exact: Some(ccw(&exact)),
+        z,
+        cover_face: true,
+        footprint: None,
+    }])
 }
 
 fn split(p: &Prism, voids: &mut [Void], mine: &[usize]) -> Vec<Prism> {

@@ -136,6 +136,25 @@ pub fn target_landing(env: &mut Env, target: &str) -> Option<Vec<V2>> {
         }
         Landing::Iso(iso) => return iso.landing(comp, inst, part, env.crop, h),
     }
+    if comp.ty.traits.reinforcement
+        && env.spec.kind == crate::view::Kind::Plan
+        && shapes_src.iter().all(|r| {
+            let b = clip::loops_box(core::slice::from_ref(r));
+            b.width().max(b.height()) <= 1.1 * comp.built.bar_d
+        })
+    {
+        let marks: Vec<V2> = shapes_src
+            .iter()
+            .map(|r| clip::loops_box(core::slice::from_ref(r)).center())
+            .filter(|p| geom::locate_even_odd(*p, &shapes_src, 1e-9) != geom::Loc::Outside)
+            .collect();
+        if let Some(mut candidates) = nail_candidates(&marks, env.crop) {
+            if let Some(primary) = shape::label_point(&shape::shapes_of(&shapes_src)) {
+                crate::sort::stable(&mut candidates, |a, b| a.dist(primary) < b.dist(primary));
+            }
+            return Some(candidates);
+        }
+    }
     let mut lp = shape::banded_label_point(&shape::shapes_of(&shapes_src), env.crop, h)?;
     let mut moved_from: Option<V2> = None;
     if let Landing::Section(sec) = &mut env.landing

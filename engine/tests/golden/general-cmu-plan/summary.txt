@@ -4,3 +4,4 @@ DOC general-cmu-plan  5 components  1 view  0 errors  0 warnings  0 acknowledged
  wx            cmu_wall 8" x 4 courses run x L=4'-0"       x 3 13/16"..4'-3 13/16" y 0"..2'-7 5/8"
  v1            rebar #5 path L=2'-5"                       x -5/16"..5/16"   y 1"..2'-6"
  v2            rebar #5 path L=2'-5"                       x -5/16"..5/16"   y 1"..2'-6"
+INFO I_VIEW_SHEET P: single-view sheet P: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/P","value":{"sheet":[17,11]}}

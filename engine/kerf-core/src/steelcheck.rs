@@ -21,13 +21,12 @@ fn len_of(node: &Value, key: &str, default: f64) -> f64 {
     node.get(key).and_then(units::parse_length).unwrap_or(default)
 }
 
-fn hanging_fastener(c: &Comp) -> bool {
-    matches!(c.node.get("kind").and_then(Value::str), Some("threaded_rod" | "eye_screw"))
-}
-
 pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
     weld_sizes(scene, doc, diags);
-    for b in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Bolt && !hanging_fastener(c)) {
+    for b in scene.comps.iter().filter(|c| c.state == State::Ok && c.ty.ty == Type::Bolt) {
+        if b.node.get("kind").and_then(Value::str).is_some_and(|k| k != "bolt") {
+            continue;
+        }
         let d = len_of(b.node, "diameter", 0.75);
         let count = b.node.get("count").and_then(Value::num).unwrap_or(1.0);
         let spacing = len_of(b.node, "spacing", 3.0);
@@ -52,10 +51,68 @@ pub fn run(scene: &Scene<'_>, doc: &Value, diags: &Diags) {
 }
 
 pub fn drawn(comps: &[&Comp<'_>], diags: &Diags) {
-    for b in comps.iter().filter(|c| c.ty.ty == Type::Bolt && !hanging_fastener(c)) {
-        edge_distance(comps, b, len_of(b.node, "diameter", 0.75), diags);
+    for b in comps.iter().filter(|c| c.ty.ty == Type::Bolt) {
+        if b.node.get("kind").and_then(Value::str).is_none_or(|k| k == "bolt") {
+            edge_distance(comps, b, len_of(b.node, "diameter", 0.75), diags);
+        }
     }
+    screw_penetration(comps, diags);
     anchors(comps, diags);
+}
+
+fn screw_penetration(comps: &[&Comp<'_>], diags: &Diags) {
+    for c in comps.iter().filter(|c| {
+        matches!(c.node.get("kind").and_then(Value::str), Some("wood_screw" | "lag_screw"))
+            && c.node.get("orient").and_then(Value::str) != Some("end")
+    }) {
+        let len = len_of(c.node, "length", 0.0);
+        let d = len_of(c.node, "diameter", 0.75);
+        let mut finding = None;
+        for (xf, z) in c.xfs.iter().zip(&c.zs) {
+            for p in c.built.prisms.iter().filter(|p| p.part == "thread") {
+                let x = geom::loop_box(&p.loops[0]).center().x;
+                let a = xf.apply(V2::init(x, 0.0));
+                let dir = xf.apply_dir(V2::init(0.0, -1.0)).norm();
+                let reach = len + 6.0 * d;
+                let b = a.add(dir.scale(reach));
+                let zc = (z[0] + z[1]) / 2.0 + p.zoff;
+                let mut candidate = None;
+                let mut entered = false;
+                for w in comps.iter().filter(|w| w.ty.ty != Type::Bolt && w.index != c.index) {
+                    for wp in w.world.iter().filter(|wp| {
+                        wp.kind == Kind::Body
+                            && (wp.role == crate::style::Role::Wood || wp.material == "wood_treated")
+                            && wp.z0 <= zc
+                            && wp.z1 >= zc
+                    }) {
+                        let flat = clip::from_region(&wp.loops, FLAT_TOL);
+                        for seg in crate::cuts::clip_segment(a, b, &flat) {
+                            let entry = seg[0].sub(a).dot(dir);
+                            let exit = seg[1].sub(a).dot(dir);
+                            if exit.min(len) - entry.max(0.0) > 1.0 / 32.0 {
+                                entered = true;
+                            }
+                            if entry >= len - 1.0 / 32.0
+                                && entry > 0.0
+                                && exit > entry + 1e-6
+                                && candidate.is_none_or(|(_, e, _)| entry < e)
+                            {
+                                candidate = Some((w.id.as_str(), entry, a));
+                            }
+                        }
+                    }
+                }
+                if !entered && candidate.is_some() {
+                    finding = candidate;
+                }
+            }
+        }
+        if let Some((host, entry, a)) = finding {
+            diags.add_fix(Level::Warning, "W_SCREW_PENETRATION", Some(&c.id), Some(&format!("components/{}", c.id)),
+                format!("screw '{}', head at x {}, y {}: length {} stops before entering wood '{}' (wood starts {} from the head)", c.id, fmt_ft_in(a.x), fmt_ft_in(a.y), fmt_ft_in(len), host, fmt_ft_in(entry)),
+                format!("move the head to the attachment face (joist flange: steel_joist@top_flange_bottom_start), or lengthen the screw after checking the connection: {{\"op\":\"update\",\"path\":\"components/{}\",\"value\":{{\"length\":{}}}}} (provides 6D into '{host}'; verify the selected product)", c.id, crate::model::fmt_num(entry + 6.0 * d)));
+        }
+    }
 }
 
 const ANCHOR_EDGE_CLEAR: f64 = 1.5;

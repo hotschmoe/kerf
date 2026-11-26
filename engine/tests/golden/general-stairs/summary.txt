@@ -5,3 +5,5 @@ DOC general-stairs  6 components  2 views  0 errors  0 warnings  0 acknowledged
  w_stair       stair wood (3) 2x12 PT stringers, 5 risers 7 1/2" x 10" treads, throat 5 1/4" x -1"..3'-4 3/4"  y 0"..3'-1 1/2"
  rim           lumber 2x12 upright run z                   x 3'-4 3/4"..3'-6 1/4" y 2'-1 1/2"..3'-0 3/4"
  subfloor      panel plywood 3/4" x 1'-6" run x            x 3'-4 3/4"..4'-10 3/4" y 3'-0 3/4"..3'-1 1/2"
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1 1/2" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}
+INFO I_VIEW_SHEET B: single-view sheet B: 17 x 11 paper inches at 1 1/2" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/B","value":{"sheet":[17,11]}}

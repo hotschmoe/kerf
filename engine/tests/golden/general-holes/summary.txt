@@ -2,3 +2,4 @@ DOC general-holes  3 components  1 view  0 errors  0 warnings  0 acknowledged
  plate         lumber 2x4 x narrow run x L=10'-6"          x 0"..10'-6"      y -1 1/2"..0"
  joist         lumber 2x10 x wide run x L=8'-0" cuts: 1 notch, 3" hole at 2'-6", 2" hole at 3'-6" x 0"..8'-0"       y 0"..9 1/4"
  stud          lumber 2x6 y wide run y L=4'-0" cuts: 1 notch, 2" hole at 2'-0" x 10'-0"..10'-5 1/2" y 0"..4'-0"
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}

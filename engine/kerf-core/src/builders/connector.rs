@@ -35,7 +35,7 @@ params! {
         width: OptLenPos => { def: "1.25 (straps); hanger: the carried member; cap/base: the post; holdown 2.5 (DTT 3.25)", desc: "strap: extent along Z (lay edge) or in-plane (lay face); hanger: inside seat width; holdown: body width along the face" },
         fasteners: Str = "" => { def: "null", desc: "text for notes, e.g. \"(10) 10d EA. END\"" },
         mount: OptEnum(Mount) => { def: "face (TF models: top_flange)", desc: "hanger: face (back flanges nailed to the carrying member's face) or top_flange (flange over its top)" },
-        carried: OptRaw => { def: "required for hanger", desc: "hanger: the joist/beam it carries (`id`, `id#k`, or a list of ids drawn as one member, e.g. an I-joist's flanges and web); seat under its end, sides on its faces" },
+        carried: OptRaw => { def: "required for hanger", desc: "hanger: the joist/beam it carries (`id`, `id#k`, `id.part`, `id#k.part`, or a list of ids drawn as one member, e.g. an I-joist's flanges and web); seat under its end, sides on its faces; stair/stringer refs select one physical wood stringer nearest default section depth, sized at its local end" },
         carrying: OptRaw => { def: "required for hanger", desc: "hanger: the member (id or list) whose face the carried member ends at" },
         post: OptRaw => { def: "required for post_cap, post_base, holdown", desc: "the post (id, or a list for a built-up stud pack) the cap, base or holdown fits" },
         beam: OptRaw => { def: "required for post_cap", desc: "post_cap: the beam (id or list of plies) sitting on the post" },

@@ -34,4 +34,8 @@ COVERAGE  11/11 requested elements covered
  ok       horiz. reinf.             note n_corner, note n_horiz
  ok       vert. reinf. at corner    a_vert
  ok       alternate corner bar bend note n_alt
-INFO I_ANNOT_MOVED d_lap_y: view A: dimension 'd_lap_y' is drawn at offset -26 instead of its offset -10: moved 1'-4" (1" paper) outward to clear the leader of note 'n_corner' Fix: keep it there: set "offset": -26; or keep -10 by moving what it collides with, or set "pin": true (drawn exactly at -10, overlaps then warn W_LABEL_OVERLAP)
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1 1/2" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}
+INFO I_VIEW_SHEET B: single-view sheet B: 17 x 11 paper inches at 1 1/2" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/B","value":{"sheet":[17,11]}}
+INFO I_VIEW_SHEET C: single-view sheet C: 17 x 11 paper inches at 1 1/2" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/C","value":{"sheet":[17,11]}}
+INFO I_VIEW_SHEET D: single-view sheet D: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/D","value":{"sheet":[17,11]}}
+INFO I_ANNOT_MOVED d_lap_y: view A: dimension 'd_lap_y' is drawn at offset -16 instead of its offset -10: moved 6" (0.25" paper) outward to clear the leader of note 'n_corner' Fix: keep it there: set "offset": -16; or keep -10 by moving what it collides with, or set "pin": true (drawn exactly at -10, overlaps then warn W_LABEL_OVERLAP)

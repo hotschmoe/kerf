@@ -755,7 +755,7 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     fill_fault_diags(&sec.fill_faults, spec.id, diags);
     nails_hidden_diags(&sec.nails_hidden, spec, diags);
     let mut base_items = sec.finish();
-    let regions = sec.region_items();
+    base_items.extend(sec.region_items());
     let mut env = Env::new(st, font, scene, spec, scale, spec.crop, diags, Landing::Section(&mut sec));
     env.work = Some(work);
     env.verify_fixes = !in_layout;
@@ -769,7 +769,6 @@ fn section_pass(inp: SectionInputs, spec: &ViewSpec) -> SecPass {
     let unverified = env.unverified;
     let sided = env.sided;
     let mut all: Vec<Item> = base_items;
-    all.extend(regions);
     all.extend(ann);
     let mut tcrop = spec.crop;
     let ab = annot::items_box(font, &all);

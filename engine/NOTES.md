@@ -7,79 +7,54 @@ Drawing IR on every view, the CLI ergonomics and the `kerf serve` smoke tests we
 history). `README.md` is the short version of this file, `PERF.md` has the numbers.
 
 
-## beta.5 concrete, masonry and ops (#36, #37, #39)
+## v0.2.0-beta.5 integration (SPEC 33–36)
 
-Working tree only on `b5-concrete`; no index/ref writes, commits, installs or GitHub issue mutations. Contract:
-SPEC §35, with the implementation invariants in SRC. No dependencies or blocking tests were added. No file was
-deleted; the previous masonry E golden bytes are preserved in `.archive/b5-concrete/masonry-footprints/`.
+The sheets, hardware, concrete and round-2 branches are integrated in the working tree; the orchestrator owns
+staging, the merge commit and release version bump. Cargo.toml stays 0.2.0-beta.4. No git metadata or source MASS
+library is written. Agent-local validation/status history is preserved in `.archive/b5-integ/engine-agent-notes.md`.
 
-- #36: shared host faces are excluded from W_COVER without relying on `pour`; split contacts retain exposed edge
-  intervals. Each path leg uses its own direction and is clipped to every host it enters. Actual footprint sections
-  replace box hosting; round sections use analytic chords. Steel-backed CMU void edges are interfaces, and a native
-  wall takes cover ownership over enclosed legacy CMU/grout pieces. Negative cover no longer offers the impossible
-  cover-0 fix; XY paths get an authored-point geometry op. `plane:"yz"`, optional constant `x` (length or Ref), and
-  literal `[y,z]` points support transverse hooks. Iso uses a smooth transverse ribbon, mesh a circular sweep.
-- #37: nominal 16 / actual 15.625 CMU; `form:"pier"` makes a square two-cell unit at true depth with end/central webs.
-  `units:{"1":"lintel","3":"inverted_bond_beam"}` supplies solid bottoms/tops and grout. Run-x `bond_beams` also
-  takes `{course:3,x:[0,72]}` spans; elevation bands, plan core grout, named zones and control-joint gaps follow them.
-  Native reinforced vertical cells count as contact; remaining floating horizontal bars identify the ungrouted
-  course and offer a bond-beam op. Open cells between footprint pieces remain physical voids and warn; do not
-  acknowledge them as if they were grout. Use native walls and the migration below.
-- #39: `set scale` null is removal; other null sets direct the author to remove. Component removal references are
-  checked at final batch state (safe replacement/removal ordering succeeds; dangling references fail atomically).
-  View updates can replace annotations with citation sanitization. View schema explicitly identifies kind sheet
-  as the schedule alias, with paper sizing on layouts[].sheet. Anchor plate distances follow the rotated rod axis.
+- Standalone view `sheet` auto-grows; keyed/list `notes_side:below`, wrapped captions, outward short dimensions,
+  verified pinned dimension fixes, degree glyphs and iso label `z` are public. Layout checks use their actual scale.
+- Connector parts, layered nailing, `row_offsets`, tie `gap` and three-face `on`, model hanger heights, horizontal
+  DTT/anchor plates, threaded rods with `coupler` and screw eyes retain hardware behavior.
+- Shared-face cover, yz rebar, 16-inch CMU piers, special course `units`, partial `bond_beams`, native grout contact,
+  migration ops, final-batch removal checks and view annotation replacement retain concrete behavior.
+- Round-2 adds stair `cover`/single-stringer hangers, physical even spacing, round-host voids, square embedded wood,
+  edge-opening steel holes, readable PL plans, metal screws, actual joist flange anchors, screw-entry/weld/trim
+  warnings and scenario-local depth inheritance. AISC edge/spacing checks apply only to through bolts.
 
-Author examples:
-`{"type":"rebar","size":"#4","mode":"path","plane":"yz","x":4,"points":[[2,-8],[24,-8]],"hook":{"end":{"angle":90,"toward":"up"}}}`
-`{"id":"pier","type":"cmu_wall","width":16,"form":"pier","courses":3,"grout":"solid"}`
-`{"op":"update","path":"components/wall","value":{"bond_beams":[{"course":3,"x":[0,72]},{"course":4,"x":[72,120]}]}}`
-`{"op":"set","path":"scale","value":null}`
+Build and validation: `cargo build --release`; `tests/gates.sh` is the blocking gate. Integration also runs every
+requested background comparison and check without adding blocking tests. Use the shared tooling venv on PATH and
+KERF_CHROME=/usr/bin/google-chrome. Exact logs, copied library, visual pairs and per-document verdicts live under
+`/home/hotschmoe/github/mass-details/work/codex/b5-integ/`.
 
-Migration: I_CMU_PLAN_UNITS now enumerates surrogate CMU/grout/mortar pieces over every panel of a wall and prints
-one removal batch. Keep walls and bars; re-point any notes/anchors in that batch, set reinforced vertical grout and
-horizontal beam courses, then review obsolete joint line annotations. Independent copies of all six library details
-s-40-05/-06/-07/-08/-11/-14 were migrated using those printed removals (45/52/24/9/28/7 pieces respectively). Every
-fallback clears. Applying the printed grout-course fixes leaves five details strict-clean; s-40-07 retains a real
-b_dowel footing bottom-cover finding. The original library was not edited.
+Final integration validation on pinned Rust 1.99.1: release build; native and wasm Clippy with warnings denied;
+formatting; 994 native golden outputs with DXF/PDF audits; CLI and serve E2E; 656 ergonomics checks; serve smoke;
+platform serve; wasm build, 70/70 golden comparisons, 100 scoped native/wasm feature outputs and ABI check; debug build plus 300 mutations x 3 functions
+(zero crashes); web typecheck; and the complete tests/gates.sh (including web save/open) all pass. The final
+release rebuild took 48 s; the preceding help-only rebuild took 31 s. Short guide: 12,164 bytes (limit 12,288).
+Wasm without wasm-opt: 1,883,977 raw / 734,808 gzip-9 / 590,248 Brotli-11 bytes via tools/size_report.sh.
 
-Reproduction and review files are in `/home/hotschmoe/github/mass-details/work/codex/b5-concrete/`: real copies of
-132 source documents (the current folder has 132, rather than the request's estimated 138), workspace style and real
-refs, baseline/current logs, per-file regression.txt, reproduction ops/PNGs and migration ops/checks. The pad/slab
-PNG remains byte-identical to beta.4 while its false joint warning clears. Inspected the 16-inch pier section and
-plan, stepped beam elevation/plan, special-unit section, rotated ledger rods, smooth yz hook, both real S1 layouts,
-and migrated corner/control-joint plans. A 16-case matrix varies 4/12-inch pieces, shared/separate pours, point order
-and host order; no internal-face finding remains. Atomic dangling removal, remove/re-add, set-null, annotation-list
-replacement and unsupported-unit diagnostics were exercised with the real CLI.
+Visual review accepted 20 changed reference/test documents: 239 changed outputs, including 32 view drawings and
+one layout drawing. Selective make_golden.sh regeneration retains all other bytes; previous bytes are preserved
+in .archive/b5-integ/golden-before/. A discovered short hole-dimension regression was fixed in the engine:
+elevation annotation scoring sees visible outline regions, beside/end stems clear the local member section, and
+hidden context does not reserve an interior. Section/plan behavior is retained; the broad trial was narrowed after
+reviewing the s-80-11 wall-pocket sheet. Both reference and real stair/steel sheets were inspected after this fix.
 
-Known limits: open_end/knockout/knock_out selectors explicitly warn W_PARAM and draw the standard unit profile,
-with the exact op removing the unsupported selector. A 24-inch pier unit is not introduced. YZ ties still require
-explicit path points/hooks; tie uses xy/xz and epoxy xy. Rotate/slope is refused on yz paths. Cover remains in XY;
-z-face cover is not checked. Reinforced vertical-cell contact is inferred as in plan, rather than adding whole-wall
-grout solids to section/iso. The user should inspect the cutaway and specify grout courses when needed.
+Regression: all 138 real documents/style/refs copied into b5-integ/lib; errors 0 -> 0, strict WARN lines 36 -> 58,
+strict-clean documents 118 -> 108, acknowledgements 15 -> 10. All 92 per-file output differences and one explanation
+per diagnostic class are in regression.txt. Nine true exterior-cover findings replace five false joint/interface
+findings; five stale acknowledgements surface. Hardware adds nine findings, screw entry and implicit trim add one
+each, and actual layout-scale leader findings change by +2 net. Fourteen varied S1 layouts (12 required and two
+warning follow-ups) were exported before/after and inspected, with no clipped/lost content or worse physical scale.
+No source library document, Git index/ref, package version or blocking-test registration was changed.
 
-Final validation (engine Rust 1.99.1, required tooling venv on PATH): release build, Clippy all targets with
-warnings denied, rustfmt check, CLI E2E and serve E2E pass. Ergonomics passes 655/655. The complete native comparison
-passes all 978 outputs and DXF/PDF audits on the final build in four batches (316/230/209/223 outputs); an earlier
-full run also passed, and a repeated single-process run received SIGTERM, so the final comparison was partitioned.
-WASM builds without wasm-opt, matches 70/70 native goldens and 16/16 additional feature drawings byte-for-byte.
-`tools/size_report.sh`: 1,811,497 raw / 706,960 gzip-9 / 568,047 Brotli-11 bytes. Short guide: 12,106 bytes (was
-12,111, limit 12,288). Schema, catalog and full guide were checked for the new fields and limitations.
-
-Release regression over all 132 copied details: errors 0 -> 0; strict WARN lines 52 -> 55; strict-clean files
-111 -> 108. Thirteen files have diagnostic changes. Four false cover findings disappear (three shared joints,
-one steel-backed CMU void); their four stale acknowledgements become W_ACK_UNUSED. Five real cover findings are
-new: s-10-04 p_dow's bend (1 in. vs 3) and slab side (2.75 vs 3), s-20-01 d_lbar0/1 (1.45 vs 1.5), s-40-07 b_dowel
-footing bottom (2.6875 vs 3). s-40-12 loses two false native-cell vertical-bar floating findings; its three existing
-horizontal missing-grout warnings gain exact wall/course fixes. The six legacy CMU details gain detailed migration
-ops in their informational messages. Other warning classes are unchanged. Every per-file diff and class explanation
-is in the requested regression.txt, with full baseline/current logs beside it.
-
-Only the existing masonry-footprints E drawing golden was regenerated (drawing IR, bare/sheet SVG, DXF, PDF,
-bare/sheet PNG), to distinguish beam courses with inset dashed bands and retain control-joint gaps. The band inset
-was increased after inspecting the small-scale sheet so it reads separately from the bed-joint line. All other
-golden bytes and every reference document were retained. Full file list, authoring examples and gate evidence:
-`/home/hotschmoe/github/mass-details/work/codex/b5-concrete/HANDOFF.txt`.
+Known limits: no plan-skew/3D hanger placement, arbitrary wrap sequences, manufacturer deflection-slot geometry,
+sloped plumb-face nailing or general truss web contact. YZ cover remains XY; yz ties require explicit paths/hooks.
+Open-end/knockout CMU selectors warn and use standard geometry. Curved/sloping XY cutters on round hosts error.
+Screw entry checks cover side lag/wood screws only; weld offsets and dense annotation repairs require visual review.
+Implicit plan context, continuation intent and target-free leader notes remain unsupported.
 
 ## beta.4 merge of master issue #31 (SPEC 30–32)
 
@@ -797,13 +772,6 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   diagram (one member, nothing bearing) is still `W_FLOATING` and is acknowledged.
 
 ## SPEC ISSUES
-- beta.5 (#36/#37): shared-face cover is geometric, independent of pour identity; straight legs measure transverse
-  cover in their own direction. Nominal-16 square piers use the inherited shell/web thickness and two cells, rather
-  than introducing a vendor-specific 24-inch unit. Reinforced vertical-cell contact follows native plan inference;
-  open-end/knock-out selectors warn instead of silently claiming special geometry. SPEC §35 records these choices.
-
-- beta.5 hardware: same-depth nailing receivers are alternatives, deeper layers are a continuous stack; this interpretation preserves rim/blocking connections and fixes through-sheathing rows (§34).
-- beta.5 hardware: plan-skew hangers need actual 3D member frames. This worktree warns fixed models on sloped seats and leaves unsupported plan placement to the framing work; arbitrary slot/wrap geometry is not inferred.
 - Integrating SPEC 30 with 31/32: the original through-member type list omitted steel joists, deck and stairs, and
   the unsupported-plate load list omitted wood stairs. Include their cut body prisms in leader obstruction and wood
   stair bodies in the plate's carried wood, because replacing equivalent legacy typed geometry should retain the
@@ -815,7 +783,7 @@ over-long command lines. CI runs the Windows gates against the shipped build on 
   (I_KEY_RENUMBERED says so) so "no gaps" holds even when the authored keys skip numbers; an unkeyed note joins an
   earlier entry with the same text and cite (the s-10-01 drafts repeat texts across scenarios without keys); scale
   precedence view > layout numeric > document `scale` > `common`; iso views stay NTS in a layout (fitted to their
-  share); view titles wrap in layouts only (at least 3" paper wide); the layout's coordinates are paper inches times
+  share); view titles wrap within standalone pages and layout cells (at least 3" paper wide in layouts); the layout's coordinates are paper inches times
   the first view's scale (DXF keeps that view 1:1). The layout W_VIEW_FIT keeps the code W_VIEW_FIT with id = the
   layout and path `layouts/<id>`. The `ref` annotation's leader point is `at` (as for notes) and its bubble `place`.
 - Sheet title block DETAIL NO: a layout without `number` prints the sheet alone (`S-10.01`), not `/S-10.01`; the same
@@ -1266,120 +1234,3 @@ Status: `steel_joist`, `metal_deck`, `stair_treads` are new types; `bolt` gained
   footprint machinery as L/T footings; once concrete takes a plan outline, `steel` `PL` could take one too.
 - #28 -> #20 (pair checks per view set): `W_UNTREATED_CONTACT` is one of the all-pairs checks; its contact rule changed
   here (SPEC 28.8), its view membership is #20's.
-
-
-## v0.2.0-beta.5 hardware worktree (#35; connector parts of #38/#40)
-
-Implemented member-part connector lookup, common-footprint face nailing through layered receivers, alternative
-same-depth backing, explicit row_offsets, and diagnostics for missed receiving groups and collapsed requested
-fastener counts. Member ties now flag remote side-face wraps. Exact-model gap ties debit the gap from the developed
-length and retain W_TIE_LEG against their actual mounting faces. DTC/STC/HTC gap bridges retain W_CONNECTOR_GAP
-for missing slot geometry until acknowledged after the manufacturer movement/fastening note is supplied.
-
-Hangers use catalog heights (HUS26 5 7/16, LU24 3 1/8), or the bottom chord for generic truss fallback; named
-families without an exact height warn. Fixed models on sloped seats warn. A repeated ineffective trim gets a
-world-space bevel-line fix preserving the other end cuts. DTT-family connectors use a horizontal x bolt's nut
-bearing and front/back joist mounting, without a foundation check; unsupported orientations warn and draw no
-surrogate. Three-face on arrays make one constant-width front/top/back wrap. Rotated anchor plate association
-works in the rod's frame. Bolt kinds append threaded_rod (optional coupler) and eye_screw, without concrete-anchor
-spacing semantics. SPEC 34, catalog, schema and full guide describe the fields; the short guide remains 12,111
-bytes, unchanged. See SRC for the non-obvious placement choices.
-
-Validation on x86_64 / engine-pinned Rust 1.99.1: release build, Clippy all targets with -D warnings, fmt --check,
-all 994 native golden outputs including DXF/PDF audits, CLI E2E, serve E2E, ergonomics (656 checks), wasm build and
-70/70 standard wasm golden comparisons pass. A separate real-wasm review matches 26 new hardware/nailing/S1
-exports byte for byte with native. Final wasm without wasm-opt: 1,813,475 raw / 705,646 gzip-9 / 567,251 Brotli-11.
-The last release build took 71 s; final wasm build 30 s on the shared runner. No new blocking test was registered.
-An earlier combined long-running gate controller exited 143 before its heavy checks completed; every affected
-gate was rerun successfully as a standalone command, with final results recorded separately.
-
-One new small reference, tests/docs/connector-fasteners.kerf.json (12 components, A/I/S1), and its goldens. Only the
-existing nailing golden intentionally changed: B now fastens the listed blocking as well as the rim (12 -> 15
-nails), so its B drawing/exports and summary changed; all other views and mesh are unchanged. make_golden.sh now
-accepts repeatable --only NAME for selective regeneration. Old nailing goldens and intermediate review artifacts
-were moved/preserved under .archive/b5-hardware/; no file was deleted.
-
-Regression: all 138 MASS files, workspace style and real refs copied to
-/home/hotschmoe/github/mass-details/work/codex/b5-hardware/ (manifest.json records hashes). Beta.4 and this build both
-ran check --strict over the copies. Errors 0 -> 0; 14 per-file outputs differ. Nine new warning lines: W_HANGER_SIZE
-2 (THA413 heights unverified), W_HANGER_SLOPE 2 (fixed models at sloping I-joists), W_TIE_PATH 1 (four-inch remote-face
-wrap), W_NAIL_SPACING 4 (two crowded three-nail rows and two requested screw pairs collapsing to one). No previous
-diagnostic was removed. Strict exit 0: 118 -> 114; exit 1: 20 -> 24. Warnings including acknowledgements: 36 -> 45.
-Every difference and the explanation for each class is in regression.txt; baseline/current retain every result.
-No MASS source/style/ref was edited. The version bump, index and commits remain the orchestrator's work.
-
-Visual review: inspected before/after real-detail tie, hanger, rim nailing, horizontal DTT, gap clip, corrected trim
-and rod/screw PNGs, plus real S1 layouts and the new A/I/S1 reference. Actual emitted tie, gap and missed-trim fix
-ops were applied to independent copies. Tie and trim clear their errors/warnings; gap acknowledgement leaves zero
-unacknowledged warnings (strict intentionally still lists recorded reasons). Rod migration uses start/head_bearing
-instead of top_of_concrete and places the rod at the actual screw head; the copied s-70-18 loses its false ACI pair
-warning without introducing a floating rod. Source sheets with explicit scale still show pre-existing clipped
-notes/title in some views; those layout defects are outside this worktree.
-
-Remaining: plan-skew / true 3D hanger placement, arbitrary wrap sequences and DTT orientations, and actual
-manufacturer slot geometry. #35 C08's prescriptive end-nail spacing policy, C09's sloped-member plumb-face nailing,
-and C10's side-view truss top-chord nail-stack intersection are not implemented here; their existing warnings
-remain. Full per-item authoring fragments and limitations are in the review directory's handoff.txt.
-
-## v0.2.0-beta.5 — sheets and annotation fit (#33/#34, b5-sheets)
-
-Working-tree changes only; Git metadata is read-only. No commit, install, source-library write, file deletion,
-new blocking test. SPEC additions are confined to the new §33.
-
-Single-view builds now honor view `sheet` (`auto`, WxH or [w,h], 5..60 paper inches), grow through the standard
-pages when needed, and aim for scale factor <=12 before accepting a smaller standard scale. Explicit scales and
-paper-sized tables keep their size. Side lists may be taller than the geometry; `notes_side:below` is accepted for
-keyed/list views. Standalone captions wrap, and the fit includes notes, tables, captions and frame/title-block
-clearance even when a layout also names the view. A larger chosen page reports I_VIEW_SHEET; overflow reports
-W_VIEW_FIT with an exact sheet update op. Layout check now includes its actual view diagnostics; standalone
-annotation warnings of layout views no longer substitute for the layout-scale results.
-
-Short dimensions try a centered outward text position with a short stem and consider filled member regions,
-excluding soil. Chains keep their previous free-end preference. Residual short-text/member collisions warn
-W_LABEL_OVERLAP. Numeric W_LEADER_HIT dimension fixes require rebuilding the whole view at its current scale with
-no remaining leader or annotation hits, include pin:true, and pin an automatic view scale. Other dense routes may
-still need manual placement; bounded routing does not promise every dense view will be clean. Each scale trial
-has a fresh routing budget. Safe automatic side changes are retained during standalone sheet growth.
-
-Degree signs survive text folding. Iso label Refs use the view's cut_z (or label z) clamped to the drawn extrusion;
-literal label at and top-level label offset use view coordinates. The OPENING repro now lands under the opening.
-
-Review artifacts and independent real copies of the 131 top-level source documents, style and refs are in
-`/home/hotschmoe/github/mass-details/work/codex/b5-sheets/` (all refs copied, no symlinks). Repros include the explicit
-3-inch sheet, keyed extra note, below list, forced Letter overflow, long caption, schedule, short dimension,
-degree, iso label and original dense-note sets. Before/after single-view and S1 PNGs were rendered and inspected;
-degree PDF and DXF were audited and rendered as well. Manual CLI checks repeat drawings for byte determinism and
-require every selected page either to fit with the reserved clearance or report W_VIEW_FIT.
-
-Existing ergonomics scenarios that require Letter now request sheet:11x8.5; the dense routing scenario pins its
-original clean 3/4-inch scale; the obsolete two-column requirement for a side list was removed while retaining
-the list's positional check. No assertion or blocking test was added. Only the steel-stair-pan reference changed:
-n_tread and n_car now use the left column to avoid the cut header/end plate. Its eight changed golden files were
-regenerated with tests/make_golden.sh --only steel-stair-pan; mesh bytes are unchanged. The script gained --only
-so this did not rewrite other goldens. Original bytes are preserved in
-.archive/b5-sheets/steel-stair-pan-golden-beta4/.
-
-Release build, Clippy all targets with warnings denied, rustfmt, CLI E2E and serve E2E pass; ergonomics passes
-655 checks. The short guide is 12,170 bytes (limit 12,288; beta.4 was 12,111), with schema fields sheet/below/label z
-and the extended instructions in guide --full. Wasm builds without wasm-opt: 1,785,896 raw / 694,819 gzip-9 /
-559,769 Brotli-11 bytes. Wasm matches the current native CLI byte for byte on 135 comparisons (70 existing paths plus drawing/SVG/DXF/PDF/PNG
-for all 13 repro variants). Stored snapshots deliberately remain unchanged outside steel-stair-pan: native
-check_golden reports 222/978 output differences and wasm_golden 12/70. Differences are sheet/scale/caption/text
-placement and diagnostic changes; no native export, check, DXF audit or PDF-vector audit failed. The regenerated
-stair reference agrees in the full native comparison. Detailed gate exit codes, timings and difference classes
-are in /home/hotschmoe/github/mass-details/work/codex/b5-sheets/validation.txt.
-
-Regression: check --strict on all 131 originals has 0 errors before and after. Strict warnings (acknowledged
-included) 36 -> 39; W_LEADER_HIT 18 -> 21 (seven added, four removed occurrences by code/owner); all other classes
-unchanged. Strict exit 0: 111 -> 108; exit 1: 20 -> 23. Seven added findings are true layout-scale text/leader or
-member collisions, inspected in the warning-review PNGs. Four removed findings (s-10-03 A n_gyp, s-10-16 A n_ab,
-s-30-01 D/F n_weep) were standalone-scale findings absent at the document's layout scale. The report includes every
-per-file unified difference, new/removed warning lines, and explanations of INFO changes (I_VIEW_SHEET and actual
-layout-scale movement reports). Exact results: /home/hotschmoe/github/mass-details/work/codex/b5-sheets/regression.txt.
-Three documents changed externally during the run; their copies were refreshed and both binaries rechecked them.
-The final paired inputs are identified by regression-inputs.sha256; initial copies and reports were preserved.
-
-Known limits: dense routes can still warn and may need manual placement; numeric dimension-offset fixes are
-conservatively withheld when they cannot be verified (including plan fixes, whose scene uses projected coordinates).
-Implicit plan-context extents, an explicit continuation-intent field, and target-free notes in leader-mode views
-were not changed by this sheet/annotation-fit implementation.

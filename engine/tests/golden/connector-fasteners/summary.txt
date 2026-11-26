@@ -11,6 +11,7 @@ DOC connector-fasteners  12 components  2 views  0 errors  0 warnings  1 acknowl
  sheet         panel osb 3/4" x 1'-0" run x                x 3'-0"..4'-0"    y 2 1/4"..3"
  sole          lumber 2x6 flat run z                       x 3'-0"..3'-5 1/2" y 3"..4 1/2"
  nails         nailing face (4) 16d NAILS @ 6" O.C. STAGGERED: 4 nails (0.162 x 3 1/2"), sole -> sheet -> rim x 3'-1 1/2"..3'-4" y 1"..4 1/2"
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1 1/2" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}
 INFO I_LAYOUT_SHEET S1: layout S1: "sheet": "auto" picked 17x11 with the views at 1" = 1'-0" (the smallest standard sheet that holds it) Fix: nothing to do; set "sheet" (e.g. "22x17") or a numeric layout "scale" to choose yourself
 ACKNOWLEDGED  1 warning suppressed by `acknowledge` (kerf check --strict prints each in full)
  W_CONNECTOR_GAP     x1   clip: "schematic clip; manufacturer slot travel and fastening are specified in the detail note"

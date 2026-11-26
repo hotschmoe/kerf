@@ -388,7 +388,11 @@ fn footprint_plan(p: &Prism, cut_y: f64, out: &mut Vec<Prism>) {
     }
     let mut lp: Vec<Pt> = p.footprint.iter().map(|v| Pt::at(plan_pt(v.x, v.y), 0.0)).collect();
     lp.reverse();
-    out.push(footprint_prism(p, lp, y0, y1));
+    let mut q = footprint_prism(p, lp, y0, y1);
+    for hole in &p.fp_holes {
+        q.loops.push(hole.iter().rev().map(|v| Pt::at(plan_pt(v.x, v.y), 0.0)).collect());
+    }
+    out.push(q);
 }
 
 pub fn footprints_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
@@ -405,7 +409,9 @@ pub fn footprints_in_section(world: Vec<Prism>, cut_z: f64) -> Vec<Prism> {
             continue;
         }
         let [y0, y1] = p.fp_y;
-        for s in strips(core::slice::from_ref(&p.footprint), cut_z) {
+        let mut region = alloc::vec![p.footprint.clone()];
+        region.extend(p.fp_holes.iter().cloned());
+        for s in strips(&region, cut_z) {
             out.push(footprint_prism(&p, model::rect_loop(s.x0, y0, s.x1, y1), s.lo, s.top));
         }
     }
@@ -756,7 +762,11 @@ pub fn prisms(scene: &Scene, world: &[Prism], cut_y: f64) -> (Vec<Prism>, Vec<Ow
                     let mut q = rect_prism(p, s.x0, s.x1, p.z0, p.z1, s.lo, top);
                     q.kind = Kind::Body;
                     q.recess = recess;
-                    if s.cut && p.embedded && ((s.x1 - s.x0) - (p.z1 - p.z0)).abs() <= 0.05 * (s.x1 - s.x0) {
+                    if s.cut
+                        && p.embedded
+                        && p.role == Role::Rebar
+                        && ((s.x1 - s.x0) - (p.z1 - p.z0)).abs() <= 0.05 * (s.x1 - s.x0)
+                    {
                         let c = plan_pt((s.x0 + s.x1) / 2.0, (p.z0 + p.z1) / 2.0);
                         out.push(dot_prism(p, c, (s.x1 - s.x0) / 2.0, cut_y));
                         continue;
@@ -918,6 +928,7 @@ fn plan_insts(c: &Comp) -> Vec<PlanInst> {
 pub fn scene<'a>(src: &Scene<'a>) -> Scene<'a> {
     let mut s = Scene::new(src.style, src.diags, src.run);
     s.default_z = src.default_z;
+    s.depth_view = src.depth_view;
     s.instances_total = src.instances_total;
     s.views = src.views.clone();
     s.comps = src

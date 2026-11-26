@@ -9,5 +9,6 @@ DOC rebar-polygon-place  10 components  1 view  0 errors  0 warnings  1 acknowle
  vert          rebar #5 path L=2'-4 1/8"                   x 8'-8 3/4"..8'-9 3/8" y 2"..2'-6 1/8"
  dowel         rebar #5 path L=3'-1 5/8"                   x 8'-0"..8'-7 1/4" y -9"..1'-10"
  bb_bar        rebar (1) #5 along z @ top face             x 8'-7 11/16"..8'-8 5/16" y 2'-5"..2'-5 5/8"
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}
 ACKNOWLEDGED  1 warning suppressed by `acknowledge` (kerf check --strict prints each in full)
  W_LEADER_HIT        x1   A/n_hook: "the hook is inside the footing; from the left its leader crowds the footing bar note"

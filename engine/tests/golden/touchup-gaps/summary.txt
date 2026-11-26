@@ -21,4 +21,6 @@ DOC touchup-gaps  22 components  7 views  0 errors  0 warnings  0 acknowledged
  f_wall        concrete rect 8" x 4'-0"                    x 8"..1'-4"       y 0"..4'-0"
  f_ftg         concrete footing 3'-0" x 1'-0"              x 0"..3'-0"       y -1'-0"..0"
  f_soil        fill earth                                  x 1'-4"..5'-0"    y 0"..3'-8"
+INFO I_VIEW_SHEET A: single-view sheet A: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/A","value":{"sheet":[17,11]}}
+INFO I_VIEW_SHEET C: single-view sheet C: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/C","value":{"sheet":[17,11]}}
 INFO I_LAYOUT_SHEET S1: layout S1: "sheet": "auto" picked 22x17 with the views at 1 1/2" = 1'-0" (the smallest standard sheet that holds it) Fix: nothing to do; set "sheet" (e.g. "22x17") or a numeric layout "scale" to choose yourself

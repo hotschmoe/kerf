@@ -78,8 +78,8 @@
 <path d="M436.249 348.8L464.249 348.8" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 <path d="M449.449 348.8A1.2 1.2 0 0 1 447.049 348.8A1.2 1.2 0 0 1 449.449 348.8Z" fill="#000" fill-rule="evenodd" stroke="none"/>
 <path d="M453.449 348.8A1.2 1.2 0 0 1 451.049 348.8A1.2 1.2 0 0 1 453.449 348.8Z" fill="#000" fill-rule="evenodd" stroke="none"/>
-<path d="M452.249 348.8L502.177 348.8" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
-<path d="M466.82 337.014L467.677 336.586L468.963 335.3L468.963 344.3M481.391 333.586L473.677 347.3M483.963 337.443L483.963 337.014L484.391 336.157L484.82 335.729L485.677 335.3L487.391 335.3L488.249 335.729L488.677 336.157L489.106 337.014L489.106 337.871L488.677 338.729L487.82 340.014L483.534 344.3L489.534 344.3M492.534 335.3L492.534 338.3M495.963 335.3L495.963 338.3" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M450.249 348.8L450.249 335.3" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
+<path d="M436.106 323.514L436.963 323.086L438.249 321.8L438.249 330.8M450.677 320.086L442.963 333.8M453.249 323.943L453.249 323.514L453.677 322.657L454.106 322.229L454.963 321.8L456.677 321.8L457.534 322.229L457.963 322.657L458.391 323.514L458.391 324.371L457.963 325.229L457.106 326.514L452.82 330.8L458.82 330.8M461.82 321.8L461.82 324.8M465.249 321.8L465.249 324.8" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.491"/>
 </g>
 </g>
 <g id="S-ANNO-TTLB" inkscape:groupmode="layer" inkscape:label="S-ANNO-TTLB">

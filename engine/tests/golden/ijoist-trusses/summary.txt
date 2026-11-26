@@ -19,3 +19,4 @@ DOC ijoist-trusses  20 components  6 views  0 errors  0 warnings  0 acknowledged
  d_girder      truss (2-ply) end-on 1'-6" deep at the cut, 4x2+4x2 chords, webs @ 2'-0" x 2'-0"..2'-7"    y -3 1/8"..1'-2 7/8"
  d_post        lumber 4x6 y wide run y L=9 3/4"            x 2'-0"..2'-5 1/2" y -1'-0 7/8"..-3 1/8"
  d_sub         panel plywood 3/4" x 3'-0" run x            x 0"..3'-0"       y 1'-2 7/8"..1'-3 5/8"
+INFO I_VIEW_SHEET C: single-view sheet C: 17 x 11 paper inches at 1" = 1'-0"; fitted with the notes, tables and wrapped title Fix: keep this paper size: {"op":"update","path":"views/C","value":{"sheet":[17,11]}}
