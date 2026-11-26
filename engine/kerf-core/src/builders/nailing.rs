@@ -33,6 +33,7 @@ params! {
         through: Bool = false => { desc: "the points may come out of the far face (plate splice face nails, clinched nails): no W_NAIL_LENGTH for that" },
         blocked: Bool = true => { desc: "edge: false for an unblocked diaphragm or wall: edge nails go only where framing lies behind the edge, and edges without framing are not W_NAIL_EDGE" },
         text: Str = "" => { def: "generated", desc: "note text form override; the default is generated from the params (\"(8) 16d NAILS STAGGERED\", \"8d @ 6\\\" O.C. EDGE NAILING\") and a note targeting this component without `text` uses it" },
+        row_offsets: OptRaw => { desc: "face: one distance per row from the lower edge of the common joint footprint across the row axis (in the first member's local frame). E.g. rows 2, row_offsets [1.5,7.75]. Omit for evenly spaced rows; offsets must increase and lie inside the common footprint" },
     }
 }
 
@@ -838,11 +839,11 @@ fn face_pattern(job: &Job, out: &mut Out) {
     let d = job.size.dia;
     let e = cp.edge_distance.unwrap_or(10.0 * d);
     job.check_edge(out, e, "ends");
-    let Some(b_group) = job.groups.get(1) else { return };
+    let b_group: Vec<Member> = job.groups.iter().skip(1).flatten().copied().collect();
     let mut any = false;
     let mut first_miss: Option<(Member, Member)> = None;
     for a in &job.groups[0] {
-        for b in b_group {
+        for b in &b_group {
             let (blo, bhi) = box_in(a, b);
             let Some(ct) = contact(a.lo, a.hi, blo, bhi) else {
                 if first_miss.is_none() {
@@ -850,85 +851,100 @@ fn face_pattern(job: &Job, out: &mut Out) {
                 }
                 continue;
             };
-            any = true;
-            let k = ct.axis;
-            let others: Vec<usize> = (0..3).filter(|&o| o != k).collect();
-            let len_of = |o: usize| ct.ov[o][1] - ct.ov[o][0];
-            let mut r_axis = if len_of(others[1]) > len_of(others[0]) + 1e-9 { others[1] } else { others[0] };
-            if let Some(w) = cp.along {
-                let la = local_axis(a, w);
-                if la != k {
-                    r_axis = la;
-                } else {
-                    out.warn(
+            let contacts = stack_footprints(job, a, b, ct);
+            if contacts.is_empty() {
+                out.warn("W_NAIL_MEMBERS", format!("'{}': the listed members have no continuous common footprint in driving order after '{}'; no face nails are drawn through this stack", job.id, member_name(job.scene,b)), format!("name members sharing a continuous nail path, or limit this connection to the first two if that is the intended joint: {}", op_update(job.id,"members",&quoted_list(&job.members_json()[..2]))));
+            }
+            for ct in contacts {
+                any = true;
+                let k = ct.axis;
+                let others: Vec<usize> = (0..3).filter(|&o| o != k).collect();
+                let len_of = |o: usize| ct.ov[o][1] - ct.ov[o][0];
+                let mut r_axis = if len_of(others[1]) > len_of(others[0]) + 1e-9 { others[1] } else { others[0] };
+                if let Some(w) = cp.along {
+                    let la = local_axis(a, w);
+                    if la != k {
+                        r_axis = la;
+                    } else {
+                        out.warn(
                         "W_PARAM",
                         format!("'{}': along {} is the direction the nails are driven, not a direction in the joint face; the rows follow the joint's longer side", job.id, w.tag()),
                         format!("drop \"along\" or name an axis of the joint face: {}", op_update(job.id, "along", &format!("\"{}\"", axis_letter_world(a, r_axis)))),
                     );
-                }
-            }
-            let c_axis = if r_axis == others[0] { others[1] } else { others[0] };
-            let mut r0 = ct.ov[r_axis][0];
-            let mut r1 = ct.ov[r_axis][1];
-            if let Some(rg) = job.range_on(a, r_axis) {
-                r0 = r0.max(rg[0]);
-                r1 = r1.min(rg[1]);
-                if r1 <= r0 + 1e-9 {
-                    out.warn(
-                        "W_NAIL_MEMBERS",
-                        format!(
-                            "'{}': range misses the joint between '{}' and '{}'",
-                            job.id,
-                            member_name(job.scene, a),
-                            member_name(job.scene, b)
-                        ),
-                        "set range to two points inside the joint, or drop it".to_string(),
-                    );
-                    continue;
-                }
-            }
-            let (i0, i1) = if r1 - r0 > 2.0 * e { (r0 + e, r1 - e) } else { ((r0 + r1) / 2.0, (r0 + r1) / 2.0) };
-            let stagger = cp.stagger && rows > 1;
-            let positions: Vec<(f64, usize)> = match (cp.count.map(usize::from), cp.spacing) {
-                (Some(n), Some(s)) => {
-                    if stagger {
-                        centered(i0, i1, n, s / rows as f64)
-                            .into_iter()
-                            .enumerate()
-                            .map(|(q, x)| (x, q % rows))
-                            .collect()
-                    } else {
-                        let per = n.div_ceil(rows);
-                        expand_rows(&centered(i0, i1, per, s), rows, n)
                     }
                 }
-                (Some(n), None) => {
-                    if stagger {
-                        spread(i0, i1, n).into_iter().enumerate().map(|(q, x)| (x, q % rows)).collect()
-                    } else {
-                        let per = n.div_ceil(rows);
-                        expand_rows(&spread(i0, i1, per), rows, n)
+                let c_axis = if r_axis == others[0] { others[1] } else { others[0] };
+                let mut r0 = ct.ov[r_axis][0];
+                let mut r1 = ct.ov[r_axis][1];
+                if let Some(rg) = job.range_on(a, r_axis) {
+                    r0 = r0.max(rg[0]);
+                    r1 = r1.min(rg[1]);
+                    if r1 <= r0 + 1e-9 {
+                        out.warn(
+                            "W_NAIL_MEMBERS",
+                            format!(
+                                "'{}': range misses the joint between '{}' and '{}'",
+                                job.id,
+                                member_name(job.scene, a),
+                                member_name(job.scene, b)
+                            ),
+                            "set range to two points inside the joint, or drop it".to_string(),
+                        );
+                        continue;
                     }
                 }
-                (None, s) => {
-                    let s = s.unwrap_or(12.0);
-                    let per = (math::floor((i1 - i0) / s + 1e-9) as usize + 1).min(5000);
-                    if stagger {
-                        let step = s / rows as f64;
-                        let m = (math::floor((i1 - i0) / step + 1e-9) as usize + 1).min(5000);
-                        centered(i0, i1, m, step).into_iter().enumerate().map(|(q, x)| (x, q % rows)).collect()
-                    } else {
-                        expand_rows(&centered(i0, i1, per, s), rows, per * rows)
+                let (i0, i1) = if r1 - r0 > 2.0 * e { (r0 + e, r1 - e) } else { ((r0 + r1) / 2.0, (r0 + r1) / 2.0) };
+                let stagger = cp.stagger && rows > 1;
+                let positions: Vec<(f64, usize)> = match (cp.count.map(usize::from), cp.spacing) {
+                    (Some(n), Some(s)) => {
+                        if stagger {
+                            centered(i0, i1, n, s / rows as f64)
+                                .into_iter()
+                                .enumerate()
+                                .map(|(q, x)| (x, q % rows))
+                                .collect()
+                        } else {
+                            let per = n.div_ceil(rows);
+                            expand_rows(&centered(i0, i1, per, s), rows, n)
+                        }
+                    }
+                    (Some(n), None) => {
+                        if stagger {
+                            spread(i0, i1, n).into_iter().enumerate().map(|(q, x)| (x, q % rows)).collect()
+                        } else {
+                            let per = n.div_ceil(rows);
+                            expand_rows(&spread(i0, i1, per), rows, n)
+                        }
+                    }
+                    (None, s) => {
+                        let s = s.unwrap_or(12.0);
+                        let per = (math::floor((i1 - i0) / s + 1e-9) as usize + 1).min(5000);
+                        if stagger {
+                            let step = s / rows as f64;
+                            let m = (math::floor((i1 - i0) / step + 1e-9) as usize + 1).min(5000);
+                            centered(i0, i1, m, step).into_iter().enumerate().map(|(q, x)| (x, q % rows)).collect()
+                        } else {
+                            expand_rows(&centered(i0, i1, per, s), rows, per * rows)
+                        }
+                    }
+                };
+                let row_pitch = row_spacing(&positions, rows);
+                if cp.count.is_some() {
+                    let distinct = positions
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, (x, r))| !positions[..*i].iter().any(|(q, s)| r == s && (x - q).abs() < 1e-6))
+                        .count();
+                    if distinct < positions.len() {
+                        out.warn("W_NAIL_SPACING",format!("'{}': {} requested nails collapse to {distinct} distinct positions on the common joint with '{}' after {} end distances; coincident fasteners are drawn once",job.id,positions.len(),member_name(job.scene,b),fmt_ft_in(e)),format!("revise the joint/row axis or explicitly accept the available count: {}",op_update(job.id,"count",&format!("{distinct}"))));
                     }
                 }
-            };
-            let row_pitch = row_spacing(&positions, rows);
-            job.check_spacing(out, row_pitch, false);
-            if let (Some(n), Some(s)) = (cp.count, cp.spacing) {
-                let need = (f64::from(n).max(1.0) - 1.0) * if stagger { s / rows as f64 } else { s };
-                if need > i1 - i0 + 1e-6 && need > 0.0 {
-                    let fit = math::floor((i1 - i0) / if stagger { s / rows as f64 } else { s } + 1e-9) as u32 + 1;
-                    out.warn(
+                job.check_spacing(out, row_pitch, false);
+                if let (Some(n), Some(s)) = (cp.count, cp.spacing) {
+                    let need = (f64::from(n).max(1.0) - 1.0) * if stagger { s / rows as f64 } else { s };
+                    if need > i1 - i0 + 1e-6 && need > 0.0 {
+                        let fit = math::floor((i1 - i0) / if stagger { s / rows as f64 } else { s } + 1e-9) as u32 + 1;
+                        out.warn(
                         "W_NAIL_SPACING",
                         format!(
                             "'{}': {n} nails @ {} need {} of joint but '{}' and '{}' share {} (less {} edge distance at each end)",
@@ -942,41 +958,143 @@ fn face_pattern(job: &Job, out: &mut Out) {
                         ),
                         op_update(job.id, "count", &format!("{}", fit.max(1))),
                     );
+                    }
                 }
-            }
-            let (c0, c1) = (ct.ov[c_axis][0], ct.ov[c_axis][1]);
-            let across = |r: usize| c0 + (r as f64 + 1.0) * (c1 - c0) / (rows as f64 + 1.0);
-            job.check_edge(out, (c1 - c0) / (rows as f64 + 1.0), "across");
-            let head_k = if ct.side > 0.0 { a.lo[k] } else { a.hi[k] };
-            let dir = unit(k, ct.side);
-            let b_far = if ct.side > 0.0 { bhi[k] } else { blo[k] };
-            let mut probe = [0.0; 3];
-            probe[r_axis] = (i0 + i1) / 2.0;
-            probe[c_axis] = (c0 + c1) / 2.0;
-            let (far, extra) = stack_after(job, a, k, ct.side, b_far, probe);
-            let total = (far - head_k).abs();
-            let head = (a.hi[k] - a.lo[k]).abs();
-            let bn = member_name(job.scene, b);
-            let (held, last, before) = match extra {
-                Some(name) => {
-                    (format!("the stack '{bn}'..'{name}'"), name, last_before(job, a, k, ct.side, head_k, far, probe))
+                let (c0, c1) = (ct.ov[c_axis][0], ct.ov[c_axis][1]);
+                let offsets: Vec<f64> = cp.row_offsets.as_ref().and_then(Value::arr).map_or_else(
+                    || (0..rows).map(|r| (r as f64 + 1.0) * (c1 - c0) / (rows as f64 + 1.0)).collect(),
+                    |a| a.iter().filter_map(crate::units::parse_length).collect(),
+                );
+                if offsets.iter().any(|&d| d <= 0.0 || d >= c1 - c0) {
+                    out.warn(
+                        "W_NAIL_MEMBERS",
+                        format!(
+                            "'{}': row_offsets lie outside the {} common joint width; no nails drawn for this joint",
+                            job.id,
+                            fmt_ft_in(c1 - c0)
+                        ),
+                        op_update(job.id, "row_offsets", "null"),
+                    );
+                    continue;
                 }
-                None => (format!("'{bn}'"), bn, head),
-            };
-            job.check_length(out, &held, &last, head, before, total);
-            out.flip = total - before < job.size.len && !job.covered(a, k, ct.side, far, probe);
-            for (x, r) in positions {
-                let mut h = [0.0; 3];
-                h[k] = head_k;
-                h[r_axis] = x;
-                h[c_axis] = across(r);
-                out.push(job.nail(a, h, dir, unit(r_axis, 1.0), row_pitch));
+                let across = |r: usize| c0 + offsets[r];
+                job.check_edge(out, offsets[0].min(c1 - c0 - offsets[rows - 1]), "across");
+                let head_k = if ct.side > 0.0 { a.lo[k] } else { a.hi[k] };
+                let dir = unit(k, ct.side);
+                let b_far = if ct.side > 0.0 { bhi[k] } else { blo[k] };
+                let mut probe = [0.0; 3];
+                probe[r_axis] = (i0 + i1) / 2.0;
+                probe[c_axis] = (c0 + c1) / 2.0;
+                let (far, extra) = stack_after(job, a, k, ct.side, b_far, probe);
+                let total = (far - head_k).abs();
+                let head = (a.hi[k] - a.lo[k]).abs();
+                let bn = member_name(job.scene, b);
+                let (held, last, before) = match extra {
+                    Some(name) => (
+                        format!("the stack '{bn}'..'{name}'"),
+                        name,
+                        last_before(job, a, k, ct.side, head_k, far, probe),
+                    ),
+                    None => (format!("'{bn}'"), bn, head),
+                };
+                job.check_length(out, &held, &last, head, before, total);
+                out.flip = total - before < job.size.len && !job.covered(a, k, ct.side, far, probe);
+                for (x, r) in positions {
+                    let mut h = [0.0; 3];
+                    h[k] = head_k;
+                    h[r_axis] = x;
+                    h[c_axis] = across(r);
+                    out.push(job.nail(a, h, dir, unit(r_axis, 1.0), row_pitch));
+                }
             }
         }
     }
     if !any && let Some((a, b)) = first_miss {
         job.miss(out, &a, &b);
     }
+    if !out.nails.is_empty() {
+        for group in job.groups.iter().skip(1) {
+            if group.iter().any(|m| out.nails.iter().any(|n| nail_hits(m, n))) {
+                continue;
+            }
+            let names: Vec<String> = group.iter().map(|m| member_name(job.scene, m)).collect();
+            out.warn("W_NAIL_MEMBERS",format!("'{}': no drawn nail enters listed receiving member(s) {}; the row does not fasten this part of the connection",job.id,names.join(", ")),format!("correct the member placement or row_offsets; only if the first two members are the intended connection, limit the list: {}",op_update(job.id,"members",&quoted_list(&job.members_json()[..2]))));
+        }
+    }
+}
+
+fn nail_hits(m: &Member, n: &Nail) -> bool {
+    let a = m.inv.apply(V2::init(n.head[0], n.head[1]));
+    let b = m.inv.apply(V2::init(n.tip[0], n.tip[1]));
+    let a = [a.x, a.y, n.head[2]];
+    let b = [b.x, b.y, n.tip[2]];
+    let (mut enter, mut exit) = (0.0f64, 1.0f64);
+    for k in 0..3 {
+        let d = b[k] - a[k];
+        if d.abs() < 1e-9 {
+            if a[k] < m.lo[k] - 1e-6 || a[k] > m.hi[k] + 1e-6 {
+                return false;
+            }
+        } else {
+            let (p, q) = ((m.lo[k] - a[k]) / d, (m.hi[k] - a[k]) / d);
+            enter = enter.max(p.min(q));
+            exit = exit.min(p.max(q));
+        }
+    }
+    exit - enter > 1e-6
+}
+
+fn stack_footprints(job: &Job, a: &Member, b: &Member, ct: Contact) -> Vec<Contact> {
+    let (lo, hi) = box_in(a, b);
+    let k = ct.axis;
+    let near = if ct.side > 0.0 { lo[k] } else { hi[k] };
+    let far = if ct.side > 0.0 { hi[k] } else { lo[k] };
+    let mut layers: Vec<(f64, f64, [f64; 3], [f64; 3])> = Vec::new();
+    for m in job.groups.iter().skip(1).flatten() {
+        let (lo, hi) = box_in(a, m);
+        let mn = if ct.side > 0.0 { lo[k] } else { hi[k] };
+        let mf = if ct.side > 0.0 { hi[k] } else { lo[k] };
+        if (mn - near) * ct.side <= TOL {
+            continue;
+        }
+        if !(0..3).filter(|&o| o != k).all(|o| hi[o] > ct.ov[o][0] + TOL && lo[o] < ct.ov[o][1] - TOL) {
+            continue;
+        }
+        layers.push((mn, mf, lo, hi));
+    }
+    crate::sort::stable(&mut layers, |a, b| ct.side * a.0 < ct.side * b.0);
+    let mut spans = vec![(ct, far)];
+    let mut at = 0;
+    while at < layers.len() {
+        let mut end = at + 1;
+        while end < layers.len() && (layers[end].0 - layers[at].0).abs() <= TOL {
+            end += 1;
+        }
+        let mut next = Vec::new();
+        for (ct, far) in &spans {
+            for &(near, far_next, lo, hi) in &layers[at..end] {
+                if (near - far).abs() > TOL {
+                    continue;
+                }
+                let mut n = *ct;
+                for o in (0..3).filter(|&o| o != k) {
+                    n.ov[o] = [ct.ov[o][0].max(lo[o]), ct.ov[o][1].min(hi[o])];
+                }
+                if (0..3).filter(|&o| o != k).all(|o| n.ov[o][1] - n.ov[o][0] > TOL) {
+                    next.push((n, far_next));
+                    if next.len() >= crate::limits::MAX_POINTS {
+                        return Vec::new();
+                    }
+                }
+            }
+        }
+        spans = next;
+        if spans.is_empty() {
+            break;
+        }
+        at = end;
+    }
+    spans.into_iter().map(|(ct, _)| ct).collect()
 }
 
 fn last_before(job: &Job, a: &Member, axis: usize, side: f64, head: f64, far: f64, at: [f64; 3]) -> f64 {
@@ -1647,6 +1765,16 @@ pub fn build(ctx: &mut Ctx) -> Option<Built> {
         }
     }
     let cp = ctx.p.parse_all::<Params>();
+    if let Some(v) = cp.row_offsets.as_ref() {
+        let vals: Vec<f64> = v.arr().unwrap_or(&[]).iter().filter_map(crate::units::parse_length).collect();
+        if cp.pattern != Pattern::Face
+            || vals.len() != usize::from(cp.rows)
+            || vals.iter().any(|&x| x <= 0.0)
+            || vals.windows(2).any(|v| v[0] >= v[1])
+        {
+            ctx.p.fail("row_offsets","face row_offsets must contain one positive increasing distance per row, e.g. rows 2, row_offsets [1.5,7.75]".into());
+        }
+    }
     if !ctx.p.ok {
         return None;
     }

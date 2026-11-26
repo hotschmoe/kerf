@@ -13,7 +13,7 @@ DOC nailing  28 components  4 views  0 errors  0 warnings  0 acknowledged
  b_plate       lumber 2x6 flat run z                       x 0"..5 1/2"      y 0"..1 1/2"
  b_wblk        lumber 2x4 upright run z L=1'-2 1/2"        x 2"..3 1/2"      y 1 1/2"..5"
  b_shtg        panel osb 7/16" x 1'-4" run y               x -7/16"..0"      y -9 1/4"..6 3/4"
- b_sill_nails  nailing face 16d SILL NAILING @ 8" O.C. STAGGERED: 12 nails (0.162 x 3 1/2"), b_plate -> b_rim -> b_blk x 13/16"..1 11/16" y -2"..1 1/2"
+ b_sill_nails  nailing face 16d SILL NAILING @ 8" O.C. STAGGERED: 15 nails (0.162 x 3 1/2"), b_plate -> b_rim -> b_blk x 13/16"..3 1/2"  y -2"..1 1/2"
  b_toe         nailing toenail (2) 8d TOENAILS: 2 nails (0.131 x 2 1/2"), b_wblk -> b_plate x 2"..3 1/2"      y 3/16"..2 5/16"
  b_en          nailing edge 6d @ 6" O.C. EDGE NAILING: 9 nails (0.113 x 2"), b_shtg -> b_rim x -7/16"..1 9/16" y -8 7/8"..-8 7/8"
  b_sds         nailing face (2) SDS25300 SCREWS: 2 screws (0.25 x 3"), b_blk -> b_rim x 1"..4"          y -6 3/4"..-2 1/2"

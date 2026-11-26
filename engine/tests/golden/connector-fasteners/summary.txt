@@ -1,0 +1,16 @@
+DOC connector-fasteners  12 components  2 views  0 errors  0 warnings  1 acknowledged
+ post          lumber 4x4 y wide run y L=1'-0"             x 0"..3 1/2"      y 0"..1'-0"
+ beam          lumber 4x6 x wide run x L=1'-0"             x -4"..8"         y 1'-0"..1'-5 1/2"
+ wrap          connector CS16 wrap strap 16 ga x 1 1/4", front/top/back over beam x 1 1/8"..2 3/8"  y 0"..1'-5 9/16"
+ eye           bolt eye_screw 0.25" dia. x 1 1/4" (thread 13/16"), side x 4 1/4"..5 3/4"  y 9 3/4"..1'-0 1/2"
+ rod           bolt threaded_rod 0.375" dia. x 7", 1 rod(s), 1 1/4" coupler x 4 11/16"..5 5/16" y 3 1/2"..10 1/2"
+ lower         lumber 2x6 flat run z                       x 1'-6"..1'-11 1/2" y 0"..1 1/2"
+ upper         lumber 2x6 x wide run x L=8"                x 1'-6"..2'-2"    y 2"..7 1/2"
+ clip          connector DTC tie 18 ga across 1/2" gap between lower and upper x 1'-5 15/16"..1'-7 1/2" y 1/4"..4"
+ rim           lumber 2x6 flat run z                       x 3'-0"..3'-5 1/2" y 3/4"..2 1/4"
+ sheet         panel osb 3/4" x 1'-0" run x                x 3'-0"..4'-0"    y 2 1/4"..3"
+ sole          lumber 2x6 flat run z                       x 3'-0"..3'-5 1/2" y 3"..4 1/2"
+ nails         nailing face (4) 16d NAILS @ 6" O.C. STAGGERED: 4 nails (0.162 x 3 1/2"), sole -> sheet -> rim x 3'-1 1/2"..3'-4" y 1"..4 1/2"
+INFO I_LAYOUT_SHEET S1: layout S1: "sheet": "auto" picked 17x11 with the views at 1" = 1'-0" (the smallest standard sheet that holds it) Fix: nothing to do; set "sheet" (e.g. "22x17") or a numeric layout "scale" to choose yourself
+ACKNOWLEDGED  1 warning suppressed by `acknowledge` (kerf check --strict prints each in full)
+ W_CONNECTOR_GAP     x1   clip: "schematic clip; manufacturer slot travel and fastening are specified in the detail note"

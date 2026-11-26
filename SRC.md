@@ -521,3 +521,43 @@ SPEC 30.1: placement is dependency order with ties broken by document order, exc
 ## beta.4 integration of SPEC 30–32
 
 Leader-through-member checks include the cut body prisms of steel joists, metal deck and its topping, steel stair treads and concrete/wood stairs. Embedded reinforcement and beyond geometry keep the SPEC 30 exclusions. The unsupported flat-plate check counts wood stair bodies as carried wood; support detection already accepts bodies of every type. Existing members obstruct leaders and support plates normally, and CMU plans supply their sliced unit geometry.
+
+## engine/kerf-core/src/builders/hardware.rs and tie.rs (beta.5)
+
+Member lookup filters world bodies by optional part before computing placement bounds; dependency lookup still strips
+part/instance suffixes. Exact hanger heights override the generic carried-depth heuristic, while a truss fallback
+uses its bottom chord and warns that a manufacturer height is required. A repeated failed trim is replaced in the
+printed fix by a world-space bevel line; cuts at the other end are preserved.
+
+DTT geometry follows the horizontal bolt nut-bearing anchor, rather than using a foundation holdown rotated after
+placement. Only x-axis bolts and front/back joist mounting are supported. It does not populate the foundation rod
+relationship, so the ordinary holdown foundation check cannot misclassify a wood tension connection.
+
+A gap bridge keeps its two mounting legs outside their respective members and spans the intervening air/layers.
+Unequal z faces bend the wide member's leg onto its side at the crossing; the plate never travels to its far z end.
+An unconfirmed gap warns with its actual separation. Three-face wraps have constant width at one x station and
+separate front, top and back plates in one connector; they are not three counted connectors.
+
+## engine/kerf-core/src/builders/nailing.rs (beta.5 face stacks)
+
+Face nails start at any listed receiver touching the head member. Receivers at the same driving depth are
+alternatives (rim and blocking); deeper layers intersect the shared footprint and must form a continuous stack.
+Length probes then use that footprint, so a sole/sheathing/rim row cannot silently miss its rim. Explicit row
+offsets are measured from the common footprint's lower cross-row edge in the head member's frame.
+
+## engine/kerf-core/src/builders/bolt.rs (beta.5 hanging fasteners)
+
+Threaded rods and screw eyes extend the bolt kind enum without a new component registry entry. Rods have blunt
+threads and optional schematic sleeve couplers; they never enter the concrete-anchor pair checks. Eye dimensions
+are schematic ratios to diameter, not manufacturer model dimensions. Length is below the eye shoulder. The ring
+is a body with an actual opening, not an annotation circle.
+
+After face placement, each listed receiving group must intersect a drawn nail segment in its own member frame;
+otherwise W_NAIL_MEMBERS exposes the missing attachment even when another receiver produced valid nails. The
+check uses member bounds, matching the existing face-joint approximation; it does not certify contact with every
+web inside a compound truss. Deflection clip bridges keep a warning about missing slot geometry even when the
+clear gap is explicit; acknowledging it records the schematic limitation without discarding earlier reasons.
+
+Collapsed same-row face-nail positions are diagnosed before geometric deduplication, so the requested count cannot
+silently become a smaller drawing count. Exact-model gap ties allocate only the remaining developed length to
+default legs; leg-overhang checks use the high member's boundary after the gap, and still recognize adjacent framing.

@@ -196,7 +196,7 @@ pub struct Hardware {
 }
 
 /// Schematic hardware table: `connector.model` fills width and gauge from here.
-pub const HARDWARE: [Hardware; 60] = [
+pub const HARDWARE: [Hardware; 62] = [
     Hardware { model: "H2.5A", width: 1.375, gauge: 18, length: 5.5, kind: "hurricane tie" },
     Hardware { model: "H1", width: 1.375, gauge: 18, length: 5.5, kind: "hurricane tie" },
     Hardware { model: "H10A", width: 1.5, gauge: 18, length: 8.0, kind: "hurricane tie" },
@@ -262,7 +262,7 @@ pub const HARDWARE: [Hardware; 60] = [
         model: "HUS26",
         width: 1.625,
         gauge: 16,
-        length: 5.375,
+        length: 5.4375,
         kind: "heavy face-mount hanger, 2x6 (length = height)",
     },
     Hardware {
@@ -281,6 +281,8 @@ pub const HARDWARE: [Hardware; 60] = [
     Hardware { model: "ST6236", width: 2.0625, gauge: 16, length: 33.8125, kind: "strap tie" },
     Hardware { model: "MST27", width: 2.0625, gauge: 12, length: 27.0, kind: "strap" },
     Hardware { model: "MST60", width: 2.0625, gauge: 10, length: 60.0, kind: "strap" },
+    Hardware { model: "MTS12", width: 1.25, gauge: 16, length: 12.0, kind: "twist strap" },
+    Hardware { model: "LU24", width: 1.5625, gauge: 20, length: 3.125, kind: "face-mount hanger (length = height)" },
 ];
 
 /// A family of hardware recognised by its model prefix (SPEC 27.2): the connector kind it draws as, the hanger mount, a
@@ -305,7 +307,7 @@ const fn ser(
     Series { prefix, kind, mount, gauge, width, desc }
 }
 
-pub const SERIES: [Series; 68] = [
+pub const SERIES: [Series; 71] = [
     ser("LUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
     ser("MUS", "hanger", "face", 18, 0.0, "face-mount joist hanger"),
     ser("HUS", "hanger", "face", 16, 0.0, "heavy face-mount hanger"),
@@ -374,6 +376,9 @@ pub const SERIES: [Series; 68] = [
     ser("GA", "strap", "", 18, 2.5, "gusset angle"),
     ser("A", "strap", "", 18, 1.5, "framing angle"),
     ser("L", "strap", "", 16, 1.25, "reinforcing angle"),
+    ser("DTC", "tie", "", 18, 1.5, "deflection clip (schematic; slots not modeled)"),
+    ser("STC", "tie", "", 18, 1.5, "deflection clip (schematic; slots not modeled)"),
+    ser("HTC", "tie", "", 18, 1.5, "deflection clip (schematic; slots not modeled)"),
 ];
 
 /// How a connector `model` resolves (SPEC 27.2).
@@ -550,9 +555,9 @@ pub static ENTRIES: [Entry; 23] = [
     Entry {
         ty: Type::Connector,
         summary: "Steel hardware: straps (points or `on` a face), ties and angles from two `members`, hangers, post caps/bases, holdowns.",
-        parts: "strap: none; tie, angle (from members): tie or angle; hanger: seat, side, flange (face mount) or back, top_flange; post_cap: seat, beam_side, post_side; post_base: base, seat, side; holdown: back, seat, side, screw",
-        anchors: "9 box anchors of the resolved profile + (strap) vertex_1..vertex_n at the points (in `points` order), edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge); hanger and post_cap `seat`, member tie/angle `joint` (middle of the joint line), post_base `base_bottom`, holdown `seat_top` (the rod axis at the top of the seat, where the nut bears)",
-        draws: "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets. Hangers, caps, bases, holdowns, member ties and `on` straps are plates at their true place in 3D (no at or points; z only on a member tie or angle on a side face, left/right/top/bottom, to slide it along the members): section, plan, elevation, iso and the mesh agree; in a section that cuts one of their members they draw solid in front of what they overlap (`front`), elsewhere a nearer member hides them dashed and a note still lands on them; plates thinner than 0.022\" on paper are drawn that thick; plates seen face-on show nail dots. A sloped carried member needs its end cut at the face (`cuts` trim). Checks: W_UNKNOWN_MODEL, W_HANGER_SIZE (a truss hanger against the bottom chord), W_HOLDOWN_ROD, W_POST_BASE, W_TIE_LEG (a member tie leg past its member), W_FLOATING (an `on` strap off a second member it crosses).",
+        parts: "strap: none; three-face wrap: face_front, face_back, wrap_top; tie, angle (from members): tie or angle; hanger: seat, side, flange (face mount) or back, top_flange; post_cap: seat, beam_side, post_side; post_base: base, seat, side; holdown: back, seat, side, screw",
+        anchors: "9 box anchors of the resolved profile + (strap) vertex_1..vertex_n at the points (in `points` order), edge_k_mid (middle of the edge from point k to the next; the arc middle for a bulge); hanger and post_cap `seat`, member tie/angle `joint` (middle of the joint line), post_base `base_bottom`, wrap `start`, `end`, `top`, holdown `seat_top` (the rod axis at the top of the seat, where the nut bears)",
+        draws: "Pen steel; filled solid when cut, outline when beyond. Schematic: the note carries the model, the geometry shows location and path. `array` {axis z, count, spacing} draws the strap/tie @ spacing along the wall in iso/3D (section shows the cut one). Use named Refs (e.g. truss@heel_outer) in `points`, not literal offsets. Hangers, caps, bases, holdowns, member ties and `on` straps are plates at their true place in 3D (no at or points; z only on a member tie or angle on a side face, left/right/top/bottom, to slide it along the members): section, plan, elevation, iso and the mesh agree; in a section that cuts one of their members they draw solid in front of what they overlap (`front`), elsewhere a nearer member hides them dashed and a note still lands on them; plates thinner than 0.022\" on paper are drawn that thick; plates seen face-on show nail dots. Hanger default height uses an exact catalog model when available, otherwise 85% of the member depth (bottom chord for trusses; family-only truss heights warn). A sloped carried member needs its end cut at the face (`cuts` trim); if that trim missed, the error supplies a bevel line while preserving the other end cuts. Connector members accept id.part / id#k.part. DTT models use a horizontal x bolt and a body screwed to the joist front/back face, without a foundation-embedment check. A three-face `on` array draws one front/top/back beam wrap of constant strap width. Checks: W_UNKNOWN_MODEL, W_HANGER_SIZE (a truss hanger against the bottom chord), W_HOLDOWN_ROD, W_POST_BASE, W_TIE_LEG (a member tie leg past its member), W_TIE_PATH (offset side faces create an overlong wrap), W_CONNECTOR_GAP (unconfirmed gap bridge), W_HANGER_SLOPE (fixed model on a sloping seat), W_CONNECTOR_ORIENT (unsupported tension-tie rod or body off its joist), W_FLOATING (an `on` strap off a second member it crosses).",
         example: "{\"id\":\"hanger\",\"type\":\"connector\",\"model\":\"LUS210\",\"carried\":\"joist\",\"carrying\":\"header\"}",
         traits: Traits { hardware: true, line_like: true, ..Traits::NONE },
     },
@@ -649,9 +654,9 @@ pub static ENTRIES: [Entry; 23] = [
     Entry {
         ty: Type::Bolt,
         summary: "Bolts, studs, lag/wood screws, side or end-on; slotted holes.",
-        parts: "shank, head, washer, nut (one set per bolt); studs: weld, shank, washer and nut (weld_stud) or head (headed_stud); lag_screw / wood_screw: head, washer, shank, thread; hole (end-on outline of an oversize or slotted hole)",
-        anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing); studs: head_bearing = weld_face (the welded end, local origin), nut_bearing (top of the grip); screws: thread_start (where the threads begin), tip (the point: dimension the embedment from the wood face to it)",
-        draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Screws (kind lag_screw, wood_screw): hex washer head and cut washer on the side plate or wood face, shank `length` long from under the head with sawtooth threads over the last `thread` and a point, no nut; the shank runs into the wood member like a bolt through its plies (embedded: no W_OVERLAP), so place the head on the outer face and give `length`, not grip. End-on they are a hex head on a washer. Holes: `hole` oversize, short_slot or long_slot (AISC 360 Table J3.3 sizes, or `slot_length`) draws the hole outline around each end-on bolt, the slot along `slot_dir`; side-on the hole is named in the summary and the note only. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
+        parts: "shank, head, washer, nut (one set per bolt); studs: weld, shank, washer and nut (weld_stud) or head (headed_stud); lag_screw / wood_screw: head, washer, shank, thread; threaded_rod: shank, optional coupler; eye_screw: shank, thread, eye; hole (end-on outline of an oversize or slotted hole)",
+        anchors: "9 box anchors + head_bearing (local origin: underside of the head on bolt 1's axis; the default placement anchor), nut_bearing (side: the grip's far face), bolt_1..bolt_n (each bolt's axis at the head bearing); studs: head_bearing = weld_face (the welded end, local origin), nut_bearing (top of the grip); screws: thread_start (where the threads begin), tip (the point: dimension the embedment from the wood face to it); threaded rods: start (head_bearing alias), end, tip; eye_screw: eye (ring center)",
+        draws: "Embedded steel (drawn over cut plates, exempt from W_OVERLAP). Side: shank d wide through the grip, head 1.5d+1/8 wide x 0.625d on top, washer 2d x 5/32 and nut 1.5d+1/8 x d under the grip, 0.5d stick-out; natural z thickness = d, centered on the first section view's cut_z. End: hex head toward the viewer, shank circle, washer and nut behind; natural z thickness = grip. Place with `\"at\": {\"to\": \"plate@face_top\"}` (head on the top ply) and set grip to the ply stack. Screws (kind lag_screw, wood_screw): hex washer head and cut washer on the side plate or wood face, shank `length` long from under the head with sawtooth threads over the last `thread` and a point, no nut; the shank runs into the wood member like a bolt through its plies (embedded: no W_OVERLAP), so place the head on the outer face and give `length`, not grip. End-on they are a hex head on a washer. kind threaded_rod uses diameter and length downward from the placement point, fully threaded with blunt ends, optional coupler length at the top, no head/nut or concrete-anchor checks. kind eye_screw is a single wood screw with a schematic ring (OD 6d, ID 4d) above its shoulder; length runs down into wood. Rods and eyes use orient side (rotate to point them). Holes: `hole` oversize, short_slot or long_slot (AISC 360 Table J3.3 sizes, or `slot_length`) draws the hole outline around each end-on bolt, the slot along `slot_dir`; side-on the hole is named in the summary and the note only. Checks: W_BOLT_EDGE (edge distance to every steel ply below AISC 360 Table J3.4), W_BOLT_SPACING (spacing < 2 2/3 d).",
         example: "{\"id\":\"cap_bolts\",\"type\":\"bolt\",\"diameter\":0.75,\"grip\":0.875,\"count\":2,\"spacing\":3.5,\"at\":{\"to\":[0,0]}}",
         traits: Traits { default_anchor: "head_bearing", ..Traits::NONE },
     },

@@ -23,16 +23,16 @@ params! {
     pub struct Params {
         model: Str = "" => { def: "null", desc: "manufacturer part for the note and the summary, e.g. MSTA36, H2.5A, LUS210, ITS2.06/11.88, CCQ44, ABU44, HDU5: a table model fills width/gauge/length, a known family (`kerf schema connector` lists them) fills kind, mount and gauge; anything else is W_UNKNOWN_MODEL unless you give gauge (and width for a strap)" },
         kind: OptEnum(Kind) => { def: "strap with points or on, else the model's family (tie or angle with members)", desc: "strap | tie | angle: the polyline below (`points`, or `on` a member face), or tie | angle placed from two `members`; hanger: carried + carrying; post_cap: post + beam; post_base: post (+ standoff); holdown: post + rod. Hanger, cap, base, holdown and member ties are sized from their members (no points, no at)" },
-        members: OptRaw => { def: "null", desc: "tie | angle: the two members it joins, e.g. [\"rafter\", \"plate\"] (id, id#k or a list drawn as one): tie wraps the joint (H2.5A, H3, RSP4, LTP4), angle sits in the inside corner (A34, A35)" },
+        members: OptRaw => { def: "null", desc: "tie | angle: the two members it joins, e.g. [\"rafter\", \"plate\"] (id, id#k, id.part, id#k.part or a list drawn as one): tie wraps the joint (H2.5A, H3, RSP4, LTP4), angle sits in the inside corner (A34, A35). Use gap for an intentional clear gap or intervening layers" },
         legs: OptRaw => { def: "tie: half the model length each (2 3/4); angle 1 7/16", desc: "tie | angle with members: [on the first member, on the second] leg lengths" },
         along: OptLen => { def: "0", desc: "tie | angle with members on face front/back: moves it this far along the joint from where it lands (+x when one member sits on the other, +y side by side); a tie bent onto the other member's side keeps to that side (choose it with `side`)" },
         front: OptBool => { def: "null: in front where a section cuts one of its members", desc: "true: hardware draws solid over what it overlaps in sections and elevations (as engineers draw it), false: at its true place, dashed where hidden" },
         points: OptRaw => { def: "required for a strap without on", desc: "polyline [x,y] or Refs of the bearing face (lay edge) or centerline (lay face)" },
-        on: OptStr => { def: "null", desc: "\"<member>.face_left|face_right|face_top|face_bottom|face_front|face_back\": the strap lies flush on that face in 3D (outside it, gauge thick, no z arithmetic, no `side`): points snap onto the face (default: the whole face along the member), width centered on the member (left/right/top/bottom) or in-plane (front/back)" },
+        on: OptRaw => { def: "null", desc: "\"<member>.face_left|face_right|face_top|face_bottom|face_front|face_back\": flush face strap. Or [\"post.face_front\",\"beam.face_top\",\"post.face_back\"]: one continuous wrap over an aligned beam; optional points set its x station and lower ends. Width stays the strap width on all three faces" },
         lay: Enum(Lay) = Lay::Edge => { desc: "edge: seen edge-on, gauge in-plane growing to `side`, width along Z; face: seen face-on, `width` in-plane centered on the polyline, gauge along Z (with `on` the face sets it)" },
         side: Enum(Side) = Side::Left => { desc: "lay edge: left of the polyline direction (left of a left-to-right line = up) or right (with `on` the face sets it). Tie with members, bent onto the other member's side: which side its leg lies on; left out, the side no other member lies against (W_OVERLAP when the leg still ends up inside a member)" },
         gauge: OptNum => { def: "18 (or the model's)", desc: "10 .1345, 11 .1196, 12 .1046, 14 .0747, 16 .0598, 18 .0478, 20 .0359" },
-        width: OptLenPos => { def: "1.25 (straps); hanger: the carried member; cap/base: the post; holdown 2.5", desc: "strap: extent along Z (lay edge) or in-plane (lay face); hanger: inside seat width; holdown: body width along the face" },
+        width: OptLenPos => { def: "1.25 (straps); hanger: the carried member; cap/base: the post; holdown 2.5 (DTT 3.25)", desc: "strap: extent along Z (lay edge) or in-plane (lay face); hanger: inside seat width; holdown: body width along the face" },
         fasteners: Str = "" => { def: "null", desc: "text for notes, e.g. \"(10) 10d EA. END\"" },
         mount: OptEnum(Mount) => { def: "face (TF models: top_flange)", desc: "hanger: face (back flanges nailed to the carrying member's face) or top_flange (flange over its top)" },
         carried: OptRaw => { def: "required for hanger", desc: "hanger: the joist/beam it carries (`id`, `id#k`, or a list of ids drawn as one member, e.g. an I-joist's flanges and web); seat under its end, sides on its faces" },
@@ -41,10 +41,11 @@ params! {
         beam: OptRaw => { def: "required for post_cap", desc: "post_cap: the beam (id or list of plies) sitting on the post" },
         rod: OptStr => { def: "null (W_HOLDOWN_ROD)", desc: "holdown: the anchor_bolt or bolt through its seat; the seat reaches the rod and the body centers on it" },
         face: OptEnum(Face) => { def: "holdown: toward the rod; post_base: left; tie/angle: front", desc: "holdown: the post face it is screwed to; post_base: left/right puts the side plates on the x faces, front/back on the z faces; tie/angle with members: front/back on the z faces (seen face-on), left/right (top/bottom for side-by-side members) on that side of the joint (seen edge-on; `z` then moves it along the members, E_PARAM on front/back)" },
-        height: OptLenPos => { def: "hanger 0.85 x carried depth; cap 1/2 beam depth (max 7); base 3 1/2; holdown 10", desc: "hanger: side height; post_cap: side plates up the beam; post_base: side plates up the post; holdown: body height" },
-        seat: OptLenPos => { def: "hanger 2, holdown 3/8", desc: "hanger: seat length under the carried member; holdown: seat thickness" },
+        height: OptLenPos => { def: "hanger catalog height, else 0.85 x carried/bottom-chord depth; cap 1/2 beam depth (max 7); base 3 1/2; holdown 10; DTT 6 15/16", desc: "hanger: side height; post_cap: side plates up the beam; post_base: side plates up the post; holdown: body height (DTT: horizontal body length). Family-only truss hangers warn until height is explicit" },
+        seat: OptLenPos => { def: "hanger 2, holdown 3/8 (DTT gauge)", desc: "hanger: seat length under the carried member; holdown: seat thickness" },
         standoff: OptLen => { def: "1", desc: "post_base: post bottom above the base plate bottom (0: post on the plate)" },
         seat_height: OptLen => { def: "0", desc: "holdown: seat bottom above the post bottom" },
+        gap: OptLen => { def: "1/2 maximum incidental joint gap", desc: "tie/angle with members: allowed clear gap or intervening layer thickness between the mounting members. A positive gap draws a straight bridge on face front/back; set the actual gap to confirm the intent. This schematic does not specify a slotted deflection connection" },
     }
 }
 
@@ -173,6 +174,7 @@ fn build_strap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option
         "seat_height",
         "legs",
         "along",
+        "gap",
     ] {
         if ctx.p.has(key) {
             let owner = if key == "legs" || key == "along" {
@@ -191,12 +193,19 @@ fn build_strap(ctx: &mut Ctx, cp: &Params, mi: &ModelInfo, kind: Kind) -> Option
     }
     let gauge_n = cp.gauge.or(mi.gauge()).unwrap_or(18.0);
     let width = cp.width.or(mi.strap_width()).unwrap_or(1.25);
-    if let Some(on) = cp.on.as_deref() {
+    if let Some(on) = cp.on.as_ref() {
         if !ctx.p.ok {
             return None;
         }
         let (gauge_i, t) = thickness(ctx, gauge_n)?;
-        return hardware::build_on(ctx, cp, mi, on, gauge_i, t, width);
+        return match on {
+            crate::json::Value::String(on) => hardware::build_on(ctx, cp, mi, on, gauge_i, t, width),
+            crate::json::Value::Array(_) => hardware::build_wrap(ctx, cp, mi, on, gauge_i, t, width),
+            _ => {
+                ctx.p.fail("on", "'on' must be a member face string or a three-face wrap array".to_string());
+                None
+            }
+        };
     }
     let Some(pv) = cp.points.as_ref() else {
         ctx.p.fail("points", "connector needs 'points': the strap polyline, e.g. [\"upper_plate@top_right\", \"beam@top_left\"] (Refs or [x, y]), or \"on\": \"<member>.face_left\" for a strap flush on a member face; a hanger, post cap, post base or holdown takes \"kind\" and its members instead".to_string());
